@@ -34,6 +34,10 @@ import {
   readOperationEvidenceRecords,
   writeOperationEvidenceIndex
 } from "./check-operation-evidence";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  loadOwnedRuntimeDescriptorFromEnv,
+} from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -47,6 +51,7 @@ export type BrowserAcceptanceOptions = {
   skipPreflight: boolean;
   startRuntime: boolean;
   headed: boolean;
+  runtimeDescriptor?: string;
 };
 
 export type CommandInvocation = {
@@ -83,7 +88,7 @@ export type DefaultWorkflowInput = {
   artifactPath: string;
 };
 
-const defaultPreflightEvidenceOut = "test-results/acceptance/preflight-evidence.md";
+const defaultPreflightEvidenceOut = "test-results/acceptance-preflight/evidence.md";
 const defaultEvidenceOut = "docs/generated/acceptance-browser-evidence.md";
 const defaultPlaywrightJsonReport = "test-results/acceptance/results.json";
 const defaultOperationEvidenceOut = "docs/generated/acceptance-operation-evidence.md";
@@ -191,6 +196,11 @@ export function parseBrowserAcceptanceArgs(
     startRuntime: resolveStartRuntimeFlag(env),
     headed: parseBoolean(env.npm_config_headed)
   };
+  const descriptorFromEnv = env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
+  if (descriptorFromEnv) {
+    options.runtimeDescriptor = descriptorFromEnv;
+    options.startRuntime = false;
+  }
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -222,6 +232,10 @@ export function parseBrowserAcceptanceArgs(
       options.startRuntime = false;
     } else if (arg === "--headed") {
       options.headed = true;
+    } else if (arg === "--runtime-descriptor" && next) {
+      options.runtimeDescriptor = next;
+      options.startRuntime = false;
+      index += 1;
     } else {
       throw new Error(`Unknown or incomplete browser acceptance argument: ${arg}`);
     }
@@ -253,6 +267,10 @@ export function buildPreflightCommand(options: BrowserAcceptanceOptions): Comman
 
   if (options.mode === "target-non-hdc" || !options.startRuntime) {
     args.push("--no-start-runtime");
+  }
+
+  if (options.runtimeDescriptor) {
+    args.push("--skip-gates", "--runtime-descriptor", options.runtimeDescriptor);
   }
 
   return {
@@ -311,7 +329,17 @@ export function buildPlaywrightEnv(
   evidenceRun?: EvidenceRunContext
 ): RuntimeEnv {
   const env: RuntimeEnv = { ...loadedEnv };
-  env.WISEEFF_ACCEPTANCE_FRONTEND_URL = options.frontendUrl;
+  if (options.runtimeDescriptor) {
+    env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV] = options.runtimeDescriptor;
+  }
+  const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(env);
+  env.WISEEFF_ACCEPTANCE_FRONTEND_URL = ownedRuntime?.endpoints.frontend.url ?? options.frontendUrl;
+  if (ownedRuntime) {
+    env.WISEEFF_API_BASE_URL = ownedRuntime.endpoints.api.url;
+    env.VITE_WISEEFF_API_BASE_URL = ownedRuntime.endpoints.api.url;
+    env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = "true";
+    env.WISEEFF_QUALITY_SKIP_SEED = "true";
+  }
   if (evidenceRun) {
     Object.assign(env, evidenceRunEnv(evidenceRun));
   }
@@ -491,10 +519,23 @@ export function deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(
 async function main() {
   // Capture the source state before preflight/Playwright update tracked generated evidence.
   // The final report describes the code under test, not its own output files.
-  const sourceMetadata = getGitMetadata();
-  const evidenceRun = createFullEvidenceRun(sourceMetadata);
+  const observedSourceMetadata = getGitMetadata();
   const options = parseBrowserAcceptanceArgs(process.argv.slice(2));
-  const loadedEnv = loadEnvFile(options.envFile, process.env);
+  const loadedEnv = options.runtimeDescriptor ? { ...process.env } : loadEnvFile(options.envFile, process.env);
+  if (options.runtimeDescriptor) {
+    loadedEnv[OWNED_ACCEPTANCE_DESCRIPTOR_ENV] = options.runtimeDescriptor;
+  }
+  const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(loadedEnv);
+  const sourceMetadata = resolveBrowserSourceMetadata(
+    observedSourceMetadata,
+    ownedRuntime
+      ? {
+          sourceCommit: ownedRuntime.run.sourceCommit,
+          sourceDirtyBefore: ownedRuntime.run.sourceDirtyBefore,
+        }
+      : undefined,
+  );
+  const evidenceRun = ownedRuntime ? resolveEvidenceRunContext(loadedEnv) : createFullEvidenceRun(sourceMetadata);
   const preflightCommand = buildPreflightCommand(options);
   const preflight = preflightCommand
     ? runPreflight(preflightCommand)
@@ -534,7 +575,12 @@ async function main() {
     markdownOut: defaultOperationEvidenceOut,
     jsonOut: defaultOperationEvidenceJsonOut
   });
-  if (playwright.status === "passed" && operationEvidence.status === "passed" && !sourceMetadata.dirty) {
+  if (
+    playwright.status === "passed" &&
+    operationEvidence.status === "passed" &&
+    !sourceMetadata.dirty &&
+    loadedEnv.WISEEFF_ACCEPTANCE_DEFER_LATEST_PUBLISH !== "true"
+  ) {
     publishLatestFullEvidenceRun(evidenceRun);
   }
   const evaluation = evaluateBrowserAcceptanceRun({
@@ -563,7 +609,16 @@ async function main() {
       "test-results/acceptance",
       "playwright-report/acceptance",
       defaultOperationEvidenceOut,
-      defaultOperationEvidenceJsonOut
+      defaultOperationEvidenceJsonOut,
+      ...(ownedRuntime
+        ? [
+            ownedRuntime.artifacts.descriptor,
+            ownedRuntime.artifacts.failureInventory,
+            ownedRuntime.artifacts.sourceWorktreeOutputManifest,
+            ownedRuntime.artifacts.nestedRuntimeManifest,
+            ...ownedRuntime.artifacts.runtimeLogs,
+          ]
+        : [])
     ],
     blockers: evaluation.blockers
   });
@@ -572,6 +627,18 @@ async function main() {
   writeFileSync(options.evidenceOut, evidence, "utf8");
   console.log(evidence);
   process.exit(evaluation.status === "passed" ? 0 : 1);
+}
+
+export function resolveBrowserSourceMetadata(
+  observed: { branch: string; commit: string; dirty: boolean },
+  owned?: { sourceCommit: string; sourceDirtyBefore: boolean },
+) {
+  if (!owned) return observed;
+  return {
+    branch: observed.branch,
+    commit: owned.sourceCommit,
+    dirty: owned.sourceDirtyBefore,
+  };
 }
 
 function runPreflight(command: CommandInvocation) {

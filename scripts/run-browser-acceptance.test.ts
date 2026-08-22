@@ -13,10 +13,50 @@ import {
   loadEnvContent,
   npmCommand,
   parseBrowserAcceptanceArgs,
+  resolveBrowserSourceMetadata,
   resolvePlaywrightHdcStatus
 } from "./run-browser-acceptance";
 
 describe("browser acceptance runner", () => {
+  it("uses the owned descriptor pre-run source identity after visual artifacts dirty the worktree", () => {
+    expect(
+      resolveBrowserSourceMetadata(
+        { branch: "codex/td-122", commit: "post-visual", dirty: true },
+        {
+          sourceCommit: "0123456789012345678901234567890123456789",
+          sourceDirtyBefore: false,
+        },
+      ),
+    ).toEqual({
+      branch: "codex/td-122",
+      commit: "0123456789012345678901234567890123456789",
+      dirty: false,
+    });
+  });
+
+  it("passes an owned descriptor through validation-only preflight", () => {
+    const options = parseBrowserAcceptanceArgs(["--runtime-descriptor", "/tmp/owned/runtime.json"], {});
+    expect(options).toMatchObject({
+      runtimeDescriptor: "/tmp/owned/runtime.json",
+      startRuntime: false
+    });
+    expect(buildPreflightCommand(options)?.args).toEqual([
+      "run",
+      "acceptance:preflight",
+      "--",
+      "--env-file",
+      ".env",
+      "--frontend-url",
+      "http://127.0.0.1:5173",
+      "--evidence-out",
+      "test-results/acceptance-preflight/evidence.md",
+      "--no-start-runtime",
+      "--skip-gates",
+      "--runtime-descriptor",
+      "/tmp/owned/runtime.json"
+    ]);
+  });
+
   it("uses local non-HDC defaults", () => {
     expect(parseBrowserAcceptanceArgs([], {})).toEqual({
       mode: "local-non-hdc",
@@ -111,7 +151,7 @@ describe("browser acceptance runner", () => {
         "--frontend-url",
         "http://127.0.0.1:5173",
         "--evidence-out",
-        "test-results/acceptance/preflight-evidence.md"
+      "test-results/acceptance-preflight/evidence.md"
       ]
     });
   });
@@ -126,7 +166,7 @@ describe("browser acceptance runner", () => {
       "--frontend-url",
       "http://127.0.0.1:5173",
       "--evidence-out",
-      "test-results/acceptance/preflight-evidence.md",
+      "test-results/acceptance-preflight/evidence.md",
       "--no-start-runtime"
     ]);
 
@@ -141,7 +181,7 @@ describe("browser acceptance runner", () => {
       "--frontend-url",
       "http://127.0.0.1:5173",
       "--evidence-out",
-      "test-results/acceptance/preflight-evidence.md",
+      "test-results/acceptance-preflight/evidence.md",
       "--require-pilot-ready",
       "--no-start-runtime"
     ]);
@@ -645,7 +685,7 @@ describe("browser acceptance evidence", () => {
         status: "passed",
         outcome: "non_hdc_local",
         hdc: "skipped",
-        artifactPath: "test-results/acceptance/preflight-evidence.md"
+        artifactPath: "test-results/acceptance-preflight/evidence.md"
       },
       playwright: {
         status: "failed",

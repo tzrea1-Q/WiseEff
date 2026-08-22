@@ -401,7 +401,9 @@ jobs:
     needs: detect
     if: needs.detect.outputs.run_l2 == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    # Gate0 owns a hard 60-minute deadline; leave time for exact PID shutdown,
+    # forensic manifest writes, and the always-run artifact upload.
+    timeout-minutes: 70
 
     services:
       postgres:
@@ -420,20 +422,6 @@ jobs:
 
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
-      WISEEFF_API_BASE_URL: http://127.0.0.1:8787
-      VITE_WISEEFF_RUNTIME_MODE: api
-      VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
-      WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
-      OBJECT_STORE_MODE: local
-      OBJECT_STORE_ROOT: .wiseeff-object-store
-      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
-      XIAOZE_DETERMINISTIC: "true"
-      AUTH_MODE: production
-      AUTH_PROVIDER: hmac
-      M5_CONTRACT_CHECK_PASSED: "true"
-      M5_SMOKE_ALLOW_NO_API: "false"
-      # Shared acceptance DB is post-cutover (semantic identity). M1 seed runs
-      # local finalize when WISEEFF_SEED_LEGACY_FLAT_IDENTITY is unset.
 
     steps:
       - name: Check out repository
@@ -458,41 +446,14 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Prepare local acceptance env
-        shell: bash
-        run: |
-          cp .env.example .env
-          {
-            echo "DATABASE_URL=${DATABASE_URL}"
-            echo "AUTH_MODE=production"
-            echo "AUTH_PROVIDER=hmac"
-            echo "XIAOZE_DETERMINISTIC=true"
-            echo "XIAOZE_LLM_API_BASE_URL=http://127.0.0.1:8787"
-            echo "XIAOZE_LLM_MODEL=wiseeff-rules-m4"
-            echo "XIAOZE_LLM_API_KEY=local-ci-deterministic"
-            echo "OBJECT_STORE_MODE=local"
-            echo "OBJECT_STORE_ROOT=.wiseeff-object-store"
-            echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
-            echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
-            echo "VITE_WISEEFF_RUNTIME_MODE=api"
-            echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
-            echo "M5_CONTRACT_CHECK_PASSED=true"
-          } >> .env
-          sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
-
-      - name: Migrate and seed database
-        run: |
-          npm run db:migrate
-          npm run db:seed:all
-
       - name: Acceptance CI metadata
         run: npm run acceptance:ci
 
       - name: Acceptance state models
         run: npm run acceptance:models
 
-      - name: Browser acceptance local non-HDC
-        run: npm run acceptance:browser -- --mode local-non-hdc
+      - name: Owned visual and browser acceptance Gate 0
+        run: npm run acceptance:gate0
 
       - name: Upload acceptance evidence
         if: always()
@@ -500,8 +461,12 @@ jobs:
         with:
           name: wiseeff-acceptance-local-non-hdc
           path: |
+            test-results/acceptance-runtime-runs
             playwright-report/acceptance
             test-results/acceptance
+            test-results/acceptance-preflight
+            playwright-report/quality
+            test-results/quality
             docs/generated/acceptance-browser-evidence.md
             docs/generated/acceptance-operation-evidence.md
             docs/generated/acceptance-operation-evidence/index.json

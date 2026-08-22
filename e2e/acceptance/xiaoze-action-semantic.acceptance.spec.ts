@@ -14,6 +14,11 @@ import {
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
+import {
+  applyDisposableRuntimeEnv,
+  captureProcessEnvForDisposableRuntime,
+  restoreProcessEnvFromDisposableRuntime,
+} from "./helpers/semanticBindingFixture";
 
 /**
  * Isolated post-cutover proof for approved Xiaoze writes. Shared CI is also
@@ -342,13 +347,7 @@ async function latestAgentAuditForSession(sessionId: string) {
 
 test.describe("Xiaoze P1 action on disposable post-cutover identity", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  const originalEnvironment = {
-    databaseUrl: process.env.DATABASE_URL,
-    apiUrl: process.env.VITE_WISEEFF_API_BASE_URL,
-    wiseEffApiUrl: process.env.WISEEFF_API_BASE_URL,
-    authIssuer: process.env.AUTH_TOKEN_ISSUER,
-    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET
-  };
+  const originalEnvironment = captureProcessEnvForDisposableRuntime();
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -360,25 +359,13 @@ test.describe("Xiaoze P1 action on disposable post-cutover identity", () => {
       label: "xiaoze_act",
       markerPurpose: "xiaoze-action"
     });
-    process.env.DATABASE_URL = disposableRuntime.databaseUrl;
-    process.env.VITE_WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.AUTH_TOKEN_ISSUER = disposableRuntime.authIssuer;
-    process.env.AUTH_TOKEN_HMAC_SECRET = disposableRuntime.authSecret;
+    applyDisposableRuntimeEnv(disposableRuntime);
   });
 
   test.afterAll(async () => {
     test.setTimeout(60_000);
     await disposableRuntime?.dispose();
-    const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    };
-    restore("DATABASE_URL", originalEnvironment.databaseUrl);
-    restore("VITE_WISEEFF_API_BASE_URL", originalEnvironment.apiUrl);
-    restore("WISEEFF_API_BASE_URL", originalEnvironment.wiseEffApiUrl);
-    restore("AUTH_TOKEN_ISSUER", originalEnvironment.authIssuer);
-    restore("AUTH_TOKEN_HMAC_SECRET", originalEnvironment.authSecret);
+    restoreProcessEnvFromDisposableRuntime(originalEnvironment);
   });
 
   test("approves a semantic parameter change through the post-cutover binding path", async ({

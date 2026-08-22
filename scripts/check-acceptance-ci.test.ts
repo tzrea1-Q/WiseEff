@@ -61,7 +61,7 @@ jobs:
       - run: npm run acceptance:models
       - run: npm run acceptance:quality
       - run: npm run acceptance:quality-run
-      - run: npm run acceptance:browser -- --mode local-non-hdc
+      - run: npm run acceptance:gate0
       - uses: actions/upload-artifact@v4
         with:
           path: |
@@ -72,6 +72,7 @@ jobs:
             docs/generated/acceptance-operation-evidence/index.json
             playwright-report/quality
             test-results/quality
+            test-results/acceptance-runtime-runs
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance
@@ -96,6 +97,7 @@ describe("M5.12 acceptance CI configuration", () => {
     expect(requiredAcceptanceCiScripts).toEqual([
       "acceptance:ci",
       "acceptance:browser",
+      "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
       "acceptance:quality-run",
@@ -116,7 +118,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "./.github/actions/setup-dts-toolchain",
         "npm run acceptance:quality-run",
         "npm run acceptance:smoke",
-        "npm run acceptance:browser -- --mode local-non-hdc"
+        "npm run acceptance:gate0"
       ])
     );
     expect(requiredAcceptanceCiWorkflowTokens).not.toContain("npm run acceptance:a11y");
@@ -127,7 +129,8 @@ describe("M5.12 acceptance CI configuration", () => {
       "docs/generated/acceptance-operation-evidence.md",
       "docs/generated/acceptance-operation-evidence/index.json",
       "playwright-report/quality",
-      "test-results/quality"
+      "test-results/quality",
+      "test-results/acceptance-runtime-runs"
     ]);
   });
 
@@ -169,6 +172,7 @@ jobs:
     expect(result.status).toBe("failed");
     expect(result.missingScripts).toEqual([
       "acceptance:ci",
+      "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
       "acceptance:quality-run",

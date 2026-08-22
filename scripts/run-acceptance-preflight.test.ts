@@ -9,6 +9,7 @@ import {
   loadEnvContent,
   parsePreflightArgs,
   planRuntimeServices,
+  resolvePreflightSourceMetadata,
   shouldRetryHttpStatus
 } from "./run-acceptance-preflight";
 
@@ -30,6 +31,30 @@ function localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy: unknown) {
 }
 
 describe("acceptance preflight helpers", () => {
+  it("uses descriptor pre-run source identity after an earlier phase generated files", () => {
+    expect(
+      resolvePreflightSourceMetadata(
+        { branch: "codex/td-122", commit: "post-visual", dirty: true },
+        {
+          sourceCommit: "0123456789012345678901234567890123456789",
+          sourceDirtyBefore: false,
+        },
+      ),
+    ).toEqual({
+      branch: "codex/td-122",
+      commit: "0123456789012345678901234567890123456789",
+      dirty: false,
+    });
+  });
+
+  it("forces owned descriptor preflight into validation-only mode", () => {
+    expect(parsePreflightArgs(["--runtime-descriptor", "/tmp/owned/runtime.json"], {})).toMatchObject({
+      runtimeDescriptor: "/tmp/owned/runtime.json",
+      startRuntime: false,
+      runGates: false
+    });
+  });
+
   it("uses local acceptance defaults", () => {
     expect(parsePreflightArgs([])).toMatchObject({
       envFile: ".env",
@@ -476,6 +501,18 @@ describe("acceptance preflight helpers", () => {
     ).toMatchObject({
       accepted: false,
       outcome: "blocked"
+    });
+  });
+
+  it("accepts canonical local blockers when a checked descriptor owns the already-started runtime", () => {
+    expect(
+      evaluatePilotReadiness(
+        localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "backups"]),
+        { requirePilotReady: false, startRuntime: false, localRuntime: true, ownedRuntime: true }
+      )
+    ).toMatchObject({
+      accepted: true,
+      outcome: "non_hdc_local"
     });
   });
 

@@ -5,6 +5,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveApiBaseUrl, resolveHeaders, type M5SmokeEnv } from "./run-m5-smoke.shared";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  loadOwnedRuntimeDescriptorFromEnv,
+  verifyOwnedRuntimeOwnership,
+} from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 
 type RuntimeEnv = Record<string, string | undefined>;
 type CheckStatus = "passed" | "failed" | "skipped";
@@ -19,6 +24,7 @@ export type PreflightOptions = {
   localRuntime?: boolean;
   requirePilotReady: boolean;
   evidenceOut?: string;
+  runtimeDescriptor?: string;
 };
 
 export type CheckResult = {
@@ -45,7 +51,8 @@ export function parsePreflightArgs(args: readonly string[], env: RuntimeEnv = pr
     frontendUrl: "http://127.0.0.1:5173",
     startRuntime: resolveStartRuntimeFlag(env),
     requirePilotReady: env.npm_config_require_pilot_ready?.trim() === "true",
-    evidenceOut: env.npm_config_evidence_out?.trim() || undefined
+    evidenceOut: env.npm_config_evidence_out?.trim() || undefined,
+    runtimeDescriptor: env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim() || undefined
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -68,6 +75,11 @@ export function parsePreflightArgs(args: readonly string[], env: RuntimeEnv = pr
       options.requirePilotReady = true;
     } else if (arg === "--evidence-out" && next) {
       options.evidenceOut = next;
+      index += 1;
+    } else if (arg === "--runtime-descriptor" && next) {
+      options.runtimeDescriptor = next;
+      options.startRuntime = false;
+      options.runGates = false;
       index += 1;
     } else {
       throw new Error(`Unknown or incomplete acceptance preflight argument: ${arg}`);
@@ -184,7 +196,7 @@ export function loadEnvContent(content: string, baseEnv: RuntimeEnv = process.en
 export function evaluatePilotReadiness(
   body: Record<string, unknown>,
   options: Pick<PreflightOptions, "requirePilotReady"> &
-    Partial<Pick<PreflightOptions, "startRuntime" | "localRuntime">> = {
+    Partial<Pick<PreflightOptions, "startRuntime" | "localRuntime">> & { ownedRuntime?: boolean } = {
     requirePilotReady: false,
     startRuntime: true,
     localRuntime: true
@@ -224,7 +236,7 @@ export function evaluatePilotReadiness(
   if (
     isBlockedReadiness &&
     !options.requirePilotReady &&
-    options.startRuntime !== false &&
+    (options.startRuntime !== false || options.ownedRuntime === true) &&
     options.localRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 2 &&
@@ -242,7 +254,7 @@ export function evaluatePilotReadiness(
   if (
     isBlockedReadiness &&
     !options.requirePilotReady &&
-    options.startRuntime !== false &&
+    (options.startRuntime !== false || options.ownedRuntime === true) &&
     options.localRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 3 &&
@@ -408,10 +420,34 @@ export function ensureEvidenceParentDirectory(evidenceOut: string) {
 
 async function main() {
   const options = parsePreflightArgs(process.argv.slice(2));
-  const env = await loadEnvFile(options.envFile, process.env);
+  const loadedEnv = options.runtimeDescriptor ? { ...process.env } : await loadEnvFile(options.envFile, process.env);
+  const env = options.runtimeDescriptor
+    ? { ...loadedEnv, [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: options.runtimeDescriptor }
+    : loadedEnv;
   const checks: CheckResult[] = [];
 
-  checks.push(...(await ensureRuntimeServices(planRuntimeServices(options, env), env)));
+  const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(env);
+  if (ownedRuntime) {
+    try {
+      await verifyOwnedRuntimeOwnership(ownedRuntime, env);
+      checks.push({
+        name: "owned acceptance runtime",
+        status: "passed",
+        detail: `verified run ${ownedRuntime.run.id} at ${ownedRuntime.run.sourceCommit}`,
+      });
+      options.frontendUrl = ownedRuntime.endpoints.frontend.url;
+      options.startRuntime = false;
+      options.runGates = false;
+    } catch (error) {
+      checks.push({
+        name: "owned acceptance runtime",
+        status: "failed",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  } else {
+    checks.push(...(await ensureRuntimeServices(planRuntimeServices(options, env), env)));
+  }
 
   if (options.runGates) {
     checks.push(runCommandCheck("docs:check", "npm", ["run", "docs:check"]));
@@ -432,7 +468,15 @@ async function main() {
     checks.push({ name: "frontend", status: "skipped", detail: "--skip-frontend was provided." });
   }
 
-  const metadata = getGitMetadata();
+  const metadata = resolvePreflightSourceMetadata(
+    getGitMetadata(),
+    ownedRuntime
+      ? {
+          sourceCommit: ownedRuntime.run.sourceCommit,
+          sourceDirtyBefore: ownedRuntime.run.sourceDirtyBefore,
+        }
+      : undefined,
+  );
   const evidence = buildPreflightEvidence({
     metadata,
     envSummary: buildEnvSummary(env),
@@ -451,6 +495,18 @@ async function main() {
   if (failures.length > 0) {
     process.exit(1);
   }
+}
+
+export function resolvePreflightSourceMetadata(
+  observed: { branch: string; commit: string; dirty: boolean },
+  owned?: { sourceCommit: string; sourceDirtyBefore: boolean },
+) {
+  if (!owned) return observed;
+  return {
+    branch: observed.branch,
+    commit: owned.sourceCommit,
+    dirty: owned.sourceDirtyBefore,
+  };
 }
 
 async function loadEnvFile(envFile: string, baseEnv: RuntimeEnv): Promise<RuntimeEnv> {
@@ -494,7 +550,8 @@ async function runApiChecks(env: RuntimeEnv, options: PreflightOptions) {
     const result = evaluatePilotReadiness(pilot.body, {
       requirePilotReady: options.requirePilotReady,
       startRuntime: options.startRuntime,
-      localRuntime: isLocalHttpUrl(baseUrl)
+      localRuntime: isLocalHttpUrl(baseUrl),
+      ownedRuntime: Boolean(options.runtimeDescriptor)
     });
     pilotOutcome = result.outcome;
     checks.push({

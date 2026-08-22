@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Page, TestInfo } from "playwright/test";
 import { acceptanceOperations, type AcceptanceOperationAssertion } from "../operationMatrix";
 import { resolveEvidenceRunContext } from "./evidenceRun";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  loadOwnedRuntimeDescriptorFromEnv,
+  sha256,
+} from "./ownedRuntimeDescriptor";
 
 export type OperationEvidenceStatus = "passed" | "failed" | "skipped";
 
@@ -47,6 +52,18 @@ export type OperationEvidenceRuntimeSummary = {
   apiBaseUrl: string;
   seed?: string;
   envSummary?: Record<string, string>;
+  ownedRuntime?: {
+    descriptorPath: string;
+    descriptorSha256: string;
+    runId: string;
+    sourceCommit: string;
+    databaseName: string;
+    objectMarkerSha256: string;
+    apiUrl: string;
+    frontendUrl: string;
+    apiPid: number;
+    frontendPid: number;
+  };
 };
 
 export type OperationEvidenceReproductionSummary = {
@@ -225,6 +242,8 @@ function defaultReportSummary(): OperationEvidenceReportSummary {
 }
 
 function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
+  const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv();
+  const descriptorPath = process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
   return {
     mode: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "api",
     apiBaseUrl:
@@ -238,7 +257,23 @@ function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
       DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE?.trim() || "simulator",
       XIAOZE_DETERMINISTIC: process.env.XIAOZE_DETERMINISTIC === "true" ? "true" : "false",
       WISEEFF_ACCEPTANCE_NO_START_RUNTIME: process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true" ? "true" : "false"
-    }
+    },
+    ...(ownedRuntime && descriptorPath
+      ? {
+          ownedRuntime: {
+            descriptorPath,
+            descriptorSha256: sha256(readFileSync(descriptorPath)),
+            runId: ownedRuntime.run.id,
+            sourceCommit: ownedRuntime.run.sourceCommit,
+            databaseName: ownedRuntime.database.name,
+            objectMarkerSha256: ownedRuntime.objectStore.markerSha256,
+            apiUrl: ownedRuntime.endpoints.api.url,
+            frontendUrl: ownedRuntime.endpoints.frontend.url,
+            apiPid: ownedRuntime.processes.api.pid,
+            frontendPid: ownedRuntime.processes.frontend.pid,
+          },
+        }
+      : {})
   };
 }
 

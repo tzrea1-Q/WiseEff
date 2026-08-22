@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
   "acceptance:browser",
+  "acceptance:gate0",
   "acceptance:models",
   "acceptance:quality",
   "acceptance:quality-run",
@@ -36,7 +37,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "npm run acceptance:quality",
   "npm run acceptance:quality-run",
   "npm run acceptance:smoke",
-  "npm run acceptance:browser -- --mode local-non-hdc",
+  "npm run acceptance:gate0",
   "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
   "npm run acceptance:browser -- --mode full-pilot --no-start-runtime",
   "actions/upload-artifact@v4"
@@ -49,7 +50,8 @@ export const requiredAcceptanceCiArtifactPaths = [
   "docs/generated/acceptance-operation-evidence.md",
   "docs/generated/acceptance-operation-evidence/index.json",
   "playwright-report/quality",
-  "test-results/quality"
+  "test-results/quality",
+  "test-results/acceptance-runtime-runs"
 ] as const;
 
 export const CI_SMOKE_TAG = "@ci-smoke";

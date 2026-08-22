@@ -1,11 +1,13 @@
 import { defineConfig, devices } from "playwright/test";
 import dotenv from "dotenv";
 import { buildPlaywrightWebServers } from "./playwright.shared";
+import { loadOwnedRuntimeDescriptorFromEnv } from "./e2e/acceptance/helpers/ownedRuntimeDescriptor";
 
 dotenv.config({ path: process.env.WISEEFF_ACCEPTANCE_ENV_FILE ?? ".env" });
 
-const baseURL = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
-const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
+const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv();
+const baseURL = ownedRuntime?.endpoints.frontend.url ?? process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
+const apiURL = ownedRuntime?.endpoints.api.url ?? process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const reuseExistingServer = !process.env.CI;
 const skipWebServers = process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true";
 
@@ -48,7 +50,7 @@ export default defineConfig({
       }
     }
   ],
-  webServer: skipWebServers
+  webServer: ownedRuntime || skipWebServers
     ? []
     : buildPlaywrightWebServers({
         baseURL,

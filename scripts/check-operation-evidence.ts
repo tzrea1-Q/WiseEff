@@ -57,6 +57,18 @@ export type OperationEvidenceRecord = {
     apiBaseUrl: string;
     seed?: string;
     envSummary?: Record<string, string>;
+    ownedRuntime?: {
+      descriptorPath: string;
+      descriptorSha256: string;
+      runId: string;
+      sourceCommit: string;
+      databaseName: string;
+      objectMarkerSha256: string;
+      apiUrl: string;
+      frontendUrl: string;
+      apiPid: number;
+      frontendPid: number;
+    };
   };
   reproduction?: {
     steps: string[];

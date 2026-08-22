@@ -13,6 +13,13 @@ import {
 import { createDatabase, type Database } from "../../../server/shared/database/client";
 import { applyMigrations } from "../../../server/shared/database/migrations";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast, chargeLabCast } from "./cast";
+import {
+  OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
+  OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
+  recordNestedRuntimeFinish,
+  recordNestedRuntimeStart,
+} from "./nestedRuntimeManifest";
+import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
 /** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
@@ -41,6 +48,7 @@ export type DisposablePostCutoverRuntime = {
   frontendUrl: string;
   authIssuer: string;
   authSecret: string;
+  nestedRuntimeId?: string;
   dispose(): Promise<void>;
 };
 
@@ -335,7 +343,9 @@ export async function startDisposablePostCutoverRuntime(
   const authIssuer = "wiseeff-disposable-acceptance";
   const authSecret = randomBytes(32).toString("hex");
   const objectStoreRoot = path.resolve("work", "disposable-acceptance-object-store", databaseName);
+  const nestedManifestPath = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV]?.trim();
   const children: ChildProcess[] = [];
+  let nestedRegistered = false;
 
   await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
   try {
@@ -352,6 +362,8 @@ export async function startDisposablePostCutoverRuntime(
       OBJECT_STORE_MODE: "local",
       OBJECT_STORE_ROOT: objectStoreRoot,
       XIAOZE_DETERMINISTIC: "true",
+      [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: undefined,
+      [OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]: databaseName,
       ...(options.apiEnv ?? {}),
     });
     children.push(api);
@@ -363,11 +375,28 @@ export async function startDisposablePostCutoverRuntime(
       {
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiUrl,
+        [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: undefined,
+        [OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]: databaseName,
         ...(options.frontendEnv ?? {}),
       },
     );
     children.push(frontend);
     await waitForHttp(frontendUrl, frontend);
+
+    if (nestedManifestPath) {
+      recordNestedRuntimeStart(nestedManifestPath, {
+        id: databaseName,
+        databaseName,
+        markerPurpose: purpose,
+        migrationRunId,
+        objectStoreRoot,
+        apiUrl,
+        frontendUrl,
+        apiPid: requireRuntimePid(api, "API"),
+        frontendPid: requireRuntimePid(frontend, "frontend"),
+      });
+      nestedRegistered = true;
+    }
 
     return {
       databaseUrl,
@@ -378,21 +407,47 @@ export async function startDisposablePostCutoverRuntime(
       frontendUrl,
       authIssuer,
       authSecret,
+      nestedRuntimeId: nestedRegistered ? databaseName : undefined,
       async dispose() {
-        await Promise.all(children.reverse().map(stopRuntime));
-        await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
-        await withClient(adminUrl, (client) =>
-          client.query(`drop database if exists ${databaseName} with (force)`),
-        );
-        await rm(objectStoreRoot, { recursive: true, force: true });
+        try {
+          await Promise.all(children.reverse().map(stopRuntime));
+          await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
+          await withClient(adminUrl, (client) =>
+            client.query(`drop database if exists ${databaseName} with (force)`),
+          );
+          await rm(objectStoreRoot, { recursive: true, force: true });
+          if (nestedManifestPath && nestedRegistered) {
+            recordNestedRuntimeFinish(nestedManifestPath, databaseName, "cleaned");
+          }
+        } catch (error) {
+          if (nestedManifestPath && nestedRegistered) {
+            recordNestedRuntimeFinish(nestedManifestPath, databaseName, "cleanup-failed");
+          }
+          throw error;
+        }
       },
     };
   } catch (error) {
     await Promise.all(children.reverse().map(stopRuntime));
-    await withClient(adminUrl, (client) =>
+    const databaseCleanup = await withClient(adminUrl, (client) =>
       client.query(`drop database if exists ${databaseName} with (force)`),
-    ).catch(() => undefined);
-    await rm(objectStoreRoot, { recursive: true, force: true });
+    ).then(() => true, () => false);
+    const objectCleanup = await rm(objectStoreRoot, { recursive: true, force: true }).then(
+      () => true,
+      () => false,
+    );
+    if (nestedManifestPath && nestedRegistered) {
+      recordNestedRuntimeFinish(
+        nestedManifestPath,
+        databaseName,
+        databaseCleanup && objectCleanup ? "failed-cleaned" : "cleanup-failed",
+      );
+    }
     throw error;
   }
+}
+
+function requireRuntimePid(child: ChildProcess, label: string) {
+  if (!child.pid) throw new Error(`Disposable ${label} runtime did not expose a PID.`);
+  return child.pid;
 }

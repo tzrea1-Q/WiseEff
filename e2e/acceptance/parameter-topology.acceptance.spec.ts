@@ -18,6 +18,11 @@ import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
+import {
+  applyDisposableRuntimeEnv,
+  captureProcessEnvForDisposableRuntime,
+  restoreProcessEnvFromDisposableRuntime,
+} from "./helpers/semanticBindingFixture";
 import { ensureAuroraSemanticTopology, ensureProjectSemanticTopology } from "./helpers/topologyFixture";
 
 useBrowserDiagnostics(test, {
@@ -541,13 +546,7 @@ async function resolveReviewsForCurrentRevision(
 
 test.describe("Parameter topology / schema browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  const originalEnvironment = {
-    databaseUrl: process.env.DATABASE_URL,
-    apiUrl: process.env.VITE_WISEEFF_API_BASE_URL,
-    wiseEffApiUrl: process.env.WISEEFF_API_BASE_URL,
-    authIssuer: process.env.AUTH_TOKEN_ISSUER,
-    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET,
-  };
+  const originalEnvironment = captureProcessEnvForDisposableRuntime();
 
   test.beforeAll(async () => {
     test.setTimeout(120_000);
@@ -556,25 +555,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     disposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "parameter_topology",
     });
-    process.env.DATABASE_URL = disposableRuntime.databaseUrl;
-    process.env.VITE_WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.AUTH_TOKEN_ISSUER = disposableRuntime.authIssuer;
-    process.env.AUTH_TOKEN_HMAC_SECRET = disposableRuntime.authSecret;
+    applyDisposableRuntimeEnv(disposableRuntime);
   });
 
   test.afterAll(async () => {
     test.setTimeout(60_000);
     await disposableRuntime?.dispose();
-    const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    };
-    restore("DATABASE_URL", originalEnvironment.databaseUrl);
-    restore("VITE_WISEEFF_API_BASE_URL", originalEnvironment.apiUrl);
-    restore("WISEEFF_API_BASE_URL", originalEnvironment.wiseEffApiUrl);
-    restore("AUTH_TOKEN_ISSUER", originalEnvironment.authIssuer);
-    restore("AUTH_TOKEN_HMAC_SECRET", originalEnvironment.authSecret);
+    restoreProcessEnvFromDisposableRuntime(originalEnvironment);
   });
 
   test("governs specs, browses real topology, edits, maps identity, and gates publish", async ({
