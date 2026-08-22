@@ -38,6 +38,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`：分阶段推进 TD-105、条件式 TD-014/067、TD-005 有界治理切片、陈旧 hotspot 计划，以及 TD-122 owned-runtime/fresh-database 条件门。条件项只有在各自关闭门全绿后才移出 Open。
 - `exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`：TD-122 承接 Wave 3 合入树诊断暴露的 11 个 Darwin stale/missing visual baseline 与 18 个 full local non-HDC browser failure；必须在 fresh isolated DB 上保存逐用例清单、review snapshot、修正确定性 fixture/runtime ownership，达到 0 个非计划失败并产出合法 full evidence manifest。不得把这些失败藏进四条范围明确的 Wave 3 关闭项。
 - `exec-plans/active/2026-08-19-local-eval-auth-hardening.md`：本地评估账号加固——用户改密、Admin 重置、自助注册开关、登录/注册限流、失败登录审计、认证页说明。实现分支 `cursor/local-eval-auth-hardening-5336`。
 - `exec-plans/active/2026-08-19-organization-administration.md`：组织管理（D1–D11 / ADR-0037），实现分支 `feat/organization-administration`。延期：邀请 TD-119、组织目录 TD-120、项目成员 TD-121。

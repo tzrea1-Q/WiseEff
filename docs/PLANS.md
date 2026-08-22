@@ -34,6 +34,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
+- `exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`: staged non-hardware closeout for TD-105, conditional TD-014/067, a bounded TD-005 hygiene slice, the stale hotspot plan, and a conditional TD-122 owned-runtime/fresh-database gate. Conditional rows remain Open unless their explicit closure gates pass.
 - `exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`: TD-122 owns the 11 stale/missing Darwin visual baselines and 18 full local non-HDC browser failures exposed by the Wave 3 merged-tree diagnostic. It requires a fresh isolated database, an exact per-test inventory, reviewed snapshot updates, deterministic fixture/runtime ownership, zero unplanned failures, and a valid full evidence manifest; these failures are not hidden under the four scoped Wave 3 closures.
 - `exec-plans/active/2026-08-19-local-eval-auth-hardening.md`: local evaluation account hardening — self-service password change, Admin reset, self-registration switch, login/register rate limit, failed-login audit, and auth-screen copy. Implementation on `cursor/local-eval-auth-hardening-5336`.
 - `exec-plans/active/2026-08-19-organization-administration.md`: Organization administration (D1–D11 / ADR-0037). Implementation on `feat/organization-administration`. Deferred: invitations TD-119, org directory TD-120, Project member TD-121.
