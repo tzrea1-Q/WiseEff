@@ -16,7 +16,8 @@ FROM node:22.21.1-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/ ./packages/
-RUN npm ci
+COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci
+RUN /usr/local/bin/wiseeff-npm-ci
 
 FROM node:22.21.1-alpine AS runtime
 

@@ -91,6 +91,8 @@ COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/dts-toolchain-requirements.txt
 COPY --from=dtc-builder /opt/dtc /opt/dtc
 RUN dtc --version && fdtoverlay --version && dt-validate --version
+COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci
+RUN /usr/local/bin/wiseeff-npm-ci
 RUN npx tsc -b && npx vite build
 `;
 
@@ -172,6 +174,7 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/scripts/operation-lock.sh",
   "ops/self-hosted/scripts/upgrade.sh",
   "ops/self-hosted/scripts/upgrade-lib.sh",
+  "ops/self-hosted/scripts/npm-ci-with-diagnostics.sh",
   "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/Caddyfile.ip-lab",
   "ops/self-hosted/Caddyfile.ip-lab-tls",

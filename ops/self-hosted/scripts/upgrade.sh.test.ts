@@ -98,22 +98,100 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).not.toContain("stale-target");
   });
 
-  it("does not inspect or journal a candidate when its build fails", () => {
+  it("retains private diagnostics without inspecting or journaling a failed candidate image", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-build-failure-"));
     const result = spawnSync("bash", ["-c", `
       source ops/self-hosted/scripts/upgrade-lib.sh
       upgrade_target_sha=target-sha
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
       wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
       wiseeff_upgrade_git() { return 0; }
-      wiseeff_upgrade_compose() { printf 'build-failed\\n'; return 23; }
+      wiseeff_upgrade_compose() {
+        printf 'progress=%s\\n' "$BUILDKIT_PROGRESS"
+        printf 'proxy=https://operator:build-secret@registry.example.com\\n'
+        printf 'NPM_TOKEN=build-token-secret\\n'
+        printf 'npm error code EAI_AGAIN\\n'
+        return 23
+      }
       wiseeff_upgrade_docker() { printf 'should-not-inspect\\n'; return 0; }
-      wiseeff_upgrade_state_write() { printf 'should-not-journal\\n'; return 0; }
       if wiseeff_upgrade_build_candidate; then exit 0; else exit $?; fi
-    `], { encoding: "utf8", env: { ...process.env } });
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
 
     expect(result.status).toBe(23);
-    expect(result.stdout).toContain("build-failed");
+    expect(result.stdout).toContain("progress=plain");
+    expect(result.stdout).toContain("npm error code EAI_AGAIN");
+    expect(result.stdout).toContain("[REDACTED]");
+    expect(result.stdout).not.toContain("build-secret");
+    expect(result.stdout).not.toContain("build-token-secret");
     expect(result.stdout).not.toContain("should-not-inspect");
-    expect(result.stdout).not.toContain("should-not-journal");
+    const buildLog = readFileSync(join(runDir, "diagnostics", "build.log"), "utf8");
+    expect(buildLog).toContain("EAI_AGAIN");
+    expect(buildLog).toContain("[REDACTED]");
+    expect(buildLog).not.toContain("build-secret");
+    expect(buildLog).not.toContain("build-token-secret");
+    expect(readFileSync(join(runDir, "diagnostics", "summary.txt"), "utf8")).toContain("category=dns");
+    expect(readFileSync(join(runDir, "build_status"), "utf8")).toBe("failed\n");
+    expect(existsSync(join(runDir, "candidate_image_tag"))).toBe(false);
+    expect(statSync(join(runDir, "diagnostics", "build.log")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(runDir, "diagnostics", "summary.txt")).mode & 0o777).toBe(0o600);
+  });
+
+  it("preserves a target-checkout failure and does not start the build", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-checkout-failure-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_target_sha=target-sha
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
+      wiseeff_upgrade_git() { return 31; }
+      wiseeff_upgrade_compose() { printf 'should-not-build\\n'; return 0; }
+      wiseeff_upgrade_docker() { printf 'should-not-inspect\\n'; return 0; }
+      if wiseeff_upgrade_build_candidate; then exit 0; else exit $?; fi
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
+
+    expect(result.status).toBe(31);
+    expect(result.stdout).not.toContain("should-not-build");
+    expect(result.stdout).not.toContain("should-not-inspect");
+    expect(readFileSync(join(runDir, "diagnostics", "summary.txt"), "utf8")).toContain("category=source-checkout");
+    expect(readFileSync(join(runDir, "build_status"), "utf8")).toBe("failed\n");
+  });
+
+  it("records an image-inspection failure without journaling a candidate tag", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-inspect-failure-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_target_sha=target-sha
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
+      wiseeff_upgrade_docker() { return 29; }
+      if wiseeff_upgrade_build_candidate; then exit 0; else exit $?; fi
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
+
+    expect(result.status).toBe(29);
+    expect(readFileSync(join(runDir, "diagnostics", "summary.txt"), "utf8")).toContain("category=image-inspection");
+    expect(readFileSync(join(runDir, "build_status"), "utf8")).toBe("failed\n");
+    expect(existsSync(join(runDir, "candidate_image_tag"))).toBe(false);
+  });
+
+  it("journals a successful commit-addressed candidate and its build evidence", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-build-success-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_target_sha=target-sha
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_compose() { printf 'build-complete\\n'; return 0; }
+      wiseeff_upgrade_docker() { return 0; }
+      wiseeff_upgrade_build_candidate
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "candidate_image_tag"), "utf8")).toBe("wiseeff-app:target-sha\n");
+    expect(readFileSync(join(runDir, "build_status"), "utf8")).toBe("passed\n");
+    expect(readFileSync(join(runDir, "diagnostics", "summary.txt"), "utf8")).toContain("status=passed");
   });
 
   it("stops the recovery-point sequence after the first failed store", () => {
@@ -410,13 +488,25 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "previous_sha"), "abc123\n");
     writeFileSync(join(runDir, "target_sha"), "def456\n");
     writeFileSync(join(runDir, "backup_dir"), "/var/backups/wiseeff/upgrades/run-1\n");
+    writeFileSync(join(runDir, "build_status"), "failed\n");
+    writeFileSync(join(runDir, "diagnostics_dir"), `${runDir}/diagnostics\n`);
+    writeFileSync(join(runDir, "build_log"), `${runDir}/diagnostics/build.log\n`);
+    writeFileSync(join(runDir, "build_summary"), `${runDir}/diagnostics/summary.txt\n`);
     writeFileSync(join(runDir, "next_action"), "none\n");
     writeFileSync(join(runDir, "status"), "run_id=run-1\nphase=completed\noutcome=completed\n");
 
     const result = runUpgrade(["status", "--json", "--run-id", "run-1", "--state-dir", stateRoot]);
 
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ runId: "run-1", phase: "completed", outcome: "completed" });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      runId: "run-1",
+      phase: "completed",
+      outcome: "completed",
+      buildStatus: "failed",
+      diagnosticsDir: `${runDir}/diagnostics`,
+      buildLog: `${runDir}/diagnostics/build.log`,
+      buildSummary: `${runDir}/diagnostics/summary.txt`
+    });
     expect(result.stdout).not.toContain("POSTGRES_PASSWORD");
   });
 

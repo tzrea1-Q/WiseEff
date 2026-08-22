@@ -58,6 +58,8 @@ The target source is checked out and the candidate application image is built wh
 
 The current application image is tagged with a run-specific rollback tag before the candidate tag is built. Candidate and previous image IDs are written to the run journal.
 
+The build is also an evidence-producing phase. Compose runs with plain BuildKit progress; a redacted copy of the stream is written to a mode-`0600` log under the run's mode-`0700` diagnostics directory. The Dockerfile's `npm ci` wrapper emits sanitized npm debug-log content before the ephemeral build stage disappears and preserves npm's exit status. A small classifier writes a human-readable summary for common dependency-lock, CA, DNS, network, registry, capacity, and OOM failures. These fields are exposed through the existing `status` interface, so no separate diagnostic command or host-root access is added.
+
 ### Backup is mandatory before migration
 
 There is no normal `--skip-backup` flag. Once external traffic and background writes are quiesced, the controller captures and verifies:
@@ -111,7 +113,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `plan` resolves the target and reports commits, migration changes, disk requirements, backup destination, and expected downtime without checking out code or changing containers.
 - `prepare-host` is the only root-oriented action. It normalizes the deployment user's Docker group membership and the protected operation/journal/backup directories; it never accesses Git or changes a running service.
 - `lock-status` reports the kernel/fallback lock state plus redacted holder metadata. `unlock` clears only proven-stale metadata/fallback locks and refuses a live operation.
-- `status` reads the durable journal only.
+- `status` reads the durable journal only, including candidate-build status, diagnostic paths, and the actionable next step.
 - `resume` continues the first incomplete idempotent phase; it does not repeat a verified snapshot or migration blindly.
 - `rollback` restores the previous application image. `--restore-data` additionally restores the recorded PostgreSQL, object-store, and Redis recovery point.
 - if the resolved SHA already runs and `--restart` is absent, `apply` exits successfully as a no-op.
@@ -237,8 +239,10 @@ Disk preflight includes candidate image headroom plus at least the estimated Pos
 1. Tag each current application image with the run-specific previous tag.
 2. Check out the resolved target commit in detached-head deployment mode.
 3. Build one commit-addressed application image used by API, worker, and web.
-4. Run image-level self-hosted configuration/build checks.
-5. If any step fails, restore the previous checkout and exit; the old containers have not stopped.
+4. Stream redacted plain-progress output into the run journal; if npm fails, export its sanitized in-stage debug log before the stage disappears.
+5. Write a classified summary and expose the diagnostic paths through `status`.
+6. Run image-level self-hosted configuration/build checks.
+7. If any step fails, restore the previous checkout and exit; the old containers have not stopped.
 
 The Compose file gains an explicit application image repository/tag variable so rollback does not depend on a mutable default Compose tag or on rebuilding old source during an incident.
 
@@ -305,6 +309,7 @@ Rollback without data restore is allowed automatically only when migration start
 ## Security And Safety Invariants
 
 - `.env` contents and secret-bearing command lines are never logged.
+- Build logs and summaries are private journal artifacts (`0700` directory, `0600` files); URL credentials, registry tokens, passwords, and bearer tokens are redacted before persistence.
 - Backup directories containing configuration or customer data must be mode `0700`; sensitive files are mode `0600`.
 - The backup root must not be inside the Git checkout, Docker volume root, or a live object-store path.
 - User-provided Git refs and paths are passed as arguments, not evaluated as shell.

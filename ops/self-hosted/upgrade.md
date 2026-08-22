@@ -75,6 +75,22 @@ Every mutating phase is written atomically. Keep the printed `run_id` and inspec
 ./scripts/upgrade.sh status --run-id <run-id> --json
 ```
 
+Candidate builds always use plain BuildKit progress and stream a redacted copy to the run journal. If Docker or `npm ci` fails, `apply` exits with code `20` before traffic is stopped, restores the previous checkout, and prints three deployment-user-readable paths:
+
+- `diagnostics_dir`: private mode-`0700` directory under the run journal;
+- `build_summary`: mode-`0600` classified cause and next step;
+- `build_log`: mode-`0600` complete redacted Compose/BuildKit output.
+
+The image build runs `npm ci` through an internal diagnostic wrapper. On failure, the wrapper copies the otherwise-ephemeral `/root/.npm/_logs/*-debug-*.log` content into the build stream between `WISEEFF_NPM_CI_DIAGNOSTICS_BEGIN/END` markers, while preserving the original npm exit code and redacting URL credentials, registry tokens, passwords, and bearer tokens. No host root access is needed. Inspect the durable evidence with:
+
+```bash
+./scripts/upgrade.sh status --run-id <run-id>
+cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
+less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
+```
+
+Common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
+
 Before migration starts, a quiescence or backup failure brings the previous stack back and records `old-stack-restored` or `failed-safe`. A failure after candidate API startup records `recovery-required`, leaves the proxy stopped, and keeps queues paused. Do not edit the journal or manually resume traffic.
 
 For an idempotent post-migration health/finalization phase, use the journal's printed action:
@@ -125,6 +141,7 @@ Stable exit classes are useful for automation: `0` completed/no-op, `2` invalid 
 
 - Keep backup storage outside the checkout and Docker data root; protect it with mode `0700` directories and `0600` files.
 - Keep `ops/self-hosted/.state/` outside the Docker build context; it contains private operation journals, not application source.
+- Treat build diagnostics as private operational data. They are redacted automatically, but review them again before sharing outside the operations team.
 - Preserve the same Compose project and named volume identities. Do not add a new project name during an upgrade.
 - Treat `recovery-required` as a maintenance incident. Keep the proxy stopped until `resume` or the approved whole-state restore completes.
 - Local tests and `selfhost:check` validate the entry and templates; they do not constitute target-environment, pilot, or production-readiness evidence.

@@ -278,6 +278,14 @@ Keep the printed `run_id` from every applied upgrade.
 ./scripts/upgrade.sh resume --run-id <run-id>
 ```
 
+When `apply` exits `20` during a Docker or `npm ci` build, the old services are still online. The command automatically retains redacted, deployment-user-readable evidence inside the run journal. Use the `build_summary` and `build_log` paths printed by `status`; do not inspect the host's `/root/.npm`, because npm ran as root only inside an ephemeral BuildKit stage.
+
+```bash
+./scripts/upgrade.sh status --run-id <run-id>
+cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
+less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
+```
+
 Inspect a setup/upgrade lock:
 
 ```bash
@@ -363,6 +371,7 @@ npm run selfhost:release-gate -- \
 | Dirty checkout refusal | tracked or unignored files differ from the deployed commit | inspect `git status --short`; preserve operator files and intentionally resolve the drift |
 | Git fetch timeout while direct user Git works | the command may be running through `sudo`, missing proxy environment, or using a different Git config | run as deployment user; inspect proxy config; use `--git-proxy` for a Git-only override |
 | Git succeeds but image pull/build fails | Docker daemon/build network is a separate proxy or CA boundary | configure the Docker service proxy and organization-approved CA; do not disable TLS globally |
+| `npm ci` fails and references `/root/.npm/_logs` | the path belongs to the ephemeral image-build stage, not the host | read the run's `build_summary` and redacted `build_log`; fix the classified cause, then rerun `apply` |
 | `/health/live` passes but `/health/ready` fails | API is alive but a required dependency is blocked | preserve readiness JSON and route to the named dependency |
 | `worker` repeatedly exits despite `restart: unless-stopped` | startup/config/dependency failure, not a simple stopped service | preserve logs and dependency readiness before any restart loop |
 | `recovery-required` | candidate migration started and automatic safe completion failed | keep proxy stopped; use recorded `resume` or approved whole-state rollback |

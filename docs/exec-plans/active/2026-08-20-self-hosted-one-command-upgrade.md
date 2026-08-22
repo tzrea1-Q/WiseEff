@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** Core implementation is on `main`. The first non-customer Ubuntu rehearsal exposed host-compatibility and stale-lock recovery gaps; the hardening follow-up on `fix/self-hosted-upgrade-host-compat` has passed local implementation gates and awaits PR/CI merge. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation and host-compatibility hardening are on `main`. The current follow-up integrates durable, redacted candidate-build diagnostics into `apply` and `status`. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -15,6 +15,7 @@
 - `cd ops/self-hosted && ./scripts/upgrade.sh` upgrades the configured tracking ref through one confirmation flow.
 - the target ref is resolved once and the run records an immutable SHA.
 - target checkout validation and application image build complete before any service is stopped.
+- a failed candidate build retains deployment-user-readable, redacted BuildKit/npm diagnostics and an actionable summary without requiring host root access.
 - the normal path never changes `.env`, runs provision/seed, rotates credentials, or deletes volumes.
 - PostgreSQL, object storage, and durable Redis state form one verified pre-migration recovery point.
 - every long-running Compose service is recreated while all persistent volume identities stay unchanged.
@@ -279,6 +280,38 @@ The first Ubuntu rehearsal established the upgrade state-machine shape but expos
 - [ ] Merge only after the CI merge bar passes.
 
 **Expected outcome:** a fresh or previously root-operated Ubuntu checkout can be normalized with one explicit host-preparation command, normal upgrade commands run as the deployment user, legacy application images require no manual convergence, failed gates stop immediately, and operators never manually delete a lock file or directory.
+
+## Phase 8 — Integrated Candidate-Build Diagnostics
+
+Docker BuildKit runs `npm ci` as root inside an ephemeral stage. A failure may therefore advertise `/root/.npm/_logs` even though that path is neither the deployment user's host directory nor recoverable after the failed stage exits. Diagnosis must be a default responsibility of the upgrade module, not an emergency command sequence.
+
+**Files:**
+
+- Create `ops/self-hosted/scripts/npm-ci-with-diagnostics.sh` and focused tests.
+- Update `ops/self-hosted/Dockerfile` and self-hosted configuration checks.
+- Update `ops/self-hosted/scripts/upgrade-lib.sh` and its public-interface tests.
+- Update the upgrade design, operator guide, and operations-handbook bilingual pairs.
+
+**Tasks:**
+
+- [x] Run `npm ci` through a portable wrapper that emits sanitized in-stage npm debug logs on failure and preserves the original exit code.
+- [x] Force plain BuildKit progress for candidate builds while streaming redacted output to the private run journal.
+- [x] Classify common lockfile, CA, DNS, proxy/network, registry, capacity, and OOM failures into a concise summary.
+- [x] Expose build status, diagnostics directory, build log, summary, and next action through existing text/JSON `status` output.
+- [x] Keep the failure before downtime, restore the previous checkout, retain stable exit `20`, and leave the old stack online.
+- [x] Enforce `0700`/`0600` permissions and regression-test credential redaction, log retention, status rendering, and Dockerfile wiring.
+- [ ] Rehearse one injected npm build failure on the target Ubuntu host and retain only redacted path/status evidence.
+
+**Verification:**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+git diff --check
+```
+
+**Expected outcome:** `upgrade.sh apply` automatically turns an otherwise inaccessible BuildKit npm failure into a durable, private, deployment-user-readable diagnostic bundle, while preserving the no-downtime-on-build-failure invariant and the existing operator interface.
 
 ## Rollout And Compatibility
 
