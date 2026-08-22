@@ -209,7 +209,18 @@ export const xiaozeInterruptPayloadSchema: z.ZodType<XiaozeInterruptPayload> = z
   approvalId: z.string(),
   toolCallId: z.string(),
   toolName: z.string(),
-  payload: z.record(z.string(), z.unknown()),
+  payload: z
+    .object({
+      projectId: z.string().optional(),
+      parameterId: z.string().optional(),
+      targetValue: z.string().optional(),
+      reason: z.string().optional(),
+      title: z.string().optional(),
+      contentMarkdown: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      sourceLogId: z.string().optional()
+    })
+    .catchall(z.unknown()),
   citations: z.array(xiaozeCitationSchema)
 });
 

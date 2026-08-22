@@ -71,7 +71,17 @@ function realCustomFrames() {
       approvalId: "approval-1",
       toolCallId: "tool-call-1",
       toolName: "action.submitParameterChange",
-      payload: { projectId: "aurora" },
+      payload: {
+        projectId: "aurora",
+        parameterId: "charge-current",
+        targetValue: "42",
+        reason: "Lower thermal load",
+        title: "Charging change",
+        contentMarkdown: "Review the proposed value.",
+        tags: ["charging", "thermal"],
+        sourceLogId: "log-1",
+        futureToolArgument: { remainsCompatible: true }
+      },
       citations: [{ type: "parameter", id: "pd-1", label: "充电电流" }]
     }),
     XIAOZE_INTERRUPT_EVENT
@@ -91,6 +101,15 @@ describe("Xiaoze emitted CUSTOM event contracts", () => {
     expect(schema.safeParse(realCustomFrames()[key]).success).toBe(true);
   });
 
+  it("keeps unknown approval payload fields forward-compatible", () => {
+    const frame = realCustomFrames().interrupt;
+    const value = frame.data.value as Record<string, unknown>;
+    const payload = value.payload as Record<string, unknown>;
+
+    expect(payload.futureToolArgument).toEqual({ remainsCompatible: true });
+    expect(xiaozeInterruptCustomEventSchema.safeParse(frame).success).toBe(true);
+  });
+
   it.each([
     ["turn state", XIAOZE_TURN_STATE_EVENT, xiaozeTurnStateCustomEventSchema],
     ["turn reply", XIAOZE_TURN_REPLY_EVENT, xiaozeTurnReplyCustomEventSchema],
@@ -102,6 +121,34 @@ describe("Xiaoze emitted CUSTOM event contracts", () => {
       schema.safeParse({
         event: EventType.CUSTOM,
         data: { type: EventType.CUSTOM, name, value: {} }
+      }).success
+    ).toBe(false);
+  });
+
+  it.each([
+    ["projectId", 42],
+    ["parameterId", false],
+    ["targetValue", { value: "42" }],
+    ["reason", ["not", "a", "string"]],
+    ["title", 42],
+    ["contentMarkdown", false],
+    ["tags", ["valid", 42]],
+    ["sourceLogId", { id: "log-1" }]
+  ])("rejects an approval interrupt with an invalid known payload field %s", (field, invalidValue) => {
+    const frame = realCustomFrames().interrupt;
+    const value = frame.data.value as Record<string, unknown>;
+    const payload = value.payload as Record<string, unknown>;
+
+    expect(
+      xiaozeInterruptCustomEventSchema.safeParse({
+        ...frame,
+        data: {
+          ...frame.data,
+          value: {
+            ...value,
+            payload: { ...payload, [field]: invalidValue }
+          }
+        }
       }).success
     ).toBe(false);
   });
