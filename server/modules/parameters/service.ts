@@ -99,6 +99,7 @@ import {
   updateSubmissionRoundStatusFromRequests,
   withdrawOpenChangeRequestsForRound
 } from "./reviewWorkflowRepository";
+import { resolveSemanticMergeSubject } from "./reviewChangePolicy";
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
@@ -2080,8 +2081,12 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     });
 
     const semanticIdentity = parameterIdentityMode() === "semantic";
-    const isEnablementMerge =
-      request.editSubjectKind === "node-enablement" || Boolean(request.logicalNodeId);
+    let semanticMerge:
+      | {
+          subject: ReturnType<typeof resolveSemanticMergeSubject>;
+          objectStore: NonNullable<ServiceContext["objectStore"]>;
+        }
+      | undefined;
     if (semanticIdentity) {
       if (!context.objectStore) {
         throw new ApiError(
@@ -2090,27 +2095,16 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           { requestId: input.requestId }
         );
       }
-      if (!request.projectId) {
-        throw new ApiError(
-          "CONFLICT",
-          "Semantic merge requires a project-scoped change request.",
-          { requestId: input.requestId }
-        );
-      }
-      if (!isEnablementMerge && !request.parameterId) {
-        throw new ApiError(
-          "CONFLICT",
-          "Semantic merge requires a project parameter binding write lock.",
-          { requestId: input.requestId }
-        );
-      }
-      if (isEnablementMerge && !request.logicalNodeId) {
-        throw new ApiError(
-          "CONFLICT",
-          "Semantic enablement merge requires a logical node write lock.",
-          { requestId: input.requestId }
-        );
-      }
+      semanticMerge = {
+        objectStore: context.objectStore,
+        subject: resolveSemanticMergeSubject({
+          requestId: input.requestId,
+          projectId: request.projectId,
+          editSubjectKind: request.editSubjectKind,
+          parameterId: request.parameterId,
+          logicalNodeId: request.logicalNodeId
+        })
+      };
     }
 
     const merged = await mergeChangeRequest(tx, {
@@ -2125,15 +2119,15 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       throw new ApiError("CONFLICT", "Parameter value changed before merge.", { requestId: input.requestId });
     }
 
-    if (semanticIdentity) {
-      const writeback = isEnablementMerge
+    if (semanticMerge) {
+      const writeback = semanticMerge.subject.kind === "node-enablement"
         ? await writebackMergedEnablementValue(
             asAuditTx(tx),
-            context.objectStore!,
+            semanticMerge.objectStore,
             auth,
             {
-              projectId: request.projectId!,
-              logicalNodeId: request.logicalNodeId!,
+              projectId: semanticMerge.subject.projectId,
+              logicalNodeId: semanticMerge.subject.logicalNodeId,
               mergedValue: merged.targetValue,
               action: merged.action,
               changeRequestId: input.requestId,
@@ -2142,10 +2136,10 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           )
         : await writebackMergedParameterValue(
             asAuditTx(tx),
-            context.objectStore!,
+            semanticMerge.objectStore,
             auth,
             {
-              projectId: request.projectId!,
+              projectId: semanticMerge.subject.projectId,
               parameterDefinitionId: merged.parameterDefinitionId,
               mergedValue: merged.targetValue,
               action: merged.action,
