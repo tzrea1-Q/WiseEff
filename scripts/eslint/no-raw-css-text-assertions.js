@@ -132,6 +132,8 @@ export const noRawCssTextAssertions = {
       return variable ? cssPathVariables.has(variable) : false;
     };
 
+    const isStaticCssPathExpression = (node) => containsCssPath(node, isCssPathVariable);
+
     const isRawCssExpression = (node) => {
       if (isCssReadCall(node, isCssPathVariable)) {
         return true;
@@ -156,19 +158,22 @@ export const noRawCssTextAssertions = {
           return;
         }
 
-        if (containsCssPath(node.right, isCssPathVariable)) {
+        const rightIsStaticCssPath = isStaticCssPathExpression(node.right);
+        const rightIsRawCss = isRawCssExpression(node.right);
+
+        if (rightIsStaticCssPath) {
           cssPathVariables.add(variable);
         } else {
           cssPathVariables.delete(variable);
         }
-        if (isRawCssExpression(node.right)) {
+        if (rightIsRawCss) {
           rawCssVariables.add(variable);
         } else {
           rawCssVariables.delete(variable);
         }
       },
       VariableDeclarator(node) {
-        if (node.id.type === "Identifier" && node.init && containsCssPath(node.init, isCssPathVariable)) {
+        if (node.id.type === "Identifier" && node.init && isStaticCssPathExpression(node.init)) {
           for (const variable of context.sourceCode.getDeclaredVariables(node)) {
             cssPathVariables.add(variable);
           }

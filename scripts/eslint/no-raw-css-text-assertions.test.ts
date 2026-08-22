@@ -92,6 +92,23 @@ describe("no-raw-css-text-assertions", () => {
     ]);
   });
 
+  it("tracks a CSS read assigned back to its path variable", () => {
+    const messages = lint(`
+      let styles = resolve(process.cwd(), "src", "styles.css");
+      styles = readFileSync(styles, "utf8");
+      expect(styles).toContain(".raw-from-same-variable");
+
+      let featureStyles = join("src", "features", "example.css");
+      featureStyles = readStylesheet(featureStyles);
+      expect(featureStyles).toMatch(/raw-helper-read-from-same-variable/);
+    `);
+
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "rawCssAssertion",
+      "rawCssAssertion"
+    ]);
+  });
+
   it("allows structural CSS queries and unrelated source contract tests", () => {
     const messages = lint(`
       const css = readStylesheet("src/styles.css");
