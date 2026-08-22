@@ -9404,13 +9404,23 @@
         "tags": [
           "agent"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XiaozeSuggestRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeSuggestResponse"
                 }
               }
             }
@@ -16502,6 +16512,112 @@
       "GenericObjectResponse": {
         "type": "object",
         "x-wiseeff-schema": "GenericObjectResponse"
+      },
+      "XiaozeSuggestRequest": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "pageKey": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeSuggestRequest"
+      },
+      "XiaozeSuggestResponse": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tone": {
+                  "type": "string",
+                  "enum": [
+                    "neutral",
+                    "warning",
+                    "danger"
+                  ]
+                },
+                "headline": {
+                  "type": "string"
+                },
+                "meta": {
+                  "type": "string"
+                },
+                "citations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "parameter",
+                          "log",
+                          "audit",
+                          "debugging",
+                          "knowledge"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "href": {
+                        "type": "string"
+                      },
+                      "snippet": {
+                        "type": "string"
+                      },
+                      "confidence": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "id",
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "tone",
+                "headline",
+                "citations"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeSuggestResponse"
       },
       "XiaozeThreadListResponse": {
         "type": "object",

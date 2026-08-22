@@ -19,7 +19,7 @@ import { createDeterministicPerceptionModel } from "./deterministicModel";
 import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./modelTypes";
 import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
-import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
+import { runXiaozeSuggest } from "./suggest";
 import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
 import { createRunEventSink, serializeTurnSteps, type RunEventSink } from "./runEventSink";
@@ -30,6 +30,7 @@ import {
   type XiaozeTurnStream
 } from "./xiaozeTurnStream";
 import { ChatOpenAI } from "@langchain/openai";
+import { xiaozeSuggestRequestSchema } from "../../contracts/dtoSchemas";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
 
@@ -598,6 +599,13 @@ export function registerXiaozeRoutes(
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));
 
   router.post("/api/v1/agent/xiaoze/suggest", async (request) => {
+    const parsedBody = xiaozeSuggestRequestSchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      throw new ApiError("VALIDATION_FAILED", "Invalid Xiaoze suggest request.", {
+        issues: parsedBody.error.issues
+      });
+    }
+    const body = parsedBody.data;
     if (!options.env?.XIAOZE_PROACTIVE_ENABLED) {
       return { status: 200, body: { suggestions: [] } };
     }
@@ -612,7 +620,6 @@ export function registerXiaozeRoutes(
       throw error;
     }
 
-    const body = request.body as { context?: XiaozeSuggestContext };
     const context = body.context ?? {};
     const executionContext: AgentToolExecutionContext = {
       auth,

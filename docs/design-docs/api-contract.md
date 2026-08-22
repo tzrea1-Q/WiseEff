@@ -31,6 +31,8 @@ Rules:
 - Audit: audit event listing and detail. Listing supports server-side filters (`projectId`, `app`/`apps`, `kind`, `severity`, `actorUserId`, `targetType`, `targetId`, `traceId`, cursor paging) plus `q` (case-insensitive search over action, kind, target id, and actor name) and `from`/`to` timestamps.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 
+`POST /api/v1/agent/xiaoze/suggest` validates `{ context?: { projectId?, projectName?, pageKey?, path? } }` and returns `{ suggestions: [{ id, tone, headline, meta?, citations }] }`; malformed input is `400 VALIDATION_FAILED`, while a drifting successful response fails closed in the frontend. Xiaoze's five WiseEff CUSTOM frame families have concrete Zod payload/envelope schemas tested against the existing `xiaozeTurnStream` reducer output. This does not wrap or replace `@ag-ui/client`, and the generic AG-UI SSE run response remains outside JSON-response OpenAPI modeling.
+
 ## Log and Debugging Scope
 
 M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. They do not accept `projectId` query parameters or body fields. Log records may include optional `relatedParameterId` as a soft link to M1 definitions.

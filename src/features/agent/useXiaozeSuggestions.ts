@@ -4,15 +4,8 @@ import { resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
 import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
 import { resolveWiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
-
-type SuggestResponse = {
-  suggestions: Array<{
-    id: string;
-    tone: Insight["variant"];
-    headline: string;
-    meta?: string;
-  }>;
-};
+import { parseContractDto } from "@/infrastructure/http/parseContractDto";
+import { xiaozeSuggestResponseSchema } from "@wiseeff/dto-schemas";
 
 export function useXiaozeSuggestions(options: { enabled: boolean }) {
   const pageContext = useXiaozePageContextValue();
@@ -27,47 +20,56 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
       return;
     }
 
-    const authorization = await resolveXiaozeAuthorizationHeader();
-    const response = await fetch(`${resolveWiseEffApiBaseUrl().replace(/\/+$/, "")}/api/v1/agent/xiaoze/suggest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authorization ? { Authorization: authorization } : {})
-      },
-      body: JSON.stringify({
-        context: {
-          path: pageContext.path,
-          pageKey: pageContext.pageKey,
-          projectId: pageContext.projectId,
-          projectName: pageContext.projectName
-        }
-      })
-    });
-
-    if (!response.ok) {
-      setInsights([]);
-      return;
-    }
-
-    const payload = (await response.json()) as SuggestResponse;
-    setInsights(
-      payload.suggestions.map((item) => ({
-        id: item.id,
-        variant: item.tone,
-        headline: item.headline,
-        meta: item.meta,
-        actions: [
-          {
-            id: `${item.id}-ask`,
-            label: "问小泽",
-            variant: "primary",
-            onClick: () => {
-              document.querySelector<HTMLButtonElement>('[aria-label="打开小泽"]')?.click();
-            }
+    try {
+      const authorization = await resolveXiaozeAuthorizationHeader();
+      const response = await fetch(`${resolveWiseEffApiBaseUrl().replace(/\/+$/, "")}/api/v1/agent/xiaoze/suggest`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authorization ? { Authorization: authorization } : {})
+        },
+        body: JSON.stringify({
+          context: {
+            path: pageContext.path,
+            pageKey: pageContext.pageKey,
+            projectId: pageContext.projectId,
+            projectName: pageContext.projectName
           }
-        ]
-      }))
-    );
+        })
+      });
+
+      if (!response.ok) {
+        setInsights([]);
+        return;
+      }
+
+      const payload = parseContractDto(
+        xiaozeSuggestResponseSchema,
+        await response.json(),
+        "XiaozeSuggestResponse"
+      );
+      setInsights(
+        payload.suggestions.map((item) => ({
+          id: item.id,
+          variant: item.tone,
+          headline: item.headline,
+          meta: item.meta,
+          actions: [
+            {
+              id: `${item.id}-ask`,
+              label: "问小泽",
+              variant: "primary",
+              onClick: () => {
+                document.querySelector<HTMLButtonElement>('[aria-label="打开小泽"]')?.click();
+              }
+            }
+          ]
+        }))
+      );
+    } catch (error) {
+      setInsights([]);
+      console.error("Failed to load Xiaoze suggestions.", error);
+    }
   }, [options.enabled, pageContext?.path, pageContext?.pageKey, pageContext?.projectId, pageKeySupported]);
 
   useEffect(() => {

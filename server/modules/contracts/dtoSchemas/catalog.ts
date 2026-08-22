@@ -2,6 +2,8 @@ import type { ZodTypeAny } from "zod";
 
 import {
   xiaozeAgUiRunRequestSchema,
+  xiaozeSuggestRequestSchema,
+  xiaozeSuggestResponseSchema,
   xiaozeThreadArchiveResponseSchema,
   xiaozeThreadCreateRequestSchema,
   xiaozeThreadCreateResponseSchema,
@@ -98,7 +100,9 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   XiaozeThreadPatchRequest: xiaozeThreadPatchRequestSchema,
   XiaozeThreadPatchResponse: xiaozeThreadPatchResponseSchema,
   XiaozeThreadArchiveResponse: xiaozeThreadArchiveResponseSchema,
-  XiaozeAgUiRunRequest: xiaozeAgUiRunRequestSchema
+  XiaozeAgUiRunRequest: xiaozeAgUiRunRequestSchema,
+  XiaozeSuggestRequest: xiaozeSuggestRequestSchema,
+  XiaozeSuggestResponse: xiaozeSuggestResponseSchema
 };
 
 export const dtoSchemaCoveredRouteIds = [
@@ -146,6 +150,7 @@ export const dtoSchemaCoveredRouteIds = [
   "debugging.writeNode",
   "debugging.rollbackSnapshot",
   "xiaoze.run",
+  "xiaoze.suggest",
   "xiaoze.listThreads",
   "xiaoze.createThread",
   "xiaoze.getThread",
