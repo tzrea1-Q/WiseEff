@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md)
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md)
 
-> Status: Keep in `active/`. Implementation checkboxes remain open; later project-configuration-workbench plans under `completed/` superseded this redesign. Do not reopen as a greenfield workbench rewrite.
+> Historical status: **Implemented with superseded sections and archived** — the integrated API-mode DTS workbench landed through `402226cd` and `71460d5e`. Later project-configuration-workbench plans superseded the project-operations assumptions and the unchecked step list below; they do not turn historical boxes into current work.
+>
+> Residual ownership: production topology cutover evidence remains in `docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md` / TD-042. Current source, acceptance tests, and normative frontend/design docs override this historical sequence.
 
 **Goal:** Rebuild API-mode /parameters on the mature parameter workbench framework while deeply integrating nested DTS topology, semantic bindings, provenance, typed drafts, and real submission identity.
 

@@ -8,6 +8,75 @@ export const completedPlansDir = "docs/exec-plans/completed";
 export const zhActivePlansDir = "docs/zh-CN/exec-plans/active";
 export const zhCompletedPlansDir = "docs/zh-CN/exec-plans/completed";
 export const requiredSections = ["## Documentation Impact Matrix", "## Documentation Update Gate"];
+const requiredSectionHeadings = [
+  {
+    errorLabel: requiredSections[0],
+    en: [requiredSections[0]],
+    zh: ["## 文档影响矩阵", "## 文档影响矩阵与更新门禁"]
+  },
+  {
+    errorLabel: requiredSections[1],
+    en: [requiredSections[1]],
+    zh: ["## 文档更新门", "## 文档更新门禁", "## 文档影响矩阵与更新门禁"]
+  }
+] as const;
+export type HistoricalPlanDisposition =
+  | "implemented"
+  | "implemented-with-superseded-sections"
+  | "superseded";
+export interface HistoricalPlanInventoryEntry {
+  id: string;
+  disposition: HistoricalPlanDisposition;
+  activePaths: string[];
+  completedPaths: { en: string; zh: string };
+}
+export const managedHistoricalPlanInventory: HistoricalPlanInventoryEntry[] = [
+  {
+    id: "organization-administration",
+    disposition: "implemented",
+    activePaths: [
+      "docs/exec-plans/active/2026-08-19-organization-administration.md",
+      "docs/zh-CN/exec-plans/active/2026-08-19-organization-administration.md"
+    ],
+    completedPaths: {
+      en: "docs/exec-plans/completed/2026-08-19-organization-administration.md",
+      zh: "docs/zh-CN/exec-plans/completed/2026-08-19-organization-administration.md"
+    }
+  },
+  {
+    id: "local-eval-auth-hardening",
+    disposition: "implemented",
+    activePaths: [
+      "docs/exec-plans/active/2026-08-19-local-eval-auth-hardening.md",
+      "docs/zh-CN/exec-plans/active/2026-08-19-local-eval-auth-hardening.md"
+    ],
+    completedPaths: {
+      en: "docs/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md",
+      zh: "docs/zh-CN/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md"
+    }
+  },
+  {
+    id: "node-only-debugging-platform",
+    disposition: "implemented-with-superseded-sections",
+    activePaths: ["docs/exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md"],
+    completedPaths: {
+      en: "docs/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md",
+      zh: "docs/zh-CN/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md"
+    }
+  },
+  {
+    id: "dts-parameter-workbench-redesign",
+    disposition: "implemented-with-superseded-sections",
+    activePaths: [
+      "docs/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md",
+      "docs/zh-CN/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md"
+    ],
+    completedPaths: {
+      en: "docs/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md",
+      zh: "docs/zh-CN/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md"
+    }
+  }
+];
 export const currentXiaozeLlmInstructionDocs = [
   "ARCHITECTURE.md",
   "CONTRIBUTING.md",
@@ -111,7 +180,8 @@ export const requiredRepositoryDocs = [
   "docs/runbooks/hdc-device-lab.md",
   "docs/runbooks/agent-provider.md",
   "docs/zh-CN/manual-acceptance.md",
-  "docs/exec-plans/completed/README.md"
+  "docs/exec-plans/completed/README.md",
+  "docs/zh-CN/exec-plans/completed/README.md"
 ];
 export const requiredEnvExampleKeys = [
   "NODE_ENV",
@@ -223,6 +293,21 @@ export async function validateCurrentXiaozeLlmInstructionDocs(root = process.cwd
   return checks.flat();
 }
 
+function declaredPlanStatus(line: string): string | null {
+  const match =
+    line.match(/^\s*>?\s*\*\*(?:Status|状态)\s*[:：]\*\*\s*(.*)$/iu) ??
+    line.match(/^\s*>?\s*\*\*(?:Status|状态)\*\*\s*[:：]\s*(.*)$/iu) ??
+    line.match(/^\s*>?\s*(?:Status|状态)\s*[:：]\s*(.*)$/iu);
+  if (match === null) {
+    return null;
+  }
+
+  const rawStatus = match[1].trim();
+  const emphasizedStatus = rawStatus.match(/^\*\*(.+?)\*\*/u);
+  const statusText = emphasizedStatus === null ? rawStatus : emphasizedStatus[1].trim();
+  return statusText.split(/\s*(?:—+|–+|-{2,}|[;；。])\s*/u, 1)[0].trim();
+}
+
 export function validatePlanDocument(planPath: string, content: string): string[] {
   const normalizedPath = planPath.replace(/\\/g, "/");
 
@@ -230,15 +315,50 @@ export function validatePlanDocument(planPath: string, content: string): string[
     return [];
   }
 
-  const headings = collectMarkdownHeadings(content);
+  const markdownLines = collectMarkdownLinesOutsideFences(content);
+  const headings = collectMarkdownHeadings(markdownLines);
+  const errors: string[] = [];
+  const isChinesePlan = normalizedPath.startsWith(`${zhActivePlansDir}/`);
+  const activeTree = normalizedPath.startsWith(`${activePlansDir}/`)
+    ? { completedDir: completedPlansDir }
+    : normalizedPath.startsWith(`${zhActivePlansDir}/`)
+      ? { completedDir: zhCompletedPlansDir }
+      : null;
 
-  return requiredSections
-    .filter((section) => !headings.has(section))
-    .map((section) => `${normalizedPath} is missing ${section}.`);
+  if (
+    activeTree !== null &&
+    markdownLines.some(
+      (line) => {
+        const status = declaredPlanStatus(line);
+        return (
+          status !== null &&
+          (/superseded/i.test(status) ||
+            /(?:已被|被).{0,24}(?:取代|替代)|(?:取代|替代)(?:了)?(?:本|这)(?:个|次|份)?(?:计划|重写|方案)/u.test(
+              status
+            ))
+        );
+      }
+    )
+  ) {
+    errors.push(
+      `${normalizedPath} declares itself superseded and must move to ${activeTree.completedDir}.`
+    );
+  }
+
+  errors.push(
+    ...requiredSectionHeadings
+      .filter(
+        (section) =>
+          !section[isChinesePlan ? "zh" : "en"].some((heading) => headings.has(heading))
+      )
+      .map((section) => `${normalizedPath} is missing ${section.errorLabel}.`)
+  );
+
+  return errors;
 }
 
-function collectMarkdownHeadings(content: string): Set<string> {
-  const headings = new Set<string>();
+function collectMarkdownLinesOutsideFences(content: string): string[] {
+  const lines: string[] = [];
   let inFence = false;
 
   for (const line of content.split(/\r?\n/)) {
@@ -249,7 +369,20 @@ function collectMarkdownHeadings(content: string): Set<string> {
       continue;
     }
 
-    if (!inFence && trimmed.startsWith("## ")) {
+    if (!inFence) {
+      lines.push(line);
+    }
+  }
+
+  return lines;
+}
+
+function collectMarkdownHeadings(lines: readonly string[]): Set<string> {
+  const headings = new Set<string>();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ")) {
       headings.add(trimmed);
     }
   }
@@ -294,12 +427,85 @@ export async function validateNoDuplicatePlanFilenames(root = process.cwd()): Pr
   return errors.flat();
 }
 
+const historicalStatusText: Record<
+  HistoricalPlanDisposition,
+  { en: string; zh: string; errorLabel: string }
+> = {
+  implemented: {
+    en: "Historical status: **Implemented and archived**",
+    zh: "历史状态：**已实施并归档**",
+    errorLabel: "Implemented and archived"
+  },
+  "implemented-with-superseded-sections": {
+    en: "Historical status: **Implemented with superseded sections and archived**",
+    zh: "历史状态：**已实施，部分章节已被取代，现已归档**",
+    errorLabel: "Implemented with superseded sections and archived"
+  },
+  superseded: {
+    en: "Historical status: **Superseded and archived**",
+    zh: "历史状态：**已被取代并归档**",
+    errorLabel: "Superseded and archived"
+  }
+};
+const historicalResidualOwnershipText = {
+  en: "Residual ownership:",
+  zh: "余量归属："
+} as const;
+
+export async function validateHistoricalPlanInventory(
+  root = process.cwd(),
+  inventory: HistoricalPlanInventoryEntry[] = managedHistoricalPlanInventory
+): Promise<string[]> {
+  const errors: string[] = [];
+
+  for (const entry of inventory) {
+    for (const activePath of entry.activePaths) {
+      try {
+        await access(path.join(root, activePath));
+        errors.push(`Managed historical plan ${entry.id} still exists in active: ${activePath}.`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+
+        // The bounded historical plan has left active as required.
+      }
+    }
+
+    for (const language of ["en", "zh"] as const) {
+      const completedPath = entry.completedPaths[language];
+      const content = await readOptionalFile(path.join(root, completedPath));
+      if (content === null) {
+        errors.push(`Managed historical plan ${entry.id} is missing completed document: ${completedPath}.`);
+        continue;
+      }
+
+      const expected = historicalStatusText[entry.disposition];
+      if (!content.includes(expected[language])) {
+        errors.push(
+          `${completedPath} must declare Historical status: ${expected.errorLabel}.`
+        );
+      }
+      if (!content.includes(historicalResidualOwnershipText[language])) {
+        errors.push(`${completedPath} must declare Residual ownership for any remaining work.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
 export async function validateActivePlans(root = process.cwd()): Promise<string[]> {
-  const activeDir = path.join(root, activePlansDir);
-  const entries = await readdir(activeDir, { withFileTypes: true });
-  const markdownFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => path.join(activePlansDir, entry.name));
+  const markdownFiles = (
+    await Promise.all(
+      [activePlansDir, zhActivePlansDir].map(async (activeDir) => {
+        const entries = await readdir(path.join(root, activeDir), { withFileTypes: true });
+        return entries
+          .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+          .map((entry) => path.join(activeDir, entry.name));
+      })
+    )
+  ).flat();
 
   const errors = await Promise.all(
     markdownFiles.map(async (planPath) => {
@@ -450,9 +656,10 @@ export async function validateM6RunbookCommands(root = process.cwd()): Promise<s
 }
 
 export async function validateDocumentationRepository(root = process.cwd()): Promise<string[]> {
-  const [activePlanErrors, duplicatePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors, xiaozeLlmInstructionErrors] = await Promise.all([
+  const [activePlanErrors, duplicatePlanErrors, historicalPlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors, xiaozeLlmInstructionErrors] = await Promise.all([
     validateActivePlans(root),
     validateNoDuplicatePlanFilenames(root),
+    validateHistoricalPlanInventory(root),
     validateRequiredRepositoryDocs(root),
     validateEnvExample(root),
     validateMarkdownLinks(root),
@@ -464,6 +671,7 @@ export async function validateDocumentationRepository(root = process.cwd()): Pro
   return [
     ...activePlanErrors,
     ...duplicatePlanErrors,
+    ...historicalPlanErrors,
     ...requiredDocErrors,
     ...envErrors,
     ...linkErrors,

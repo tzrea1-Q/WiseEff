@@ -5,7 +5,7 @@
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Closes: **TD-015**
 > Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-node-debugging-ui-closure.md`](../../zh-CN/exec-plans/completed/2026-08-05-node-debugging-ui-closure.md)
-> Related: [`2026-07-01-wiseeff-node-only-debugging-platform.md`](../active/2026-07-01-wiseeff-node-only-debugging-platform.md) (do not restore `/debugging`)
+> Related: [`2026-07-01-wiseeff-node-only-debugging-platform.md`](2026-07-01-wiseeff-node-only-debugging-platform.md) (historical node-only pivot; later DTS reload superseded its blanket removal of every parameter-debugging surface)
 
 ## Goal
 

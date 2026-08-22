@@ -6,11 +6,13 @@ import {
   currentXiaozeLlmInstructionDocs,
   requiredEnvExampleKeys,
   requiredRepositoryDocs,
+  validateActivePlans,
   validateBilingualDeveloperDocs,
   validateCurrentXiaozeLlmInstructions,
   validateM6ReleaseRunbookCommands,
   validateEnvExample,
   validateMarkdownLinks,
+  validateHistoricalPlanInventory,
   validateNoDuplicatePlanFilenames,
   validatePlanDocument,
   validateRequiredRepositoryDocs
@@ -77,8 +79,146 @@ describe("validatePlanDocument", () => {
     ]);
   });
 
+  it("ignores superseded status examples inside fenced code blocks", () => {
+    const content = [
+      "# Current plan",
+      "",
+      "```markdown",
+      "> Status: **Superseded** by a future plan.",
+      "```",
+      "",
+      "## Documentation Impact Matrix",
+      "",
+      "## Documentation Update Gate"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+
   it("exempts the active development roadmap", () => {
     expect(validatePlanDocument("docs/exec-plans/active/development-roadmap.md", "# Roadmap")).toEqual([]);
+  });
+
+  it("rejects a superseded plan that remains active", () => {
+    const content = [
+      "# Replaced implementation plan",
+      "",
+      "> Status: **Superseded** by the canonical workbench plan.",
+      "",
+      "## Documentation Impact Matrix",
+      "",
+      "## Documentation Update Gate"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/exec-plans/active/replaced-plan.md", content)).toEqual([
+      "docs/exec-plans/active/replaced-plan.md declares itself superseded and must move to docs/exec-plans/completed."
+    ]);
+  });
+
+  it("rejects a Chinese superseded plan that remains active", () => {
+    const content = [
+      "# 已被替代的实施计划",
+      "",
+      "> 状态：**已被后续规范计划取代**。",
+      "",
+      "## 文档影响矩阵",
+      "",
+      "## 文档更新门禁"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/zh-CN/exec-plans/active/replaced-plan.md", content)).toEqual([
+      "docs/zh-CN/exec-plans/active/replaced-plan.md declares itself superseded and must move to docs/zh-CN/exec-plans/completed."
+    ]);
+  });
+
+  it("allows an active plan to mention a superseded legacy section after its status token", () => {
+    const content = [
+      "# Active migration plan",
+      "",
+      "> Status: Active — legacy section superseded; migration remains.",
+      "",
+      "## Documentation Impact Matrix",
+      "",
+      "## Documentation Update Gate"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+
+  it("allows a whole-bold active status to mention a superseded legacy section", () => {
+    const content = [
+      "# Active migration plan",
+      "",
+      "> Status: **Active — legacy section superseded; migration remains.**",
+      "",
+      "## Documentation Impact Matrix",
+      "",
+      "## Documentation Update Gate"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+
+  it("allows an active Chinese plan to mention a superseded legacy section after its status token", () => {
+    const content = [
+      "# 进行中的迁移计划",
+      "",
+      "> 状态：进行中——旧版章节已被后续实现取代；迁移仍在推进。",
+      "",
+      "## 文档影响矩阵",
+      "",
+      "## 文档更新门禁"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/zh-CN/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+
+  it("allows a whole-bold Chinese active status to mention a superseded legacy section", () => {
+    const content = [
+      "# 进行中的迁移计划",
+      "",
+      "> 状态：**进行中——旧版章节已被后续实现取代；迁移仍在推进。**",
+      "",
+      "## 文档影响矩阵",
+      "",
+      "## 文档更新门禁"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/zh-CN/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+
+  it("allows an active Chinese plan to supersede an older plan", () => {
+    const content = [
+      "# 当前实施计划",
+      "",
+      "> 状态：**进行中**——本计划取代旧版工作台方向。",
+      "",
+      "## 文档影响矩阵",
+      "",
+      "## 文档更新门禁"
+    ].join("\n");
+
+    expect(validatePlanDocument("docs/zh-CN/exec-plans/active/current-plan.md", content)).toEqual([]);
+  });
+});
+
+describe("validateActivePlans", () => {
+  it("aggregates validation errors from the English and Chinese active plan trees", async () => {
+    const root = await createTempRoot();
+    await write(
+      root,
+      "docs/exec-plans/active/current-plan.md",
+      "# Current plan\n\n## Documentation Impact Matrix\n\n## Documentation Update Gate\n"
+    );
+    await write(
+      root,
+      "docs/zh-CN/exec-plans/active/replaced-plan.md",
+      "# 已被替代的计划\n\n> 状态：**已被后续计划取代**。\n\n## 文档影响矩阵\n\n## 文档更新门禁\n"
+    );
+
+    await expect(validateActivePlans(root)).resolves.toEqual([
+      "docs/zh-CN/exec-plans/active/replaced-plan.md declares itself superseded and must move to docs/zh-CN/exec-plans/completed."
+    ]);
   });
 });
 
@@ -110,6 +250,82 @@ describe("validateNoDuplicatePlanFilenames", () => {
     await write(root, "docs/exec-plans/completed/already-done.md", "# Done\n");
 
     await expect(validateNoDuplicatePlanFilenames(root)).resolves.toEqual([]);
+  });
+});
+
+describe("validateHistoricalPlanInventory", () => {
+  it("propagates non-ENOENT errors while checking managed active paths", async () => {
+    const root = await createTempRoot();
+    const inventory = [
+      {
+        id: "unreadable-active-path",
+        disposition: "implemented" as const,
+        activePaths: ["not-a-directory/example-plan.md"],
+        completedPaths: {
+          en: "docs/exec-plans/completed/example-plan.md",
+          zh: "docs/zh-CN/exec-plans/completed/example-plan.md"
+        }
+      }
+    ];
+    await write(root, "not-a-directory", "not a directory\n");
+
+    await expect(validateHistoricalPlanInventory(root, inventory)).rejects.toMatchObject({
+      code: "ENOTDIR"
+    });
+  });
+
+  it("requires managed historical plans to leave active and declare their completed disposition", async () => {
+    const root = await createTempRoot();
+    const inventory = [
+      {
+        id: "example-plan",
+        disposition: "implemented-with-superseded-sections" as const,
+        activePaths: [
+          "docs/exec-plans/active/example-plan.md",
+          "docs/zh-CN/exec-plans/active/example-plan.md"
+        ],
+        completedPaths: {
+          en: "docs/exec-plans/completed/example-plan.md",
+          zh: "docs/zh-CN/exec-plans/completed/example-plan.md"
+        }
+      }
+    ];
+    await write(root, inventory[0].activePaths[0], "# Still active\n");
+    await write(root, inventory[0].completedPaths.en, "# Archived without status\n");
+
+    await expect(validateHistoricalPlanInventory(root, inventory)).resolves.toEqual([
+      "Managed historical plan example-plan still exists in active: docs/exec-plans/active/example-plan.md.",
+      "docs/exec-plans/completed/example-plan.md must declare Historical status: Implemented with superseded sections and archived.",
+      "docs/exec-plans/completed/example-plan.md must declare Residual ownership for any remaining work.",
+      "Managed historical plan example-plan is missing completed document: docs/zh-CN/exec-plans/completed/example-plan.md."
+    ]);
+  });
+
+  it("accepts a managed bilingual archive with explicit status and residual ownership", async () => {
+    const root = await createTempRoot();
+    const inventory = [
+      {
+        id: "example-plan",
+        disposition: "implemented" as const,
+        activePaths: ["docs/exec-plans/active/example-plan.md"],
+        completedPaths: {
+          en: "docs/exec-plans/completed/example-plan.md",
+          zh: "docs/zh-CN/exec-plans/completed/example-plan.md"
+        }
+      }
+    ];
+    await write(
+      root,
+      inventory[0].completedPaths.en,
+      "> Historical status: **Implemented and archived**\n> Residual ownership: TD-900.\n"
+    );
+    await write(
+      root,
+      inventory[0].completedPaths.zh,
+      "> 历史状态：**已实施并归档**\n> 余量归属：TD-900。\n"
+    );
+
+    await expect(validateHistoricalPlanInventory(root, inventory)).resolves.toEqual([]);
   });
 });
 

@@ -1,5 +1,7 @@
 # Completed Execution Plans
 
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/README.md)
+
 Completed plans are historical implementation evidence. They can explain why a system exists, but they should not override current source code, generated artifacts, current design docs, runbooks, or quality docs.
 
 ## Current Milestone History
@@ -42,6 +44,8 @@ On 2026-08-18, the CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimizat
 
 On 2026-08-17, landed path-reachable C1–C4 (`2026-08-05-path-reachable-mock-gap-program.md` and children), Internal Beta product feedback (`2026-07-08-product-feedback.md`), topology review rounds 3–6, and Xiaoze approval-failure recovery (`2026-08-17-xiaoze-approval-failure-recovery.md`, TD-102 / TD-094) were moved here from `active/`. A second 2026-08-17 archive pass moved landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans. The same day’s launch closeout archived attribution deferred D-AG-01–04 evidence (`2026-08-01-attribution-deferred-implementation.md`).
 
+On 2026-08-23, the bounded plan-hygiene inventory archived four known stale active-plan groups: Organization administration (#560), local evaluation auth hardening (#563), node-only debugging, and the DTS parameter workbench. This inventory is not repository-wide, so it does not close TD-005.
+
 The dated feature plans from 2026-05-07 through 2026-05-24 record prototype and UI evolution. Treat them as history unless a current product, design, frontend, or architecture document explicitly points to them as still-current behavior.
 
 ## Reading Rule
@@ -53,5 +57,7 @@ If a completed plan conflicts with current docs, prefer this order:
 3. Current runbooks, security, reliability, API, and architecture docs.
 4. Product specs.
 5. Completed execution plans.
+
+Managed plans in `scripts/check-doc-governance.ts` must also declare one auditable historical disposition: implemented and archived, implemented with superseded sections and archived, or superseded and archived. Each plan records its real residual owner; unchecked historical boxes are not implicit current work. The machine inventory is intentionally bounded, and plans outside it still require the repository-wide status/section audit tracked by TD-005.
 
 **Historical agent banners:** Many completed plans include obsolete `REQUIRED SUB-SKILL: Use superpowers:…` lines from the former Superpowers harness. Ignore them when executing or reviewing history. Current agent orchestration uses Matt Pocock skills + `docs/agents/*` and `docs/PLANS.md` Plan Rules.
