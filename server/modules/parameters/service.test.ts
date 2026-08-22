@@ -6,27 +6,25 @@
  * subsequent reads — never SQL text. Review-workflow behaviors live in
  * serviceReviewWorkflow.integration.test.ts.
  *
- * A small fake-db section survives at the bottom for behaviors a real schema
- * cannot host (see the comments on each kept test).
+ * Semantic draft submission likewise uses the public service seam with real
+ * candidate, occurrence, and write-lock rows.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import {
   applyImportBatch,
   createImportPreview,
   listDrafts,
   parseDtsImportForAuth,
-  reviewChange,
   saveDraft,
   submitParameterChanges
 } from "./service";
@@ -1080,451 +1078,391 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
       await expect(countDrafts()).resolves.toBe(0);
     });
   });
-});
 
-// ---------------------------------------------------------------------------
-// Kept fake-db coverage.
-//
-// These behaviors cannot run on the shared real-database harness:
-// - "rejects semantic merge when projectId is missing": parameter_change_requests
-//   .project_id is NOT NULL, so a project-less request cannot exist in a real
-//   database; the check is defensive-only.
-// - The two semantic submit tests need full post-cutover topology graphs.
-//   Slice 4 re-evaluated them against the shared seedSpecBindingGraph fixture:
-//   the fixture covers the spec/binding/config-revision spine, but these paths
-//   additionally require candidate-proof state that getBindingDraftForSubmission
-//   computes from write-lock rows (binding revisions on both base and candidate
-//   revisions, file versions with matching checksums, and — for enablement —
-//   logical-node status occurrence effects). That per-test graph is exactly what
-//   parameter-topology/postCutoverWorkflow.integration.test.ts already builds on
-//   a temp database where the merged behavior is covered end to end, so these
-//   two stay fake-db preflight-order guards rather than duplicating that harness.
-// ---------------------------------------------------------------------------
+  describe("semantic draft submission", () => {
+    async function seedBindingDraftsAtDifferentWorkingTips() {
+      const baseRevisionId = "base-submit-revision";
+      const sourceFileVersionId = "fv-submit-base";
+      const expectedChecksum = "checksum-submit-base";
+      const draftCases = [
+        { suffix: "a", propertyKey: "limit_a", baseValue: "<1000>", targetValue: "<3000>" },
+        { suffix: "b", propertyKey: "limit_b", baseValue: "<2000>", targetValue: "<4000>" }
+      ] as const;
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
-
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
-
-function createFakeDb(
-  results: QueuedResult[] = [],
-  options: {
-    /** When true, semantic/post-cutover identity path is active. */
-    semanticCutoverComplete?: boolean;
-  } = {}
-) {
-  const calls: QueryCall[] = [];
-  const txCalls: QueryCall[] = [];
-  const transactions: QueryCall[][] = [];
-  const semanticCutoverComplete = options.semanticCutoverComplete ?? false;
-  setParameterIdentityMode(semanticCutoverComplete ? "semantic" : "legacy");
-
-  const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    // Cutover probes must not consume the queued fixture rows.
-    if (text.includes("parameter_identity_cutovers")) {
-      return { rows: [{ c: semanticCutoverComplete ? "1" : "0" } as Row], rowCount: 1 };
-    }
-    if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
-      // When cutover is complete, legacy flat tables are retired.
-      return { rows: [{ c: semanticCutoverComplete ? "0" : "1" } as Row], rowCount: 1 };
-    }
-    // C1 init lock: default unlocked so existing submit fixtures stay focused.
-    if (text.includes("initialization_status") && text.includes("from projects")) {
-      return { rows: [{ initialization_status: "initialized" } as Row], rowCount: 1 };
-    }
-    target.push(call);
-    if (text.includes("from parameter_file_sync_conflicts")) {
-      return { rows: [] as Row[], rowCount: 0 };
-    }
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(calls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => {
-      const result = await fn(tx);
-      transactions.push([...txCalls]);
-      return result;
-    }
-  };
-
-  return {
-    calls,
-    txCalls,
-    transactions,
-    db
-  };
-}
-
-const PROJECT_ID = "project-1";
-
-const completeAssignees = {
-  hardwareCommitterId: "u-hardware",
-  softwareCommitterId: "u-software-committer",
-  softwareUserId: "u-software-user"
-};
-
-function parameterRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "param-1",
-    project_id: "project-1",
-    parameter_definition_id: "definition-1",
-    name: "fast_charge_current_limit_ma",
-    module: "Charging Policy",
-    unit: "mA",
-    risk: "High",
-    current_value: "3200",
-    initSuggestionText: "3000",
-    value_version: 7,
-    updated_at: "2026-05-25T02:00:00.000Z",
-    ...overrides
-  };
-}
-
-function changeRequestRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "request-1",
-    submission_round_id: "round-1",
-    project_id: "project-1",
-    project_parameter_value_id: "param-1",
-    parameter_definition_id: "definition-1",
-    base_version: 7,
-    module: "Charging Policy",
-    title: "fast_charge_current_limit_ma",
-    current_value: "3200",
-    target_value: "3100",
-    submitter: "Riley Chen",
-    status: "hardware_review",
-    risk: "High",
-    created_at: "2026-05-25T05:00:01.000Z",
-    updated_at: "2026-05-25T05:00:01.000Z",
-    assigned_to: null,
-    reviewer_note: null,
-    reject_reason: null,
-    fast_track: false,
-    ...overrides
-  };
-}
-
-function bindingDraftSubmissionRow(overrides: Record<string, unknown> = {}) {
-  const draftId = (overrides.id as string) ?? "draft-a";
-  const bindingId = (overrides.project_parameter_binding_id as string) ?? "binding-a";
-  const specId = (overrides.parameter_spec_id as string) ?? "spec-1";
-  const tipId = (overrides.candidate_config_revision_id as string) ?? "candidate-tip-a";
-  const targetValue = (overrides.target_value as string) ?? "<3000>";
-  const reason = (overrides.reason as string) ?? "Edit A";
-  const suffix = draftId.endsWith("b") ? "b" : "a";
-
-  return {
-    id: draftId,
-    project_id: PROJECT_ID,
-    project_parameter_binding_id: bindingId,
-    parameter_spec_id: specId,
-    candidate_config_revision_id: tipId,
-    candidate_status: "draft",
-    candidate_has_binding_revision: true,
-    candidate_value_matches_draft: true,
-    candidate_delete_tombstone: false,
-    candidate_action_proven: true,
-    write_lock_matches_binding: true,
-    target_value: targetValue,
-    action: "set",
-    reason,
-    base_config_revision_id: "base-rev-1",
-    binding_revision_id: `bpr-${suffix}`,
-    property_occurrence_id: null,
-    source_file_version_id: `fv-${suffix}`,
-    expected_checksum: `checksum-${suffix}`,
-    occurrence_span: null,
-    ...overrides
-  };
-}
-
-function bindingParameterRow(bindingId: string, overrides: Record<string, unknown> = {}) {
-  return parameterRow({
-    id: bindingId,
-    name: `binding_${bindingId}`,
-    ...overrides
-  });
-}
-
-function writeLockFixtureRows(suffix: "a" | "b") {
-  return [
-    [{ id: `bpr-${suffix}`, config_revision_id: "base-rev-1" }],
-    [{ id: `fv-${suffix}`, checksum: `checksum-${suffix}` }]
-  ] as const;
-}
-
-function enablementWriteLockFixtureRows() {
-  return [[{ id: "fv-en", checksum: "checksum-en" }]] as const;
-}
-
-function enablementDraftSubmissionRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: (overrides.id as string) ?? "draft-enablement",
-    project_id: PROJECT_ID,
-    logical_node_id: (overrides.logical_node_id as string) ?? "logical-node-1",
-    candidate_config_revision_id: (overrides.candidate_config_revision_id as string) ?? "candidate-tip-en",
-    candidate_status: "draft",
-    candidate_has_status_effect: true,
-    candidate_value_matches_draft: true,
-    candidate_delete_tombstone: false,
-    candidate_action_proven: true,
-    write_lock_matches_revision: true,
-    target_value: (overrides.target_value as string) ?? '"disabled"',
-    action: "set",
-    reason: (overrides.reason as string) ?? "Disable node",
-    base_config_revision_id: "base-rev-1",
-    binding_revision_id: null,
-    property_occurrence_id: null,
-    source_file_version_id: "fv-en",
-    expected_checksum: "checksum-en",
-    occurrence_span: null,
-    ...overrides
-  };
-}
-
-function enablementNodeContextRow() {
-  return {
-    node_locator: "/charging_core",
-    compatible: "wiseeff,charging_core",
-    logical_node_revision_id: "lnr-1"
-  };
-}
-
-function enablementStatusEffectRows() {
-  return [{ effect_kind: "set", raw_text: '"disabled"' }];
-}
-
-describe("parameter service (fake-db residuals)", () => {
-  afterEach(() => {
-    setParameterIdentityMode(null);
-  });
-
-  // Post-cutover semantic submit needs a full topology graph (candidate revisions,
-  // binding revisions, write locks); the merged behavior runs on a temp database in
-  // parameter-topology/postCutoverWorkflow.integration.test.ts. Kept on the fake db
-  // per the slice-4 evaluation in the section comment above.
-  it("submitParameterChanges rejects mixed working tips in one batch", async () => {
-    const draftA = "draft-a";
-    const draftB = "draft-b";
-    const bindingA = "binding-a";
-    const bindingB = "binding-b";
-    const specId = "spec-1";
-    const tipA = "candidate-tip-a";
-    const tipB = "candidate-tip-b";
-
-    const { db, txCalls } = createFakeDb(
-      [
-        [
-          bindingDraftSubmissionRow({
-            id: draftA,
-            project_parameter_binding_id: bindingA,
-            parameter_spec_id: specId,
-            candidate_config_revision_id: tipA,
-            target_value: "<3000>",
-            reason: "a"
-          })
-        ],
-        ...writeLockFixtureRows("a"),
-        [bindingParameterRow(bindingA)],
-        [],
-        [
-          bindingDraftSubmissionRow({
-            id: draftB,
-            project_parameter_binding_id: bindingB,
-            parameter_spec_id: "spec-2",
-            candidate_config_revision_id: tipB,
-            target_value: "<4000>",
-            reason: "b"
-          })
-        ],
-        ...writeLockFixtureRows("b"),
-        [bindingParameterRow(bindingB)],
-        [],
-        [{ id: "u-hardware" }],
-        [{ id: "u-software-committer" }],
-        [{ id: "u-software-user" }]
-      ],
-      { semanticCutoverComplete: true }
-    );
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: PROJECT_ID,
-        items: [
+      await seedSpecBindingGraph(db, {
+        organizationId: "org-1",
+        specs: draftCases.map(({ suffix, propertyKey }) => ({
+          id: `spec-submit-${suffix}`,
+          specificationKey: `charging/${propertyKey}`,
+          versions: [
+            {
+              id: `spec-version-submit-${suffix}`,
+              displayName: `Limit ${suffix.toUpperCase()}`,
+              valueShape: { kind: "cells", bits: 32 }
+            }
+          ],
+          propertySpec: { id: `property-spec-submit-${suffix}`, propertyKey }
+        })),
+        modules: [{ id: "module-submit", name: "Charging" }],
+        configSets: [
           {
-            draftId: draftA,
-            projectParameterBindingId: bindingA,
-            parameterSpecId: specId,
-            action: "set",
-            targetValue: "<3000>",
-            reason: "a"
-          },
-          {
-            draftId: draftB,
-            projectParameterBindingId: bindingB,
-            parameterSpecId: "spec-2",
-            action: "set",
-            targetValue: "<4000>",
-            reason: "b"
+            id: "config-set-submit",
+            projectId: "project-1",
+            revisions: [
+              { id: baseRevisionId, revisionNumber: 1, status: "resolved" },
+              { id: "candidate-tip-a", revisionNumber: 2, status: "draft" },
+              { id: "candidate-tip-b", revisionNumber: 3, status: "draft" }
+            ]
           }
         ],
-        assignees: completeAssignees
-      })
-    ).rejects.toMatchObject(
-      new ApiError(
-        "CONFLICT",
-        "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
-        {
-          reason: "mixed-working-tips",
-          candidateConfigRevisionIds: expect.arrayContaining([tipA, tipB])
-        }
-      )
-    );
+        bindings: draftCases.map(({ suffix, baseValue, targetValue }) => ({
+          id: `binding-${suffix}`,
+          projectId: "project-1",
+          parameterSpecId: `spec-submit-${suffix}`,
+          moduleId: "module-submit",
+          revisions: [
+            {
+              id: `binding-revision-${suffix}`,
+              configRevisionId: baseRevisionId,
+              parameterSpecVersionId: `spec-version-submit-${suffix}`,
+              rawValue: baseValue
+            },
+            {
+              id: `candidate-binding-revision-${suffix}`,
+              configRevisionId: `candidate-tip-${suffix}`,
+              parameterSpecVersionId: `spec-version-submit-${suffix}`,
+              rawValue: targetValue
+            }
+          ]
+        }))
+      });
 
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
-    expect(txCalls.some((call) => call.text.includes("update dts_config_revisions"))).toBe(false);
-  });
+      await db.query(
+        `insert into project_parameter_files (
+           id, organization_id, project_id, file_name, format, enabled,
+           config_set_id, config_set_role, config_set_sort_order
+         ) values ('file-submit-base', 'org-1', 'project-1', 'submit-base.dts', 'dts', true,
+           'config-set-submit', 'base', 0)`
+      );
+      await db.query(
+        `insert into project_parameter_file_versions (
+           id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+         ) values ($1, 'file-submit-base', 1, 'org-1/submit-base.dts', $2, 128, '{}'::jsonb, 'upload', 'user-1')`,
+        [sourceFileVersionId, expectedChecksum]
+      );
+      await db.query(
+        `insert into dts_config_revision_members (
+           id, config_revision_id, file_id, file_version_id, role, sort_order
+         ) values ('member-submit-base', $1, 'file-submit-base', $2, 'base', 0)`,
+        [baseRevisionId, sourceFileVersionId]
+      );
+      await db.query(
+        `insert into dts_node_occurrences (
+           id, config_revision_id, file_version_id, name, labels, node_path,
+           start_offset, end_offset, start_line, start_column, end_line, end_column,
+           raw_text, ast_json, source_order
+         ) values (
+           'node-occurrence-submit', $1, $2, 'charging', '[]'::jsonb, 'charging',
+           0, 100, 1, 1, 5, 1, 'charging {}', '{}'::jsonb, 0
+         )`,
+        [baseRevisionId, sourceFileVersionId]
+      );
+      await db.query(
+        `insert into dts_property_occurrences (
+           id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+           start_offset, end_offset, start_line, start_column, end_line, end_column,
+           raw_text, ast_json, source_order
+         ) values
+           ('property-occurrence-submit-a', $1, 'node-occurrence-submit', $2, 'limit_a',
+             10, 20, 2, 3, 2, 13, '<1000>', '{}'::jsonb, 0),
+           ('property-occurrence-submit-b', $1, 'node-occurrence-submit', $2, 'limit_b',
+             30, 40, 3, 3, 3, 13, '<2000>', '{}'::jsonb, 1)`,
+        [baseRevisionId, sourceFileVersionId]
+      );
+      await db.query(
+        `insert into parameter_drafts (
+           id, organization_id, project_id, user_id, target_value, reason,
+           project_parameter_binding_id, base_config_revision_id, binding_revision_id,
+           property_occurrence_id, source_file_version_id, expected_checksum,
+           occurrence_span, candidate_config_revision_id, action, edit_subject_kind
+         ) values
+           ('draft-a', 'org-1', 'project-1', 'user-1', '<3000>', 'a',
+             'binding-a', $1, 'binding-revision-a', 'property-occurrence-submit-a', $2, $3,
+             '{"start":10,"end":20}'::jsonb, 'candidate-tip-a', 'set', 'binding'),
+           ('draft-b', 'org-1', 'project-1', 'user-1', '<4000>', 'b',
+             'binding-b', $1, 'binding-revision-b', 'property-occurrence-submit-b', $2, $3,
+             '{"start":30,"end":40}'::jsonb, 'candidate-tip-b', 'set', 'binding')`,
+        [baseRevisionId, sourceFileVersionId, expectedChecksum]
+      );
+    }
 
-  // Same topology dependency as above; see the section comment.
-  it("submitParameterChanges creates enablement change requests from node-enablement drafts", async () => {
-    const draftId = "draft-enablement";
-    const logicalNodeId = "logical-node-1";
-    const tipId = "candidate-tip-en";
+    it("submitParameterChanges rejects mixed working tips in one batch", async () => {
+      setParameterIdentityMode("semantic");
+      await seedBindingDraftsAtDifferentWorkingTips();
 
-    const { db, txCalls } = createFakeDb(
-      [
-        [enablementDraftSubmissionRow({ id: draftId, logical_node_id: logicalNodeId, candidate_config_revision_id: tipId })],
-        ...enablementWriteLockFixtureRows(),
-        [],
-        [enablementNodeContextRow()],
-        enablementStatusEffectRows(),
-        [],
-        [{ id: tipId }],
-        [
+      await expect(
+        submitParameterChanges(db, makeAuth(), {
+          projectId: "project-1",
+          items: [
+            {
+              draftId: "draft-a",
+              projectParameterBindingId: "binding-a",
+              parameterSpecId: "spec-submit-a",
+              action: "set",
+              targetValue: "<3000>",
+              reason: "a"
+            },
+            {
+              draftId: "draft-b",
+              projectParameterBindingId: "binding-b",
+              parameterSpecId: "spec-submit-b",
+              action: "set",
+              targetValue: "<4000>",
+              reason: "b"
+            }
+          ]
+        })
+      ).rejects.toMatchObject(
+        new ApiError(
+          "CONFLICT",
+          "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
           {
-            id: "round-1",
-            project_id: PROJECT_ID,
-            project_name: "Aurora",
-            submitter: "Riley Chen",
-            status: "submitted",
-            summary: "Parameter changes submitted.",
-            created_at: "2026-05-25T05:00:00.000Z"
+            reason: "mixed-working-tips",
+            candidateConfigRevisionIds: expect.arrayContaining(["candidate-tip-a", "candidate-tip-b"])
           }
-        ],
-        [
-          {
-            id: "request-enablement",
-            submission_round_id: "round-1",
-            project_id: PROJECT_ID,
-            project_parameter_value_id: logicalNodeId,
-            module: "charging_core",
-            title: "status",
-            current_value: "",
-            target_value: '"disabled"',
-            action: "set",
-            candidate_config_revision_id: tipId,
-            edit_subject_kind: "node-enablement",
-            logical_node_id: logicalNodeId,
-            submitter: "Riley Chen",
-            status: "submitted",
-            risk: "Low",
-            created_at: "2026-05-25T05:00:01.000Z",
-            updated_at: "2026-05-25T05:00:01.000Z",
-            assigned_to: null,
-            reviewer_note: null,
-            reject_reason: null,
-            fast_track: false
-          }
-        ],
-        [
-          {
-            change_request_id: "request-enablement",
-            project_parameter_value_id: logicalNodeId,
-            name: "status",
-            module: "节点启用",
-            current_value: "",
-            target_value: '"disabled"',
-            action: "set",
-            candidate_config_revision_id: tipId,
-            unit: "",
-            risk: "Low",
-            reason: "Disable node"
-          }
-        ],
-        [],
-        []
-      ],
-      { semanticCutoverComplete: true }
-    );
+        )
+      );
 
-    const round = await submitParameterChanges(db, makeAuth(), {
-      projectId: PROJECT_ID,
-      items: [
-        {
-          draftId,
-          editSubjectKind: "node-enablement",
-          logicalNodeId,
-          action: "set",
-          targetValue: '"disabled"',
-          reason: "Disable node"
-        }
-      ]
+      const [drafts, workflowRows, candidates] = await Promise.all([
+        db.query<{ c: string }>(
+          `select count(*)::text as c from parameter_drafts where id in ('draft-a', 'draft-b')`
+        ),
+        db.query<{ rounds: string; requests: string; items: string }>(
+          `select
+             (select count(*) from parameter_submission_rounds)::text as rounds,
+             (select count(*) from parameter_change_requests)::text as requests,
+             (select count(*) from parameter_submission_items)::text as items`
+        ),
+        db.query<{ id: string; status: string }>(
+          `select id, status from dts_config_revisions
+           where id in ('candidate-tip-a', 'candidate-tip-b') order by id`
+        )
+      ]);
+      expect(Number(drafts.rows[0].c)).toBe(2);
+      expect(workflowRows.rows[0]).toEqual({ rounds: "0", requests: "0", items: "0" });
+      expect(candidates.rows).toEqual([
+        { id: "candidate-tip-a", status: "draft" },
+        { id: "candidate-tip-b", status: "draft" }
+      ]);
     });
 
-    expect(round.items).toHaveLength(1);
-    expect(txCalls.some((call) => call.text.includes("edit_subject_kind") && call.text.includes("node-enablement"))).toBe(
-      true
-    );
-    expect(txCalls.some((call) => call.text.includes("delete from parameter_drafts"))).toBe(true);
-  });
+    async function seedEnablementDraft() {
+      const baseRevisionId = "base-enablement-revision";
+      const candidateRevisionId = "candidate-enablement-revision";
+      const logicalNodeId = "logical-node-enablement";
+      const baseFileVersionId = "fv-enablement-base";
+      const candidateFileVersionId = "fv-enablement-candidate";
+      const expectedChecksum = "checksum-enablement-base";
 
-  describe("post-cutover semantic merge fail-closed preflight", () => {
-    const mergeAuth = () =>
-      makeAuth({
-        roles: [{ projectId: null, roleId: "admin" }],
-        permissions: [
-          "parameter:view",
-          "parameter:edit",
-          "parameter:review",
-          "parameter:merge",
-          "admin:access"
+      // The migrated test template is intentionally pre-cutover. Enablement submission
+      // exists only after the identity cutover removes these retired legacy columns.
+      await db.query(`alter table parameter_change_requests drop column parameter_definition_id`);
+      await db.query(`alter table parameter_change_requests drop column project_parameter_value_id`);
+
+      await seedSpecBindingGraph(db, {
+        organizationId: "org-1",
+        configSets: [
+          {
+            id: "config-set-enablement",
+            projectId: "project-1",
+            revisions: [
+              { id: baseRevisionId, revisionNumber: 1, status: "resolved" },
+              { id: candidateRevisionId, revisionNumber: 2, status: "draft" }
+            ],
+            logicalNodes: [
+              {
+                id: logicalNodeId,
+                revisions: [
+                  {
+                    id: "logical-node-revision-enablement-base",
+                    configRevisionId: baseRevisionId,
+                    nodeLocator: "/charging_core",
+                    name: "charging_core",
+                    compatible: "wiseeff,charging_core"
+                  },
+                  {
+                    id: "logical-node-revision-enablement-candidate",
+                    configRevisionId: candidateRevisionId,
+                    nodeLocator: "/charging_core",
+                    name: "charging_core",
+                    compatible: "wiseeff,charging_core"
+                  }
+                ]
+              }
+            ]
+          }
         ]
       });
 
-    // The objectStore-missing, binding-identity-missing, and env-bypass preflight
-    // cases live in serviceReviewWorkflow.integration.test.ts. This one stays on
-    // the fake db because parameter_change_requests.project_id is NOT NULL, so a
-    // project-less request cannot exist in a real database.
-    it("rejects semantic merge when projectId is missing", async () => {
-      const { db, txCalls } = createFakeDb(
-        [[changeRequestRow({ status: "software_merge", risk: "Medium", project_id: null })], []],
-        { semanticCutoverComplete: true }
+      await db.query(
+        `insert into project_parameter_files (
+           id, organization_id, project_id, file_name, format, enabled,
+           config_set_id, config_set_role, config_set_sort_order
+         ) values ('file-enablement', 'org-1', 'project-1', 'enablement.dts', 'dts', true,
+           'config-set-enablement', 'base', 0)`
+      );
+      await db.query(
+        `insert into project_parameter_file_versions (
+           id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+         ) values
+           ($1, 'file-enablement', 1, 'org-1/enablement-base.dts', $3, 128, '{}'::jsonb, 'upload', 'user-1'),
+           ($2, 'file-enablement', 2, 'org-1/enablement-candidate.dts', 'checksum-enablement-candidate', 144,
+             '{}'::jsonb, 'writeback', 'user-1')`,
+        [baseFileVersionId, candidateFileVersionId, expectedChecksum]
+      );
+      await db.query(
+        `insert into dts_config_revision_members (
+           id, config_revision_id, file_id, file_version_id, role, sort_order
+         ) values
+           ('member-enablement-base', $1, 'file-enablement', $3, 'base', 0),
+           ('member-enablement-candidate', $2, 'file-enablement', $4, 'base', 0)`,
+        [baseRevisionId, candidateRevisionId, baseFileVersionId, candidateFileVersionId]
+      );
+      await db.query(
+        `insert into dts_node_occurrences (
+           id, config_revision_id, file_version_id, name, labels, node_path,
+           start_offset, end_offset, start_line, start_column, end_line, end_column,
+           raw_text, ast_json, source_order
+         ) values (
+           'node-occurrence-enablement-candidate', $1, $2, 'charging_core', '[]'::jsonb, 'charging_core',
+           0, 120, 1, 1, 6, 1, 'charging_core { status = "disabled"; };', '{}'::jsonb, 0
+         )`,
+        [candidateRevisionId, candidateFileVersionId]
+      );
+      await db.query(
+        `insert into dts_property_occurrences (
+           id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+           start_offset, end_offset, start_line, start_column, end_line, end_column,
+           raw_text, ast_json, source_order
+         ) values (
+           'property-occurrence-enablement-candidate', $1, 'node-occurrence-enablement-candidate', $2, 'status',
+           24, 44, 3, 3, 3, 23, '"disabled"', '{}'::jsonb, 0
+         )`,
+        [candidateRevisionId, candidateFileVersionId]
+      );
+      await db.query(
+        `insert into dts_occurrence_effects (
+           id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
+           node_occurrence_id, property_occurrence_id, source_order
+         ) values (
+           'effect-enablement-candidate', $1, 'logical-node-revision-enablement-candidate', 'status', 'set',
+           'node-occurrence-enablement-candidate', 'property-occurrence-enablement-candidate', 0
+         )`,
+        [candidateRevisionId]
+      );
+      await db.query(
+        `insert into parameter_drafts (
+           id, organization_id, project_id, user_id, target_value, reason,
+           project_parameter_binding_id, logical_node_id, base_config_revision_id,
+           source_file_version_id, expected_checksum, candidate_config_revision_id,
+           action, edit_subject_kind
+         ) values (
+           'draft-enablement', 'org-1', 'project-1', 'user-1', '"disabled"', 'Disable node',
+           null, $1, $2, $3, $4, $5, 'set', 'node-enablement'
+         )`,
+        [logicalNodeId, baseRevisionId, baseFileVersionId, expectedChecksum, candidateRevisionId]
       );
 
-      await expect(
-        reviewChange(
-          db,
-          mergeAuth(),
-          { requestId: "request-1", decision: "advance", expectedVersion: 7, note: "https://example.com/mr/semantic" },
-          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
-        )
-      ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Semantic merge requires a project-scoped change request.", {
-          requestId: "request-1"
-        })
-      );
+      return { candidateRevisionId, logicalNodeId };
+    }
 
-      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+    it("submitParameterChanges creates enablement change requests from node-enablement drafts", async () => {
+      setParameterIdentityMode("semantic");
+      const { candidateRevisionId, logicalNodeId } = await seedEnablementDraft();
+
+      const round = await submitParameterChanges(db, makeAuth(), {
+        projectId: "project-1",
+        items: [
+          {
+            draftId: "draft-enablement",
+            editSubjectKind: "node-enablement",
+            logicalNodeId,
+            action: "set",
+            targetValue: '"disabled"',
+            reason: "Disable node"
+          }
+        ]
+      });
+
+      expect(round).toMatchObject({
+        projectId: "project-1",
+        status: "submitted",
+        items: [
+          {
+            parameterId: logicalNodeId,
+            name: "status",
+            module: "节点启用",
+            currentValue: "",
+            targetValue: '"disabled"',
+            action: "set",
+            candidateConfigRevisionId: candidateRevisionId,
+            reason: "Disable node"
+          }
+        ]
+      });
+
+      const durable = await db.query<{
+        submission_round_id: string;
+        edit_subject_kind: string;
+        logical_node_id: string;
+        project_parameter_binding_id: string | null;
+        parameter_spec_id: string | null;
+        candidate_config_revision_id: string;
+        base_config_revision_id: string;
+        source_file_version_id: string;
+        expected_checksum: string;
+        action: string;
+        target_value: string;
+        item_subject_kind: string;
+        item_logical_node_id: string;
+        item_candidate_config_revision_id: string;
+        candidate_status: string;
+        draft_count: number;
+      }>(
+        `select request.submission_round_id, request.edit_subject_kind, request.logical_node_id,
+           request.project_parameter_binding_id, request.parameter_spec_id,
+           request.candidate_config_revision_id, request.base_config_revision_id,
+           request.source_file_version_id, request.expected_checksum, request.action, request.target_value,
+           item.edit_subject_kind as item_subject_kind, item.logical_node_id as item_logical_node_id,
+           item.candidate_config_revision_id as item_candidate_config_revision_id,
+           candidate.status as candidate_status,
+           (select count(*)::int from parameter_drafts where id = 'draft-enablement') as draft_count
+         from parameter_change_requests request
+         inner join parameter_submission_items item on item.change_request_id = request.id
+         inner join dts_config_revisions candidate on candidate.id = request.candidate_config_revision_id
+         where request.submission_round_id = $1`,
+        [round.id]
+      );
+      expect(durable.rows).toEqual([
+        {
+          submission_round_id: round.id,
+          edit_subject_kind: "node-enablement",
+          logical_node_id: logicalNodeId,
+          project_parameter_binding_id: null,
+          parameter_spec_id: null,
+          candidate_config_revision_id: candidateRevisionId,
+          base_config_revision_id: "base-enablement-revision",
+          source_file_version_id: "fv-enablement-base",
+          expected_checksum: "checksum-enablement-base",
+          action: "set",
+          target_value: '"disabled"',
+          item_subject_kind: "node-enablement",
+          item_logical_node_id: logicalNodeId,
+          item_candidate_config_revision_id: candidateRevisionId,
+          candidate_status: "pending_approval",
+          draft_count: 0
+        }
+      ]);
     });
   });
 });
