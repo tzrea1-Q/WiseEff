@@ -233,7 +233,7 @@ Phase B（Step ③ 工具）：health 含 `tools.adb` / `tools.hdc`；所选协�
 - `DebugNodeEditorDialog` — 逻辑节点元数据与模块归属。
 - `DebugNodeBindingsDialog` — 每协议 HDC/ADB 路径 binding 编辑。
 
-（遗留 `DebugParameterLibraryTable` 等参数 catalog 弹窗仅 mock/测试路径保留；API mode 管理面向逻辑节点目录。）
+（API mode 的管理面只暴露逻辑节点目录；遗留参数 Admin HTTP/client 接口已退役，历史表与证据仍在服务端保留。Mock mode 继续从本地参数 fixture 派生精简节点目录用于 demo/组件测试。）
 
 复杂调试参数通过 `src/debugValueKind.ts` 在管理端与运行时共享辅助逻辑。`DebugParameterDefinitionDialog` 提供值类型、格式、规范化模式，以及复杂当前值/目标值的多行代码编辑器。`DebugParameterLibraryTable` 显示紧凑格式徽章。`/node-debugging` 以紧凑预览和格式徽章展示复杂值，在宽 sheet 中打开查看/编辑，并在操作历史中显示 preview 与 digest，而不是完整 payload。
 

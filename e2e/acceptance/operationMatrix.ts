@@ -965,7 +965,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/debugging-admin/nodes",
     roles: ["Admin"],
-    action: "Create, edit, archive, restore, and protocol-bind a debugging catalog parameter, including complex value kind and format metadata.",
+    action: "Create, edit, disable/re-enable, protocol-bind, export, and import the logical-node catalog through production APIs, with database and export/import audit evidence.",
     coverage: "automated",
     acceptanceIds: ["DEBUG-ADMIN-001"],
     specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],

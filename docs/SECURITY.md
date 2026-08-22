@@ -110,7 +110,7 @@ For the knowledge base:
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
-- Debugging catalog administration requires `debugging:admin`; this governs parameter metadata, HDC/ADB node-binding changes, and debug node module tree CRUD (`/api/v1/debugging/admin/modules*`).
+- Debugging catalog administration requires `debugging:admin`; this governs logical-node metadata, HDC/ADB node-binding changes, module-tree CRUD, and audited node-catalog import/export. The retired legacy parameter Admin routes are not an authorization surface.
 - Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, an active device lease for the session, and a pre-write snapshot.
 - High-risk writes require `confirm-high-risk-write` **or** an `approvalId` that resolves to an **approved** `agent_approvals` row whose tool call is `action.writeDebugNode` and whose payload matches this write (session, node/parameter, value). Arbitrary strings are rejected. Standalone UI still collects the confirmation token; Agent-driven device tools must pass the approval record from the same `agent_approvals` chain (orchestrator execution context carries `approvalId`).
 - Snapshot rollback requires `debugging:rollback`, an active device lease, and either `confirm-rollback` or an approved `agent_approvals` row for `action.rollbackDebugSnapshot` whose payload matches this snapshot.

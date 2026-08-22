@@ -94,27 +94,21 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 | `PATCH` | `/api/v1/debugging/admin/modules/:moduleId` | Update debug module metadata. |
 | `POST` | `/api/v1/debugging/admin/modules/:moduleId/move` | Reparent a debug module (cycle → `409`). |
 | `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | Delete when no child modules or assigned nodes remain (`409` otherwise). |
-| `GET` | `/api/v1/debugging/admin/parameters` | List the legacy debugging catalog, including disabled or archived rows when `includeArchived=true`. |
-| `POST` | `/api/v1/debugging/admin/parameters` | Create a debugging parameter and optional HDC/ADB bindings. |
-| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | Update debugging parameter metadata. |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/archive` | Archive a parameter without deleting historical references. |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/restore` | Restore an archived parameter. |
-| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert the HDC or ADB node binding (legacy catalog). |
-| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Update the HDC or ADB node binding (legacy catalog). |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | Disable one protocol binding (legacy catalog). |
 | `GET` | `/api/v1/debugging/admin/catalog/export` | Export the org debug-node catalog (modules, nodes, bindings) as `wiseeff.debug-node-catalog.v1`. Requires `debugging:admin`. Writes `debug-node-catalog-export` audit without raw node paths. |
 | `POST` | `/api/v1/debugging/admin/catalog/import` | Merge-import a v1 catalog document: upsert modules by parent+name and nodes by id or name+module path. Requires `debugging:admin`. Writes `debug-node-catalog-import` audit without raw node paths. |
 
-Runtime `/api/v1/debugging/parameters?protocol=...` (legacy) returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so coverage labels remain visible.
+The legacy `/api/v1/debugging/admin/parameters*` family is retired and returns `404`; it is absent from the route manifest, OpenAPI, and the frontend Admin client. This removes only the unused governance interface. `debugging_parameters`, `debugging_parameter_node_bindings`, their repository/service code, historical rows, bindings, operations, and audit evidence remain available for archive interpretation and migrations.
 
-Runtime and admin debugging parameter DTOs include optional value metadata:
+Runtime `/api/v1/debugging/parameters?protocol=...` (legacy) remains separate and returns only enabled, non-archived parameters with an enabled selected-protocol binding. Product `/node-debugging` uses the logical-node runtime interface instead.
+
+Legacy runtime debugging parameter DTOs include optional value metadata:
 
 - `valueKind`: `scalar | complex` (defaults to `scalar` for legacy rows)
 - `valueFormat`: `raw | json | dts | line-list | kv-list`
 - `normalizationMode`: `exact | trim | line-ending-normalized | json-canonical`
 - `maxValueBytes`: positive integer cap for write payload size
 
-Admin `POST`/`PATCH` validates combinations: scalar defaults to `raw`/`trim`; `json-canonical` requires `valueFormat=json`; complex JSON targets must parse. Node write requests keep `value: string`; the service resolves format, normalization, digest, preview, and comparison from parameter metadata.
+Node write requests keep `value: string`; the service resolves format, normalization, digest, preview, and comparison from stored metadata.
 
 Node operation DTOs may include `valueKind`, `valueFormat`, `normalizationMode`, `valuePreview`, and value digests for complex writes without returning full large payloads in list views.
 

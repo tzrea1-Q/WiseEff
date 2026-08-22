@@ -50,4 +50,8 @@ describe("routeManifest", () => {
     expect(routeManifest.some((route) => route.path.includes("/reload-bindings"))).toBe(false);
     expect(routeManifest.some((route) => route.id.includes("ReloadBinding"))).toBe(false);
   });
+
+  it("does not advertise the retired legacy debugging parameter admin catalog", () => {
+    expect(routeManifest.filter((route) => route.path.startsWith("/api/v1/debugging/admin/parameters"))).toEqual([]);
+  });
 });

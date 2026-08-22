@@ -353,7 +353,7 @@ The browser health probe is UI guidance only; bridge-backed device execution rem
 
 Bridge management (rename/revoke, multi-bridge target picker) behavior is unchanged from Phase 2.
 
-`/debugging-admin` (debug management console) uses peer scope navigation: `/debugging-admin` for DTS reload configuration, `/debugging-admin/nodes` for API-backed **logical debug node** catalog management in `api` mode. The nodes scope calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, and archive adjustable nodes (`debug_nodes`). Protocol-specific device paths live in separate **`debug_node_bindings`** rows (HDC and ADB per logical node). Legacy parameter catalog APIs remain on the server for audit/history but are no longer exposed in this Admin UI. `mock` mode keeps a slim local path for demos and component tests.
+`/debugging-admin` (debug management console) uses peer scope navigation: `/debugging-admin` for DTS reload configuration, `/debugging-admin/nodes` for API-backed **logical debug node** catalog management in `api` mode. The nodes scope calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, and archive adjustable nodes (`debug_nodes`). Protocol-specific device paths live in separate **`debug_node_bindings`** rows (HDC and ADB per logical node). The legacy parameter Admin HTTP/client interface is retired; archive tables and historical evidence remain server-side. `mock` mode keeps a slim local path for demos and component tests.
 
 ### Debugging Admin UI
 
