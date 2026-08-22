@@ -353,9 +353,22 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(nameInput).toHaveValue("ChargeLab");
     await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
 
+    await page.route("**/api/v1/organization", async (route) => {
+      if (route.request().method() === "PATCH") {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      await route.continue();
+    });
+
     const renamed = `ChargeLab Acceptance ${Date.now()}`;
     await nameInput.fill(renamed);
+    const renameResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/v1/organization"
+    );
     await page.getByRole("button", { name: "保存名称" }).click();
+    const renameResponse = await renameResponsePromise;
+    expect(renameResponse.ok()).toBe(true);
     await expect(nameInput).toHaveValue(renamed);
     await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
 
@@ -402,6 +415,11 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       page,
       testInfo,
       api: [
+        summarizeApiResponse(renameResponse, {
+          method: "PATCH",
+          path: "/api/v1/organization",
+          responseSummary: "Admin rename completed before read-after-write verification"
+        }),
         summarizeApiResponse(orgApi.response, {
           method: "GET",
           path: "/api/v1/organization",
