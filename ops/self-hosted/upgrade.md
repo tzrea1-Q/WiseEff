@@ -39,7 +39,9 @@ The file accepts only the documented proxy pairs, `WISEEFF_NPM_REGISTRY`, `WISEE
 
 `plan`, `status`, and `status --json` expose only whether proxy/CA are configured, the npm registry host, and the runtime-proxy boolean. They never print or persist proxy URLs or credentials. The file and its example contract are excluded from the Docker build context, and the real file is ignored by Git.
 
-The Dockerfile base image is a special case: the repository carries a checksum-pinned `linux/amd64` bundle under `ops/self-hosted/images/`. `plan` verifies the target commit's bundle contract, archive checksum, Dockerfile reference, and Docker server platform without loading or tagging an image. It reports either `verified local image` or `verified bundle; apply will load and tag it`. During `apply`, after selecting the immutable target and before Compose build, the controller rechecks the checkout archive, loads it when the exact pinned image is absent, verifies its image ID/platform, and creates the exact tag used by `FROM`. The run journal records `base_image_ref`, `base_image_id`, `base_image_platform`, `base_image_source`, and `base_image_status`.
+The Dockerfile base image is a special case: the repository carries a checksum-pinned `linux/amd64` bundle under `ops/self-hosted/images/`. `plan` verifies the target commit's bundle contract, archive checksum, Dockerfile reference, and Docker server platform without loading or tagging an image. It reports either `verified local image` or `verified bundle; apply will load and tag it`. During `apply`, after selecting the immutable target and before Compose build, the controller rechecks the checkout archive, loads it when the exact pinned image is absent, verifies its identity/platform, and creates the exact tag used by `FROM`.
+
+The contract pins both the OCI manifest digest (`base_image_id`) and the Docker config digest (`base_image_config_id`). Docker Desktop/containerd-backed stores may expose the former as `.Id`, while a classic Docker Engine `overlay2` store may expose the latter for the same saved image. The controller accepts either pinned digest only on the pinned platform; any third identity fails with the two expected values and the actual value in the error. `npm run selfhost:check` also extracts both identities from the tar so contract/archive drift fails CI. Text and JSON run status record both digests, platform, source, and preparation status.
 
 This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not make the whole build air-gapped. Alpine packages, the pinned DTC Git source, Python packages, and npm packages still need the managed proxy/mirror path unless separately bundled. Other service image pulls remain a Docker daemon network responsibility. The controller never disables TLS, deletes images, or prunes Docker state.
 
@@ -89,7 +91,7 @@ The command asks for the literal word `upgrade` immediately before it stops traf
 ./scripts/upgrade.sh apply --ref <sha> --non-interactive --yes
 ```
 
-If the resolved SHA already runs, the command exits successfully as a no-op. Pass `--restart` only when a same-SHA full recreation is intentionally required.
+`apply` reports a successful no-op only when the checkout SHA equals the resolved target, API/worker/web all reference the exact commit-addressed target image, and the public health probe passes. A checkout updated after an earlier failed build therefore enters the normal build/recreate flow instead of printing `already running`. Pass `--restart` only when a same-SHA healthy stack still needs intentional full recreation.
 
 The recovery root defaults to `/var/backups/wiseeff/upgrades/<run-id>` and the ignored journal to `ops/self-hosted/.state/upgrades/<run-id>`. Override them with `--backup-root` and `--state-dir` when the host has a secured dedicated filesystem. The environment file must remain mode `600`.
 
@@ -116,7 +118,7 @@ cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
 less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ```
 
-Base-image contract/archive/platform failures use the `base-image` category. Other common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
+Base-image contract/archive/platform failures use the `base-image` category. An identity mismatch prints the pinned manifest/config digests, platform, and Docker-reported actual identity; compare the same fields in `status --json` before changing any tag. Other common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
 
 Before migration starts, a quiescence or backup failure brings the previous stack back and records `old-stack-restored` or `failed-safe`. A failure after candidate API startup records `recovery-required`, leaves the proxy stopped, and keeps queues paused. Do not edit the journal or manually resume traffic.
 

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -185,6 +186,8 @@ export type SelfHostedConfigInput = {
   dockerignoreText: string;
   baseImageBundleText: string;
   baseImageArchiveSha256?: string;
+  baseImageArchiveImageId?: string;
+  baseImageArchiveConfigId?: string;
   envExampleText: string;
   caddyfileText: string;
   existingFiles?: Set<string>;
@@ -212,7 +215,9 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const baseImageBundleIssues = evaluateBaseImageBundle(
     input.baseImageBundleText,
     input.dockerfileText,
-    input.baseImageArchiveSha256
+    input.baseImageArchiveSha256,
+    input.baseImageArchiveImageId,
+    input.baseImageArchiveConfigId
   );
   const caddyfileText = normalize(input.caddyfileText);
   const envKeys = parseEnvKeys(input.envExampleText);
@@ -291,6 +296,7 @@ export function runSelfHostedConfigCheck() {
   }
 
   const packageJson = JSON.parse(readFileSync(paths.packageJson, "utf8")) as SelfHostedConfigInput["packageJson"];
+  const baseImageArchiveIdentity = readDockerArchiveIdentity(paths.baseImageArchive);
   const result = evaluateSelfHostedConfig({
     packageJson,
     composeText: readFileSync(paths.compose, "utf8"),
@@ -300,6 +306,8 @@ export function runSelfHostedConfigCheck() {
     baseImageArchiveSha256: createHash("sha256")
       .update(readFileSync(paths.baseImageArchive))
       .digest("hex"),
+    baseImageArchiveImageId: baseImageArchiveIdentity.imageId,
+    baseImageArchiveConfigId: baseImageArchiveIdentity.configId,
     envExampleText: readFileSync(paths.envExample, "utf8"),
     caddyfileText: readFileSync(paths.caddyfile, "utf8")
   });
@@ -334,13 +342,20 @@ function parseEnvKeys(text: string) {
   return keys;
 }
 
-function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, actualArchiveSha256?: string) {
+function evaluateBaseImageBundle(
+  bundleText: string,
+  dockerfileText: string,
+  actualArchiveSha256?: string,
+  actualArchiveImageId?: string,
+  actualArchiveConfigId?: string
+) {
   const requiredKeys = [
     "WISEEFF_BASE_IMAGE_REF",
     "WISEEFF_BASE_IMAGE_ARCHIVE",
     "WISEEFF_BASE_IMAGE_ARCHIVE_REF",
     "WISEEFF_BASE_IMAGE_PLATFORM",
     "WISEEFF_BASE_IMAGE_ID",
+    "WISEEFF_BASE_IMAGE_CONFIG_ID",
     "WISEEFF_BASE_IMAGE_ARCHIVE_SHA256"
   ] as const;
   const values = new Map<string, string>();
@@ -380,6 +395,7 @@ function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, act
   const archiveRef = values.get("WISEEFF_BASE_IMAGE_ARCHIVE_REF") ?? "";
   const platform = values.get("WISEEFF_BASE_IMAGE_PLATFORM") ?? "";
   const imageId = values.get("WISEEFF_BASE_IMAGE_ID") ?? "";
+  const configId = values.get("WISEEFF_BASE_IMAGE_CONFIG_ID") ?? "";
   const archiveSha256 = values.get("WISEEFF_BASE_IMAGE_ARCHIVE_SHA256") ?? "";
 
   if (ref && !/^[A-Za-z0-9._:/@+-]+$/.test(ref)) issues.push("invalid-ref");
@@ -387,9 +403,16 @@ function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, act
   if (archive && !/^[A-Za-z0-9._-]+\.tar$/.test(archive)) issues.push("invalid-archive");
   if (platform && !/^linux\/(amd64|arm64)$/.test(platform)) issues.push("invalid-platform");
   if (imageId && !/^sha256:[a-f0-9]{64}$/.test(imageId)) issues.push("invalid-image-id");
+  if (configId && !/^sha256:[a-f0-9]{64}$/.test(configId)) issues.push("invalid-config-id");
   if (archiveSha256 && !/^[a-f0-9]{64}$/.test(archiveSha256)) issues.push("invalid-archive-sha256");
   if (actualArchiveSha256 && archiveSha256 && actualArchiveSha256 !== archiveSha256) {
     issues.push("archive-checksum-mismatch");
+  }
+  if (actualArchiveImageId && imageId && actualArchiveImageId !== imageId) {
+    issues.push("archive-image-id-mismatch");
+  }
+  if (actualArchiveConfigId && configId && actualArchiveConfigId !== configId) {
+    issues.push("archive-config-id-mismatch");
   }
   if (ref) {
     const fromRefs = dockerfileText
@@ -401,6 +424,29 @@ function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, act
   }
 
   return issues;
+}
+
+function readDockerArchiveIdentity(archivePath: string) {
+  const manifestText = execFileSync("tar", ["-xOf", archivePath, "manifest.json"], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024
+  });
+  const manifest = JSON.parse(manifestText) as Array<{ Config?: string }>;
+  const configPath = manifest[0]?.Config ?? "";
+  const digest = configPath.split("/").at(-1)?.replace(/\.json$/, "") ?? "";
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error(`Invalid Docker archive config identity in ${archivePath}`);
+  }
+  const indexText = execFileSync("tar", ["-xOf", archivePath, "index.json"], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024
+  });
+  const index = JSON.parse(indexText) as { manifests?: Array<{ digest?: string }> };
+  const imageId = index.manifests?.[0]?.digest ?? "";
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) {
+    throw new Error(`Invalid Docker archive manifest identity in ${archivePath}`);
+  }
+  return { imageId, configId: `sha256:${digest}` };
 }
 
 function hasComposeService(normalizedComposeText: string, service: string) {

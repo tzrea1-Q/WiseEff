@@ -116,7 +116,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `status` 只读取持久化运行记录，包括候选构建状态、诊断路径和可执行下一步。
 - `resume` 从第一个未完成的幂等阶段继续；不会盲目重复已验证的快照或迁移。
 - `rollback` 恢复旧应用镜像；增加 `--restore-data` 后同时恢复 PostgreSQL、对象存储和 Redis 恢复点。
-- 若目标 SHA 已运行且未传 `--restart`，`apply` 以成功 no-op 退出。
+- 若 checkout 与目标 SHA 一致、API/worker/web 都引用该 commit 的精确镜像、公网探测通过且未传 `--restart`，`apply` 才以成功 no-op 退出。
 - 非交互升级必须同时传 `--non-interactive --yes`；破坏性数据恢复还必须提供脚本打印的本次运行确认 token。
 
 稳定退出码属于接口契约：
@@ -231,7 +231,7 @@ stateDiagram-v2
 6. 检查 Docker/Compose 版本、磁盘与 inode 余量、备份根目录权限、系统时间和公网 URL。
 7. fetch 并把请求 ref 解析为一个 commit；比较旧 commit 与目标 commit 的 migration 文件。
 8. 校验目标升级协议，并在不输出已展开密钥的情况下渲染 `compose config`。
-9. 把目标 commit 的基础镜像契约作为数据读取；校验 tar blob SHA-256、Dockerfile `FROM` 引用、预期镜像身份和 Docker server 平台。`plan` 可以 inspect 镜像，但绝不 load 或 tag。
+9. 把目标 commit 的基础镜像契约作为数据读取；校验 tar blob SHA-256、Dockerfile `FROM` 引用、固定 OCI manifest/config 身份和 Docker server 平台。`plan` 可以 inspect 镜像，但绝不 load 或 tag。
 
 磁盘预检需要覆盖候选镜像空间，加上 PostgreSQL、对象存储和 Redis 预计备份大小及安全系数。无法估算或空间不足时必须失败关闭。
 
@@ -239,7 +239,7 @@ stateDiagram-v2
 
 1. 给当前每个应用镜像打本次运行专用旧版本 tag。
 2. 以 detached-head 部署模式 checkout 已解析目标 commit。
-3. 再次校验 checkout 中的基础镜像 tar。若本地没有完全一致的固定镜像，则 load tar，验证归档标签身份/平台，再创建 Dockerfile 使用的精确标签。不得 pull 替代镜像、关闭 TLS、删除镜像或 prune 状态。
+3. 再次校验 checkout 中的基础镜像 tar。若本地没有完全一致的固定镜像，则 load tar，只接受固定平台上的 OCI manifest 或 config digest，再创建 Dockerfile 使用的精确标签。不得 pull 替代镜像、关闭 TLS、删除镜像或 prune 状态。
 4. 构建一份带 commit tag 的应用镜像，API、worker 和 web 共用。
 5. 把脱敏后的 plain-progress 输出写入运行 journal；npm 失败时，在构建 stage 消失前导出经过脱敏的 stage 内 debug log。
 6. 写入原因分类摘要，并通过 `status` 暴露构建与基础镜像证据。
@@ -248,7 +248,7 @@ stateDiagram-v2
 
 Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变的 Compose 默认 tag，也不需要事故期间重新构建旧源码。
 
-离线包契约固定 tar 文件名/校验和、归档标签、Dockerfile 标签、image ID 和平台；脚本只按数据解析，不会 source 到 shell。当前仓库离线包只覆盖 `linux/amd64` 上 Dockerfile 的 Node 基础镜像；包管理器与源码下载仍是独立的网络/信任边界。
+离线包契约固定 tar 文件名/校验和、归档标签、Dockerfile 标签、OCI manifest digest、Docker config digest 和平台。Docker/containerd 镜像存储可能把 manifest digest 显示为 `.Id`，经典 Docker Engine `overlay2` 则可能对同一份离线包显示 config digest。控制器只在契约平台上接受这两个固定身份，在运行状态中记录两者，并在不匹配时打印 expected/actual；仓库配置门禁会从 tar 中提取两个身份，避免双身份契约静默漂移。脚本只按数据解析，不会 source 到 shell。当前仓库离线包只覆盖 `linux/amd64` 上 Dockerfile 的 Node 基础镜像；包管理器与源码下载仍是独立的网络/信任边界。
 
 受限网络输入被收口为 `build-network.sh` 背后的独立深模块。权限 `0600`、非符号链接的数据文件只接受大小写代理对、一个 npm registry URL、一个组织批准 PEM 路径及显式 runtime-proxy 布尔值。交互操作仍可使用 shell 代理环境；大小写值有歧义时失败关闭。控制器导出 Docker 预定义 proxy build arg，通过 npm registry host replacement 覆盖 lockfile tarball 主机，并用 BuildKit secret 把 CA 安装到每个构建 stage；journal 只记录安全状态字段。实现不会 source 配置、不会把代理值写成 Dockerfile `ENV`、不会关闭 TLS、不会改写 Docker daemon，也不会默认把 runtime proxy 发送给数据面容器。
 
@@ -363,7 +363,7 @@ Vitest 使用临时 Git 仓库和伪命令 adapter 调用公开 shell 接口。�
 
 - 移动 ref 只解析一次，固定为不可变 SHA；
 - dirty worktree、不支持的协议、缺少 `.env`、锁冲突、磁盘不足、目标构建失败均不影响旧服务；
-- 相同 SHA 默认 no-op，传 `--restart` 才完整重启；
+- checkout SHA 相同时，只有应用容器都引用目标镜像且公网健康通过才 no-op；传 `--restart` 可强制完整重启；
 - queue drain 和备份失败会恢复旧栈；
 - resume 不重复已验证备份；
 - 迁移已启动的失败进入 `recovery-required`；

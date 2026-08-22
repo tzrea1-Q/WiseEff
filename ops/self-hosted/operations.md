@@ -272,7 +272,9 @@ Normal interactive upgrade; no `--ref` means the freshly fetched `origin/main`:
 ./scripts/upgrade.sh apply
 ```
 
-`plan` also verifies the target commit's checksum-pinned `linux/amd64` Dockerfile base-image bundle without changing Docker. Its `base image` line tells whether the exact image is already local or `apply` will load and tag the verified repository tar. `apply` performs that preparation before Compose build and before downtime; no manual `docker load` is needed after this controller release is installed. The run's text/JSON status records the exact image identity and whether it came from `local` or `bundled-archive`.
+`plan` also verifies the target commit's checksum-pinned `linux/amd64` Dockerfile base-image bundle without changing Docker. Its `base image` line tells whether the exact image is already local or `apply` will load and tag the verified repository tar. `apply` performs that preparation before Compose build and before downtime; no manual `docker load` is needed after this controller release is installed. The run's text/JSON status records both the OCI manifest and Docker config digests plus whether the image came from `local` or `bundled-archive`; this supports both containerd-backed and classic `overlay2` Docker image stores.
+
+An `already running` result is a verified no-op, not merely a Git comparison: checkout and target SHA must match, API/worker/web must all reference the exact commit-addressed application image, and the public health probe must pass. If a previous apply checked out the target but failed during build, rerunning `apply` continues through build/recreation automatically.
 
 Pin a controlled release or commit:
 
@@ -399,11 +401,13 @@ npm run selfhost:release-gate -- \
 | Backup root is not writable | host preparation/ownership is incomplete | run `prepare-host`; do not run normal upgrade actions as root |
 | `Another WiseEff setup or upgrade operation holds the host lock` | a live or stale shared operation lock exists | run `lock-status`; wait if held, use `unlock` only when reported stale |
 | `category=base-image` or a bundle checksum/platform error | target contract, tar, Dockerfile tag, or host architecture do not agree | do not pull or retag an arbitrary image; restore the tracked bundle/contract or use a matching supported host, then rerun `plan` |
+| `Loaded base-image identity does not match` | Docker returned neither the pinned OCI manifest digest nor the pinned config digest on the required platform | preserve the full expected/actual line and `status --json`; do not edit the contract on the host |
 | Docker tries to fetch `node:22.21.1-alpine` metadata | the installed controller predates automatic bundle preparation, or the exact pinned tag was not prepared | install this controller once using the documented base-image manual fallback; subsequent `apply` runs prepare it automatically |
 | Dirty checkout refusal | tracked or unignored files differ from the deployed commit | inspect `git status --short`; preserve operator files and intentionally resolve the drift |
 | Git fetch timeout while direct user Git works | the command may be running through `sudo`, missing proxy environment, or using a different Git config | run as deployment user; inspect proxy config; use `--git-proxy` for a Git-only override |
 | Git succeeds but image pull/build fails | Docker daemon/build network is a separate proxy or CA boundary | configure the Docker service proxy and organization-approved CA; do not disable TLS globally |
 | `npm ci` fails and references `/root/.npm/_logs` | the path belongs to the ephemeral image-build stage, not the host | read the run's `build_summary` and redacted `build_log`; fix the classified cause, then rerun `apply` |
+| `already running` after `apply` | checkout, all three application image refs, and public health were verified against the same target SHA | the target is active; use `--restart` only for an intentional same-version full recreation |
 | `/health/live` passes but `/health/ready` fails | API is alive but a required dependency is blocked | preserve readiness JSON and route to the named dependency |
 | `worker` repeatedly exits despite `restart: unless-stopped` | startup/config/dependency failure, not a simple stopped service | preserve logs and dependency readiness before any restart loop |
 | `recovery-required` | candidate migration started and automatic safe completion failed | keep proxy stopped; use recorded `resume` or approved whole-state rollback |

@@ -140,6 +140,59 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).not.toContain("stale-target");
   });
 
+  it("does not no-op when the checkout is current but application containers still use an older image", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_restart=false
+      upgrade_json=false
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { return 0; }
+      wiseeff_upgrade_preflight() {
+        upgrade_previous_sha=target-sha
+        upgrade_target_sha=target-sha
+        upgrade_runtime_image_ref_api=wiseeff-app:old-sha
+        upgrade_runtime_image_ref_worker=wiseeff-app:old-sha
+        upgrade_runtime_image_ref_web=wiseeff-app:old-sha
+        upgrade_mixed_app_images=false
+        return 0
+      }
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
+      wiseeff_upgrade_init_run() { printf 'entered-full-upgrade\\n'; exit 73; }
+      wiseeff_upgrade_run_apply
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(73);
+    expect(result.stdout).toContain("entered-full-upgrade");
+    expect(result.stdout).not.toContain("already running");
+  });
+
+  it("probes public health before declaring the target application image a no-op", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_restart=false
+      upgrade_json=false
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { return 0; }
+      wiseeff_upgrade_preflight() {
+        upgrade_previous_sha=target-sha
+        upgrade_target_sha=target-sha
+        upgrade_runtime_image_ref_api=wiseeff-app:target-sha
+        upgrade_runtime_image_ref_worker=wiseeff-app:target-sha
+        upgrade_runtime_image_ref_web=wiseeff-app:target-sha
+        upgrade_mixed_app_images=false
+        return 0
+      }
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app\\n'; }
+      wiseeff_upgrade_public_probe() { printf 'public-health-passed\\n'; return 0; }
+      wiseeff_upgrade_init_run() { printf 'must-not-upgrade\\n'; exit 74; }
+      wiseeff_upgrade_run_apply
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/public-health-passed[\s\S]*already running/);
+    expect(result.stdout).not.toContain("must-not-upgrade");
+  });
+
   it("prepares the bundled base image before the candidate build", () => {
     const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-base-before-build-"));
     const result = spawnSync("bash", ["-c", `
@@ -179,7 +232,7 @@ describe("upgrade.sh public interface", () => {
     expect(readFileSync(join(runDir, "diagnostics", "build.log"), "utf8")).toContain("base-image-invalid");
   });
 
-  it("loads and retags a checksum-pinned bundled base image when the Dockerfile tag is absent", () => {
+  it("accepts the pinned config digest returned by a classic Docker image store after loading", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-base-image-"));
     const imagesDir = join(repoRoot, "ops", "self-hosted", "images");
     const runDir = join(repoRoot, "run");
@@ -194,6 +247,7 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
       "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`,
       ""
     ].join("\n"));
@@ -210,11 +264,11 @@ describe("upgrade.sh public interface", () => {
           "image inspect")
             ref="$5"
             if [ "$ref" = "node:22.21.1-alpine-amd64" ] && [ -f "$docker_state/loaded" ]; then
-              printf 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee|linux/amd64\\n'
+              printf 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|linux/amd64\\n'
               return 0
             fi
             if [ "$ref" = "node:22.21.1-alpine" ] && [ -f "$docker_state/tagged" ]; then
-              printf 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee|linux/amd64\\n'
+              printf 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc|linux/amd64\\n'
               return 0
             fi
             return 1
@@ -244,6 +298,49 @@ describe("upgrade.sh public interface", () => {
     expect(readFileSync(join(runDir, "base_image_source"), "utf8")).toBe("bundled-archive\n");
   });
 
+  it("reports both accepted digests and the actual Docker identity when a loaded image mismatches", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-base-image-mismatch-"));
+    const imagesDir = join(repoRoot, "ops", "self-hosted", "images");
+    mkdirSync(imagesDir, { recursive: true });
+    const archive = Buffer.from("verified-test-image-archive");
+    const archiveSha = createHash("sha256").update(archive).digest("hex");
+    writeFileSync(join(imagesDir, "node-test-amd64.tar"), archive);
+    writeFileSync(join(imagesDir, "base-image-bundle.env"), [
+      "WISEEFF_BASE_IMAGE_REF=node:22.21.1-alpine",
+      "WISEEFF_BASE_IMAGE_ARCHIVE=node-test-amd64.tar",
+      "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
+      "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
+      "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`,
+      ""
+    ].join("\n"));
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_repo_root="$WISEEFF_TEST_REPO_ROOT"
+      upgrade_run_dir=""
+      loaded=false
+      wiseeff_upgrade_docker() {
+        case "$1 $2" in
+          "version --format") printf 'linux/amd64\\n' ;;
+          "load -i") loaded=true ;;
+          "image inspect")
+            [ "$loaded" = "true" ] || return 1
+            printf 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|linux/amd64\\n'
+            ;;
+          *) return 92 ;;
+        esac
+      }
+      if wiseeff_upgrade_ensure_base_image; then exit 0; else exit $?; fi
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_REPO_ROOT: repoRoot } });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("manifest=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+    expect(result.stderr).toContain("config=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+    expect(result.stderr).toContain("actual=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|linux/amd64");
+  });
+
   it("rejects a modified base-image archive without asking Docker to load it", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-base-image-tampered-"));
     const imagesDir = join(repoRoot, "ops", "self-hosted", "images");
@@ -257,6 +354,7 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
       "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       ""
     ].join("\n"));
@@ -286,6 +384,7 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
       "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`
     ].join("\n");
     const planDirectory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-plan-base-"));
@@ -352,6 +451,7 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("status=ready-bundled");
     expect(result.stdout).toContain('"source":"bundled-archive"');
     expect(result.stdout).toContain('"id":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"');
+    expect(result.stdout).toContain('"configId":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"');
     expect(result.stdout).toContain(
       '"buildNetwork":{"proxy":"configured","npmRegistry":"npm.example.com","corporateCa":"not configured","runtimeProxy":false}'
     );
@@ -374,6 +474,7 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
       "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`,
       ""
     ].join("\n"));
@@ -415,6 +516,7 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64",
       "WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64",
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`,
       ""
     ].join("\n"));
@@ -856,6 +958,7 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "build_summary"), `${runDir}/diagnostics/summary.txt\n`);
     writeFileSync(join(runDir, "base_image_ref"), "node:22.21.1-alpine\n");
     writeFileSync(join(runDir, "base_image_id"), "sha256:eeee\n");
+    writeFileSync(join(runDir, "base_image_config_id"), "sha256:cccc\n");
     writeFileSync(join(runDir, "base_image_platform"), "linux/amd64\n");
     writeFileSync(join(runDir, "base_image_source"), "bundled-archive\n");
     writeFileSync(join(runDir, "base_image_status"), "ready\n");
@@ -879,6 +982,7 @@ describe("upgrade.sh public interface", () => {
       buildSummary: `${runDir}/diagnostics/summary.txt`,
       baseImageRef: "node:22.21.1-alpine",
       baseImageId: "sha256:eeee",
+      baseImageConfigId: "sha256:cccc",
       baseImagePlatform: "linux/amd64",
       baseImageSource: "bundled-archive",
       baseImageStatus: "ready",
