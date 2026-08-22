@@ -8,15 +8,14 @@ import { loadServerEnv } from "./env";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
 const gitignorePath = path.join(projectRoot, ".gitignore");
-// Live LLM/embedding endpoints stay blank locally: Xiaoze chat (AGENT_*/XIAOZE_*),
+// Live LLM/embedding endpoints stay blank locally: Xiaoze chat (XIAOZE_LLM_*),
 // log analysis (LOG_ANALYSIS_* — blank + deterministic runs the offline stub),
 // the quality-eval judge (LOG_ANALYSIS_JUDGE_* — blank means the deterministic
 // rubric stub), and knowledge-base embeddings (EMBEDDING_* — blank means FTS-only).
 const allowedBlankKeys = new Set([
-  "AGENT_API_BASE_URL",
-  "AGENT_MODEL",
-  "AGENT_API_KEY",
-  "XIAOZE_MODEL",
+  "XIAOZE_LLM_API_BASE_URL",
+  "XIAOZE_LLM_MODEL",
+  "XIAOZE_LLM_API_KEY",
   "LOG_ANALYSIS_API_BASE_URL",
   "LOG_ANALYSIS_MODEL",
   "LOG_ANALYSIS_API_KEY",
@@ -91,9 +90,9 @@ describe(".env.example", () => {
 
     const filled = {
       ...parsed,
-      AGENT_MODEL: "pilot-model",
-      AGENT_API_KEY: "local-agent-api-key",
-      AGENT_API_BASE_URL: "https://agent.example.com"
+      XIAOZE_LLM_MODEL: "pilot-model",
+      XIAOZE_LLM_API_KEY: "local-agent-api-key",
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
     };
     const serverEnv = loadServerEnv(filled);
 

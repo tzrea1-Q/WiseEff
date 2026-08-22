@@ -1,6 +1,6 @@
 # Pi Agent Provider Evidence Reference
 
-> **Superseded (2026-06-24, P1 / TD-027):** The Pi provider, `@earendil-works/pi-ai`, `AGENT_API_FORMAT=pi`, and Pi smoke scripts were removed. Xiaoze now uses LangChain `ChatOpenAI` against OpenAI-compatible `AGENT_API_*` configuration. See `docs/runbooks/agent-provider.md` and `docs/exec-plans/tech-debt-tracker.md` (TD-027).
+> **Superseded (2026-06-24, P1 / TD-027):** The Pi provider, `@earendil-works/pi-ai`, `AGENT_API_FORMAT=pi`, and Pi smoke scripts were removed. Xiaoze now uses LangChain `ChatOpenAI` configured by `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`. See `docs/runbooks/agent-provider.md` and `docs/exec-plans/tech-debt-tracker.md` (TD-027).
 
 This file is retained only as a historical pointer. Do not run the commands below; they no longer exist in the repository.
 

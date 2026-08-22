@@ -1,4 +1,5 @@
 import type { Database } from "../../shared/database/client";
+import type { ResolvedXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
@@ -15,10 +16,7 @@ export type DependencyHealth = {
 };
 
 export type XiaozeLlmEnv = {
-  AGENT_API_BASE_URL?: string;
-  AGENT_API_KEY?: string;
-  AGENT_MODEL?: string;
-  XIAOZE_MODEL?: string;
+  XIAOZE_LLM_CONFIG?: ResolvedXiaozeLlmConfig;
 };
 
 export type LogAnalysisLlmEnv = {
@@ -59,10 +57,6 @@ function readNonBlank(value: unknown) {
 }
 
 export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | undefined {
-  if (!env) {
-    return undefined;
-  }
-
   if (isXiaozeDeterministicMode()) {
     return {
       ok: true,
@@ -71,14 +65,19 @@ export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | und
     };
   }
 
-  const baseUrl = readNonBlank(env.AGENT_API_BASE_URL);
-  const apiKey = readNonBlank(env.AGENT_API_KEY);
+  const config = env?.XIAOZE_LLM_CONFIG?.config;
+  if (!config) {
+    return undefined;
+  }
+
+  const baseUrl = config.apiBaseUrl;
+  const apiKey = config.apiKey;
   const missing: string[] = [];
   if (!baseUrl) {
-    missing.push("AGENT_API_BASE_URL");
+    missing.push("XIAOZE_LLM_API_BASE_URL");
   }
   if (!apiKey) {
-    missing.push("AGENT_API_KEY");
+    missing.push("XIAOZE_LLM_API_KEY");
   }
 
   if (missing.length > 0) {
@@ -89,13 +88,10 @@ export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | und
     };
   }
 
-  const model = readNonBlank(env.XIAOZE_MODEL) ?? readNonBlank(env.AGENT_MODEL);
   const details: Record<string, string | number | boolean> = {
-    baseUrlConfigured: true
+    baseUrlConfigured: true,
+    model: config.model
   };
-  if (model) {
-    details.model = model;
-  }
 
   return {
     ok: true,

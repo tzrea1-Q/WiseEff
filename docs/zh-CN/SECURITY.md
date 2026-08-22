@@ -87,6 +87,8 @@ Agent tool 分为：
 
 批准时必须重新检查权限和业务状态。Provider 故障不能静默执行工具；降级回答允许存在，但必须跳过 tool execution 并留下可审计证据。
 
+Live Xiaoze LLM 只从 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 读取当前配置；secret、Authorization、原始 prompt 与 provider payload 不得进入诊断或证据。
+
 **Xiaoze P0 感知：** `perception.*` 工具为只读（`kind: read`，`requiresApproval: false`），必须通过与其他 Agent 工具相同的 `ToolRegistry.authorize` 边界。跨页面读取受调用方项目 scope 与权限限制；越权 tool call 返回 `FORBIDDEN`，Agent 必须给出安全的非数据回答。AG-UI 端点在流式事件前拒绝未认证请求。
 
 **Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链——`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt——且仅通过 `resolveApproval` 恢复，在事务内重新鉴权、审计 `actorType=agent`。审批状态以数据库行（`agent_tool_calls` + `agent_approvals`）为唯一载体、绝不驻留进程内存，因此 begin 与 resolve 跨重启和多副本仍然正确（ADR-0024）。`editedArgs` 在批准时重鉴权与执行之前完整替换 tool payload。执行时工具走切换后的语义路径：创建类型化绑定草稿（schema 校验、写锁），以草稿身份经 `submitParameterChanges` 提交（`actorType: "agent"`）；提交失败会删除 Agent 建的草稿。任何草稿创建之前先走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行：独立高风险写入仍用 `confirm-high-risk-write`。当 Agent 驱动的设备工具启用时，必须先落 `agent_approvals`，再把该 `approvalId` 传入调试 write/rollback；调试服务会复核该行已批准且匹配本次 tool/write，任意字符串一律拒绝。

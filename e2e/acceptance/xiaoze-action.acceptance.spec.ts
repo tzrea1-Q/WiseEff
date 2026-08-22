@@ -11,6 +11,7 @@ import {
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
 import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
+import { assertDeterministicXiaozeReady } from "./helpers/xiaozeDeterministicEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -262,6 +263,10 @@ test.beforeAll(async () => {
       [projectId, parameterId]
     );
   });
+});
+
+test.beforeEach(async ({ request }, testInfo) => {
+  await assertDeterministicXiaozeReady(request, testInfo);
 });
 
 test.beforeEach(async () => {

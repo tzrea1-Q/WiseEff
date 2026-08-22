@@ -116,12 +116,12 @@ copy .env.example .env
 Then fill these blank live Xiaoze LLM values only if testing non-deterministic Agent behavior:
 
 ```text
-AGENT_API_BASE_URL=
-AGENT_MODEL=
-AGENT_API_KEY=
+XIAOZE_LLM_API_BASE_URL=
+XIAOZE_LLM_MODEL=
+XIAOZE_LLM_API_KEY=
 ```
 
-For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
+For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.
 
 For staging or pilot acceptance, use the target environment's secret manager or local-only `.env.staging.local`. Never commit secrets.
 
@@ -134,7 +134,7 @@ Required target inputs:
 - `AUTH_TOKEN_HMAC_SECRET`
 - `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION`
 - object-storage endpoint, bucket, access key, and secret when `OBJECT_STORE_MODE=s3`
-- `AGENT_API_BASE_URL`, model, and API key when live Xiaoze LLM evidence is in scope, or `XIAOZE_DETERMINISTIC=true` for offline acceptance
+- `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` when live Xiaoze LLM evidence is in scope, or `XIAOZE_DETERMINISTIC=true` for offline acceptance
 - HDC smoke variables when real device-lab evidence is in scope
 - backup/restore target and rollback window
 

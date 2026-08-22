@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "./app";
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
+import { resolveXiaozeLlmConfig } from "./config/xiaozeLlmConfig";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { createMetricsRegistry } from "./observability/metrics";
@@ -437,8 +438,10 @@ describe("WiseEff API", () => {
           checkHealth: async () => ({ ok: true as const, status: "ready" as const })
         },
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key"
+          }),
           LOG_ANALYSIS_DETERMINISTIC: true
         }
       }),
@@ -498,9 +501,11 @@ describe("WiseEff API", () => {
           checkHealth: async () => ({ ok: true as const, status: "ready" as const })
         },
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
-          XIAOZE_MODEL: "model-a",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key",
+            XIAOZE_LLM_MODEL: "model-a"
+          }),
           LOG_ANALYSIS_DETERMINISTIC: true
         }
       }),
@@ -845,9 +850,11 @@ describe("WiseEff API", () => {
           HDC_TIMEOUT_MS: 5000,
           ADB_TIMEOUT_MS: 5000,
           DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
-          AGENT_MODEL: "pilot-model",
-          AGENT_API_KEY: "agent-key",
-          AGENT_API_BASE_URL: "https://agent.example.com",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_MODEL: "pilot-model",
+            XIAOZE_LLM_API_KEY: "agent-key",
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
+          }),
           AGENT_API_TIMEOUT_MS: 5000,
           LOG_WORKER_ENABLED: false,
           LOG_ANALYSIS_API_TIMEOUT_MS: 30000,
@@ -956,9 +963,11 @@ describe("WiseEff API", () => {
           HDC_TIMEOUT_MS: 5000,
           ADB_TIMEOUT_MS: 5000,
           DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
-          AGENT_MODEL: "pilot-model",
-          AGENT_API_KEY: "agent-key",
-          AGENT_API_BASE_URL: "https://agent.example.com",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_MODEL: "pilot-model",
+            XIAOZE_LLM_API_KEY: "agent-key",
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
+          }),
           AGENT_API_TIMEOUT_MS: 5000,
           LOG_WORKER_ENABLED: false,
           LOG_ANALYSIS_API_TIMEOUT_MS: 30000,

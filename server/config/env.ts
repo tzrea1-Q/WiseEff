@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  resolveXiaozeLlmConfig,
+  type ResolvedXiaozeLlmConfig
+} from "./xiaozeLlmConfig";
 
 const rawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -32,9 +36,6 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  AGENT_MODEL: z.string().optional(),
-  AGENT_API_KEY: z.string().optional(),
-  AGENT_API_BASE_URL: z.string().optional(),
   AGENT_API_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   EMBEDDING_API_BASE_URL: z.string().optional(),
   EMBEDDING_MODEL: z.string().optional(),
@@ -92,7 +93,6 @@ const rawEnvSchema = z.object({
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
   DEVICE_BRIDGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
   DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws"),
-  XIAOZE_MODEL: z.string().optional(),
   XIAOZE_PROACTIVE_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -104,10 +104,15 @@ const rawEnvSchema = z.object({
   XIAOZE_CHECKPOINTER: z.enum(["memory", "postgres"]).default("memory")
 });
 
-export type ServerEnv = z.infer<typeof rawEnvSchema>;
+type ParsedServerEnv = z.infer<typeof rawEnvSchema>;
+
+export type ServerEnv = ParsedServerEnv & {
+  XIAOZE_LLM_CONFIG: ResolvedXiaozeLlmConfig;
+};
 
 export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   const env = rawEnvSchema.parse(raw);
+  const xiaozeLlmConfig = resolveXiaozeLlmConfig(raw);
 
   if (env.NODE_ENV === "production" && !env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required in production");
@@ -163,5 +168,8 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
     throw new Error("LOG_WEBHOOK_ALLOW_INSECURE_LOCAL is a local-development flag and must stay false in production");
   }
 
-  return env;
+  return {
+    ...env,
+    XIAOZE_LLM_CONFIG: xiaozeLlmConfig
+  };
 }

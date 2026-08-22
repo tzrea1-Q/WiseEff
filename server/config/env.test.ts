@@ -17,6 +17,26 @@ const productionOidcEnv = {
 } as const;
 
 describe("loadServerEnv", () => {
+  it("exposes only the normalized Xiaoze LLM resolver result to runtime consumers", () => {
+    const env = loadServerEnv({
+      XIAOZE_LLM_API_BASE_URL: " https://agent.example.com/v1 ",
+      XIAOZE_LLM_MODEL: " pilot-model ",
+      XIAOZE_LLM_API_KEY: " local-secret "
+    });
+
+    expect(env.XIAOZE_LLM_CONFIG).toEqual({
+      source: "canonical",
+      config: {
+        apiBaseUrl: "https://agent.example.com/v1",
+        model: "pilot-model",
+        apiKey: "local-secret"
+      },
+      diagnostics: []
+    });
+    expect(env).not.toHaveProperty("XIAOZE_LLM_API_KEY");
+    expect(env).not.toHaveProperty("AGENT_API_KEY");
+  });
+
   it("loads defaults for local development", () => {
     const env = loadServerEnv({});
 
@@ -41,9 +61,11 @@ describe("loadServerEnv", () => {
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
     expect(env.ADB_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
-    expect(env.AGENT_MODEL).toBeUndefined();
-    expect(env.AGENT_API_KEY).toBeUndefined();
-    expect(env.AGENT_API_BASE_URL).toBeUndefined();
+    expect(env.XIAOZE_LLM_CONFIG).toEqual({
+      source: "default",
+      config: { apiBaseUrl: undefined, model: "gpt-4o-mini", apiKey: undefined },
+      diagnostics: []
+    });
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
     expect(env.LOG_WORKER_ENABLED).toBe(true);
     expect(env.XIAOZE_REASONING_FALLBACK_HEURISTIC).toBe(false);
@@ -74,9 +96,9 @@ describe("loadServerEnv", () => {
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
       HDC_TIMEOUT_MS: "2500",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-      AGENT_MODEL: "pilot-model",
-      AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_LLM_MODEL: "pilot-model",
+      XIAOZE_LLM_API_KEY: "secret",
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
       AGENT_API_TIMEOUT_MS: "1500",
       LOG_WORKER_ENABLED: "false",
       XIAOZE_REASONING_FALLBACK_HEURISTIC: "true"
@@ -100,9 +122,11 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBe("key");
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBe("secret");
     expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
-    expect(env.AGENT_MODEL).toBe("pilot-model");
-    expect(env.AGENT_API_KEY).toBe("secret");
-    expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
+    expect(env.XIAOZE_LLM_CONFIG.config).toEqual({
+      apiBaseUrl: "https://agent.example.com",
+      model: "pilot-model",
+      apiKey: "secret"
+    });
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.LOG_WORKER_ENABLED).toBe(false);
     expect(env.XIAOZE_REASONING_FALLBACK_HEURISTIC).toBe(true);
@@ -203,9 +227,9 @@ describe("loadServerEnv", () => {
       AUTH_OIDC_AUDIENCE: "wiseeff-api",
       AUTH_OIDC_JWKS_URI: "https://id.example.com/realms/wiseeff/protocol/openid-connect/certs",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-      AGENT_MODEL: "pilot-model",
-      AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_LLM_MODEL: "pilot-model",
+      XIAOZE_LLM_API_KEY: "secret",
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
       XIAOZE_CHECKPOINTER: "postgres"
     });
 
@@ -228,9 +252,9 @@ describe("loadServerEnv", () => {
       AUTH_MODE: "production",
       AUTH_PROVIDER: "local",
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-      AGENT_MODEL: "pilot-model",
-      AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_LLM_MODEL: "pilot-model",
+      XIAOZE_LLM_API_KEY: "secret",
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
       XIAOZE_CHECKPOINTER: "postgres"
     });
 
@@ -255,9 +279,9 @@ describe("loadServerEnv", () => {
         AUTH_TOKEN_ISSUER: "wiseeff-prod",
         AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
         DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_KEY: "secret",
-        AGENT_API_BASE_URL: "https://agent.example.com"
+        XIAOZE_LLM_MODEL: "pilot-model",
+        XIAOZE_LLM_API_KEY: "secret",
+        XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
       })
     ).toThrow("AUTH_PROVIDER=oidc or AUTH_PROVIDER=local is required when NODE_ENV=production");
   });
@@ -275,9 +299,9 @@ describe("loadServerEnv", () => {
         AUTH_MODE: "production",
         AUTH_PROVIDER: "oidc",
         DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_KEY: "secret",
-        AGENT_API_BASE_URL: "https://agent.example.com"
+        XIAOZE_LLM_MODEL: "pilot-model",
+        XIAOZE_LLM_API_KEY: "secret",
+        XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
       })
     ).toThrow("AUTH_OIDC_ISSUER and AUTH_OIDC_AUDIENCE are required when AUTH_PROVIDER=oidc");
   });
@@ -297,9 +321,9 @@ describe("loadServerEnv", () => {
   it("requires a live device gateway in production unless simulator staging is explicitly allowed", () => {
     const productionEnv = {
       ...productionOidcEnv,
-      AGENT_MODEL: "pilot-model",
-      AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com"
+      XIAOZE_LLM_MODEL: "pilot-model",
+      XIAOZE_LLM_API_KEY: "secret",
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
     };
 
     expect(() =>
@@ -328,9 +352,9 @@ describe("loadServerEnv", () => {
       loadServerEnv({
         ...productionOidcEnv,
         XIAOZE_CHECKPOINTER: "memory",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_KEY: "secret",
-        AGENT_API_BASE_URL: "https://agent.example.com",
+        XIAOZE_LLM_MODEL: "pilot-model",
+        XIAOZE_LLM_API_KEY: "secret",
+        XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
         DEBUG_DEVICE_GATEWAY_MODE: "adb"
       })
     ).toThrow("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production");

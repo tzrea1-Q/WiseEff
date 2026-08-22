@@ -17,6 +17,7 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 自托管观测性通过 `ops/self-hosted/scripts/observability up` 一键启动 Prometheus、Grafana、Alertmanager 和 exporter，自动装载四套 Dashboard 并探测 API、worker、web、proxy、PostgreSQL、Redis、对象存储和监控组件；UI 默认只绑定 loopback。
+- 小泽 live LLM 的当前配置入口是 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`；离线文档与验收使用显式 deterministic 模式。
 
 ## 同类中文文档
 

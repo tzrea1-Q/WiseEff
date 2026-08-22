@@ -16,6 +16,7 @@ import {
   type SelfHostSecrets,
   type SelfHostTlsMode
 } from "./selfhost-answers";
+import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
 
 export const acmeDeployProfile = "acme";
 export const acmeCaddyfile = "Caddyfile.example";
@@ -175,9 +176,9 @@ function renderAcmeEnv(answers: SelfHostAnswers, secrets: SelfHostSecrets) {
     "DEVICE_BRIDGE_LAB_AVAILABLE=false",
     `DEVICE_BRIDGE_SERVER_URL=${publicUrl}`,
     "",
-    `AGENT_API_BASE_URL=${answers.agentApiBaseUrl}`,
-    `AGENT_MODEL=${answers.agentModel}`,
-    `AGENT_API_KEY=${answers.agentApiKey}`,
+    `XIAOZE_LLM_API_BASE_URL=${answers.agentApiBaseUrl}`,
+    `XIAOZE_LLM_MODEL=${answers.agentModel}`,
+    `XIAOZE_LLM_API_KEY=${answers.agentApiKey}`,
     "AGENT_API_TIMEOUT_MS=30000",
     "XIAOZE_CHECKPOINTER=postgres",
     `XIAOZE_DETERMINISTIC=${xiaozeDeterministic}`,
@@ -290,13 +291,14 @@ function evaluateAcmeEnv(env: Record<string, string | undefined>): IpLabPrefligh
     issues.push({ level: "error", message: "WISEEFF_LAB_ADMIN_PASSWORD must be at least 8 characters." });
   }
 
+  const xiaozeLlm = resolveXiaozeLlmConfig(env).config;
   const xiaozeReady =
     (env.XIAOZE_DETERMINISTIC ?? "").trim() === "true" ||
-    Boolean(env.AGENT_API_BASE_URL?.trim() && env.AGENT_API_KEY?.trim());
+    Boolean(xiaozeLlm.apiBaseUrl && xiaozeLlm.apiKey);
   if (!xiaozeReady) {
     issues.push({
       level: "error",
-      message: "Set XIAOZE_DETERMINISTIC=true or provide AGENT_API_BASE_URL and AGENT_API_KEY."
+      message: "Set XIAOZE_DETERMINISTIC=true or provide XIAOZE_LLM_API_BASE_URL and XIAOZE_LLM_API_KEY."
     });
   }
   const logAnalysisReady =
@@ -335,6 +337,7 @@ export function evaluateSelfHostCaddyfile(text: string, tlsMode: SelfHostTlsMode
 }
 
 export function summarizeEnv(env: Record<string, string | undefined>) {
+  const xiaozeLlm = resolveXiaozeLlmConfig(env).config;
   return {
     profile: env.WISEEFF_DEPLOY_PROFILE?.trim() || "unknown",
     tlsMode: env.WISEEFF_TLS_MODE?.trim() || "",
@@ -342,9 +345,9 @@ export function summarizeEnv(env: Record<string, string | undefined>) {
     adminUsername: env.WISEEFF_LAB_ADMIN_USERNAME?.trim() || "",
     seed: env.WISEEFF_LAB_SEED?.trim() || "chargelab",
     llm:
-      env.AGENT_API_KEY?.trim() && env.LOG_ANALYSIS_API_KEY?.trim()
+      xiaozeLlm.apiKey && env.LOG_ANALYSIS_API_KEY?.trim()
         ? "xiaoze+logs"
-        : env.AGENT_API_KEY?.trim()
+        : xiaozeLlm.apiKey
           ? "xiaoze"
           : "skip"
   };

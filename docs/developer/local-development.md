@@ -11,7 +11,7 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
 - PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
 - Device Tree Compiler (`dtc`). Install it through the repository bootstrap below; M1 seed treats it as required.
-- Optional: live Xiaoze LLM credentials (`AGENT_API_*`) if you are testing non-deterministic Agent behavior.
+- Optional: live Xiaoze LLM values (`XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`) if you are testing non-deterministic Agent behavior.
 
 ## First Setup
 
@@ -52,12 +52,12 @@ Operator procedure: [../runbooks/parameter-identity-cutover.md](../runbooks/para
 On PowerShell, edit `.env` and fill only these blank values when testing live Xiaoze LLM behavior:
 
 ```text
-AGENT_API_BASE_URL=
-AGENT_MODEL=
-AGENT_API_KEY=
+XIAOZE_LLM_API_BASE_URL=
+XIAOZE_LLM_MODEL=
+XIAOZE_LLM_API_KEY=
 ```
 
-Fill `AGENT_API_*` in `.env` / `.env.local` when testing live Xiaoze LLM behavior.
+Fill `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` in `.env` / `.env.local` when testing live Xiaoze LLM behavior.
 
 To keep live LLM secrets out of `.env`, copy `.env.local.example` to `.env.local`. That file is gitignored and overrides `.env` at runtime.
 

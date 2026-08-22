@@ -52,7 +52,9 @@ describe("self-host answers", () => {
         })
       )
     ).toEqual(
-      expect.arrayContaining(["Xiaoze LLM requires --agent-api-base-url, --agent-model, and --agent-api-key."])
+      expect.arrayContaining([
+        "Xiaoze LLM requires --agent-api-base-url and --agent-api-key; model defaults to gpt-4o-mini."
+      ])
     );
   });
 

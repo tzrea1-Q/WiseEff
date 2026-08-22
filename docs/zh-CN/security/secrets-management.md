@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：security。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 小泽 current 配置为 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`；其中 API key 是 secret。canonical/legacy 迁移诊断只允许记录 code 与键名，不得记录 endpoint、model value、API key value、Authorization 或原始 prompt。
 
 ## 同类中文文档
 

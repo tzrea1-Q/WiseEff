@@ -48,9 +48,9 @@ M1-M5 的写入路径都会产生审计事件：
 
 Agent 工具只能通过后端 registry 执行。mutating tool 必须先创建 approval record，再在 approval-time 重新校验 authz 和状态。
 
-Xiaoze 使用 LangChain `ChatOpenAI` 连接 OpenAI-compatible `AGENT_API_*` endpoint。模型输出在 WiseEff registry、authz、approval 和 audit 接受前都是 advisory。
+Xiaoze 使用 LangChain `ChatOpenAI`，由 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 配置。组三键按组原子解析；旧别名只用于迁移读取，当前模板只写 canonical 键。模型输出在 WiseEff registry、authz、approval 和 audit 接受前都是 advisory。
 
-Provider evidence 可以记录 model id、trace id、usage、cost、safety 和 fallback；不能记录 `AGENT_API_KEY`、Authorization header、raw prompt、raw provider payload 或客户数据。离线验收使用 `XIAOZE_DETERMINISTIC=true`；live-key staging/pilot 证据使用 `npm run smoke:m5` 和 Xiaoze acceptance specs。
+Provider evidence 可以记录 model id、trace id、usage、cost、safety 和 fallback；不能记录 `XIAOZE_LLM_API_KEY`、Authorization header、raw prompt、raw provider payload 或客户数据。迁移诊断只能记录 code 和 canonical/legacy 键名。离线验收使用 `XIAOZE_DETERMINISTIC=true`；live-key staging/pilot 证据使用 `npm run smoke:m5` 和 Xiaoze acceptance specs。
 
 Provider 不可用时允许降级 assistant response，但不能静默执行工具。provider outage、unsafe response、fallback reason 都应该留下 readiness 或 trace 证据。
 

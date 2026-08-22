@@ -390,8 +390,8 @@ P2 adds a LangGraph planning loop on the backend (intent → perceive → plan �
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | Enables proactive read-only suggestions in `AgentInsightBar` via `useXiaozeSuggestions`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. |
 | `XIAOZE_PROACTIVE_ENABLED` (API) | `false` | Registers `POST /api/v1/agent/xiaoze/suggest` for read-only proactive suggestions. |
 | `XIAOZE_DETERMINISTIC` (API) | `false` | Offline deterministic model for acceptance/tests (no live LLM). |
-| `XIAOZE_MODEL` (API) | falls back to `AGENT_MODEL` | Model name for LangChain `ChatOpenAI`. |
-| `AGENT_API_BASE_URL`, `AGENT_MODEL`, `AGENT_API_KEY` (API) | blank locally | OpenAI-compatible LLM endpoint for live Xiaoze runs when `XIAOZE_DETERMINISTIC` is not set. |
+| `XIAOZE_LLM_MODEL` (API) | `gpt-4o-mini` | Model name for LangChain `ChatOpenAI`. |
+| `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_API_KEY` (API) | blank locally | OpenAI-compatible LLM endpoint and secret for live Xiaoze runs when `XIAOZE_DETERMINISTIC` is not set. Any present `XIAOZE_LLM_*` key selects the whole canonical group; blanks do not fall back to legacy aliases. |
 
 Xiaoze acceptance specs live under `e2e/acceptance/xiaoze-*.acceptance.spec.ts` and require `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 

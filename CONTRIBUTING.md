@@ -35,7 +35,7 @@ npm run dts:toolchain:check
 
 Semantic parameter-identity cutover rehearsal commands (`parameter-identities:migrate` / `cutover` / `check`) are operator-only. Follow [docs/runbooks/parameter-identity-cutover.md](docs/runbooks/parameter-identity-cutover.md); never continue after a failed `--apply`.
 
-Fill `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
+Fill `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The canonical group is atomic: if any canonical key is present, blank values are explicit and legacy aliases are ignored. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
 
 ## Development Rules
 

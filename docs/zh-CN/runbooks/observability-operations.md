@@ -18,6 +18,7 @@
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 自托管 Compose 已提供 `observability` profile，包含 Prometheus、Grafana、Alertmanager、blackbox exporter、Node exporter、PostgreSQL exporter 和 Redis exporter。
 - Grafana 会自动装载 Prometheus 数据源以及 `WiseEff Services`、`WiseEff Overview`、`WiseEff Jobs`、`WiseEff Security Operations` 四套面板，不需要手工导入 JSON。
+- 排查 `WiseEffXiaozeLlmFailure` 时核对 `/health/ready` 与 canonical `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY`；日志和迁移诊断不得包含 endpoint、model value 或 API key value。
 
 ## 一键启动
 

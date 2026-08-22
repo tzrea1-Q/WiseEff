@@ -228,7 +228,7 @@ If any target proof is not available, keep the matching status as `pending` or `
 
 ### WiseEffXiaozeLlmFailure
 
-1. Check Xiaoze LLM health through `/health/ready` and confirm `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` when not running with `XIAOZE_DETERMINISTIC=true`.
+1. Check Xiaoze LLM health through `/health/ready` and confirm `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` when not running with `XIAOZE_DETERMINISTIC=true`.
 2. Capture model id, timeout, readiness message, and request ID from `/health/ready` or pilot-readiness details.
 3. For offline acceptance, set `XIAOZE_DETERMINISTIC=true` and rerun `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts`.
 4. Compare `/metrics` with readiness JSON. `wiseeff_xiaoze_llm_ready` should reflect Xiaoze LLM readiness.

@@ -45,7 +45,7 @@ MVP 中的 "agentic" 指两层含义，第三层显式保留演进空间：
 ## 检索与 RAG
 
 - **存储**：切块行存于 PostgreSQL，带 pgvector embedding 列及全文/trigram 索引（ADR-0025）。不引入独立向量数据库。
-- **Embedding**：OpenAI 兼容的 `EMBEDDING_API_*` 端点，镜像 `AGENT_API_*` 的接缝。自托管部署可指向本地 OpenAI 兼容推理服务。未配置时知识库以纯全文检索模式运行：功能完整可用，仅无语义检索。
+- **Embedding**：OpenAI 兼容的 `EMBEDDING_API_*` 端点，镜像小泽 canonical 接缝（`XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`）。自托管部署可指向本地 OpenAI 兼容推理服务。未配置时知识库以纯全文检索模式运行：功能完整可用，仅无语义检索。
 - **索引管线**：异步 worker 接缝，镜像日志分析模块（默认轮询、可接队列）。发布、编辑、归档动作入队索引刷新；失败在 `/knowledge-admin` 按条目呈现状态并提供重建动作。索引永远可从已发布版本重建。
 - **切块**：markdown 按标题结构感知切分并带重叠；抽取文本按段落窗口切分。切块携带条目与版本标识，引用可深链接。
 - **混合检索**：有 embedding 时向量相似度与全文排名融合；否则仅全文。CJK 注意事项：PostgreSQL 默认 FTS 不分词 CJK 文本，Phase 1 用 trigram 匹配覆盖 CJK、标准 FTS 覆盖拉丁文本；专用中文分词器留作未来选项。

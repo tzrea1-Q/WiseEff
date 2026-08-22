@@ -53,6 +53,10 @@ describe("ip lab profile helpers", () => {
     expect(env.VITE_WISEEFF_API_BASE_URL).toBe("http://203.0.113.10");
     expect(env.XIAOZE_DETERMINISTIC).toBe("true");
     expect(env.LOG_ANALYSIS_DETERMINISTIC).toBe("true");
+    expect(env).toHaveProperty("XIAOZE_LLM_API_BASE_URL", "");
+    expect(env).toHaveProperty("XIAOZE_LLM_MODEL", "");
+    expect(env).toHaveProperty("XIAOZE_LLM_API_KEY", "");
+    expect(env).not.toHaveProperty("AGENT_API_KEY");
     const result = evaluateIpLabEnv(env);
     expect(result.status).toBe("passed");
     expect(result.issues.every((issue) => issue.level === "warning")).toBe(true);
@@ -62,8 +66,8 @@ describe("ip lab profile helpers", () => {
     const env = parseEnvText(renderIpLabEnv(validLabInput));
     env.DATABASE_URL = "postgres://wiseeff:${POSTGRES_PASSWORD}@postgres:5432/wiseeff";
     env.XIAOZE_DETERMINISTIC = "false";
-    env.AGENT_API_BASE_URL = "";
-    env.AGENT_API_KEY = "";
+    env.XIAOZE_LLM_API_BASE_URL = "";
+    env.XIAOZE_LLM_API_KEY = "";
     env.WISEEFF_CADDYFILE = "Caddyfile.example";
     env.WISEEFF_TLS_MODE = "http";
 
@@ -72,7 +76,7 @@ describe("ip lab profile helpers", () => {
     expect(result.issues.map((issue) => issue.message)).toEqual(
       expect.arrayContaining([
         "DATABASE_URL must embed the expanded POSTGRES_PASSWORD.",
-        "Set XIAOZE_DETERMINISTIC=true or provide AGENT_API_BASE_URL and AGENT_API_KEY.",
+        "Set XIAOZE_DETERMINISTIC=true or provide XIAOZE_LLM_API_BASE_URL and XIAOZE_LLM_API_KEY.",
         "WISEEFF_CADDYFILE must be Caddyfile.ip-lab when WISEEFF_TLS_MODE=http."
       ])
     );

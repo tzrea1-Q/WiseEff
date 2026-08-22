@@ -87,7 +87,7 @@ npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 npm run build
 ```
 
-These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `AGENT_API_*` values.
+These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` values.
 
 ## Log Analysis Eval (two layers)
 

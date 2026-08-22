@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
+> **Configuration supersession (2026-08-22):** Future Xiaoze commands in this still-open evidence plan use the canonical atomic `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` group. This updates future execution only and does not rewrite or claim historical target evidence.
+
 
 
 **Goal:** Execute the real staging pilot evidence gate for the merged M0-M5 baseline and record verifiable proof for live API, PostgreSQL-backed E2E, worker/object storage, HDC device-lab, backup/restore, rollback, and live Agent provider readiness.
@@ -63,7 +65,7 @@ Completion decision, 2026-06-02: keep this plan in `docs/exec-plans/active/`. Fu
 ## Success Criteria
 
 - `origin/main` includes the M5.1 documentation governance changes before M5.2 starts.
-- Staging runs with production-style configuration: `AUTH_MODE=production`, PostgreSQL, `OBJECT_STORE_MODE=s3`, `DEBUG_DEVICE_GATEWAY_MODE=hdc`, and live Xiaoze LLM configuration (`AGENT_API_*`, or `XIAOZE_DETERMINISTIC=true` for offline acceptance).
+- Staging runs with production-style configuration: `AUTH_MODE=production`, PostgreSQL, `OBJECT_STORE_MODE=s3`, `DEBUG_DEVICE_GATEWAY_MODE=hdc`, and either the atomic canonical Xiaoze LLM group (`XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, `XIAOZE_LLM_API_KEY`) for live evidence or `XIAOZE_DETERMINISTIC=true` for offline acceptance. Legacy-only aliases remain a migration input with a warning, not the normative live configuration.
 - `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness` are checked against the live staging API.
 - `npm run smoke:m5` runs against a live API URL without `M5_SMOKE_ALLOW_NO_API=true`.
 - PostgreSQL-backed API-mode E2E runs for parameter management, log analysis, debugging, and Agent flows.
@@ -184,9 +186,9 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=operator-provided-secret-key
 OBJECT_STORAGE_REGION=operator-provided-region
 DEBUG_DEVICE_GATEWAY_MODE=hdc
 HDC_TIMEOUT_MS=5000
-AGENT_API_BASE_URL=operator-provided-agent-api-base-url
-AGENT_MODEL=operator-provided-model
-AGENT_API_KEY=operator-provided-agent-api-key
+XIAOZE_LLM_API_BASE_URL=operator-provided-agent-api-base-url
+XIAOZE_LLM_MODEL=operator-provided-model
+XIAOZE_LLM_API_KEY=operator-provided-agent-api-key
 AGENT_API_TIMEOUT_MS=30000
 WISEEFF_API_BASE_URL=operator-provided-staging-api-url
 M5_CONTRACT_CHECK_PASSED=true
@@ -235,7 +237,7 @@ Commit: `<commit-sha-recorded-during-execution>`
 - Auth: `AUTH_MODE=production`; issuer recorded; HMAC secret redacted.
 - Object storage: `OBJECT_STORE_MODE=s3`; bucket name redacted or environment-labeled.
 - Device gateway: `DEBUG_DEVICE_GATEWAY_MODE=hdc`.
-- Xiaoze LLM: `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`, or `XIAOZE_DETERMINISTIC=true` for offline acceptance; model recorded if safe.
+- Xiaoze LLM: `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`, or `XIAOZE_DETERMINISTIC=true` for offline acceptance; model recorded if safe.
 - Smoke authorization: admin token present; token redacted.
 ```
 
@@ -723,7 +725,7 @@ curl -fsS "$WISEEFF_API_BASE_URL/health/ready"
 Expected:
 
 - `dependencies.xiaozeLlm` is ready.
-- Live `AGENT_API_*` values are configured, or `XIAOZE_DETERMINISTIC=true` is set for offline acceptance.
+- The atomic canonical group is selected for live evidence: if any canonical raw key is present, blank values are explicit and no legacy fallback occurs. A legacy-only migration input may remain temporarily with secret-safe warnings, or `XIAOZE_DETERMINISTIC=true` is set for offline acceptance.
 
 - [ ] **Step 2: Run Xiaoze acceptance against PostgreSQL**
 
@@ -741,7 +743,7 @@ Expected:
 
 - [ ] **Step 3: Verify LLM outage behavior**
 
-In a controlled staging window, point `AGENT_API_BASE_URL` to an unavailable endpoint or use an approved provider outage simulation. Then run the smallest Agent request that exercises provider health.
+In a controlled staging window, point `XIAOZE_LLM_API_BASE_URL` to an unavailable endpoint or use an approved provider outage simulation. Then run the smallest Agent request that exercises provider health.
 
 Expected:
 
@@ -756,7 +758,7 @@ Append to `docs/generated/m5-pilot-acceptance.md`:
 ```markdown
 ### Live Agent Provider Evidence
 
-- `XIAOZE_DETERMINISTIC=true` or live `AGENT_API_*`: verified.
+- `XIAOZE_DETERMINISTIC=true` or the live canonical `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` group: verified; any legacy-only migration input is identified as migration evidence with secret-safe warnings.
 - Agent API-mode E2E: passed.
 - Provider trace metadata: latency/token/cost/safety/fallback fields recorded.
 - Provider outage behavior: no mutating tool executed; fallback/readiness evidence recorded.

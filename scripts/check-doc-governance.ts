@@ -8,6 +8,80 @@ export const completedPlansDir = "docs/exec-plans/completed";
 export const zhActivePlansDir = "docs/zh-CN/exec-plans/active";
 export const zhCompletedPlansDir = "docs/zh-CN/exec-plans/completed";
 export const requiredSections = ["## Documentation Impact Matrix", "## Documentation Update Gate"];
+export const currentXiaozeLlmInstructionDocs = [
+  "ARCHITECTURE.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "docs/FRONTEND.md",
+  "docs/QUALITY_SCORE.md",
+  "docs/README.md",
+  "docs/RELIABILITY.md",
+  "docs/SECURITY.md",
+  "docs/design-docs/2026-08-12-knowledge-base-design.md",
+  "docs/design-docs/deployment-operations.md",
+  "docs/design-docs/full-stack-architecture.md",
+  "docs/design-docs/security-governance.md",
+  "docs/design-docs/testing-strategy.md",
+  "docs/developer/environment-variables.md",
+  "docs/developer/local-development.md",
+  "docs/developer/verification-matrix.md",
+  "docs/exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md",
+  "docs/exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md",
+  "docs/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md",
+  "docs/references/pi-agent-provider-evidence.md",
+  "docs/runbooks/agent-provider.md",
+  "docs/runbooks/m5-commercial-pilot-readiness.md",
+  "docs/runbooks/manual-acceptance.md",
+  "docs/runbooks/observability-operations.md",
+  "docs/security/secrets-management.md",
+  "docs/zh-CN/QUALITY_SCORE.md",
+  "docs/zh-CN/README.md",
+  "docs/zh-CN/SECURITY.md",
+  "docs/zh-CN/backend-runtime.md",
+  "docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md",
+  "docs/zh-CN/design-docs/deployment-operations.md",
+  "docs/zh-CN/design-docs/full-stack-architecture.md",
+  "docs/zh-CN/design-docs/security-governance.md",
+  "docs/zh-CN/design-docs/testing-strategy.md",
+  "docs/zh-CN/developer/environment-variables.md",
+  "docs/zh-CN/developer/local-development.md",
+  "docs/zh-CN/developer/verification-matrix.md",
+  "docs/zh-CN/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md",
+  "docs/zh-CN/frontend.md",
+  "docs/zh-CN/manual-acceptance.md",
+  "docs/zh-CN/root/ARCHITECTURE.md",
+  "docs/zh-CN/root/CONTRIBUTING.md",
+  "docs/zh-CN/root/README.md",
+  "docs/zh-CN/runbooks/agent-provider.md",
+  "docs/zh-CN/runbooks/m5-commercial-pilot-readiness.md",
+  "docs/zh-CN/runbooks/observability-operations.md",
+  "docs/zh-CN/security-reliability.md",
+  "docs/zh-CN/security/secrets-management.md"
+] as const;
+export const canonicalXiaozeLlmOperatorDocs = [
+  "docs/developer/environment-variables.md",
+  "docs/developer/local-development.md",
+  "docs/runbooks/agent-provider.md",
+  "docs/runbooks/m5-commercial-pilot-readiness.md",
+  "docs/runbooks/manual-acceptance.md",
+  "docs/zh-CN/backend-runtime.md",
+  "docs/zh-CN/developer/environment-variables.md",
+  "docs/zh-CN/developer/local-development.md",
+  "docs/zh-CN/manual-acceptance.md",
+  "docs/zh-CN/runbooks/agent-provider.md",
+  "docs/zh-CN/runbooks/m5-commercial-pilot-readiness.md"
+] as const;
+const canonicalXiaozeLlmKeys = [
+  "XIAOZE_LLM_API_BASE_URL",
+  "XIAOZE_LLM_MODEL",
+  "XIAOZE_LLM_API_KEY"
+] as const;
+const xiaozeLegacyFallbackStart = "<!-- xiaoze-llm-legacy-fallback:start -->";
+const xiaozeLegacyFallbackEnd = "<!-- xiaoze-llm-legacy-fallback:end -->";
+const xiaozeLegacyFallbackDocs = new Set([
+  "docs/developer/environment-variables.md",
+  "docs/zh-CN/developer/environment-variables.md"
+]);
 export const requiredRepositoryDocs = [
   "README.md",
   "CONTRIBUTING.md",
@@ -57,9 +131,9 @@ export const requiredEnvExampleKeys = [
   "WISEEFF_LOCAL_RESTORE_DIR",
   "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION",
   "HDC_TIMEOUT_MS",
-  "AGENT_API_BASE_URL",
-  "AGENT_MODEL",
-  "AGENT_API_KEY",
+  "XIAOZE_LLM_API_BASE_URL",
+  "XIAOZE_LLM_MODEL",
+  "XIAOZE_LLM_API_KEY",
   "AGENT_API_TIMEOUT_MS",
   "LOG_ANALYSIS_API_BASE_URL",
   "LOG_ANALYSIS_MODEL",
@@ -77,6 +151,77 @@ export const requiredEnvExampleKeys = [
   "LOG_ANALYSIS_QUEUE_BACKOFF_MS",
   "LOG_ANALYSIS_QUEUE_CONCURRENCY"
 ];
+
+export function validateCurrentXiaozeLlmInstructions(docPath: string, content: string): string[] {
+  const normalizedPath = docPath.replace(/\\/g, "/");
+  const errors = (canonicalXiaozeLlmOperatorDocs as readonly string[]).includes(normalizedPath)
+    ? canonicalXiaozeLlmKeys
+        .filter((key) => !content.includes(key))
+        .map((key) => `${normalizedPath} is missing canonical Xiaoze LLM key ${key}.`)
+    : [];
+  const allowsLegacyFallback = xiaozeLegacyFallbackDocs.has(normalizedPath);
+  if (
+    !allowsLegacyFallback &&
+    (content.includes(xiaozeLegacyFallbackStart) || content.includes(xiaozeLegacyFallbackEnd))
+  ) {
+    errors.push(
+      `${normalizedPath} may not declare a Xiaoze LLM legacy fallback block; only the English and Chinese environment-variable guides may contain one.`
+    );
+  }
+  let inLegacyFallback = false;
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (trimmed === xiaozeLegacyFallbackStart) {
+      if (!allowsLegacyFallback) {
+        continue;
+      }
+      if (inLegacyFallback) {
+        errors.push(`${normalizedPath} has nested Xiaoze LLM legacy fallback markers.`);
+      } else {
+        inLegacyFallback = true;
+      }
+      continue;
+    }
+    if (trimmed === xiaozeLegacyFallbackEnd) {
+      if (!allowsLegacyFallback) {
+        continue;
+      }
+      if (!inLegacyFallback) {
+        errors.push(`${normalizedPath} has an unmatched Xiaoze LLM legacy fallback end marker.`);
+      } else {
+        inLegacyFallback = false;
+      }
+      continue;
+    }
+
+    for (const match of line.matchAll(/AGENT_API_\*|AGENT_API_BASE_URL|AGENT_API_KEY|AGENT_MODEL|XIAOZE_MODEL/g)) {
+      if (!inLegacyFallback) {
+        errors.push(
+          `${normalizedPath} treats legacy Xiaoze LLM key ${match[0]} as a current instruction outside an explicit canonical-group-absent migration fallback.`
+        );
+      }
+    }
+  }
+
+  if (inLegacyFallback) {
+    errors.push(`${normalizedPath} has an unclosed Xiaoze LLM legacy fallback marker.`);
+  }
+
+  return errors;
+}
+
+export async function validateCurrentXiaozeLlmInstructionDocs(root = process.cwd()): Promise<string[]> {
+  const checks = await Promise.all(
+    currentXiaozeLlmInstructionDocs.map(async (docPath) => {
+      const content = await readFile(path.join(root, docPath), "utf8");
+      return validateCurrentXiaozeLlmInstructions(docPath, content);
+    })
+  );
+
+  return checks.flat();
+}
 
 export function validatePlanDocument(planPath: string, content: string): string[] {
   const normalizedPath = planPath.replace(/\\/g, "/");
@@ -305,14 +450,15 @@ export async function validateM6RunbookCommands(root = process.cwd()): Promise<s
 }
 
 export async function validateDocumentationRepository(root = process.cwd()): Promise<string[]> {
-  const [activePlanErrors, duplicatePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors] = await Promise.all([
+  const [activePlanErrors, duplicatePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors, xiaozeLlmInstructionErrors] = await Promise.all([
     validateActivePlans(root),
     validateNoDuplicatePlanFilenames(root),
     validateRequiredRepositoryDocs(root),
     validateEnvExample(root),
     validateMarkdownLinks(root),
     validateBilingualDeveloperDocs(root),
-    validateM6RunbookCommands(root)
+    validateM6RunbookCommands(root),
+    validateCurrentXiaozeLlmInstructionDocs(root)
   ]);
 
   return [
@@ -322,7 +468,8 @@ export async function validateDocumentationRepository(root = process.cwd()): Pro
     ...envErrors,
     ...linkErrors,
     ...bilingualErrors,
-    ...m6RunbookErrors
+    ...m6RunbookErrors,
+    ...xiaozeLlmInstructionErrors
   ];
 }
 

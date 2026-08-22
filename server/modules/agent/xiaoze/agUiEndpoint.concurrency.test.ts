@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import type { createAgentToolRegistry } from "../toolRegistry";
@@ -51,6 +51,44 @@ function createFakeRegistry(calls: RecordedCall[]) {
  * activeSink.
  */
 describe("createXiaozeAgentFactory request isolation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("runs without constructing the production model in deterministic mode", async () => {
+    vi.stubEnv("XIAOZE_DETERMINISTIC", "true");
+    const productionModelFactory = vi.fn(() => {
+      throw new Error("external provider model must not be constructed");
+    });
+    const factory = createXiaozeAgentFactory({
+      db: stubDb,
+      env: {
+        XIAOZE_LLM_CONFIG: {
+          source: "canonical",
+          config: { model: "provider-model" },
+          diagnostics: []
+        },
+        XIAOZE_CHECKPOINTER: "memory",
+        XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
+        DATABASE_URL: undefined
+      },
+      modelFactory: productionModelFactory,
+      checkpointer: createXiaozeCheckpointer(),
+      toolRegistry: createFakeRegistry([]),
+      approvalResolver: { resolveApproval: vi.fn() }
+    });
+
+    const agent = factory({ auth: authFor("deterministic-user"), requestId: "req-deterministic", sessionId: "t-deterministic" });
+    const result = await agent.run({
+      message: "hello",
+      context: {},
+      threadId: "t-deterministic"
+    });
+
+    expect(result.text).toBeTruthy();
+    expect(productionModelFactory).toHaveBeenCalledTimes(0);
+  });
+
   it("keeps auth context and sink per request when runs overlap", async () => {
     const calls: RecordedCall[] = [];
     let releaseSlow: (() => void) | undefined;

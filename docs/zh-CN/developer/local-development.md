@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：developer。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- live 小泽在 `.env` 中使用 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`；离线开发/验收使用 `XIAOZE_DETERMINISTIC=true`，不会请求外部 provider。
 
 ## dtc 与 M1 全量种子
 

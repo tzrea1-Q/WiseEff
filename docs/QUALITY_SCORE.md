@@ -73,7 +73,7 @@ Remaining M3.5 risks: readiness checks still use local object storage rather tha
 
 Xiaoze is covered by AG-UI endpoint, LangGraph planning, tool registry, orchestrator approval-bridge, perception/action tool tests, frontend `XiaozeProvider`/`XiaozeApprovalCard` tests, and `e2e/acceptance/xiaoze-*.acceptance.spec.ts`. Negative tests cover approval-required mutating tools, stale approval state, inactive users, missing permissions, validation failures, and approval execution failure audit correlation.
 
-Remaining Xiaoze risks: local acceptance depends on an external PostgreSQL `DATABASE_URL`; deterministic mode covers the standard UI acceptance path; live LLM quality still needs target-environment evaluation with real `AGENT_API_*` credentials; generated OpenAPI clients, prompt safety evaluation, durable Postgres checkpointing (TD-029), and target LLM outage drills remain deferred.
+Remaining Xiaoze risks: local acceptance depends on an external PostgreSQL `DATABASE_URL`; deterministic mode covers the standard UI acceptance path; live LLM quality still needs target-environment evaluation with real `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` configuration; generated OpenAPI clients, prompt safety evaluation, durable Postgres checkpointing (TD-029), and target LLM outage drills remain deferred.
 
 ## M5 Coverage
 
