@@ -12,24 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-export type XiaozeApprovalInterrupt = {
-  approvalId: string;
-  toolCallId?: string;
-  toolName: string;
-  payload: {
-    projectId?: string;
-    parameterId?: string;
-    targetValue?: string;
-    reason?: string;
-    /** action.createKnowledgeDraft fields. */
-    title?: string;
-    contentMarkdown?: string;
-    tags?: string[];
-    sourceLogId?: string;
-  };
-  citations?: Array<{ id: string; label: string; href?: string; snippet?: string }>;
-};
+import type { XiaozeInterruptPayload } from "@wiseeff/xiaoze-protocol";
 
 export type XiaozeApprovalResolveValue = {
   decision: "approve" | "reject";
@@ -47,7 +30,7 @@ function KnowledgeDraftApprovalContent({
   interrupt,
   resolve
 }: {
-  interrupt: XiaozeApprovalInterrupt;
+  interrupt: XiaozeInterruptPayload;
   resolve: (value: XiaozeApprovalResolveValue) => void;
 }) {
   const [title, setTitle] = useState(interrupt.payload.title ?? "");
@@ -109,7 +92,7 @@ export function XiaozeApprovalCardContent({
   interrupt,
   resolve
 }: {
-  interrupt: XiaozeApprovalInterrupt;
+  interrupt: XiaozeInterruptPayload;
   resolve: (value: XiaozeApprovalResolveValue) => void;
 }) {
   const [targetValue, setTargetValue] = useState(interrupt.payload.targetValue ?? "");

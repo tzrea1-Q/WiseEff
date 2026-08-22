@@ -1,24 +1,15 @@
 import { ApiError } from "../../../shared/http/errors";
-import type { AgentCitation, AgentToolResult } from "../types";
+import type { AgentToolResult } from "../types";
+import type { z } from "zod";
+import {
+  xiaozeSuggestContextSchema,
+  xiaozeSuggestionItemSchema,
+  xiaozeSuggestResponseSchema
+} from "../../contracts/dtoSchemas";
 
-export type XiaozeSuggestContext = {
-  projectId?: string;
-  projectName?: string;
-  pageKey?: string;
-  path?: string;
-};
-
-export type XiaozeSuggestionItem = {
-  id: string;
-  tone: "neutral" | "warning" | "danger";
-  headline: string;
-  meta?: string;
-  citations: AgentCitation[];
-};
-
-export type XiaozeSuggestResult = {
-  suggestions: XiaozeSuggestionItem[];
-};
+export type XiaozeSuggestContext = z.infer<typeof xiaozeSuggestContextSchema>;
+export type XiaozeSuggestionItem = z.infer<typeof xiaozeSuggestionItemSchema>;
+export type XiaozeSuggestResult = z.infer<typeof xiaozeSuggestResponseSchema>;
 
 const PAGE_SUGGEST_TOOLS: Record<string, string> = {
   "parameter-review": "perception.getProjectOverview",

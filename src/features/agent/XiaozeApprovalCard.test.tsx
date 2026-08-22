@@ -12,6 +12,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a1",
+          toolCallId: "call-a1",
           toolName: "action.submitParameterChange",
           payload: { projectId: "p1", parameterId: "pd1", targetValue: "42" },
           citations: []
@@ -34,6 +35,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a1",
+          toolCallId: "call-a1",
           toolName: "action.submitParameterChange",
           payload: {
             projectId: "p1",
@@ -56,6 +58,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a1",
+          toolCallId: "call-a1",
           toolName: "action.submitParameterChange",
           payload: { projectId: "p1", parameterId: "pd1", targetValue: "42" },
           citations: []
@@ -73,6 +76,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a1",
+          toolCallId: "call-a1",
           toolName: "action.submitParameterChange",
           payload: { projectId: "p1", parameterId: "pd1", targetValue: "42" },
           citations: []
@@ -95,6 +99,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a2",
+          toolCallId: "call-a2",
           toolName: "action.submitParameterChange",
           payload: { projectId: "p1", parameterId: "pd1", targetValue: "42" },
           citations: []
@@ -115,6 +120,7 @@ describe("XiaozeApprovalCard", () => {
       <XiaozeApprovalCardContent
         interrupt={{
           approvalId: "a2",
+          toolCallId: "call-a2",
           toolName: "action.createKnowledgeDraft",
           payload: {
             title: "快充温控排查经验",

@@ -1390,7 +1390,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "XiaozeAgUiRunRequest",
     responseBody: "GenericObjectResponse"
   },
-  "xiaoze.suggest": { summary: "Run Xiaoze proactive suggest pass", tags: ["agent"], responseBody: "GenericObjectResponse" },
+  "xiaoze.suggest": {
+    summary: "Run Xiaoze proactive suggest pass",
+    tags: ["agent"],
+    requestBody: "XiaozeSuggestRequest",
+    responseBody: "XiaozeSuggestResponse"
+  },
   "xiaoze.listThreads": { summary: "List Xiaoze chat threads", tags: ["agent"], responseBody: "XiaozeThreadListResponse" },
   "xiaoze.createThread": {
     summary: "Create Xiaoze chat thread id",

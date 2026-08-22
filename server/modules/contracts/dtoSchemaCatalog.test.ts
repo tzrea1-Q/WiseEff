@@ -49,4 +49,13 @@ describe("DTO schema catalog coverage", () => {
     expect(schemaRegistry["xiaoze.run"]?.requestBody).toBe("XiaozeAgUiRunRequest");
     expect(schemaRegistry["xiaoze.run"]?.responseBody).toBe("GenericObjectResponse");
   });
+
+  it("publishes concrete Xiaoze suggest request and response schemas", () => {
+    expect(schemaRegistry["xiaoze.suggest"]).toMatchObject({
+      requestBody: "XiaozeSuggestRequest",
+      responseBody: "XiaozeSuggestResponse"
+    });
+    expect(dtoSchemaCatalog.XiaozeSuggestRequest).toBeDefined();
+    expect(dtoSchemaCatalog.XiaozeSuggestResponse).toBeDefined();
+  });
 });

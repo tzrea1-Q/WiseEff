@@ -1,10 +1,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestionsClient";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozePageContext } from "./xiaozePageContext";
 
-vi.mock("./xiaozeHttpAgent", () => ({
-  resolveXiaozeAuthorizationHeader: vi.fn().mockResolvedValue("Bearer test")
+vi.mock("@/infrastructure/http/xiaozeSuggestionsClient", () => ({
+  requestXiaozeSuggestions: vi.fn()
 }));
 
 function SuggestionsProbe({ enabled }: { enabled: boolean }) {
@@ -25,16 +27,21 @@ function SuggestionsProbe({ enabled }: { enabled: boolean }) {
 }
 
 describe("useXiaozeSuggestions", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          suggestions: [{ id: "s1", tone: "warning", headline: "有 3 条参数变更待审阅", meta: "项目：Demo 项目" }]
-        })
-      })
-    );
+    vi.clearAllMocks();
+    vi.mocked(requestXiaozeSuggestions).mockResolvedValue([
+      {
+        id: "s1",
+        tone: "warning",
+        headline: "有 3 条参数变更待审阅",
+        meta: "项目：Demo 项目",
+        citations: []
+      }
+    ]);
   });
 
   it("fetches suggestions when enabled", async () => {
@@ -47,7 +54,12 @@ describe("useXiaozeSuggestions", () => {
     );
 
     await waitFor(() => expect(screen.getByText("有 3 条参数变更待审阅")).toBeInTheDocument());
-    expect(fetch).toHaveBeenCalled();
+    expect(requestXiaozeSuggestions).toHaveBeenCalledWith({
+      path: "/parameters",
+      pageKey: "parameters",
+      projectId: "p1",
+      projectName: "Demo 项目"
+    });
   });
 
   it("fetches nothing when disabled", async () => {
@@ -60,7 +72,7 @@ describe("useXiaozeSuggestions", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("0"));
-    expect(fetch).not.toHaveBeenCalled();
+    expect(requestXiaozeSuggestions).not.toHaveBeenCalled();
   });
 
   it("fetches nothing when the page does not support proactive insights", async () => {
@@ -71,6 +83,27 @@ describe("useXiaozeSuggestions", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("0"));
-    expect(fetch).not.toHaveBeenCalled();
+    expect(requestXiaozeSuggestions).not.toHaveBeenCalled();
+  });
+
+  it("fails closed and reports typed client errors", async () => {
+    const error = new WiseEffApiError(
+      "INTERNAL_ERROR",
+      "XiaozeSuggestResponse contract validation failed.",
+      { reason: "contract-drift", schemaName: "XiaozeSuggestResponse" },
+      ""
+    );
+    vi.mocked(requestXiaozeSuggestions).mockRejectedValueOnce(error);
+    const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    render(
+      <XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+        <SuggestionsProbe enabled />
+      </XiaozePageContext.Provider>
+    );
+
+    await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("count")).toHaveTextContent("0");
+    expect(report).toHaveBeenCalledWith("Failed to load Xiaoze suggestions.", error);
   });
 });

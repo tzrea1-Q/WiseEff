@@ -1,24 +1,24 @@
 import { useInterrupt } from "@copilotkit/react-core/v2";
+import type { XiaozeInterruptPayload } from "@wiseeff/xiaoze-protocol";
 import {
   XiaozeApprovalCardContent,
-  type XiaozeApprovalInterrupt,
   type XiaozeApprovalResolveValue
 } from "./XiaozeApprovalCardContent";
 
-export type { XiaozeApprovalInterrupt, XiaozeApprovalResolveValue };
+export type { XiaozeApprovalResolveValue };
 export { XiaozeApprovalCardContent };
 
 type XiaozeApprovalCardProps = {
-  interrupt?: XiaozeApprovalInterrupt;
+  interrupt?: XiaozeInterruptPayload;
   resolve?: (value: XiaozeApprovalResolveValue) => void;
 };
 
 function XiaozeApprovalCardInterrupt() {
   useInterrupt({
-    enabled: (event) => Boolean((event.value as XiaozeApprovalInterrupt | undefined)?.approvalId),
+    enabled: (event) => Boolean((event.value as XiaozeInterruptPayload | undefined)?.approvalId),
     render: ({ event, resolve }) => (
       <XiaozeApprovalCardContent
-        interrupt={event.value as XiaozeApprovalInterrupt}
+        interrupt={event.value as XiaozeInterruptPayload}
         resolve={(value) => void resolve(value)}
       />
     )

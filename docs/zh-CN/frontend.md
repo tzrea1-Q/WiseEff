@@ -244,8 +244,8 @@ Xiaoze（小泽，唯一 Agent）：
 - API mode（`VITE_WISEEFF_RUNTIME_MODE=api`）始终挂载 `XiaozeProvider`（CopilotKit V2 + `HttpAgent`），SSE 对接 `POST /api/v1/agent/xiaoze`；`XiaozePageContextRegistrar` 声明 `wiseeff.page` 上下文。
 - mock mode 不挂载任何 Agent UI，前端也不发起 Agent HTTP 请求。
 - P0：`perception.*` 只读工具。
-- P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案；低风险前端工具仅保留 `navigateTo`（`useFrontendTool`，不写库）——原 `prefillParameterValue` 因注册表无任何页面消费、会让小泽虚报「已预填」而被移除。审批卡已全中文化（批准 / 拒绝 / 目标值），payload 携带理由时渲染「变更理由」区块；拒绝提供可选理由输入（默认「在小泽对话中被拒绝」），随 interrupt resolve 的 `reason` 字段回传。
-- P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`useXiaozeSuggestions` 调用 `POST /api/v1/agent/xiaoze/suggest`，在 `AgentInsightBar` 展示只读主动建议；点击建议可预填打开小泽聊天。
+- P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案；低风险前端工具仅保留 `navigateTo`（`useFrontendTool`，不写库）——原 `prefillParameterValue` 因注册表无任何页面消费、会让小泽虚报「已预填」而被移除。审批卡已全中文化（批准 / 拒绝 / 目标值），payload 携带理由时渲染「变更理由」区块；拒绝提供可选理由输入（默认「在小泽对话中被拒绝」），随 interrupt resolve 的 `reason` 字段回传。`on_interrupt` emitter、审批卡与服务端 Zod schema 都编译依赖零依赖协议包中唯一的 `XiaozeInterruptPayload` shape。
+- P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`src/infrastructure/http/xiaozeSuggestionsClient.ts` 负责带认证的 `POST /api/v1/agent/xiaoze/suggest` 请求与响应合同解析；`useXiaozeSuggestions` 只消费类型化建议，并在失败时关闭为空 insight 列表。点击建议可预填打开小泽聊天。
 - live LLM 使用 `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY`（OpenAI-compatible）；验收可用 `XIAOZE_DETERMINISTIC=true`。
 
 用户和身份：

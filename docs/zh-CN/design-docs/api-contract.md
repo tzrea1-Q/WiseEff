@@ -718,12 +718,14 @@ Dashboard hotspot（`GET /api/v1/parameters/dashboard/hotspots`）对租户绑�
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/agent/xiaoze` | AG-UI SSE agent run |
-| `POST` | `/api/v1/agent/xiaoze/suggest` | 只读主动建议（opt-in） |
+| `POST` | `/api/v1/agent/xiaoze/suggest` | 只读主动建议（opt-in）；请求 `{ context?: { projectId?, projectName?, pageKey?, path? } }`，响应 `{ suggestions: [{ id, tone, headline, meta?, citations }] }` |
 | `GET` | `/api/v1/agent/xiaoze/threads` | 列出持久化 thread |
 | `POST` | `/api/v1/agent/xiaoze/threads` | 创建 thread |
 | `GET` | `/api/v1/agent/xiaoze/threads/:threadId` | thread 详情 |
 | `PATCH` | `/api/v1/agent/xiaoze/threads/:threadId` | 更新 thread 元数据 |
 | `DELETE` | `/api/v1/agent/xiaoze/threads/:threadId` | 删除 thread |
+
+suggest 的畸形请求返回 `400 VALIDATION_FAILED`；成功响应若与合同漂移，前端失败关闭为空列表。五类 WiseEff CUSTOM frame 都有具体 Zod payload/envelope schema，并由测试直接校验 `xiaozeTurnStream` 的真实产物。流传输仍由 `@ag-ui/client` 处理，不增加 fetch wrapper、不替换 parser；通用 AG-UI SSE run 响应仍不按普通 JSON response 建模。
 
 小泽 mutating 工具通过 AG-UI interrupt 与 orchestrator approval 链执行；不再暴露 `/api/v1/agent/sessions/*` REST 路由。
 
