@@ -21,6 +21,17 @@ chmod +x scripts/setup.sh scripts/doctor.sh
 
 Full 模式还会问 TLS（HTTP、Caddy `tls internal`、或 Let's Encrypt）、是否跳过种子，以及可选的小泽 / 日志分析密钥。
 
+企业服务器只能通过代理获取外部构建依赖时，应先准备私有传输契约，再执行 setup：
+
+```bash
+./scripts/build-network.sh init
+# 编辑 .build-network.env，并保持权限 0600。
+./scripts/build-network.sh status
+./scripts/setup.sh
+```
+
+setup 预检会应用与升级相同的构建代理、内部 npm 源和组织批准 CA 契约。不创建文件时，现有 shell 代理变量也会生效。优先级、TLS、运行时代理、Docker daemon 和凭据边界见[自托管升级：受限网络构建配置](upgrade.zh-CN.md#受限网络构建配置)。
+
 ## Flag（同一套答案，不提问）
 
 ```bash
@@ -71,7 +82,7 @@ npm run selfhost:doctor -- --env-file ops/self-hosted/.env
 
 ## 前置
 
-- Docker Engine 20.10+，以及 Compose v2 或独立 `docker-compose` 1.28+。
+- Docker Engine 20.10+ 和 Docker Compose v2。该 runtime 使用 build secret，不再支持独立 Compose v1。
 - 本仓库的一份 git checkout。服务器不必装 Node.js。
 - 首次镜像构建大约需要 4 GB 内存。
 

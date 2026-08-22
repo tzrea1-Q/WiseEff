@@ -4,6 +4,8 @@ set -euo pipefail
 
 # shellcheck source=operation-lock.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/operation-lock.sh"
+# shellcheck source=build-network-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/build-network-lib.sh"
 
 wiseeff_upgrade_usage() {
   cat <<'EOF'
@@ -22,6 +24,7 @@ Actions:
 Options:
   --ref REF                     Git ref; defaults to WISEEFF_UPGRADE_REF or origin/main.
   --git-proxy URL               HTTP(S)/SOCKS proxy for resolving the Git ref (or WISEEFF_UPGRADE_GIT_PROXY).
+  --build-network-file PATH     Private proxy/registry/CA data file (defaults to .build-network.env).
   --env-file PATH               Runtime env file; defaults to ops/self-hosted/.env.
   --state-dir PATH              Upgrade journal root.
   --backup-root PATH            Upgrade backup root.
@@ -129,6 +132,10 @@ wiseeff_upgrade_write_status() {
     printf 'base_image_platform=%s\n' "$(wiseeff_upgrade_state_read base_image_platform)"
     printf 'base_image_source=%s\n' "$(wiseeff_upgrade_state_read base_image_source)"
     printf 'base_image_status=%s\n' "$(wiseeff_upgrade_state_read base_image_status)"
+    printf 'build_proxy_status=%s\n' "$(wiseeff_upgrade_state_read build_proxy_status)"
+    printf 'npm_registry_host=%s\n' "$(wiseeff_upgrade_state_read npm_registry_host)"
+    printf 'corporate_ca_status=%s\n' "$(wiseeff_upgrade_state_read corporate_ca_status)"
+    printf 'runtime_proxy_status=%s\n' "$(wiseeff_upgrade_state_read runtime_proxy_status)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
   chmod 600 "$temp_path"
@@ -808,6 +815,7 @@ wiseeff_upgrade_preflight() {
   wiseeff_upgrade_validate_env || return $?
   wiseeff_upgrade_validate_backup_root || return $?
   wiseeff_upgrade_validate_worktree || return $?
+  wiseeff_build_network_prepare "$upgrade_compose_dir" "$upgrade_build_network_file" || return $?
   if ! wiseeff_upgrade_docker info >/dev/null; then
     wiseeff_upgrade_die 10 "Docker daemon is unavailable to the deployment user. Run sudo ./scripts/upgrade.sh prepare-host --yes once, reconnect, then retry without sudo."
     return $?
@@ -822,18 +830,27 @@ wiseeff_upgrade_preflight() {
 wiseeff_upgrade_print_plan() {
   local migrations_count=0
   local escaped_ref
+  local build_proxy build_registry build_ca runtime_proxy
   escaped_ref="$(wiseeff_upgrade_json_escape "$upgrade_ref")"
+  build_proxy="${WISEEFF_BUILD_NETWORK_PROXY_STATUS:-not configured}"
+  build_registry="$(wiseeff_build_network_registry_host)"
+  build_ca="$(wiseeff_build_network_ca_status)"
+  runtime_proxy="${WISEEFF_RUNTIME_PROXY:-false}"
   if [ -n "$upgrade_migrations" ]; then
     migrations_count="$(printf '%s\n' "$upgrade_migrations" | sed '/^$/d' | wc -l | tr -d ' ')"
   fi
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","platform":"%s","source":"%s","status":"%s"}}\n' \
+    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","platform":"%s","source":"%s","status":"%s"},"buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","runtimeProxy":%s}}\n' \
       "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_ref")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_id")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_platform")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_source")" \
-      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_status")"
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_status")" \
+      "$(wiseeff_upgrade_json_escape "$build_proxy")" \
+      "$(wiseeff_upgrade_json_escape "$build_registry")" \
+      "$(wiseeff_upgrade_json_escape "$build_ca")" \
+      "$runtime_proxy"
     return 0
   fi
   printf 'WiseEff self-hosted upgrade plan\n'
@@ -848,6 +865,10 @@ wiseeff_upgrade_print_plan() {
     printf '  base image: %s (%s, verified bundle; apply will load and tag it)\n' "$upgrade_base_image_ref" "$upgrade_base_image_platform"
   fi
   printf '  base image id: %s\n' "$upgrade_base_image_id"
+  printf '  build proxy: %s\n' "$build_proxy"
+  printf '  npm registry: %s\n' "$build_registry"
+  printf '  corporate CA: %s\n' "$build_ca"
+  printf '  runtime proxy: %s\n' "$runtime_proxy"
   if [ "${upgrade_mixed_app_images:-false}" = "true" ]; then
     printf '  compatibility: preserving legacy API/worker/web images separately for rollback\n'
   fi
@@ -911,6 +932,10 @@ wiseeff_upgrade_store_plan() {
   wiseeff_upgrade_state_write base_image_id "$upgrade_base_image_id"
   wiseeff_upgrade_state_write base_image_platform "$upgrade_base_image_platform"
   wiseeff_upgrade_state_write base_image_status "$upgrade_base_image_status"
+  wiseeff_upgrade_state_write build_proxy_status "${WISEEFF_BUILD_NETWORK_PROXY_STATUS:-not configured}"
+  wiseeff_upgrade_state_write npm_registry_host "$(wiseeff_build_network_registry_host)"
+  wiseeff_upgrade_state_write corporate_ca_status "$(wiseeff_build_network_ca_status)"
+  wiseeff_upgrade_state_write runtime_proxy_status "${WISEEFF_RUNTIME_PROXY:-false}"
   if [ -n "$upgrade_migrations" ]; then
     wiseeff_upgrade_state_write migration_changed true
   else
@@ -1114,15 +1139,15 @@ wiseeff_upgrade_write_build_failure_summary() {
   elif grep -Eqi 'SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|self signed certificate|certificate verify failed' "$upgrade_build_log"; then
     category="corporate-ca"
     message="The image build could not validate the package registry certificate chain."
-    next_step="Install the organization-approved CA in the Docker build trust path; do not disable TLS verification."
+    next_step="Set WISEEFF_BUILD_CA_CERT_FILE in .build-network.env to the organization-approved PEM, run ./scripts/build-network.sh status, and rerun apply; do not disable TLS verification."
   elif grep -Eqi 'EAI_AGAIN|ENOTFOUND|temporary failure in name resolution|could not resolve host' "$upgrade_build_log"; then
     category="dns"
     message="The Docker build could not resolve a required package or image host."
-    next_step="Check Docker daemon/build DNS and proxy settings, then rerun apply."
+    next_step="Run ./scripts/build-network.sh status and check the managed proxy/no_proxy values. If the failed line is image metadata or an image pull, configure Docker daemon DNS/proxy separately; then rerun apply."
   elif grep -Eqi 'ETIMEDOUT|ECONNRESET|ECONNREFUSED|connection timed out|failed to connect' "$upgrade_build_log"; then
     category="network"
     message="The Docker build could not reach a required package or image endpoint."
-    next_step="Check the Docker service/build proxy and firewall path, then rerun apply."
+    next_step="Run ./scripts/build-network.sh status and correct .build-network.env proxy/registry settings. If the failed line is image metadata or an image pull, configure the Docker daemon proxy separately; then rerun apply."
   elif grep -Eqi 'EINTEGRITY|integrity checksum failed|integrity check failed' "$upgrade_build_log"; then
     category="registry-integrity"
     message="npm reported a package integrity mismatch."
@@ -1814,7 +1839,13 @@ wiseeff_upgrade_status() {
     if [ -f "${state_root}/${requested_run_id}/status" ]; then
       if [ "${upgrade_json}" = "true" ]; then
         local run_dir="${state_root}/${requested_run_id}"
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","nextAction":"%s"}\n' \
+        local runtime_proxy_status
+        runtime_proxy_status="$(cat "${run_dir}/runtime_proxy_status" 2>/dev/null || printf 'false')"
+        case "$runtime_proxy_status" in
+          true|false) ;;
+          *) runtime_proxy_status=false ;;
+        esac
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","runtimeProxy":%s},"nextAction":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -1832,6 +1863,10 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_platform" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_source" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_status" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_proxy_status" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/npm_registry_host" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/corporate_ca_status" 2>/dev/null || true)")" \
+          "$runtime_proxy_status" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"
@@ -1879,6 +1914,7 @@ wiseeff_upgrade_main() {
   upgrade_action="apply"
   upgrade_ref="${WISEEFF_UPGRADE_REF:-origin/main}"
   upgrade_git_proxy="${WISEEFF_UPGRADE_GIT_PROXY:-}"
+  upgrade_build_network_file="${WISEEFF_BUILD_NETWORK_FILE:-${upgrade_compose_dir}/.build-network.env}"
   upgrade_state_dir=""
   upgrade_backup_root=""
   upgrade_run_id=""
@@ -1910,6 +1946,11 @@ wiseeff_upgrade_main() {
       --git-proxy)
         [ "$#" -ge 2 ] || { wiseeff_upgrade_die 2 "--git-proxy requires a value."; return $?; }
         upgrade_git_proxy="$2"
+        shift 2
+        ;;
+      --build-network-file)
+        [ "$#" -ge 2 ] || { wiseeff_upgrade_die 2 "--build-network-file requires a value."; return $?; }
+        upgrade_build_network_file="$2"
         shift 2
         ;;
       --env-file)

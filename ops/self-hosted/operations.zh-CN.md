@@ -22,6 +22,7 @@ cd /srv/wiseeff/ops/self-hosted
 | 某个停止或缺失的服务需要在不构建的情况下对齐 | `./scripts/compose --env-file .env up -d --no-build` | 使用 Compose 当前解析到的镜像启动或创建；不可变 SHA 升级后应先核对镜像身份。 |
 | 部署最新代码并保留完整数据 | 先 `./scripts/upgrade.sh plan`，再 `./scripts/upgrade.sh apply` | 解析唯一 commit、创建并校验恢复点、迁移、全量重建并验收。 |
 | 重新创建相同的已部署 commit | `./scripts/upgrade.sh apply --restart --ref <sha>` | SHA 相同时仍执行完整受保护升级流程。 |
+| 企业代理/npm 镜像源/CA 配置 | `./scripts/build-network.sh init`，编辑后执行 `status` | 创建并校验 setup/upgrade 共用的私有构建传输契约。 |
 | 监控生命周期 | `./scripts/observability <up|status|logs|restart|down>` | 只操作私有监控 profile。 |
 | setup/upgrade 锁冲突 | `./scripts/upgrade.sh lock-status`，仅当 stale 时执行 `unlock` | 查看或安全清理陈旧锁元数据，不结束真实运行中的操作。 |
 
@@ -35,6 +36,7 @@ cd /srv/wiseeff/ops/self-hosted
 | `./scripts/setup.sh` | 首次配置，以及按 access/admin/seed/LLM section 重新配置。 |
 | `./scripts/doctor.sh` | 静态配置诊断，可选探测在线服务。 |
 | `./scripts/upgrade.sh` | 数据保留升级、同 SHA 重建、宿主机准备、journal 状态、resume、rollback 和锁恢复。 |
+| `./scripts/build-network.sh` | 初始化并安全展示受限网络代理、npm 源和组织批准 CA 契约。 |
 | `./scripts/observability` | 内置 Prometheus/Grafana/Alertmanager 生命周期。 |
 | `./scripts/seed-demo-data.sh` | 仅用于 demo/staging 的 ChargeLab 数据；禁止用于客户或生产数据。 |
 | `./scripts/memory-mode.sh` | 在低内存宿主机上切换本地开发与自托管 runtime 的兼容工具；不是常规生产生命周期入口。 |
@@ -46,6 +48,7 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/setup.sh --help
 ./scripts/doctor.sh --help
 ./scripts/upgrade.sh --help
+./scripts/build-network.sh --help
 ./scripts/observability --help
 ```
 
@@ -102,6 +105,31 @@ stat -c '%A %U %G %n' .env /var/backups/wiseeff/upgrades
 ```
 
 `.env` 权限保持 `600`；备份目录保持 `700`，备份文件保持 `600`。
+
+## 企业受限网络
+
+由部署用户配置构建传输，不要加 `sudo`：
+
+```bash
+./scripts/build-network.sh init
+chmod 600 .build-network.env
+# 只编辑 .build-network.env 中已有的文档化变量。
+./scripts/build-network.sh status
+./scripts/upgrade.sh plan
+```
+
+`status` 可安全用于日常工单：只显示是否已配置及 npm registry 主机名，不显示代理 URL 或凭据。setup 和 upgrade 会自动读取该契约；如需放在受保护的其他位置，可传 `--build-network-file <path>`。不创建文件时，当前 shell 已 export 的代理变量仍会生效。
+
+排查时先判断失败属于哪个网络边界：
+
+| 失败操作 | 网络责任方 | 正确修复入口 |
+| --- | --- | --- |
+| `git fetch` / 目标解析 | 部署用户的 Git/libcurl | shell/Git 代理或 upgrade `--git-proxy` |
+| 应用构建内的 `RUN apk`、`git clone`、`pip` 或 `npm ci` | 受管 BuildKit 参数、内部 registry、组织批准 CA | `.build-network.env`，再执行 `build-network.sh status` |
+| 未被基础镜像 bundle 覆盖的 `FROM` metadata 或镜像拉取 | Docker daemon / BuildKit service | 在 WiseEff 外部配置并重启 Docker daemon 代理/DNS |
+| 启动后 API/worker 的外部调用 | runtime 容器环境 | 通过 `WISEEFF_RUNTIME_PROXY=true` 显式开启，并保持内部服务名位于 `NO_PROXY` |
+
+禁止用 `strict-ssl=false`、`NODE_TLS_REJECT_UNAUTHORIZED=0` 或全局关闭证书校验解决企业 TLS 检查；应让 `WISEEFF_BUILD_CA_CERT_FILE` 指向组织批准的 PEM。解析器会在构建开始前拒绝不安全权限、符号链接、未知/重复 key、大小写代理冲突、带凭据的 registry URL 和非法 CA。
 
 ## 首次安装与重新配置
 

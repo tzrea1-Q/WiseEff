@@ -250,6 +250,10 @@ The Compose file gains an explicit application image repository/tag variable so 
 
 The bundle contract pins archive filename/hash, archive tag, Dockerfile tag, image ID, and platform. It is parsed as data rather than sourced as shell. The current repository bundle covers only the Dockerfile's Node base image on `linux/amd64`; package-manager and source downloads remain separate network/trust boundaries.
 
+Restricted-network inputs form a separate deep module behind `build-network.sh`. A mode-`0600`, non-symlink data file accepts only proxy pairs, one npm registry URL, one approved PEM path, and an explicit runtime-proxy boolean. Shell proxy variables remain an input for interactive operators; ambiguous upper/lower pairs fail closed. The controller exports Docker predefined proxy build arguments, uses an npm registry host-replacement policy for lockfile-resolved tarballs, and mounts the CA through a BuildKit secret into every build stage. It records only safe status fields. It does not source configuration, put proxy values in Dockerfile `ENV`, disable TLS, rewrite Docker daemon configuration, or send runtime proxy values to data-plane containers by default.
+
+The pinned DTC source is also the source of the Python `libfdt` binding. The builder creates both the DTC binaries/libraries and a Meson wheel from the same commit; runtime installs that wheel before installing `dtschema` without dependency resolution. This avoids the incompatible legacy `pylibfdt` source distribution while keeping `dtc`, `fdtoverlay`, `libfdt`, and the recorded toolchain version aligned. Alpine build/runtime YAML dependencies and `/opt/dtc/lib` resolution are explicit and guarded by the self-hosted config check.
+
 ### 3. Quiesce writes
 
 1. Pause durable queue intake through a small queue-maintenance command executed inside the current application image.
@@ -327,7 +331,7 @@ Rollback without data restore is allowed automatically only when migration start
 
 The first release containing this module must still be installed through the current manual upgrade procedure. From that release onward, `upgrade.sh` is the supported source-checkout upgrade entry.
 
-The implementation must support both Compose v2 and the repository's documented standalone Compose floor through `scripts/compose`. It must not rely on `docker compose wait` or another newer-only convenience; health polling remains in the controller.
+The self-hosted implementation requires Compose v2 through `scripts/compose` because build secrets are part of the build contract. It does not rely on `docker compose wait` or another newer-only convenience; health polling remains in the controller.
 
 The command operates in the same checkout and `ops/self-hosted` directory so existing Compose project and named-volume identities do not change. It refuses a different project identity unless the operator follows a separately documented migration.
 

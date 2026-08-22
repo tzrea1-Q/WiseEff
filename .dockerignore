@@ -20,6 +20,7 @@ pnpm-debug.log*
 .env.*
 **/.env
 **/.env.*
+ops/self-hosted/.build-network.env
 
 .wiseeff-object-store/
 .wiseeff-backups/

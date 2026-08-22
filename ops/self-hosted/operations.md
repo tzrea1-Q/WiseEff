@@ -22,6 +22,7 @@ Use the repository's `./scripts/compose` wrapper rather than calling `docker com
 | A stopped or missing service must be reconciled without building | `./scripts/compose --env-file .env up -d --no-build` | Starts or creates from the image reference currently resolved by Compose. Check image identity first after an immutable-SHA upgrade. |
 | Deploy the latest code while preserving complete data | `./scripts/upgrade.sh plan`, then `./scripts/upgrade.sh apply` | Resolves one commit, takes a verified recovery point, migrates, recreates, and validates. |
 | Recreate the same deployed commit | `./scripts/upgrade.sh apply --restart --ref <sha>` | Runs the full protected upgrade workflow even when the SHA is unchanged. |
+| Enterprise proxy/npm mirror/CA setup | `./scripts/build-network.sh init`, edit, then `status` | Creates and validates the private build transport contract consumed by setup/upgrade. |
 | Monitoring lifecycle | `./scripts/observability <up|status|logs|restart|down>` | Operates only the private monitoring profile. |
 | Upgrade/setup lock conflict | `./scripts/upgrade.sh lock-status`, then `unlock` only if stale | Inspects or safely clears stale lock metadata without killing a live operation. |
 
@@ -35,6 +36,7 @@ Do not use `setup.sh --force` as an upgrade or restart command. It intentionally
 | `./scripts/setup.sh` | First setup and section-scoped access/admin/seed/LLM reconfiguration. |
 | `./scripts/doctor.sh` | Static configuration diagnosis, with optional live probes. |
 | `./scripts/upgrade.sh` | Data-preserving upgrade, same-SHA recreation, host preparation, journal status, resume, rollback, and lock recovery. |
+| `./scripts/build-network.sh` | Initializes and safely reports the restricted-network proxy/npm-registry/approved-CA contract. |
 | `./scripts/observability` | Built-in Prometheus/Grafana/Alertmanager lifecycle. |
 | `./scripts/seed-demo-data.sh` | Demo/staging-only ChargeLab seed; never customer or production data. |
 | `./scripts/memory-mode.sh` | Compatibility switch for a memory-constrained host shared with local development; not the normal production lifecycle entry. |
@@ -46,6 +48,7 @@ Show the authoritative interface implemented by each entry:
 ./scripts/setup.sh --help
 ./scripts/doctor.sh --help
 ./scripts/upgrade.sh --help
+./scripts/build-network.sh --help
 ./scripts/observability --help
 ```
 
@@ -102,6 +105,31 @@ stat -c '%A %U %G %n' .env /var/backups/wiseeff/upgrades
 ```
 
 Keep `.env` at mode `600`; keep backup directories at `700` and backup files at `600`.
+
+## Restricted Enterprise Network
+
+Configure build transport as the deployment user, not through `sudo`:
+
+```bash
+./scripts/build-network.sh init
+chmod 600 .build-network.env
+# Edit only documented values in .build-network.env.
+./scripts/build-network.sh status
+./scripts/upgrade.sh plan
+```
+
+The `status` output is safe for routine tickets: it shows configured/not-configured state and the npm registry hostname, never proxy URLs or credentials. Setup and upgrade load the contract automatically; `--build-network-file <path>` is available for a secured alternative location. Existing exported shell proxy variables work when the file is absent.
+
+Use these boundaries when diagnosing a failure:
+
+| Failing operation | Network owner | Corrective entry |
+| --- | --- | --- |
+| `git fetch` / target resolution | deployment user's Git/libcurl | shell/Git proxy or upgrade `--git-proxy` |
+| `RUN apk`, `git clone`, `pip`, or `npm ci` inside the app build | managed BuildKit args, internal registry, approved CA | `.build-network.env`, then `build-network.sh status` |
+| `FROM` metadata or pull for an image not covered by the bundled base image | Docker daemon / BuildKit service | configure and restart the Docker daemon proxy/DNS outside WiseEff |
+| API/worker outbound calls after startup | runtime container environment | opt in with `WISEEFF_RUNTIME_PROXY=true`; keep internal service names in `NO_PROXY` |
+
+Never solve enterprise TLS interception with `strict-ssl=false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, or global certificate-verification disablement. Point `WISEEFF_BUILD_CA_CERT_FILE` at the organization-approved PEM instead. The file parser rejects unsafe permissions, symlinks, unknown/duplicate keys, conflicting proxy pairs, credential-bearing registry URLs, and invalid CA inputs before a build starts.
 
 ## First Installation And Reconfiguration
 

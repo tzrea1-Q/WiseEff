@@ -250,6 +250,10 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 离线包契约固定 tar 文件名/校验和、归档标签、Dockerfile 标签、image ID 和平台；脚本只按数据解析，不会 source 到 shell。当前仓库离线包只覆盖 `linux/amd64` 上 Dockerfile 的 Node 基础镜像；包管理器与源码下载仍是独立的网络/信任边界。
 
+受限网络输入被收口为 `build-network.sh` 背后的独立深模块。权限 `0600`、非符号链接的数据文件只接受大小写代理对、一个 npm registry URL、一个组织批准 PEM 路径及显式 runtime-proxy 布尔值。交互操作仍可使用 shell 代理环境；大小写值有歧义时失败关闭。控制器导出 Docker 预定义 proxy build arg，通过 npm registry host replacement 覆盖 lockfile tarball 主机，并用 BuildKit secret 把 CA 安装到每个构建 stage；journal 只记录安全状态字段。实现不会 source 配置、不会把代理值写成 Dockerfile `ENV`、不会关闭 TLS、不会改写 Docker daemon，也不会默认把 runtime proxy 发送给数据面容器。
+
+固定 DTC 源码同时也是 Python `libfdt` binding 的来源。builder 从同一 commit 构建 DTC 二进制/库和 Meson wheel；runtime 先安装该 wheel，再以关闭依赖解析的方式安装 `dtschema`。这样可以避开不兼容的旧 `pylibfdt` 源码包，并保持 `dtc`、`fdtoverlay`、`libfdt` 和已记录工具链版本一致。Alpine 构建/runtime YAML 依赖及 `/opt/dtc/lib` 解析都显式声明，并受 self-hosted config check 保护。
+
 ### 3. 停止写入
 
 1. 通过当前应用镜像中的队列维护命令暂停 durable queue intake。
@@ -327,7 +331,7 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 首次包含本模块的 release 仍需通过当前手工升级流程安装。从该 release 起，`upgrade.sh` 才是基于源码 checkout 的正式升级入口。
 
-实现必须通过 `scripts/compose` 同时兼容 Compose v2 和仓库已声明的 standalone Compose 最低版本。不能依赖 `docker compose wait` 等较新专属能力，健康等待由控制器实现。
+自托管实现通过 `scripts/compose` 要求 Compose v2，因为 build secret 已成为构建契约的一部分。不能依赖 `docker compose wait` 等较新便捷能力，健康等待仍由控制器实现。
 
 命令必须在同一 checkout 与 `ops/self-hosted` 目录内执行，从而保持现有 Compose project 和命名 volume 身份不变。若检测到 project 身份变化，必须拒绝继续，除非操作员执行单独文档化的迁移。
 

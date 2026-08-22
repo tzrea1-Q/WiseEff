@@ -19,7 +19,7 @@
 - DTS 重载部署为**进程内请求**（ADR-0020）：挂载、推送、触发、内核日志采集与行为核对均在持有桥接 WebSocket 的 API 进程上执行，不走 BullMQ。多副本桥接亲和仍是平台限制（见技术债）。证据与 UI 在 `/dts-reload`，勿与已下线的 `/debugging` 混淆。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 只有 IP、没有域名的自托管实验室走 [配置向导](../../ops/self-hosted/setup.zh-CN.md) / [IP 实验室 profile](../../ops/self-hosted/ip-lab.zh-CN.md)，不是试点/发布证据。
-- 已运行 checkout 使用[自托管升级入口](../../ops/self-hosted/upgrade.zh-CN.md)：锁定一个 commit、停机前构建、校验 PostgreSQL/对象存储/Redis 恢复点，在不删除 volume 的情况下重建服务；migration 后失败会保持流量停止并记录 `recovery-required`。首次 root-only `prepare-host` 为部署用户配置 Docker 与受保护的 journal/备份目录，此后普通动作拒绝任何 root 有效用户，以保留部署用户的 Git/代理环境与文件所有权；历史混合 API/worker/web 镜像按服务分别保留，持久锁通过 `lock-status`/`unlock` 安全处理而不是手删。`setup.sh --force` 仍是配置操作，不是升级捷径。
+- 已运行 checkout 使用[自托管升级入口](../../ops/self-hosted/upgrade.zh-CN.md)：锁定一个 commit、停机前构建、校验 PostgreSQL/对象存储/Redis 恢复点，在不删除 volume 的情况下重建服务；migration 后失败会保持流量停止并记录 `recovery-required`。首次 root-only `prepare-host` 为部署用户配置 Docker 与受保护的 journal/备份目录，此后普通动作拒绝任何 root 有效用户，以保留部署用户的 Git/代理环境与文件所有权；受限网络主机用一份权限 `0600`、按 allowlist 解析的代理/npm 源/组织 CA 构建契约，setup/upgrade 将其传给 BuildKit，但不把凭据写入 journal 或镜像层，Docker daemon 拉取仍是独立边界；历史混合 API/worker/web 镜像按服务分别保留，持久锁通过 `lock-status`/`unlock` 安全处理而不是手删。`setup.sh --force` 仍是配置操作，不是升级捷径。
 - 自托管图形化监控使用 `ops/self-hosted/scripts/observability up`：Compose profile 会启动 Prometheus、Grafana、Alertmanager、HTTP/TCP 服务探针和主机/PostgreSQL/Redis exporter，自动装载四套 Dashboard。监控 UI 默认只绑定 loopback，通过 SSH 隧道、VPN 或同等级受控运维路径访问；独立 worker 在 Compose 私网端口 `8788` 提供 liveness 与 Prometheus 指标。
 
 ## 补充说明（小泽 checkpoint）

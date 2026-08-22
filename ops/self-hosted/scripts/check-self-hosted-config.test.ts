@@ -26,12 +26,27 @@ const validCompose = `
 version: "3.8"
 x-wiseeff-image: &wiseeff-image
   "\${WISEEFF_APP_IMAGE:-wiseeff-app}:\${WISEEFF_APP_TAG:-local}"
+x-wiseeff-runtime-proxy: &wiseeff-runtime-proxy
+  HTTP_PROXY: \${WISEEFF_RUNTIME_HTTP_PROXY:-}
+  HTTPS_PROXY: \${WISEEFF_RUNTIME_HTTPS_PROXY:-}
+  NO_PROXY: \${WISEEFF_RUNTIME_NO_PROXY:-}
 x-wiseeff-build: &wiseeff-build
   context: ../..
   dockerfile: ops/self-hosted/Dockerfile
   args:
     VITE_WISEEFF_RUNTIME_MODE: api
     VITE_WISEEFF_API_BASE_URL: \${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}
+    HTTP_PROXY:
+    HTTPS_PROXY:
+    ALL_PROXY:
+    NO_PROXY:
+    http_proxy:
+    https_proxy:
+    all_proxy:
+    no_proxy:
+    WISEEFF_NPM_REGISTRY:
+  secrets:
+    - wiseeff-corporate-ca
 services:
   postgres:
     image: postgres:16-alpine
@@ -47,6 +62,8 @@ services:
     image: *wiseeff-image
     build: *wiseeff-build
     env_file: \${WISEEFF_ENV_FILE:-.env}
+    environment:
+      <<: *wiseeff-runtime-proxy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
     command: ["sh", "-lc", "npx tsx server/index.ts"]
@@ -54,6 +71,8 @@ services:
     image: *wiseeff-image
     build: *wiseeff-build
     env_file: \${WISEEFF_ENV_FILE:-.env}
+    environment:
+      <<: *wiseeff-runtime-proxy
     command: ["sh", "-lc", "npm run worker:logs"]
     depends_on:
       redis:
@@ -76,19 +95,32 @@ services:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/"]
 volumes:
   wiseeff-postgres-data:
+secrets:
+  wiseeff-corporate-ca:
+    file: \${WISEEFF_BUILD_CA_CERT_FILE:-./build-network/empty-ca.pem}
 `;
 
 const validDockerfile = `
 FROM node:22.21.1-alpine AS dtc-builder
+ENV LD_LIBRARY_PATH=/opt/dtc/lib
+RUN --mount=type=secret,id=wiseeff-corporate-ca cp /run/secrets/wiseeff-corporate-ca /etc/ssl/certs/wiseeff-corporate-ca.pem
 ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de
+RUN apk add --no-cache build-base bison flex git pkgconf yaml-dev python3 py3-pip python3-dev swig meson samurai py3-meson-python
+RUN pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .
 FROM node:22.21.1-alpine AS deps
+ARG WISEEFF_NPM_REGISTRY
 FROM node:22.21.1-alpine AS runtime
+ENV LD_LIBRARY_PATH=/opt/dtc/lib
+RUN apk add --no-cache curl python3 py3-pip yaml
 ARG VITE_WISEEFF_RUNTIME_MODE=api
 ARG VITE_WISEEFF_API_BASE_URL
 ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE
 ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL
 COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
-RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/dts-toolchain-requirements.txt
+COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels
+RUN pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl
+RUN pip3 install --break-system-packages --no-cache-dir "ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987
+RUN pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt
 COPY --from=dtc-builder /opt/dtc /opt/dtc
 RUN dtc --version && fdtoverlay --version && dt-validate --version
 COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci
@@ -103,6 +135,7 @@ dist/
 **/.env
 **/.env.*
 ops/self-hosted/.state/
+ops/self-hosted/.build-network.env
 ops/self-hosted/images/*.tar
 `;
 
@@ -184,6 +217,10 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/scripts/upgrade.sh",
   "ops/self-hosted/scripts/upgrade-lib.sh",
   "ops/self-hosted/scripts/npm-ci-with-diagnostics.sh",
+  "ops/self-hosted/scripts/build-network.sh",
+  "ops/self-hosted/scripts/build-network-lib.sh",
+  "ops/self-hosted/.build-network.env.example",
+  "ops/self-hosted/build-network/empty-ca.pem",
   "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/images/base-image-bundle.env",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
@@ -264,6 +301,7 @@ describe("self-hosted config metadata", () => {
       missingServices: [],
       missingComposeTokens: [],
       missingDockerfileTokens: [],
+      dockerfileSafetyIssues: [],
       missingDockerignoreTokens: [],
       baseImageBundleIssues: [],
       missingEnvKeys: [],
@@ -406,6 +444,202 @@ describe("self-hosted config metadata", () => {
 
     expect(result.status).toBe("failed");
     expect(result.baseImageBundleIssues).toContain("archive-checksum-mismatch");
+  });
+
+  it("requires Compose to carry the deployment proxy into BuildKit without Dockerfile proxy ENV values", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose
+        .replace("    HTTP_PROXY:\n", "")
+        .replace("    HTTPS_PROXY:\n", "")
+        .replace("    ALL_PROXY:\n", "")
+        .replace("    NO_PROXY:\n", ""),
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingComposeTokens).toEqual(
+      expect.arrayContaining(["HTTP_PROXY:", "HTTPS_PROXY:", "NO_PROXY:", "ALL_PROXY:"])
+    );
+  });
+
+  it("requires the approved corporate CA to enter each networked build stage through a BuildKit secret", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose.replaceAll("wiseeff-corporate-ca", "missing-corporate-ca"),
+      dockerfileText: validDockerfile.replaceAll("wiseeff-corporate-ca", "missing-corporate-ca"),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingComposeTokens).toContain("wiseeff-corporate-ca");
+    expect(result.missingDockerfileTokens).toContain("--mount=type=secret,id=wiseeff-corporate-ca");
+  });
+
+  it("rejects an external Dockerfile frontend that would add an unproxied metadata dependency", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: `# syntax=docker/dockerfile:1.7\n${validDockerfile}`,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.dockerfileSafetyIssues).toContain("external-syntax-frontend");
+  });
+
+  it("carries the optional npm registry into the diagnostic install wrapper", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose.replace("    WISEEFF_NPM_REGISTRY:\n", ""),
+      dockerfileText: validDockerfile.replace("ARG WISEEFF_NPM_REGISTRY\n", ""),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingComposeTokens).toContain("WISEEFF_NPM_REGISTRY:");
+    expect(result.missingDockerfileTokens).toContain("ARG WISEEFF_NPM_REGISTRY");
+  });
+
+  it("keeps the pinned DTC builder dependencies required by the Alpine source build", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile.replace(
+        "build-base bison flex git pkgconf yaml-dev",
+        "build-base bison flex git"
+      ),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerfileTokens).toContain(
+      "apk add --no-cache build-base bison flex git pkgconf yaml-dev"
+    );
+  });
+
+  it("keeps the DTC shared-library path in both the builder and runtime stages", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile.replace("ENV LD_LIBRARY_PATH=/opt/dtc/lib\n", ""),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerfileTokens).toContain(
+      "ENV LD_LIBRARY_PATH=/opt/dtc/lib (dtc-builder and runtime)"
+    );
+  });
+
+  it("uses the pinned DTC source for the Python libfdt binding instead of the legacy PyPI package", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile
+        .replace("RUN pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .\n", "")
+        .replace("COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels\n", "")
+        .replace("RUN pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl\n", "")
+        .replace(
+          "RUN pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt\n",
+          ""
+        ),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerfileTokens).toEqual(
+      expect.arrayContaining([
+        "pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .",
+        "COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels",
+        "pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
+        "pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt"
+      ])
+    );
+  });
+
+  it("keeps the runtime libyaml dependency required by the pinned DTC binary", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile.replace(
+        "RUN apk add --no-cache curl python3 py3-pip yaml\n",
+        "RUN apk add --no-cache curl python3 py3-pip\n"
+      ),
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerfileTokens).toContain("apk add --no-cache curl python3 py3-pip yaml");
+  });
+
+  it("keeps runtime proxying opt-in and limited to application containers", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose
+        .replaceAll("WISEEFF_RUNTIME_HTTP_PROXY", "MISSING_RUNTIME_HTTP_PROXY")
+        .replaceAll("WISEEFF_RUNTIME_NO_PROXY", "MISSING_RUNTIME_NO_PROXY"),
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingComposeTokens).toEqual(
+      expect.arrayContaining(["WISEEFF_RUNTIME_HTTP_PROXY", "WISEEFF_RUNTIME_NO_PROXY"])
+    );
+  });
+
+  it("keeps the private build-network file out of the Docker context", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore.replace("ops/self-hosted/.build-network.env\n", ""),
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerignoreTokens).toContain("ops/self-hosted/.build-network.env");
   });
 
   it("requires the log-analysis LLM env family to be declared even when values are blank", () => {

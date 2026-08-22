@@ -30,6 +30,10 @@ export const requiredSelfHostedFiles = [
   "ops/self-hosted/scripts/upgrade.sh",
   "ops/self-hosted/scripts/upgrade-lib.sh",
   "ops/self-hosted/scripts/npm-ci-with-diagnostics.sh",
+  "ops/self-hosted/scripts/build-network.sh",
+  "ops/self-hosted/scripts/build-network-lib.sh",
+  "ops/self-hosted/.build-network.env.example",
+  "ops/self-hosted/build-network/empty-ca.pem",
   "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/images/base-image-bundle.env",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
@@ -45,6 +49,11 @@ export const requiredComposeTokens = [
   "redis-server",
   "VITE_WISEEFF_RUNTIME_MODE: api",
   "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}",
+  "WISEEFF_NPM_REGISTRY:",
+  "WISEEFF_RUNTIME_HTTP_PROXY",
+  "WISEEFF_RUNTIME_NO_PROXY",
+  "<<: *wiseeff-runtime-proxy",
+  "wiseeff-corporate-ca",
   "curl -fsS http://127.0.0.1:8787/health/live",
   "curl -fsS http://127.0.0.1:5173/",
   "wget -q --spider",
@@ -56,6 +65,17 @@ export const requiredComposeTokens = [
   "./${WISEEFF_CADDYFILE:-Caddyfile.example}:/etc/caddy/Caddyfile:ro"
 ] as const;
 
+export const requiredBuildProxyArgs = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy"
+] as const;
+
 export const requiredDockerfileTokens = [
   "FROM node:>=22.19.0",
   "ARG VITE_WISEEFF_RUNTIME_MODE=api",
@@ -63,7 +83,16 @@ export const requiredDockerfileTokens = [
   "ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE",
   "ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL",
   "ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
-  "pip3 install --break-system-packages --no-cache-dir -r /tmp/dts-toolchain-requirements.txt",
+  "apk add --no-cache build-base bison flex git pkgconf yaml-dev",
+  "python3 py3-pip python3-dev swig meson samurai py3-meson-python",
+  "pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .",
+  "--mount=type=secret,id=wiseeff-corporate-ca",
+  "ARG WISEEFF_NPM_REGISTRY",
+  "apk add --no-cache curl python3 py3-pip yaml",
+  "COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels",
+  "pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
+  '"ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987',
+  "pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt",
   "COPY --from=dtc-builder /opt/dtc /opt/dtc",
   "RUN dtc --version && fdtoverlay --version && dt-validate --version",
   "COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci",
@@ -77,6 +106,7 @@ export const requiredDockerignoreTokens = [
   "**/.env.*",
   ".git/",
   "ops/self-hosted/.state/",
+  "ops/self-hosted/.build-network.env",
   "ops/self-hosted/images/*.tar"
 ] as const;
 
@@ -166,6 +196,7 @@ export type SelfHostedConfigResult = {
   missingServices: string[];
   missingComposeTokens: string[];
   missingDockerfileTokens: string[];
+  dockerfileSafetyIssues: string[];
   missingDockerignoreTokens: string[];
   baseImageBundleIssues: string[];
   missingEnvKeys: string[];
@@ -193,10 +224,20 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
 
   const missingScripts = requiredSelfHostedScripts.filter((script) => !scripts[script]);
   const missingServices = requiredSelfHostedServices.filter((service) => !hasComposeService(composeText, service));
-  const missingComposeTokens = requiredComposeTokens.filter((token) => !composeText.includes(normalize(token)));
+  const missingComposeTokens = [
+    ...requiredComposeTokens.filter((token) => !composeText.includes(normalize(token))),
+    ...requiredBuildProxyArgs.filter((key) => !hasComposeBuildArg(input.composeText, key)).map((key) => `${key}:`)
+  ];
   const missingDockerfileTokens = requiredDockerfileTokens.filter((token) =>
     token === "FROM node:>=22.19.0" ? !hasRequiredNodeRuntime(dockerfileText) : !dockerfileText.includes(normalize(token))
   );
+  const dockerfileSafetyIssues = /^\s*#\s*syntax=/m.test(input.dockerfileText)
+    ? ["external-syntax-frontend"]
+    : [];
+  const dtcLibraryPathToken = "ENV LD_LIBRARY_PATH=/opt/dtc/lib";
+  if (dockerfileText.split("LD_LIBRARY_PATH=/opt/dtc/lib").length - 1 < 2) {
+    missingDockerfileTokens.push(`${dtcLibraryPathToken} (dtc-builder and runtime)`);
+  }
   const missingDockerignoreTokens = requiredDockerignoreTokens.filter((token) => !dockerignoreText.includes(normalize(token)));
   const missingEnvKeys = requiredEnvKeys.filter((key) => !envKeys.has(key));
   const missingProxyTokens = requiredProxyTokens.filter((token) => !caddyfileText.includes(normalize(token)));
@@ -210,6 +251,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
       missingServices.length === 0 &&
       missingComposeTokens.length === 0 &&
       missingDockerfileTokens.length === 0 &&
+      dockerfileSafetyIssues.length === 0 &&
       missingDockerignoreTokens.length === 0 &&
       baseImageBundleIssues.length === 0 &&
       missingEnvKeys.length === 0 &&
@@ -221,6 +263,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     missingServices,
     missingComposeTokens,
     missingDockerfileTokens,
+    dockerfileSafetyIssues,
     missingDockerignoreTokens,
     baseImageBundleIssues,
     missingEnvKeys,
@@ -362,6 +405,15 @@ function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, act
 
 function hasComposeService(normalizedComposeText: string, service: string) {
   return new RegExp(`(^|\\n) ${service}:\\n`).test(normalizedComposeText);
+}
+
+function hasComposeBuildArg(composeText: string, key: string) {
+  const lines = composeText.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.startsWith("x-wiseeff-build:"));
+  if (start < 0) return false;
+  const endOffset = lines.slice(start + 1).findIndex((line) => line.length > 0 && !/^\s/.test(line));
+  const end = endOffset < 0 ? lines.length : start + 1 + endOffset;
+  return lines.slice(start, end).some((line) => line.trim() === `${key}:`);
 }
 
 function normalize(value: string) {

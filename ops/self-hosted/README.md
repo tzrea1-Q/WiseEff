@@ -23,6 +23,8 @@ sudo ./scripts/upgrade.sh prepare-host --yes # once per host/operator
 
 Use `--ref refs/tags/<release>`, `--ref <sha>`, or `WISEEFF_UPGRADE_REF` when the target must be pinned. Run normal upgrade actions without `sudo`. Use `lock-status` and the idempotent `unlock` action instead of deleting operation-lock files by hand.
 
+On restricted enterprise networks, create `.build-network.env` once with `./scripts/build-network.sh init`, edit it as the deployment user, and verify the credential-free summary with `./scripts/build-network.sh status`. Setup and upgrade both consume this proxy/npm-registry/approved-CA contract. See [Restricted-network build configuration](upgrade.md#restricted-network-build-configuration).
+
 The DNS + Let's Encrypt path below remains the M6 staging/pilot profile.
 
 M6.6 release-candidate procedures live in [releases/](releases/). Use them after the runtime is deployed and before claiming a self-hosted target is ready for a controlled commercial pilot.
@@ -39,7 +41,7 @@ The upgrade entry recreates all of these services while preserving the existing 
 
 ## Start
 
-Server prerequisites: Docker Engine 20.10+, and Docker Compose v2 or standalone `docker-compose` 1.28+. Node.js is not required on the server; the stack runs inside containers.
+Server prerequisites: Docker Engine 20.10+ and Docker Compose v2. Build-secret support makes standalone Compose v1 unsupported. Node.js is not required on the server; the stack runs inside containers.
 
 The runtime image installs Alpine's `dtc` package and runs `dtc --version` during image build. This makes DTS validation and `db:seed:m1` independent of host packages. `npm run selfhost:check` verifies both the image dependency and the repository dtc commands.
 
@@ -50,7 +52,7 @@ chmod 600 .env
 ./scripts/compose --env-file .env up -d --build
 ```
 
-The `./scripts/compose` wrapper accepts either `docker compose` (Compose v2) or `docker-compose` (standalone v1). It passes `-f compose.yaml` automatically when the standalone binary is used and rejects Compose versions that are too old for this stack.
+The `./scripts/compose` wrapper requires Docker Compose v2 for this self-hosted stack and rejects standalone Compose v1 before mutation.
 
 ## Graphical Monitoring
 
