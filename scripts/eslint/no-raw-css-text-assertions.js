@@ -1,12 +1,13 @@
 /**
  * Prevent style tests from asserting against the formatting of raw CSS text.
  *
- * This rule is intentionally narrow: it follows variables initialized from
- * readFileSync/readStylesheet calls whose path ends in `.css`, and rejects only
- * Vitest/Jest `toMatch` and `toContain` assertions over that raw value. Other
- * source-text contract tests remain outside its scope.
+ * This rule is intentionally narrow: it follows scope-bound static CSS paths
+ * and values initialized or directly assigned from readFileSync/readStylesheet,
+ * then rejects only Vitest/Jest `toMatch` and `toContain` assertions over that
+ * raw value. Other source-text contract tests remain outside its scope.
  */
 const rawMatchers = new Set(["toMatch", "toContain"]);
+const pathBuilders = new Set(["join", "resolve"]);
 
 function propertyName(member) {
   if (!member.computed && member.property.type === "Identifier") {
@@ -18,7 +19,17 @@ function propertyName(member) {
   return undefined;
 }
 
-function containsCssPath(node) {
+function callName(node) {
+  if (node.callee.type === "Identifier") {
+    return node.callee.name;
+  }
+  if (node.callee.type === "MemberExpression") {
+    return propertyName(node.callee);
+  }
+  return undefined;
+}
+
+function containsCssPath(node, isCssPathVariable = () => false) {
   if (!node || typeof node !== "object") {
     return false;
   }
@@ -28,24 +39,45 @@ function containsCssPath(node) {
   if (node.type === "TemplateLiteral" && node.expressions.length === 0) {
     return node.quasis.some((quasi) => /\.css(?:$|[?#])/.test(quasi.value.cooked ?? quasi.value.raw));
   }
-  if (node.type === "CallExpression") {
-    return node.arguments.some((argument) => argument.type !== "SpreadElement" && containsCssPath(argument));
+  if (node.type === "Identifier") {
+    return isCssPathVariable(node);
+  }
+  if (node.type === "CallExpression" && pathBuilders.has(callName(node))) {
+    return node.arguments.some(
+      (argument) => argument.type !== "SpreadElement" && containsCssPath(argument, isCssPathVariable)
+    );
   }
   if (node.type === "BinaryExpression") {
-    return containsCssPath(node.left) || containsCssPath(node.right);
+    return containsCssPath(node.left, isCssPathVariable) || containsCssPath(node.right, isCssPathVariable);
   }
   return false;
 }
 
-function isCssReadCall(node) {
+function isCssReadCall(node, isCssPathVariable) {
   if (node.type !== "CallExpression") {
     return false;
   }
-  const readerName = node.callee.type === "Identifier" ? node.callee.name : propertyName(node.callee);
+  const readerName = callName(node);
   if (readerName !== "readFileSync" && readerName !== "readStylesheet") {
     return false;
   }
-  return node.arguments.some((argument) => argument.type !== "SpreadElement" && containsCssPath(argument));
+  return node.arguments.some(
+    (argument) => argument.type !== "SpreadElement" && containsCssPath(argument, isCssPathVariable)
+  );
+}
+
+function isStraightLineAssignment(node) {
+  if (node.parent?.type !== "ExpressionStatement") {
+    return false;
+  }
+  const container = node.parent.parent;
+  if (container?.type === "Program") {
+    return true;
+  }
+  if (container?.type !== "BlockStatement") {
+    return false;
+  }
+  return ["ArrowFunctionExpression", "FunctionDeclaration", "FunctionExpression"].includes(container.parent?.type);
 }
 
 function assertedValue(call) {
@@ -80,6 +112,7 @@ export const noRawCssTextAssertions = {
     }
   },
   create(context) {
+    const cssPathVariables = new WeakSet();
     const rawCssVariables = new WeakSet();
 
     const resolveVariable = (identifier) => {
@@ -94,8 +127,13 @@ export const noRawCssTextAssertions = {
       return undefined;
     };
 
+    const isCssPathVariable = (identifier) => {
+      const variable = resolveVariable(identifier);
+      return variable ? cssPathVariables.has(variable) : false;
+    };
+
     const isRawCssExpression = (node) => {
-      if (isCssReadCall(node)) {
+      if (isCssReadCall(node, isCssPathVariable)) {
         return true;
       }
       if (node.type === "Identifier") {
@@ -109,7 +147,32 @@ export const noRawCssTextAssertions = {
     };
 
     return {
+      AssignmentExpression(node) {
+        if (node.operator !== "=" || node.left.type !== "Identifier" || !isStraightLineAssignment(node)) {
+          return;
+        }
+        const variable = resolveVariable(node.left);
+        if (!variable) {
+          return;
+        }
+
+        if (containsCssPath(node.right, isCssPathVariable)) {
+          cssPathVariables.add(variable);
+        } else {
+          cssPathVariables.delete(variable);
+        }
+        if (isRawCssExpression(node.right)) {
+          rawCssVariables.add(variable);
+        } else {
+          rawCssVariables.delete(variable);
+        }
+      },
       VariableDeclarator(node) {
+        if (node.id.type === "Identifier" && node.init && containsCssPath(node.init, isCssPathVariable)) {
+          for (const variable of context.sourceCode.getDeclaredVariables(node)) {
+            cssPathVariables.add(variable);
+          }
+        }
         if (node.id.type === "Identifier" && node.init && isRawCssExpression(node.init)) {
           for (const variable of context.sourceCode.getDeclaredVariables(node)) {
             rawCssVariables.add(variable);

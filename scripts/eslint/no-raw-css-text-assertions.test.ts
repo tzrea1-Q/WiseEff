@@ -54,6 +54,44 @@ describe("no-raw-css-text-assertions", () => {
     ]);
   });
 
+  it("rejects raw matchers when a stylesheet reader receives a static path variable", () => {
+    const messages = lint(`
+      const featurePath = "src/features/example/example.css";
+      const css = readStylesheet(featurePath);
+      expect(css).toContain(".raw-example");
+    `);
+
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "rawCssAssertion"
+    ]);
+  });
+
+  it("tracks constructed paths and straight-line assignments without crossing shadowed variables", () => {
+    const messages = lint(`
+      const base = "src";
+      const cssPath = resolve(base, "styles.css");
+      const css = readStylesheet(cssPath);
+      expect(css).toContain(".raw-from-constructed-path");
+
+      let assignedPath;
+      assignedPath = resolve(base, "features/example.css");
+      let assignedCss;
+      assignedCss = readStylesheet(assignedPath);
+      expect(assignedCss).toMatch(/raw-from-assignment/);
+
+      function architecturalFixture() {
+        const cssPath = "src/app/routes.tsx";
+        const css = readFileSync(cssPath, "utf8");
+        expect(css).toContain("routes");
+      }
+    `);
+
+    expect(messages.map((message) => message.messageId)).toEqual([
+      "rawCssAssertion",
+      "rawCssAssertion"
+    ]);
+  });
+
   it("allows structural CSS queries and unrelated source contract tests", () => {
     const messages = lint(`
       const css = readStylesheet("src/styles.css");
@@ -69,6 +107,12 @@ describe("no-raw-css-text-assertions", () => {
         const css = readFileSync("src/app/routes.tsx", "utf8");
         expect(css).toContain("routes");
       }
+
+      let reassignedPath = "src/styles.css";
+      reassignedPath = "src/app/routes.tsx";
+      let reassignedSource = readStylesheet("src/styles.css");
+      reassignedSource = readFileSync(reassignedPath, "utf8");
+      expect(reassignedSource).toContain("routes");
     `);
 
     expect(messages).toEqual([]);
