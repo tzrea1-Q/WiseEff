@@ -80,7 +80,9 @@ export function XiaozePopupView({
   const labels = configuration?.labels;
   const modalTitle = labels?.modalHeaderTitle ?? "小泽";
 
+  const layerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   const [isMounted, setIsMounted] = useState(isPopupOpen);
   const [motion, setMotion] = useState<XiaozePopupMotionPhase>(isPopupOpen ? "visible" : "leaving");
@@ -159,12 +161,29 @@ export function XiaozePopupView({
   }, [isPopupOpen, requestClose]);
 
   useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (isPopupOpen || !container?.contains(document.activeElement)) {
+    const layer = layerRef.current;
+    const activeElement = document.activeElement;
+
+    if (isPopupOpen) {
+      if (activeElement instanceof HTMLElement && !layer?.contains(activeElement)) {
+        restoreFocusRef.current = activeElement;
+      }
       return;
     }
 
-    document.querySelector<HTMLElement>("[data-slot='chat-toggle-button']")?.focus({ preventScroll: true });
+    if (!layer?.contains(activeElement)) {
+      restoreFocusRef.current = null;
+      return;
+    }
+
+    const previousFocus = restoreFocusRef.current;
+    const toggle = document.querySelector<HTMLElement>("[data-slot='chat-toggle-button']");
+    const focusTarget =
+      previousFocus && previousFocus !== document.body && previousFocus.isConnected && !layer.contains(previousFocus)
+        ? previousFocus
+        : toggle;
+    focusTarget?.focus({ preventScroll: true });
+    restoreFocusRef.current = null;
   }, [isPopupOpen]);
 
   useEffect(() => {
@@ -193,6 +212,9 @@ export function XiaozePopupView({
         return;
       }
       if (containerRef.current?.contains(target)) {
+        return;
+      }
+      if (target instanceof Element && target.closest(".xiaoze-popup-scrim")) {
         return;
       }
       if (isWithinApprovalCard(target)) {
@@ -230,6 +252,7 @@ export function XiaozePopupView({
       {toggleButtonElement}
       {isMounted ? (
         <div
+          ref={layerRef}
           className="xiaoze-popup-layer"
           data-motion={motion}
           data-testid="xiaoze-popup-layer"

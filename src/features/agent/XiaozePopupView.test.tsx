@@ -123,6 +123,71 @@ describe("XiaozePopupView", () => {
     vi.useRealTimers();
   });
 
+  it("restores toggle focus after the scrim pointer sequence closes the popup", () => {
+    vi.useFakeTimers();
+
+    isModalOpen = false;
+    const { rerender } = render(<XiaozePopupView />);
+    const toggle = screen.getByRole("button", { name: "toggle" });
+    toggle.focus();
+    isModalOpen = true;
+    rerender(<XiaozePopupView />);
+    setModalOpen.mockClear();
+
+    const layer = screen.getByTestId("xiaoze-popup-layer");
+    const scrim = layer.querySelector<HTMLButtonElement>(".xiaoze-popup-scrim");
+    expect(scrim).not.toBeNull();
+    fireEvent.pointerDown(scrim!);
+    expect(setModalOpen).not.toHaveBeenCalled();
+
+    // A real button pointer sequence focuses the scrim before dispatching click.
+    scrim!.focus();
+    expect(scrim).toHaveFocus();
+    fireEvent.click(scrim!);
+    expect(setModalOpen).toHaveBeenCalledWith(false);
+    isModalOpen = false;
+    rerender(<XiaozePopupView />);
+
+    expect(layer).toHaveAttribute("data-motion", "leaving");
+    expect(screen.queryByRole("dialog", { name: "小泽" })).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+
+    act(() => {
+      vi.advanceTimersByTime(359);
+    });
+    expect(layer).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByTestId("xiaoze-popup-layer")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("does not steal focus that moved outside the popup before it closed", () => {
+    vi.useFakeTimers();
+
+    isModalOpen = true;
+    const { rerender } = render(<XiaozePopupView />);
+    const externalControl = document.createElement("button");
+    externalControl.textContent = "external action";
+    document.body.appendChild(externalControl);
+    externalControl.focus();
+
+    isModalOpen = false;
+    rerender(<XiaozePopupView />);
+
+    expect(externalControl).toHaveFocus();
+    expect(screen.getByTestId("xiaoze-popup-layer")).toHaveAttribute("data-motion", "leaving");
+
+    act(() => {
+      vi.advanceTimersByTime(360);
+    });
+    document.body.removeChild(externalControl);
+    vi.useRealTimers();
+  });
+
   it("does not close the popup when a pointer-down lands inside the approval card", () => {
     isModalOpen = true;
     render(<XiaozePopupView />);
