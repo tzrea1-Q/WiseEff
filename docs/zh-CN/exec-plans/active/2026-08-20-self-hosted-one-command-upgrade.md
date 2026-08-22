@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 核心实现已进入 `main`。首次非客户 Ubuntu 演练暴露了宿主机兼容和陈旧锁恢复缺口；`fix/self-hosted-upgrade-host-compat` 上的加固后续已通过本地实现门禁，正等待 PR/CI 合入。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
+**状态：** 核心实现和宿主机兼容加固均已进入 `main`。当前后续把持久化、脱敏的候选构建诊断集成进 `apply` 与 `status`。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -15,6 +15,7 @@
 - `cd ops/self-hosted && ./scripts/upgrade.sh` 可在一次确认流程中升级已配置的跟踪 ref。
 - 目标 ref 只解析一次，运行记录保存不可变 SHA。
 - 目标 checkout 校验和应用镜像构建在任何服务停止之前完成。
+- 候选构建失败时自动保留部署用户可读、经过脱敏的 BuildKit/npm 诊断和可执行摘要，无需宿主机 root 权限。
 - 正常路径不改变 `.env`、不执行 provision/seed、不轮换凭据、不删除 volume。
 - PostgreSQL、对象存储和 durable Redis 状态形成一个迁移前已验证恢复点。
 - 所有长期运行 Compose 服务完成重建，所有持久化 volume 身份保持不变。
@@ -251,6 +252,38 @@ git diff --check
 - [ ] 只在 CI merge bar 通过后合入。
 
 **预期结果：** 全新或曾由 root 操作的 Ubuntu checkout 可通过一条显式宿主机准备命令完成规范化；日常升级由部署用户执行；历史应用镜像无需人工预先收敛；任何失败门禁立即停止；操作员不再手工删除锁文件或锁目录。
+
+## 阶段 8 — 集成候选构建诊断
+
+Docker BuildKit 会在临时 stage 中以 root 执行 `npm ci`。失败信息可能指向 `/root/.npm/_logs`，但这个路径既不是部署用户的宿主机目录，失败 stage 退出后也不可恢复。诊断必须成为升级模块的默认职责，而不是事故现场临时拼接的命令。
+
+**文件：**
+
+- 新增 `ops/self-hosted/scripts/npm-ci-with-diagnostics.sh` 及聚焦测试。
+- 更新 `ops/self-hosted/Dockerfile` 和自托管配置检查。
+- 更新 `ops/self-hosted/scripts/upgrade-lib.sh` 及公开接口测试。
+- 更新升级设计、操作员指南和运维手册的中英文文档对。
+
+**任务：**
+
+- [x] 通过可移植 wrapper 执行 `npm ci`，失败时输出脱敏后的 stage 内 npm debug log，并保留原始退出码。
+- [x] 候选构建强制使用 BuildKit plain progress，同时把脱敏输出写入私有运行 journal。
+- [x] 把 lockfile、CA、DNS、代理/网络、registry、容量和 OOM 等常见故障分类为简洁摘要。
+- [x] 通过现有文本/JSON `status` 暴露构建状态、诊断目录、构建日志、摘要和下一步。
+- [x] 保持构建失败发生在停流量前，恢复旧 checkout，维持稳定退出码 `20`，旧栈继续在线。
+- [x] 强制 `0700`/`0600` 权限，并回归测试凭据脱敏、日志留存、状态渲染和 Dockerfile 接线。
+- [ ] 在目标 Ubuntu 主机注入一次 npm 构建失败，只保留脱敏后的路径与状态证据。
+
+**验证：**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+git diff --check
+```
+
+**预期结果：** `upgrade.sh apply` 会自动把原本不可访问的 BuildKit npm 失败转化为持久化、私有、部署用户可读的诊断包，同时保持“构建失败不产生停机”的不变量和现有操作员接口。
 
 ## 推广与兼容
 

@@ -75,6 +75,22 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/upgrade.sh status --run-id <run-id> --json
 ```
 
+候选构建始终使用 BuildKit plain progress，并把脱敏后的完整输出同步写入本次运行 journal。Docker 或 `npm ci` 失败时，`apply` 会在停止流量前以退出码 `20` 结束、恢复旧 checkout，并打印三个部署用户可读的路径：
+
+- `diagnostics_dir`：位于运行 journal 下、权限为 `0700` 的私有目录；
+- `build_summary`：权限为 `0600` 的原因分类和下一步；
+- `build_log`：权限为 `0600` 的完整脱敏 Compose/BuildKit 输出。
+
+镜像构建通过内部诊断 wrapper 执行 `npm ci`。失败时，wrapper 会把原本只存在于临时构建容器 `/root/.npm/_logs/*-debug-*.log` 的内容，放在 `WISEEFF_NPM_CI_DIAGNOSTICS_BEGIN/END` 标记之间写入构建输出；同时保留 npm 原始退出码，并遮蔽 URL 凭据、registry token、密码和 bearer token。操作员不需要宿主机 root 权限。查看持久化证据：
+
+```bash
+./scripts/upgrade.sh status --run-id <run-id>
+cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
+less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
+```
+
+脚本会自动分类 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
+
 在 migration 启动前，排空或备份失败会恢复旧服务，并记录 `old-stack-restored` 或 `failed-safe`。候选 API 启动后失败会记录 `recovery-required`，保持 proxy 停止并保持队列暂停。不要手工修改 journal 或直接恢复流量。
 
 对于可幂等的候选健康/收尾阶段，执行 journal 给出的动作：
@@ -125,6 +141,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 - 备份目录必须位于 checkout 和 Docker data root 之外；目录权限 `0700`，文件权限 `0600`。
 - `ops/self-hosted/.state/` 必须排除在 Docker 构建上下文之外；它保存私有运维 journal，不是应用源码。
+- 构建诊断属于私有运维数据。脚本会自动脱敏，但对外分享前仍需再次检查。
 - 保持同一个 Compose project 与命名 volume identity，升级时不要增加新的 project name。
 - 把 `recovery-required` 当作维护事故处理；直到 `resume` 或获批的整点恢复结束，都保持 proxy 停止。
 - 本地测试和 `selfhost:check` 只能验证入口与模板，不能替代目标环境、试点或生产就绪证据。

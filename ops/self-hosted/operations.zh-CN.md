@@ -278,6 +278,14 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 ./scripts/upgrade.sh resume --run-id <run-id>
 ```
 
+Docker 或 `npm ci` 构建阶段使 `apply` 以退出码 `20` 结束时，旧服务仍在线。命令会自动把脱敏、部署用户可读的证据保存在运行 journal 中。使用 `status` 打印的 `build_summary` 与 `build_log`；不要查看宿主机 `/root/.npm`，因为 npm 只是在临时 BuildKit stage 内以 root 运行。
+
+```bash
+./scripts/upgrade.sh status --run-id <run-id>
+cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
+less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
+```
+
 检查 setup/upgrade 共享操作锁：
 
 ```bash
@@ -363,6 +371,7 @@ npm run selfhost:release-gate -- \
 | checkout dirty 拒绝 | 已跟踪或未忽略文件偏离部署 commit | 检查 `git status --short`，保留操作员文件并有意处理差异 |
 | 用户直接运行 Git 成功，但升级 Git fetch 超时 | 可能错误使用 `sudo`、代理环境缺失或 Git 配置不同 | 由部署用户执行；检查代理；必要时用 `--git-proxy` 只覆盖 Git |
 | Git 成功，但镜像拉取或构建失败 | Docker daemon/build 使用独立的代理或 CA 边界 | 配置 Docker 服务代理和组织批准的 CA；禁止全局关闭 TLS |
+| `npm ci` 失败并提示 `/root/.npm/_logs` | 该路径属于临时镜像构建 stage，不是宿主机 | 查看本次运行的 `build_summary` 和脱敏 `build_log`；修复分类原因后重新执行 `apply` |
 | `/health/live` 通过但 `/health/ready` 失败 | API 存活，但必需依赖阻塞 | 保留 readiness JSON，按其中命名的依赖排查 |
 | `worker` 配置了 `restart: unless-stopped` 仍反复退出 | 属于启动、配置或依赖错误，而不是普通停止 | 先保留日志并检查依赖 readiness，禁止盲目重启循环 |
 | `recovery-required` | candidate migration 已开始，但自动安全收尾失败 | 保持 proxy 停止；执行 journal 指定的 `resume` 或获批整点回滚 |

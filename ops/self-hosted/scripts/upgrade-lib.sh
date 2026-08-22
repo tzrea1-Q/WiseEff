@@ -120,6 +120,10 @@ wiseeff_upgrade_write_status() {
     printf 'previous_sha=%s\n' "$(wiseeff_upgrade_state_read previous_sha)"
     printf 'target_sha=%s\n' "$(wiseeff_upgrade_state_read target_sha)"
     printf 'backup_dir=%s\n' "$(wiseeff_upgrade_state_read backup_dir)"
+    printf 'build_status=%s\n' "$(wiseeff_upgrade_state_read build_status)"
+    printf 'diagnostics_dir=%s\n' "$(wiseeff_upgrade_state_read diagnostics_dir)"
+    printf 'build_log=%s\n' "$(wiseeff_upgrade_state_read build_log)"
+    printf 'build_summary=%s\n' "$(wiseeff_upgrade_state_read build_summary)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
   chmod 600 "$temp_path"
@@ -656,6 +660,7 @@ wiseeff_upgrade_init_run() {
   wiseeff_upgrade_state_write env_fingerprint "$(wiseeff_upgrade_fingerprint "$upgrade_env_file")"
   wiseeff_upgrade_state_write backup_dir "$upgrade_backup_dir"
   wiseeff_upgrade_state_write protocol_version 1
+  wiseeff_upgrade_state_write build_status not-started
   wiseeff_upgrade_state_write started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   wiseeff_upgrade_set_phase initialized running
   wiseeff_upgrade_write_status "$upgrade_run_id"
@@ -725,13 +730,157 @@ wiseeff_upgrade_tag_previous_images() {
 }
 
 wiseeff_upgrade_build_candidate() {
-  local target_tag
+  local target_tag build_status pipeline_status
+  local -a build_pipeline_statuses
+
   target_tag="$(wiseeff_upgrade_app_image_name):${upgrade_target_sha}"
-  wiseeff_upgrade_git checkout --detach "$upgrade_target_sha" >/dev/null || return $?
-  WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose build api || return $?
-  wiseeff_upgrade_docker image inspect "$target_tag" >/dev/null || return $?
+  upgrade_diagnostics_dir="${upgrade_run_dir}/diagnostics"
+  upgrade_build_log="${upgrade_diagnostics_dir}/build.log"
+  upgrade_build_summary="${upgrade_diagnostics_dir}/summary.txt"
+
+  mkdir -p "$upgrade_diagnostics_dir" || return $?
+  chmod 700 "$upgrade_diagnostics_dir" || return $?
+  : > "$upgrade_build_log"
+  chmod 600 "$upgrade_build_log" || return $?
+  wiseeff_upgrade_state_write diagnostics_dir "$upgrade_diagnostics_dir" || return $?
+  wiseeff_upgrade_state_write build_log "$upgrade_build_log" || return $?
+  wiseeff_upgrade_state_write build_summary "$upgrade_build_summary" || return $?
+  wiseeff_upgrade_state_write build_status running || return $?
+  if [ -n "${upgrade_run_id:-}" ]; then
+    wiseeff_upgrade_write_status "$upgrade_run_id" || return $?
+  fi
+
+  if wiseeff_upgrade_git checkout --detach "$upgrade_target_sha" >/dev/null; then
+    :
+  else
+    build_status=$?
+    wiseeff_upgrade_write_build_summary failed source-checkout \
+      "The immutable target checkout could not be selected for the candidate build." \
+      "Verify the fetched Git object and rerun apply." || return $?
+    wiseeff_upgrade_state_write build_status failed || return $?
+    return "$build_status"
+  fi
+
+  if BUILDKIT_PROGRESS=plain WISEEFF_APP_TAG="$upgrade_target_sha" \
+    wiseeff_upgrade_compose build api 2>&1 \
+      | wiseeff_upgrade_sanitize_diagnostic_stream \
+      | tee "$upgrade_build_log"; then
+    build_pipeline_statuses=("${PIPESTATUS[@]}")
+  else
+    build_pipeline_statuses=("${PIPESTATUS[@]}")
+  fi
+
+  build_status="${build_pipeline_statuses[0]:-1}"
+  if [ "$build_status" -eq 0 ]; then
+    for pipeline_status in "${build_pipeline_statuses[@]:1}"; do
+      if [ "$pipeline_status" -ne 0 ]; then
+        build_status="$pipeline_status"
+        break
+      fi
+    done
+  fi
+  chmod 600 "$upgrade_build_log" || return $?
+
+  if [ "$build_status" -ne 0 ]; then
+    wiseeff_upgrade_write_build_failure_summary "$build_status" || return $?
+    wiseeff_upgrade_state_write build_status failed || return $?
+    return "$build_status"
+  fi
+
+  if wiseeff_upgrade_docker image inspect "$target_tag" >/dev/null; then
+    :
+  else
+    build_status=$?
+    wiseeff_upgrade_write_build_summary failed image-inspection \
+      "The build command completed, but the commit-addressed candidate image is unavailable." \
+      "Inspect the build log and Docker image store, then rerun apply." || return $?
+    wiseeff_upgrade_state_write build_status failed || return $?
+    return "$build_status"
+  fi
+
   upgrade_candidate_image_tag="$target_tag"
   wiseeff_upgrade_state_write candidate_image_tag "$target_tag" || return $?
+  wiseeff_upgrade_write_build_summary passed none \
+    "The commit-addressed candidate image built successfully." \
+    "No build-diagnostic action is required." || return $?
+  wiseeff_upgrade_state_write build_status passed || return $?
+}
+
+wiseeff_upgrade_sanitize_diagnostic_stream() {
+  sed \
+    -e 's#\(https\{0,1\}://\)[^/@[:space:]][^/@[:space:]]*@#\1[REDACTED]@#g' \
+    -e 's#\(_authToken[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\(_password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\(password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\(NPM_TOKEN[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\(NODE_AUTH_TOKEN[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\("_authToken"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("password"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("token"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\(authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\(Authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g'
+}
+
+wiseeff_upgrade_write_build_summary() {
+  local status="$1"
+  local category="$2"
+  local message="$3"
+  local next_step="$4"
+  local temp_path="${upgrade_build_summary}.tmp.$$"
+
+  {
+    printf 'status=%s\n' "$status"
+    printf 'category=%s\n' "$category"
+    printf 'message=%s\n' "$message"
+    printf 'next_step=%s\n' "$next_step"
+    printf 'build_log=%s\n' "$upgrade_build_log"
+  } > "$temp_path" || return $?
+  chmod 600 "$temp_path" || return $?
+  mv -f "$temp_path" "$upgrade_build_summary" || return $?
+}
+
+wiseeff_upgrade_write_build_failure_summary() {
+  local exit_code="$1"
+  local category="unclassified"
+  local message="The candidate image build failed before downtime."
+  local next_step="Review the end of the build log, correct the reported build error, then rerun apply."
+
+  if grep -Eqi 'EUSAGE|package-lock\.json.*(not in sync|out of date)|npm ci.*lock' "$upgrade_build_log"; then
+    category="dependency-lock"
+    message="npm ci rejected a package.json/package-lock.json mismatch."
+    next_step="Regenerate and commit package-lock.json with the repository npm version, then rerun apply."
+  elif grep -Eqi 'SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|self signed certificate|certificate verify failed' "$upgrade_build_log"; then
+    category="corporate-ca"
+    message="The image build could not validate the package registry certificate chain."
+    next_step="Install the organization-approved CA in the Docker build trust path; do not disable TLS verification."
+  elif grep -Eqi 'EAI_AGAIN|ENOTFOUND|temporary failure in name resolution|could not resolve host' "$upgrade_build_log"; then
+    category="dns"
+    message="The Docker build could not resolve a required package or image host."
+    next_step="Check Docker daemon/build DNS and proxy settings, then rerun apply."
+  elif grep -Eqi 'ETIMEDOUT|ECONNRESET|ECONNREFUSED|connection timed out|failed to connect' "$upgrade_build_log"; then
+    category="network"
+    message="The Docker build could not reach a required package or image endpoint."
+    next_step="Check the Docker service/build proxy and firewall path, then rerun apply."
+  elif grep -Eqi 'EINTEGRITY|integrity checksum failed|integrity check failed' "$upgrade_build_log"; then
+    category="registry-integrity"
+    message="npm reported a package integrity mismatch."
+    next_step="Check registry/cache consistency and the committed lockfile; do not bypass integrity verification."
+  elif grep -Eqi 'ETARGET|404 Not Found|No matching version found' "$upgrade_build_log"; then
+    category="registry-package"
+    message="The configured registry does not provide a package version required by the lockfile."
+    next_step="Check registry synchronization and the locked package version, then rerun apply."
+  elif grep -Eqi 'ENOSPC|no space left on device|no space left' "$upgrade_build_log"; then
+    category="host-capacity"
+    message="The candidate build ran out of Docker storage space or inodes."
+    next_step="Free verified-unused Docker build storage or expand capacity, then rerun apply."
+  elif grep -Eqi 'exit code: 137|exited with code 137|(^|[^0-9])Killed([^a-z]|$)' "$upgrade_build_log"; then
+    category="memory"
+    message="The candidate build was probably terminated by the host OOM killer."
+    next_step="Check host/kernel OOM evidence and increase available build memory before rerunning apply."
+  fi
+
+  wiseeff_upgrade_write_build_summary failed "$category" \
+    "${message} (build exit ${exit_code})" "$next_step"
 }
 
 wiseeff_upgrade_queue_command_for_tag() {
@@ -1257,13 +1406,23 @@ wiseeff_upgrade_run_apply() {
   fi
   wiseeff_upgrade_set_phase building running
   if ! wiseeff_upgrade_build_candidate; then
+    local diagnostics_dir build_log build_summary
+    diagnostics_dir="$(wiseeff_upgrade_state_read diagnostics_dir)"
+    build_log="$(wiseeff_upgrade_state_read build_log)"
+    build_summary="$(wiseeff_upgrade_state_read build_summary)"
     wiseeff_upgrade_git checkout --detach "$upgrade_previous_sha" >/dev/null 2>&1 || true
+    wiseeff_upgrade_state_write next_action "Review ${build_summary:-the build diagnostics}, correct the build environment or dependency error, then rerun apply."
     wiseeff_upgrade_set_phase failed-safe failed
-    wiseeff_upgrade_state_write next_action none
+    wiseeff_upgrade_event candidate-build-failed "diagnostics=${diagnostics_dir:-unavailable}"
     wiseeff_upgrade_write_status "$upgrade_run_id"
+    printf 'Candidate build failed before downtime; the existing services remain online.\n' >&2
+    printf 'diagnostics: %s\n' "${diagnostics_dir:-unavailable}" >&2
+    printf 'summary: %s\n' "${build_summary:-unavailable}" >&2
+    printf 'build log: %s\n' "${build_log:-unavailable}" >&2
     return 20
   fi
   wiseeff_upgrade_set_phase built complete
+  wiseeff_upgrade_write_status "$upgrade_run_id"
 
   wiseeff_upgrade_set_phase quiescing running
   if ! wiseeff_upgrade_stop_old_stack; then
@@ -1393,7 +1552,7 @@ wiseeff_upgrade_status() {
     if [ -f "${state_root}/${requested_run_id}/status" ]; then
       if [ "${upgrade_json}" = "true" ]; then
         local run_dir="${state_root}/${requested_run_id}"
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","nextAction":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -1402,6 +1561,10 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/previous_sha" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/target_sha" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/backup_dir" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_status" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/diagnostics_dir" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_log" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_summary" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"

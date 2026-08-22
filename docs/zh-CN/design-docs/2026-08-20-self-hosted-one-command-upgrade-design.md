@@ -58,6 +58,8 @@ WiseEff 当前有三条相关但不完整的操作路径：
 
 构建候选 tag 前，先把当前应用镜像打上本次运行专用的 rollback tag。候选与旧镜像 ID 都写入运行记录。
 
+构建阶段同时负责产生可用证据。Compose 使用 BuildKit plain progress，脱敏后的输出写入本次运行权限为 `0700` 的诊断目录，日志文件权限为 `0600`。Dockerfile 中的 `npm ci` wrapper 会在临时构建 stage 消失前输出经过脱敏的 npm debug log，并保留 npm 原始退出码。轻量分类器会为 dependency lock、CA、DNS、网络、registry、容量和 OOM 等常见问题写入便于操作员理解的摘要。这些字段通过已有 `status` 接口暴露，不新增独立诊断命令，也不要求宿主机 root 权限。
+
 ### 迁移前必须有备份
 
 正常接口不提供 `--skip-backup`。停止外部流量和后台写入后，控制器必须生成并验证：
@@ -111,7 +113,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `plan` 解析目标并报告 commit、迁移变化、磁盘需求、备份位置和预期停机，但不 checkout、不改变容器。
 - `prepare-host` 是唯一面向 root 的动作：规范部署用户的 Docker 组成员关系以及受保护的 operation/journal/备份目录；它不访问 Git，也不改变运行中的服务。
 - `lock-status` 报告内核/fallback 锁状态与脱敏持锁者元数据；`unlock` 只清理已证明陈旧的元数据/fallback 锁，并拒绝真实在运行的操作。
-- `status` 只读取持久化运行记录。
+- `status` 只读取持久化运行记录，包括候选构建状态、诊断路径和可执行下一步。
 - `resume` 从第一个未完成的幂等阶段继续；不会盲目重复已验证的快照或迁移。
 - `rollback` 恢复旧应用镜像；增加 `--restore-data` 后同时恢复 PostgreSQL、对象存储和 Redis 恢复点。
 - 若目标 SHA 已运行且未传 `--restart`，`apply` 以成功 no-op 退出。
@@ -237,8 +239,10 @@ stateDiagram-v2
 1. 给当前每个应用镜像打本次运行专用旧版本 tag。
 2. 以 detached-head 部署模式 checkout 已解析目标 commit。
 3. 构建一份带 commit tag 的应用镜像，API、worker 和 web 共用。
-4. 执行镜像级 self-hosted 配置/构建检查。
-5. 任一步失败时恢复旧 checkout 并退出；旧容器从未停止。
+4. 把脱敏后的 plain-progress 输出写入运行 journal；npm 失败时，在构建 stage 消失前导出经过脱敏的 stage 内 debug log。
+5. 写入原因分类摘要，并通过 `status` 暴露诊断路径。
+6. 执行镜像级 self-hosted 配置/构建检查。
+7. 任一步失败时恢复旧 checkout 并退出；旧容器从未停止。
 
 Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变的 Compose 默认 tag，也不需要事故期间重新构建旧源码。
 
@@ -305,6 +309,7 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 ## 安全不变量
 
 - 不记录 `.env` 内容和含密钥命令行。
+- 构建日志和摘要属于私有 journal 产物（目录 `0700`、文件 `0600`）；URL 凭据、registry token、密码和 bearer token 在持久化前完成脱敏。
 - 包含配置或客户数据的备份目录权限必须为 `0700`，敏感文件为 `0600`。
 - 备份根目录不得位于 Git checkout、Docker volume 根目录或 live 对象存储路径内。
 - 用户传入的 Git ref 和路径只能作为参数传递，不能由 shell 求值。
