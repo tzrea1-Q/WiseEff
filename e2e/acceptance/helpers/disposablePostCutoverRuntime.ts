@@ -29,10 +29,14 @@ import {
   recordNestedRuntimeFinish,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
+  readNestedRuntimeManifest,
   type NestedRuntimeCleanup,
 } from "./nestedRuntimeManifest";
 import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
-import { stopOwnedProcessGroup } from "../../../scripts/owned-process-group";
+import {
+  stopOwnedProcessGroup,
+  type StopOwnedProcessGroupOptions,
+} from "../../../scripts/owned-process-group";
 import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
 import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-registry";
 import { readProcessStartIdentity } from "../../../scripts/process-start-identity";
@@ -74,6 +78,17 @@ type DisposableProcessCleanupResult = Pick<
   NestedRuntimeCleanup,
   "apiProcess" | "frontendProcess"
 > & { errors: Error[] };
+
+class TrackedNestedProcessHandshakeError extends AggregateError {
+  constructor(
+    errors: Error[],
+    readonly process: "api" | "frontend",
+    readonly durableIdentityPublished: boolean,
+    message: string,
+  ) {
+    super(errors, message);
+  }
+}
 
 export type FinalizeDisposableRuntimeResourcesInput = {
   outcome: DisposableRuntimeOutcome;
@@ -165,39 +180,47 @@ export function prepareNestedObjectStoreRoot(
   databaseName: string,
   nestedManifestPath?: string,
 ): NestedObjectStoreOwnership {
+  if (nestedManifestPath) {
+    return materializeNestedObjectStoreRoot(planNestedObjectStoreRoot(databaseName, nestedManifestPath));
+  }
   if (!databaseName.startsWith(databasePrefix)) {
     throw new Error("Nested object-store ownership requires an exact disposable database identity.");
   }
-  let containerRoot: string;
-  if (nestedManifestPath) {
-    if (!path.isAbsolute(nestedManifestPath)) throw new Error("Nested runtime manifest must be absolute.");
-    const manifestStat = lstatSync(nestedManifestPath);
-    if (manifestStat.isSymbolicLink() || !manifestStat.isFile()) {
-      throw new Error("Nested runtime manifest must be a regular parent-run artifact.");
-    }
-    const parentRunRoot = realpathSync(path.dirname(nestedManifestPath));
-    containerRoot = path.join(parentRunRoot, "nested-object-store");
-    if (existsSync(containerRoot)) {
-      const stat = lstatSync(containerRoot);
-      if (stat.isSymbolicLink() || !stat.isDirectory()) {
-        throw new Error("Nested object-store container must be a regular parent-run directory.");
-      }
-    } else {
-      mkdirSync(containerRoot);
-    }
-  } else {
-    containerRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-store-"));
+  const containerRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-store-"));
+  return materializeNestedObjectStoreRoot(buildNestedObjectStoreOwnership(databaseName, containerRoot));
+}
+
+export function planNestedObjectStoreRoot(
+  databaseName: string,
+  nestedManifestPath: string,
+): NestedObjectStoreOwnership {
+  if (!databaseName.startsWith(databasePrefix)) {
+    throw new Error("Nested object-store ownership requires an exact disposable database identity.");
   }
+  if (!path.isAbsolute(nestedManifestPath)) throw new Error("Nested runtime manifest must be absolute.");
+  const manifestStat = lstatSync(nestedManifestPath);
+  if (manifestStat.isSymbolicLink() || !manifestStat.isFile()) {
+    throw new Error("Nested runtime manifest must be a regular parent-run artifact.");
+  }
+  const parentRunRoot = realpathSync(path.dirname(nestedManifestPath));
+  const containerRoot = path.join(parentRunRoot, "nested-object-store");
+  if (existsSync(containerRoot)) {
+    const stat = lstatSync(containerRoot);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("Nested object-store container must be a regular parent-run directory.");
+    }
+  }
+  const ownership = buildNestedObjectStoreOwnership(databaseName, containerRoot);
+  if (existsSync(ownership.root)) {
+    throw new Error(`Nested object-store root must be absent before provisioning intent: ${ownership.root}`);
+  }
+  return ownership;
+}
+
+function buildNestedObjectStoreOwnership(databaseName: string, containerRoot: string) {
   const root = path.join(containerRoot, databaseName);
-  assertStrictRealDescendant(containerRoot, root, false);
-  if (existsSync(root)) throw new Error(`Nested object-store root must be absent before creation: ${root}`);
-  mkdirSync(root);
   const markerPath = path.join(root, ".wiseeff-nested-runtime-owner.json");
-  const markerContent = `${JSON.stringify({
-    kind: "wiseeff-owned-nested-runtime-object-store",
-    databaseName,
-  }, null, 2)}\n`;
-  writeFileSync(markerPath, markerContent, { encoding: "utf8", flag: "wx" });
+  const markerContent = nestedObjectStoreMarkerContent(databaseName);
   return {
     root,
     containerRoot,
@@ -205,6 +228,45 @@ export function prepareNestedObjectStoreRoot(
     markerSha256: createHash("sha256").update(markerContent).digest("hex"),
     databaseName,
   };
+}
+
+export function materializeNestedObjectStoreRoot(ownership: NestedObjectStoreOwnership) {
+  if (existsSync(ownership.containerRoot)) {
+    const containerStat = lstatSync(ownership.containerRoot);
+    if (containerStat.isSymbolicLink() || !containerStat.isDirectory()) {
+      throw new Error("Nested object-store container must be a regular parent-run directory.");
+    }
+  } else {
+    mkdirSync(ownership.containerRoot);
+  }
+  assertStrictRealDescendant(ownership.containerRoot, ownership.root, false);
+  if (existsSync(ownership.root)) {
+    throw new Error(`Nested object-store root must be absent before creation: ${ownership.root}`);
+  }
+  mkdirSync(ownership.root);
+  const markerContent = nestedObjectStoreMarkerContent(ownership.databaseName);
+  writeFileSync(ownership.markerPath, markerContent, { encoding: "utf8", flag: "wx" });
+  return ownership;
+}
+
+function nestedObjectStoreMarkerContent(databaseName: string) {
+  return `${JSON.stringify({
+    kind: "wiseeff-owned-nested-runtime-object-store",
+    databaseName,
+  }, null, 2)}\n`;
+}
+
+export function recordNestedObjectStoreProvisioningIntent(input: {
+  manifestPath: string;
+  child: Parameters<typeof recordNestedRuntimeProvisioning>[1];
+  ownership: NestedObjectStoreOwnership;
+  materialize?: (ownership: NestedObjectStoreOwnership) => NestedObjectStoreOwnership;
+}) {
+  if (input.child.objectStoreRoot !== input.ownership.root) {
+    throw new Error("Nested object-store provisioning intent does not match its planned owned root.");
+  }
+  recordNestedRuntimeProvisioning(input.manifestPath, input.child);
+  return (input.materialize ?? materializeNestedObjectStoreRoot)(input.ownership);
 }
 
 export async function removeNestedObjectStoreRoot(ownership: NestedObjectStoreOwnership) {
@@ -475,32 +537,103 @@ function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
   return child;
 }
 
-export function startTrackedNestedRuntimeProcess(input: {
+export async function startTrackedNestedRuntimeProcess(input: {
   manifestPath: string;
   childId: string;
   process: "api" | "frontend";
   port: number;
   spawn(): ChildProcess;
   track(child: ChildProcess): void;
+  readProcessIdentity?: typeof readProcessStartIdentity;
+  recordProgress?: typeof recordNestedRuntimeProgress;
+  rollbackStopOptions?: StopOwnedProcessGroupOptions;
 }) {
   const child = input.spawn();
   // Tracking precedes the manifest write so the local startup rollback owns the
   // child even when the atomic parent-manifest handshake itself fails.
   input.track(child);
   const pid = requireRuntimePid(child, input.process === "api" ? "API" : "frontend");
-  const processIdentity = readProcessStartIdentity(pid);
+  const processIdentity = (input.readProcessIdentity ?? readProcessStartIdentity)(pid);
   if (!processIdentity) {
-    throw new Error(`Disposable ${input.process} process start identity could not be verified.`);
+    throw new TrackedNestedProcessHandshakeError(
+      [new Error(`Disposable ${input.process} process start identity could not be verified.`)],
+      input.process,
+      false,
+      `Disposable ${input.process} process identity capture failed; cleanup remains unresolved.`,
+    );
   }
   const identity = { pid, port: input.port, ...processIdentity };
-  recordNestedRuntimeProgress(input.manifestPath, input.childId, input.process === "api"
+  const progress = input.process === "api"
     ? { apiPid: pid, apiProcessIdentity: identity }
-    : { frontendPid: pid, frontendProcessIdentity: identity });
+    : { frontendPid: pid, frontendProcessIdentity: identity };
+  const recordProgress = input.recordProgress ?? recordNestedRuntimeProgress;
+  try {
+    recordProgress(input.manifestPath, input.childId, progress);
+  } catch (error) {
+    try {
+      await stopOwnedProcessGroup(pid, {
+        ...input.rollbackStopOptions,
+        terminateGraceMs: input.rollbackStopOptions?.terminateGraceMs ?? 3_000,
+        expectedProcessIdentity: processIdentity,
+      });
+    } catch (cleanupError) {
+      const errors = [asNestedError(error), asNestedError(cleanupError)];
+      let durableIdentityPublished = false;
+      try {
+        recordProgress(input.manifestPath, input.childId, progress);
+        durableIdentityPublished = true;
+      } catch (recoveryPublishError) {
+        errors.push(asNestedError(recoveryPublishError));
+      }
+      throw new TrackedNestedProcessHandshakeError(
+        errors,
+        input.process,
+        durableIdentityPublished,
+        `Disposable ${input.process} manifest publish and exact-identity rollback both failed.`,
+      );
+    }
+    throw error;
+  }
   return child;
 }
 
-async function stopRuntime(child: ChildProcess) {
-  await stopOwnedProcessGroup(child, { terminateGraceMs: 3_000 });
+export async function stopManifestTrackedNestedProcesses(input: {
+  manifestPath: string;
+  childId: string;
+  stopOptions?: StopOwnedProcessGroupOptions;
+}): Promise<DisposableProcessCleanupResult> {
+  const record = readNestedRuntimeManifest(input.manifestPath).children.find((child) => child.id === input.childId);
+  if (!record) throw new Error(`Nested runtime ${input.childId} is not registered.`);
+  const cleanup = nestedCleanupPending();
+  const errors: Error[] = [];
+  for (const [label, pid, identity] of [
+    ["frontendProcess", record.frontendPid, record.frontendProcessIdentity],
+    ["apiProcess", record.apiPid, record.apiProcessIdentity],
+  ] as const) {
+    if (pid === undefined) {
+      cleanup[label] = { status: "not-started" };
+      continue;
+    }
+    try {
+      if (!identity || identity.pid !== pid) {
+        throw new Error(`Nested ${label} process identity is missing or does not match PID ${pid}; refusing signal.`);
+      }
+      await stopOwnedProcessGroup(pid, {
+        ...input.stopOptions,
+        terminateGraceMs: input.stopOptions?.terminateGraceMs ?? 3_000,
+        expectedProcessIdentity: identity,
+      });
+      cleanup[label] = { status: "stopped" };
+    } catch (error) {
+      cleanup[label] = { status: "failed", reason: safeNestedCleanupReason(error) };
+      errors.push(asNestedError(error));
+    }
+  }
+  return {
+    apiProcess: cleanup.apiProcess,
+    frontendProcess: cleanup.frontendProcess,
+    errors,
+  };
 }
 
 export async function startDisposablePostCutoverRuntime(
@@ -524,25 +657,32 @@ export async function startDisposablePostCutoverRuntime(
   const generatedAuthorization = createDisposableAuthorization(authIssuer, authSecret);
   await registerGate0GeneratedSecrets([authSecret, generatedAuthorization]);
   const nestedManifestPath = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV]?.trim();
-  const objectStore = prepareNestedObjectStoreRoot(databaseName, nestedManifestPath);
-  const objectStoreRoot = objectStore.root;
+  let objectStore: NestedObjectStoreOwnership | undefined;
   const children: ChildProcess[] = [];
   let nestedRegistered = false;
   let verifiedMigrationRunId: string | undefined;
 
-  if (nestedManifestPath) {
-    recordNestedRuntimeProvisioning(nestedManifestPath, {
-      id: databaseName,
-      databaseName,
-      markerPurpose: purpose,
-      objectStoreRoot,
-      apiUrl,
-      frontendUrl,
-    });
-    nestedRegistered = true;
-  }
-
   try {
+    if (nestedManifestPath) {
+      const plannedObjectStore = planNestedObjectStoreRoot(databaseName, nestedManifestPath);
+      objectStore = recordNestedObjectStoreProvisioningIntent({
+        manifestPath: nestedManifestPath,
+        ownership: plannedObjectStore,
+        child: {
+          id: databaseName,
+          databaseName,
+          markerPurpose: purpose,
+          objectStoreRoot: plannedObjectStore.root,
+          apiUrl,
+          frontendUrl,
+        },
+      });
+      nestedRegistered = true;
+    } else {
+      objectStore = prepareNestedObjectStoreRoot(databaseName);
+    }
+    const ownedObjectStore = objectStore;
+    const objectStoreRoot = ownedObjectStore.root;
     await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
     const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
@@ -566,7 +706,7 @@ export async function startDisposablePostCutoverRuntime(
       ...(options.apiEnv ?? {}),
     });
     const api = nestedManifestPath
-      ? startTrackedNestedRuntimeProcess({
+      ? await startTrackedNestedRuntimeProcess({
           manifestPath: nestedManifestPath,
           childId: databaseName,
           process: "api",
@@ -590,7 +730,7 @@ export async function startDisposablePostCutoverRuntime(
       },
     );
     const frontend = nestedManifestPath
-      ? startTrackedNestedRuntimeProcess({
+      ? await startTrackedNestedRuntimeProcess({
           manifestPath: nestedManifestPath,
           childId: databaseName,
           process: "frontend",
@@ -627,14 +767,16 @@ export async function startDisposablePostCutoverRuntime(
         const result = await finalizeDisposableRuntimeResources({
           outcome,
           retainFailureResources: nestedRegistered,
-          stopProcesses: () => stopAndReportNestedProcesses(children),
+          stopProcesses: () => nestedManifestPath && nestedRegistered
+            ? stopManifestTrackedNestedProcesses({ manifestPath: nestedManifestPath, childId: databaseName })
+            : stopAndReportNestedProcesses(children),
           async removeDatabase() {
             await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
             await withClient(adminUrl, (client) =>
               client.query(`drop database if exists ${databaseName} with (force)`),
             );
           },
-          removeObjectStore: () => removeNestedObjectStoreRoot(objectStore),
+          removeObjectStore: () => removeNestedObjectStoreRoot(ownedObjectStore),
         });
         if (nestedManifestPath && nestedRegistered) {
           recordNestedRuntimeFinish(
@@ -652,8 +794,22 @@ export async function startDisposablePostCutoverRuntime(
   } catch (error) {
     const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
     const cleanupErrors: Error[] = [];
-    await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
+    if (nestedManifestPath && !nestedRegistered) {
+      nestedRegistered = readNestedRuntimeManifest(nestedManifestPath).children.some((child) => child.id === databaseName);
+    }
     if (nestedManifestPath && nestedRegistered) {
+      const processCleanup = await stopManifestTrackedNestedProcesses({
+        manifestPath: nestedManifestPath,
+        childId: databaseName,
+      });
+      cleanup.apiProcess = processCleanup.apiProcess;
+      cleanup.frontendProcess = processCleanup.frontendProcess;
+      cleanupErrors.push(...processCleanup.errors);
+      if (error instanceof TrackedNestedProcessHandshakeError && !error.durableIdentityPublished) {
+        const label = error.process === "api" ? "apiProcess" : "frontendProcess";
+        cleanup[label] = { status: "failed", reason: safeNestedCleanupReason(error) };
+        cleanupErrors.push(error);
+      }
       const retentionReason = "Nested startup failed; Gate0 retains database and object-store evidence.";
       cleanup.database = { status: "retained", reason: retentionReason };
       cleanup.objectStore = { status: "retained", reason: retentionReason };
@@ -667,6 +823,7 @@ export async function startDisposablePostCutoverRuntime(
         ? error
         : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup failed; Gate0 evidence was retained.");
     }
+    await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
     await afterNestedProcessesStop(cleanupErrors, async () => {
       if (verifiedMigrationRunId) {
         await verifyPostCutoverDatabase(databaseUrl, verifiedMigrationRunId, purpose).then(
@@ -686,13 +843,15 @@ export async function startDisposablePostCutoverRuntime(
           reason: "Disposable database marker/cutover ownership was not verified; destructive cleanup was refused.",
         };
       }
-      await removeNestedObjectStoreRoot(objectStore).then(
-        () => { cleanup.objectStore = { status: "removed" }; },
-        (cleanupError) => {
-          cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
-          cleanupErrors.push(asNestedError(cleanupError));
-        },
-      );
+      if (objectStore) {
+        await removeNestedObjectStoreRoot(objectStore).then(
+          () => { cleanup.objectStore = { status: "removed" }; },
+          (cleanupError) => {
+            cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+            cleanupErrors.push(asNestedError(cleanupError));
+          },
+        );
+      }
     }, error);
     throw cleanupErrors.length === 0
       ? error

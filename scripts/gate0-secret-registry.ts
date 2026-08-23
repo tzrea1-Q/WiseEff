@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 
+import { persistGate0ExactValuesForRescan } from "./gate0-artifact-sanitizer";
+
 type RuntimeEnv = Record<string, string | undefined>;
 
 export const GATE0_SECRET_REGISTRY_URL_ENV = "WISEEFF_GATE0_SECRET_REGISTRY_URL";
@@ -11,21 +13,41 @@ const MIN_SECRET_LENGTH = 8;
 
 export type Gate0SecretRegistry = {
   env: Record<string, string>;
-  add(values: readonly string[]): void;
+  add(values: readonly string[], persistenceRoot: string): void;
   values(): string[];
+  seal(): Promise<void>;
   close(): Promise<void>;
 };
 
 /**
- * Starts a loopback-only, token-authenticated sink backed solely by parent
- * process memory. Nested runtimes can register their freshly generated exact
- * values without persisting credentials in the ownership manifest or logs.
+ * Starts a loopback-only, token-authenticated sink. The first parent
+ * registration binds an owned artifact root; every accepted registration is
+ * encrypted and durably published there before it is acknowledged.
  */
 export async function startGate0SecretRegistry(signal?: AbortSignal): Promise<Gate0SecretRegistry> {
   const token = randomBytes(32).toString("hex");
   const values = new Set<string>([token]);
+  let persistenceRoot: string | undefined;
+  let sealed = false;
+  const activeRegistrations = new Set<Promise<void>>();
+  const commit = (secretValues: readonly string[], requestedRoot?: string) => {
+    if (sealed) throw new Error("Gate0 secret registry is sealed.");
+    const targetRoot = requestedRoot ?? persistenceRoot;
+    if (!targetRoot) throw new Error("Gate0 secret registry persistence root is not bound.");
+    if (persistenceRoot && targetRoot !== persistenceRoot) {
+      throw new Error("Gate0 secret registry persistence root cannot change.");
+    }
+    const additions = normalized(secretValues);
+    const nextValues = [...values, ...additions];
+    persistGate0ExactValuesForRescan(targetRoot, nextValues);
+    persistenceRoot = targetRoot;
+    addNormalized(values, additions);
+  };
   const server = createServer((request, response) => {
-    void handleRegistrationRequest(request, response, token, values);
+    let registration!: Promise<void>;
+    registration = handleRegistrationRequest(request, response, token, commit)
+      .finally(() => activeRegistrations.delete(registration));
+    activeRegistrations.add(registration);
   });
   server.listen(0, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
@@ -57,11 +79,15 @@ export async function startGate0SecretRegistry(signal?: AbortSignal): Promise<Ga
   };
   return {
     env,
-    add(secretValues) {
-      addNormalized(values, secretValues);
+    add(secretValues, requestedRoot) {
+      commit(secretValues, requestedRoot);
     },
     values() {
       return [...values].sort((left, right) => right.length - left.length || left.localeCompare(right));
+    },
+    async seal() {
+      sealed = true;
+      await Promise.all([...activeRegistrations]);
     },
     close() {
       return new Promise<void>((resolve, reject) => {
@@ -100,7 +126,7 @@ async function handleRegistrationRequest(
   request: import("node:http").IncomingMessage,
   response: import("node:http").ServerResponse,
   token: string,
-  values: Set<string>,
+  commit: (values: readonly string[]) => void,
 ) {
   try {
     if (request.method !== "POST" || request.url !== "/register") {
@@ -124,10 +150,11 @@ async function handleRegistrationRequest(
     if (!Array.isArray(body.values) || body.values.some((value) => typeof value !== "string")) {
       throw new Error("Gate0 secret registration payload is invalid.");
     }
-    addNormalized(values, body.values as string[]);
+    commit(body.values as string[]);
     response.writeHead(204).end();
-  } catch {
-    response.writeHead(400).end();
+  } catch (error) {
+    const unavailable = error instanceof Error && /persistence root|sealed|registry/i.test(error.message);
+    response.writeHead(unavailable ? 503 : 400).end();
   }
 }
 

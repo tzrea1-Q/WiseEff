@@ -23,6 +23,7 @@ import type { DisposablePostCutoverRuntime } from "../e2e/acceptance/helpers/dis
 import {
   disposableRuntimeOutcomeFromTestInfo,
   finalizeDisposableRuntimeResources,
+  stopManifestTrackedNestedProcesses,
   prepareNestedObjectStoreRoot,
   removeNestedObjectStoreRoot,
   startTrackedNestedRuntimeProcess,
@@ -435,6 +436,48 @@ describe("Gate0 nested disposable runtime contract", () => {
       apiProcessIdentity: original,
       frontendProcessIdentity: frontendOriginal,
     });
+  });
+
+  it("never signals a reused nested PID and uses the identity persisted in the manifest", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-disposable-pid-reuse-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_pid_reuse",
+      databaseName: "wiseeff_acceptance_disposable_pid_reuse",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const identity = fakeProcessIdentity(111, 19_100);
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_pid_reuse", {
+      apiPid: 111,
+      apiProcessIdentity: identity,
+    });
+    const signals: NodeJS.Signals[] = [];
+    let identityReads = 0;
+
+    const result = await stopManifestTrackedNestedProcesses({
+      manifestPath,
+      childId: "wiseeff_acceptance_disposable_pid_reuse",
+      stopOptions: {
+        processGroupExists: async () => true,
+        readProcessIdentity: () => identityReads++ === 0
+          ? identity
+          : { startToken: "reused", commandSha256: "f".repeat(64) },
+        signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+        terminateGraceMs: 0,
+        verifyGraceMs: 0,
+        wait: async () => undefined,
+      },
+    });
+
+    expect(result.apiProcess).toMatchObject({ status: "failed", reason: expect.stringMatching(/identity/i) });
+    expect(signals).toEqual(["SIGTERM"]);
   });
 
   it("cannot declare success while a nested child is running or terminally failed", () => {
@@ -865,7 +908,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     expect(readNestedRuntimeManifest(manifestPath).children[0]?.state).toBe("provisioning");
   });
 
-  it("tracks a spawned child before synchronously publishing its PID to the parent manifest", () => {
+  it("tracks a spawned child before synchronously publishing its PID to the parent manifest", async () => {
     const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-spawn-handshake-"));
     const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
     initializeNestedRuntimeManifest(manifestPath, {
@@ -882,7 +925,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     });
     const tracked: number[] = [];
 
-    const child = startTrackedNestedRuntimeProcess({
+    const child = await startTrackedNestedRuntimeProcess({
       manifestPath,
       childId: "wiseeff_acceptance_disposable_spawn_handshake",
       process: "api",
@@ -898,5 +941,124 @@ describe("Gate0 nested disposable runtime contract", () => {
     expect(tracked).toEqual([child.pid]);
     expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiPid).toBe(child.pid);
     child.kill("SIGTERM");
+  });
+
+  it("rolls back a tracked child with its captured identity when manifest PID publication fails", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-spawn-publish-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const childId = "wiseeff_acceptance_disposable_spawn_publish_failure";
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const capturedIdentity = { startToken: "captured-process-start", commandSha256: "a".repeat(64) };
+    const tracked: number[] = [];
+    const signals: NodeJS.Signals[] = [];
+    let probes = 0;
+
+    await expect(startTrackedNestedRuntimeProcess({
+      manifestPath,
+      childId,
+      process: "api",
+      port: 0,
+      spawn: () => ({ pid: 111 } as never),
+      track: (child) => { tracked.push(child.pid!); },
+      readProcessIdentity: () => capturedIdentity,
+      rollbackStopOptions: {
+        processGroupExists: async () => probes++ === 0,
+        readProcessIdentity: () => capturedIdentity,
+        signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+        terminateGraceMs: 0,
+        wait: async () => undefined,
+      },
+    })).rejects.toThrow(/process identity is invalid/i);
+
+    expect(tracked).toEqual([111]);
+    expect(signals).toEqual(["SIGTERM"]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).not.toHaveProperty("apiPid");
+  });
+
+  it("durably republishes the captured identity when publish and local rollback both fail", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-spawn-double-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const childId = "wiseeff_acceptance_disposable_spawn_double_failure";
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const capturedIdentity = { startToken: "captured-process-start", commandSha256: "b".repeat(64) };
+    let publishAttempts = 0;
+
+    await expect(startTrackedNestedRuntimeProcess({
+      manifestPath,
+      childId,
+      process: "api",
+      port: 19_100,
+      spawn: () => ({ pid: 111 } as never),
+      track: () => undefined,
+      readProcessIdentity: () => capturedIdentity,
+      recordProgress: (...args) => {
+        if (publishAttempts++ === 0) throw new Error("synthetic first manifest publish failure");
+        return recordNestedRuntimeProgress(...args);
+      },
+      rollbackStopOptions: {
+        processGroupExists: async () => true,
+        readProcessIdentity: () => capturedIdentity,
+        signalProcessGroup: async () => { throw new Error("synthetic EPERM rollback failure"); },
+      },
+    })).rejects.toThrow(/publish and exact-identity rollback both failed/i);
+
+    expect(publishAttempts).toBe(2);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      apiPid: 111,
+      apiProcessIdentity: { pid: 111, port: 19_100, ...capturedIdentity },
+    });
+  });
+
+  it("keeps a missing-identity handshake cleanup terminally retryable instead of claiming not-started", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-missing-handshake-identity-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const childId = "wiseeff_acceptance_disposable_missing_handshake_identity";
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeFinish(manifestPath, childId, "cleanup-failed", {
+      apiProcess: { status: "failed", reason: "process identity capture failed" },
+      frontendProcess: { status: "not-started" },
+      database: { status: "retained", reason: "startup failed" },
+      objectStore: { status: "retained", reason: "startup failed" },
+    });
+
+    await expect(finalizeRunningNestedRuntimesAfterFailure(manifestPath, "retry unresolved handshake"))
+      .rejects.toThrow(/finalizations did not settle/i);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "cleanup-failed",
+      cleanup: { apiProcess: { status: "failed", reason: "process identity capture failed" } },
+    });
   });
 });

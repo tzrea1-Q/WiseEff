@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   gate0SecretValuesFromEnv,
+  persistGate0ExactValuesForRescan,
   sanitizeGate0ArtifactTree,
   scanGate0ArtifactTree,
 } from "./gate0-artifact-sanitizer";
@@ -231,6 +232,45 @@ describe("Gate0 artifact sanitizer", () => {
     );
     expect(result.status).toBe(1);
     expect(`${result.stdout}${result.stderr}`).not.toContain(opaqueNestedSecret);
+  });
+
+  it("fails closed without deleting an unverified candidate-shaped forensic artifact", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-abandoned-candidate-"));
+    const candidate = path.join(
+      root,
+      ".gate0-exact-values.v1.enc.json.01234567-89ab-cdef-0123-456789abcdef.tmp",
+    );
+    const opaqueCandidateText = "candidate-private-opaque-value";
+    writeFileSync(candidate, `{"opaque":"${opaqueCandidateText}"`, { mode: 0o600 });
+    chmodSync(candidate, 0o600);
+    writeFileSync(path.join(root, "safe.log"), "safe diagnostic\n");
+
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", path.resolve("scripts/gate0-artifact-sanitizer.ts"), "--root", root],
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).not.toContain(opaqueCandidateText);
+    expect(existsSync(candidate)).toBe(true);
+  });
+
+  it("promotes a validated interrupted first-publish candidate and preserves its exact context", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-promote-candidate-"));
+    const secret = "candidate-owned-opaque-secret";
+    const registryPath = path.join(root, ".gate0-exact-values.v1.enc.json");
+    persistGate0ExactValuesForRescan(root, [secret]);
+    const record = JSON.parse(readFileSync(registryPath, "utf8")) as { keyFile: string };
+    const keyId = path.basename(record.keyFile, ".key");
+    const candidatePath = `${registryPath}.${keyId}.tmp`;
+    renameSync(registryPath, candidatePath);
+    writeFileSync(path.join(root, "api.log"), `${secret}\n`);
+
+    await sanitizeGate0ArtifactTree(root, undefined, []);
+    expect(readFileSync(path.join(root, "api.log"), "utf8")).toBe("[REDACTED]\n");
+    expect(existsSync(candidatePath)).toBe(false);
+    expect((await scanGate0ArtifactTree(root, undefined, [])).violations).toEqual([]);
+    expect(existsSync(registryPath)).toBe(false);
   });
 
   it("reports a canonical secret-bearing path by opaque id without exposing the path", async () => {

@@ -71,7 +71,7 @@ export type ProvisionOwnedRuntimeOptions = {
     remainingMs(stage: string): number;
   };
   secretRegistryEnv?: RuntimeEnv;
-  registerGeneratedSecrets?(values: readonly string[]): void | Promise<void>;
+  registerGeneratedSecrets?(values: readonly string[], persistenceRoot: string): void | Promise<void>;
   finalizeProvisionFailureArtifacts?(runRoot: string, signal?: AbortSignal): Promise<void>;
 };
 
@@ -314,7 +314,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       }),
       ...options.secretRegistryEnv,
     };
-    await options.registerGeneratedSecrets?.(gate0SecretValuesFromEnv(env));
+    await options.registerGeneratedSecrets?.(gate0SecretValuesFromEnv(env), runRoot);
 
     checkpointOwner(options, "database creation");
     const databaseCreationOperations = dependencies.databaseCreationOperations?.({
@@ -1110,6 +1110,11 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         continue;
       }
       if (pid === undefined) {
+        if (child.cleanup?.[label].status === "failed") {
+          cleanup[label] = child.cleanup[label];
+          errors.push(new Error(`Nested ${label} cleanup remains unresolved without a durable PID identity.`));
+          continue;
+        }
         cleanup[label] = { status: "not-started" };
         continue;
       }

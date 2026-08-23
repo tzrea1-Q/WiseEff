@@ -255,16 +255,20 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
 
   const finalizationOwner = gate0FinalizationOwner(owner);
   const secretRegistry = await startGate0SecretRegistry(owner.signal);
+  const finalizeRegisteredArtifacts = async (runRoot: string, signal?: AbortSignal) => {
+    await secretRegistry.seal();
+    return finalizeGate0ArtifactSafety(
+      runRoot,
+      signal ?? finalizationOwner.signal,
+      secretRegistry.values(),
+    );
+  };
   const runtime = await prepareGate0OwnedRuntime({
     baseDatabaseUrl,
     worktreeRoot: process.cwd(),
     secretRegistryEnv: secretRegistry.env,
-    registerGeneratedSecrets: (values) => secretRegistry.add(values),
-    finalizeProvisionFailureArtifacts: (runRoot, signal) => finalizeGate0ArtifactSafety(
-      runRoot,
-      signal ?? finalizationOwner.signal,
-      secretRegistry.values(),
-    ).then(() => undefined),
+    registerGeneratedSecrets: (values, runRoot) => secretRegistry.add(values, runRoot),
+    finalizeProvisionFailureArtifacts: (runRoot, signal) => finalizeRegisteredArtifacts(runRoot, signal).then(() => undefined),
   }, {}, owner).catch(async (error) => {
     await settleBeforeAbort(secretRegistry.close(), owner.finalizationSignal).catch(() => undefined);
     throw error;
@@ -356,11 +360,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     finishAttempted = true;
     await runtime.finish(
       outcome,
-      () => finalizeGate0ArtifactSafety(
-        runtime.descriptor.artifacts.runRoot,
-        finalizationOwner.signal,
-        secretRegistry.values(),
-      ).then(() => undefined),
+      () => finalizeRegisteredArtifacts(runtime.descriptor.artifacts.runRoot).then(() => undefined),
       finalizationOwner,
     );
     if (outcome === "success") {
@@ -394,18 +394,10 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         ? undefined
         : () => runtime.finish(
           "failure",
-          () => finalizeGate0ArtifactSafety(
-            runtime.descriptor.artifacts.runRoot,
-            finalizationOwner.signal,
-            secretRegistry.values(),
-          ).then(() => undefined),
+          () => finalizeRegisteredArtifacts(runtime.descriptor.artifacts.runRoot).then(() => undefined),
           finalizationOwner,
         ),
-      artifactSafety: (runRoot) => finalizeGate0ArtifactSafety(
-        runRoot,
-        finalizationOwner.signal,
-        secretRegistry.values(),
-      ),
+      artifactSafety: (runRoot) => finalizeRegisteredArtifacts(runRoot),
     });
   } finally {
     await settleBeforeAbort(secretRegistry.close(), owner.finalizationSignal);
