@@ -4,6 +4,11 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  readProcessStartIdentity,
+  sameProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "../../../scripts/process-start-identity";
+import {
   withOwnerAwarePostgres,
   type OwnerAwarePostgresDeadline,
 } from "../../../scripts/owner-aware-postgres";
@@ -118,12 +123,14 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
   processes: {
     api: {
       pid: number;
+      processIdentity: ProcessStartIdentity;
       startedAt: string;
       command: string;
       log: string;
     };
     frontend: {
       pid: number;
+      processIdentity: ProcessStartIdentity;
       startedAt: string;
       command: string;
       log: string;
@@ -407,8 +414,18 @@ export async function verifyOwnedRuntimeOwnership(
     throw new Error(`Owned runtime cannot be consumed in state ${descriptor.run.state}.`);
   }
 
-  await assertOwnedEndpointProcess("api", descriptor.endpoints.api.port, descriptor.processes.api.pid);
-  await assertOwnedEndpointProcess("frontend", descriptor.endpoints.frontend.port, descriptor.processes.frontend.pid);
+  await assertOwnedEndpointProcess(
+    "api",
+    descriptor.endpoints.api.port,
+    descriptor.processes.api.pid,
+    descriptor.processes.api.processIdentity,
+  );
+  await assertOwnedEndpointProcess(
+    "frontend",
+    descriptor.endpoints.frontend.port,
+    descriptor.processes.frontend.pid,
+    descriptor.processes.frontend.processIdentity,
+  );
 
   assertOwnedRuntimeEnvironment(descriptor, env);
   const databaseUrl = env.DATABASE_URL!.trim();
@@ -425,7 +442,15 @@ export async function verifyOwnedRuntimeOwnership(
   return descriptor;
 }
 
-async function assertOwnedEndpointProcess(label: string, port: number, expectedPid: number) {
+async function assertOwnedEndpointProcess(
+  label: string,
+  port: number,
+  expectedPid: number,
+  expectedIdentity: ProcessStartIdentity,
+) {
+  if (!sameProcessStartIdentity(expectedIdentity, readProcessStartIdentity(expectedPid))) {
+    throw new Error(`Owned ${label} process-start identity changed for PID ${expectedPid}; refusing the listener on port ${port}.`);
+  }
   if (!processExists(expectedPid)) {
     throw new Error(`Owned ${label} process PID ${expectedPid} is not alive; refusing the listener on port ${port}.`);
   }
@@ -588,17 +613,26 @@ function assertNoSecrets(value: unknown, at = "descriptor") {
   }
   if (!value || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (/sha256$/iu.test(key) && !(at === "descriptor.objectStore" && key === "markerSha256")) {
+    const processIdentityField = isAllowedProcessIdentityField(at, key);
+    if (
+      /sha256$/iu.test(key) && !processIdentityField &&
+      !(at === "descriptor.objectStore" && key === "markerSha256")
+    ) {
       throw new Error(`Owned runtime descriptor must not contain secret-derived verifier ${at}.${key}.`);
     }
     if (
-      key !== "markerSha256" &&
+      key !== "markerSha256" && !processIdentityField &&
       /(password|authorization|bearer|database.?url|connection.?string|token|secret|api.?key)/i.test(key)
     ) {
       throw new Error(`Owned runtime descriptor must not contain secret field ${at}.${key}.`);
     }
     assertNoSecrets(nested, `${at}.${key}`);
   }
+}
+
+function isAllowedProcessIdentityField(at: string, key: string) {
+  return /^descriptor\.processes\.(?:api|frontend)\.processIdentity$/u.test(at) &&
+    (key === "startToken" || key === "commandSha256");
 }
 
 function assertEndpoint(
@@ -620,6 +654,9 @@ function assertEndpoint(
 
 function assertProcess(value: Record<string, unknown>, label: string) {
   requirePositiveInteger(value.pid, `processes.${label}.pid`);
+  const identity = requireRecord(value.processIdentity, `processes.${label}.process-start identity`);
+  requireString(identity.startToken, `processes.${label}.process-start identity start token`);
+  requireSha256(identity.commandSha256, `processes.${label}.process-start identity command digest`);
   requireString(value.startedAt, `processes.${label}.startedAt`);
   requireString(value.command, `processes.${label}.command`);
   requireAbsolutePath(value.log, `processes.${label}.log`);

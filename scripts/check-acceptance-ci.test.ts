@@ -171,6 +171,25 @@ describe("M5.12 acceptance CI configuration", () => {
       requiredExclusiveFloorMinutes: 150,
       missingStepTimeouts: [],
     });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - if: always()\n        name: If-first unbounded finalizer\n        run: npm run surprise:if-first\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      missingStepTimeouts: ["If-first unbounded finalizer"],
+    });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - if: always()\n        name: If-first bounded finalizer\n        timeout-minutes: 4\n        run: npm run surprise:if-first\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      requiredExclusiveFloorMinutes: 150,
+      missingStepTimeouts: [],
+    });
   });
 
   it("routes every formerly dotenv-backed acceptance spec through the owned-runtime-aware helper", () => {

@@ -379,14 +379,14 @@ function workflowStepBudgets(block: string): Array<{ name: string; timeoutMinute
   const lines = block.split("\n");
   const starts = lines
     .map((line, index) => ({ line, index }))
-    .filter(({ line }) => /^\s{6}- (?:name|uses|run):/.test(line));
+    .filter(({ line }) => /^\s{6}-\s+\S/u.test(line));
   return starts.map((start, stepIndex) => {
     const end = starts[stepIndex + 1]?.index ?? lines.length;
     const block = lines.slice(start.index, end).join("\n");
-    const nameMatch = start.line.match(/^\s{6}- name:\s*(.+?)\s*$/);
+    const nameMatch = block.match(/^\s{6}-\s+name:\s*(.+?)\s*$|^\s{8}name:\s*(.+?)\s*$/m);
     const timeoutMatch = block.match(/^\s+timeout-minutes:\s*(\d+)\s*$/m);
     return {
-      name: nameMatch?.[1] ?? `<unnamed pre-Gate0 step ${stepIndex + 1}>`,
+      name: nameMatch?.[1] ?? nameMatch?.[2] ?? `<unnamed workflow step ${stepIndex + 1}>`,
       timeoutMinutes: timeoutMatch ? Number(timeoutMatch[1]) : 0,
     };
   });

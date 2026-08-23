@@ -528,6 +528,7 @@ export async function startDisposablePostCutoverRuntime(
   const objectStoreRoot = objectStore.root;
   const children: ChildProcess[] = [];
   let nestedRegistered = false;
+  let verifiedMigrationRunId: string | undefined;
 
   if (nestedManifestPath) {
     recordNestedRuntimeProvisioning(nestedManifestPath, {
@@ -545,6 +546,7 @@ export async function startDisposablePostCutoverRuntime(
     await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
     const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
+    verifiedMigrationRunId = migrationRunId;
     if (nestedManifestPath) {
       recordNestedRuntimeProgress(nestedManifestPath, databaseName, { migrationRunId });
     }
@@ -651,16 +653,39 @@ export async function startDisposablePostCutoverRuntime(
     const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
     const cleanupErrors: Error[] = [];
     await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
-    await afterNestedProcessesStop(cleanupErrors, async () => {
-      await withClient(adminUrl, (client) =>
-        client.query(`drop database if exists ${databaseName} with (force)`),
-      ).then(
-        () => { cleanup.database = { status: "removed" }; },
-        (cleanupError) => {
-          cleanup.database = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
-          cleanupErrors.push(asNestedError(cleanupError));
-        },
+    if (nestedManifestPath && nestedRegistered) {
+      const retentionReason = "Nested startup failed; Gate0 retains database and object-store evidence.";
+      cleanup.database = { status: "retained", reason: retentionReason };
+      cleanup.objectStore = { status: "retained", reason: retentionReason };
+      recordNestedRuntimeFinish(
+        nestedManifestPath,
+        databaseName,
+        cleanupErrors.length === 0 ? "failed-retained" : "cleanup-failed",
+        cleanup,
       );
+      throw cleanupErrors.length === 0
+        ? error
+        : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup failed; Gate0 evidence was retained.");
+    }
+    await afterNestedProcessesStop(cleanupErrors, async () => {
+      if (verifiedMigrationRunId) {
+        await verifyPostCutoverDatabase(databaseUrl, verifiedMigrationRunId, purpose).then(
+          () => withClient(adminUrl, (client) =>
+            client.query(`drop database if exists ${databaseName} with (force)`),
+          ),
+        ).then(
+          () => { cleanup.database = { status: "removed" }; },
+          (cleanupError) => {
+            cleanup.database = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+            cleanupErrors.push(asNestedError(cleanupError));
+          },
+        );
+      } else {
+        cleanup.database = {
+          status: "retained",
+          reason: "Disposable database marker/cutover ownership was not verified; destructive cleanup was refused.",
+        };
+      }
       await removeNestedObjectStoreRoot(objectStore).then(
         () => { cleanup.objectStore = { status: "removed" }; },
         (cleanupError) => {
@@ -669,14 +694,6 @@ export async function startDisposablePostCutoverRuntime(
         },
       );
     }, error);
-    if (nestedManifestPath && nestedRegistered) {
-      recordNestedRuntimeFinish(
-        nestedManifestPath,
-        databaseName,
-        cleanupErrors.length === 0 ? "cleaned" : "cleanup-failed",
-        cleanup,
-      );
-    }
     throw cleanupErrors.length === 0
       ? error
       : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup and rollback failed.");

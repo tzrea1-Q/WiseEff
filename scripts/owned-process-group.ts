@@ -1,4 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import {
+  readProcessStartIdentity,
+  sameProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "./process-start-identity";
 
 type ProcessGroupSignal = (pid: number, signal: NodeJS.Signals) => void | Promise<void>;
 type ProcessGroupProbe = (pid: number) => boolean | Promise<boolean>;
@@ -9,6 +14,8 @@ export type StopOwnedProcessGroupOptions = {
   signalProcessGroup?: ProcessGroupSignal;
   processGroupExists?: ProcessGroupProbe;
   wait?: (delayMs: number) => Promise<void>;
+  expectedProcessIdentity?: ProcessStartIdentity;
+  readProcessIdentity?: (pid: number) => ProcessStartIdentity | undefined;
 };
 
 export type WaitForOwnedProcessGroupExitOptions = StopOwnedProcessGroupOptions & {
@@ -36,18 +43,28 @@ export async function stopOwnedProcessGroup(
   const child = typeof childOrPid === "number" ? undefined : childOrPid;
   if (!(await processGroupExists(pid))) return;
 
+  assertExpectedProcessIdentity(pid, options);
   await signalProcessGroup(pid, "SIGTERM");
   await waitForChildExitOpportunity(child, options.terminateGraceMs ?? defaultTerminateGraceMs, wait);
   if (await waitUntilAbsent(pid, options.terminateGraceMs ?? defaultTerminateGraceMs, processGroupExists, wait)) {
     return;
   }
 
+  assertExpectedProcessIdentity(pid, options);
   await signalProcessGroup(pid, "SIGKILL");
   await waitForChildExitOpportunity(child, options.verifyGraceMs ?? defaultVerifyGraceMs, wait);
   if (await waitUntilAbsent(pid, options.verifyGraceMs ?? defaultVerifyGraceMs, processGroupExists, wait)) {
     return;
   }
   throw new Error(`Owned process group ${pid} is still alive after SIGKILL.`);
+}
+
+function assertExpectedProcessIdentity(pid: number, options: StopOwnedProcessGroupOptions) {
+  if (!options.expectedProcessIdentity) return;
+  const current = (options.readProcessIdentity ?? readProcessStartIdentity)(pid);
+  if (!sameProcessStartIdentity(options.expectedProcessIdentity, current)) {
+    throw new Error(`Owned process-start identity changed for PID ${pid}; refusing signal.`);
+  }
 }
 
 /**

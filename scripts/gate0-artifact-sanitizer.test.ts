@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
@@ -121,6 +122,7 @@ describe("Gate0 artifact sanitizer", () => {
       auth: { secretSha256: "a".repeat(64) },
       database: { connectionSha256: "b".repeat(64) },
       objectStore: { markerSha256: "c".repeat(64) },
+      processes: { api: { processIdentity: { commandSha256: "d".repeat(64) } } },
     }));
 
     await sanitizeGate0ArtifactTree(root);
@@ -128,6 +130,7 @@ describe("Gate0 artifact sanitizer", () => {
     expect(raw).toContain('"secretSha256":"[REMOVED_SECRET_DERIVED_VERIFIER]"');
     expect(raw).toContain('"connectionSha256":"[REMOVED_SECRET_DERIVED_VERIFIER]"');
     expect(raw).toContain(`"markerSha256":"${"c".repeat(64)}"`);
+    expect(raw).toContain(`"commandSha256":"${"d".repeat(64)}"`);
     expect((await scanGate0ArtifactTree(root)).violations).toEqual([]);
   });
 
@@ -199,6 +202,35 @@ describe("Gate0 artifact sanitizer", () => {
     await sanitizeGate0ArtifactTree(root, undefined, [generatedSecret]);
     expect(readFileSync(artifact, "utf8")).toBe("opaque-diagnostic=[REDACTED]\n");
     expect((await scanGate0ArtifactTree(root, undefined, [generatedSecret])).violations).toEqual([]);
+  });
+
+  it("lets a fresh CI process detect a registered opaque nested secret after Gate0 sanitization fails", async () => {
+    const uploadRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-rescan-registry-"));
+    const root = path.join(uploadRoot, "full-owned-run");
+    mkdirSync(root);
+    const opaqueNestedSecret = "opaque-nested-runtime-value-7f4c8a21e5";
+    writeFileSync(
+      path.join(root, "unsupported.bin"),
+      Buffer.from(`diagnostic=${opaqueNestedSecret}\n`, "ascii"),
+    );
+
+    await expect(sanitizeGate0ArtifactTree(root, undefined, [opaqueNestedSecret]))
+      .rejects.toThrow(/unsupported artifact format.*injected-secret/i);
+    const registryName = readdirSync(root).find((entry) => entry.endsWith(".enc.json"));
+    expect(registryName).toBeDefined();
+    const registryRaw = readFileSync(path.join(root, registryName!), "utf8");
+    const registry = JSON.parse(registryRaw) as { keyFile: string };
+    expect(registryRaw).not.toContain(opaqueNestedSecret);
+    expect(path.dirname(registry.keyFile)).not.toBe(root);
+    expect(readFileSync(registry.keyFile).includes(Buffer.from(opaqueNestedSecret))).toBe(false);
+
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", path.resolve("scripts/gate0-artifact-sanitizer.ts"), "--root", uploadRoot],
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).not.toContain(opaqueNestedSecret);
   });
 
   it("reports a canonical secret-bearing path by opaque id without exposing the path", async () => {

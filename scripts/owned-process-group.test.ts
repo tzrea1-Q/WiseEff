@@ -38,6 +38,24 @@ describe("owned process-group supervisor", () => {
     })).rejects.toThrow(/operation not permitted/i);
   });
 
+  it("rechecks process-start identity before KILL and never signals a reused PID", async () => {
+    const expected = { startToken: "original", commandSha256: "a".repeat(64) };
+    const observed = [expected, { startToken: "reused", commandSha256: "b".repeat(64) }];
+    const signals: NodeJS.Signals[] = [];
+
+    await expect(stopOwnedProcessGroup(12_345, {
+      expectedProcessIdentity: expected,
+      readProcessIdentity: () => observed.shift(),
+      signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+      processGroupExists: async () => true,
+      terminateGraceMs: 0,
+      verifyGraceMs: 0,
+      wait: async () => undefined,
+    })).rejects.toThrow(/process-start identity.*refusing signal/i);
+
+    expect(signals).toEqual(["SIGTERM"]);
+  });
+
   it("settles an aborted public wait with both the timeout and failed-kill evidence", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
       detached: process.platform !== "win32",

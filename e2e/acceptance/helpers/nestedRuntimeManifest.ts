@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  existsSync,
   linkSync,
   readFileSync,
   renameSync,
@@ -336,14 +337,18 @@ function recoverStaleManifestLock(lockPath: string) {
   // for audit, but even a mismatched live owner is never stolen from.
   if (!deadOwner && !reusedPid) return false;
   const recoveryPath = `${lockPath}.recovery`;
-  let claimedRecovery = false;
+  const recoveryOwner = acquireManifestRecoveryOwner(recoveryPath, owner);
+  if (!recoveryOwner) return false;
   try {
     // A single hard-link claim closes the ABA window between observing a
     // stale owner and removing its pathname. If another waiter already owns
     // the recovery claim, this waiter fails closed instead of competing to
     // unlink a pathname that may since belong to a new live owner.
-    linkSync(lockPath, recoveryPath);
-    claimedRecovery = true;
+    try {
+      linkSync(lockPath, recoveryPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
     const recoveredOwner = readManifestLockOwner(recoveryPath);
     if (!sameManifestLockOwner(owner, recoveredOwner)) return false;
     const current = statSync(lockPath);
@@ -352,15 +357,161 @@ function recoverStaleManifestLock(lockPath: string) {
     unlinkSync(lockPath);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      discardDetachedRecoveryClaim(lockPath, recoveryPath);
-      return false;
-    }
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   } finally {
-    if (claimedRecovery) unlinkIfPresent(recoveryPath);
+    unlinkIfPresent(recoveryPath);
+    removeManifestRecoveryOwner(recoveryPath, recoveryOwner.token);
   }
+}
+
+type ManifestRecoveryOwner = {
+  pid: number;
+  token: string;
+  createdAt: string;
+  processIdentity?: ProcessStartIdentity;
+  observedLockOwner: { pid: number; token: string };
+};
+
+const MANIFEST_RECOVERY_CLAIM_STALE_MS = 500;
+
+function acquireManifestRecoveryOwner(
+  recoveryPath: string,
+  observedLockOwner: NonNullable<ReturnType<typeof readManifestLockOwner>>,
+): ManifestRecoveryOwner | undefined {
+  const ownerPath = `${recoveryPath}.owner`;
+  const reclaimPath = `${ownerPath}.reclaim`;
+  if (existsSync(reclaimPath) && !recoverStaleManifestRecoveryReclaim(ownerPath, reclaimPath)) {
+    return undefined;
+  }
+  const owner: ManifestRecoveryOwner = {
+    pid: process.pid,
+    token: randomUUID(),
+    createdAt: new Date().toISOString(),
+    processIdentity: readProcessStartIdentity(process.pid),
+    observedLockOwner: { pid: observedLockOwner.pid, token: observedLockOwner.token },
+  };
+  const candidatePath = `${ownerPath}.${process.pid}.${owner.token}.candidate`;
+  writeFileSync(candidatePath, `${JSON.stringify(owner)}\n`, { encoding: "utf8", flag: "wx" });
+  try {
+    try {
+      linkSync(candidatePath, ownerPath);
+      return owner;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const existing = readManifestRecoveryOwner(ownerPath);
+    if (!existing || !isStaleManifestRecoveryOwner(existing)) return undefined;
+    try {
+      linkSync(ownerPath, reclaimPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST" || (error as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    }
+    try {
+      const pinned = readManifestRecoveryOwner(reclaimPath);
+      const current = readManifestRecoveryOwner(ownerPath);
+      const pinnedStat = statSync(reclaimPath);
+      const currentStat = statSync(ownerPath);
+      if (
+        !sameManifestRecoveryOwner(existing, pinned) ||
+        !sameManifestRecoveryOwner(existing, current) ||
+        pinnedStat.dev !== currentStat.dev ||
+        pinnedStat.ino !== currentStat.ino
+      ) {
+        return undefined;
+      }
+      unlinkSync(ownerPath);
+    } finally {
+      unlinkIfPresent(reclaimPath);
+    }
+    return acquireManifestRecoveryOwner(recoveryPath, observedLockOwner);
+  } finally {
+    unlinkIfPresent(candidatePath);
+  }
+}
+
+function recoverStaleManifestRecoveryReclaim(ownerPath: string, reclaimPath: string) {
+  const pinned = readManifestRecoveryOwner(reclaimPath);
+  if (!pinned || !isStaleManifestRecoveryOwner(pinned)) return false;
+  try {
+    const current = readManifestRecoveryOwner(ownerPath);
+    if (current) {
+      const pinnedStat = statSync(reclaimPath);
+      const currentStat = statSync(ownerPath);
+      if (
+        !sameManifestRecoveryOwner(pinned, current) ||
+        pinnedStat.dev !== currentStat.dev ||
+        pinnedStat.ino !== currentStat.ino
+      ) {
+        return false;
+      }
+      unlinkSync(ownerPath);
+    }
+    const pinnedAgain = readManifestRecoveryOwner(reclaimPath);
+    if (!sameManifestRecoveryOwner(pinned, pinnedAgain)) return false;
+    unlinkIfPresent(reclaimPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return !existsSync(reclaimPath);
+    throw error;
+  }
+}
+
+function readManifestRecoveryOwner(ownerPath: string): ManifestRecoveryOwner | undefined {
+  try {
+    const value = JSON.parse(readFileSync(ownerPath, "utf8")) as Partial<ManifestRecoveryOwner>;
+    if (
+      !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 ||
+      typeof value.token !== "string" || !value.token ||
+      typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) ||
+      !value.observedLockOwner || !Number.isSafeInteger(value.observedLockOwner.pid) ||
+      typeof value.observedLockOwner.token !== "string" || !value.observedLockOwner.token
+    ) return undefined;
+    return {
+      pid: Number(value.pid),
+      token: value.token,
+      createdAt: value.createdAt,
+      processIdentity: isProcessStartIdentity(value.processIdentity) ? value.processIdentity : undefined,
+      observedLockOwner: {
+        pid: Number(value.observedLockOwner.pid),
+        token: value.observedLockOwner.token,
+      },
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+
+function isStaleManifestRecoveryOwner(owner: ManifestRecoveryOwner) {
+  if (Date.now() - Date.parse(owner.createdAt) < MANIFEST_RECOVERY_CLAIM_STALE_MS) return false;
+  const alive = isProcessAlive(owner.pid);
+  const currentIdentity = owner.processIdentity ? readProcessStartIdentity(owner.pid) : undefined;
+  const reusedPid = owner.processIdentity !== undefined && currentIdentity !== undefined
+    ? !sameProcessStartIdentity(owner.processIdentity, currentIdentity)
+    : false;
+  return !alive || reusedPid;
+}
+
+function sameManifestRecoveryOwner(expected: ManifestRecoveryOwner, current: ManifestRecoveryOwner | undefined) {
+  return current !== undefined &&
+    expected.pid === current.pid &&
+    expected.token === current.token &&
+    expected.createdAt === current.createdAt &&
+    expected.observedLockOwner.pid === current.observedLockOwner.pid &&
+    expected.observedLockOwner.token === current.observedLockOwner.token &&
+    (expected.processIdentity === undefined
+      ? current.processIdentity === undefined
+      : current.processIdentity !== undefined && sameProcessStartIdentity(expected.processIdentity, current.processIdentity));
+}
+
+function removeManifestRecoveryOwner(recoveryPath: string, token: string) {
+  const ownerPath = `${recoveryPath}.owner`;
+  const owner = readManifestRecoveryOwner(ownerPath);
+  if (owner?.pid === process.pid && owner.token === token) unlinkIfPresent(ownerPath);
 }
 
 function assertPersistedProcessIdentityUnchanged(
@@ -390,17 +541,6 @@ function sameManifestLockOwner(
     (expected.processIdentity === undefined
       ? current.processIdentity === undefined
       : current.processIdentity !== undefined && sameProcessStartIdentity(expected.processIdentity, current.processIdentity));
-}
-
-function discardDetachedRecoveryClaim(lockPath: string, recoveryPath: string) {
-  try {
-    const current = statSync(lockPath);
-    const recovery = statSync(recoveryPath);
-    if (current.dev !== recovery.dev || current.ino !== recovery.ino) unlinkIfPresent(recoveryPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
 }
 
 function unlinkIfPresent(targetPath: string) {

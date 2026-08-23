@@ -39,6 +39,7 @@ import {
   type NestedRuntimeCleanup,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 import {
+  gate0SecretValuesFromEnv,
   sanitizeGate0DiagnosticText,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
@@ -69,6 +70,9 @@ export type ProvisionOwnedRuntimeOptions = {
     deadlineAt: number;
     remainingMs(stage: string): number;
   };
+  secretRegistryEnv?: RuntimeEnv;
+  registerGeneratedSecrets?(values: readonly string[]): void | Promise<void>;
+  finalizeProvisionFailureArtifacts?(runRoot: string, signal?: AbortSignal): Promise<void>;
 };
 
 export type ProvisionOwnedRuntimeDependencies = {
@@ -78,6 +82,10 @@ export type ProvisionOwnedRuntimeDependencies = {
     databaseName: string;
     ownerDeadline?: ProvisionOwnedRuntimeOptions["ownerDeadline"];
   }) => CheckedAbsentDatabaseCreationOperations;
+  runNpmScriptWithLog?: typeof runNpmScriptWithLog;
+  writeAndReadDatabaseMarker?: typeof writeAndReadDatabaseMarker;
+  spawnOwnedProcess?: typeof spawnOwnedProcess;
+  waitForHttp?: typeof waitForHttp;
 };
 
 export type CheckedAbsentDatabaseCreationEvidence = {
@@ -197,6 +205,7 @@ type StartedProcess = {
   port?: number;
   command: string;
   log: string;
+  processIdentity?: ProcessStartIdentity;
   cleanup: { status: "pending" | "stopped" | "failed"; reason: string };
 };
 
@@ -206,6 +215,7 @@ export type ProvisionFailureProcessRecord = {
   port: number;
   command: string;
   log: string;
+  processIdentity?: ProcessStartIdentity;
   cleanup: { status: "pending" | "stopped" | "failed"; reason: string };
 };
 
@@ -287,20 +297,24 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     const frontendPort = await allocatePort(OWNED_FRONTEND_PORT_RANGE, options.ownerDeadline);
     const apiUrl = `http://127.0.0.1:${apiPort}`;
     const frontendUrl = `http://127.0.0.1:${frontendPort}`;
-    const env = buildOwnedRuntimeEnv({
-      databaseUrl,
-      objectRoot,
-      apiUrl,
-      frontendUrl,
-      apiPort,
-      authIssuer,
-      authSecret,
-      descriptorPath,
-      runId,
-      sourceCommit: source.commit,
-      runRoot,
-      nestedRuntimeManifest,
-    });
+    const env = {
+      ...buildOwnedRuntimeEnv({
+        databaseUrl,
+        objectRoot,
+        apiUrl,
+        frontendUrl,
+        apiPort,
+        authIssuer,
+        authSecret,
+        descriptorPath,
+        runId,
+        sourceCommit: source.commit,
+        runRoot,
+        nestedRuntimeManifest,
+      }),
+      ...options.secretRegistryEnv,
+    };
+    await options.registerGeneratedSecrets?.(gate0SecretValuesFromEnv(env));
 
     checkpointOwner(options, "database creation");
     const databaseCreationOperations = dependencies.databaseCreationOperations?.({
@@ -321,10 +335,13 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       operations: databaseCreationOperations,
     });
     databaseCreated = true;
-    await runNpmScriptWithLog(worktreeRoot, "db:migrate", env, provisionLog, options.ownerDeadline);
-    await runNpmScriptWithLog(worktreeRoot, "db:seed:all", env, provisionLog, options.ownerDeadline);
+    const runProvisionScript = dependencies.runNpmScriptWithLog ?? runNpmScriptWithLog;
+    await runProvisionScript(worktreeRoot, "db:migrate", env, provisionLog, options.ownerDeadline);
+    await runProvisionScript(worktreeRoot, "db:seed:all", env, provisionLog, options.ownerDeadline);
     checkpointOwner(options, "database marker proof");
-    const databaseEvidence = await writeAndReadDatabaseMarker(databaseUrl, {
+    const databaseEvidence = await (
+      dependencies.writeAndReadDatabaseMarker ?? writeAndReadDatabaseMarker
+    )(databaseUrl, {
       runId,
       sourceCommit: source.commit,
     }, options.ownerDeadline);
@@ -340,7 +357,9 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       evidence: databaseCreationEvidence,
     });
 
-    const api = spawnOwnedProcess({
+    const spawnRuntimeProcess = dependencies.spawnOwnedProcess ?? spawnOwnedProcess;
+    const waitForOwnedHttp = dependencies.waitForHttp ?? waitForHttp;
+    const api = spawnRuntimeProcess({
       label: "api",
       cwd: worktreeRoot,
       command: process.execPath,
@@ -350,9 +369,10 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       log: apiLog,
     });
     started.push(api);
-    await waitForHttp(`${apiUrl}/health/live`, api.child, "API", options.ownerDeadline);
+    api.processIdentity = requireProcessStartIdentity(api.child, "API");
+    await waitForOwnedHttp(`${apiUrl}/health/live`, api.child, "API", options.ownerDeadline);
 
-    const frontend = spawnOwnedProcess({
+    const frontend = spawnRuntimeProcess({
       label: "frontend",
       cwd: worktreeRoot,
       command: process.execPath,
@@ -369,7 +389,8 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       log: frontendLog,
     });
     started.push(frontend);
-    await waitForHttp(frontendUrl, frontend.child, "frontend", options.ownerDeadline);
+    frontend.processIdentity = requireProcessStartIdentity(frontend.child, "frontend");
+    await waitForOwnedHttp(frontendUrl, frontend.child, "frontend", options.ownerDeadline);
 
     const now = new Date().toISOString();
     const descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1 = {
@@ -429,12 +450,14 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       processes: {
         api: {
           pid: requirePid(api.child, "API"),
+          processIdentity: requireStartedProcessIdentity(api, "API"),
           startedAt: now,
           command: api.command,
           log: api.log,
         },
         frontend: {
           pid: requirePid(frontend.child, "frontend"),
+          processIdentity: requireStartedProcessIdentity(frontend, "frontend"),
           startedAt: now,
           command: frontend.command,
           log: frontend.log,
@@ -587,6 +610,10 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       } catch (failureWriteError) {
         failures.push(asError(failureWriteError));
       }
+      await options.finalizeProvisionFailureArtifacts?.(
+        runRoot,
+        options.ownerDeadline?.finalizationSignal,
+      ).catch((artifactError) => failures.push(asError(artifactError)));
     }
     throw new AggregateError(failures, "Owned runtime provisioning failed; exact resources were retained.");
   }
@@ -959,7 +986,7 @@ async function stopOwnedProcesses(processes: StartedProcess[], signal?: AbortSig
   const errors: Error[] = [];
   for (const processRecord of [...processes].reverse()) {
     try {
-      await settleBeforeAbort(stopOwnedProcess(processRecord.child), signal);
+      await settleBeforeAbort(stopOwnedProcess(processRecord), signal);
       processRecord.cleanup = { status: "stopped", reason: "Exact owned process group stopped and verified absent." };
     } catch (error) {
       processRecord.cleanup = { status: "failed", reason: safeCleanupReason(error) };
@@ -985,7 +1012,16 @@ async function stopAndRecordOwnedProcesses(
       continue;
     }
     try {
-      await settleBeforeAbort(stopOwnedProcess(processRecord.child), signal);
+      const descriptorIdentity = descriptor.processes[
+        label === "apiProcess" ? "api" : "frontend"
+      ].processIdentity;
+      if (
+        !processRecord.processIdentity ||
+        !sameProcessStartIdentity(processRecord.processIdentity, descriptorIdentity)
+      ) {
+        throw new Error("Owned process-start identity differs from the persisted descriptor; refusing signal.");
+      }
+      await settleBeforeAbort(stopOwnedProcess(processRecord), signal);
       descriptor.cleanup.resources[label] = { status: "stopped" };
     } catch (error) {
       descriptor.cleanup.resources[label] = { status: "failed", reason: safeCleanupReason(error) };
@@ -1018,8 +1054,13 @@ function asError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-async function stopOwnedProcess(child: ChildProcess) {
-  await stopOwnedProcessGroup(child);
+async function stopOwnedProcess(processRecord: StartedProcess) {
+  if (!processRecord.processIdentity) {
+    throw new Error("Owned process-start identity is unavailable; refusing signal.");
+  }
+  await stopOwnedProcessGroup(processRecord.child, {
+    expectedProcessIdentity: processRecord.processIdentity,
+  });
 }
 
 export function assertNestedRuntimesCleanedForSuccess(manifestPath: string) {
@@ -1076,7 +1117,10 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         if (!identity || identity.pid !== pid || !(await verifyProcessIdentity(pid, identity))) {
           throw new Error(`Nested ${label} process identity is missing or no longer matches PID ${pid}; refusing signal.`);
         }
-        await settleBeforeAbort(stopProcessGroup(pid, options), options.signal);
+        await settleBeforeAbort(stopProcessGroup(pid, {
+          ...options,
+          expectedProcessIdentity: identity,
+        }), options.signal);
         cleanup[label] = { status: "stopped" };
       } catch (error) {
         cleanup[label] = { status: "failed", reason: safeCleanupReason(error) };
@@ -1450,6 +1494,7 @@ function provisionFailureProcessRecord(process: StartedProcess): ProvisionFailur
     port: process.port,
     command: process.command,
     log: process.log,
+    processIdentity: process.processIdentity,
     cleanup: process.cleanup,
   };
 }
@@ -1461,6 +1506,19 @@ function quoteIdentifier(value: string) {
 function requirePid(child: ChildProcess, label: string) {
   if (!child.pid) throw new Error(`Owned ${label} process did not expose a PID.`);
   return child.pid;
+}
+
+function requireProcessStartIdentity(child: ChildProcess, label: string) {
+  const identity = readProcessStartIdentity(requirePid(child, label));
+  if (!identity) throw new Error(`Owned ${label} process-start identity is unavailable.`);
+  return identity;
+}
+
+function requireStartedProcessIdentity(processRecord: StartedProcess, label: string) {
+  if (!processRecord.processIdentity) {
+    throw new Error(`Owned ${label} process-start identity is unavailable.`);
+  }
+  return processRecord.processIdentity;
 }
 
 function assertPathWithinWorktree(parent: string, child: string, label: string) {

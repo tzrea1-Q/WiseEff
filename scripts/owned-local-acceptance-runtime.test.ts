@@ -21,6 +21,8 @@ import {
   provisionOwnedLocalAcceptanceRuntime,
   readCleanSource,
 } from "./owned-local-acceptance-runtime";
+import { readProcessStartIdentity } from "./process-start-identity";
+import { sanitizeGate0ArtifactTree, scanGate0ArtifactTree } from "./gate0-artifact-sanitizer";
 
 const children: ChildProcess[] = [];
 
@@ -328,6 +330,98 @@ describe("owned local acceptance runtime", () => {
     expect(failure).not.toHaveProperty("retainedDatabaseName");
   });
 
+  it("registers every root credential before the first provision child can write a log", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-secret-registration-");
+    const registrations: string[][] = [];
+    const options = {
+      baseDatabaseUrl: "postgres://owner:root-password@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+      registerGeneratedSecrets(values: readonly string[]) {
+        registrations.push([...values]);
+      },
+    } as Parameters<typeof provisionOwnedLocalAcceptanceRuntime>[0] & {
+      registerGeneratedSecrets(values: readonly string[]): void;
+    };
+
+    await expect(provisionOwnedLocalAcceptanceRuntime(options, {
+      allocateLoopbackPort: async (range) => range.min,
+      databaseCreationOperations: () => ({
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => undefined,
+        databaseExistsAfterCreateFailure: async () => false,
+      }),
+    })).rejects.toThrow(/provisioning failed/i);
+
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+      expect.stringMatching(/^Bearer\s+/u),
+      expect.stringContaining("root-password"),
+    ]));
+  });
+
+  it("sanitizes an exact root secret from an API startup-failure log before provision returns", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-api-failure-sanitize-");
+    let registered: string[] = [];
+    let apiLog = "";
+    let finalViolationCount: number | undefined;
+
+    await expect(provisionOwnedLocalAcceptanceRuntime({
+      baseDatabaseUrl: "postgres://owner:root-password@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+      registerGeneratedSecrets(values) {
+        registered = [...values];
+      },
+      async finalizeProvisionFailureArtifacts(runRoot) {
+        await sanitizeGate0ArtifactTree(runRoot, undefined, registered);
+        finalViolationCount = (await scanGate0ArtifactTree(runRoot, undefined, registered)).violations.length;
+      },
+    }, {
+      allocateLoopbackPort: async (range) => range.min,
+      databaseCreationOperations: () => ({
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => undefined,
+        databaseExistsAfterCreateFailure: async () => false,
+      }),
+      runNpmScriptWithLog: async () => undefined,
+      writeAndReadDatabaseMarker: async () => ({
+        appliedCount: 1,
+        latestMigration: "test-migration.sql",
+        completedAt: "2026-08-23T00:00:00.000Z",
+        sentinels: { organizations: 1 },
+      }),
+      spawnOwnedProcess(input) {
+        const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+          detached: process.platform !== "win32",
+          stdio: "ignore",
+        });
+        children.push(child);
+        apiLog = input.log;
+        return {
+          label: input.label,
+          child,
+          port: input.port,
+          command: [input.command, ...input.args].join(" "),
+          log: input.log,
+          cleanup: { status: "pending", reason: "not attempted" },
+        };
+      },
+      waitForHttp: async (_url, _child, label) => {
+        const exactSecret = registered.find((value) => /^[a-f0-9]{64}$/u.test(value));
+        if (!exactSecret) throw new Error("root exact secret was not registered before API startup");
+        writeFileSync(apiLog, `api-start-failure=${exactSecret}\n`, { flag: "a" });
+        throw new Error(`synthetic ${label} startup failure`);
+      },
+    })).rejects.toThrow(/provisioning failed/i);
+
+    const exactSecret = registered.find((value) => /^[a-f0-9]{64}$/u.test(value));
+    expect(finalViolationCount).toBe(0);
+    expect(readFileSync(apiLog, "utf8")).toContain("api-start-failure=[REDACTED]");
+    expect(readFileSync(apiLog, "utf8")).not.toContain(exactSecret);
+  });
+
   it("persists exact database uncertainty when a post-commit CREATE response is lost before the descriptor", async () => {
     const repo = createCleanTestRepository("wiseeff-owned-create-response-loss-");
     let committed = false;
@@ -389,6 +483,7 @@ describe("owned local acceptance runtime", () => {
     mkdirSync(objectRoot);
     const objectMarker = path.join(objectRoot, ".wiseeff-acceptance-owner.json");
     writeFileSync(objectMarker, '{"runId":"full-red","sourceCommit":"0123456789012345678901234567890123456789"}\n');
+    const currentIdentity = readProcessStartIdentity(process.pid)!;
 
     const descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1 = {
       version: 1,
@@ -452,12 +547,14 @@ describe("owned local acceptance runtime", () => {
       processes: {
         api: {
           pid: process.pid,
+          processIdentity: currentIdentity,
           startedAt: "2026-08-23T00:00:00.000Z",
           command: "server/index.ts",
           log: path.join(runRoot, "api.log"),
         },
         frontend: {
           pid: process.pid,
+          processIdentity: currentIdentity,
           startedAt: "2026-08-23T00:00:00.000Z",
           command: "vite --strictPort",
           log: path.join(runRoot, "frontend.log"),
@@ -505,6 +602,13 @@ describe("owned local acceptance runtime", () => {
         },
       },
     };
+
+    const missingIdentity = structuredClone(descriptor) as unknown as {
+      processes: { api: { processIdentity?: unknown } };
+    };
+    delete missingIdentity.processes.api.processIdentity;
+    expect(() => assertOwnedRuntimeDescriptor(missingIdentity)).toThrow(/process-start identity/i);
+    expect(() => assertOwnedRuntimeDescriptor(descriptor)).not.toThrow();
 
     await expect(
       verifyOwnedRuntimeOwnership(descriptor, {

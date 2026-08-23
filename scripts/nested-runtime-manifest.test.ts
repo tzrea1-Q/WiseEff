@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -672,6 +672,110 @@ describe("Gate0 nested disposable runtime contract", () => {
     expect(readNestedRuntimeManifest(manifestPath).children).toEqual([]);
     kill.mockRestore();
     unlinkSync(lockPath);
+  }, 7_000);
+
+  it("recovers the hard-link claim left behind when the stale-lock recoverer crashes", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-recovery-crash-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const lockPath = `${manifestPath}.lock`;
+    const recoveryPath = `${lockPath}.recovery`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "crashed-stale-owner" }));
+    linkSync(lockPath, recoveryPath);
+    writeFileSync(`${recoveryPath}.owner`, JSON.stringify({
+      pid: 999_999_998,
+      token: "crashed-recoverer",
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      observedLockOwner: { pid: 999_999_999, token: "crashed-stale-owner" },
+    }));
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, old, old);
+    const startedAt = Date.now();
+
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_after_recovery_crash",
+      databaseName: "wiseeff_acceptance_disposable_after_recovery_crash",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(existsSync(recoveryPath)).toBe(false);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.state).toBe("provisioning");
+  });
+
+  it("recovers a reclaim hard-link left behind when recovery-owner reclamation crashes", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-recovery-reclaim-crash-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const lockPath = `${manifestPath}.lock`;
+    const recoveryPath = `${lockPath}.recovery`;
+    const recoveryOwnerPath = `${recoveryPath}.owner`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "stale-owner" }));
+    linkSync(lockPath, recoveryPath);
+    writeFileSync(recoveryOwnerPath, JSON.stringify({
+      pid: 999_999_998,
+      token: "dead-recovery-owner",
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      observedLockOwner: { pid: 999_999_999, token: "stale-owner" },
+    }));
+    linkSync(recoveryOwnerPath, `${recoveryOwnerPath}.reclaim`);
+
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_after_reclaim_crash",
+      databaseName: "wiseeff_acceptance_disposable_after_reclaim_crash",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+
+    expect(existsSync(`${recoveryOwnerPath}.reclaim`)).toBe(false);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.state).toBe("provisioning");
+  });
+
+  it("never steals a recovery claim from its still-live owner", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-live-recovery-owner-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const lockPath = `${manifestPath}.lock`;
+    const recoveryPath = `${lockPath}.recovery`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "stale-owner" }));
+    linkSync(lockPath, recoveryPath);
+    writeFileSync(`${recoveryPath}.owner`, JSON.stringify({
+      pid: process.pid,
+      token: "live-recovery-owner",
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      processIdentity: readProcessStartIdentity(process.pid),
+      observedLockOwner: { pid: 999_999_999, token: "stale-owner" },
+    }));
+
+    expect(() => recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_live_recovery_owner",
+      databaseName: "wiseeff_acceptance_disposable_live_recovery_owner",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    })).toThrow(/lock is held by a live owner/i);
+
+    expect(existsSync(lockPath)).toBe(true);
+    expect(existsSync(recoveryPath)).toBe(true);
+    expect(JSON.parse(readFileSync(`${recoveryPath}.owner`, "utf8"))).toMatchObject({
+      pid: process.pid,
+      token: "live-recovery-owner",
+    });
   }, 7_000);
 
   it("never steals an aged manifest lock from its still-live owner", () => {

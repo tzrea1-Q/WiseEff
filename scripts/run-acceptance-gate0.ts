@@ -32,7 +32,6 @@ import {
   sanitizeGate0DiagnosticText,
   sanitizeGate0ArtifactTree,
   scanGate0ArtifactTree,
-  gate0SecretValuesFromEnv,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import { startGate0SecretRegistry } from "./gate0-secret-registry";
@@ -254,26 +253,22 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     throw new Error("DATABASE_URL or WISEEFF_ACCEPTANCE_ADMIN_DATABASE_URL is required for acceptance:gate0.");
   }
 
+  const finalizationOwner = gate0FinalizationOwner(owner);
+  const secretRegistry = await startGate0SecretRegistry(owner.signal);
   const runtime = await prepareGate0OwnedRuntime({
     baseDatabaseUrl,
     worktreeRoot: process.cwd(),
-  }, {}, owner);
-  const finalizationOwner = gate0FinalizationOwner(owner);
-  const rootSecretValues = gate0SecretValuesFromEnv(runtime.env);
-  const secretRegistry = await startGate0SecretRegistry(owner.signal).catch(async (error) => {
-    const failures = [asGate0Error(error)];
-    await runtime.finish(
-      "failure",
-      () => finalizeGate0ArtifactSafety(
-        runtime.descriptor.artifacts.runRoot,
-        finalizationOwner.signal,
-        rootSecretValues,
-      ).then(() => undefined),
-      finalizationOwner,
-    ).catch((finalizationError) => failures.push(asGate0Error(finalizationError)));
-    throw new AggregateError(failures, "Gate0 secret registry startup failed; owned runtime was finalized.");
+    secretRegistryEnv: secretRegistry.env,
+    registerGeneratedSecrets: (values) => secretRegistry.add(values),
+    finalizeProvisionFailureArtifacts: (runRoot, signal) => finalizeGate0ArtifactSafety(
+      runRoot,
+      signal ?? finalizationOwner.signal,
+      secretRegistry.values(),
+    ).then(() => undefined),
+  }, {}, owner).catch(async (error) => {
+    await settleBeforeAbort(secretRegistry.close(), owner.finalizationSignal).catch(() => undefined);
+    throw error;
   });
-  secretRegistry.add(rootSecretValues);
   const runtimeEnv = { ...runtime.env, ...secretRegistry.env };
   const phaseResults = new Map<Gate0Phase, boolean>();
   let timedOutPhase: Gate0Phase | undefined;

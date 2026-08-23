@@ -1,10 +1,22 @@
 import {
+  chmodSync,
+  mkdirSync,
   lstatSync,
   readFileSync,
   readdirSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
@@ -73,6 +85,8 @@ const CANONICAL_SECRET_ASSIGNMENT_PATTERN = new RegExp(
   "giu",
 );
 const MIN_INJECTED_SECRET_LENGTH = 8;
+const PERSISTED_EXACT_VALUES_FILE = ".gate0-exact-values.v1.enc.json";
+const PERSISTED_EXACT_VALUES_KIND = "wiseeff-gate0-encrypted-exact-values";
 const SANITIZABLE_TEXT_EXTENSIONS = new Set([
   ".css",
   ".csv",
@@ -100,6 +114,8 @@ export async function sanitizeGate0ArtifactTree(
   secretValues: readonly string[] = gate0SecretValuesFromEnv(),
 ): Promise<Gate0ArtifactSanitization> {
   const treeRoot = requireSafeTreeRoot(root);
+  const exactValues = normalizeInjectedSecretValues(secretValues);
+  if (exactValues.length > 0) persistExactValuesForRescan(treeRoot, exactValues);
   const report: Gate0ArtifactSanitization = {
     filesScanned: 0,
     archivesScanned: 0,
@@ -108,17 +124,18 @@ export async function sanitizeGate0ArtifactTree(
   };
 
   for (const filePath of listRegularFiles(treeRoot)) {
+    if (path.basename(filePath) === PERSISTED_EXACT_VALUES_FILE) continue;
     throwIfAborted(signal);
     const relativePath = normalizeRelative(path.relative(treeRoot, filePath));
     report.filesScanned += 1;
     if (path.extname(filePath).toLowerCase() === ".zip") {
       report.archivesScanned += 1;
-      const changed = await sanitizeZip(filePath, relativePath, report, signal, secretValues);
+      const changed = await sanitizeZip(filePath, relativePath, report, signal, exactValues);
       if (changed) report.filesChanged += 1;
       continue;
     }
     const original = readBuffer(filePath);
-    const sanitized = sanitizeBuffer(original, relativePath, secretValues);
+    const sanitized = sanitizeBuffer(original, relativePath, exactValues);
     report.replacements += sanitized.replacements;
     if (sanitized.replacements > 0) {
       writeFileSync(filePath, sanitized.value);
@@ -135,21 +152,33 @@ export async function scanGate0ArtifactTree(
   secretValues: readonly string[] = gate0SecretValuesFromEnv(),
 ): Promise<Gate0ArtifactScan> {
   const treeRoot = requireSafeTreeRoot(root);
+  const files = listRegularFiles(treeRoot);
+  const persistedRoots = [...new Set(
+    files
+      .filter((filePath) => path.basename(filePath) === PERSISTED_EXACT_VALUES_FILE)
+      .map((filePath) => path.dirname(filePath)),
+  )];
+  const persistedValues = persistedRoots.flatMap((persistedRoot) => readPersistedExactValues(persistedRoot));
+  const exactValues = normalizeInjectedSecretValues([...secretValues, ...persistedValues]);
   const scan: Gate0ArtifactScan = { filesScanned: 0, archivesScanned: 0, violations: [] };
 
-  for (const filePath of listRegularFiles(treeRoot)) {
+  for (const filePath of files) {
+    if (path.basename(filePath) === PERSISTED_EXACT_VALUES_FILE) continue;
     throwIfAborted(signal);
     const relativePath = normalizeRelative(path.relative(treeRoot, filePath));
     scan.filesScanned += 1;
     if (path.extname(filePath).toLowerCase() === ".zip") {
-      recordViolations(scan, relativePath, Buffer.alloc(0), secretValues);
+      recordViolations(scan, relativePath, Buffer.alloc(0), exactValues);
       scan.archivesScanned += 1;
-      await scanZip(filePath, relativePath, scan, signal, secretValues);
+      await scanZip(filePath, relativePath, scan, signal, exactValues);
       continue;
     }
-    recordViolations(scan, relativePath, readBuffer(filePath), secretValues);
+    recordViolations(scan, relativePath, readBuffer(filePath), exactValues);
   }
   scan.violations.sort((left, right) => left.artifactId.localeCompare(right.artifactId));
+  if (scan.violations.length === 0 && persistedValues.length > 0) {
+    for (const persistedRoot of persistedRoots) removePersistedExactValues(persistedRoot);
+  }
   return scan;
 }
 
@@ -326,6 +355,160 @@ function normalizeInjectedSecretValues(values: readonly string[]) {
     && value !== REDACTED_BEARER
     && value !== REDACTED_DATABASE_URL
   ))].sort((left, right) => right.length - left.length || left.localeCompare(right));
+}
+
+type PersistedExactValues = {
+  version: 1;
+  kind: typeof PERSISTED_EXACT_VALUES_KIND;
+  algorithm: "aes-256-gcm";
+  keyFile: string;
+  iv: string;
+  tag: string;
+  ciphertext: string;
+};
+
+function persistExactValuesForRescan(treeRoot: string, values: readonly string[]) {
+  const registryPath = path.join(treeRoot, PERSISTED_EXACT_VALUES_FILE);
+  const existing = readPersistedExactValuesRecord(treeRoot);
+  const merged = normalizeInjectedSecretValues([
+    ...values,
+    ...(existing ? decryptPersistedExactValues(existing) : []),
+  ]);
+  const keyDirectory = persistedExactValuesKeyDirectory();
+  mkdirSync(keyDirectory, { recursive: true, mode: 0o700 });
+  chmodSync(keyDirectory, 0o700);
+  const keyFile = path.join(keyDirectory, `${randomUUID()}.key`);
+  const key = randomBytes(32);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify({ values: merged }), "utf8"),
+    cipher.final(),
+  ]);
+  const record: PersistedExactValues = {
+    version: 1,
+    kind: PERSISTED_EXACT_VALUES_KIND,
+    algorithm: "aes-256-gcm",
+    keyFile,
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+  };
+  if (!existing) {
+    // Publish the encrypted record first. A crash before the external key is
+    // durable leaves a visible, undecryptable record, so a fresh scanner fails
+    // closed instead of silently losing the exact-value context.
+    writeFileSync(registryPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    writeFileSync(keyFile, key, { flag: "wx", mode: 0o600 });
+    return;
+  }
+  const candidatePath = `${registryPath}.${process.pid}.${randomUUID()}.tmp`;
+  let published = false;
+  try {
+    writeFileSync(keyFile, key, { flag: "wx", mode: 0o600 });
+    writeFileSync(candidatePath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    renameSync(candidatePath, registryPath);
+    published = true;
+  } finally {
+    if (!published) unlinkIfPresent(keyFile);
+    unlinkIfPresent(candidatePath);
+  }
+  unlinkIfPresent(existing.keyFile);
+}
+
+function readPersistedExactValues(treeRoot: string) {
+  const record = readPersistedExactValuesRecord(treeRoot);
+  return record ? decryptPersistedExactValues(record) : [];
+}
+
+function readPersistedExactValuesRecord(treeRoot: string): PersistedExactValues | undefined {
+  const registryPath = path.join(treeRoot, PERSISTED_EXACT_VALUES_FILE);
+  try {
+    const registryStat = lstatSync(registryPath);
+    if (registryStat.isSymbolicLink() || !registryStat.isFile()) {
+      throw new Error("Gate0 exact-value registry must be a regular file.");
+    }
+    const value = JSON.parse(readFileSync(registryPath, "utf8")) as Partial<PersistedExactValues>;
+    if (
+      value.version !== 1 || value.kind !== PERSISTED_EXACT_VALUES_KIND ||
+      value.algorithm !== "aes-256-gcm" || typeof value.keyFile !== "string" ||
+      typeof value.iv !== "string" || typeof value.tag !== "string" ||
+      typeof value.ciphertext !== "string"
+    ) {
+      throw new Error("Gate0 exact-value registry identity is invalid.");
+    }
+    assertSafePersistedKeyFile(value.keyFile);
+    return value as PersistedExactValues;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (error instanceof SyntaxError) throw new Error("Gate0 exact-value registry is malformed.", { cause: error });
+    throw error;
+  }
+}
+
+function decryptPersistedExactValues(record: PersistedExactValues) {
+  assertSafePersistedKeyFile(record.keyFile);
+  const keyStat = lstatSync(record.keyFile);
+  if (keyStat.isSymbolicLink() || !keyStat.isFile() || keyStat.size !== 32) {
+    throw new Error("Gate0 exact-value registry key is unsafe.");
+  }
+  if (process.platform !== "win32" && (keyStat.mode & 0o077) !== 0) {
+    throw new Error("Gate0 exact-value registry key permissions are unsafe.");
+  }
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      Buffer.from(readFileSync(record.keyFile, "base64"), "base64"),
+      Buffer.from(record.iv, "base64"),
+    );
+    decipher.setAuthTag(Buffer.from(record.tag, "base64"));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(record.ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+    const payload = JSON.parse(plaintext) as { values?: unknown };
+    if (!Array.isArray(payload.values) || payload.values.some((value) => typeof value !== "string")) {
+      throw new Error("Gate0 exact-value registry payload is invalid.");
+    }
+    return normalizeInjectedSecretValues(payload.values as string[]);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Gate0 exact-value")) throw error;
+    throw new Error("Gate0 exact-value registry cannot be decrypted.", { cause: error });
+  }
+}
+
+function removePersistedExactValues(treeRoot: string) {
+  const record = readPersistedExactValuesRecord(treeRoot);
+  if (!record) return;
+  unlinkIfPresent(record.keyFile);
+  unlinkIfPresent(path.join(treeRoot, PERSISTED_EXACT_VALUES_FILE));
+  try {
+    rmdirSync(persistedExactValuesKeyDirectory());
+  } catch (error) {
+    if (!["ENOENT", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+}
+
+function assertSafePersistedKeyFile(keyFile: string) {
+  const keyDirectory = persistedExactValuesKeyDirectory();
+  if (
+    !path.isAbsolute(keyFile) || path.dirname(keyFile) !== keyDirectory ||
+    !/^[a-f0-9-]{36}\.key$/iu.test(path.basename(keyFile))
+  ) {
+    throw new Error("Gate0 exact-value registry key path is unsafe.");
+  }
+}
+
+function persistedExactValuesKeyDirectory() {
+  return path.join(os.tmpdir(), `wiseeff-gate0-artifact-keys-${process.getuid?.() ?? "unknown"}`);
+}
+
+function unlinkIfPresent(targetPath: string) {
+  try {
+    unlinkSync(targetPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
 }
 
 function escapeRegExp(value: string) {
