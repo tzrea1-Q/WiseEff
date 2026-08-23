@@ -274,15 +274,21 @@ function defaultRuntimeSummary(
 ): OperationEvidenceRuntimeSummary {
   const nestedRuntimeId = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]?.trim();
   const parentDescriptorPath = process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]?.trim();
-  if ((nestedRuntimeId && !parentDescriptorPath) || (!nestedRuntimeId && parentDescriptorPath && !process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim())) {
-    throw new Error("Nested operation evidence requires both the nested runtime ID and its parent runtime descriptor.");
+  const ownedDescriptorPath = process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
+  const gate0NestedBinding = Boolean(nestedRuntimeId && parentDescriptorPath);
+  if ((!nestedRuntimeId && parentDescriptorPath && !ownedDescriptorPath) || (nestedRuntimeId && !parentDescriptorPath && ownedDescriptorPath)) {
+    throw new Error("Gate0 nested operation evidence has an incomplete parent runtime binding.");
   }
-  const descriptorPath = nestedRuntimeId
+  const descriptorPath = gate0NestedBinding
     ? parentDescriptorPath
-    : process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
-  const ownedRuntime = nestedRuntimeId
+    : nestedRuntimeId
+      ? undefined
+      : ownedDescriptorPath;
+  const ownedRuntime = gate0NestedBinding
     ? loadOwnedRuntimeDescriptor(descriptorPath)
-    : loadOwnedRuntimeDescriptorFromEnv();
+    : nestedRuntimeId
+      ? undefined
+      : loadOwnedRuntimeDescriptorFromEnv();
   if (ownedRuntime && (
     ownedRuntime.run.id !== evidenceRun.runId ||
     ownedRuntime.run.sourceCommit !== evidenceRun.sourceCommit
@@ -293,7 +299,7 @@ function defaultRuntimeSummary(
     process.env.VITE_WISEEFF_API_BASE_URL?.trim() ||
     process.env.WISEEFF_API_BASE_URL?.trim() ||
     "http://127.0.0.1:8787";
-  const nestedRuntime = nestedRuntimeId && ownedRuntime && descriptorPath
+  const nestedRuntime = gate0NestedBinding && nestedRuntimeId && ownedRuntime && descriptorPath
     ? resolveNestedRuntimeEvidence(ownedRuntime, nestedRuntimeId, apiBaseUrl)
     : undefined;
   return {

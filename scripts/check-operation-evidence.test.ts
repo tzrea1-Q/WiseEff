@@ -404,6 +404,38 @@ describe("operation evidence helper", () => {
     }
   });
 
+  it("records descriptor-free focused evidence while a legacy disposable runtime ID is active", async () => {
+    const evidenceRoot = mkdtempSync(join(tmpdir(), "wiseeff-legacy-disposable-evidence-"));
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_ROOT", evidenceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID", "focused-legacy-disposable");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT", "abc123");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND", "focused");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_NESTED_RUNTIME_ID", "wiseeff_acceptance_disposable_legacy_focus");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR", undefined);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PARENT_RUNTIME_DESCRIPTOR", undefined);
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:19100");
+    vi.stubEnv("DATABASE_URL", "postgres://wiseeff:secret@127.0.0.1:5432/wiseeff_acceptance_disposable_legacy_focus");
+
+    try {
+      const result = await recordOperationEvidence({
+        operationId: "PARAM-HAPPY-001",
+        title: "legacy disposable evidence",
+        status: "passed",
+      });
+
+      expect(result.record.runtime).toMatchObject({
+        mode: "api",
+        apiBaseUrl: "http://127.0.0.1:19100",
+        envSummary: { DATABASE_URL: "set" },
+      });
+      expect(result.record.runtime).not.toHaveProperty("ownedRuntime");
+      expect(result.record.runtime).not.toHaveProperty("nestedRuntime");
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(evidenceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("records Gate0 report and trace paths from the owned run artifacts", async () => {
     const ownedRunRoot = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-paths-"));
     const evidenceRoot = join(ownedRunRoot, "operation-evidence");
