@@ -1,7 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { rm, readFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import pg from "pg";
 
@@ -133,6 +143,14 @@ export type StartDisposablePostCutoverRuntimeOptions = {
   frontendEnv?: Record<string, string>;
 };
 
+export type NestedObjectStoreOwnership = {
+  root: string;
+  containerRoot: string;
+  markerPath: string;
+  markerSha256: string;
+  databaseName: string;
+};
+
 function safeSegment(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "run";
 }
@@ -140,6 +158,86 @@ function safeSegment(value: string) {
 export function buildDisposableDatabaseName(label: string) {
   const boundedLabel = safeSegment(label).slice(0, 12);
   return `${databasePrefix}${boundedLabel}_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
+}
+
+export function prepareNestedObjectStoreRoot(
+  databaseName: string,
+  nestedManifestPath?: string,
+): NestedObjectStoreOwnership {
+  if (!databaseName.startsWith(databasePrefix)) {
+    throw new Error("Nested object-store ownership requires an exact disposable database identity.");
+  }
+  let containerRoot: string;
+  if (nestedManifestPath) {
+    if (!path.isAbsolute(nestedManifestPath)) throw new Error("Nested runtime manifest must be absolute.");
+    const manifestStat = lstatSync(nestedManifestPath);
+    if (manifestStat.isSymbolicLink() || !manifestStat.isFile()) {
+      throw new Error("Nested runtime manifest must be a regular parent-run artifact.");
+    }
+    const parentRunRoot = realpathSync(path.dirname(nestedManifestPath));
+    containerRoot = path.join(parentRunRoot, "nested-object-store");
+    if (existsSync(containerRoot)) {
+      const stat = lstatSync(containerRoot);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error("Nested object-store container must be a regular parent-run directory.");
+      }
+    } else {
+      mkdirSync(containerRoot);
+    }
+  } else {
+    containerRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-store-"));
+  }
+  const root = path.join(containerRoot, databaseName);
+  assertStrictRealDescendant(containerRoot, root, false);
+  if (existsSync(root)) throw new Error(`Nested object-store root must be absent before creation: ${root}`);
+  mkdirSync(root);
+  const markerPath = path.join(root, ".wiseeff-nested-runtime-owner.json");
+  const markerContent = `${JSON.stringify({
+    kind: "wiseeff-owned-nested-runtime-object-store",
+    databaseName,
+  }, null, 2)}\n`;
+  writeFileSync(markerPath, markerContent, { encoding: "utf8", flag: "wx" });
+  return {
+    root,
+    containerRoot,
+    markerPath,
+    markerSha256: createHash("sha256").update(markerContent).digest("hex"),
+    databaseName,
+  };
+}
+
+export async function removeNestedObjectStoreRoot(ownership: NestedObjectStoreOwnership) {
+  assertStrictRealDescendant(ownership.containerRoot, ownership.root, true);
+  const rootStat = lstatSync(ownership.root);
+  const markerStat = lstatSync(ownership.markerPath);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || markerStat.isSymbolicLink() || !markerStat.isFile()) {
+    throw new Error("Refusing nested owned object cleanup: root or marker is a symbolic link or non-regular path.");
+  }
+  const markerContent = readFileSync(ownership.markerPath, "utf8");
+  const marker = JSON.parse(markerContent) as { kind?: string; databaseName?: string };
+  if (
+    marker.kind !== "wiseeff-owned-nested-runtime-object-store" ||
+    marker.databaseName !== ownership.databaseName ||
+    createHash("sha256").update(markerContent).digest("hex") !== ownership.markerSha256
+  ) {
+    throw new Error("Refusing nested owned object cleanup: ownership marker identity mismatch.");
+  }
+  await rm(ownership.root, { recursive: true, force: false });
+  if (existsSync(ownership.root)) throw new Error("Nested owned object root still exists after removal.");
+}
+
+function assertStrictRealDescendant(containerRoot: string, candidate: string, requireExisting: boolean) {
+  const resolvedContainer = realpathSync(containerRoot);
+  const lexicalRelative = path.relative(resolvedContainer, path.resolve(candidate));
+  if (!lexicalRelative || lexicalRelative.startsWith("..") || path.isAbsolute(lexicalRelative)) {
+    throw new Error("Nested owned object root must be a strict descendant of its owned container.");
+  }
+  if (requireExisting) {
+    const actualRelative = path.relative(resolvedContainer, realpathSync(candidate));
+    if (!actualRelative || actualRelative.startsWith("..") || path.isAbsolute(actualRelative)) {
+      throw new Error("Nested owned object root resolves outside its owned container.");
+    }
+  }
 }
 
 export function assertDisposableDatabaseIdentity(
@@ -418,8 +516,9 @@ export async function startDisposablePostCutoverRuntime(
   const authSecret = randomBytes(32).toString("hex");
   const generatedAuthorization = createDisposableAuthorization(authIssuer, authSecret);
   await registerGate0GeneratedSecrets([authSecret, generatedAuthorization]);
-  const objectStoreRoot = path.resolve("work", "disposable-acceptance-object-store", databaseName);
   const nestedManifestPath = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV]?.trim();
+  const objectStore = prepareNestedObjectStoreRoot(databaseName, nestedManifestPath);
+  const objectStoreRoot = objectStore.root;
   const children: ChildProcess[] = [];
   let nestedRegistered = false;
 
@@ -435,8 +534,8 @@ export async function startDisposablePostCutoverRuntime(
     nestedRegistered = true;
   }
 
-  await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
   try {
+    await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
     const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
     if (nestedManifestPath) {
@@ -522,7 +621,7 @@ export async function startDisposablePostCutoverRuntime(
               client.query(`drop database if exists ${databaseName} with (force)`),
             );
           },
-          removeObjectStore: () => rm(objectStoreRoot, { recursive: true, force: true }),
+          removeObjectStore: () => removeNestedObjectStoreRoot(objectStore),
         });
         if (nestedManifestPath && nestedRegistered) {
           recordNestedRuntimeFinish(
@@ -551,7 +650,7 @@ export async function startDisposablePostCutoverRuntime(
           cleanupErrors.push(asNestedError(cleanupError));
         },
       );
-      await rm(objectStoreRoot, { recursive: true, force: true }).then(
+      await removeNestedObjectStoreRoot(objectStore).then(
         () => { cleanup.objectStore = { status: "removed" }; },
         (cleanupError) => {
           cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };

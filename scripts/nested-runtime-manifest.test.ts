@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +24,8 @@ import type { DisposablePostCutoverRuntime } from "../e2e/acceptance/helpers/dis
 import {
   disposableRuntimeOutcomeFromTestInfo,
   finalizeDisposableRuntimeResources,
+  prepareNestedObjectStoreRoot,
+  removeNestedObjectStoreRoot,
   startTrackedNestedRuntimeProcess,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
 import {
@@ -42,6 +44,29 @@ describe("Gate0 nested disposable runtime contract", () => {
       expect(identity).toMatch(new RegExp(`^${process.platform}-lstart:.+`, "u"));
     }
     expect(readProcessStartIdentity(999_999_999)).toBeUndefined();
+  });
+
+  it("owns nested object data below the parent run and refuses a symlink takeover before recursive removal", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-object-owned-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_object_owned";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+
+    const ownership = prepareNestedObjectStoreRoot(databaseName, manifestPath);
+    expect(ownership.root).toBe(path.join(realpathSync(runRoot), "nested-object-store", databaseName));
+    expect(readFileSync(ownership.markerPath, "utf8")).toContain(databaseName);
+
+    const outside = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-object-outside-"));
+    writeFileSync(path.join(outside, "must-retain.txt"), "retained\n");
+    rmSync(ownership.root, { recursive: true });
+    mkdirSync(path.dirname(ownership.root), { recursive: true });
+    symlinkSync(outside, ownership.root);
+
+    await expect(removeNestedObjectStoreRoot(ownership)).rejects.toThrow(/symbolic link|owned object/i);
+    expect(existsSync(path.join(outside, "must-retain.txt"))).toBe(true);
   });
 
   it("removes exact child resources only after a successful Playwright phase", async () => {
