@@ -1,14 +1,20 @@
 # 确定性技术债并行收口——第 4 轮
 
-> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md)
+> English: [English](../../../exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md)
 >
-> 状态：**进行中**
+> 状态：**已完成，2026-08-24**
 >
 > 日期：2026-08-22
 >
 > 规划基线：`origin/main@86f2f409b6529ca459c0079e58c4d68bbdae2dc4`
 >
 > 规划分支：`codex/deterministic-tech-debt-wave4-plan`
+
+> 收口分支：`codex/deterministic-td-wave4-closeout`
+>
+> 实现 PR：#598（TD-067）、#599（TD-105）、#600（TD-014）、#601（TD-005 切片）、#602（hotspot）、#603–#607（TD-122）
+>
+> 最终实现基线：`main@493a257a1f3507f883715c5b5235af7a233914c7`
 
 ## 目标
 
@@ -22,6 +28,18 @@
 - **TD-122，条件式**：所有影响验收的分支合入后执行 clean source、owned runtime、fresh isolated DB Gate 0。只有失败清单确定、已修复、最终全量证据绿色才关闭；否则保持 Open 并记录下一组工作。
 
 每条实现轨都要在生产改动前留下公共接口 RED，跑相称全门禁、独立 Standards/Spec 双轴复审和独立 PR。只有 merged-main 证据成立后才更新 tracker/计划状态。
+
+## 收口结果
+
+- **TD-067 经 #598（`3a2cfc408bd737751420f976cbd30a511332e443`）关闭。** stock 单 API 约束既由 compose wrapper 执行，也在 ADR-0020 和中英文 reliability/deployment/bridge/self-hosted 入口成为规范边界。自带 bridge-aware routing 的定制部署仍在 stock 声明之外；不推导 target HA ready。
+- **TD-105 经 #599（`62a100e3b0e42817d7006a62b89aeb012af2c9ba`）关闭。** 一个有界 retention seam 与每种 worker mode 各一个 lifecycle loop 终止 webhook-delivery 无界增长；包含按域稳定排序、脱敏重试、shutdown 等待、显式停用开关，以及已删行只能由备份恢复的边界。
+- **TD-014 经 #600（`e528c4a52d7646b70f8b2e576448684cf36aacf9`）关闭。** unused legacy parameter-Admin HTTP/client 合同已退役，node-only 边界明确；历史 schema/data/runtime read 与 audit 证据保留。真实 node-catalog export/import acceptance 全绿，HDC 真机证据仍归 Open TD-100。
+- **TD-005 在 #601（`a5a0b653a3f2cd65320757523eb38fc51049d7d7`）后保持 Open。** superseded 计划已被机器门禁拦在 active 之外，四组已验证 stale plan 已归档；但 177 个英文 completed-plan basename 中只有 4 个被本次有界 inventory 管理，剩余 173 个阻止 repo-wide 关闭声明。
+- **陈旧 hotspot 计划经 #602（`b2181d956129c844d86d6782f52d57dcf57efb37`）完成。** 线上四键 score contract 已精确化，不可达 legacy projection 已删除；API-mode Parameter Home 证明排序/标签不变，并修复 mobile FAB 覆盖。该轨不新增或关闭 tracker 行。
+- **TD-122 经 #603–#607 关闭；最终证明为 `493a257a1f3507f883715c5b5235af7a233914c7`。** 最终 clean merged-main owned run：visual 20/20，browser 127 expected / 29 planned skipped / 0 unexpected / 0 flaky；125 条 operation record 覆盖全部 108 个 required ID，无 missing/invalid/error；11 个 nested runtime 与所有 root resource 全部清理；artifact scan 为 0 violation；`latest-full.json` 绑定精确 run/commit。详细保留证据见已完成的 acceptance-baseline 计划。
+- #598–#605 使用各自记录的 required checks。#606/#607 执行时 GitHub Actions 额度耗尽，仓库负责人明确授权完整本地 CI 通过后合入；本地门禁与 fresh 双轴复审均为绿色。收口明确记录该例外，不把排队中的 GitHub job 写成 green。
+- shared closeout 在修改前按 Open 章节边界重算 tracker 与 durable 编号空间：`493a257a1` 上英文 Open 38 行、中文 Open 26 条；移除四条有证明关闭项后分别为 34 与 22。ADR 仍为 37 个，SQL migration 仍为 113 个。中英文 tracker 因中文版是精简 companion，数量本来就不要求完全相等，但两侧都移动相同四个 ID。TD-005 的有界归档清理完成后，仍保留在英文权威 Open 表中。
+- 其余 Review/No-change 行已对最终 `493a257a1` 复核。此次纯文档 closeout 不改变产品 workflow、permission、target evidence、HDC/provider readiness、KMS、API trust boundary、仓库地图或 reference contract。矩阵要求的 runtime、architecture、quality、runbook、API、frontend 与 generated-artifact 更新已由实现 PR 提供。
 
 ## 固定审计决策
 
@@ -154,7 +172,7 @@ target/HDC/provider job 的 skip 不能支撑 ready 声明。
 | 类别 | 状态 | 精确文件/证据 |
 | --- | --- | --- |
 | 仓库地图 | Review | `AGENTS.md`；`docs/zh-CN/root/AGENTS.md`；`ARCHITECTURE.md`；`docs/zh-CN/root/ARCHITECTURE.md`；`docs/README.md`；`docs/zh-CN/README.md`。入口未变则记 unchanged。 |
-| 规划/技术债 | Update | `docs/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`；`docs/zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`；`docs/exec-plans/tech-debt-tracker.md`；`docs/zh-CN/exec-plans/tech-debt-tracker.md`；`docs/PLANS.md`；`docs/zh-CN/PLANS.md`；`docs/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`；`docs/zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`；`docs/exec-plans/active/2026-08-19-organization-administration.md`；`docs/zh-CN/exec-plans/active/2026-08-19-organization-administration.md`；`docs/exec-plans/completed/2026-08-19-organization-administration.md`；`docs/zh-CN/exec-plans/completed/2026-08-19-organization-administration.md`；`docs/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`；`docs/zh-CN/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`；`docs/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`；`docs/zh-CN/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`；`docs/exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/zh-CN/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/zh-CN/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/zh-CN/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/zh-CN/exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/exec-plans/completed/README.md`；`docs/zh-CN/exec-plans/completed/README.md`。 |
+| 规划/技术债 | Update | `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`；`docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`；`docs/exec-plans/tech-debt-tracker.md`；`docs/zh-CN/exec-plans/tech-debt-tracker.md`；`docs/PLANS.md`；`docs/zh-CN/PLANS.md`；`docs/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`；`docs/zh-CN/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`；`docs/exec-plans/active/2026-08-19-organization-administration.md`；`docs/zh-CN/exec-plans/active/2026-08-19-organization-administration.md`；`docs/exec-plans/completed/2026-08-19-organization-administration.md`；`docs/zh-CN/exec-plans/completed/2026-08-19-organization-administration.md`；`docs/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`；`docs/zh-CN/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`；`docs/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`；`docs/zh-CN/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`；`docs/exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/zh-CN/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md`；`docs/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/zh-CN/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/zh-CN/exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md`；`docs/exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/zh-CN/exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md`；`docs/exec-plans/completed/README.md`；`docs/zh-CN/exec-plans/completed/README.md`。 |
 | 产品规格 | Review | `docs/product-specs/index.md`；`docs/product-specs/product-spec.md`；`docs/zh-CN/product-specs/index.md`；`docs/zh-CN/product-specs/product-spec.md`。只有 TD-014 影响当前陈述才更新。 |
 | 架构/领域 | Review | `CONTEXT.md`；`docs/adr/README.md`；`docs/adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md`；`docs/design-docs/full-stack-architecture.md`；`docs/zh-CN/design-docs/full-stack-architecture.md`；`docs/design-docs/api-contract.md`；`docs/zh-CN/design-docs/api-contract.md`；`docs/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`；`docs/zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`。 |
 | 质量/测试 | Update | `docs/QUALITY_SCORE.md`；`docs/zh-CN/QUALITY_SCORE.md`；`docs/design-docs/testing-strategy.md`；`docs/zh-CN/design-docs/testing-strategy.md`；`docs/developer/verification-matrix.md`；`docs/zh-CN/developer/verification-matrix.md`；`playwright.acceptance.config.ts`；`playwright.quality.config.ts`。 |

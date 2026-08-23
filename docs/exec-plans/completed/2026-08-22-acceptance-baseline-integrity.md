@@ -1,10 +1,14 @@
 # Acceptance Baseline Integrity Closeout
 
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md)
 >
-> Status: **Active**
+> Status: **Completed 2026-08-24**
 >
 > Tracker: TD-122
+
+> Implementation PRs: #603, #604, #605, #606, #607
+>
+> Final merged-main proof: `493a257a1f3507f883715c5b5235af7a233914c7`
 
 ## Goal
 
@@ -93,14 +97,25 @@ Ownership before fresh reproduction is deliberately narrow:
 - `npm run acceptance:browser -- --mode local-non-hdc` has zero unplanned failures; only declared planned skips remain.
 - `npm run acceptance:evidence -- --run <runDir>` validates the full run and every required operation ID.
 - Focused tests for each repaired group, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:quality`, `npm run docs:check`, and `git diff --check` pass.
-- CI and Merge bar pass for every implementation PR; final merged-main rerun remains green before TD-122 moves to Completed.
+- Required CI and Merge bar pass for every implementation PR, or a repository-owner-approved complete-local-CI exception is explicitly recorded when GitHub Actions cannot run; final merged-main rerun remains green before TD-122 moves to Completed.
+
+## Completion evidence
+
+- The historical 11 visual failures were repaired through reviewed baselines and deterministic fixture/runtime work in #604. The final merged-main Gate0 visual phase passed 20/20 on Darwin; no bulk snapshot acceptance or mask-based hiding was used.
+- The historical 18 browser failures were resolved through deterministic lifecycle/runtime/evidence repairs in #603 and #605–#607. The authoritative owned run `full-20260823t165107589z-493a257a1f35-046f55ca` started from clean `main@493a257a1f3507f883715c5b5235af7a233914c7`, provisioned a checked-absent fresh database, migrated 113 files through `0115_log_webhook_delivery_retention_order.sql`, seeded the declared sentinels, and used a run-scoped object root.
+- Pinned toolchain validation passed with dtc/fdtoverlay 1.8.1 and dtschema 2026.6. Browser results were 127 expected, 29 declared planned skips, 0 unexpected, and 0 flaky. The run contains 125 operation records covering all 108 required operation IDs, with 0 missing, 0 invalid, and 0 validation errors; its atomically published `latest-full.json` binds the exact run and source commit.
+- All 11 nested disposable runtimes ended `cleaned`; every nested API/frontend process stopped and every nested database/object root was removed. Root cleanup is `complete`: owner/API/frontend/visual/browser PIDs were independently absent, the exact root database query returned count 0, the exact object root was absent, and ports 18800/5180 were free.
+- Artifact finalization reported 0 violations. A separate post-run `acceptance:artifacts:check` scanned 672 files with 0 changes, 0 replacements, and 0 violations. The two earlier failed Gate0 runs remain retained as forensic evidence; successful cleanup did not delete them.
+- The final #607 candidate passed 811 script tests with 5 planned skips, typecheck, build, docs governance, `acceptance:ci`, lint with 0 errors / 299 baseline warnings, and diff check. The real SIGTERM case passed 55/55 targeted stress repetitions after one non-reproducing full-suite timing red; a real nested PostgreSQL disposable-runtime smoke independently proved process/database/object cleanup. Final Standards and Spec reviews each reported 0 findings.
+- GitHub Actions monthly quota was exhausted for #606/#607. The repository owner explicitly authorized merge after complete local CI, so those two PRs were merged under that exception instead of being misreported as GitHub-CI green. Earlier implementation PRs used their recorded required checks. This exception does not weaken the final merged-main Gate0 evidence above.
+- The plan's remaining Review/No-change documentation rows were rechecked against `493a257a1`; no product workflow, API contract, authz/audit boundary, target/HDC/provider claim, or repository entry point moved during closeout. Planning/tracker paths and English/Chinese companions are the only new closeout documentation changes.
 
 ## Documentation Impact Matrix
 
 | Area | Status | Exact files / evidence |
 | --- | --- | --- |
 | Repository maps | No change | `AGENTS.md`; `docs/zh-CN/root/AGENTS.md`; `ARCHITECTURE.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/README.md`; `docs/zh-CN/README.md`. Acceptance baseline ownership does not move a repository entry point. |
-| Planning / debt | Update | `docs/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`; `docs/zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`; `docs/exec-plans/tech-debt-tracker.md`; `docs/zh-CN/exec-plans/tech-debt-tracker.md`; `docs/PLANS.md`; `docs/zh-CN/PLANS.md`. |
+| Planning / debt | Update | `docs/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`; `docs/zh-CN/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`; `docs/exec-plans/tech-debt-tracker.md`; `docs/zh-CN/exec-plans/tech-debt-tracker.md`; `docs/PLANS.md`; `docs/zh-CN/PLANS.md`. |
 | Product specs | Review | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`. Record unchanged unless a reproduced failure proves a product-contract defect. |
 | Architecture / domain | Review | `CONTEXT.md`; `docs/adr/README.md`; `docs/design-docs/full-stack-architecture.md`; `docs/zh-CN/design-docs/full-stack-architecture.md`. Record unchanged unless a repaired runtime/fixture seam changes a durable boundary. |
 | Quality/testing | Update | `docs/QUALITY_SCORE.md`; `docs/zh-CN/QUALITY_SCORE.md`; `docs/design-docs/testing-strategy.md`; `docs/zh-CN/design-docs/testing-strategy.md`; `docs/developer/verification-matrix.md`; `docs/zh-CN/developer/verification-matrix.md`; `playwright.quality.config.ts`; `playwright.acceptance.config.ts`. Update only when platform, baseline, or runtime-gate semantics change. |
