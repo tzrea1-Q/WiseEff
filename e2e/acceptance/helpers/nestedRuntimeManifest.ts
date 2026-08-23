@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   linkSync,
@@ -8,7 +7,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import type { ProcessStartIdentity } from "../../../scripts/process-start-identity";
+import {
+  readProcessStartIdentity,
+  sameProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "../../../scripts/process-start-identity";
 
 export const OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV =
   "WISEEFF_ACCEPTANCE_NESTED_RUNTIME_MANIFEST";
@@ -312,7 +315,7 @@ function recoverStaleManifestLock(lockPath: string) {
   const deadOwner = owner ? !isProcessAlive(owner.pid) : false;
   const currentIdentity = owner?.processIdentity ? readProcessStartIdentity(owner.pid) : undefined;
   const reusedPid = owner?.processIdentity !== undefined && currentIdentity !== undefined
-    ? owner.processIdentity !== currentIdentity
+    ? !sameProcessStartIdentity(owner.processIdentity, currentIdentity)
     : false;
   // Lock age is never ownership proof: a live writer may be paused while it
   // holds a valid read-modify-write snapshot. Only a dead owner or a proven
@@ -332,7 +335,7 @@ function readManifestLockOwner(lockPath: string): {
   pid: number;
   token: string;
   parentRunId?: string;
-  processIdentity?: string;
+  processIdentity?: ProcessStartIdentity;
 } | undefined {
   try {
     const owner = JSON.parse(readFileSync(lockPath, "utf8")) as {
@@ -348,7 +351,7 @@ function readManifestLockOwner(lockPath: string): {
       pid: Number(owner.pid),
       token: owner.token,
       parentRunId: typeof owner.parentRunId === "string" && owner.parentRunId ? owner.parentRunId : undefined,
-      processIdentity: typeof owner.processIdentity === "string" && owner.processIdentity
+      processIdentity: isProcessStartIdentity(owner.processIdentity)
         ? owner.processIdentity
         : undefined,
     };
@@ -358,29 +361,11 @@ function readManifestLockOwner(lockPath: string): {
   }
 }
 
-export function readProcessStartIdentity(pid: number) {
-  if (process.platform === "linux") {
-    try {
-      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-      const commandEnd = stat.lastIndexOf(")");
-      const fieldsAfterCommand = commandEnd >= 0 ? stat.slice(commandEnd + 2).trim().split(/\s+/u) : [];
-      const startTicks = fieldsAfterCommand[19];
-      if (startTicks) return `linux-start-ticks:${startTicks}`;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
-    }
-    return undefined;
-  }
-  try {
-    const startedAt = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1_000,
-    }).trim();
-    return startedAt ? `${process.platform}-lstart:${startedAt}` : undefined;
-  } catch {
-    return undefined;
-  }
+function isProcessStartIdentity(value: unknown): value is ProcessStartIdentity {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProcessStartIdentity>;
+  return typeof candidate.startToken === "string" && candidate.startToken.length > 0 &&
+    typeof candidate.commandSha256 === "string" && /^[a-f0-9]{64}$/u.test(candidate.commandSha256);
 }
 
 function isProcessAlive(pid: number) {

@@ -19,7 +19,7 @@ export function readProcessStartIdentity(pid: number): ProcessStartIdentity | un
       const commandEnd = stat.lastIndexOf(")");
       const fields = commandEnd >= 0 ? stat.slice(commandEnd + 2).trim().split(/\s+/u) : [];
       const startTicks = fields[19];
-      const command = readFileSync(`/proc/${pid}/cmdline`).toString("utf8").replace(/\0/g, "\n");
+      const command = readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, "\n");
       if (!startTicks || !command) return undefined;
       return {
         startToken: `linux-start-ticks:${startTicks}`,

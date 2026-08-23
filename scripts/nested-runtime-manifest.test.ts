@@ -8,7 +8,6 @@ import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "../e2e/acceptance/helpers/owned
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   initializeNestedRuntimeManifest,
-  readProcessStartIdentity,
   readNestedRuntimeManifest,
   recordNestedRuntimeFinish,
   recordNestedRuntimeProgress,
@@ -52,11 +51,10 @@ afterEach(() => vi.unstubAllEnvs());
 describe("Gate0 nested disposable runtime contract", () => {
   it("exposes a stable process-start identity and returns no identity for a missing PID", () => {
     const identity = readProcessStartIdentity(process.pid);
-    if (process.platform === "linux") {
-      expect(identity).toMatch(/^linux-start-ticks:\d+$/u);
-    } else if (process.platform !== "win32") {
-      expect(identity).toMatch(new RegExp(`^${process.platform}-lstart:.+`, "u"));
-    }
+    expect(identity?.startToken).toMatch(process.platform === "linux"
+      ? /^linux-start-ticks:\d+$/u
+      : new RegExp(`^${process.platform}-lstart:.+`, "u"));
+    expect(identity?.commandSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(readProcessStartIdentity(999_999_999)).toBeUndefined();
   });
 
@@ -634,7 +632,10 @@ describe("Gate0 nested disposable runtime contract", () => {
       pid: process.pid,
       token: "dead-process-incarnation",
       parentRunId: "full-owned",
-      processIdentity: "prior-process-incarnation",
+      processIdentity: {
+        startToken: "prior-process-incarnation",
+        commandSha256: "f".repeat(64),
+      },
     }));
     const startedAt = Date.now();
 
@@ -672,12 +673,17 @@ describe("Gate0 nested disposable runtime contract", () => {
       manifestPath,
       childId: "wiseeff_acceptance_disposable_spawn_handshake",
       process: "api",
-      spawn: () => ({ pid: 333 } as ReturnType<typeof spawn>),
+      port: 19_100,
+      spawn: () => spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+        detached: process.platform !== "win32",
+        stdio: "ignore",
+      }),
       track: (started) => { tracked.push(started.pid!); },
     });
 
-    expect(child.pid).toBe(333);
-    expect(tracked).toEqual([333]);
-    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiPid).toBe(333);
+    expect(child.pid).toBeTypeOf("number");
+    expect(tracked).toEqual([child.pid]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiPid).toBe(child.pid);
+    child.kill("SIGTERM");
   });
 });
