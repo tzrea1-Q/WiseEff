@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -35,6 +36,101 @@ export const gate0SourceOutputDirectFiles = [
 // cleanup is intentionally disabled because a new file cannot be proven to be
 // owned by this run rather than a concurrent user or agent.
 export const gate0SourceOutputRecursiveRoots = [] as const;
+
+const visualBaselineRoot = "e2e/quality/visual.quality.spec.ts-snapshots";
+const supportedVisualPlatforms = new Set(["darwin", "linux", "win32"]);
+const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+export async function stageGate0VisualBaselines(input: {
+  worktreeRoot: string;
+  runRoot: string;
+  sourceCommit: string;
+  platform?: string;
+  signal?: AbortSignal;
+}) {
+  const worktreeRoot = path.resolve(input.worktreeRoot);
+  const runRoot = path.resolve(input.runRoot);
+  const platform = input.platform ?? process.platform;
+  if (!/^[a-f0-9]{40}$/u.test(input.sourceCommit)) {
+    throw new Error("Gate0 visual baseline source commit must be exact.");
+  }
+  if (!supportedVisualPlatforms.has(platform)) {
+    throw new Error(`Gate0 visual baseline platform is unsupported: ${platform}.`);
+  }
+
+  const sourceRoot = `${visualBaselineRoot}/${platform}`;
+  const snapshotRoot = resolveDescendant(runRoot, "artifacts/visual/snapshots");
+  assertNoSymlinkInPath(runRoot, snapshotRoot);
+  if (existsSync(snapshotRoot) && readdirSync(snapshotRoot).length > 0) {
+    throw new Error("Gate0 run-owned visual snapshot root must be empty before staging.");
+  }
+
+  const tree = await execGitBuffer(
+    worktreeRoot,
+    ["ls-tree", "-r", "-z", input.sourceCommit, "--", sourceRoot],
+    input.signal,
+  );
+  const entries = tree
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => {
+      const match = /^(\d+)\s+(\w+)\s+([a-f0-9]{40})\t(.+)$/u.exec(line);
+      if (!match) throw new Error("Gate0 visual baseline Git tree entry is malformed.");
+      return { mode: match[1], type: match[2], objectId: match[3], sourcePath: match[4] };
+    });
+  if (entries.length === 0) {
+    throw new Error(`Gate0 visual baseline source is empty for ${platform}.`);
+  }
+
+  const files: Array<{ relativePath: string; sha256: string }> = [];
+  for (const entry of entries) {
+    if (entry.mode !== "100644" || entry.type !== "blob" || !entry.sourcePath.endsWith(".png")) {
+      throw new Error(`Gate0 visual baseline must be a regular PNG blob: ${entry.sourcePath}.`);
+    }
+    const relativePath = normalizeRelativePath(entry.sourcePath.slice(sourceRoot.length + 1));
+    const content = await execGitBuffer(worktreeRoot, ["cat-file", "blob", entry.objectId], input.signal);
+    if (content.length < pngSignature.length || !content.subarray(0, pngSignature.length).equals(pngSignature)) {
+      throw new Error(`Gate0 visual baseline has an invalid PNG signature: ${entry.sourcePath}.`);
+    }
+    const target = resolveDescendant(snapshotRoot, `${platform}/${relativePath}`);
+    assertNoSymlinkInPath(runRoot, path.dirname(target));
+    mkdirSync(path.dirname(target), { recursive: true });
+    if (existsSync(target)) throw new Error(`Gate0 visual baseline target already exists: ${relativePath}.`);
+    writeFileSync(target, content);
+    files.push({ relativePath, sha256: digest(content) });
+  }
+
+  const manifestPath = resolveDescendant(runRoot, "visual-baseline-manifest.json");
+  if (existsSync(manifestPath)) throw new Error("Gate0 visual baseline manifest already exists.");
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      version: 1,
+      kind: "wiseeff-gate0-visual-baselines",
+      sourceCommit: input.sourceCommit,
+      platform,
+      files,
+      recordedAt: new Date().toISOString(),
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  return manifestPath;
+}
+
+function execGitBuffer(cwd: string, args: string[], signal?: AbortSignal) {
+  return new Promise<Buffer>((resolve, reject) => {
+    execFile(
+      "git",
+      args,
+      { cwd, encoding: "buffer", maxBuffer: 32 * 1024 * 1024, signal },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
+      },
+    );
+  });
+}
 
 export function captureGate0SourceOutputs(input: {
   worktreeRoot: string;
@@ -165,6 +261,23 @@ function resolveDescendant(root: string, relativePath: string) {
     throw new Error(`Gate0 source-output path escapes the worktree: ${relativePath}`);
   }
   return resolved;
+}
+
+function assertNoSymlinkInPath(root: string, target: string) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  const relative = path.relative(resolvedRoot, resolvedTarget);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Gate0 visual baseline target escapes its run root: ${target}.`);
+  }
+  let candidate = resolvedRoot;
+  for (const segment of ["", ...relative.split(path.sep).filter(Boolean)]) {
+    if (segment) candidate = path.join(candidate, segment);
+    if (!existsSync(candidate)) continue;
+    if (lstatSync(candidate).isSymbolicLink()) {
+      throw new Error(`Gate0 visual baseline target must not contain a symlink: ${candidate}.`);
+    }
+  }
 }
 
 function normalizeRelativePath(value: string) {

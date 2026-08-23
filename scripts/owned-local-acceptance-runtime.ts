@@ -838,7 +838,7 @@ function checkpointOwner(options: ProvisionOwnedRuntimeOptions, stage: string) {
   options.ownerDeadline?.remainingMs(stage);
 }
 
-function buildOwnedRuntimeEnv(input: {
+export function buildOwnedRuntimeEnv(input: {
   databaseUrl: string;
   objectRoot: string;
   apiUrl: string;
@@ -880,7 +880,7 @@ function buildOwnedRuntimeEnv(input: {
     VITE_WISEEFF_API_BASE_URL: input.apiUrl,
     WISEEFF_ACCEPTANCE_FRONTEND_URL: input.frontendUrl,
     VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true",
-    VITE_XIAOZE_PROACTIVE_ENABLED: "true",
+    VITE_XIAOZE_PROACTIVE_ENABLED: "false",
     M5_CONTRACT_CHECK_PASSED: "true",
     M5_SMOKE_ALLOW_NO_API: "false",
     WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true",

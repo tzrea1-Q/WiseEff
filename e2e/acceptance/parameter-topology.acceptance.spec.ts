@@ -2174,7 +2174,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
-    await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
     await page.reload();
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });

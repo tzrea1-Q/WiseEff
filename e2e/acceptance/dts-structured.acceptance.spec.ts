@@ -654,7 +654,11 @@ test.describe("DTS structured post-cutover typed edits", () => {
         );
         await dismissXiaozeHint(page);
         const structurePanel = page.getByRole("region", { name: "项目源结构" });
-        if (await structurePanel.isVisible({ timeout: 10_000 }).catch(() => false)) {
+        const structurePanelVisible = await structurePanel
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (structurePanelVisible) {
           const browser = page.getByRole("region", { name: "结构浏览" });
           await expect(browser).toBeVisible({ timeout: 15_000 });
           await expect(browser).toContainText("变更集");
@@ -664,6 +668,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
         // Projects UI availability is environment-dependent; API/db fidelity above is the required gate.
       }
     } finally {
+      if (!page.isClosed()) await page.goto("about:blank");
       await cleanupDtsUploadedArtifacts(fileName ? [fileName] : [], { bindingIds });
     }
   });

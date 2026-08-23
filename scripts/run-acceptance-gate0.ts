@@ -24,6 +24,7 @@ import { provisionOwnedLocalAcceptanceRuntime } from "./owned-local-acceptance-r
 import {
   captureGate0SourceOutputs,
   restoreAndArchiveGate0SourceOutputs,
+  stageGate0VisualBaselines,
   type Gate0SourceOutputSnapshot,
 } from "./gate0-source-outputs";
 import {
@@ -220,6 +221,13 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     sourceOutputs = captureGate0SourceOutputs({
       worktreeRoot: process.cwd(),
       runRoot: runtime.descriptor.artifacts.runRoot,
+    });
+    owner.remainingMs("visual baseline staging");
+    await stageGate0VisualBaselines({
+      worktreeRoot: process.cwd(),
+      runRoot: runtime.descriptor.artifacts.runRoot,
+      sourceCommit: runtime.descriptor.run.sourceCommit,
+      signal: owner.signal,
     });
     for (const command of buildGate0Commands(
       runtime.descriptorPath,

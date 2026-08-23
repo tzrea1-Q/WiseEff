@@ -13,6 +13,7 @@ import {
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import {
   createOwnedAcceptanceAuthorization,
+  buildOwnedRuntimeEnv,
   cleanupExactOrphanedOwnedRuntime,
   readCleanSource,
 } from "./owned-local-acceptance-runtime";
@@ -24,6 +25,26 @@ afterEach(async () => {
 });
 
 describe("owned local acceptance runtime", () => {
+  it("keeps the visual frontend profile non-proactive while retaining backend suggest coverage", () => {
+    const env = buildOwnedRuntimeEnv({
+      databaseUrl: "postgres://wiseeff:secret@127.0.0.1:5432/wiseeff_acceptance_full_visual",
+      objectRoot: "/tmp/owned/object-store",
+      apiUrl: "http://127.0.0.1:18800",
+      frontendUrl: "http://127.0.0.1:5180",
+      apiPort: 18_800,
+      authIssuer: "wiseeff-owned-visual",
+      authSecret: "test-secret",
+      descriptorPath: "/tmp/owned/runtime.json",
+      runId: "full-visual",
+      sourceCommit: "1".repeat(40),
+      runRoot: "/tmp/owned",
+      nestedRuntimeManifest: "/tmp/owned/nested-runtime-manifest.json",
+    });
+
+    expect(env.XIAOZE_PROACTIVE_ENABLED).toBe("true");
+    expect(env.VITE_XIAOZE_PROACTIVE_ENABLED).toBe("false");
+  });
+
   it("records database ownership identity without deriving a verifier from the password", () => {
     expect(
       databaseIdentityFromUrl(
