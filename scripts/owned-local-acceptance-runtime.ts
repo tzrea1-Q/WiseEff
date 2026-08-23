@@ -186,9 +186,21 @@ export type OwnedLocalAcceptanceRuntime = {
 };
 
 type StartedProcess = {
+  label?: "api" | "frontend";
   child: ChildProcess;
+  port?: number;
   command: string;
   log: string;
+  cleanup: { status: "pending" | "stopped" | "failed"; reason: string };
+};
+
+export type ProvisionFailureProcessRecord = {
+  label: "api" | "frontend";
+  pid?: number;
+  port: number;
+  command: string;
+  log: string;
+  cleanup: { status: "pending" | "stopped" | "failed"; reason: string };
 };
 
 export type OrphanedOwnedRuntimeCleanupInput = {
@@ -323,16 +335,19 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
 
     const api = spawnOwnedProcess({
+      label: "api",
       cwd: worktreeRoot,
       command: process.execPath,
       args: ["--import", "tsx", path.join(worktreeRoot, "server/index.ts")],
       env: { ...env, PORT: String(apiPort) },
+      port: apiPort,
       log: apiLog,
     });
     started.push(api);
     await waitForHttp(`${apiUrl}/health/live`, api.child, "API", options.ownerDeadline);
 
     const frontend = spawnOwnedProcess({
+      label: "frontend",
       cwd: worktreeRoot,
       command: process.execPath,
       args: [
@@ -344,6 +359,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         "--strictPort",
       ],
       env,
+      port: frontendPort,
       log: frontendLog,
     });
     started.push(frontend);
@@ -553,6 +569,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           databaseName: databaseCreationEvidence?.retainedDatabaseName ?? (databaseCreated ? databaseName : undefined),
           databaseCreationEvidence,
           objectRoot: objectRootCreated ? objectRoot : undefined,
+          processes: started.map(provisionFailureProcessRecord),
           errors: failures,
         });
       } catch (failureWriteError) {
@@ -853,10 +870,12 @@ async function runNpmScriptWithLog(
 }
 
 function spawnOwnedProcess(input: {
+  label?: "api" | "frontend";
   cwd: string;
   command: string;
   args: string[];
   env: RuntimeEnv;
+  port?: number;
   log: string;
 }): StartedProcess {
   const fd = openSync(input.log, "a");
@@ -868,7 +887,14 @@ function spawnOwnedProcess(input: {
       detached: process.platform !== "win32",
     });
     const command = [input.command, ...input.args].join(" ");
-    return { child, command, log: input.log };
+    return {
+      label: input.label,
+      child,
+      port: input.port,
+      command,
+      log: input.log,
+      cleanup: { status: "pending", reason: "Process cleanup has not been attempted." },
+    };
   } finally {
     closeSync(fd);
   }
@@ -922,7 +948,9 @@ async function stopOwnedProcesses(processes: StartedProcess[]) {
   for (const processRecord of [...processes].reverse()) {
     try {
       await stopOwnedProcess(processRecord.child);
+      processRecord.cleanup = { status: "stopped", reason: "Exact owned process group stopped and verified absent." };
     } catch (error) {
+      processRecord.cleanup = { status: "failed", reason: safeCleanupReason(error) };
       errors.push(asError(error));
     }
   }
@@ -1287,40 +1315,54 @@ function writeOperationEvidenceRuntimeSnapshot(
   });
 }
 
-function writeProvisionFailure(
-  runRoot: string,
-  input: {
+export function buildProvisionFailureRecord(input: {
     runId: string;
     sourceCommit: string;
     databaseName?: string;
     databaseCreationEvidence?: CheckedAbsentDatabaseCreationEvidence;
     objectRoot?: string;
+    processes: ProvisionFailureProcessRecord[];
     errors: Error[];
-  },
+  }) {
+  return {
+    kind: "wiseeff-owned-local-acceptance-provision-failure" as const,
+    runId: input.runId,
+    sourceCommit: input.sourceCommit,
+    intendedDatabaseName: input.databaseCreationEvidence?.intendedDatabaseName,
+    retainedDatabaseName: input.databaseName,
+    databaseOwnership: input.databaseCreationEvidence ? {
+      state: input.databaseCreationEvidence.state,
+      presenceAfterCreateFailure: input.databaseCreationEvidence.presenceAfterCreateFailure,
+      markerStatus: input.databaseCreationEvidence.ownership,
+      uncertainty: input.databaseCreationEvidence.ownership === "unverified-no-marker"
+        ? "No owned database marker was verified; destructive cleanup is refused until exact marker proof succeeds."
+        : undefined,
+    } : undefined,
+    retainedObjectRoot: input.objectRoot,
+    processes: input.processes.map((process) => ({
+      ...process,
+      command: safeCleanupReason(process.command),
+      log: safeCleanupReason(process.log),
+      cleanup: {
+        status: process.cleanup.status,
+        reason: safeCleanupReason(process.cleanup.reason),
+      },
+    })),
+    failures: input.errors.map((error, index) => ({
+      stage: index === 0 ? "provision" : "process-cleanup",
+      message: safeCleanupReason(error),
+    })),
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+function writeProvisionFailure(
+  runRoot: string,
+  input: Parameters<typeof buildProvisionFailureRecord>[0],
 ) {
   writeFileSync(
     path.join(runRoot, "provision-failure.json"),
-    `${JSON.stringify({
-      kind: "wiseeff-owned-local-acceptance-provision-failure",
-      runId: input.runId,
-      sourceCommit: input.sourceCommit,
-      intendedDatabaseName: input.databaseCreationEvidence?.intendedDatabaseName,
-      retainedDatabaseName: input.databaseName,
-      databaseOwnership: input.databaseCreationEvidence ? {
-        state: input.databaseCreationEvidence.state,
-        presenceAfterCreateFailure: input.databaseCreationEvidence.presenceAfterCreateFailure,
-        markerStatus: input.databaseCreationEvidence.ownership,
-        uncertainty: input.databaseCreationEvidence.ownership === "unverified-no-marker"
-          ? "No owned database marker was verified; destructive cleanup is refused until exact marker proof succeeds."
-          : undefined,
-      } : undefined,
-      retainedObjectRoot: input.objectRoot,
-      failures: input.errors.map((error, index) => ({
-        stage: index === 0 ? "provision" : "process-cleanup",
-        message: safeCleanupReason(error),
-      })),
-      recordedAt: new Date().toISOString(),
-    }, null, 2)}\n`,
+    `${JSON.stringify(buildProvisionFailureRecord(input), null, 2)}\n`,
     "utf8",
   );
 }
@@ -1350,6 +1392,20 @@ function writeDatabaseCreationJournal(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
+}
+
+function provisionFailureProcessRecord(process: StartedProcess): ProvisionFailureProcessRecord {
+  if (!process.label || process.port === undefined) {
+    throw new Error("Provision failure process record requires an API/frontend label and owned port.");
+  }
+  return {
+    label: process.label,
+    pid: process.child.pid,
+    port: process.port,
+    command: process.command,
+    log: process.log,
+    cleanup: process.cleanup,
+  };
 }
 
 function quoteIdentifier(value: string) {

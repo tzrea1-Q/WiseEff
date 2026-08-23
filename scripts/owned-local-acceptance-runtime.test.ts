@@ -14,6 +14,7 @@ import {
 import {
   createOwnedAcceptanceAuthorization,
   buildOwnedChildProcessEnv,
+  buildProvisionFailureRecord,
   buildOwnedRuntimeEnv,
   cleanupExactOrphanedOwnedRuntime,
   createCheckedAbsentDatabase,
@@ -114,6 +115,35 @@ describe("owned local acceptance runtime", () => {
       presenceAfterCreateFailure: "unknown",
       ownership: "unverified-no-marker",
       retainedDatabaseName: databaseName,
+    });
+  });
+
+  it("records exact process takeover facts when provisioning fails before the root descriptor exists", () => {
+    const record = buildProvisionFailureRecord({
+      runId: "full-provision-failure",
+      sourceCommit: "0".repeat(40),
+      databaseName: "wiseeff_acceptance_full_provision_failure",
+      objectRoot: "/tmp/owned/object-store",
+      processes: [{
+        label: "api",
+        pid: 321,
+        port: 18_800,
+        command: "node server/index.ts",
+        log: "/tmp/owned/api.log",
+        cleanup: { status: "failed", reason: "process group identity could not be verified" },
+      }],
+      errors: [new Error("API readiness failed")],
+    });
+
+    expect(record).toMatchObject({
+      kind: "wiseeff-owned-local-acceptance-provision-failure",
+      processes: [{
+        label: "api",
+        pid: 321,
+        port: 18_800,
+        command: "node server/index.ts",
+        cleanup: { status: "failed", reason: "process group identity could not be verified" },
+      }],
     });
   });
 
@@ -270,6 +300,7 @@ describe("owned local acceptance runtime", () => {
     expect(failure).toMatchObject({
       kind: "wiseeff-owned-local-acceptance-provision-failure",
       retainedObjectRoot: path.join(runRoot, "object-store"),
+      processes: [],
       failures: [expect.objectContaining({ message: expect.stringMatching(/owner signal/i) })],
     });
     expect(failure).not.toHaveProperty("retainedDatabaseName");
