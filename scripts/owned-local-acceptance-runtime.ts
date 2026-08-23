@@ -3,6 +3,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import {
   closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -43,6 +44,19 @@ import {
   sanitizeGate0DiagnosticText,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import {
+  spawnGate0SupervisedProcess,
+  type Gate0OwnedProcessSupervision,
+} from "./gate0-process-launch-supervisor";
+import {
+  initializeGate0ProvisioningRun,
+  recordGate0ProvisioningProcessLaunching,
+  recordGate0ProvisioningProcessStarted,
+  recordGate0ProvisioningProcessStopped,
+  recordGate0ProvisioningState,
+  readGate0ProvisioningJournal,
+  type Gate0ProvisioningProcessLabel,
+} from "./gate0-provisioning-journal";
 import {
   stopOwnedProcessGroup,
   waitForOwnedProcessGroupExit,
@@ -247,6 +261,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const runRoot = path.join(runsRoot, runId);
   const objectRoot = path.join(runRoot, "object-store");
   const descriptorPath = path.join(runRoot, "runtime.json");
+  const provisioningJournal = path.join(runRoot, "runtime-provisioning.json");
   const operationEvidenceRuntimeSnapshot = path.join(runRoot, "runtime-operation-evidence-snapshot.json");
   const apiLog = path.join(runRoot, "api.log");
   const frontendLog = path.join(runRoot, "frontend.log");
@@ -276,8 +291,23 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     if (lstatSync(runsRoot).isSymbolicLink()) {
       throw new Error("Owned runtime runs root must not be a symbolic link.");
     }
-    if (existsSync(runRoot)) throw new Error(`Owned runtime run root already exists: ${runRoot}`);
-    mkdirSync(runRoot);
+    initializeGate0ProvisioningRun(runRoot, {
+      run: {
+        id: runId,
+        sourceCommit: source.commit,
+        worktreeRoot,
+        ownerPid: process.pid,
+        ownerProcessIdentity,
+        createdAt: new Date().toISOString(),
+        state: "provisioning",
+      },
+      resources: {
+        databaseName,
+        runRoot,
+        objectStoreRoot: objectRoot,
+        nestedRuntimeManifest,
+      },
+    });
     if (existsSync(objectRoot)) throw new Error(`Owned runtime object root already exists: ${objectRoot}`);
     mkdirSync(objectRoot);
     objectRootCreated = true;
@@ -340,8 +370,22 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
     databaseCreated = true;
     const runProvisionScript = dependencies.runNpmScriptWithLog ?? runNpmScriptWithLog;
-    await runProvisionScript(worktreeRoot, "db:migrate", env, provisionLog, options.ownerDeadline);
-    await runProvisionScript(worktreeRoot, "db:seed:all", env, provisionLog, options.ownerDeadline);
+    await runProvisionScript(
+      worktreeRoot,
+      "db:migrate",
+      env,
+      provisionLog,
+      options.ownerDeadline,
+      gate0ProvisionProcessLifecycle(provisioningJournal, "migration"),
+    );
+    await runProvisionScript(
+      worktreeRoot,
+      "db:seed:all",
+      env,
+      provisionLog,
+      options.ownerDeadline,
+      gate0ProvisionProcessLifecycle(provisioningJournal, "seed"),
+    );
     checkpointOwner(options, "database marker proof");
     const databaseEvidence = await (
       dependencies.writeAndReadDatabaseMarker ?? writeAndReadDatabaseMarker
@@ -363,8 +407,16 @@ export async function provisionOwnedLocalAcceptanceRuntime(
 
     const spawnRuntimeProcess = dependencies.spawnOwnedProcess ?? spawnOwnedProcess;
     const waitForOwnedHttp = dependencies.waitForHttp ?? waitForHttp;
+    recordGate0ProvisioningProcessLaunching(provisioningJournal, "api", "owned API runtime");
     const api = spawnRuntimeProcess({
       label: "api",
+      supervision: {
+        runRoot,
+        runId,
+        sourceCommit: source.commit,
+        label: `root:${runId}:api`,
+        nodeEntry: { entry: path.join(worktreeRoot, "server/index.ts"), args: [] },
+      },
       cwd: worktreeRoot,
       command: process.execPath,
       args: ["--import", "tsx", path.join(worktreeRoot, "server/index.ts")],
@@ -374,10 +426,28 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
     started.push(api);
     api.processIdentity = requireProcessStartIdentity(api.child, "API");
+    recordGate0ProvisioningProcessStarted(
+      provisioningJournal,
+      "api",
+      "owned API runtime",
+      requirePid(api.child, "API"),
+      api.processIdentity,
+    );
     await waitForOwnedHttp(`${apiUrl}/health/live`, api.child, "API", options.ownerDeadline);
 
+    recordGate0ProvisioningProcessLaunching(provisioningJournal, "frontend", "owned frontend runtime");
     const frontend = spawnRuntimeProcess({
       label: "frontend",
+      supervision: {
+        runRoot,
+        runId,
+        sourceCommit: source.commit,
+        label: `root:${runId}:frontend`,
+        nodeEntry: {
+          entry: path.join(worktreeRoot, "node_modules/vite/bin/vite.js"),
+          args: ["--host", "127.0.0.1", "--port", String(frontendPort), "--strictPort"],
+        },
+      },
       cwd: worktreeRoot,
       command: process.execPath,
       args: [
@@ -394,6 +464,13 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
     started.push(frontend);
     frontend.processIdentity = requireProcessStartIdentity(frontend.child, "frontend");
+    recordGate0ProvisioningProcessStarted(
+      provisioningJournal,
+      "frontend",
+      "owned frontend runtime",
+      requirePid(frontend.child, "frontend"),
+      frontend.processIdentity,
+    );
     await waitForOwnedHttp(frontendUrl, frontend.child, "frontend", options.ownerDeadline);
 
     const now = new Date().toISOString();
@@ -512,6 +589,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     };
     assertOwnedRuntimeDescriptor(descriptor);
     writeDescriptor(descriptorPath, descriptor);
+    recordGate0ProvisioningState(provisioningJournal, "runtime-descriptor-published");
     await verifyOwnedRuntimeOwnership(descriptor, env, options.ownerDeadline);
     descriptor.run.state = "running";
     writeDescriptor(descriptorPath, descriptor);
@@ -602,6 +680,11 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     await stopOwnedProcesses(started, options.ownerDeadline?.finalizationSignal)
       .catch((stopError) => failures.push(asError(stopError)));
     if (existsSync(runRoot)) {
+      try {
+        if (existsSync(provisioningJournal)) recordGate0ProvisioningState(provisioningJournal, "failed-retained");
+      } catch (journalError) {
+        failures.push(asError(journalError));
+      }
       try {
         writeProvisionFailure(runRoot, {
           runId,
@@ -900,21 +983,70 @@ async function runNpmScriptWithLog(
   env: RuntimeEnv,
   logPath: string,
   owner?: ProvisionOwnedRuntimeOptions["ownerDeadline"],
+  lifecycle?: {
+    supervision: Gate0OwnedProcessSupervision;
+    launching(operation: string): void;
+    started(operation: string, pid: number, identity: ProcessStartIdentity): void;
+    stopped(): void;
+  },
 ) {
   owner?.remainingMs(script);
+  lifecycle?.launching(script);
   const processRecord = spawnOwnedProcess({
+    supervision: lifecycle?.supervision,
     cwd,
     command: "npm",
     args: ["run", script],
     env,
     log: logPath,
   });
+  const pid = requirePid(processRecord.child, script);
+  processRecord.processIdentity = requireProcessStartIdentity(processRecord.child, script);
+  try {
+    lifecycle?.started(script, pid, processRecord.processIdentity);
+  } catch (error) {
+    try {
+      await stopOwnedProcess(processRecord);
+    } catch (stopError) {
+      throw new AggregateError(
+        [asError(error), asError(stopError)],
+        `${script} identity publication and exact rollback both failed.`,
+      );
+    }
+    throw error;
+  }
   const status = await waitForOwnedProcessGroupExit(processRecord.child, { signal: owner?.signal });
+  lifecycle?.stopped();
   if (status !== 0) throw new Error(`${script} failed with status ${status ?? "unknown"}; see ${logPath}.`);
+}
+
+function gate0ProvisionProcessLifecycle(
+  journalPath: string,
+  label: Gate0ProvisioningProcessLabel,
+) {
+  const journal = readGate0ProvisioningJournal(journalPath);
+  return {
+    supervision: {
+      runRoot: journal.resources.runRoot,
+      runId: journal.run.id,
+      sourceCommit: journal.run.sourceCommit,
+      label: `root:${journal.run.id}:${label}`,
+    },
+    launching(operation: string) {
+      recordGate0ProvisioningProcessLaunching(journalPath, label, operation);
+    },
+    started(operation: string, pid: number, identity: ProcessStartIdentity) {
+      recordGate0ProvisioningProcessStarted(journalPath, label, operation, pid, identity);
+    },
+    stopped() {
+      recordGate0ProvisioningProcessStopped(journalPath, label);
+    },
+  };
 }
 
 function spawnOwnedProcess(input: {
   label?: "api" | "frontend";
+  supervision?: Gate0OwnedProcessSupervision;
   cwd: string;
   command: string;
   args: string[];
@@ -924,12 +1056,21 @@ function spawnOwnedProcess(input: {
 }): StartedProcess {
   const fd = openSync(input.log, "a");
   try {
-    const child = spawn(input.command, input.args, {
+    const child = input.supervision
+      ? spawnGate0SupervisedProcess({
+          supervision: input.supervision,
+          cwd: input.cwd,
+          command: input.command,
+          args: input.args,
+          env: buildOwnedChildProcessEnv(input.env),
+          stdio: ["ignore", fd, fd],
+        })
+      : spawn(input.command, input.args, {
       cwd: input.cwd,
       env: buildOwnedChildProcessEnv(input.env),
       stdio: ["ignore", fd, fd],
       detached: process.platform !== "win32",
-    });
+        });
     const command = [input.command, ...input.args].join(" ");
     return {
       label: input.label,
@@ -1371,7 +1512,33 @@ async function assertDatabaseAbsent(
 
 function writeDescriptor(descriptorPath: string, descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1) {
   assertOwnedRuntimeDescriptor(descriptor);
-  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
+  const candidate = `${descriptorPath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+  try {
+    writeFileSync(candidate, `${JSON.stringify(descriptor, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+      flush: true,
+    });
+    renameSync(candidate, descriptorPath);
+    fsyncOwnedDirectory(path.dirname(descriptorPath));
+  } finally {
+    try {
+      unlinkSync(candidate);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+}
+
+function fsyncOwnedDirectory(directory: string) {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(directory, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function writeOperationEvidenceRuntimeSnapshot(

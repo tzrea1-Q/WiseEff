@@ -55,6 +55,115 @@ describe("Gate0 artifact sanitizer", () => {
     );
   });
 
+  it("recursively sanitizes a registered exact secret inside nested ZIP entries", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-nested-zip-"));
+    const exactSecret = "9".repeat(64);
+    const inner = new JSZip();
+    inner.file("credential.txt", `opaque=${exactSecret}\n`);
+    const outer = new JSZip();
+    outer.file("nested.zip", await inner.generateAsync({ type: "nodebuffer" }));
+    const archivePath = path.join(root, "outer.zip");
+    writeFileSync(archivePath, await outer.generateAsync({ type: "nodebuffer" }));
+
+    await sanitizeGate0ArtifactTree(root, undefined, [exactSecret]);
+
+    const sanitizedOuter = await JSZip.loadAsync(readFileSync(archivePath));
+    const sanitizedInner = await JSZip.loadAsync(
+      await sanitizedOuter.file("nested.zip")!.async("nodebuffer"),
+    );
+    const credential = await sanitizedInner.file("credential.txt")!.async("string");
+    expect(credential).toBe("opaque=[REDACTED]\n");
+    expect(credential).not.toContain(exactSecret);
+    expect((await scanGate0ArtifactTree(root, undefined, [exactSecret])).violations).toEqual([]);
+  });
+
+  it("sniffs a renamed top-level ZIP and recursively sanitizes a nested archive", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-renamed-zip-"));
+    const exactSecret = "8".repeat(64);
+    const inner = new JSZip();
+    inner.file("credential.txt", `opaque=${exactSecret}\n`);
+    const outer = new JSZip();
+    outer.file("payload.bin", await inner.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+    const archivePath = path.join(root, "trace.bin");
+    writeFileSync(archivePath, await outer.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+
+    const before = await scanGate0ArtifactTree(root, undefined, [exactSecret]);
+    expect(before.archivesScanned).toBe(2);
+    expect(before.violations).toHaveLength(1);
+    await sanitizeGate0ArtifactTree(root, undefined, [exactSecret]);
+    expect((await scanGate0ArtifactTree(root, undefined, [exactSecret])).violations).toEqual([]);
+  });
+
+  it("fails closed on excessive nested ZIP depth before publication", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-depth-"));
+    let value = Buffer.from("safe\n", "utf8");
+    for (let depth = 0; depth < 5; depth += 1) {
+      const zip = new JSZip();
+      zip.file(depth === 0 ? "leaf.txt" : "nested.zip", value);
+      value = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    }
+    writeFileSync(path.join(root, "outer.zip"), value);
+
+    await expect(scanGate0ArtifactTree(root)).rejects.toThrow(/nesting-depth safety limit/i);
+    await expect(sanitizeGate0ArtifactTree(root)).rejects.toThrow(/nesting-depth safety limit/i);
+  });
+
+  it("rejects ZIP metadata credentials, duplicates, preambles, encryption, and unsupported compression", async () => {
+    const secret = "7".repeat(64);
+
+    const commentRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-comment-"));
+    const commented = new JSZip();
+    commented.file("safe.txt", "safe\n");
+    commented.comment = secret;
+    writeFileSync(path.join(commentRoot, "comment.zip"), await commented.generateAsync({ type: "nodebuffer" }));
+    expect((await scanGate0ArtifactTree(commentRoot, undefined, [secret])).violations).toHaveLength(1);
+    await expect(sanitizeGate0ArtifactTree(commentRoot, undefined, [secret])).rejects.toThrow(/immutable metadata/i);
+
+    const base = new JSZip();
+    base.file("a.txt", "first");
+    base.file("b.txt", "second");
+    const original = await base.generateAsync({ type: "nodebuffer" });
+    for (const [suffix, mutated, pattern] of [
+      ["duplicate", replaceAllAscii(original, "b.txt", "a.txt"), /duplicate entry names/i],
+      ["preamble", Buffer.concat([Buffer.from("prefix"), original]), /preamble|malformed local|central-directory bounds/i],
+      ["trailing", Buffer.concat([original, Buffer.from("trailing")]), /trailing envelope|end-of-central/i],
+      ["encrypted", patchZipHeaderWord(original, 6, 8, 0x0001), /encrypted entry/i],
+      ["compression", patchZipHeaderWord(original, 8, 10, 99), /unsupported compression/i],
+      ["fake-directory", patchFirstCentralExternalAttributes(original, 0x10), /inconsistent directory metadata/i],
+    ] as const) {
+      const root = mkdtempSync(path.join(tmpdir(), `wiseeff-gate0-zip-${suffix}-`));
+      writeFileSync(path.join(root, "unsafe.zip"), mutated);
+      await expect(scanGate0ArtifactTree(root)).rejects.toThrow(pattern);
+    }
+    const renamedPreambleRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-renamed-preamble-"));
+    writeFileSync(path.join(renamedPreambleRoot, "unsafe.bin"), Buffer.concat([Buffer.from("prefix"), original]));
+    await expect(scanGate0ArtifactTree(renamedPreambleRoot)).rejects.toThrow(/central-directory bounds|preamble/i);
+  });
+
+  it("rejects a high-expansion DEFLATE entry using declared limits before extraction", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-ratio-"));
+    const zip = new JSZip();
+    zip.file("high-ratio.txt", "A".repeat(2 * 1024 * 1024));
+    writeFileSync(
+      path.join(root, "ratio.zip"),
+      await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } }),
+    );
+    await expect(scanGate0ArtifactTree(root)).rejects.toThrow(/expansion-ratio safety limit/i);
+  });
+
+  it("applies the ZIP entry budget across the entire artifact tree", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-zip-tree-budget-"));
+    for (const [archiveName, prefix] of [["first.zip", "a"], ["second.zip", "b"]] as const) {
+      const zip = new JSZip();
+      for (let index = 0; index < 5_001; index += 1) {
+        zip.file(`${prefix}-${index}/`, null, { dir: true, createFolders: false });
+      }
+      writeFileSync(path.join(root, archiveName), await zip.generateAsync({ type: "nodebuffer", compression: "STORE" }));
+    }
+
+    await expect(scanGate0ArtifactTree(root)).rejects.toThrow(/entry-count safety limit/i);
+  }, 15_000);
+
   it("reports only paths and categories when an archive still contains a credential", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-scan-"));
     const zip = new JSZip();
@@ -287,3 +396,32 @@ describe("Gate0 artifact sanitizer", () => {
     expect(serialized).not.toContain("secret-in-path");
   });
 });
+
+function replaceAllAscii(value: Buffer, from: string, to: string) {
+  if (Buffer.byteLength(from) !== Buffer.byteLength(to)) throw new Error("ZIP test mutation requires equal-width names.");
+  const copy = Buffer.from(value);
+  let offset = 0;
+  while ((offset = copy.indexOf(from, offset, "ascii")) >= 0) {
+    copy.write(to, offset, "ascii");
+    offset += to.length;
+  }
+  return copy;
+}
+
+function patchZipHeaderWord(value: Buffer, localOffset: number, centralOffset: number, replacement: number) {
+  const copy = Buffer.from(value);
+  const local = copy.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  const central = copy.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  if (local < 0 || central < 0) throw new Error("ZIP test fixture lacks expected headers.");
+  copy.writeUInt16LE(replacement, local + localOffset);
+  copy.writeUInt16LE(replacement, central + centralOffset);
+  return copy;
+}
+
+function patchFirstCentralExternalAttributes(value: Buffer, replacement: number) {
+  const copy = Buffer.from(value);
+  const central = copy.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  if (central < 0) throw new Error("ZIP test fixture lacks a central header.");
+  copy.writeUInt32LE(replacement, central + 38);
+  return copy;
+}

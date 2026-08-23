@@ -34,6 +34,10 @@ import {
   scanGate0ArtifactTree,
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import {
+  spawnGate0SupervisedProcess,
+  type Gate0OwnedProcessSupervision,
+} from "./gate0-process-launch-supervisor";
 import { startGate0SecretRegistry } from "./gate0-secret-registry";
 import { waitForOwnedProcessGroupExit } from "./owned-process-group";
 import {
@@ -315,6 +319,12 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
           startedAt,
           process: { pid, processIdentity },
         }),
+        {
+          runRoot: runtime.descriptor.artifacts.runRoot,
+          runId: runtime.descriptor.run.id,
+          sourceCommit: runtime.descriptor.run.sourceCommit,
+          label: `root:${runtime.descriptor.run.id}:${command.phase}`,
+        },
       );
       const passed = !result.error && result.status === 0;
       phaseResults.set(command.phase, passed);
@@ -440,6 +450,7 @@ export function runGate0PhaseCommand(
   terminateGraceMs = 5_000,
   signal?: AbortSignal,
   onStarted?: (pid: number, processIdentity: ProcessStartIdentity) => void,
+  supervision?: Gate0OwnedProcessSupervision,
 ) {
   const fd = openSync(logPath, "a");
   if (timeoutMs <= 0) {
@@ -461,6 +472,7 @@ export function runGate0PhaseCommand(
     terminateGraceMs,
     signal,
     onStarted,
+    supervision,
   }).finally(() => closeSync(fd));
 }
 
@@ -474,8 +486,17 @@ function runGate0ChildCommand(input: {
   timeoutMs?: number;
   terminateGraceMs: number;
   onStarted?: (pid: number, processIdentity: ProcessStartIdentity) => void;
+  supervision?: Gate0OwnedProcessSupervision;
 }) {
-  const child = spawn(input.command, input.args, {
+  const child = input.supervision ? spawnGate0SupervisedProcess({
+    supervision: input.supervision,
+    cwd: input.cwd,
+    command: input.command,
+    args: input.args,
+    env: input.env,
+    stdio: input.stdio,
+    shell: process.platform === "win32",
+  }) : spawn(input.command, input.args, {
     cwd: input.cwd,
     env: input.env,
     stdio: input.stdio,

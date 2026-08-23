@@ -48,6 +48,8 @@ export type NestedRuntimeRecord = {
   objectStoreRoot: string;
   apiUrl: string;
   frontendUrl: string;
+  apiProcessState: "not-started" | "launching" | "running";
+  frontendProcessState: "not-started" | "launching" | "running";
   apiPid?: number;
   frontendPid?: number;
   apiProcessIdentity?: NestedRuntimeProcessIdentity;
@@ -88,7 +90,10 @@ export function initializeNestedRuntimeManifest(
 
 export function recordNestedRuntimeStart(
   manifestPath: string,
-  child: Omit<NestedRuntimeRecord, "state" | "startedAt" | "completedAt"> & {
+  child: Omit<
+    NestedRuntimeRecord,
+    "state" | "startedAt" | "completedAt" | "apiProcessState" | "frontendProcessState"
+  > & {
     migrationRunId: string;
     apiPid: number;
     frontendPid: number;
@@ -120,7 +125,7 @@ export function recordNestedRuntimeProvisioning(
   child: Omit<
     NestedRuntimeRecord,
     "state" | "startedAt" | "completedAt" | "migrationRunId" | "apiPid" | "frontendPid" |
-      "apiProcessIdentity" | "frontendProcessIdentity"
+      "apiProcessIdentity" | "frontendProcessIdentity" | "apiProcessState" | "frontendProcessState"
   >,
 ) {
   updateManifest(manifestPath, (manifest) => {
@@ -133,8 +138,29 @@ export function recordNestedRuntimeProvisioning(
     manifest.children.push({
       ...child,
       state: "provisioning",
+      apiProcessState: "not-started",
+      frontendProcessState: "not-started",
       startedAt: new Date().toISOString(),
     });
+  });
+}
+
+export function recordNestedRuntimeProcessLaunching(
+  manifestPath: string,
+  childId: string,
+  processLabel: "api" | "frontend",
+) {
+  updateManifest(manifestPath, (manifest) => {
+    const child = manifest.children.find((entry) => entry.id === childId);
+    if (!child) throw new Error(`Nested runtime ${childId} is not registered.`);
+    if (child.state !== "provisioning") {
+      throw new Error(`Nested runtime ${childId} is no longer provisioning.`);
+    }
+    const stateKey = processLabel === "api" ? "apiProcessState" : "frontendProcessState";
+    if (child[stateKey] !== "not-started") {
+      throw new Error(`Nested runtime ${childId} ${processLabel} launch state cannot be reset.`);
+    }
+    child[stateKey] = "launching";
   });
 }
 
@@ -191,6 +217,7 @@ export function recordNestedRuntimeProgress(
       );
       child.apiPid = progress.apiPid;
       if (progress.apiProcessIdentity) child.apiProcessIdentity = progress.apiProcessIdentity;
+      child.apiProcessState = "running";
     }
     if (progress.frontendPid !== undefined) {
       if (child.frontendPid && child.frontendPid !== progress.frontendPid) {
@@ -204,6 +231,7 @@ export function recordNestedRuntimeProgress(
       );
       child.frontendPid = progress.frontendPid;
       if (progress.frontendProcessIdentity) child.frontendProcessIdentity = progress.frontendProcessIdentity;
+      child.frontendProcessState = "running";
     }
     if (progress.ready) {
       if (

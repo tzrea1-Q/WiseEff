@@ -7,6 +7,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readSync,
   readdirSync,
   renameSync,
   rmdirSync,
@@ -93,6 +94,12 @@ const CANONICAL_SECRET_ASSIGNMENT_PATTERN = new RegExp(
   "giu",
 );
 const MIN_INJECTED_SECRET_LENGTH = 8;
+const MAX_ZIP_NESTING_DEPTH = 4;
+const MAX_ZIP_ENTRY_COUNT = 10_000;
+const MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024;
+const MAX_ZIP_ARCHIVE_BYTES = 256 * 1024 * 1024;
+const MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES = 128 * 1024 * 1024;
+const MAX_ZIP_EXPANSION_RATIO = 1_000;
 const PERSISTED_EXACT_VALUES_FILE = ".gate0-exact-values.v1.enc.json";
 const RETIRING_EXACT_VALUES_FILE = `${PERSISTED_EXACT_VALUES_FILE}.retiring`;
 const PERSISTED_EXACT_VALUES_KIND = "wiseeff-gate0-encrypted-exact-values";
@@ -134,19 +141,24 @@ export async function sanitizeGate0ArtifactTree(
     filesChanged: 0,
     replacements: 0,
   };
+  const zipBudget = createZipTraversalBudget();
 
   for (const filePath of listRegularFiles(treeRoot)) {
     if (path.basename(filePath) === PERSISTED_EXACT_VALUES_FILE) continue;
     throwIfAborted(signal);
     const relativePath = normalizeRelative(path.relative(treeRoot, filePath));
     report.filesScanned += 1;
-    if (path.extname(filePath).toLowerCase() === ".zip") {
+    const zipArtifact = isZipArtifactFile(filePath);
+    if (zipArtifact && lstatSync(filePath).size > MAX_ZIP_ARCHIVE_BYTES) {
+      throw new Error(`Gate0 artifact ZIP ${safeArtifactId(relativePath)} exceeds the archive-size safety limit.`);
+    }
+    const original = readBuffer(filePath);
+    if (zipArtifact) {
       report.archivesScanned += 1;
-      const changed = await sanitizeZip(filePath, relativePath, report, signal, exactValues);
+      const changed = await sanitizeZip(filePath, relativePath, report, signal, exactValues, zipBudget);
       if (changed) report.filesChanged += 1;
       continue;
     }
-    const original = readBuffer(filePath);
     const sanitized = sanitizeBuffer(original, relativePath, exactValues);
     report.replacements += sanitized.replacements;
     if (sanitized.replacements > 0) {
@@ -171,19 +183,25 @@ export async function scanGate0ArtifactTree(
   const persistedValues = persistedRoots.flatMap((persistedRoot) => readPersistedExactValues(persistedRoot));
   const exactValues = normalizeInjectedSecretValues([...secretValues, ...persistedValues]);
   const scan: Gate0ArtifactScan = { filesScanned: 0, archivesScanned: 0, violations: [] };
+  const zipBudget = createZipTraversalBudget();
 
   for (const filePath of files) {
     if (path.basename(filePath) === PERSISTED_EXACT_VALUES_FILE) continue;
     throwIfAborted(signal);
     const relativePath = normalizeRelative(path.relative(treeRoot, filePath));
     scan.filesScanned += 1;
-    if (path.extname(filePath).toLowerCase() === ".zip") {
+    const zipArtifact = isZipArtifactFile(filePath);
+    if (zipArtifact && lstatSync(filePath).size > MAX_ZIP_ARCHIVE_BYTES) {
+      throw new Error(`Gate0 artifact ZIP ${safeArtifactId(relativePath)} exceeds the archive-size safety limit.`);
+    }
+    const value = readBuffer(filePath);
+    if (zipArtifact) {
       recordViolations(scan, relativePath, Buffer.alloc(0), exactValues);
       scan.archivesScanned += 1;
-      await scanZip(filePath, relativePath, scan, signal, exactValues);
+      await scanZip(filePath, relativePath, scan, signal, exactValues, zipBudget);
       continue;
     }
-    recordViolations(scan, relativePath, readBuffer(filePath), exactValues);
+    recordViolations(scan, relativePath, value, exactValues);
   }
   scan.violations.sort((left, right) => left.artifactId.localeCompare(right.artifactId));
   if (
@@ -219,32 +237,20 @@ async function sanitizeZip(
   report: Gate0ArtifactSanitization,
   signal?: AbortSignal,
   secretValues: readonly string[] = gate0SecretValuesFromEnv(),
+  budget: ZipTraversalBudget = createZipTraversalBudget(),
 ) {
-  const zip = await JSZip.loadAsync(readBuffer(archivePath));
-  let changed = false;
-  for (const entry of Object.values(zip.files)) {
-    throwIfAborted(signal);
-    assertSafeZipEntry(entry);
-    if (entry.dir) continue;
-    report.filesScanned += 1;
-    const original = await entry.async("nodebuffer");
-    const sanitized = sanitizeBuffer(original, `${relativePath}!/${entry.name}`, secretValues);
-    report.replacements += sanitized.replacements;
-    if (sanitized.replacements > 0) {
-      zip.file(entry.name, sanitized.value, {
-        binary: true,
-        date: entry.date,
-        unixPermissions: entry.unixPermissions ?? undefined,
-        dosPermissions: entry.dosPermissions ?? undefined,
-      });
-      changed = true;
-    }
-  }
+  const sanitized = await sanitizeZipBuffer(
+    readBuffer(archivePath),
+    relativePath,
+    report,
+    signal,
+    secretValues,
+    budget,
+    1,
+  );
+  const changed = sanitized.changed;
   if (changed) {
-    writeFileSync(
-      archivePath,
-      await zip.generateAsync({ type: "nodebuffer", platform: process.platform === "win32" ? "DOS" : "UNIX" }),
-    );
+    writeFileSync(archivePath, sanitized.value);
   }
   return changed;
 }
@@ -255,19 +261,458 @@ async function scanZip(
   scan: Gate0ArtifactScan,
   signal?: AbortSignal,
   secretValues: readonly string[] = gate0SecretValuesFromEnv(),
+  budget: ZipTraversalBudget = createZipTraversalBudget(),
 ) {
-  const zip = await JSZip.loadAsync(readBuffer(archivePath));
+  await scanZipBuffer(
+    readBuffer(archivePath),
+    relativePath,
+    scan,
+    signal,
+    secretValues,
+    budget,
+    1,
+  );
+}
+
+type ZipTraversalBudget = {
+  entries: number;
+  uncompressedBytes: number;
+  expandedBytes: number;
+};
+
+function createZipTraversalBudget(): ZipTraversalBudget {
+  return { entries: 0, uncompressedBytes: 0, expandedBytes: 0 };
+}
+
+async function sanitizeZipBuffer(
+  archive: Buffer,
+  artifactPath: string,
+  report: Gate0ArtifactSanitization,
+  signal: AbortSignal | undefined,
+  secretValues: readonly string[],
+  budget: ZipTraversalBudget,
+  depth: number,
+): Promise<{ value: Buffer; changed: boolean }> {
+  assertZipDepth(depth, artifactPath);
+  const { zip, envelope } = await loadZipOrThrow(archive, artifactPath, budget);
+  assertZipMetadataContainsNoSecrets(envelope.metadata, artifactPath, secretValues);
+  let changed = false;
   for (const entry of Object.values(zip.files)) {
     throwIfAborted(signal);
     assertSafeZipEntry(entry);
-    const artifactPath = `${relativePath}!/${entry.name}`;
+    const entryPath = `${artifactPath}!/${entry.name}`;
     if (entry.dir) {
-      recordViolations(scan, artifactPath, Buffer.alloc(0), secretValues);
+      continue;
+    }
+    report.filesScanned += 1;
+    const expected = envelope.entries.get(entry.name);
+    if (!expected) throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} has an inconsistent entry projection.`);
+    const original = await readZipEntry(entry, expected, budget, artifactPath);
+    if (isZipEntry(entry.name, original)) {
+      report.archivesScanned += 1;
+      const nested = await sanitizeZipBuffer(
+        original,
+        entryPath,
+        report,
+        signal,
+        secretValues,
+        budget,
+        depth + 1,
+      );
+      if (nested.changed) {
+        replaceZipEntry(zip, entry, nested.value);
+        changed = true;
+      }
+      continue;
+    }
+    const sanitized = sanitizeBuffer(original, entryPath, secretValues);
+    report.replacements += sanitized.replacements;
+    if (sanitized.replacements > 0) {
+      replaceZipEntry(zip, entry, sanitized.value);
+      changed = true;
+    }
+  }
+  if (!changed) return { value: archive, changed: false };
+  return {
+    value: await generateZipOrThrow(zip, artifactPath),
+    changed: true,
+  };
+}
+
+async function scanZipBuffer(
+  archive: Buffer,
+  artifactPath: string,
+  scan: Gate0ArtifactScan,
+  signal: AbortSignal | undefined,
+  secretValues: readonly string[],
+  budget: ZipTraversalBudget,
+  depth: number,
+) {
+  assertZipDepth(depth, artifactPath);
+  const { zip, envelope } = await loadZipOrThrow(archive, artifactPath, budget);
+  for (const metadata of envelope.metadata) {
+    recordViolations(scan, `${artifactPath}!/metadata`, metadata, secretValues);
+  }
+  for (const entry of Object.values(zip.files)) {
+    throwIfAborted(signal);
+    assertSafeZipEntry(entry);
+    const entryPath = `${artifactPath}!/${entry.name}`;
+    if (entry.dir) {
+      recordViolations(scan, entryPath, Buffer.alloc(0), secretValues);
       continue;
     }
     scan.filesScanned += 1;
-    recordViolations(scan, artifactPath, await entry.async("nodebuffer"), secretValues);
+    const expected = envelope.entries.get(entry.name);
+    if (!expected) throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} has an inconsistent entry projection.`);
+    const value = await readZipEntry(entry, expected, budget, artifactPath);
+    if (isZipEntry(entry.name, value)) {
+      scan.archivesScanned += 1;
+      recordViolations(scan, entryPath, Buffer.alloc(0), secretValues);
+      await scanZipBuffer(value, entryPath, scan, signal, secretValues, budget, depth + 1);
+      continue;
+    }
+    recordViolations(scan, entryPath, value, secretValues);
   }
+}
+
+async function readZipEntry(
+  entry: JSZip.JSZipObject,
+  expected: ZipEnvelopeEntry,
+  budget: ZipTraversalBudget,
+  archivePath: string,
+) {
+  try {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let crc = 0xffffffff;
+    const stream = entry.nodeStream("nodebuffer");
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk: Buffer | Uint8Array) => {
+        const value = Buffer.from(chunk);
+        size += value.length;
+        budget.expandedBytes += value.length;
+        if (
+          size > expected.uncompressedSize ||
+          size > MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES ||
+          budget.expandedBytes > MAX_ZIP_UNCOMPRESSED_BYTES
+        ) {
+          (stream as NodeJS.ReadableStream & { destroy(error?: Error): void }).destroy(new Error("size-limit"));
+          return;
+        }
+        crc = updateCrc32(crc, value);
+        chunks.push(value);
+      });
+      stream.once("end", resolve);
+      stream.once("error", reject);
+    });
+    if (size !== expected.uncompressedSize || ((crc ^ 0xffffffff) >>> 0) !== expected.crc32) {
+      throw new Error("integrity-mismatch");
+    }
+    return Buffer.concat(chunks, size);
+  } catch {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(archivePath)} cannot be safely decompressed.`);
+  }
+}
+
+function assertZipDepth(depth: number, artifactPath: string) {
+  if (depth > MAX_ZIP_NESTING_DEPTH) {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} exceeds the nesting-depth safety limit.`);
+  }
+}
+
+function isZipEntry(entryName: string, value: Buffer) {
+  const hasZipExtension = path.posix.extname(normalizeRelative(entryName)).toLowerCase() === ".zip";
+  return hasZipExtension || hasZipEnvelopeSignature(value);
+}
+
+async function loadZipOrThrow(value: Buffer, artifactPath: string, budget: ZipTraversalBudget) {
+  const envelope = inspectGate0ZipEnvelope(value, artifactPath, budget);
+  try {
+    const zip = await JSZip.loadAsync(value, { checkCRC32: false, createFolders: false });
+    if (Object.keys(zip.files).length !== envelope.entries.size) {
+      throw new Error("projection-mismatch");
+    }
+    return { zip, envelope };
+  } catch {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} is encrypted, malformed, or uses unsupported compression.`);
+  }
+}
+
+type ZipEnvelopeEntry = {
+  name: string;
+  flags: number;
+  method: number;
+  crc32: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  localOffset: number;
+};
+
+type ZipEnvelope = {
+  entries: Map<string, ZipEnvelopeEntry>;
+  metadata: Buffer[];
+};
+
+function inspectGate0ZipEnvelope(
+  value: Buffer,
+  artifactPath: string,
+  budget: ZipTraversalBudget,
+): ZipEnvelope {
+  const fail = (reason: string): never => {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} ${reason}; refusing upload.`);
+  };
+  if (value.length > MAX_ZIP_ARCHIVE_BYTES) fail("exceeds the archive-size safety limit");
+  const eocdOffset = findZipEndOfCentralDirectory(value);
+  if (eocdOffset < 0) fail("has no exact end-of-central-directory record");
+  const disk = value.readUInt16LE(eocdOffset + 4);
+  const centralDisk = value.readUInt16LE(eocdOffset + 6);
+  const diskEntries = value.readUInt16LE(eocdOffset + 8);
+  const totalEntries = value.readUInt16LE(eocdOffset + 10);
+  const centralSize = value.readUInt32LE(eocdOffset + 12);
+  const centralOffset = value.readUInt32LE(eocdOffset + 16);
+  const archiveCommentLength = value.readUInt16LE(eocdOffset + 20);
+  if (eocdOffset + 22 + archiveCommentLength !== value.length) fail("contains a trailing envelope");
+  if (disk !== 0 || centralDisk !== 0 || diskEntries !== totalEntries || totalEntries === 0xffff) {
+    fail("uses unsupported multi-disk or ZIP64 structure");
+  }
+  if (centralOffset + centralSize !== eocdOffset) fail("has inconsistent central-directory bounds");
+  budget.entries += totalEntries;
+  if (budget.entries > MAX_ZIP_ENTRY_COUNT) fail("exceeds the entry-count safety limit");
+  const metadata: Buffer[] = [value.subarray(eocdOffset + 22, value.length)];
+  const entries = new Map<string, ZipEnvelopeEntry>();
+  let cursor = centralOffset;
+  let totalCompressed = 0;
+  for (let index = 0; index < totalEntries; index += 1) {
+    if (cursor + 46 > eocdOffset || value.readUInt32LE(cursor) !== 0x02014b50) {
+      fail("has a malformed central-directory entry");
+    }
+    const flags = value.readUInt16LE(cursor + 8);
+    const method = value.readUInt16LE(cursor + 10);
+    const crc32 = value.readUInt32LE(cursor + 16);
+    const compressedSize = value.readUInt32LE(cursor + 20);
+    const uncompressedSize = value.readUInt32LE(cursor + 24);
+    const nameLength = value.readUInt16LE(cursor + 28);
+    const extraLength = value.readUInt16LE(cursor + 30);
+    const commentLength = value.readUInt16LE(cursor + 32);
+    const diskStart = value.readUInt16LE(cursor + 34);
+    const externalAttributes = value.readUInt32LE(cursor + 38);
+    const localOffset = value.readUInt32LE(cursor + 42);
+    const end = cursor + 46 + nameLength + extraLength + commentLength;
+    if (end > eocdOffset || diskStart !== 0) fail("has invalid central-directory metadata");
+    if ((flags & 0x0001) !== 0 || (flags & 0x0040) !== 0) fail("contains an encrypted entry");
+    if ((flags & ~0x080e) !== 0) fail("uses unsupported general-purpose flags");
+    if (method !== 0 && method !== 8) fail("uses unsupported compression");
+    if (uncompressedSize > MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES) fail("exceeds the per-entry size safety limit");
+    if (compressedSize === 0 && uncompressedSize > 0) fail("has an unsafe expansion ratio");
+    if (compressedSize > 0 && uncompressedSize / compressedSize > MAX_ZIP_EXPANSION_RATIO) {
+      fail("exceeds the expansion-ratio safety limit");
+    }
+    const nameBytes = value.subarray(cursor + 46, cursor + 46 + nameLength);
+    const name = decodeSafeZipName(nameBytes, flags, artifactPath);
+    if (entries.has(name)) fail("contains duplicate entry names");
+    assertStrictSafeZipPath(name, artifactPath);
+    const unixType = (externalAttributes >>> 16) & 0o170000;
+    if (unixType !== 0 && unixType !== 0o100000 && unixType !== 0o040000) {
+      fail("contains a non-regular entry");
+    }
+    const directoryByAttributes = unixType === 0o040000 || (externalAttributes & 0x10) !== 0;
+    const directoryByName = name.endsWith("/");
+    if (directoryByAttributes !== directoryByName) fail("has inconsistent directory metadata");
+    if (directoryByName && (compressedSize !== 0 || uncompressedSize !== 0 || crc32 !== 0)) {
+      fail("contains a non-empty directory entry");
+    }
+    const local = inspectLocalZipEntry(value, {
+      nameBytes,
+      flags,
+      method,
+      crc32,
+      compressedSize,
+      uncompressedSize,
+      localOffset,
+    }, centralOffset, artifactPath);
+    metadata.push(value.subarray(cursor + 46 + nameLength, end), local.metadata);
+    entries.set(name, { name, flags, method, crc32, compressedSize, uncompressedSize, localOffset });
+    budget.uncompressedBytes += uncompressedSize;
+    totalCompressed += compressedSize;
+    if (budget.uncompressedBytes > MAX_ZIP_UNCOMPRESSED_BYTES) fail("exceeds the total uncompressed-size safety limit");
+    cursor = end;
+  }
+  if (cursor !== eocdOffset || totalCompressed > MAX_ZIP_ARCHIVE_BYTES) {
+    fail("has inconsistent or oversized compressed content");
+  }
+  const ordered = [...entries.values()].sort((left, right) => left.localOffset - right.localOffset);
+  if (ordered.length > 0 && ordered[0]!.localOffset !== 0) fail("contains an unsafe preamble");
+  for (let index = 0; index < ordered.length; index += 1) {
+    const current = ordered[index]!;
+    const nextOffset = ordered[index + 1]?.localOffset ?? centralOffset;
+    const localHeaderLength = 30 + value.readUInt16LE(current.localOffset + 26) + value.readUInt16LE(current.localOffset + 28);
+    const dataEnd = current.localOffset + localHeaderLength + current.compressedSize;
+    const descriptorLength = nextOffset - dataEnd;
+    if ((current.flags & 0x0008) === 0) {
+      if (descriptorLength !== 0) fail("contains unexplained bytes between entries");
+    } else if (![12, 16].includes(descriptorLength)) {
+      fail("contains an invalid data descriptor");
+    } else {
+      const descriptorOffset = dataEnd + (descriptorLength === 16 ? 4 : 0);
+      if (descriptorLength === 16 && value.readUInt32LE(dataEnd) !== 0x08074b50) {
+        fail("contains an invalid signed data descriptor");
+      }
+      if (
+        value.readUInt32LE(descriptorOffset) !== current.crc32 ||
+        value.readUInt32LE(descriptorOffset + 4) !== current.compressedSize ||
+        value.readUInt32LE(descriptorOffset + 8) !== current.uncompressedSize
+      ) {
+        fail("contains an inconsistent data descriptor");
+      }
+    }
+  }
+  if (ordered.length === 0 && centralOffset !== 0) fail("contains an unsafe empty-archive preamble");
+  return { entries, metadata };
+}
+
+function inspectLocalZipEntry(
+  value: Buffer,
+  expected: {
+    nameBytes: Buffer;
+    flags: number;
+    method: number;
+    crc32: number;
+    compressedSize: number;
+    uncompressedSize: number;
+    localOffset: number;
+  },
+  centralOffset: number,
+  artifactPath: string,
+) {
+  const fail = (reason: string): never => {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} ${reason}; refusing upload.`);
+  };
+  const offset = expected.localOffset;
+  if (offset + 30 > centralOffset || value.readUInt32LE(offset) !== 0x04034b50) fail("has a malformed local header");
+  const flags = value.readUInt16LE(offset + 6);
+  const method = value.readUInt16LE(offset + 8);
+  const crc32 = value.readUInt32LE(offset + 14);
+  const compressedSize = value.readUInt32LE(offset + 18);
+  const uncompressedSize = value.readUInt32LE(offset + 22);
+  const nameLength = value.readUInt16LE(offset + 26);
+  const extraLength = value.readUInt16LE(offset + 28);
+  const end = offset + 30 + nameLength + extraLength;
+  if (end + expected.compressedSize > centralOffset) fail("has local data outside the entry region");
+  const nameBytes = value.subarray(offset + 30, offset + 30 + nameLength);
+  if (!nameBytes.equals(expected.nameBytes) || flags !== expected.flags || method !== expected.method) {
+    fail("has mismatched local and central metadata");
+  }
+  if ((flags & 0x0008) === 0 && (
+    crc32 !== expected.crc32 || compressedSize !== expected.compressedSize || uncompressedSize !== expected.uncompressedSize
+  )) {
+    fail("has mismatched local and central sizes");
+  }
+  if ((flags & 0x0008) !== 0 && (crc32 !== 0 || compressedSize !== 0 || uncompressedSize !== 0)) {
+    fail("has unsupported nonzero local data-descriptor fields");
+  }
+  return { metadata: value.subarray(offset + 30 + nameLength, end) };
+}
+
+function findZipEndOfCentralDirectory(value: Buffer) {
+  const minimum = Math.max(0, value.length - 65_557);
+  for (let offset = value.length - 22; offset >= minimum; offset -= 1) {
+    if (value.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  return -1;
+}
+
+function decodeSafeZipName(value: Buffer, flags: number, artifactPath: string) {
+  if ((flags & 0x0800) === 0 && value.some((byte) => byte >= 0x80)) {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} uses an unsupported filename encoding.`);
+  }
+  const name = value.toString("utf8");
+  if (name.includes("\uFFFD") || Buffer.from(name, "utf8").compare(value) !== 0) {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} has an invalid UTF-8 filename.`);
+  }
+  return name;
+}
+
+function assertStrictSafeZipPath(name: string, artifactPath: string) {
+  const pathValue = name.endsWith("/") ? name.slice(0, -1) : name;
+  const unsafe = !pathValue || /[\0-\x1f\x7f\\]/u.test(name) || name.startsWith("/") ||
+    /^[A-Za-z]:/u.test(name) || pathValue.split("/").some((part) => part === ".." || part === "");
+  if (unsafe) {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} contains an unsafe entry path.`);
+  }
+}
+
+function assertZipMetadataContainsNoSecrets(
+  metadata: readonly Buffer[],
+  artifactPath: string,
+  secretValues: readonly string[],
+) {
+  if (metadata.some((value) => secretCategories(value.toString("utf8"), secretValues).length > 0)) {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} contains credentials in immutable metadata.`);
+  }
+}
+
+const CRC32_TABLE = Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit += 1) crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  return crc >>> 0;
+});
+
+function updateCrc32(current: number, value: Buffer) {
+  let crc = current >>> 0;
+  for (const byte of value) crc = CRC32_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  return crc >>> 0;
+}
+
+function hasZipSignature(value: Buffer) {
+  return value.length >= 4 && (
+    value.readUInt32LE(0) === 0x04034b50 ||
+    value.readUInt32LE(0) === 0x06054b50 ||
+    value.readUInt32LE(0) === 0x08074b50
+  );
+}
+
+function hasZipEnvelopeSignature(value: Buffer) {
+  return hasZipSignature(value) || findZipEndOfCentralDirectory(value) >= 0;
+}
+
+function isZipArtifactFile(filePath: string) {
+  if (path.extname(filePath).toLowerCase() === ".zip") return true;
+  const stat = lstatSync(filePath);
+  const descriptor = openSync(filePath, "r");
+  try {
+    const first = Buffer.alloc(Math.min(4, stat.size));
+    if (first.length > 0) readSync(descriptor, first, 0, first.length, 0);
+    if (hasZipSignature(first)) return true;
+    const tailSize = Math.min(65_557, stat.size);
+    if (tailSize < 22) return false;
+    const tail = Buffer.alloc(tailSize);
+    readSync(descriptor, tail, 0, tailSize, stat.size - tailSize);
+    return findZipEndOfCentralDirectory(tail) >= 0;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+async function generateZipOrThrow(zip: JSZip, artifactPath: string) {
+  try {
+    return await zip.generateAsync({
+      type: "nodebuffer",
+      platform: process.platform === "win32" ? "DOS" : "UNIX",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+  } catch {
+    throw new Error(`Gate0 artifact ZIP ${safeArtifactId(artifactPath)} cannot be safely regenerated.`);
+  }
+}
+
+function replaceZipEntry(zip: JSZip, entry: JSZip.JSZipObject, value: Buffer) {
+  zip.file(entry.name, value, {
+    binary: true,
+    date: entry.date,
+    unixPermissions: entry.unixPermissions ?? undefined,
+    dosPermissions: entry.dosPermissions ?? undefined,
+  });
 }
 
 function sanitizeBuffer(value: Buffer, artifactPath: string, secretValues: readonly string[]) {

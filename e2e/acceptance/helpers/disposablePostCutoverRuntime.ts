@@ -27,6 +27,7 @@ import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   recordNestedRuntimeFinish,
+  recordNestedRuntimeProcessLaunching,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
   readNestedRuntimeManifest,
@@ -38,6 +39,10 @@ import {
   type StopOwnedProcessGroupOptions,
 } from "../../../scripts/owned-process-group";
 import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
+import {
+  spawnGate0SupervisedProcess,
+  type Gate0OwnedProcessSupervision,
+} from "../../../scripts/gate0-process-launch-supervisor";
 import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-registry";
 import { readProcessStartIdentity } from "../../../scripts/process-start-identity";
 
@@ -523,8 +528,20 @@ async function waitForHttp(url: string, process: ChildProcess) {
   throw new Error(`Timed out waiting for disposable acceptance runtime at ${url}.`);
 }
 
-function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
-  const child = spawn(command, args, {
+function spawnRuntime(
+  command: string,
+  args: string[],
+  env: RuntimeEnv,
+  supervision?: Gate0OwnedProcessSupervision,
+) {
+  const child = supervision ? spawnGate0SupervisedProcess({
+    supervision,
+    cwd: process.cwd(),
+    command,
+    args,
+    env: buildGate0OwnedChildProcessEnv(env),
+    stdio: "pipe",
+  }) : spawn(command, args, {
     cwd: process.cwd(),
     env: buildGate0OwnedChildProcessEnv(env),
     stdio: "pipe",
@@ -535,6 +552,27 @@ function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
     child.stderr?.on("data", (chunk) => process.stderr.write(`[disposable] ${String(chunk)}`));
   }
   return child;
+}
+
+function nestedProcessSupervision(
+  manifestPath: string,
+  childId: string,
+  processLabel: "api" | "frontend",
+  port: number,
+): Gate0OwnedProcessSupervision {
+  const manifest = readNestedRuntimeManifest(manifestPath);
+  return {
+    runRoot: path.dirname(manifestPath),
+    runId: manifest.parentRunId,
+    sourceCommit: manifest.sourceCommit,
+    label: `nested:${childId}:${processLabel}`,
+    nodeEntry: processLabel === "api"
+      ? { entry: path.join(process.cwd(), "server/index.ts"), args: [] }
+      : {
+          entry: path.join(process.cwd(), "node_modules/vite/bin/vite.js"),
+          args: ["--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+        },
+  };
 }
 
 export async function startTrackedNestedRuntimeProcess(input: {
@@ -548,6 +586,7 @@ export async function startTrackedNestedRuntimeProcess(input: {
   recordProgress?: typeof recordNestedRuntimeProgress;
   rollbackStopOptions?: StopOwnedProcessGroupOptions;
 }) {
+  recordNestedRuntimeProcessLaunching(input.manifestPath, input.childId, input.process);
   const child = input.spawn();
   // Tracking precedes the manifest write so the local startup rollback owns the
   // child even when the atomic parent-manifest handshake itself fails.
@@ -704,7 +743,7 @@ export async function startDisposablePostCutoverRuntime(
       [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: undefined,
       [OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]: databaseName,
       ...(options.apiEnv ?? {}),
-    });
+    }, nestedManifestPath ? nestedProcessSupervision(nestedManifestPath, databaseName, "api", apiPort) : undefined);
     const api = nestedManifestPath
       ? await startTrackedNestedRuntimeProcess({
           manifestPath: nestedManifestPath,
@@ -728,6 +767,12 @@ export async function startDisposablePostCutoverRuntime(
         [OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]: databaseName,
         ...(options.frontendEnv ?? {}),
       },
+      nestedManifestPath ? nestedProcessSupervision(
+        nestedManifestPath,
+        databaseName,
+        "frontend",
+        frontendPort,
+      ) : undefined,
     );
     const frontend = nestedManifestPath
       ? await startTrackedNestedRuntimeProcess({

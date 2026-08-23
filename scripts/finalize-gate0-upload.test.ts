@@ -12,13 +12,16 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   initializeNestedRuntimeManifest,
+  recordNestedRuntimeProcessLaunching,
+  recordNestedRuntimeProgress,
+  recordNestedRuntimeProvisioning,
   recordNestedRuntimeStart,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 import type { OwnedLocalAcceptanceRuntimeDescriptorV1 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
@@ -27,7 +30,19 @@ import {
   scanGate0ArtifactTree,
 } from "./gate0-artifact-sanitizer";
 import { finalizeGate0UploadSnapshot } from "./finalize-gate0-upload";
-import type { ProcessStartIdentity } from "./process-start-identity";
+import {
+  initializeGate0ProvisioningJournal,
+  recordGate0ProvisioningProcessStarted,
+} from "./gate0-provisioning-journal";
+import {
+  listGate0OwnedProcessLaunches,
+  spawnGate0SupervisedProcess,
+} from "./gate0-process-launch-supervisor";
+import { stopOwnedProcessGroup } from "./owned-process-group";
+import {
+  readProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "./process-start-identity";
 
 const roots: string[] = [];
 
@@ -124,22 +139,149 @@ describe("Gate0 immutable upload finalization", () => {
     expect(existsSync(path.join(fixture.runRoot, "object-store"))).toBe(true);
   });
 
-  it("publishes nothing for a pre-descriptor owner crash", async () => {
+  it("takes over a registered API after a pre-descriptor owner crash and treats frontend as not-started", async () => {
     const fixture = createNestedFixture("pre_descriptor");
-    unlinkSync(path.join(fixture.runRoot, "runtime.json"));
+    const descriptorPath = path.join(fixture.runRoot, "runtime.json");
+    const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as OwnedLocalAcceptanceRuntimeDescriptorV1;
+    const manifestPath = path.join(fixture.runRoot, "nested-runtime-manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { children: unknown[] };
+    manifest.children = [];
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    unlinkSync(descriptorPath);
+    const journalPath = initializeGate0ProvisioningJournal(fixture.runRoot, {
+      run: {
+        id: fixture.runId,
+        sourceCommit: descriptor.run.sourceCommit,
+        worktreeRoot: descriptor.run.worktreeRoot,
+        ownerPid: descriptor.run.ownerPid,
+        ownerProcessIdentity: descriptor.run.ownerProcessIdentity,
+        createdAt: descriptor.run.createdAt,
+        state: "provisioning",
+      },
+      resources: {
+        databaseName: descriptor.database.name,
+        runRoot: fixture.runRoot,
+        objectStoreRoot: descriptor.objectStore.root,
+        nestedRuntimeManifest: manifestPath,
+      },
+    });
+    recordGate0ProvisioningProcessStarted(
+      journalPath,
+      "api",
+      "owned API runtime",
+      descriptor.processes.api.pid,
+      descriptor.processes.api.processIdentity,
+    );
     const signals: number[] = [];
+    let apiAlive = true;
 
-    await expect(finalizeGate0UploadSnapshot({
+    await finalizeGate0UploadSnapshot({
       runsRoot: fixture.runsRoot,
       uploadRoot: fixture.uploadRoot,
       stopOptions: {
-        processGroupExists: () => true,
-        signalProcessGroup(pid) { signals.push(pid); },
+        processGroupExists: (pid) => pid === descriptor.processes.api.pid && apiAlive,
+        readProcessIdentity: (pid) => pid === descriptor.processes.api.pid
+          ? descriptor.processes.api.processIdentity
+          : undefined,
+        signalProcessGroup(pid) { signals.push(pid); apiAlive = false; },
+        wait: async () => undefined,
+        terminateGraceMs: 0,
+        verifyGraceMs: 0,
       },
-    })).rejects.toThrow(/lacks a complete owned runtime descriptor/i);
+    });
 
-    expect(signals).toEqual([]);
-    expect(existsSync(fixture.uploadRoot)).toBe(false);
+    expect(signals).toEqual([descriptor.processes.api.pid]);
+    expect(existsSync(fixture.uploadRoot)).toBe(true);
+    expect(existsSync(descriptor.objectStore.root)).toBe(true);
+  });
+
+  it("recovers a supervised partial API after the real owner is SIGKILLed", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-gate0-upload-real-crash-"));
+    roots.push(root);
+    const runsRoot = path.join(root, "acceptance-runtime-runs");
+    const runId = "full-partial-sigkill";
+    const runRoot = path.join(runsRoot, runId);
+    const uploadRoot = path.join(root, "acceptance-runtime-upload.zip");
+    mkdirSync(runsRoot);
+    const fixturePath = path.join(import.meta.dirname, "fixtures/gate0-partial-provision-owner.ts");
+    const owner = spawn(
+      process.execPath,
+      ["--import", import.meta.resolve("tsx"), fixturePath, runRoot, runId, "2".repeat(40)],
+      { cwd: process.cwd(), detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const ready = await new Promise<{ apiPid: number }>((resolve, reject) => {
+      let stdout = "";
+      let stderr = "";
+      owner.stdout!.on("data", (chunk) => {
+        stdout += String(chunk);
+        const line = stdout.split("\n").find((entry) => entry.trim().startsWith("{"));
+        if (line) resolve(JSON.parse(line) as { apiPid: number });
+      });
+      owner.stderr!.on("data", (chunk) => { stderr += String(chunk); });
+      owner.once("exit", (code) => reject(new Error(`partial owner exited ${code}: ${stderr}`)));
+    });
+    await expect(waitForProcessState(ready.apiPid, true)).resolves.toBeUndefined();
+    process.kill(owner.pid!, "SIGKILL");
+    await new Promise<void>((resolve) => owner.once("exit", () => resolve()));
+
+    const result = await finalizeGate0UploadSnapshot({
+      runsRoot,
+      uploadRoot,
+      stopOptions: { terminateGraceMs: 100, verifyGraceMs: 100 },
+    });
+
+    expect(result.writersStopped).toBeGreaterThanOrEqual(1);
+    expect(processExists(ready.apiPid)).toBe(false);
+    expect(existsSync(path.join(runRoot, "object-store"))).toBe(true);
+    expect(existsSync(uploadRoot)).toBe(true);
+  }, 15_000);
+
+  it("runs a supervised Node entry in the exact persisted launcher PID", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-gate0-node-entry-"));
+    roots.push(root);
+    const runRoot = path.join(root, "run");
+    const entryPath = path.join(root, "listener.mjs");
+    const readyPath = path.join(root, "listener.json");
+    mkdirSync(runRoot);
+    writeFileSync(entryPath, [
+      'import { writeFileSync } from "node:fs";',
+      'import { createServer } from "node:net";',
+      'const server = createServer();',
+      'server.listen(0, "127.0.0.1", () => {',
+      '  writeFileSync(process.argv[2], JSON.stringify({ pid: process.pid, port: server.address().port }));',
+      '});',
+    ].join("\n"), "utf8");
+    const launcher = spawnGate0SupervisedProcess({
+      supervision: {
+        runRoot,
+        runId: "node-entry-pid",
+        sourceCommit: "3".repeat(40),
+        label: "root:node-entry-pid:api",
+        nodeEntry: { entry: entryPath, args: [readyPath] },
+      },
+      cwd: root,
+      command: "unused",
+      args: [],
+      env: process.env,
+      stdio: "ignore",
+    });
+    const pid = launcher.pid!;
+    const identity = readProcessStartIdentity(pid);
+    expect(identity).toBeDefined();
+    try {
+      await waitForFile(readyPath);
+      const ready = JSON.parse(readFileSync(readyPath, "utf8")) as { pid: number; port: number };
+      expect(ready.pid).toBe(pid);
+      expect(ready.port).toBeGreaterThan(0);
+      expect(readProcessStartIdentity(pid)).toEqual(identity);
+    } finally {
+      await stopOwnedProcessGroup(launcher, {
+        expectedProcessIdentity: identity,
+        terminateGraceMs: 100,
+        verifyGraceMs: 100,
+      });
+    }
+    await expect(waitForProcessState(pid, false)).resolves.toBeUndefined();
   });
 
   it("publishes nothing for an unresolved nested spawn handshake", async () => {
@@ -167,6 +309,38 @@ describe("Gate0 immutable upload finalization", () => {
 
     expect(signals).toEqual([]);
     expect(existsSync(fixture.uploadRoot)).toBe(false);
+  });
+
+  it("stops a registered partial nested API and treats its frontend as not-started", async () => {
+    const fixture = createNestedFixture("nested_partial");
+    const manifestPath = path.join(fixture.runRoot, "nested-runtime-manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      children: Array<Record<string, unknown>>;
+    };
+    manifest.children[0]!.state = "provisioning";
+    manifest.children[0]!.frontendProcessState = "not-started";
+    delete manifest.children[0]!.frontendPid;
+    delete manifest.children[0]!.frontendProcessIdentity;
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    let apiAlive = true;
+    const signals: number[] = [];
+
+    await finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot,
+      uploadRoot: fixture.uploadRoot,
+      stopOptions: {
+        processGroupExists: (pid) => pid === fixture.apiPid && apiAlive,
+        readProcessIdentity: (pid) => fixture.identities.get(pid),
+        signalProcessGroup(pid) { signals.push(pid); apiAlive = false; },
+        wait: async () => undefined,
+        terminateGraceMs: 0,
+        verifyGraceMs: 0,
+      },
+    });
+
+    expect(signals).toEqual([fixture.apiPid]);
+    expect(existsSync(fixture.uploadRoot)).toBe(true);
+    expect(existsSync(path.join(fixture.runRoot, "object-store"))).toBe(true);
   });
 
   it("stops an active phase before re-reading late nested and root writers", async () => {
@@ -234,6 +408,153 @@ describe("Gate0 immutable upload finalization", () => {
       lateFrontendPid,
     ]));
   });
+
+  it("stops a supervised launching phase before discovering its late nested writer", async () => {
+    const fixture = createNestedFixture("phase_launch_late_nested");
+    const descriptorPath = path.join(fixture.runRoot, "runtime.json");
+    const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as OwnedLocalAcceptanceRuntimeDescriptorV1;
+    descriptor.phases.visual = { status: "launching", startedAt: new Date().toISOString() };
+    writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
+    const phase = spawnGate0SupervisedProcess({
+      supervision: {
+        runRoot: fixture.runRoot,
+        runId: fixture.runId,
+        sourceCommit: descriptor.run.sourceCommit,
+        label: `root:${fixture.runId}:visual`,
+      },
+      cwd: process.cwd(),
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+      env: process.env,
+      stdio: "ignore",
+    });
+    const phasePid = phase.pid!;
+    const phaseIdentity = readProcessStartIdentity(phasePid)!;
+    const lateApiPid = 43_101;
+    const lateApiIdentity = processIdentity("launching-late-api", "6");
+    const alive = new Set([phasePid]);
+    const identities = new Map<number, ProcessStartIdentity>([[phasePid, phaseIdentity]]);
+    const signals: number[] = [];
+    let registeredLate = false;
+
+    try {
+      await finalizeGate0UploadSnapshot({
+        runsRoot: fixture.runsRoot,
+        uploadRoot: fixture.uploadRoot,
+        stopOptions: {
+          processGroupExists: (pid) => alive.has(pid),
+          readProcessIdentity: (pid) => identities.get(pid),
+          signalProcessGroup(pid) {
+            signals.push(pid);
+            alive.delete(pid);
+            if (pid === phasePid && !registeredLate) {
+              registeredLate = true;
+              alive.add(lateApiPid);
+              identities.set(lateApiPid, lateApiIdentity);
+              const manifestPath = path.join(fixture.runRoot, "nested-runtime-manifest.json");
+              recordNestedRuntimeProvisioning(manifestPath, {
+                id: "wiseeff_acceptance_disposable_launching_late",
+                databaseName: "wiseeff_acceptance_disposable_launching_late",
+                markerPurpose: "td-042-post-cutover",
+                objectStoreRoot: path.join(fixture.runRoot, "object-store", "launching-late"),
+                apiUrl: "http://127.0.0.1:18721",
+                frontendUrl: "http://127.0.0.1:5221",
+              });
+              recordNestedRuntimeProcessLaunching(
+                manifestPath,
+                "wiseeff_acceptance_disposable_launching_late",
+                "api",
+              );
+              recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_launching_late", {
+                migrationRunId: "launching-late-migration",
+                apiPid: lateApiPid,
+                apiProcessIdentity: { ...lateApiIdentity, pid: lateApiPid, port: 18_721 },
+              });
+            }
+          },
+          wait: async () => undefined,
+          terminateGraceMs: 0,
+          verifyGraceMs: 0,
+        },
+      });
+    } finally {
+      if (processExists(phasePid)) {
+        await stopOwnedProcessGroup(phase, {
+          expectedProcessIdentity: phaseIdentity,
+          terminateGraceMs: 100,
+          verifyGraceMs: 100,
+        });
+      }
+    }
+
+    expect(signals[0]).toBe(phasePid);
+    expect(signals).toContain(lateApiPid);
+    expect(existsSync(fixture.uploadRoot)).toBe(true);
+  });
+
+  it("takes over a supervised phase when the owner dies before descriptor identity publication", async () => {
+    const fixture = createNestedFixture("phase_launch_gap");
+    const descriptorPath = path.join(fixture.runRoot, "runtime.json");
+    const descriptor = JSON.parse(readFileSync(descriptorPath, "utf8")) as OwnedLocalAcceptanceRuntimeDescriptorV1;
+    descriptor.phases.visual = { status: "launching", startedAt: new Date().toISOString() };
+    writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
+    const phase = spawnGate0SupervisedProcess({
+      supervision: {
+        runRoot: fixture.runRoot,
+        runId: fixture.runId,
+        sourceCommit: descriptor.run.sourceCommit,
+        label: `root:${fixture.runId}:visual`,
+      },
+      cwd: process.cwd(),
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+      env: process.env,
+      stdio: "ignore",
+    });
+    expect(phase.pid).toBeTypeOf("number");
+    const [launch] = listGate0OwnedProcessLaunches(fixture.runRoot);
+    expect(readProcessStartIdentity(phase.pid!)).toEqual(launch?.launcherProcessIdentity);
+
+    await finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot,
+      uploadRoot: fixture.uploadRoot,
+      stopOptions: { terminateGraceMs: 100, verifyGraceMs: 100 },
+    });
+
+    expect(processExists(phase.pid!)).toBe(false);
+    expect(existsSync(fixture.uploadRoot)).toBe(true);
+  }, 15_000);
+
+  it("rejects an undeclared supervised launch without signaling its process group", async () => {
+    const fixture = createNestedFixture("undeclared_launch");
+    const descriptor = JSON.parse(
+      readFileSync(path.join(fixture.runRoot, "runtime.json"), "utf8"),
+    ) as OwnedLocalAcceptanceRuntimeDescriptorV1;
+    const undeclared = spawnGate0SupervisedProcess({
+      supervision: {
+        runRoot: fixture.runRoot,
+        runId: fixture.runId,
+        sourceCommit: descriptor.run.sourceCommit,
+        label: `root:${fixture.runId}:visual`,
+      },
+      cwd: process.cwd(),
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+      env: process.env,
+      stdio: "ignore",
+    });
+    try {
+      await expect(finalizeGate0UploadSnapshot({
+        runsRoot: fixture.runsRoot,
+        uploadRoot: fixture.uploadRoot,
+      })).rejects.toThrow(/no exact declared writer/i);
+      expect(processExists(undeclared.pid!)).toBe(true);
+      expect(existsSync(fixture.uploadRoot)).toBe(false);
+    } finally {
+      process.kill(process.platform === "win32" ? undeclared.pid! : -undeclared.pid!, "SIGTERM");
+      await waitForProcessState(undeclared.pid!, false);
+    }
+  }, 15_000);
 
   it("publishes nothing while the exact recorded owner is still alive", async () => {
     const fixture = createNestedFixture("owner_live");
@@ -491,4 +812,33 @@ function writeRootDescriptorFixture(
 
 function processIdentity(startToken: string, digest: string): ProcessStartIdentity {
   return { startToken, commandSha256: digest.repeat(64) };
+}
+
+function processExists(pid: number) {
+  try {
+    process.kill(process.platform === "win32" ? pid : -pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
+    throw error;
+  }
+}
+
+async function waitForProcessState(pid: number, expected: boolean) {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (processExists(pid) === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Process group ${pid} did not become ${expected ? "present" : "absent"}.`);
+}
+
+async function waitForFile(filePath: string) {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (existsSync(filePath)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`File ${path.basename(filePath)} was not published.`);
 }

@@ -40,6 +40,12 @@ import {
   type StopOwnedProcessGroupOptions,
 } from "./owned-process-group";
 import {
+  GATE0_PROVISIONING_JOURNAL_FILE,
+  readGate0ProvisioningJournal,
+  type Gate0ProvisioningJournalV1,
+} from "./gate0-provisioning-journal";
+import { listGate0OwnedProcessLaunches } from "./gate0-process-launch-supervisor";
+import {
   readProcessStartIdentity,
   sameProcessStartIdentity,
   type ProcessStartIdentity,
@@ -49,6 +55,18 @@ type OwnedWriter = {
   label: string;
   pid: number;
   processIdentity: ProcessStartIdentity;
+  phase?: boolean;
+};
+
+type RootTakeoverRecord = {
+  runRoot: string;
+  runId: string;
+  sourceCommit: string;
+  ownerPid: number;
+  ownerProcessIdentity: ProcessStartIdentity;
+  nestedRuntimeManifest: string;
+  descriptor?: OwnedLocalAcceptanceRuntimeDescriptorV1;
+  journal?: Gate0ProvisioningJournalV1;
 };
 
 export type FinalizeGate0UploadSnapshotOptions = {
@@ -79,14 +97,17 @@ export async function finalizeGate0UploadSnapshot(
     throw new Error("Gate0 upload snapshot must be one exact ZIP archive.");
   }
   assertSeparateSnapshotPath(runsRoot, archivePath);
-  const descriptors = loadRootDescriptors(runsRoot);
-  await assertOwnersExited(descriptors, options.stopOptions);
-  await preflightWriterIdentities([
+  const records = loadRootTakeoverRecords(runsRoot);
+  const descriptors = records.flatMap((record) => record.descriptor ? [record.descriptor] : []);
+  await assertOwnersExited(records, options.stopOptions);
+  const initialWriters = uniqueOwnedWriters([
     ...phaseWriters(descriptors),
-    ...discoverOwnedWriters(runsRoot),
-  ], options.stopOptions);
-  await stopPhaseWriters(descriptors, options);
-  const writers = discoverOwnedWriters(runsRoot);
+    ...discoverOwnedWriters(records),
+  ]);
+  await preflightWriterIdentities(initialWriters, options.stopOptions);
+  await stopPhaseWriters(initialWriters.filter((writer) => writer.phase), options);
+  const refreshedRecords = loadRootTakeoverRecords(runsRoot);
+  const writers = discoverOwnedWriters(refreshedRecords);
   await preflightWriterIdentities(writers, options.stopOptions);
   for (const writer of writers) {
     throwIfAborted(options.signal);
@@ -97,13 +118,13 @@ export async function finalizeGate0UploadSnapshot(
   }
 
   throwIfAborted(options.signal);
-  await assertOwnersExited(loadRootDescriptors(runsRoot), options.stopOptions);
+  await assertOwnersExited(loadRootTakeoverRecords(runsRoot), options.stopOptions);
   const exactValues = [...new Set([
     ...gate0SecretValuesFromEnv(),
     ...loadGate0PersistedExactValuesForSnapshot(runsRoot),
   ])];
   if (existsSync(archivePath)) {
-    const scan = await verifyPublishedArchive(archivePath, exactValues, descriptors, options.signal);
+    const scan = await verifyPublishedArchive(archivePath, exactValues, records, options.signal);
     retireGate0PersistedExactValuesAfterSnapshot(runsRoot);
     return {
       archivePath,
@@ -142,7 +163,7 @@ export async function finalizeGate0UploadSnapshot(
         database: "retained-for-failure-evidence",
         objectStore: "retained-for-failure-evidence",
       },
-      runs: canonicalRunIdentities(descriptors),
+      runs: canonicalRunIdentities(records),
     }, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
 
     await sanitizeGate0ArtifactTree(staging, options.signal, exactValues);
@@ -167,80 +188,124 @@ export async function finalizeGate0UploadSnapshot(
   }
 }
 
-function loadRootDescriptors(runsRoot: string) {
+function loadRootTakeoverRecords(runsRoot: string): RootTakeoverRecord[] {
   const runRoots = readdirSync(runsRoot, { withFileTypes: true })
     .filter((entry) => {
       if (entry.isSymbolicLink()) throw new Error("Gate0 live runs root contains a symbolic link.");
       return entry.isDirectory();
     })
     .map((entry) => path.join(runsRoot, entry.name));
-  const descriptors = runRoots.map((runRoot) => {
+  const records = runRoots.map((runRoot): RootTakeoverRecord => {
       const descriptorPath = path.join(runRoot, "runtime.json");
-      if (!existsSync(descriptorPath)) {
-        throw new Error(`Gate0 run ${path.basename(runRoot)} lacks a complete owned runtime descriptor; refusing upload.`);
+      const journalPath = path.join(runRoot, GATE0_PROVISIONING_JOURNAL_FILE);
+      const descriptor = existsSync(descriptorPath) ? loadOwnedRuntimeDescriptor(descriptorPath) : undefined;
+      const journal = existsSync(journalPath) ? readGate0ProvisioningJournal(journalPath) : undefined;
+      if (!descriptor && !journal) {
+        throw new Error(`Gate0 run ${path.basename(runRoot)} lacks a safe runtime descriptor or provisioning journal; refusing upload.`);
       }
-      const descriptor = loadOwnedRuntimeDescriptor(descriptorPath);
-      assertRunRootInside(runsRoot, descriptor);
-      if (path.resolve(descriptor.artifacts.runRoot) !== path.resolve(runRoot)) {
-        throw new Error("Owned runtime descriptor is not bound to its canonical run directory.");
+      if (descriptor) {
+        assertRunRootInside(runsRoot, descriptor);
+        if (path.resolve(descriptor.artifacts.runRoot) !== path.resolve(runRoot)) {
+          throw new Error("Owned runtime descriptor is not bound to its canonical run directory.");
+        }
       }
-      const nestedPath = path.join(runRoot, "nested-runtime-manifest.json");
-      if (path.resolve(descriptor.artifacts.nestedRuntimeManifest) !== path.resolve(nestedPath)) {
-        throw new Error("Nested runtime manifest path does not match the descriptor identity.");
+      const runId = descriptor?.run.id ?? journal!.run.id;
+      const sourceCommit = descriptor?.run.sourceCommit ?? journal!.run.sourceCommit;
+      const ownerPid = descriptor?.run.ownerPid ?? journal!.run.ownerPid;
+      const ownerProcessIdentity = descriptor?.run.ownerProcessIdentity ?? journal!.run.ownerProcessIdentity;
+      const nestedPath = descriptor?.artifacts.nestedRuntimeManifest ?? journal!.resources.nestedRuntimeManifest;
+      if (path.resolve(nestedPath) !== path.join(path.resolve(runRoot), "nested-runtime-manifest.json")) {
+        throw new Error("Nested runtime manifest path does not match the root takeover identity.");
       }
-      const nested = readNestedRuntimeManifest(nestedPath);
-      if (nested.parentRunId !== descriptor.run.id || nested.sourceCommit !== descriptor.run.sourceCommit) {
-        throw new Error("Nested runtime manifest does not match its parent run/source identity.");
+      if (journal && (
+        journal.run.id !== runId || journal.run.sourceCommit !== sourceCommit ||
+        journal.run.ownerPid !== ownerPid ||
+        !sameProcessStartIdentity(journal.run.ownerProcessIdentity, ownerProcessIdentity) ||
+        path.resolve(journal.resources.runRoot) !== path.resolve(runRoot)
+      )) {
+        throw new Error("Provisioning journal conflicts with the complete runtime descriptor identity.");
       }
-      return descriptor;
+      if (descriptor && journal) {
+        if (
+          path.resolve(journal.run.worktreeRoot) !== path.resolve(descriptor.run.worktreeRoot) ||
+          journal.resources.databaseName !== descriptor.database.name ||
+          path.resolve(journal.resources.objectStoreRoot) !== path.resolve(descriptor.objectStore.root) ||
+          path.resolve(journal.resources.nestedRuntimeManifest) !== path.resolve(descriptor.artifacts.nestedRuntimeManifest)
+        ) {
+          throw new Error("Provisioning journal resources conflict with the complete runtime descriptor.");
+        }
+        for (const label of ["api", "frontend"] as const) {
+          const journalProcess = journal.processes[label];
+          const descriptorProcess = descriptor.processes[label];
+          if (
+            journalProcess.state !== "running" ||
+            journalProcess.pid !== descriptorProcess.pid ||
+            !journalProcess.processIdentity ||
+            !sameProcessStartIdentity(journalProcess.processIdentity, descriptorProcess.processIdentity)
+          ) {
+            throw new Error(`Provisioning journal ${label} identity conflicts with the complete runtime descriptor.`);
+          }
+        }
+        if (journal.processes.migration.state !== "stopped" || journal.processes.seed.state !== "stopped") {
+          throw new Error("Provisioning journal command state conflicts with the complete runtime descriptor.");
+        }
+      }
+      if (existsSync(nestedPath)) {
+        const nested = readNestedRuntimeManifest(nestedPath);
+        if (nested.parentRunId !== runId || nested.sourceCommit !== sourceCommit) {
+          throw new Error("Nested runtime manifest does not match its parent run/source identity.");
+        }
+      } else if (descriptor) {
+        throw new Error("Complete owned runtime descriptor lacks its nested runtime manifest.");
+      }
+      return {
+        runRoot,
+        runId,
+        sourceCommit,
+        ownerPid,
+        ownerProcessIdentity,
+        nestedRuntimeManifest: nestedPath,
+        descriptor,
+        journal,
+      };
     });
-  const canonicalNested = new Set(descriptors.map((descriptor) => path.resolve(descriptor.artifacts.nestedRuntimeManifest)));
+  const canonicalNested = new Set(records.map((record) => path.resolve(record.nestedRuntimeManifest)));
   for (const nestedPath of listRegularFiles(runsRoot)
     .filter((filePath) => path.basename(filePath) === "nested-runtime-manifest.json")) {
     if (!canonicalNested.has(path.resolve(nestedPath))) {
       throw new Error("Gate0 artifact tree contains a non-canonical nested runtime manifest.");
     }
   }
-  return descriptors;
+  return records;
 }
 
 async function assertOwnersExited(
-  descriptors: readonly OwnedLocalAcceptanceRuntimeDescriptorV1[],
+  records: readonly RootTakeoverRecord[],
   stopOptions: StopOwnedProcessGroupOptions = {},
 ) {
   const processGroupExists = stopOptions.processGroupExists ?? defaultProcessExists;
   const readIdentity = stopOptions.readProcessIdentity ?? readProcessStartIdentity;
-  for (const descriptor of descriptors) {
-    if (!(await processGroupExists(descriptor.run.ownerPid))) continue;
-    const current = readIdentity(descriptor.run.ownerPid);
+  for (const record of records) {
+    if (!(await processGroupExists(record.ownerPid))) continue;
+    const current = readIdentity(record.ownerPid);
     if (!current) {
-      throw new Error(`Gate0 owner ${descriptor.run.ownerPid} identity is unknown; refusing upload.`);
+      throw new Error(`Gate0 owner ${record.ownerPid} identity is unknown; refusing upload.`);
     }
-    if (sameProcessStartIdentity(descriptor.run.ownerProcessIdentity, current)) {
-      throw new Error(`Gate0 owner ${descriptor.run.ownerPid} is still alive; refusing upload.`);
+    if (sameProcessStartIdentity(record.ownerProcessIdentity, current)) {
+      throw new Error(`Gate0 owner ${record.ownerPid} is still alive; refusing upload.`);
     }
   }
 }
 
 async function stopPhaseWriters(
-  descriptors: readonly OwnedLocalAcceptanceRuntimeDescriptorV1[],
+  writers: readonly OwnedWriter[],
   options: FinalizeGate0UploadSnapshotOptions,
 ) {
-  for (const descriptor of descriptors) {
-    for (const phaseName of ["visual", "browser"] as const) {
-      const phase = descriptor.phases[phaseName];
-      if (phase.status === "launching") {
-        throw new Error(`Gate0 ${phaseName} phase launch did not publish a process-start identity; refusing upload.`);
-      }
-      if (phase.status === "running" && !phase.process) {
-        throw new Error(`Gate0 running ${phaseName} phase lacks a process-start identity; refusing upload.`);
-      }
-      if (!phase.process) continue;
-      await stopOwnedProcessGroup(phase.process.pid, {
-        ...options.stopOptions,
-        expectedProcessIdentity: phase.process.processIdentity,
-      });
-    }
+  for (const writer of writers) {
+    await stopOwnedProcessGroup(writer.pid, {
+      ...options.stopOptions,
+      expectedProcessIdentity: writer.processIdentity,
+    });
   }
 }
 
@@ -249,10 +314,14 @@ function phaseWriters(descriptors: readonly OwnedLocalAcceptanceRuntimeDescripto
   for (const descriptor of descriptors) {
     for (const phaseName of ["visual", "browser"] as const) {
       const phase = descriptor.phases[phaseName];
+      if (phase.status === "running" && !phase.process) {
+        throw new Error(`Gate0 running ${phaseName} phase lacks a process-start identity; refusing upload.`);
+      }
       if (phase.process) writers.push({
         label: `phase ${descriptor.run.id} ${phaseName}`,
         pid: phase.process.pid,
         processIdentity: phase.process.processIdentity,
+        phase: true,
       });
     }
   }
@@ -274,35 +343,156 @@ async function preflightWriterIdentities(
   }
 }
 
-function discoverOwnedWriters(runsRoot: string) {
+function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
   const writers: OwnedWriter[] = [];
-  for (const descriptor of loadRootDescriptors(runsRoot)) {
-    writers.push(
-      writerFromRootDescriptor(descriptor, "api"),
-      writerFromRootDescriptor(descriptor, "frontend"),
-    );
-    const manifestPath = descriptor.artifacts.nestedRuntimeManifest;
-    const manifest = readNestedRuntimeManifest(manifestPath);
-    for (const child of manifest.children) {
-      const active = ["provisioning", "running", "cleanup-failed"].includes(child.state);
-      if (active && (
-        !child.apiPid || !child.apiProcessIdentity ||
-        !child.frontendPid || !child.frontendProcessIdentity
-      )) {
-        throw new Error(`Nested runtime ${child.id} has unresolved writer identity; refusing upload.`);
-      }
-      writers.push(...writerFromNestedProcess(child.id, "api", child.apiPid, child.apiProcessIdentity));
-      writers.push(...writerFromNestedProcess(
-        child.id,
-        "frontend",
-        child.frontendPid,
-        child.frontendProcessIdentity,
-      ));
+  for (const record of records) {
+    const launches = settledProcessLaunches(record);
+    const launchLabels = new Set(launches.map((launch) => launch.label));
+    if (launchLabels.size !== launches.length) {
+      throw new Error("Gate0 process launch ledger contains a duplicate declared label.");
     }
-    const failurePath = path.join(descriptor.artifacts.runRoot, "provision-failure.json");
-    if (existsSync(failurePath)) writers.push(...writersFromProvisionFailure(failurePath, descriptor));
+    for (const launch of launches) {
+      if (launch.state !== "claimed" || !launch.launcherPid || !launch.launcherProcessIdentity) {
+        throw new Error(`Gate0 process launch ${launch.launchId} did not publish a safe launcher identity.`);
+      }
+      assertLaunchMatchesDeclaredWriter(record, launch);
+      writers.push({
+        label: `supervised ${launch.label}`,
+        pid: launch.launcherPid,
+        processIdentity: launch.launcherProcessIdentity,
+        phase: launch.label === `root:${record.runId}:visual` ||
+          launch.label === `root:${record.runId}:browser`,
+      });
+    }
+    if (record.descriptor) {
+      for (const phaseName of ["visual", "browser"] as const) {
+        if (
+          record.descriptor.phases[phaseName].status === "launching" &&
+          !launchLabels.has(`root:${record.runId}:${phaseName}`)
+        ) {
+          throw new Error(`Gate0 ${phaseName} phase launch lacks a supervised process-start identity; refusing upload.`);
+        }
+      }
+      writers.push(
+        writerFromRootDescriptor(record.descriptor, "api"),
+        writerFromRootDescriptor(record.descriptor, "frontend"),
+      );
+    }
+    if (record.journal) {
+      for (const label of ["migration", "seed", "api", "frontend"] as const) {
+        const processRecord = record.journal.processes[label];
+        if (processRecord.state === "launching" && launchLabels.has(`root:${record.runId}:${label}`)) continue;
+        if (processRecord.state === "launching") continue;
+        if (processRecord.state !== "running") continue;
+        assertProcessStartIdentity(processRecord.processIdentity, `Root provisioning ${record.runId} ${label}`);
+        if (!processRecord.pid) {
+          throw new Error(`Root provisioning ${record.runId} ${label} writer PID is missing.`);
+        }
+        writers.push({
+          label: `root provisioning ${record.runId} ${label}`,
+          pid: processRecord.pid,
+          processIdentity: processRecord.processIdentity,
+        });
+      }
+    }
+    if (existsSync(record.nestedRuntimeManifest)) {
+      const manifest = readNestedRuntimeManifest(record.nestedRuntimeManifest);
+      for (const child of manifest.children) {
+        for (const [label, state] of [
+          ["api", child.apiProcessState],
+          ["frontend", child.frontendProcessState],
+        ] as const) {
+          if (state === "launching" && launchLabels.has(`nested:${child.id}:${label}`)) continue;
+          if (state === "launching") continue;
+          if (state === undefined) {
+            throw new Error(`Nested runtime ${child.id} ${label} has unresolved writer identity; refusing upload.`);
+          }
+          const pid = label === "api" ? child.apiPid : child.frontendPid;
+          const identity = label === "api" ? child.apiProcessIdentity : child.frontendProcessIdentity;
+          if ((state === "running") !== (pid !== undefined && identity !== undefined)) {
+            throw new Error(`Nested runtime ${child.id} ${label} has unresolved writer identity because its process state and identity are inconsistent; refusing upload.`);
+          }
+        }
+        writers.push(...writerFromNestedProcess(child.id, "api", child.apiPid, child.apiProcessIdentity));
+        writers.push(...writerFromNestedProcess(
+          child.id,
+          "frontend",
+          child.frontendPid,
+          child.frontendProcessIdentity,
+        ));
+      }
+    }
+    const failurePath = path.join(record.runRoot, "provision-failure.json");
+    if (existsSync(failurePath)) writers.push(...writersFromProvisionFailure(failurePath, record));
   }
   return uniqueOwnedWriters(writers);
+}
+
+function assertLaunchMatchesDeclaredWriter(
+  record: RootTakeoverRecord,
+  launch: ReturnType<typeof settledProcessLaunches>[number],
+) {
+  if (!launch.launcherPid || !launch.launcherProcessIdentity) {
+    throw new Error("Gate0 process launch identity is incomplete.");
+  }
+  const expectedIdentity = (pid: number | undefined, identity: ProcessStartIdentity | undefined) => {
+    if (pid === undefined && identity === undefined) return;
+    if (!identity || pid !== launch.launcherPid || !sameProcessStartIdentity(identity, launch.launcherProcessIdentity)) {
+      throw new Error(`Gate0 process launch ${launch.label} conflicts with its declared writer identity.`);
+    }
+  };
+  for (const label of ["migration", "seed", "api", "frontend"] as const) {
+    if (launch.label !== `root:${record.runId}:${label}`) continue;
+    const journalProcess = record.journal?.processes[label];
+    const descriptorProcess = label === "api" || label === "frontend"
+      ? record.descriptor?.processes[label]
+      : undefined;
+    if (!journalProcess && !descriptorProcess) break;
+    if (journalProcess?.state === "not-started") break;
+    expectedIdentity(journalProcess?.pid, journalProcess?.processIdentity);
+    expectedIdentity(descriptorProcess?.pid, descriptorProcess?.processIdentity);
+    return;
+  }
+  for (const phaseName of ["visual", "browser"] as const) {
+    if (launch.label !== `root:${record.runId}:${phaseName}`) continue;
+    const phase = record.descriptor?.phases[phaseName];
+    if (!phase || phase.status === "pending") break;
+    expectedIdentity(phase.process?.pid, phase.process?.processIdentity);
+    return;
+  }
+  if (existsSync(record.nestedRuntimeManifest)) {
+    const manifest = readNestedRuntimeManifest(record.nestedRuntimeManifest);
+    for (const child of manifest.children) {
+      for (const label of ["api", "frontend"] as const) {
+        if (launch.label !== `nested:${child.id}:${label}`) continue;
+        const state = label === "api" ? child.apiProcessState : child.frontendProcessState;
+        if (state === "not-started") break;
+        expectedIdentity(
+          label === "api" ? child.apiPid : child.frontendPid,
+          label === "api" ? child.apiProcessIdentity : child.frontendProcessIdentity,
+        );
+        return;
+      }
+    }
+  }
+  throw new Error(`Gate0 process launch ${launch.label} has no exact declared writer; refusing all signals.`);
+}
+
+function settledProcessLaunches(record: RootTakeoverRecord) {
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    const launches = listGate0OwnedProcessLaunches(record.runRoot);
+    for (const launch of launches) {
+      if (launch.runId !== record.runId || launch.sourceCommit !== record.sourceCommit) {
+        throw new Error("Gate0 process launch does not match its canonical run/source identity.");
+      }
+    }
+    if (launches.every((launch) => launch.state === "claimed")) return launches;
+    if (Date.now() >= deadline) {
+      throw new Error("Gate0 process launcher identity publication did not settle; refusing upload.");
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
 }
 
 function writerFromRootDescriptor(
@@ -333,7 +523,7 @@ function writerFromNestedProcess(
 
 function writersFromProvisionFailure(
   failurePath: string,
-  descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+  record: RootTakeoverRecord,
 ): OwnedWriter[] {
   let value: unknown;
   try {
@@ -347,7 +537,7 @@ function writersFromProvisionFailure(
   const failure = value as { kind?: unknown; runId?: unknown; sourceCommit?: unknown; processes?: unknown };
   if (
     failure.kind !== "wiseeff-owned-local-acceptance-provision-failure" ||
-    failure.runId !== descriptor.run.id || failure.sourceCommit !== descriptor.run.sourceCommit ||
+    failure.runId !== record.runId || failure.sourceCommit !== record.sourceCommit ||
     !Array.isArray(failure.processes)
   ) {
     throw new Error("Gate0 provision-failure writer record identity is invalid.");
@@ -445,7 +635,7 @@ async function writeZipArchive(treeRoot: string, archivePath: string) {
 async function verifyPublishedArchive(
   archivePath: string,
   exactValues: readonly string[],
-  descriptors: readonly OwnedLocalAcceptanceRuntimeDescriptorV1[],
+  records: readonly RootTakeoverRecord[],
   signal?: AbortSignal,
 ) {
   const stat = lstatSync(archivePath);
@@ -467,7 +657,7 @@ async function verifyPublishedArchive(
   if (
     snapshot.version !== 1 ||
     snapshot.kind !== "wiseeff-gate0-immutable-upload-snapshot" ||
-    JSON.stringify(snapshot.runs) !== JSON.stringify(canonicalRunIdentities(descriptors))
+    JSON.stringify(snapshot.runs) !== JSON.stringify(canonicalRunIdentities(records))
   ) {
     throw new Error("Existing Gate0 upload archive snapshot identity is invalid.");
   }
@@ -487,9 +677,9 @@ async function verifyPublishedArchive(
   }
 }
 
-function canonicalRunIdentities(descriptors: readonly OwnedLocalAcceptanceRuntimeDescriptorV1[]) {
-  return descriptors
-    .map((descriptor) => ({ runId: descriptor.run.id, sourceCommit: descriptor.run.sourceCommit }))
+function canonicalRunIdentities(records: readonly RootTakeoverRecord[]) {
+  return records
+    .map((record) => ({ runId: record.runId, sourceCommit: record.sourceCommit }))
     .sort((left, right) => left.runId.localeCompare(right.runId) || left.sourceCommit.localeCompare(right.sourceCommit));
 }
 
