@@ -28,6 +28,10 @@ import {
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
 import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  annotateFailureRoute,
+  PROJECT_CONFIGURATION_BASELINE_FAILURE_ROUTE,
+} from "../shared/failureRouteMetadata";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -1962,6 +1966,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     page,
     request
   }, testInfo) => {
+    annotateFailureRoute(testInfo, PROJECT_CONFIGURATION_BASELINE_FAILURE_ROUTE);
     // @acceptance PROJ-CONFIG-BASELINE-001
     // @operation PROJ-CONFIG-BASELINE-001
     const suffix = randomUUID();

@@ -1,5 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
+import { resolveFailureRouteMetadata } from "../e2e/shared/failureRouteMetadata";
 
 export type AcceptanceFailurePhase = "visual" | "browser";
 
@@ -118,16 +121,23 @@ function collectReportFailures(phase: AcceptanceFailurePhase, report: unknown) {
                 : typeof resultValue.error === "string"
                   ? resultValue.error
                   : `Playwright result status: ${String(resultValue.status)}`;
+            const snippet = typeof error.snippet === "string" ? error.snippet : "";
+            const routeMetadata = resolveFailureRouteMetadata({
+              file,
+              title,
+              annotations: [
+                ...readAnnotations(specValue.annotations),
+                ...readAnnotations(testValue.annotations),
+                ...readAnnotations(resultValue.annotations),
+              ],
+            });
             failures.push({
               phase,
               project,
               file,
               title,
-              route: extractRoute(message, title),
-              errorClass:
-                typeof error.name === "string" && error.name.trim()
-                  ? error.name
-                  : "PlaywrightFailure",
+              route: extractRoute({ title, message, snippet, routeMetadata }),
+              errorClass: extractErrorClass(error, message, resultValue.status),
               message,
               attachments: Array.isArray(resultValue.attachments)
                 ? resultValue.attachments.flatMap((attachment) =>
@@ -154,9 +164,75 @@ function isFailureStatus(value: unknown) {
   return ["failed", "timedOut", "interrupted"].includes(String(value));
 }
 
-function extractRoute(message: string, title: string) {
-  const route = /(?:route|at|for)\s+(\/[A-Za-z0-9_/?=&%.-]+)/u.exec(`${message}\n${title}`)?.[1];
-  return route ?? "unknown";
+const UI_ROUTE_ROOTS = new Set([
+  "audit",
+  "debugging",
+  "debugging-admin",
+  "dts-reload",
+  "feedback-admin",
+  "knowledge",
+  "knowledge-admin",
+  "log-admin",
+  "log-dashboard",
+  "logs",
+  "node-debugging",
+  "organization",
+  "parameter-admin",
+  "parameter-comparison",
+  "parameter-home",
+  "parameter-review",
+  "parameter-submissions",
+  "parameters",
+  "platform-console",
+]);
+
+function extractRoute(input: { title: string; message: string; snippet: string; routeMetadata?: string }) {
+  for (const source of [input.routeMetadata, input.title, input.snippet, input.message]) {
+    if (!source) continue;
+    const route = findApplicationRoute(source);
+    if (route) return route;
+  }
+  return "unknown";
+}
+
+function readAnnotations(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((annotation) => {
+    if (!isRecord(annotation) || typeof annotation.type !== "string") return [];
+    return [
+      {
+        type: annotation.type,
+        description: typeof annotation.description === "string" ? annotation.description : undefined,
+      },
+    ];
+  });
+}
+
+function findApplicationRoute(value: string) {
+  value = stripVTControlCharacters(value);
+  if (/(?:^|\s)\/(?:\s|$)/u.test(value)) return "/";
+  for (const match of value.matchAll(/\/[A-Za-z0-9_:%.-]+(?:\/[A-Za-z0-9_:%.-]+)*/gu)) {
+    const candidate = match[0];
+    const firstSegment = candidate.split("/")[1];
+    if (candidate === "/api/v1" || candidate.startsWith("/api/v1/")) return candidate;
+    if (UI_ROUTE_ROOTS.has(firstSegment)) return candidate;
+  }
+  return undefined;
+}
+
+function extractErrorClass(error: Record<string, unknown>, message: string, status: unknown) {
+  const explicitName = typeof error.name === "string" ? error.name.trim() : "";
+  if (explicitName && explicitName !== "Error") return explicitName;
+  const plainMessage = stripVTControlCharacters(message);
+  if (/toHaveScreenshot|\bsnapshot\b/iu.test(plainMessage)) return "ScreenshotComparisonError";
+  if (
+    /\bexpect\s*\(/u.test(plainMessage) ||
+    (/\bExpected:/u.test(plainMessage) && /\bReceived:/u.test(plainMessage))
+  ) {
+    return "AssertionError";
+  }
+  if (status === "timedOut") return "TimeoutError";
+  return "PlaywrightFailure";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

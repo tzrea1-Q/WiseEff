@@ -24,6 +24,10 @@ import {
   restoreProcessEnvFromDisposableRuntime,
 } from "./helpers/semanticBindingFixture";
 import { ensureAuroraSemanticTopology, ensureProjectSemanticTopology } from "./helpers/topologyFixture";
+import {
+  annotateFailureRoute,
+  PARAMETER_TOPOLOGY_FAILURE_ROUTE,
+} from "../shared/failureRouteMetadata";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -568,6 +572,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     page,
     request
   }, testInfo) => {
+    annotateFailureRoute(testInfo, PARAMETER_TOPOLOGY_FAILURE_ROUTE);
     // @acceptance PARAM-SPEC-GOVERN-001
     // @acceptance PARAM-TOPOLOGY-BROWSE-001
     // @acceptance PARAM-TOPOLOGY-EDIT-001

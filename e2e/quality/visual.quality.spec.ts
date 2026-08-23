@@ -18,6 +18,11 @@ import {
   visualReviewFixtureAllowed,
   waitForFontsAndNextPaint
 } from "./helpers";
+import {
+  annotateFailureRoute,
+  VISUAL_INTERACTION_FAILURE_ROUTE,
+  VISUAL_XIAOZE_FAILURE_ROUTE
+} from "../shared/failureRouteMetadata";
 
 const allowVisualReviewFixture = visualReviewFixtureAllowed();
 
@@ -96,7 +101,8 @@ test.describe("M5.11 visual quality gate", () => {
     });
   }
 
-  test("keeps stable visual baseline for the Xiaoze popup", async ({ page }) => {
+  test("keeps stable visual baseline for the Xiaoze popup", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_XIAOZE_FAILURE_ROUTE);
     const popup = await openXiaozePopup(page);
     await settleAppToasts(page);
 
@@ -134,7 +140,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     return firstRow;
   }
 
-  test("captures the primary button hover state", async ({ page }) => {
+  test("captures the primary button hover state", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
     const addUser = page.getByRole("button", { name: "添加用户" });
@@ -145,7 +152,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     });
   });
 
-  test("captures the primary button keyboard focus-visible state", async ({ page }) => {
+  test("captures the primary button keyboard focus-visible state", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
     const addUser = page.getByRole("button", { name: "添加用户" });
@@ -156,7 +164,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     });
   });
 
-  test("captures the ModalDialog open state with backdrop", async ({ page }) => {
+  test("captures the ModalDialog open state with backdrop", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
     await page.getByRole("button", { name: "添加用户" }).click();
@@ -173,7 +182,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     });
   });
 
-  test("captures the data-table row hover state", async ({ page }) => {
+  test("captures the data-table row hover state", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
     const firstRow = await expectProductionFirstUser(page);
@@ -187,7 +197,8 @@ test.describe("M5.11 interaction-state visual gate", () => {
     });
   });
 
-  test("captures the data-table sort header keyboard focus state", async ({ page }) => {
+  test("captures the data-table sort header keyboard focus state", async ({ page }, testInfo) => {
+    annotateFailureRoute(testInfo, VISUAL_INTERACTION_FAILURE_ROUTE);
     await openUserPermissions(page);
 
     const table = page.getByRole("table", { name: "平台用户" });

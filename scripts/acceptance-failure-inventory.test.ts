@@ -54,6 +54,205 @@ describe("acceptance Gate 0 failure inventory", () => {
     expect(inventory.failureCount).toBe(1);
   });
 
+  it("uses the visual spec route instead of a Playwright screenshot filesystem path", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "full-owned-visual-screenshot",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      reports: [
+        {
+          phase: "visual",
+          reportPath: "test-results/quality/results.json",
+          report: {
+            suites: [
+              {
+                file: "e2e/quality/visual.quality.spec.ts",
+                specs: [
+                  {
+                    title: "keeps stable visual baseline for /organization",
+                    tests: [
+                      {
+                        projectName: "visual",
+                        results: [
+                          {
+                            status: "failed",
+                            error: {
+                              message:
+                                "Error: A snapshot doesn't exist at /Users/example/Develop/WiseEff/e2e/quality/visual.quality.spec.ts-snapshots/darwin/organization.png, writing actual.",
+                              snippet:
+                                'await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`);',
+                            },
+                            attachments: [
+                              {
+                                name: "organization-actual.png",
+                                path: "/Users/example/Develop/WiseEff/test-results/quality/organization-actual.png",
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(inventory.failures).toEqual([
+      expect.objectContaining({
+        project: "visual",
+        route: "/organization",
+        errorClass: "ScreenshotComparisonError",
+      }),
+    ]);
+  });
+
+  it("classifies a status assertion and reads its API route from Playwright source metadata", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "full-owned-status-assertion",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      reports: [
+        {
+          phase: "browser",
+          reportPath: "test-results/acceptance/results.json",
+          report: {
+            suites: [
+              {
+                file: "e2e/acceptance/permissions.acceptance.spec.ts",
+                specs: [
+                  {
+                    title: "lets Admin rename the home organization while denying non-Admin writes",
+                    tests: [
+                      {
+                        projectName: "Desktop Chrome",
+                        results: [
+                          {
+                            status: "failed",
+                            error: {
+                              message:
+                                "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m // Object.is equality\n\n\u001b[32mExpected: 201\u001b[39m\n\u001b[31mReceived: 409\u001b[39m",
+                              snippet:
+                                'const response = await expectSuccessfulApiGet(page, "/api/v1/organization");\nexpect(response.status).toBe(201);',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(inventory.failures).toEqual([
+      expect.objectContaining({
+        project: "Desktop Chrome",
+        route: "/api/v1/organization",
+        errorClass: "AssertionError",
+      }),
+    ]);
+  });
+
+  it("prefers an explicit Playwright route annotation over an API path in the failing assertion", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "full-owned-annotated-route",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      reports: [
+        {
+          phase: "browser",
+          reportPath: "test-results/acceptance/results.json",
+          report: {
+            suites: [
+              {
+                file: "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts",
+                specs: [
+                  {
+                    title: "creates, compares, releases, and restores baselines in source context",
+                    tests: [
+                      {
+                        projectName: "Desktop Chrome",
+                        annotations: [
+                          {
+                            type: "route",
+                            description: "/parameter-admin/projects/aurora/configuration",
+                          },
+                        ],
+                        results: [
+                          {
+                            status: "failed",
+                            error: {
+                              message:
+                                "Error: expect(received).toBe(expected)\n\nExpected: 201\nReceived: 409",
+                              snippet:
+                                'const response = await request.post("/api/v1/projects/aurora/config-sets");',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(inventory.failures[0]).toMatchObject({
+      route: "/parameter-admin/projects/aurora/configuration",
+      errorClass: "AssertionError",
+    });
+  });
+
+  it("resolves retained pre-annotation reports from exact spec and test metadata", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "full-owned-retained-visual",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      reports: [
+        {
+          phase: "visual",
+          reportPath: "test-results/quality/results.json",
+          report: {
+            suites: [
+              {
+                file: "e2e/quality/visual.quality.spec.ts",
+                specs: [
+                  {
+                    title: "captures the data-table row hover state",
+                    tests: [
+                      {
+                        projectName: "visual",
+                        results: [
+                          {
+                            status: "failed",
+                            error: {
+                              message: "Error: expect(locator).toHaveScreenshot(expected) failed",
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(inventory.failures[0]).toMatchObject({
+      route: "/organization/members",
+      errorClass: "ScreenshotComparisonError",
+    });
+  });
+
   it("records a missing or unreadable phase report as a forensic failure", () => {
     const inventory = buildAcceptanceFailureInventory({
       runId: "full-owned-2",
