@@ -1,7 +1,8 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
 import { signInBrowserAsRoleLabel, signInBrowserAsUser, authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
@@ -9,7 +10,8 @@ import {
   createBindingDraftViaApi,
   integerCellTarget,
   seedIsolatedNumericCellBinding,
-  startSwappedDisposablePostCutoverRuntime
+  startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
 } from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
@@ -202,7 +204,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
 });
 
 test.describe("permissions matrix post-cutover API eligibility", () => {
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
   const databaseUrl = process.env.DATABASE_URL;
 
   test.beforeAll(async () => {
@@ -218,9 +220,9 @@ test.describe("permissions matrix post-cutover API eligibility", () => {
     restoreDisposable = started.restore;
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({

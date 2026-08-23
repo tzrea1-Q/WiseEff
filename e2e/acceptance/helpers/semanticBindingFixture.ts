@@ -7,8 +7,14 @@ import { acceptanceCast } from "./cast";
 import { withPgClient } from "./database";
 import {
   startDisposablePostCutoverRuntime,
+  type DisposableRuntimeOutcome,
   type DisposablePostCutoverRuntime
 } from "./disposablePostCutoverRuntime";
+import { OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV } from "./nestedRuntimeManifest";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV,
+} from "./ownedRuntimeDescriptor";
 import { apiRoute } from "./runtime";
 
 const organizationId = "org-chargelab";
@@ -86,6 +92,9 @@ type DisposableEnvSnapshot = {
   wiseEffApiUrl: string | undefined;
   authIssuer: string | undefined;
   authSecret: string | undefined;
+  ownedDescriptor: string | undefined;
+  parentOwnedDescriptor: string | undefined;
+  nestedRuntimeId: string | undefined;
 };
 
 export function captureProcessEnvForDisposableRuntime(): DisposableEnvSnapshot {
@@ -94,7 +103,10 @@ export function captureProcessEnvForDisposableRuntime(): DisposableEnvSnapshot {
     apiUrl: process.env.VITE_WISEEFF_API_BASE_URL,
     wiseEffApiUrl: process.env.WISEEFF_API_BASE_URL,
     authIssuer: process.env.AUTH_TOKEN_ISSUER,
-    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET
+    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET,
+    ownedDescriptor: process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV],
+    parentOwnedDescriptor: process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV],
+    nestedRuntimeId: process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]
   };
 }
 
@@ -104,6 +116,13 @@ export function applyDisposableRuntimeEnv(runtime: DisposablePostCutoverRuntime)
   process.env.WISEEFF_API_BASE_URL = runtime.apiUrl;
   process.env.AUTH_TOKEN_ISSUER = runtime.authIssuer;
   process.env.AUTH_TOKEN_HMAC_SECRET = runtime.authSecret;
+  const parentDescriptor = process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim()
+    || process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]?.trim();
+  if (parentDescriptor) process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV] = parentDescriptor;
+  else delete process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV];
+  delete process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV];
+  if (runtime.nestedRuntimeId) process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV] = runtime.nestedRuntimeId;
+  else delete process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV];
 }
 
 export function restoreProcessEnvFromDisposableRuntime(snapshot: DisposableEnvSnapshot): void {
@@ -116,7 +135,14 @@ export function restoreProcessEnvFromDisposableRuntime(snapshot: DisposableEnvSn
   restore("WISEEFF_API_BASE_URL", snapshot.wiseEffApiUrl);
   restore("AUTH_TOKEN_ISSUER", snapshot.authIssuer);
   restore("AUTH_TOKEN_HMAC_SECRET", snapshot.authSecret);
+  restore(OWNED_ACCEPTANCE_DESCRIPTOR_ENV, snapshot.ownedDescriptor);
+  restore(OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV, snapshot.parentOwnedDescriptor);
+  restore(OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV, snapshot.nestedRuntimeId);
 }
+
+export type RestoreDisposablePostCutoverRuntime = (
+  outcome?: DisposableRuntimeOutcome,
+) => Promise<void>;
 
 export async function startSwappedDisposablePostCutoverRuntime(
   baseDatabaseUrl: string,
@@ -124,7 +150,7 @@ export async function startSwappedDisposablePostCutoverRuntime(
 ): Promise<{
   runtime: DisposablePostCutoverRuntime;
   snapshot: DisposableEnvSnapshot;
-  restore(): Promise<void>;
+  restore: RestoreDisposablePostCutoverRuntime;
 }> {
   const snapshot = captureProcessEnvForDisposableRuntime();
   const runtime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, options);
@@ -132,9 +158,12 @@ export async function startSwappedDisposablePostCutoverRuntime(
   return {
     runtime,
     snapshot,
-    async restore() {
-      await runtime.dispose();
-      restoreProcessEnvFromDisposableRuntime(snapshot);
+    async restore(outcome = "success") {
+      try {
+        await runtime.dispose(outcome);
+      } finally {
+        restoreProcessEnvFromDisposableRuntime(snapshot);
+      }
     }
   };
 }

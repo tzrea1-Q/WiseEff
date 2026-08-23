@@ -1,10 +1,13 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type APIRequestContext } from "playwright/test";
 
 import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -16,6 +19,7 @@ import {
   integerCellTarget,
   seedIsolatedNumericCellBinding,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
 
@@ -164,7 +168,7 @@ async function ensureOpenChangeRequestForSuggest(request: APIRequestContext, bin
 
 test.describe("Xiaoze P2 planning", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
   let seededBinding: IsolatedBinding;
 
   test.beforeAll(async ({ request }) => {
@@ -187,9 +191,9 @@ test.describe("Xiaoze P2 planning", () => {
     });
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test.beforeEach(async () => {

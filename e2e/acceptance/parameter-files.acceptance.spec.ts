@@ -1,10 +1,13 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, writeOperationJsonArtifact } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import {
@@ -15,6 +18,7 @@ import {
   integerCellTarget,
   seedIsolatedNumericCellBinding,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
@@ -104,7 +108,7 @@ async function cleanupParameterFileAcceptanceArtifacts(input: {
 
 test.describe("project parameter files browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -122,9 +126,9 @@ test.describe("project parameter files browser acceptance", () => {
     expect(disposableRuntime.markerPurpose).toBe("param-files");
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("uploads, lists, and syncs project parameter files", async ({ page, request }, testInfo) => {

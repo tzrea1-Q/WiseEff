@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page } from "playwright/test";
 
@@ -10,6 +10,7 @@ import {
 } from "./helpers/acceptanceTaskLookup";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import {
+  disposableRuntimeOutcomeFromTestInfo,
   startDisposablePostCutoverRuntime,
   type DisposablePostCutoverRuntime,
 } from "./helpers/disposablePostCutoverRuntime";
@@ -18,7 +19,16 @@ import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
+import {
+  applyDisposableRuntimeEnv,
+  captureProcessEnvForDisposableRuntime,
+  restoreProcessEnvFromDisposableRuntime,
+} from "./helpers/semanticBindingFixture";
 import { ensureAuroraSemanticTopology, ensureProjectSemanticTopology } from "./helpers/topologyFixture";
+import {
+  annotateFailureRoute,
+  PARAMETER_TOPOLOGY_FAILURE_ROUTE,
+} from "../shared/failureRouteMetadata";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -541,13 +551,7 @@ async function resolveReviewsForCurrentRevision(
 
 test.describe("Parameter topology / schema browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  const originalEnvironment = {
-    databaseUrl: process.env.DATABASE_URL,
-    apiUrl: process.env.VITE_WISEEFF_API_BASE_URL,
-    wiseEffApiUrl: process.env.WISEEFF_API_BASE_URL,
-    authIssuer: process.env.AUTH_TOKEN_ISSUER,
-    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET,
-  };
+  const originalEnvironment = captureProcessEnvForDisposableRuntime();
 
   test.beforeAll(async () => {
     test.setTimeout(120_000);
@@ -556,31 +560,23 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     disposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "parameter_topology",
     });
-    process.env.DATABASE_URL = disposableRuntime.databaseUrl;
-    process.env.VITE_WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
-    process.env.AUTH_TOKEN_ISSUER = disposableRuntime.authIssuer;
-    process.env.AUTH_TOKEN_HMAC_SECRET = disposableRuntime.authSecret;
+    applyDisposableRuntimeEnv(disposableRuntime);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await disposableRuntime?.dispose();
-    const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    };
-    restore("DATABASE_URL", originalEnvironment.databaseUrl);
-    restore("VITE_WISEEFF_API_BASE_URL", originalEnvironment.apiUrl);
-    restore("WISEEFF_API_BASE_URL", originalEnvironment.wiseEffApiUrl);
-    restore("AUTH_TOKEN_ISSUER", originalEnvironment.authIssuer);
-    restore("AUTH_TOKEN_HMAC_SECRET", originalEnvironment.authSecret);
+    try {
+      await disposableRuntime?.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo));
+    } finally {
+      restoreProcessEnvFromDisposableRuntime(originalEnvironment);
+    }
   });
 
   test("governs specs, browses real topology, edits, maps identity, and gates publish", async ({
     page,
     request
   }, testInfo) => {
+    annotateFailureRoute(testInfo, PARAMETER_TOPOLOGY_FAILURE_ROUTE);
     // @acceptance PARAM-SPEC-GOVERN-001
     // @acceptance PARAM-TOPOLOGY-BROWSE-001
     // @acceptance PARAM-TOPOLOGY-EDIT-001
@@ -2187,7 +2183,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
-    await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
     await page.reload();
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });

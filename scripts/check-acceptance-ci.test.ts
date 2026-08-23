@@ -3,8 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   CI_SMOKE_TAG,
   countCiSmokeTags,
+  evaluateAcceptanceLocalNonHdcBudget,
   evaluateAcceptanceCiConfiguration,
+  evaluateImmutableAcceptanceUpload,
+  findAcceptanceEnvironmentHelperLoads,
+  findForbiddenAcceptanceDotenvImports,
   findForbiddenPlaywrightImports,
+  readAcceptanceConfigurationSources,
+  readAcceptanceEnvironmentSources,
   requiredAcceptanceCiArtifactPaths,
   requiredAcceptanceCiScripts,
   requiredAcceptanceCiWorkflowTokens
@@ -40,6 +46,18 @@ jobs:
     steps:
       - name: Acceptance CI metadata (L1)
         run: npm run acceptance:ci
+      - run: npm run acceptance:quality
+      - run: npm run acceptance:quality-run
+      - uses: actions/upload-artifact@v4
+        with:
+          path: |
+            playwright-report/acceptance
+            test-results/acceptance
+            docs/generated/acceptance-browser-evidence.md
+            docs/generated/acceptance-operation-evidence.md
+            docs/generated/acceptance-operation-evidence/index.json
+            playwright-report/quality
+            test-results/quality
 
   required:
     name: Merge bar
@@ -51,27 +69,51 @@ jobs:
   acceptance-local-non-hdc:
     if: contains(github.event.pull_request.labels.*.name, 'full-acceptance')
     name: Acceptance local non-HDC
+    timeout-minutes: 150
     services:
       postgres:
         image: pgvector/pgvector:pg16
     steps:
-      - run: npx playwright install --with-deps chromium
-      - uses: ./.github/actions/setup-dts-toolchain
-      - run: npm run acceptance:ci
-      - run: npm run acceptance:models
-      - run: npm run acceptance:quality
-      - run: npm run acceptance:quality-run
-      - run: npm run acceptance:browser -- --mode local-non-hdc
-      - uses: actions/upload-artifact@v4
+      - name: Check out repository
+        timeout-minutes: 5
+        run: echo checkout
+      - name: Set up Node.js
+        timeout-minutes: 5
+        run: echo node
+      - name: Install dependencies
+        timeout-minutes: 15
+        run: npm ci
+      - name: Install and verify DTS toolchain
+        timeout-minutes: 20
+        uses: ./.github/actions/setup-dts-toolchain
+      - name: Advisory DTS seed compile (dtc)
+        timeout-minutes: 3
+        run: npm run dtc:seed:compile
+      - name: Install Playwright Chromium
+        timeout-minutes: 15
+        run: npx playwright install --with-deps chromium
+      - name: Acceptance CI metadata
+        timeout-minutes: 3
+        run: npm run acceptance:ci
+      - name: Acceptance state models
+        timeout-minutes: 5
+        run: npm run acceptance:models
+      - name: Owned visual and browser acceptance Gate 0
+        timeout-minutes: 65
+        run: npm run acceptance:gate0
+      - name: Acceptance artifact safety
+        id: acceptance_artifact_safety
+        if: always()
+        timeout-minutes: 5
+        run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
+      - name: Upload acceptance evidence
+        if: always() && steps.acceptance_artifact_safety.outcome == 'success'
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v4
         with:
-          path: |
-            playwright-report/acceptance
-            test-results/acceptance
-            docs/generated/acceptance-browser-evidence.md
-            docs/generated/acceptance-operation-evidence.md
-            docs/generated/acceptance-operation-evidence/index.json
-            playwright-report/quality
-            test-results/quality
+          path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
+          if-no-files-found: error
+          compression-level: 0
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance
@@ -92,10 +134,90 @@ const compliantScripts = {
 };
 
 describe("M5.12 acceptance CI configuration", () => {
+  it("keeps the L2 platform budget strictly above bounded prelude, Gate0 owner, and always finalization", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const budget = evaluateAcceptanceLocalNonHdcBudget(workflow);
+
+    expect(budget).toMatchObject({
+      status: "passed",
+      jobTimeoutMinutes: 150,
+      platformOverheadMinutes: 5,
+      preGate0BudgetMinutes: 71,
+      gate0OwnerMinutes: 60,
+      artifactSafetyMinutes: 5,
+      artifactUploadMinutes: 5,
+      requiredExclusiveFloorMinutes: 146,
+      missingStepTimeouts: [],
+    });
+    expect(budget.jobTimeoutMinutes).toBeGreaterThan(budget.requiredExclusiveFloorMinutes);
+
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace("    timeout-minutes: 150", "    timeout-minutes: 146"),
+    ).status).toBe("failed");
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Owned visual and browser acceptance Gate 0",
+        "      - name: Unbounded added prerequisite\n        run: npm run surprise\n\n      - name: Owned visual and browser acceptance Gate 0",
+      ),
+    )).toMatchObject({ status: "failed", missingStepTimeouts: ["Unbounded added prerequisite"] });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - name: Unbounded added finalizer\n        if: always()\n        run: npm run surprise:finalize\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({ status: "failed", missingStepTimeouts: ["Unbounded added finalizer"] });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - name: Bounded added finalizer\n        if: always()\n        timeout-minutes: 4\n        run: npm run surprise:finalize\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      requiredExclusiveFloorMinutes: 150,
+      missingStepTimeouts: [],
+    });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - if: always()\n        name: If-first unbounded finalizer\n        run: npm run surprise:if-first\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      missingStepTimeouts: ["If-first unbounded finalizer"],
+    });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - if: always()\n        name: If-first bounded finalizer\n        timeout-minutes: 4\n        run: npm run surprise:if-first\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      requiredExclusiveFloorMinutes: 150,
+      missingStepTimeouts: [],
+    });
+  });
+
+  it("routes every formerly dotenv-backed acceptance spec through the owned-runtime-aware helper", () => {
+    const sources = readAcceptanceEnvironmentSources();
+
+    expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
+    expect(findAcceptanceEnvironmentHelperLoads(sources)).toHaveLength(27);
+  });
+
+  it("routes both Playwright acceptance configs through the same owned-runtime-aware helper", () => {
+    const sources = readAcceptanceConfigurationSources();
+
+    expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
+    expect(findAcceptanceEnvironmentHelperLoads(sources)).toHaveLength(2);
+  });
+
   it("requires layered job ids, smoke, and a single quality-run token", () => {
     expect(requiredAcceptanceCiScripts).toEqual([
       "acceptance:ci",
       "acceptance:browser",
+      "acceptance:artifacts:check",
+      "acceptance:artifacts:finalize",
+      "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
       "acceptance:quality-run",
@@ -116,7 +238,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "./.github/actions/setup-dts-toolchain",
         "npm run acceptance:quality-run",
         "npm run acceptance:smoke",
-        "npm run acceptance:browser -- --mode local-non-hdc"
+        "npm run acceptance:gate0"
       ])
     );
     expect(requiredAcceptanceCiWorkflowTokens).not.toContain("npm run acceptance:a11y");
@@ -127,7 +249,8 @@ describe("M5.12 acceptance CI configuration", () => {
       "docs/generated/acceptance-operation-evidence.md",
       "docs/generated/acceptance-operation-evidence/index.json",
       "playwright-report/quality",
-      "test-results/quality"
+      "test-results/quality",
+      "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip"
     ]);
   });
 
@@ -169,6 +292,9 @@ jobs:
     expect(result.status).toBe("failed");
     expect(result.missingScripts).toEqual([
       "acceptance:ci",
+      "acceptance:artifacts:check",
+      "acceptance:artifacts:finalize",
+      "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
       "acceptance:quality-run",
@@ -180,6 +306,25 @@ jobs:
     expect(result.missingWorkflowTokens).toEqual(expect.arrayContaining([...requiredAcceptanceCiWorkflowTokens]));
     expect(result.missingArtifactPaths).toEqual(requiredAcceptanceCiArtifactPaths);
     expect(result.smokeTagGate).toBe(false);
+  });
+
+  it("rejects uploading the live tree or bypassing immutable finalizer failure", () => {
+    expect(evaluateImmutableAcceptanceUpload(compliantWorkflow)).toEqual({ status: "passed", errors: [] });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace(
+        "path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip",
+        "path: test-results/acceptance-runtime-runs",
+      ),
+    )).toMatchObject({ status: "failed" });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace(
+        "always() && steps.acceptance_artifact_safety.outcome == 'success'",
+        "always()",
+      ),
+    )).toMatchObject({ status: "failed" });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace("if-no-files-found: error", "if-no-files-found: ignore"),
+    )).toMatchObject({ status: "failed" });
   });
 
   it("blocks accidental default full-pilot gates on pull requests", () => {

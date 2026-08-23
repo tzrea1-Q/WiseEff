@@ -1,10 +1,13 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
 import { apiRoute } from "./helpers/runtime";
@@ -12,7 +15,8 @@ import {
   assertPostCutoverIdentity,
   disposablePageUrl,
   seedIsolatedNumericCellBinding,
-  startSwappedDisposablePostCutoverRuntime
+  startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
 } from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
@@ -30,7 +34,7 @@ async function dismissXiaozeHint(page: Page) {
 
 test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -46,9 +50,9 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     restoreDisposable = started.restore;
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("runs the five-step import wizard through preview", async ({ page, request }, testInfo) => {

@@ -1,10 +1,53 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const pgState = vi.hoisted(() => ({
+  mode: "idle" as "idle" | "foreign-existing" | "migration-failure",
+  queries: [] as string[],
+}));
+
+vi.mock("pg", () => ({
+  default: {
+    Client: class {
+      async connect() {}
+      async end() {}
+      async query(text: string) {
+        pgState.queries.push(text);
+        if (/^create database /iu.test(text)) {
+          if (pgState.mode === "foreign-existing") throw new Error("database already exists");
+          return { rows: [], rowCount: 0 };
+        }
+        if (/^drop database /iu.test(text)) return { rows: [], rowCount: 0 };
+        if (pgState.mode === "migration-failure") throw new Error("synthetic migration failure");
+        return { rows: [], rowCount: 0 };
+      }
+    },
+  },
+}));
 
 import {
   allocateLoopbackPort,
+  afterNestedProcessesStop,
   assertDisposableDatabaseIdentity,
   buildDisposableDatabaseName,
+  planNestedObjectStoreRoot,
+  recordNestedObjectStoreProvisioningIntent,
+  startDisposablePostCutoverRuntime,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
+import {
+  OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
+  initializeNestedRuntimeManifest,
+  readNestedRuntimeManifest,
+} from "../e2e/acceptance/helpers/nestedRuntimeManifest";
+import { finalizeRunningNestedRuntimesAfterFailure } from "./owned-local-acceptance-runtime";
+
+afterEach(() => {
+  pgState.mode = "idle";
+  pgState.queries.length = 0;
+  vi.unstubAllEnvs();
+});
 
 describe("disposable post-cutover acceptance database safety", () => {
   it("allocates a loopback runtime port instead of relying on a shared fixed port", async () => {
@@ -82,5 +125,130 @@ describe("disposable post-cutover acceptance database safety", () => {
         "xiaoze-action",
       ),
     ).not.toThrow();
+  });
+
+  it("never deletes nested database or object evidence after process cleanup fails", async () => {
+    let resourceCleanupCalls = 0;
+
+    await expect(afterNestedProcessesStop(
+      [new Error("operation not permitted")],
+      async () => { resourceCleanupCalls += 1; },
+    )).rejects.toThrow(/retained for parent takeover/i);
+
+    expect(resourceCleanupCalls).toBe(0);
+  });
+
+  it("never drops a foreign same-name database when CREATE reports that it already exists", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-foreign-database-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-foreign-database",
+      sourceCommit: "0".repeat(40),
+    });
+    vi.stubEnv(OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV, manifestPath);
+    pgState.mode = "foreign-existing";
+
+    await expect(startDisposablePostCutoverRuntime(
+      "postgres://owner:password@127.0.0.1:5432/postgres",
+      { label: "foreign", apiPort: 19_100, frontendPort: 5_190 },
+    )).rejects.toThrow(/already exists/i);
+
+    expect(pgState.queries.some((query) => /^create database /iu.test(query))).toBe(true);
+    expect(pgState.queries.some((query) => /^drop database /iu.test(query))).toBe(false);
+  });
+
+  it("retains a Gate0 nested database, object root, and manifest record after startup fails", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-startup-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-startup-failure",
+      sourceCommit: "0".repeat(40),
+    });
+    vi.stubEnv(OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV, manifestPath);
+    pgState.mode = "migration-failure";
+
+    await expect(startDisposablePostCutoverRuntime(
+      "postgres://owner:password@127.0.0.1:5432/postgres",
+      { label: "retained", apiPort: 19_101, frontendPort: 5_191 },
+    )).rejects.toThrow(/migration failure/i);
+
+    const child = readNestedRuntimeManifest(manifestPath).children[0]!;
+    expect(child).toMatchObject({
+      state: "failed-retained",
+      cleanup: {
+        apiProcess: { status: "not-started" },
+        frontendProcess: { status: "not-started" },
+        database: { status: "retained" },
+        objectStore: { status: "retained" },
+      },
+    });
+    expect(existsSync(child.objectStoreRoot)).toBe(true);
+    expect(pgState.queries.some((query) => /^drop database /iu.test(query))).toBe(false);
+  });
+
+  it("records nested object ownership intent before the first object-root creation attempt", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-intent-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-object-intent",
+      sourceCommit: "0".repeat(40),
+    });
+    const databaseName = "wiseeff_acceptance_disposable_intent_crash";
+    const ownership = planNestedObjectStoreRoot(databaseName, manifestPath);
+    let creationAttempts = 0;
+
+    expect(() => recordNestedObjectStoreProvisioningIntent({
+      manifestPath,
+      ownership,
+      child: {
+        id: databaseName,
+        databaseName,
+        markerPurpose: "parameter-topology",
+        objectStoreRoot: ownership.root,
+        apiUrl: "http://127.0.0.1:19102",
+        frontendUrl: "http://127.0.0.1:5192",
+      },
+      materialize(planned) {
+        expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+          id: databaseName,
+          state: "provisioning",
+          objectStoreRoot: planned.root,
+        });
+        creationAttempts += 1;
+        mkdirSync(planned.root, { recursive: true });
+        throw new Error("simulated owner crash during object materialization");
+      },
+    })).toThrow(/simulated owner crash/i);
+
+    expect(creationAttempts).toBe(1);
+    expect(existsSync(ownership.root)).toBe(true);
+    await finalizeRunningNestedRuntimesAfterFailure(manifestPath, "owner crashed after provisioning intent", {
+      stopProcessGroup: async () => { throw new Error("no process should be signaled"); },
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      id: databaseName,
+      state: "failed-retained",
+      objectStoreRoot: ownership.root,
+      cleanup: {
+        apiProcess: { status: "not-started" },
+        frontendProcess: { status: "not-started" },
+        database: { status: "retained" },
+        objectStore: { status: "retained" },
+      },
+    });
+  });
+
+  it("does not claim a foreign object root that already exists at planning time", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-foreign-object-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_foreign_object";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-foreign-object",
+      sourceCommit: "0".repeat(40),
+    });
+    mkdirSync(path.join(runRoot, "nested-object-store", databaseName), { recursive: true });
+
+    expect(() => planNestedObjectStoreRoot(databaseName, manifestPath)).toThrow(/absent before provisioning intent/i);
+    expect(readNestedRuntimeManifest(manifestPath).children).toEqual([]);
   });
 });

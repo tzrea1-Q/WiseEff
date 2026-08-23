@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { createHmac, randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
 

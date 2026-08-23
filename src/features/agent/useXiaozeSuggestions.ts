@@ -11,9 +11,9 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
 
   const pageKeySupported = pageContext?.pageKey ? supportsXiaozeProactiveInsightPage(pageContext.pageKey) : false;
 
-  const fetchSuggestions = useCallback(async () => {
+  const fetchSuggestions = useCallback(async (isCurrent: () => boolean) => {
     if (!options.enabled || !pageContext?.projectId || !pageKeySupported) {
-      setInsights([]);
+      if (isCurrent()) setInsights([]);
       return;
     }
 
@@ -24,6 +24,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         projectId: pageContext.projectId,
         projectName: pageContext.projectName
       });
+      if (!isCurrent()) return;
       setInsights(
         suggestions.map((item) => ({
           id: item.id,
@@ -43,6 +44,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         }))
       );
     } catch (error) {
+      if (!isCurrent()) return;
       setInsights([]);
       console.error("Failed to load Xiaoze suggestions.", error);
     }
@@ -56,7 +58,11 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
   ]);
 
   useEffect(() => {
-    void fetchSuggestions();
+    let current = true;
+    void fetchSuggestions(() => current);
+    return () => {
+      current = false;
+    };
   }, [fetchSuggestions]);
 
   const visibleInsights = useMemo(

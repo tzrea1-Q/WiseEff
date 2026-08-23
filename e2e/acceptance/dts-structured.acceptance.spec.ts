@@ -1,11 +1,14 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -22,6 +25,7 @@ import {
   seedIsolatedBinding,
   seedIsolatedHexChipBindings,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   submitBindingDraftViaApi
 } from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
@@ -509,7 +513,7 @@ test.describe("DTS structured product browser acceptance", () => {
 
 test.describe("DTS structured post-cutover typed edits", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -525,9 +529,9 @@ test.describe("DTS structured post-cutover typed edits", () => {
     restoreDisposable = started.restore;
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("structured edit submit preserves rawText through review merge and CST writeback", async ({
@@ -654,7 +658,11 @@ test.describe("DTS structured post-cutover typed edits", () => {
         );
         await dismissXiaozeHint(page);
         const structurePanel = page.getByRole("region", { name: "项目源结构" });
-        if (await structurePanel.isVisible({ timeout: 10_000 }).catch(() => false)) {
+        const structurePanelVisible = await structurePanel
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (structurePanelVisible) {
           const browser = page.getByRole("region", { name: "结构浏览" });
           await expect(browser).toBeVisible({ timeout: 15_000 });
           await expect(browser).toContainText("变更集");
@@ -664,6 +672,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
         // Projects UI availability is environment-dependent; API/db fidelity above is the required gate.
       }
     } finally {
+      if (!page.isClosed()) await page.goto("about:blank");
       await cleanupDtsUploadedArtifacts(fileName ? [fileName] : [], { bindingIds });
     }
   });

@@ -401,7 +401,10 @@ jobs:
     needs: detect
     if: needs.detect.outputs.run_l2 == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    # Enforced by acceptance:ci: 5m platform overhead + 71m bounded prelude
+    # + the 60m Gate0 owner + 5m safety scan + 5m upload = 146m. The job
+    # budget must remain strictly greater than that complete platform path.
+    timeout-minutes: 150
 
     services:
       postgres:
@@ -420,91 +423,63 @@ jobs:
 
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
-      WISEEFF_API_BASE_URL: http://127.0.0.1:8787
-      VITE_WISEEFF_RUNTIME_MODE: api
-      VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
-      WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
-      OBJECT_STORE_MODE: local
-      OBJECT_STORE_ROOT: .wiseeff-object-store
-      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
-      XIAOZE_DETERMINISTIC: "true"
-      AUTH_MODE: production
-      AUTH_PROVIDER: hmac
-      M5_CONTRACT_CHECK_PASSED: "true"
-      M5_SMOKE_ALLOW_NO_API: "false"
-      # Shared acceptance DB is post-cutover (semantic identity). M1 seed runs
-      # local finalize when WISEEFF_SEED_LEGACY_FLAT_IDENTITY is unset.
 
     steps:
       - name: Check out repository
+        timeout-minutes: 5
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        timeout-minutes: 5
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
+        timeout-minutes: 15
         run: npm ci
 
       - name: Install and verify DTS toolchain
+        timeout-minutes: 20
         uses: ./.github/actions/setup-dts-toolchain
 
       - name: Advisory DTS seed compile (dtc)
+        timeout-minutes: 3
         continue-on-error: true
         run: npm run dtc:seed:compile
 
       - name: Install Playwright Chromium
+        timeout-minutes: 15
         run: npx playwright install --with-deps chromium
 
-      - name: Prepare local acceptance env
-        shell: bash
-        run: |
-          cp .env.example .env
-          {
-            echo "DATABASE_URL=${DATABASE_URL}"
-            echo "AUTH_MODE=production"
-            echo "AUTH_PROVIDER=hmac"
-            echo "XIAOZE_DETERMINISTIC=true"
-            echo "XIAOZE_LLM_API_BASE_URL=http://127.0.0.1:8787"
-            echo "XIAOZE_LLM_MODEL=wiseeff-rules-m4"
-            echo "XIAOZE_LLM_API_KEY=local-ci-deterministic"
-            echo "OBJECT_STORE_MODE=local"
-            echo "OBJECT_STORE_ROOT=.wiseeff-object-store"
-            echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
-            echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
-            echo "VITE_WISEEFF_RUNTIME_MODE=api"
-            echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
-            echo "M5_CONTRACT_CHECK_PASSED=true"
-          } >> .env
-          sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
-
-      - name: Migrate and seed database
-        run: |
-          npm run db:migrate
-          npm run db:seed:all
-
       - name: Acceptance CI metadata
+        timeout-minutes: 3
         run: npm run acceptance:ci
 
       - name: Acceptance state models
+        timeout-minutes: 5
         run: npm run acceptance:models
 
-      - name: Browser acceptance local non-HDC
-        run: npm run acceptance:browser -- --mode local-non-hdc
+      - name: Owned visual and browser acceptance Gate 0
+        timeout-minutes: 65
+        run: npm run acceptance:gate0
+
+      - name: Acceptance artifact safety
+        id: acceptance_artifact_safety
+        if: always()
+        timeout-minutes: 5
+        run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
 
       - name: Upload acceptance evidence
-        if: always()
+        if: always() && steps.acceptance_artifact_safety.outcome == 'success'
+        timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
           name: wiseeff-acceptance-local-non-hdc
-          path: |
-            playwright-report/acceptance
-            test-results/acceptance
-            docs/generated/acceptance-browser-evidence.md
-            docs/generated/acceptance-operation-evidence.md
-            docs/generated/acceptance-operation-evidence/index.json
+          path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
+          if-no-files-found: error
+          compression-level: 0
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance

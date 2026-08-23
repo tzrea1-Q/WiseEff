@@ -13,10 +13,50 @@ import {
   loadEnvContent,
   npmCommand,
   parseBrowserAcceptanceArgs,
+  resolveBrowserSourceMetadata,
   resolvePlaywrightHdcStatus
 } from "./run-browser-acceptance";
 
 describe("browser acceptance runner", () => {
+  it("uses the owned descriptor pre-run source identity after visual artifacts dirty the worktree", () => {
+    expect(
+      resolveBrowserSourceMetadata(
+        { branch: "codex/td-122", commit: "post-visual", dirty: true },
+        {
+          sourceCommit: "0123456789012345678901234567890123456789",
+          sourceDirtyBefore: false,
+        },
+      ),
+    ).toEqual({
+      branch: "codex/td-122",
+      commit: "0123456789012345678901234567890123456789",
+      dirty: false,
+    });
+  });
+
+  it("passes an owned descriptor through validation-only preflight", () => {
+    const options = parseBrowserAcceptanceArgs(["--runtime-descriptor", "/tmp/owned/runtime.json"], {});
+    expect(options).toMatchObject({
+      runtimeDescriptor: "/tmp/owned/runtime.json",
+      startRuntime: false
+    });
+    expect(buildPreflightCommand(options)?.args).toEqual([
+      "run",
+      "acceptance:preflight",
+      "--",
+      "--env-file",
+      ".env",
+      "--frontend-url",
+      "http://127.0.0.1:5173",
+      "--evidence-out",
+      "test-results/acceptance-preflight/evidence.md",
+      "--no-start-runtime",
+      "--skip-gates",
+      "--runtime-descriptor",
+      "/tmp/owned/runtime.json"
+    ]);
+  });
+
   it("uses local non-HDC defaults", () => {
     expect(parseBrowserAcceptanceArgs([], {})).toEqual({
       mode: "local-non-hdc",
@@ -111,7 +151,7 @@ describe("browser acceptance runner", () => {
         "--frontend-url",
         "http://127.0.0.1:5173",
         "--evidence-out",
-        "test-results/acceptance/preflight-evidence.md"
+      "test-results/acceptance-preflight/evidence.md"
       ]
     });
   });
@@ -126,7 +166,7 @@ describe("browser acceptance runner", () => {
       "--frontend-url",
       "http://127.0.0.1:5173",
       "--evidence-out",
-      "test-results/acceptance/preflight-evidence.md",
+      "test-results/acceptance-preflight/evidence.md",
       "--no-start-runtime"
     ]);
 
@@ -141,7 +181,7 @@ describe("browser acceptance runner", () => {
       "--frontend-url",
       "http://127.0.0.1:5173",
       "--evidence-out",
-      "test-results/acceptance/preflight-evidence.md",
+      "test-results/acceptance-preflight/evidence.md",
       "--require-pilot-ready",
       "--no-start-runtime"
     ]);
@@ -564,6 +604,55 @@ describe("browser acceptance runner", () => {
 });
 
 describe("playwright acceptance config", () => {
+  it("disables Playwright retries for a validated owned Gate0 runtime while legacy CI keeps one retry", async () => {
+    const previousCi = process.env.CI;
+    const previousDescriptor = process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
+    process.env.CI = "true";
+    process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR = "/tmp/owned/runtime.json";
+    try {
+      vi.resetModules();
+      vi.doMock("../e2e/acceptance/helpers/ownedRuntimeDescriptor", () => ({
+        OWNED_ACCEPTANCE_DESCRIPTOR_ENV: "WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR",
+        loadOwnedRuntimeDescriptorFromEnv: () => ({
+          endpoints: {
+            frontend: { url: "http://127.0.0.1:5180" },
+            api: { url: "http://127.0.0.1:18800" },
+          },
+        }),
+      }));
+      const owned = (await import("../playwright.acceptance.config")).default;
+      expect(owned.retries).toBe(0);
+
+      vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
+      delete process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
+      vi.resetModules();
+      const legacy = (await import("../playwright.acceptance.config")).default;
+      expect(legacy.retries).toBe(1);
+    } finally {
+      vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
+      if (previousCi === undefined) delete process.env.CI;
+      else process.env.CI = previousCi;
+      if (previousDescriptor === undefined) delete process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
+      else process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR = previousDescriptor;
+    }
+  });
+
+  it("honors the owned run-scoped output and report directories", async () => {
+    process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR = "/tmp/owned/artifacts/browser/test-results";
+    process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR = "/tmp/owned/artifacts/browser/playwright-report";
+    try {
+      vi.resetModules();
+      const config = (await import("../playwright.acceptance.config")).default;
+      expect(config.outputDir).toBe("/tmp/owned/artifacts/browser/test-results");
+      expect(config.reporter).toEqual(expect.arrayContaining([
+        ["html", expect.objectContaining({ outputFolder: "/tmp/owned/artifacts/browser/playwright-report" })],
+      ]));
+    } finally {
+      delete process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR;
+      delete process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR;
+    }
+  });
+
   it("disables web servers when Playwright is told not to start runtime", async () => {
     const config = await importAcceptanceConfig("true");
 
@@ -615,6 +704,25 @@ describe("playwright acceptance config", () => {
 });
 
 describe("playwright quality config", () => {
+  it("honors owned run-scoped output, report, and snapshot directories", async () => {
+    process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR = "/tmp/owned/artifacts/visual/test-results";
+    process.env.WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR = "/tmp/owned/artifacts/visual/playwright-report";
+    process.env.WISEEFF_QUALITY_SNAPSHOT_ROOT = "/tmp/owned/artifacts/visual/snapshots";
+    try {
+      vi.resetModules();
+      const config = (await import("../playwright.quality.config")).default;
+      expect(config.outputDir).toBe("/tmp/owned/artifacts/visual/test-results");
+      expect(config.snapshotPathTemplate).toBe("/tmp/owned/artifacts/visual/snapshots/{platform}/{arg}{ext}");
+      expect(config.reporter).toEqual(expect.arrayContaining([
+        ["html", expect.objectContaining({ outputFolder: "/tmp/owned/artifacts/visual/playwright-report" })],
+      ]));
+    } finally {
+      delete process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR;
+      delete process.env.WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR;
+      delete process.env.WISEEFF_QUALITY_SNAPSHOT_ROOT;
+    }
+  });
+
   it("uses the configured target frontend URL", async () => {
     const config = await importQualityConfig("https://frontend.example.test");
 
@@ -645,7 +753,7 @@ describe("browser acceptance evidence", () => {
         status: "passed",
         outcome: "non_hdc_local",
         hdc: "skipped",
-        artifactPath: "test-results/acceptance/preflight-evidence.md"
+        artifactPath: "test-results/acceptance-preflight/evidence.md"
       },
       playwright: {
         status: "failed",

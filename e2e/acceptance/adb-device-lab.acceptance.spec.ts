@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { spawnSync } from "node:child_process";
 import { expect, test, type APIRequestContext, type Page, type Route } from "playwright/test";
 import type { Client } from "pg";

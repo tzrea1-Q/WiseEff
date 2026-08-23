@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { expect, test, type Locator, type Page } from "playwright/test";

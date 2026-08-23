@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestionsClient";
@@ -105,5 +105,23 @@ describe("useXiaozeSuggestions", () => {
     await waitFor(() => expect(report).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId("count")).toHaveTextContent("0");
     expect(report).toHaveBeenCalledWith("Failed to load Xiaoze suggestions.", error);
+  });
+
+  it("ignores a request rejected after the page context unmounts", async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof requestXiaozeSuggestions>>>();
+    vi.mocked(requestXiaozeSuggestions).mockReturnValueOnce(pending.promise);
+    const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const { unmount } = render(
+      <XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+        <SuggestionsProbe enabled />
+      </XiaozePageContext.Provider>
+    );
+    await waitFor(() => expect(requestXiaozeSuggestions).toHaveBeenCalledTimes(1));
+
+    unmount();
+    await act(async () => pending.reject(new TypeError("Failed to fetch")));
+
+    expect(report).not.toHaveBeenCalled();
   });
 });
