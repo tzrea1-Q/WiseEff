@@ -43,6 +43,10 @@ export type Gate0ArtifactSanitization = {
   replacements: number;
 };
 
+export type Gate0ArtifactScanOptions = {
+  retirePersistedExactValues?: boolean;
+};
+
 const REDACTED_BEARER = "Bearer [REDACTED]";
 const REDACTED_VALUE = "[REDACTED]";
 const REDACTED_DATABASE_URL = "[REDACTED_DATABASE_URL]";
@@ -158,6 +162,7 @@ export async function scanGate0ArtifactTree(
   root: string,
   signal?: AbortSignal,
   secretValues: readonly string[] = gate0SecretValuesFromEnv(),
+  options: Gate0ArtifactScanOptions = {},
 ): Promise<Gate0ArtifactScan> {
   const treeRoot = requireSafeTreeRoot(root);
   recoverPersistedExactValueTransactions(treeRoot);
@@ -181,10 +186,31 @@ export async function scanGate0ArtifactTree(
     recordViolations(scan, relativePath, readBuffer(filePath), exactValues);
   }
   scan.violations.sort((left, right) => left.artifactId.localeCompare(right.artifactId));
-  if (scan.violations.length === 0 && persistedValues.length > 0) {
+  if (
+    scan.violations.length === 0 &&
+    persistedValues.length > 0 &&
+    options.retirePersistedExactValues !== false
+  ) {
     for (const persistedRoot of persistedRoots) removePersistedExactValues(persistedRoot);
   }
   return scan;
+}
+
+export function loadGate0PersistedExactValuesForSnapshot(treeRoot: string) {
+  const safeTreeRoot = requireSafeTreeRoot(treeRoot);
+  recoverPersistedExactValueTransactions(safeTreeRoot);
+  return normalizeInjectedSecretValues(
+    findPersistedExactValueRoots(safeTreeRoot)
+      .flatMap((persistedRoot) => readPersistedExactValues(persistedRoot)),
+  );
+}
+
+export function retireGate0PersistedExactValuesAfterSnapshot(treeRoot: string) {
+  const safeTreeRoot = requireSafeTreeRoot(treeRoot);
+  recoverPersistedExactValueTransactions(safeTreeRoot);
+  for (const persistedRoot of findPersistedExactValueRoots(safeTreeRoot)) {
+    removePersistedExactValues(persistedRoot);
+  }
 }
 
 async function sanitizeZip(

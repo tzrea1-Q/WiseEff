@@ -494,6 +494,7 @@ describe("owned local acceptance runtime", () => {
         worktreeRoot: process.cwd(),
         sourceDirtyBefore: false,
         ownerPid: process.pid,
+        ownerProcessIdentity: currentIdentity,
         createdAt: "2026-08-23T00:00:00.000Z",
         state: "ready",
       },

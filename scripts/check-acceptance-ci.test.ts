@@ -5,6 +5,7 @@ import {
   countCiSmokeTags,
   evaluateAcceptanceLocalNonHdcBudget,
   evaluateAcceptanceCiConfiguration,
+  evaluateImmutableAcceptanceUpload,
   findAcceptanceEnvironmentHelperLoads,
   findForbiddenAcceptanceDotenvImports,
   findForbiddenPlaywrightImports,
@@ -47,6 +48,16 @@ jobs:
         run: npm run acceptance:ci
       - run: npm run acceptance:quality
       - run: npm run acceptance:quality-run
+      - uses: actions/upload-artifact@v4
+        with:
+          path: |
+            playwright-report/acceptance
+            test-results/acceptance
+            docs/generated/acceptance-browser-evidence.md
+            docs/generated/acceptance-operation-evidence.md
+            docs/generated/acceptance-operation-evidence/index.json
+            playwright-report/quality
+            test-results/quality
 
   required:
     name: Merge bar
@@ -94,21 +105,15 @@ jobs:
         id: acceptance_artifact_safety
         if: always()
         timeout-minutes: 5
-        run: npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs
+        run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
       - name: Upload acceptance evidence
         if: always() && steps.acceptance_artifact_safety.outcome == 'success'
         timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
-          path: |
-            playwright-report/acceptance
-            test-results/acceptance
-            docs/generated/acceptance-browser-evidence.md
-            docs/generated/acceptance-operation-evidence.md
-            docs/generated/acceptance-operation-evidence/index.json
-            playwright-report/quality
-            test-results/quality
-            test-results/acceptance-runtime-runs
+          path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
+          if-no-files-found: error
+          compression-level: 0
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance
@@ -211,6 +216,7 @@ describe("M5.12 acceptance CI configuration", () => {
       "acceptance:ci",
       "acceptance:browser",
       "acceptance:artifacts:check",
+      "acceptance:artifacts:finalize",
       "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
@@ -244,7 +250,7 @@ describe("M5.12 acceptance CI configuration", () => {
       "docs/generated/acceptance-operation-evidence/index.json",
       "playwright-report/quality",
       "test-results/quality",
-      "test-results/acceptance-runtime-runs"
+      "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip"
     ]);
   });
 
@@ -287,6 +293,7 @@ jobs:
     expect(result.missingScripts).toEqual([
       "acceptance:ci",
       "acceptance:artifacts:check",
+      "acceptance:artifacts:finalize",
       "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
@@ -299,6 +306,25 @@ jobs:
     expect(result.missingWorkflowTokens).toEqual(expect.arrayContaining([...requiredAcceptanceCiWorkflowTokens]));
     expect(result.missingArtifactPaths).toEqual(requiredAcceptanceCiArtifactPaths);
     expect(result.smokeTagGate).toBe(false);
+  });
+
+  it("rejects uploading the live tree or bypassing immutable finalizer failure", () => {
+    expect(evaluateImmutableAcceptanceUpload(compliantWorkflow)).toEqual({ status: "passed", errors: [] });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace(
+        "path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip",
+        "path: test-results/acceptance-runtime-runs",
+      ),
+    )).toMatchObject({ status: "failed" });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace(
+        "always() && steps.acceptance_artifact_safety.outcome == 'success'",
+        "always()",
+      ),
+    )).toMatchObject({ status: "failed" });
+    expect(evaluateImmutableAcceptanceUpload(
+      compliantWorkflow.replace("if-no-files-found: error", "if-no-files-found: ignore"),
+    )).toMatchObject({ status: "failed" });
   });
 
   it("blocks accidental default full-pilot gates on pull requests", () => {

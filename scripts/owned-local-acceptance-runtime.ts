@@ -265,6 +265,10 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   let databaseCreated = false;
   let objectRootCreated = false;
   let databaseCreationEvidence: CheckedAbsentDatabaseCreationEvidence | undefined;
+  const ownerProcessIdentity = readProcessStartIdentity(process.pid);
+  if (!ownerProcessIdentity) {
+    throw new Error("Gate0 owner process-start identity could not be captured before provisioning.");
+  }
 
   try {
     ensureExistingAncestorsAreNotSymlinks(worktreeRoot, path.dirname(runsRoot));
@@ -402,6 +406,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         worktreeRoot,
         sourceDirtyBefore: false,
         ownerPid: process.pid,
+        ownerProcessIdentity,
         createdAt: now,
         state: "ready",
       },
@@ -1381,6 +1386,7 @@ function writeOperationEvidenceRuntimeSnapshot(
       sourceCommit: descriptor.run.sourceCommit,
       worktreeRoot: descriptor.run.worktreeRoot,
       ownerPid: descriptor.run.ownerPid,
+      ownerProcessIdentity: descriptor.run.ownerProcessIdentity,
       createdAt: descriptor.run.createdAt,
     },
     database: {

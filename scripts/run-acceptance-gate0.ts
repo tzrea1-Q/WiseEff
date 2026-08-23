@@ -37,6 +37,10 @@ import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import { startGate0SecretRegistry } from "./gate0-secret-registry";
 import { waitForOwnedProcessGroupExit } from "./owned-process-group";
 import {
+  readProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "./process-start-identity";
+import {
   VISUAL_REVIEW_FIXTURE_ALLOW_ENV,
   VISUAL_REVIEW_FIXTURE_DATABASE_ENV,
 } from "./quality-visual-review-authorization";
@@ -297,7 +301,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       runtime.descriptor.database.name,
     )) {
       const startedAt = new Date().toISOString();
-      runtime.updatePhase(command.phase, { status: "running", startedAt });
+      runtime.updatePhase(command.phase, { status: "launching", startedAt });
       const phaseLog = path.join(runtime.descriptor.artifacts.runRoot, `${command.phase}.log`);
       const result = await runGate0PhaseCommand(
         command,
@@ -306,6 +310,11 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         owner.remainingMs(`${command.phase} phase`),
         5_000,
         owner.signal,
+        (pid, processIdentity) => runtime.updatePhase(command.phase, {
+          status: "running",
+          startedAt,
+          process: { pid, processIdentity },
+        }),
       );
       const passed = !result.error && result.status === 0;
       phaseResults.set(command.phase, passed);
@@ -430,6 +439,7 @@ export function runGate0PhaseCommand(
   timeoutMs: number,
   terminateGraceMs = 5_000,
   signal?: AbortSignal,
+  onStarted?: (pid: number, processIdentity: ProcessStartIdentity) => void,
 ) {
   const fd = openSync(logPath, "a");
   if (timeoutMs <= 0) {
@@ -450,6 +460,7 @@ export function runGate0PhaseCommand(
     timeoutMs,
     terminateGraceMs,
     signal,
+    onStarted,
   }).finally(() => closeSync(fd));
 }
 
@@ -462,6 +473,7 @@ function runGate0ChildCommand(input: {
   signal?: AbortSignal;
   timeoutMs?: number;
   terminateGraceMs: number;
+  onStarted?: (pid: number, processIdentity: ProcessStartIdentity) => void;
 }) {
   const child = spawn(input.command, input.args, {
     cwd: input.cwd,
@@ -470,6 +482,10 @@ function runGate0ChildCommand(input: {
     shell: process.platform === "win32",
     detached: process.platform !== "win32",
   });
+  if (!child.pid) throw new Error("Gate0 child command did not expose a positive PID.");
+  const processIdentity = readProcessStartIdentity(child.pid);
+  if (!processIdentity) throw new Error("Gate0 child command process-start identity could not be captured.");
+  input.onStarted?.(child.pid, processIdentity);
   const controller = new AbortController();
   let timedOut = false;
   const abort = () => {
@@ -492,6 +508,7 @@ function runGate0ChildCommand(input: {
   return waitForOwnedProcessGroupExit(child, {
     signal: controller.signal,
     terminateGraceMs: input.terminateGraceMs,
+    expectedProcessIdentity: processIdentity,
   }).then(
     (status) => ({ status, error: undefined, timedOut }),
     (error) => ({ status: child.exitCode, error: asGate0Error(error), timedOut }),
@@ -580,7 +597,12 @@ export async function finalizeGate0ArtifactSafety(
   secretValues?: readonly string[],
 ) {
   const sanitization = await sanitizeGate0ArtifactTree(runRoot, signal, secretValues);
-  const scan = await scanGate0ArtifactTree(runRoot, signal, secretValues);
+  const scan = await scanGate0ArtifactTree(
+    runRoot,
+    signal,
+    secretValues,
+    { retirePersistedExactValues: false },
+  );
   if (scan.violations.length > 0) {
     throw new Error(
       `Gate0 artifact safety scan found ${scan.violations.length} credential-bearing path(s); upload is forbidden.`,

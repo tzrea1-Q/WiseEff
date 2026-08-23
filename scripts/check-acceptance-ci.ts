@@ -1,11 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import YAML from "yaml";
 
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
   "acceptance:browser",
   "acceptance:artifacts:check",
+  "acceptance:artifacts:finalize",
   "acceptance:gate0",
   "acceptance:models",
   "acceptance:quality",
@@ -40,7 +42,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "npm run acceptance:smoke",
   "npm run acceptance:gate0",
   "name: Acceptance artifact safety",
-  "npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs",
+  "npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip",
   "steps.acceptance_artifact_safety.outcome == 'success'",
   "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
   "npm run acceptance:browser -- --mode full-pilot --no-start-runtime",
@@ -55,7 +57,7 @@ export const requiredAcceptanceCiArtifactPaths = [
   "docs/generated/acceptance-operation-evidence/index.json",
   "playwright-report/quality",
   "test-results/quality",
-  "test-results/acceptance-runtime-runs"
+  "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip"
 ] as const;
 
 export const CI_SMOKE_TAG = "@ci-smoke";
@@ -177,7 +179,52 @@ export type AcceptanceCiConfigurationResult = {
   acceptanceEnvironmentHelperCount: number;
   acceptanceEnvironmentGate: boolean;
   localNonHdcBudget: AcceptanceLocalNonHdcBudgetResult;
+  immutableUploadContract: ImmutableUploadContractResult;
 };
+
+export type ImmutableUploadContractResult = {
+  status: "passed" | "failed";
+  errors: string[];
+};
+
+export function evaluateImmutableAcceptanceUpload(workflowText: string): ImmutableUploadContractResult {
+  const errors: string[] = [];
+  let workflow: {
+    jobs?: Record<string, { steps?: Array<Record<string, unknown>> }>;
+  };
+  try {
+    workflow = YAML.parse(workflowText) as typeof workflow;
+  } catch {
+    return { status: "failed", errors: ["CI workflow YAML is malformed."] };
+  }
+  const steps = workflow.jobs?.["acceptance-local-non-hdc"]?.steps;
+  if (!Array.isArray(steps)) return { status: "failed", errors: ["Acceptance local non-HDC steps are missing."] };
+  const safety = steps.find((step) => step.name === ACCEPTANCE_ARTIFACT_SAFETY_STEP);
+  const uploads = steps.filter((step) => step.uses === "actions/upload-artifact@v4");
+  const upload = uploads.find((step) => step.name === ACCEPTANCE_ARTIFACT_UPLOAD_STEP);
+  const archivePath = "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip";
+  const finalizerCommand = `npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output ${archivePath}`;
+  if (!safety) errors.push("Acceptance artifact safety step is missing.");
+  else {
+    if (safety.id !== "acceptance_artifact_safety") errors.push("Acceptance artifact safety step id is invalid.");
+    if (safety.if !== "always()") errors.push("Acceptance artifact safety must run with if: always().");
+    if (safety.run !== finalizerCommand) errors.push("Acceptance artifact safety must run the exact immutable archive finalizer.");
+    if (safety["continue-on-error"] === true) errors.push("Acceptance artifact safety cannot continue on error.");
+  }
+  if (uploads.length !== 1) errors.push("Acceptance local non-HDC must contain exactly one upload-artifact step.");
+  if (!upload) errors.push("Acceptance evidence upload step is missing.");
+  else {
+    if (upload.if !== "always() && steps.acceptance_artifact_safety.outcome == 'success'") {
+      errors.push("Acceptance evidence upload must depend only on successful immutable artifact safety.");
+    }
+    if (upload["continue-on-error"] === true) errors.push("Acceptance evidence upload cannot continue on error.");
+    const withInput = upload.with as Record<string, unknown> | undefined;
+    if (withInput?.path !== archivePath) errors.push("Acceptance evidence upload must name the exact immutable ZIP archive.");
+    if (withInput?.["if-no-files-found"] !== "error") errors.push("Acceptance evidence upload must fail when the archive is absent.");
+    if (Number(withInput?.["compression-level"]) !== 0) errors.push("Acceptance evidence upload must not recompress the frozen ZIP.");
+  }
+  return { status: errors.length === 0 ? "passed" : "failed", errors };
+}
 
 const FORBIDDEN_PLAYWRIGHT_IMPORT = /from\s+["']@playwright\/test["']/;
 
@@ -279,6 +326,7 @@ export function evaluateAcceptanceCiConfiguration(
   const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
     || (forbiddenAcceptanceDotenvImports.length === 0 && acceptanceEnvironmentHelperCount === 29);
   const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
+  const immutableUploadContract = evaluateImmutableAcceptanceUpload(input.workflowText);
 
   return {
     status:
@@ -289,6 +337,7 @@ export function evaluateAcceptanceCiConfiguration(
       forbiddenPlaywrightImports.length === 0 &&
       acceptanceEnvironmentGate &&
       localNonHdcBudget.status === "passed" &&
+      immutableUploadContract.status === "passed" &&
       !fullPilotDefaultGate &&
       smokeTagGate
         ? "passed"
@@ -305,6 +354,7 @@ export function evaluateAcceptanceCiConfiguration(
     acceptanceEnvironmentHelperCount,
     acceptanceEnvironmentGate,
     localNonHdcBudget,
+    immutableUploadContract,
   };
 }
 

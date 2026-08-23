@@ -38,10 +38,14 @@ export function buildOwnedRuntimeArtifactEnv(runRoot: string): Record<string, st
   };
 }
 
-export type OwnedRuntimePhaseStatus = "pending" | "running" | "passed" | "failed" | "blocked";
+export type OwnedRuntimePhaseStatus = "pending" | "launching" | "running" | "passed" | "failed" | "blocked";
 
 export type OwnedRuntimePhase = {
   status: OwnedRuntimePhaseStatus;
+  process?: {
+    pid: number;
+    processIdentity: ProcessStartIdentity;
+  };
   startedAt?: string;
   completedAt?: string;
   resultJson?: string;
@@ -64,6 +68,7 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
     worktreeRoot: string;
     sourceDirtyBefore: false;
     ownerPid: number;
+    ownerProcessIdentity: ProcessStartIdentity;
     createdAt: string;
     state:
       | "provisioning"
@@ -288,6 +293,10 @@ export function assertOwnedRuntimeDescriptor(
     throw new Error("Owned runtime requires a clean source worktree at provision time.");
   }
   requirePositiveInteger(run.ownerPid, "run.ownerPid");
+  assertProcessIdentity(
+    requireRecord(run.ownerProcessIdentity, "run.ownerProcessIdentity"),
+    "run.ownerProcessIdentity",
+  );
   requireString(run.createdAt, "run.createdAt");
   if (!["provisioning", "ready", "running", "failed-retained", "cleanup-failed-retained", "cleaned"].includes(String(run.state))) {
     throw new Error("Owned runtime descriptor has an invalid run state.");
@@ -631,7 +640,11 @@ function assertNoSecrets(value: unknown, at = "descriptor") {
 }
 
 function isAllowedProcessIdentityField(at: string, key: string) {
-  return /^descriptor\.processes\.(?:api|frontend)\.processIdentity$/u.test(at) &&
+  return (
+    /^descriptor\.processes\.(?:api|frontend)\.processIdentity$/u.test(at) ||
+    at === "descriptor.run.ownerProcessIdentity" ||
+    /^descriptor\.phases\.(?:visual|browser)\.process\.processIdentity$/u.test(at)
+  ) &&
     (key === "startToken" || key === "commandSha256");
 }
 
@@ -655,17 +668,32 @@ function assertEndpoint(
 function assertProcess(value: Record<string, unknown>, label: string) {
   requirePositiveInteger(value.pid, `processes.${label}.pid`);
   const identity = requireRecord(value.processIdentity, `processes.${label}.process-start identity`);
-  requireString(identity.startToken, `processes.${label}.process-start identity start token`);
-  requireSha256(identity.commandSha256, `processes.${label}.process-start identity command digest`);
+  assertProcessIdentity(identity, `processes.${label}.process-start identity`);
   requireString(value.startedAt, `processes.${label}.startedAt`);
   requireString(value.command, `processes.${label}.command`);
   requireAbsolutePath(value.log, `processes.${label}.log`);
 }
 
 function assertPhase(value: Record<string, unknown>, label: string) {
-  if (!["pending", "running", "passed", "failed", "blocked"].includes(String(value.status))) {
+  if (!["pending", "launching", "running", "passed", "failed", "blocked"].includes(String(value.status))) {
     throw new Error(`Owned runtime phase ${label} has an invalid status.`);
   }
+  if (value.process !== undefined) {
+    const process = requireRecord(value.process, `phases.${label}.process`);
+    requirePositiveInteger(process.pid, `phases.${label}.process.pid`);
+    assertProcessIdentity(
+      requireRecord(process.processIdentity, `phases.${label}.process.processIdentity`),
+      `phases.${label}.process.processIdentity`,
+    );
+  }
+  if (value.status === "running" && value.process === undefined) {
+    throw new Error(`Owned runtime running phase ${label} lacks a process-start identity.`);
+  }
+}
+
+function assertProcessIdentity(value: Record<string, unknown>, label: string) {
+  requireString(value.startToken, `${label} start token`);
+  requireSha256(value.commandSha256, `${label} command digest`);
 }
 
 function requireRecord(value: unknown, label: string) {

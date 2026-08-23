@@ -29,7 +29,7 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 
 ## CI 合入门槛
 
-PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。浏览器 job 的权威入口是 `npm run acceptance:gate0`：visual 与 full browser 共用 fresh exact-owned runtime，60 分钟时限覆盖 provision/finalize，输出全部写入 runRoot，失败保留取证资源，只有成功才清理数据库/对象根。上传前必须递归脱敏（含 ZIP trace）并通过 `npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs` 的 0-violation 检查。直接 `acceptance:browser` 仅用于聚焦/人工候选，不替代 Gate0。完整评分与门禁表以英文版为准。
+PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。浏览器 job 的权威入口是 `npm run acceptance:gate0`：visual 与 full browser 共用 fresh exact-owned runtime，60 分钟时限覆盖 provision/finalize，输出全部写入 runRoot，失败保留取证资源，只有成功才清理数据库/对象根。CI 上传前由 fresh finalizer 接管所有可由 process-start identity 证明的 writer，在私有 staging 内递归脱敏与扫描（含 ZIP trace），再原子发布 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`；upload action 只接受这个不可变 ZIP，绝不重新遍历 live runs root。直接 `acceptance:browser` 仅用于聚焦/人工候选，不替代 Gate0。完整评分与门禁表以英文版为准。
 
 小泽离线验收使用 `XIAOZE_DETERMINISTIC=true`；live LLM 质量证据必须在目标环境配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 后采集。
 

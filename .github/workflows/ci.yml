@@ -469,7 +469,7 @@ jobs:
         id: acceptance_artifact_safety
         if: always()
         timeout-minutes: 5
-        run: npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs
+        run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
 
       - name: Upload acceptance evidence
         if: always() && steps.acceptance_artifact_safety.outcome == 'success'
@@ -477,7 +477,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wiseeff-acceptance-local-non-hdc
-          path: test-results/acceptance-runtime-runs
+          path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
+          if-no-files-found: error
+          compression-level: 0
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance

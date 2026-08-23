@@ -27,6 +27,7 @@
     "acceptance:browser": "tsx -- scripts/run-browser-acceptance.ts",
     "acceptance:gate0": "tsx -- scripts/run-acceptance-gate0.ts",
     "acceptance:artifacts:check": "tsx -- scripts/gate0-artifact-sanitizer.ts",
+    "acceptance:artifacts:finalize": "tsx -- scripts/finalize-gate0-upload.ts",
     "acceptance:coverage": "tsx scripts/check-acceptance-coverage.ts",
     "acceptance:operations": "tsx scripts/check-acceptance-operation-matrix.ts",
     "acceptance:models": "tsx scripts/check-acceptance-state-models.ts",
