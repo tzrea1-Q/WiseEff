@@ -68,6 +68,86 @@ export const requiredSmokeSpecPaths = [
   "e2e/acceptance/parameter-home.acceptance.spec.ts"
 ] as const;
 
+export const ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES = 5;
+export const ACCEPTANCE_GATE0_OWNER_MINUTES = 60;
+export const acceptanceLocalNonHdcPreludeSteps = [
+  "Check out repository",
+  "Set up Node.js",
+  "Install dependencies",
+  "Install and verify DTS toolchain",
+  "Advisory DTS seed compile (dtc)",
+  "Install Playwright Chromium",
+  "Acceptance CI metadata",
+  "Acceptance state models",
+] as const;
+const ACCEPTANCE_GATE0_STEP = "Owned visual and browser acceptance Gate 0";
+const ACCEPTANCE_ARTIFACT_SAFETY_STEP = "Acceptance artifact safety";
+const ACCEPTANCE_ARTIFACT_UPLOAD_STEP = "Upload acceptance evidence";
+
+export type AcceptanceLocalNonHdcBudgetResult = {
+  status: "passed" | "failed";
+  jobTimeoutMinutes: number;
+  platformOverheadMinutes: number;
+  preGate0BudgetMinutes: number;
+  gate0OwnerMinutes: number;
+  gate0StepTimeoutMinutes: number;
+  artifactSafetyMinutes: number;
+  artifactUploadMinutes: number;
+  requiredExclusiveFloorMinutes: number;
+  missingStepTimeouts: string[];
+};
+
+export function evaluateAcceptanceLocalNonHdcBudget(
+  workflowText: string,
+): AcceptanceLocalNonHdcBudgetResult {
+  const job = workflowJobBlock(workflowText, "acceptance-local-non-hdc");
+  const jobTimeoutMinutes = workflowTimeoutMinutes(job);
+  const steps = workflowStepBudgets(job);
+  const stepTimeouts = new Map(steps.map((step) => [step.name, step.timeoutMinutes]));
+  const gate0Index = steps.findIndex((step) => step.name === ACCEPTANCE_GATE0_STEP);
+  const preGate0Steps = gate0Index < 0 ? steps : steps.slice(0, gate0Index);
+  const requiredNamedSteps = [
+    ...acceptanceLocalNonHdcPreludeSteps,
+    ACCEPTANCE_GATE0_STEP,
+    ACCEPTANCE_ARTIFACT_SAFETY_STEP,
+    ACCEPTANCE_ARTIFACT_UPLOAD_STEP,
+  ];
+  const missingStepTimeouts = [...new Set([
+    ...requiredNamedSteps.filter((step) => (stepTimeouts.get(step) ?? 0) <= 0),
+    ...preGate0Steps.filter((step) => step.timeoutMinutes <= 0).map((step) => step.name),
+  ])];
+  const preGate0BudgetMinutes = preGate0Steps.reduce(
+    (total, step) => total + step.timeoutMinutes,
+    0,
+  );
+  const gate0StepTimeoutMinutes = stepTimeouts.get(ACCEPTANCE_GATE0_STEP) ?? 0;
+  const artifactSafetyMinutes = stepTimeouts.get(ACCEPTANCE_ARTIFACT_SAFETY_STEP) ?? 0;
+  const artifactUploadMinutes = stepTimeouts.get(ACCEPTANCE_ARTIFACT_UPLOAD_STEP) ?? 0;
+  const requiredExclusiveFloorMinutes = ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES
+    + preGate0BudgetMinutes
+    + ACCEPTANCE_GATE0_OWNER_MINUTES
+    + artifactSafetyMinutes
+    + artifactUploadMinutes;
+  const status = jobTimeoutMinutes > requiredExclusiveFloorMinutes
+    && gate0StepTimeoutMinutes > ACCEPTANCE_GATE0_OWNER_MINUTES
+    && missingStepTimeouts.length === 0
+    ? "passed"
+    : "failed";
+
+  return {
+    status,
+    jobTimeoutMinutes,
+    platformOverheadMinutes: ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES,
+    preGate0BudgetMinutes,
+    gate0OwnerMinutes: ACCEPTANCE_GATE0_OWNER_MINUTES,
+    gate0StepTimeoutMinutes,
+    artifactSafetyMinutes,
+    artifactUploadMinutes,
+    requiredExclusiveFloorMinutes,
+    missingStepTimeouts,
+  };
+}
+
 export type AcceptanceCiConfigurationInput = {
   packageJson: {
     scripts?: Record<string, string>;
@@ -75,6 +155,7 @@ export type AcceptanceCiConfigurationInput = {
   workflowText: string;
   smokeTagCount?: number;
   playwrightSources?: Array<{ path: string; source: string }>;
+  acceptanceEnvironmentSources?: Array<{ path: string; source: string }>;
 };
 
 export type AcceptanceCiConfigurationResult = {
@@ -87,6 +168,10 @@ export type AcceptanceCiConfigurationResult = {
   smokeTagGate: boolean;
   missingSmokeSpecPaths: string[];
   forbiddenPlaywrightImports: string[];
+  forbiddenAcceptanceDotenvImports: string[];
+  acceptanceEnvironmentHelperCount: number;
+  acceptanceEnvironmentGate: boolean;
+  localNonHdcBudget: AcceptanceLocalNonHdcBudgetResult;
 };
 
 const FORBIDDEN_PLAYWRIGHT_IMPORT = /from\s+["']@playwright\/test["']/;
@@ -123,6 +208,48 @@ export function readAcceptanceSpecSources(root = "e2e/acceptance"): string {
     .join("\n");
 }
 
+export function readAcceptanceEnvironmentSources(
+  root = "e2e/acceptance",
+): Array<{ path: string; source: string }> {
+  if (!existsSync(root)) return [];
+  return readdirSync(root)
+    .filter((name) => name.endsWith(".spec.ts"))
+    .sort()
+    .map((name) => {
+      const path = join(root, name).replaceAll("\\", "/");
+      return { path, source: readFileSync(path, "utf8") };
+    })
+    .filter(({ source }) => source.includes("dotenv/config") || source.includes("loadAcceptanceEnvironment"));
+}
+
+export function readAcceptanceConfigurationSources(
+  paths = ["playwright.acceptance.config.ts", "playwright.quality.config.ts"],
+): Array<{ path: string; source: string }> {
+  return paths
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, source: readFileSync(path, "utf8") }));
+}
+
+export function findForbiddenAcceptanceDotenvImports(
+  files: Array<{ path: string; source: string }>,
+): string[] {
+  return files
+    .filter(({ source }) =>
+      /(?:import|require\s*\()[^\n]*["']dotenv\/config["']/.test(source)
+      || /\bdotenv\.config\s*\(/.test(source))
+    .map(({ path }) => path)
+    .sort();
+}
+
+export function findAcceptanceEnvironmentHelperLoads(
+  files: Array<{ path: string; source: string }>,
+): string[] {
+  return files
+    .filter(({ source }) => /loadAcceptanceEnvironment(?:["']|\s*\(\s*\))/.test(source))
+    .map(({ path }) => path)
+    .sort();
+}
+
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput
 ): AcceptanceCiConfigurationResult {
@@ -141,6 +268,12 @@ export function evaluateAcceptanceCiConfiguration(
   const smokeScript = scripts["acceptance:smoke"] ?? "";
   const missingSmokeSpecPaths = requiredSmokeSpecPaths.filter((path) => !smokeScript.includes(path));
   const forbiddenPlaywrightImports = findForbiddenPlaywrightImports(input.playwrightSources ?? []);
+  const acceptanceEnvironmentSources = input.acceptanceEnvironmentSources ?? [];
+  const forbiddenAcceptanceDotenvImports = findForbiddenAcceptanceDotenvImports(acceptanceEnvironmentSources);
+  const acceptanceEnvironmentHelperCount = findAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources).length;
+  const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
+    || (forbiddenAcceptanceDotenvImports.length === 0 && acceptanceEnvironmentHelperCount === 29);
+  const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
 
   return {
     status:
@@ -149,6 +282,8 @@ export function evaluateAcceptanceCiConfiguration(
       missingArtifactPaths.length === 0 &&
       missingSmokeSpecPaths.length === 0 &&
       forbiddenPlaywrightImports.length === 0 &&
+      acceptanceEnvironmentGate &&
+      localNonHdcBudget.status === "passed" &&
       !fullPilotDefaultGate &&
       smokeTagGate
         ? "passed"
@@ -160,7 +295,11 @@ export function evaluateAcceptanceCiConfiguration(
     smokeTagCount,
     smokeTagGate,
     missingSmokeSpecPaths,
-    forbiddenPlaywrightImports
+    forbiddenPlaywrightImports,
+    forbiddenAcceptanceDotenvImports,
+    acceptanceEnvironmentHelperCount,
+    acceptanceEnvironmentGate,
+    localNonHdcBudget,
   };
 }
 
@@ -176,7 +315,11 @@ export function runAcceptanceCiConfigurationCheck() {
     packageJson,
     workflowText,
     smokeTagCount,
-    playwrightSources: readPlaywrightSources()
+    playwrightSources: readPlaywrightSources(),
+    acceptanceEnvironmentSources: [
+      ...readAcceptanceEnvironmentSources(),
+      ...readAcceptanceConfigurationSources(),
+    ],
   });
 
   console.log(JSON.stringify(result, null, 2));
@@ -206,6 +349,42 @@ function hasDefaultFullPilotGate(normalizedWorkflowText: string) {
 
 function normalizeWorkflowText(value: string) {
   return value.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+}
+
+function workflowJobBlock(workflowText: string, jobId: string): string {
+  const lines = workflowText.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line === `  ${jobId}:`);
+  if (start < 0) return "";
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [a-zA-Z0-9_-]+:\s*$/.test(lines[index] ?? "")) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+function workflowTimeoutMinutes(block: string): number {
+  const match = block.match(/^    timeout-minutes:\s*(\d+)\s*$/m);
+  return match ? Number(match[1]) : 0;
+}
+
+function workflowStepBudgets(block: string): Array<{ name: string; timeoutMinutes: number }> {
+  const lines = block.split("\n");
+  const starts = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^\s{6}- (?:name|uses|run):/.test(line));
+  return starts.map((start, stepIndex) => {
+    const end = starts[stepIndex + 1]?.index ?? lines.length;
+    const block = lines.slice(start.index, end).join("\n");
+    const nameMatch = start.line.match(/^\s{6}- name:\s*(.+?)\s*$/);
+    const timeoutMatch = block.match(/^\s+timeout-minutes:\s*(\d+)\s*$/m);
+    return {
+      name: nameMatch?.[1] ?? `<unnamed pre-Gate0 step ${stepIndex + 1}>`,
+      timeoutMinutes: timeoutMatch ? Number(timeoutMatch[1]) : 0,
+    };
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

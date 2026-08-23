@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
 import { signInBrowserAsRoleLabel, signInBrowserAsUser, authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";

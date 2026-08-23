@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "playwright/test";

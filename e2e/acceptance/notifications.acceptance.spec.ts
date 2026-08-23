@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";

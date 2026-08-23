@@ -606,10 +606,13 @@ describe("browser acceptance runner", () => {
 describe("playwright acceptance config", () => {
   it("disables Playwright retries for a validated owned Gate0 runtime while legacy CI keeps one retry", async () => {
     const previousCi = process.env.CI;
+    const previousDescriptor = process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
     process.env.CI = "true";
+    process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR = "/tmp/owned/runtime.json";
     try {
       vi.resetModules();
       vi.doMock("../e2e/acceptance/helpers/ownedRuntimeDescriptor", () => ({
+        OWNED_ACCEPTANCE_DESCRIPTOR_ENV: "WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR",
         loadOwnedRuntimeDescriptorFromEnv: () => ({
           endpoints: {
             frontend: { url: "http://127.0.0.1:5180" },
@@ -621,6 +624,7 @@ describe("playwright acceptance config", () => {
       expect(owned.retries).toBe(0);
 
       vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
+      delete process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
       vi.resetModules();
       const legacy = (await import("../playwright.acceptance.config")).default;
       expect(legacy.retries).toBe(1);
@@ -628,6 +632,8 @@ describe("playwright acceptance config", () => {
       vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
       if (previousCi === undefined) delete process.env.CI;
       else process.env.CI = previousCi;
+      if (previousDescriptor === undefined) delete process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR;
+      else process.env.WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR = previousDescriptor;
     }
   });
 

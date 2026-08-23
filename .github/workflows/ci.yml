@@ -401,9 +401,10 @@ jobs:
     needs: detect
     if: needs.detect.outputs.run_l2 == 'true'
     runs-on: ubuntu-latest
-    # Gate0 owns a hard 60-minute deadline; leave time for exact PID shutdown,
-    # forensic manifest writes, and the always-run artifact upload.
-    timeout-minutes: 70
+    # Enforced by acceptance:ci: 5m platform overhead + 71m bounded prelude
+    # + the 60m Gate0 owner + 5m safety scan + 5m upload = 146m. The job
+    # budget must remain strictly greater than that complete platform path.
+    timeout-minutes: 150
 
     services:
       postgres:
@@ -425,43 +426,54 @@ jobs:
 
     steps:
       - name: Check out repository
+        timeout-minutes: 5
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        timeout-minutes: 5
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
+        timeout-minutes: 15
         run: npm ci
 
       - name: Install and verify DTS toolchain
+        timeout-minutes: 20
         uses: ./.github/actions/setup-dts-toolchain
 
       - name: Advisory DTS seed compile (dtc)
+        timeout-minutes: 3
         continue-on-error: true
         run: npm run dtc:seed:compile
 
       - name: Install Playwright Chromium
+        timeout-minutes: 15
         run: npx playwright install --with-deps chromium
 
       - name: Acceptance CI metadata
+        timeout-minutes: 3
         run: npm run acceptance:ci
 
       - name: Acceptance state models
+        timeout-minutes: 5
         run: npm run acceptance:models
 
       - name: Owned visual and browser acceptance Gate 0
+        timeout-minutes: 65
         run: npm run acceptance:gate0
 
       - name: Acceptance artifact safety
         id: acceptance_artifact_safety
         if: always()
+        timeout-minutes: 5
         run: npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs
 
       - name: Upload acceptance evidence
         if: always() && steps.acceptance_artifact_safety.outcome == 'success'
+        timeout-minutes: 5
         uses: actions/upload-artifact@v4
         with:
           name: wiseeff-acceptance-local-non-hdc

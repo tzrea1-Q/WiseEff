@@ -1,11 +1,11 @@
 import { defineConfig, devices } from "playwright/test";
-import dotenv from "dotenv";
 import { buildPlaywrightWebServers, portFromUrl } from "./playwright.shared";
-import { loadOwnedRuntimeDescriptorFromEnv } from "./e2e/acceptance/helpers/ownedRuntimeDescriptor";
+import { loadAcceptanceEnvironment } from "./e2e/acceptance/helpers/acceptanceEnvironment";
 
-dotenv.config({ path: process.env.WISEEFF_ACCEPTANCE_ENV_FILE ?? ".env" });
-
-const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv();
+const acceptanceEnvironment = loadAcceptanceEnvironment();
+const ownedRuntime = acceptanceEnvironment.mode === "owned-descriptor"
+  ? acceptanceEnvironment.ownedRuntime
+  : undefined;
 const baseURL = ownedRuntime?.endpoints.frontend.url ?? process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
 const apiURL = ownedRuntime?.endpoints.api.url ?? process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const frontendPort = portFromUrl(baseURL, "5173");

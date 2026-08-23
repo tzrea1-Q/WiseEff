@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type APIRequestContext } from "playwright/test";
 
 import { pickReviewCandidate } from "./helpers/acceptanceTaskLookup";

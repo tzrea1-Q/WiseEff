@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./helpers/loadAcceptanceEnvironment";
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "playwright/test";
 

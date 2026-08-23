@@ -273,6 +273,7 @@ describe("acceptance Gate 0 runner", () => {
         args: ["run", "acceptance:visual"],
         env: expect.objectContaining({
           WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR: "/tmp/owned-full/runtime.json",
+          WISEEFF_ACCEPTANCE_OWNED_RUNTIME: "true",
           WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true",
           WISEEFF_QUALITY_SKIP_SEED: "true",
           WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE: "true",
@@ -295,6 +296,7 @@ describe("acceptance Gate 0 runner", () => {
         ],
         env: expect.objectContaining({
           WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR: "/tmp/owned-full/runtime.json",
+          WISEEFF_ACCEPTANCE_OWNED_RUNTIME: "true",
           WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true",
           WISEEFF_QUALITY_SKIP_SEED: "true",
           WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR: "/tmp/owned-full/artifacts/browser/test-results",

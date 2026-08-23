@@ -38,6 +38,7 @@ import {
   OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
   loadOwnedRuntimeDescriptorFromEnv,
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
+import { OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV } from "../e2e/acceptance/helpers/acceptanceEnvironment";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -341,6 +342,7 @@ export function buildPlaywrightEnv(
   const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv(env);
   env.WISEEFF_ACCEPTANCE_FRONTEND_URL = ownedRuntime?.endpoints.frontend.url ?? options.frontendUrl;
   if (ownedRuntime) {
+    env[OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV] = "true";
     env.WISEEFF_API_BASE_URL = ownedRuntime.endpoints.api.url;
     env.VITE_WISEEFF_API_BASE_URL = ownedRuntime.endpoints.api.url;
     env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = "true";

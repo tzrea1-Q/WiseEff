@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { publishLatestFullEvidenceRun, resolveEvidenceRunContext } from "../e2e/acceptance/helpers/evidenceRun";
+import { OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV } from "../e2e/acceptance/helpers/acceptanceEnvironment";
 import {
   OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
   buildOwnedRuntimeArtifactEnv,
@@ -205,6 +206,7 @@ export function buildGate0Commands(
   const runRoot = path.dirname(descriptorPath);
   const sharedEnv = {
     [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: descriptorPath,
+    [OWNED_ACCEPTANCE_RUNTIME_FLAG_ENV]: "true",
     WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true",
     WISEEFF_QUALITY_SKIP_SEED: "true",
     ...buildOwnedRuntimeArtifactEnv(runRoot),
