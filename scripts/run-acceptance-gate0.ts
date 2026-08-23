@@ -31,7 +31,10 @@ import {
   sanitizeGate0DiagnosticText,
   sanitizeGate0ArtifactTree,
   scanGate0ArtifactTree,
+  gate0SecretValuesFromEnv,
 } from "./gate0-artifact-sanitizer";
+import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import { startGate0SecretRegistry } from "./gate0-secret-registry";
 import { waitForOwnedProcessGroupExit } from "./owned-process-group";
 import {
   VISUAL_REVIEW_FIXTURE_ALLOW_ENV,
@@ -82,7 +85,7 @@ export async function assertGate0DtsToolchainReady(
   const args = ["run", "dts:toolchain:check", "--", "--required"];
   const result = await runCommand("npm", args, {
     cwd: worktreeRoot,
-    env: process.env,
+    env: buildGate0OwnedChildProcessEnv({}),
     stdio: "inherit",
     signal,
   });
@@ -254,6 +257,22 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     worktreeRoot: process.cwd(),
   }, {}, owner);
   const finalizationOwner = gate0FinalizationOwner(owner);
+  const rootSecretValues = gate0SecretValuesFromEnv(runtime.env);
+  const secretRegistry = await startGate0SecretRegistry(owner.signal).catch(async (error) => {
+    const failures = [asGate0Error(error)];
+    await runtime.finish(
+      "failure",
+      () => finalizeGate0ArtifactSafety(
+        runtime.descriptor.artifacts.runRoot,
+        finalizationOwner.signal,
+        rootSecretValues,
+      ).then(() => undefined),
+      finalizationOwner,
+    ).catch((finalizationError) => failures.push(asGate0Error(finalizationError)));
+    throw new AggregateError(failures, "Gate0 secret registry startup failed; owned runtime was finalized.");
+  });
+  secretRegistry.add(rootSecretValues);
+  const runtimeEnv = { ...runtime.env, ...secretRegistry.env };
   const phaseResults = new Map<Gate0Phase, boolean>();
   let timedOutPhase: Gate0Phase | undefined;
   let sourceOutputs: Gate0SourceOutputSnapshot | undefined;
@@ -281,7 +300,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       const phaseLog = path.join(runtime.descriptor.artifacts.runRoot, `${command.phase}.log`);
       const result = await runGate0PhaseCommand(
         command,
-        runtime.env,
+        runtimeEnv,
         phaseLog,
         owner.remainingMs(`${command.phase} phase`),
         5_000,
@@ -340,7 +359,11 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     finishAttempted = true;
     await runtime.finish(
       outcome,
-      () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, finalizationOwner.signal).then(() => undefined),
+      () => finalizeGate0ArtifactSafety(
+        runtime.descriptor.artifacts.runRoot,
+        finalizationOwner.signal,
+        secretRegistry.values(),
+      ).then(() => undefined),
       finalizationOwner,
     );
     if (outcome === "success") {
@@ -374,11 +397,21 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         ? undefined
         : () => runtime.finish(
           "failure",
-          () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, finalizationOwner.signal).then(() => undefined),
+          () => finalizeGate0ArtifactSafety(
+            runtime.descriptor.artifacts.runRoot,
+            finalizationOwner.signal,
+            secretRegistry.values(),
+          ).then(() => undefined),
           finalizationOwner,
         ),
-      artifactSafety: (runRoot) => finalizeGate0ArtifactSafety(runRoot, finalizationOwner.signal),
+      artifactSafety: (runRoot) => finalizeGate0ArtifactSafety(
+        runRoot,
+        finalizationOwner.signal,
+        secretRegistry.values(),
+      ),
     });
+  } finally {
+    await secretRegistry.close();
   }
 }
 
@@ -423,7 +456,7 @@ export function runGate0PhaseCommand(
     command: command.command,
     args: command.args,
     cwd: process.cwd(),
-    env: { ...process.env, ...runtimeEnv, ...command.env },
+    env: buildGate0OwnedChildProcessEnv({ ...runtimeEnv, ...command.env }),
     stdio: ["ignore", fd, fd],
     timeoutMs,
     terminateGraceMs,
@@ -552,9 +585,13 @@ function asGate0Error(error: unknown) {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export async function finalizeGate0ArtifactSafety(runRoot: string, signal?: AbortSignal) {
-  const sanitization = await sanitizeGate0ArtifactTree(runRoot, signal);
-  const scan = await scanGate0ArtifactTree(runRoot, signal);
+export async function finalizeGate0ArtifactSafety(
+  runRoot: string,
+  signal?: AbortSignal,
+  secretValues?: readonly string[],
+) {
+  const sanitization = await sanitizeGate0ArtifactTree(runRoot, signal, secretValues);
+  const scan = await scanGate0ArtifactTree(runRoot, signal, secretValues);
   if (scan.violations.length > 0) {
     throw new Error(
       `Gate0 artifact safety scan found ${scan.violations.length} credential-bearing path(s); upload is forbidden.`,

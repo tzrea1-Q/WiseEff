@@ -150,6 +150,7 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
   artifacts: {
     runRoot: string;
     descriptor: string;
+    operationEvidenceRuntimeSnapshot: string;
     failureInventory: string;
     sourceWorktreeOutputManifest: string;
     nestedRuntimeManifest: string;
@@ -363,6 +364,7 @@ export function assertOwnedRuntimeDescriptor(
   const runRoot = requireAbsolutePath(artifacts.runRoot, "artifacts.runRoot");
   const artifactPaths = [
     requireAbsolutePath(artifacts.descriptor, "artifacts.descriptor"),
+    requireAbsolutePath(artifacts.operationEvidenceRuntimeSnapshot, "artifacts.operationEvidenceRuntimeSnapshot"),
     requireAbsolutePath(artifacts.failureInventory, "artifacts.failureInventory"),
     requireAbsolutePath(artifacts.sourceWorktreeOutputManifest, "artifacts.sourceWorktreeOutputManifest"),
     requireAbsolutePath(artifacts.nestedRuntimeManifest, "artifacts.nestedRuntimeManifest"),

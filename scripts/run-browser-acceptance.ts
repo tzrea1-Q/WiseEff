@@ -619,6 +619,7 @@ async function main() {
       ...(ownedRuntime
         ? [
             ownedRuntime.artifacts.descriptor,
+            ownedRuntime.artifacts.operationEvidenceRuntimeSnapshot,
             ownedRuntime.artifacts.failureInventory,
             ownedRuntime.artifacts.sourceWorktreeOutputManifest,
             ownedRuntime.artifacts.nestedRuntimeManifest,

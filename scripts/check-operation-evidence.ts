@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acceptanceOperations, type AcceptanceOperationAssertion } from "../e2e/acceptance/operationMatrix";
 import {
@@ -58,8 +59,10 @@ export type OperationEvidenceRecord = {
     seed?: string;
     envSummary?: Record<string, string>;
     ownedRuntime?: {
+      runRoot: string;
       descriptorPath: string;
-      descriptorSha256: string;
+      descriptorSnapshotPath: string;
+      descriptorSnapshotSha256: string;
       runId: string;
       sourceCommit: string;
       databaseName: string;
@@ -308,6 +311,9 @@ function validateReviewMetadata(
       message: "Evidence requires runtime mode and API base URL metadata."
     });
   }
+  if (record.runtime?.ownedRuntime) {
+    errors.push(...validateOwnedRuntimeEvidence(record));
+  }
   if (!record.report?.path?.trim() || !record.report.format?.trim()) {
     errors.push({
       operationId: record.operationId,
@@ -331,6 +337,131 @@ function validateReviewMetadata(
   }
 
   return errors;
+}
+
+function validateOwnedRuntimeEvidence(record: OperationEvidenceRecord): OperationEvidenceValidationError[] {
+  const errors: OperationEvidenceValidationError[] = [];
+  const owned = record.runtime!.ownedRuntime!;
+  const runRoot = owned.runRoot;
+  if (!isExistingRegularDirectory(runRoot)) {
+    return [{
+      operationId: record.operationId,
+      field: "runtime",
+      message: `Owned evidence run root does not exist as a regular directory: ${runRoot}.`,
+    }];
+  }
+  const snapshotError = validateRuntimeSnapshot(record, runRoot);
+  if (snapshotError) errors.push(snapshotError);
+  const descriptorError = validateOwnedDescendant(
+    record.operationId,
+    "runtime",
+    runRoot,
+    owned.descriptorPath,
+    "runtime descriptor",
+    "file",
+  );
+  if (descriptorError) errors.push(descriptorError);
+  const reportError = validateOwnedDescendant(
+    record.operationId,
+    "report",
+    runRoot,
+    record.report?.path,
+    "Playwright report",
+    "file",
+  );
+  if (reportError) errors.push(reportError);
+  const traceError = validateOwnedDescendant(
+    record.operationId,
+    "trace",
+    runRoot,
+    record.trace?.path,
+    "Playwright trace/output root",
+    "directory",
+  );
+  if (traceError) errors.push(traceError);
+  return errors;
+}
+
+function validateRuntimeSnapshot(
+  record: OperationEvidenceRecord,
+  runRoot: string,
+): OperationEvidenceValidationError | undefined {
+  const owned = record.runtime!.ownedRuntime!;
+  const pathError = validateOwnedDescendant(
+    record.operationId,
+    "runtime",
+    runRoot,
+    owned.descriptorSnapshotPath,
+    "immutable runtime snapshot",
+    "file",
+  );
+  if (pathError) return pathError;
+  const bytes = Buffer.from(readFileSync(owned.descriptorSnapshotPath, "base64"), "base64");
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== owned.descriptorSnapshotSha256) {
+    return {
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Owned immutable runtime snapshot SHA256 digest does not match the evidence record.",
+    };
+  }
+  try {
+    const snapshot = JSON.parse(bytes.toString("utf8")) as {
+      kind?: string;
+      run?: { id?: string; sourceCommit?: string };
+      artifacts?: { runRoot?: string; descriptor?: string };
+    };
+    if (
+      snapshot.kind !== "wiseeff-owned-local-acceptance-operation-evidence-runtime" ||
+      snapshot.run?.id !== owned.runId ||
+      snapshot.run?.sourceCommit !== owned.sourceCommit ||
+      resolve(snapshot.artifacts?.runRoot ?? "") !== resolve(runRoot) ||
+      resolve(snapshot.artifacts?.descriptor ?? "") !== resolve(owned.descriptorPath)
+    ) {
+      throw new Error("identity mismatch");
+    }
+  } catch {
+    return {
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Owned immutable runtime snapshot identity does not match its run, source, or descriptor.",
+    };
+  }
+  return undefined;
+}
+
+function validateOwnedDescendant(
+  operationId: string,
+  field: OperationEvidenceValidationError["field"],
+  runRoot: string,
+  candidate: string | undefined,
+  label: string,
+  kind: "file" | "directory",
+): OperationEvidenceValidationError | undefined {
+  if (!candidate?.trim() || !isAbsolute(candidate)) {
+    return { operationId, field, message: `Owned ${label} must be an absolute descendant of the run root.` };
+  }
+  const resolvedRoot = realpathSync(runRoot);
+  const resolvedCandidate = resolve(candidate);
+  const lexicalRelative = relative(resolve(runRoot), resolvedCandidate);
+  if (!lexicalRelative || lexicalRelative.startsWith("..") || isAbsolute(lexicalRelative) || !existsSync(resolvedCandidate)) {
+    return { operationId, field, message: `Owned ${label} must exist beneath the run root.` };
+  }
+  const stat = lstatSync(resolvedCandidate);
+  if (stat.isSymbolicLink() || (kind === "file" ? !stat.isFile() : !stat.isDirectory())) {
+    return { operationId, field, message: `Owned ${label} must be a regular ${kind} beneath the run root.` };
+  }
+  const actualRelative = relative(resolvedRoot, realpathSync(resolvedCandidate));
+  if (!actualRelative || actualRelative.startsWith("..") || isAbsolute(actualRelative)) {
+    return { operationId, field, message: `Owned ${label} resolves outside the run root.` };
+  }
+  return undefined;
+}
+
+function isExistingRegularDirectory(value: string) {
+  if (!isAbsolute(value) || !existsSync(value)) return false;
+  const stat = lstatSync(value);
+  return !stat.isSymbolicLink() && stat.isDirectory();
 }
 
 function parentOperationId(operationId: string) {

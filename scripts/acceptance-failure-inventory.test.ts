@@ -158,6 +158,34 @@ describe("acceptance Gate 0 failure inventory", () => {
     ]);
   });
 
+  it("preserves a current versioned API route from an explicit annotation", () => {
+    const inventory = buildAcceptanceFailureInventory({
+      runId: "full-owned-api-v2",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      reports: [
+        {
+          phase: "browser",
+          reportPath: "test-results/acceptance/results.json",
+          report: {
+            suites: [{
+              file: "e2e/acceptance/current-api.acceptance.spec.ts",
+              specs: [{
+                title: "uses current API",
+                annotations: [{ type: "route", description: "/api/v2/organizations/current" }],
+                tests: [{
+                  projectName: "Desktop Chrome",
+                  results: [{ status: "failed", error: { message: "Expected: 200\nReceived: 500" } }],
+                }],
+              }],
+            }],
+          },
+        },
+      ],
+    });
+
+    expect(inventory.failures[0]).toMatchObject({ route: "/api/v2/organizations/current" });
+  });
+
   it("prefers an explicit Playwright route annotation over an API path in the failing assertion", () => {
     const inventory = buildAcceptanceFailureInventory({
       runId: "full-owned-annotated-route",

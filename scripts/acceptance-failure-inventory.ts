@@ -214,7 +214,7 @@ function findApplicationRoute(value: string) {
   for (const match of value.matchAll(/\/[A-Za-z0-9_:%.-]+(?:\/[A-Za-z0-9_:%.-]+)*/gu)) {
     const candidate = match[0];
     const firstSegment = candidate.split("/")[1];
-    if (candidate === "/api/v1" || candidate.startsWith("/api/v1/")) return candidate;
+    if (/^\/api\/v[1-9][0-9]*(?:\/|$)/u.test(candidate)) return candidate;
     if (UI_ROUTE_ROOTS.has(firstSegment)) return candidate;
   }
   return undefined;

@@ -344,6 +344,7 @@ describe("owned local acceptance runtime", () => {
       artifacts: {
         runRoot,
         descriptor: path.join(runRoot, "runtime.json"),
+        operationEvidenceRuntimeSnapshot: path.join(runRoot, "runtime-operation-evidence-snapshot.json"),
         failureInventory: path.join(runRoot, "failure-inventory.json"),
         sourceWorktreeOutputManifest: path.join(runRoot, "source-worktree-output-manifest.json"),
         nestedRuntimeManifest: path.join(runRoot, "nested-runtime-manifest.json"),

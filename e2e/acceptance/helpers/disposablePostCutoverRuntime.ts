@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { rm, readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -23,6 +23,8 @@ import {
 } from "./nestedRuntimeManifest";
 import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 import { stopOwnedProcessGroup } from "../../../scripts/owned-process-group";
+import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
+import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-registry";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
 /** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
@@ -363,7 +365,7 @@ async function waitForHttp(url: string, process: ChildProcess) {
 function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
   const child = spawn(command, args, {
     cwd: process.cwd(),
-    env: { ...process.env, ...env },
+    env: buildGate0OwnedChildProcessEnv(env),
     stdio: "pipe",
     detached: process.platform !== "win32",
   });
@@ -414,6 +416,8 @@ export async function startDisposablePostCutoverRuntime(
   const frontendUrl = `http://127.0.0.1:${frontendPort}`;
   const authIssuer = "wiseeff-disposable-acceptance";
   const authSecret = randomBytes(32).toString("hex");
+  const generatedAuthorization = createDisposableAuthorization(authIssuer, authSecret);
+  await registerGate0GeneratedSecrets([authSecret, generatedAuthorization]);
   const objectStoreRoot = path.resolve("work", "disposable-acceptance-object-store", databaseName);
   const nestedManifestPath = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV]?.trim();
   const children: ChildProcess[] = [];
@@ -567,6 +571,26 @@ export async function startDisposablePostCutoverRuntime(
       ? error
       : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup and rollback failed.");
   }
+}
+
+function createDisposableAuthorization(issuer: string, secret: string) {
+  const user = acceptanceCast.xuYun;
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    sub: user.userId,
+    org: organizationId,
+    name: user.name,
+    email: user.email,
+    title: "Acceptance User",
+    orgName: ACCEPTANCE_ORGANIZATION.name,
+    roles: [],
+    permissions: [],
+    isActive: true,
+    nbf: 0,
+    exp: 9_999_999_999,
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `Bearer ${payload}.${signature}`;
 }
 
 export async function afterNestedProcessesStop<T>(

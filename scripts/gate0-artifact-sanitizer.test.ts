@@ -183,6 +183,24 @@ describe("Gate0 artifact sanitizer", () => {
     expect(await scanGate0ArtifactTree(root, undefined, injectedSecretValues)).toMatchObject({ violations: [] });
   });
 
+  it("redacts an otherwise unlabelled 64-hex generated secret only when the owner supplies its exact value", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-generated-secret-"));
+    const generatedSecret = "d".repeat(64);
+    const artifact = path.join(root, "nested-runtime.log");
+    writeFileSync(artifact, `opaque-diagnostic=${generatedSecret}\n`);
+
+    const withoutRegistry = await scanGate0ArtifactTree(root, undefined, []);
+    expect(withoutRegistry.violations).toEqual([]);
+    const withRegistry = await scanGate0ArtifactTree(root, undefined, [generatedSecret]);
+    expect(withRegistry.violations).toEqual([
+      expect.objectContaining({ categories: ["injected-secret"] }),
+    ]);
+
+    await sanitizeGate0ArtifactTree(root, undefined, [generatedSecret]);
+    expect(readFileSync(artifact, "utf8")).toBe("opaque-diagnostic=[REDACTED]\n");
+    expect((await scanGate0ArtifactTree(root, undefined, [generatedSecret])).violations).toEqual([]);
+  });
+
   it("reports a canonical secret-bearing path by opaque id without exposing the path", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-known-secret-path-"));
     const secretPath = "XIAOZE_LLM_API_KEY=secret-in-path.json";

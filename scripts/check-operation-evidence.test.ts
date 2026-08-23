@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -185,9 +186,164 @@ describe("operation evidence helper", () => {
       rmSync(evidenceRoot, { recursive: true, force: true });
     }
   });
+
+  it("records Gate0 report and trace paths from the owned run artifacts", async () => {
+    const ownedRunRoot = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-paths-"));
+    const evidenceRoot = join(ownedRunRoot, "operation-evidence");
+    const reportPath = join(ownedRunRoot, "artifacts", "browser", "playwright-report", "index.html");
+    const tracePath = join(ownedRunRoot, "artifacts", "browser", "test-results");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_ROOT", evidenceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID", "full-run-owned");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT", "abc123");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND", "full");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR", join(ownedRunRoot, "artifacts", "browser", "playwright-report"));
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR", tracePath);
+
+    try {
+      const result = await recordOperationEvidence({
+        operationId: "PARAM-HAPPY-001",
+        title: "owned artifact paths",
+        status: "passed",
+      });
+
+      expect(result.record.report).toEqual({ path: reportPath, format: "html" });
+      expect(result.record.trace).toMatchObject({ path: tracePath });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(ownedRunRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("operation evidence checker", () => {
+  it("rejects owned Gate0 report and trace paths outside the declared run root", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-validation-"));
+    const runRoot = join(root, "run");
+    const outside = join(root, "outside");
+    const artifactPath = join(runRoot, "operation.json");
+    const descriptorSnapshot = join(runRoot, "runtime-evidence-snapshot.json");
+    const reportPath = join(outside, "index.html");
+    const tracePath = join(outside, "test-results");
+    mkdirSync(runRoot, { recursive: true });
+    mkdirSync(tracePath, { recursive: true });
+    writeFileSync(artifactPath, "{}\n");
+    writeFileSync(descriptorSnapshot, "{}\n");
+    writeFileSync(reportPath, "report\n");
+
+    try {
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        expectedRun: { runId: "full-run-owned", sourceCommit: "abc123" },
+        records: [{
+          operationId: "PARAM-HAPPY-001",
+          runId: "full-run-owned",
+          sourceCommit: "abc123",
+          runKind: "full",
+          status: "passed",
+          role: "Admin",
+          route: "/parameters",
+          assertions: ["ui"],
+          artifacts: [artifactPath],
+          runtime: {
+            mode: "api",
+            apiBaseUrl: "http://127.0.0.1:18800",
+            ownedRuntime: {
+              runRoot,
+              descriptorPath: join(runRoot, "runtime.json"),
+              descriptorSnapshotPath: descriptorSnapshot,
+              descriptorSnapshotSha256: "a".repeat(64),
+              runId: "full-run-owned",
+              sourceCommit: "abc123",
+              databaseName: "wiseeff_acceptance_full_owned",
+              objectMarkerSha256: "b".repeat(64),
+              apiUrl: "http://127.0.0.1:18800",
+              frontendUrl: "http://127.0.0.1:5180",
+              apiPid: process.pid,
+              frontendPid: process.pid,
+            },
+          },
+          report: { path: reportPath, format: "html" },
+          trace: { mode: "retain-on-failure", path: tracePath },
+          reproduction: { steps: ["Open parameters", "Verify operation"] },
+        } as OperationEvidenceRecord],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: "report", message: expect.stringMatching(/run root/i) }),
+        expect.objectContaining({ field: "trace", message: expect.stringMatching(/run root/i) }),
+        expect.objectContaining({ field: "runtime", message: expect.stringMatching(/digest|sha256/i) }),
+      ]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts existing owned report/trace descendants bound to an immutable runtime snapshot", () => {
+    const runRoot = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-valid-"));
+    const descriptorPath = join(runRoot, "runtime.json");
+    const descriptorSnapshotPath = join(runRoot, "runtime-operation-evidence-snapshot.json");
+    const reportPath = join(runRoot, "artifacts", "browser", "playwright-report", "index.html");
+    const tracePath = join(runRoot, "artifacts", "browser", "test-results");
+    const artifactPath = join(runRoot, "operation.json");
+    mkdirSync(join(runRoot, "artifacts", "browser", "playwright-report"), { recursive: true });
+    mkdirSync(tracePath, { recursive: true });
+    writeFileSync(descriptorPath, "{}\n");
+    writeFileSync(reportPath, "report\n");
+    writeFileSync(artifactPath, "{}\n");
+    const snapshot = `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-operation-evidence-runtime",
+      run: { id: "full-run-owned", sourceCommit: "abc123" },
+      artifacts: { runRoot, descriptor: descriptorPath },
+    })}\n`;
+    writeFileSync(descriptorSnapshotPath, snapshot);
+
+    try {
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        expectedRun: { runId: "full-run-owned", sourceCommit: "abc123" },
+        records: [{
+          operationId: "PARAM-HAPPY-001",
+          runId: "full-run-owned",
+          sourceCommit: "abc123",
+          runKind: "full",
+          status: "passed",
+          role: "Admin",
+          route: "/parameters",
+          assertions: ["ui"],
+          artifacts: [artifactPath],
+          runtime: {
+            mode: "api",
+            apiBaseUrl: "http://127.0.0.1:18800",
+            ownedRuntime: {
+              runRoot,
+              descriptorPath,
+              descriptorSnapshotPath,
+              descriptorSnapshotSha256: createHash("sha256").update(snapshot).digest("hex"),
+              runId: "full-run-owned",
+              sourceCommit: "abc123",
+              databaseName: "wiseeff_acceptance_full_owned",
+              objectMarkerSha256: "b".repeat(64),
+              apiUrl: "http://127.0.0.1:18800",
+              frontendUrl: "http://127.0.0.1:5180",
+              apiPid: process.pid,
+              frontendPid: process.pid,
+            },
+          },
+          report: { path: reportPath, format: "html" },
+          trace: { mode: "retain-on-failure", path: tracePath },
+          reproduction: { steps: ["Open parameters", "Verify operation"] },
+        }],
+      });
+
+      expect(result.status).toBe("passed");
+      expect(result.validationErrors).toEqual([]);
+    } finally {
+      rmSync(runRoot, { recursive: true, force: true });
+    }
+  });
+
+
   it("publishes only completed full runs as latest evidence", () => {
     const evidenceRoot = mkdtempSync(join(tmpdir(), "wiseeff-evidence-runs-"));
     const full = resolveEvidenceRunContext({

@@ -53,8 +53,10 @@ export type OperationEvidenceRuntimeSummary = {
   seed?: string;
   envSummary?: Record<string, string>;
   ownedRuntime?: {
+    runRoot: string;
     descriptorPath: string;
-    descriptorSha256: string;
+    descriptorSnapshotPath: string;
+    descriptorSnapshotSha256: string;
     runId: string;
     sourceCommit: string;
     databaseName: string;
@@ -153,8 +155,8 @@ export async function recordOperationEvidence(input: RecordOperationEvidenceInpu
     api: sanitizeApiSummaries(input.api),
     db: sanitizeDbSummaries(input.db),
     audit: sanitizeAuditSummaries(input.audit),
-    trace: input.trace ?? defaultTraceSummary(),
-    report: input.report ?? defaultReportSummary(),
+    trace: input.trace ?? defaultTraceSummary(process.env),
+    report: input.report ?? defaultReportSummary(process.env),
     runtime: input.runtime ?? defaultRuntimeSummary(),
     reproduction: input.reproduction ?? defaultReproductionSummary(input, operation?.route ?? "unknown", artifacts),
     recordedAt: new Date().toISOString()
@@ -226,17 +228,18 @@ function sanitizeAuditSummaries(summaries: OperationEvidenceAuditSummary[] | und
   }));
 }
 
-function defaultTraceSummary(): OperationEvidenceTraceSummary {
+function defaultTraceSummary(env: NodeJS.ProcessEnv): OperationEvidenceTraceSummary {
   return {
     mode: "retain-on-failure",
-    path: "test-results/acceptance",
+    path: env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR?.trim() || "test-results/acceptance",
     note: "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
   };
 }
 
-function defaultReportSummary(): OperationEvidenceReportSummary {
+function defaultReportSummary(env: NodeJS.ProcessEnv): OperationEvidenceReportSummary {
+  const reportRoot = env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR?.trim();
   return {
-    path: "playwright-report/acceptance/index.html",
+    path: reportRoot ? join(reportRoot, "index.html") : "playwright-report/acceptance/index.html",
     format: "html"
   };
 }
@@ -261,8 +264,10 @@ function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
     ...(ownedRuntime && descriptorPath
       ? {
           ownedRuntime: {
+            runRoot: ownedRuntime.artifacts.runRoot,
             descriptorPath,
-            descriptorSha256: sha256(readFileSync(descriptorPath)),
+            descriptorSnapshotPath: ownedRuntime.artifacts.operationEvidenceRuntimeSnapshot,
+            descriptorSnapshotSha256: sha256(readFileSync(ownedRuntime.artifacts.operationEvidenceRuntimeSnapshot)),
             runId: ownedRuntime.run.id,
             sourceCommit: ownedRuntime.run.sourceCommit,
             databaseName: ownedRuntime.database.name,

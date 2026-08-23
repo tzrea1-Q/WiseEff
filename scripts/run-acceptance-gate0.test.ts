@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { provisionOwnedLocalAcceptanceRuntime } from "./owned-local-acceptance-runtime";
 
 import {
@@ -175,6 +175,35 @@ describe("acceptance Gate 0 runner", () => {
 
     expect(result).toMatchObject({ timedOut: true });
     expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it("launches a Gate0 phase without inherited host credentials", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-phase-env-"));
+    const logPath = path.join(root, "phase.log");
+    vi.stubEnv("PGPASSWORD", "host-postgres-secret");
+    vi.stubEnv("DOCKER_AUTH_CONFIG", "host-docker-secret");
+    vi.stubEnv("CI_JOB_JWT", "host-ci-token");
+
+    try {
+      const result = await runGate0PhaseCommand(
+        {
+          phase: "visual",
+          command: process.execPath,
+          args: ["-e", "console.log(JSON.stringify({PGPASSWORD:process.env.PGPASSWORD,DOCKER_AUTH_CONFIG:process.env.DOCKER_AUTH_CONFIG,CI_JOB_JWT:process.env.CI_JOB_JWT,DATABASE_URL:process.env.DATABASE_URL}))"],
+          env: {},
+        },
+        { DATABASE_URL: "postgres://owned:owned@127.0.0.1:5432/owned" },
+        logPath,
+        5_000,
+      );
+
+      expect(result).toMatchObject({ status: 0, timedOut: false });
+      expect(JSON.parse(readFileSync(logPath, "utf8").trim())).toEqual({
+        DATABASE_URL: "postgres://owned:owned@127.0.0.1:5432/owned",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it.skipIf(process.platform === "win32")(

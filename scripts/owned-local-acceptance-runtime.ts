@@ -37,9 +37,9 @@ import {
   type NestedRuntimeCleanup,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 import {
-  isGate0SecretEnvKey,
   sanitizeGate0DiagnosticText,
 } from "./gate0-artifact-sanitizer";
+import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import {
   stopOwnedProcessGroup,
   waitForOwnedProcessGroupExit,
@@ -116,6 +116,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const runRoot = path.join(runsRoot, runId);
   const objectRoot = path.join(runRoot, "object-store");
   const descriptorPath = path.join(runRoot, "runtime.json");
+  const operationEvidenceRuntimeSnapshot = path.join(runRoot, "runtime-operation-evidence-snapshot.json");
   const apiLog = path.join(runRoot, "api.log");
   const frontendLog = path.join(runRoot, "frontend.log");
   const provisionLog = path.join(runRoot, "provision.log");
@@ -306,6 +307,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       artifacts: {
         runRoot,
         descriptor: descriptorPath,
+        operationEvidenceRuntimeSnapshot,
         failureInventory,
         sourceWorktreeOutputManifest,
         nestedRuntimeManifest,
@@ -331,6 +333,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     await verifyOwnedRuntimeOwnership(descriptor, env, options.ownerDeadline);
     descriptor.run.state = "running";
     writeDescriptor(descriptorPath, descriptor);
+    writeOperationEvidenceRuntimeSnapshot(operationEvidenceRuntimeSnapshot, descriptor);
 
     let finished = false;
     return {
@@ -685,15 +688,7 @@ export function buildOwnedChildProcessEnv(
   ownedEnv: RuntimeEnv,
   inheritedEnv: RuntimeEnv = process.env,
 ): RuntimeEnv {
-  const childEnv: RuntimeEnv = {};
-  for (const [key, value] of Object.entries(inheritedEnv)) {
-    if (!isGate0SecretEnvKey(key)) childEnv[key] = value;
-  }
-  for (const [key, value] of Object.entries(ownedEnv)) {
-    if (value === undefined) delete childEnv[key];
-    else childEnv[key] = value;
-  }
-  return childEnv;
+  return buildGate0OwnedChildProcessEnv(ownedEnv, inheritedEnv);
 }
 
 async function waitForHttp(
@@ -1059,6 +1054,47 @@ async function assertDatabaseAbsent(
 function writeDescriptor(descriptorPath: string, descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1) {
   assertOwnedRuntimeDescriptor(descriptor);
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
+}
+
+function writeOperationEvidenceRuntimeSnapshot(
+  snapshotPath: string,
+  descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+) {
+  const snapshot = {
+    version: 1,
+    kind: "wiseeff-owned-local-acceptance-operation-evidence-runtime",
+    run: {
+      id: descriptor.run.id,
+      sourceCommit: descriptor.run.sourceCommit,
+      worktreeRoot: descriptor.run.worktreeRoot,
+      ownerPid: descriptor.run.ownerPid,
+      createdAt: descriptor.run.createdAt,
+    },
+    database: {
+      name: descriptor.database.name,
+      connection: descriptor.database.connection,
+      marker: descriptor.database.marker,
+      migration: descriptor.database.migration,
+      seed: descriptor.database.seed,
+    },
+    objectStore: {
+      root: descriptor.objectStore.root,
+      markerFile: descriptor.objectStore.markerFile,
+      markerSha256: descriptor.objectStore.markerSha256,
+    },
+    endpoints: descriptor.endpoints,
+    processes: descriptor.processes,
+    auth: descriptor.auth,
+    runtime: descriptor.runtime,
+    artifacts: {
+      runRoot: descriptor.artifacts.runRoot,
+      descriptor: descriptor.artifacts.descriptor,
+    },
+  };
+  writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
 }
 
 function writeProvisionFailure(
