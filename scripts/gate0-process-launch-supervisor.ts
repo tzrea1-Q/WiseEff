@@ -194,7 +194,11 @@ function requireLaunchDirectory(runRoot: string) {
   const stat = lstatSync(resolvedRunRoot);
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("Gate0 process launch run root is unsafe.");
   const launchDirectory = path.join(resolvedRunRoot, LAUNCH_DIRECTORY);
-  mkdirSync(launchDirectory, { mode: 0o700 });
+  // Multiple supervised children share one run-scoped launch ledger.  The
+  // directory is created once during provisioning and then reused by every
+  // subsequent spawn; recursive creation makes that reuse idempotent while
+  // the lstat checks below still reject symlinks/non-directories.
+  mkdirSync(launchDirectory, { mode: 0o700, recursive: true });
   const launchStat = lstatSync(launchDirectory);
   if (launchStat.isSymbolicLink() || !launchStat.isDirectory()) {
     throw new Error("Gate0 process launch directory is unsafe.");

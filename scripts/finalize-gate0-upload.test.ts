@@ -319,6 +319,44 @@ describe("Gate0 immutable upload finalization", () => {
     await expect(waitForProcessState(pid, false)).resolves.toBeUndefined();
   }, 15_000);
 
+  it("reuses the run-scoped launch ledger for multiple supervised children", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-gate0-launch-ledger-reuse-"));
+    roots.push(root);
+    const runRoot = path.join(root, "run");
+    const entryPath = path.join(root, "listener.mjs");
+    mkdirSync(runRoot);
+    writeFileSync(entryPath, [
+      'import { createServer } from "node:net";',
+      'const server = createServer();',
+      'server.listen(0, "127.0.0.1");',
+    ].join("\n"), "utf8");
+    const supervision = {
+      runRoot,
+      runId: "ledger-reuse",
+      sourceCommit: "4".repeat(40),
+      nodeEntry: { entry: entryPath, args: [] },
+    } as const;
+    const launchers = [1, 2].map(() => spawnGate0SupervisedProcess({
+      supervision: { ...supervision, label: "root:ledger-reuse:api" },
+      cwd: root,
+      command: "unused",
+      args: [],
+      env: process.env,
+      stdio: "ignore",
+    }));
+    try {
+      expect(listGate0OwnedProcessLaunches(runRoot)).toHaveLength(2);
+    } finally {
+      for (const launcher of launchers) {
+        await stopOwnedProcessGroup(launcher, {
+          expectedProcessIdentity: readGate0SupervisedProcessIdentity(launcher),
+          terminateGraceMs: 100,
+          verifyGraceMs: 100,
+        });
+      }
+    }
+  }, 15_000);
+
   it("kills a launcher that misses the identity-publication deadline before it can claim late", async () => {
     const fixture = createNestedFixture("delayed_launch_timeout");
     const descriptorPath = path.join(fixture.runRoot, "runtime.json");
