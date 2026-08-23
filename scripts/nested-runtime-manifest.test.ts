@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "../e2e/acceptance/helpers/owned
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   initializeNestedRuntimeManifest,
+  readProcessStartIdentity,
   readNestedRuntimeManifest,
   recordNestedRuntimeFinish,
   recordNestedRuntimeProgress,
@@ -33,6 +34,16 @@ import {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Gate0 nested disposable runtime contract", () => {
+  it("exposes a stable process-start identity and returns no identity for a missing PID", () => {
+    const identity = readProcessStartIdentity(process.pid);
+    if (process.platform === "linux") {
+      expect(identity).toMatch(/^linux-start-ticks:\d+$/u);
+    } else if (process.platform !== "win32") {
+      expect(identity).toMatch(new RegExp(`^${process.platform}-lstart:.+`, "u"));
+    }
+    expect(readProcessStartIdentity(999_999_999)).toBeUndefined();
+  });
+
   it("removes exact child resources only after a successful Playwright phase", async () => {
     const removed: string[] = [];
 
@@ -441,6 +452,90 @@ describe("Gate0 nested disposable runtime contract", () => {
     recordNestedRuntimeProvisioning(manifestPath, {
       id: "wiseeff_acceptance_disposable_after_stale_lock",
       databaseName: "wiseeff_acceptance_disposable_after_stale_lock",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.state).toBe("provisioning");
+  });
+
+  it("never steals an aged manifest lock from its still-live owner", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-live-lock-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const lockPath = `${manifestPath}.lock`;
+    writeFileSync(lockPath, JSON.stringify({
+      pid: process.pid,
+      token: "paused-live-owner",
+      parentRunId: "full-owned",
+    }));
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, old, old);
+
+    expect(() => recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_waiting_writer",
+      databaseName: "wiseeff_acceptance_disposable_waiting_writer",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object-waiting"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    })).toThrow(/exist|lock/i);
+
+    expect(JSON.parse(readFileSync(lockPath, "utf8"))).toMatchObject({
+      pid: process.pid,
+      token: "paused-live-owner",
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children).toEqual([]);
+
+    // Once the original owner releases the lock, its state and the waiting
+    // writer's retry serialize instead of either writer publishing a stale copy.
+    unlinkSync(lockPath);
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_original_writer",
+      databaseName: "wiseeff_acceptance_disposable_original_writer",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object-original"),
+      apiUrl: "http://127.0.0.1:19101",
+      frontendUrl: "http://127.0.0.1:5191",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_waiting_writer",
+      databaseName: "wiseeff_acceptance_disposable_waiting_writer",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object-waiting"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children.map((child) => child.id)).toEqual([
+      "wiseeff_acceptance_disposable_original_writer",
+      "wiseeff_acceptance_disposable_waiting_writer",
+    ]);
+  }, 7_000);
+
+  it("recovers a lock whose PID was reused by a different process identity", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-reused-pid-lock-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    writeFileSync(`${manifestPath}.lock`, JSON.stringify({
+      pid: process.pid,
+      token: "dead-process-incarnation",
+      parentRunId: "full-owned",
+      processIdentity: "prior-process-incarnation",
+    }));
+    const startedAt = Date.now();
+
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_after_pid_reuse",
+      databaseName: "wiseeff_acceptance_disposable_after_pid_reuse",
       markerPurpose: "parameter-topology",
       objectStoreRoot: path.join(runRoot, "object"),
       apiUrl: "http://127.0.0.1:19100",

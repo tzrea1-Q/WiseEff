@@ -1,10 +1,9 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
-  closeSync,
-  openSync,
+  linkSync,
   readFileSync,
   renameSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -219,38 +218,44 @@ function writeManifest(manifestPath: string, manifest: NestedRuntimeManifest, fl
 
 function updateManifest(manifestPath: string, update: (manifest: NestedRuntimeManifest) => void) {
   const lockPath = `${manifestPath}.lock`;
+  const parentRunId = readManifest(manifestPath).parentRunId;
   const deadline = Date.now() + 5_000;
-  let lockFd: number | undefined;
   const lockToken = randomUUID();
-  while (lockFd === undefined) {
-    try {
-      lockFd = openSync(lockPath, "wx");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      if (recoverStaleManifestLock(lockPath)) continue;
-      if (Date.now() >= deadline) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
+  const lockCandidatePath = `${lockPath}.${process.pid}.${lockToken}.candidate`;
+  writeFileSync(lockCandidatePath, `${JSON.stringify({
+    pid: process.pid,
+    token: lockToken,
+    parentRunId,
+    processIdentity: readProcessStartIdentity(process.pid),
+  })}\n`, { encoding: "utf8", flag: "wx" });
+  let locked = false;
   try {
-    writeFileSync(lockFd, `${JSON.stringify({ pid: process.pid, token: lockToken })}\n`, "utf8");
-  } catch (error) {
-    closeSync(lockFd);
-    try {
-      unlinkSync(lockPath);
-    } catch (unlinkError) {
-      if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkError;
+    while (!locked) {
+      try {
+        // The hard-link publish is one atomic no-replace operation, so another
+        // process can never observe the empty owner window of open-then-write.
+        linkSync(lockCandidatePath, lockPath);
+        locked = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        if (recoverStaleManifestLock(lockPath)) continue;
+        if (Date.now() >= deadline) {
+          throw new Error(`Nested runtime manifest lock is held by a live owner: ${lockPath}`, { cause: error });
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      }
     }
-    throw error;
-  }
-  try {
     const manifest = readManifest(manifestPath);
     update(manifest);
     writeManifest(manifestPath, manifest);
   } finally {
-    closeSync(lockFd);
-    const owner = readManifestLockOwner(lockPath);
-    if (owner?.pid === process.pid && owner.token === lockToken) {
+    try {
+      unlinkSync(lockCandidatePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const owner = locked ? readManifestLockOwner(lockPath) : undefined;
+    if (locked && owner?.pid === process.pid && owner.token === lockToken) {
       try {
         unlinkSync(lockPath);
       } catch (error) {
@@ -261,19 +266,20 @@ function updateManifest(manifestPath: string, update: (manifest: NestedRuntimeMa
 }
 
 function recoverStaleManifestLock(lockPath: string) {
-  let stat: ReturnType<typeof statSync>;
-  try {
-    stat = statSync(lockPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
-    throw error;
-  }
   const owner = readManifestLockOwner(lockPath);
-  const ageMs = Date.now() - stat.mtimeMs;
-  const invalidAndOld = !owner && ageMs > 1_000;
+  // A malformed/partially-written lock has no safe owner proof. Fail closed;
+  // valid dead-owner records remain automatically recoverable below.
+  if (!owner) return false;
   const deadOwner = owner ? !isProcessAlive(owner.pid) : false;
-  const expiredOwner = owner ? ageMs > 30_000 : false;
-  if (!invalidAndOld && !deadOwner && !expiredOwner) return false;
+  const currentIdentity = owner?.processIdentity ? readProcessStartIdentity(owner.pid) : undefined;
+  const reusedPid = owner?.processIdentity !== undefined && currentIdentity !== undefined
+    ? owner.processIdentity !== currentIdentity
+    : false;
+  // Lock age is never ownership proof: a live writer may be paused while it
+  // holds a valid read-modify-write snapshot. Only a dead owner or a proven
+  // PID reuse is stale. Parent identity is recorded
+  // for audit, but even a mismatched live owner is never stolen from.
+  if (!deadOwner && !reusedPid) return false;
   try {
     unlinkSync(lockPath);
     return true;
@@ -283,16 +289,58 @@ function recoverStaleManifestLock(lockPath: string) {
   }
 }
 
-function readManifestLockOwner(lockPath: string): { pid: number; token: string } | undefined {
+function readManifestLockOwner(lockPath: string): {
+  pid: number;
+  token: string;
+  parentRunId?: string;
+  processIdentity?: string;
+} | undefined {
   try {
-    const owner = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: unknown; token?: unknown };
+    const owner = JSON.parse(readFileSync(lockPath, "utf8")) as {
+      pid?: unknown;
+      token?: unknown;
+      parentRunId?: unknown;
+      processIdentity?: unknown;
+    };
     if (!Number.isSafeInteger(owner.pid) || Number(owner.pid) <= 0 || typeof owner.token !== "string" || !owner.token) {
       return undefined;
     }
-    return { pid: Number(owner.pid), token: owner.token };
+    return {
+      pid: Number(owner.pid),
+      token: owner.token,
+      parentRunId: typeof owner.parentRunId === "string" && owner.parentRunId ? owner.parentRunId : undefined,
+      processIdentity: typeof owner.processIdentity === "string" && owner.processIdentity
+        ? owner.processIdentity
+        : undefined,
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return undefined;
     throw error;
+  }
+}
+
+export function readProcessStartIdentity(pid: number) {
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const commandEnd = stat.lastIndexOf(")");
+      const fieldsAfterCommand = commandEnd >= 0 ? stat.slice(commandEnd + 2).trim().split(/\s+/u) : [];
+      const startTicks = fieldsAfterCommand[19];
+      if (startTicks) return `linux-start-ticks:${startTicks}`;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+    }
+    return undefined;
+  }
+  try {
+    const startedAt = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1_000,
+    }).trim();
+    return startedAt ? `${process.platform}-lstart:${startedAt}` : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -7,8 +7,10 @@ import {
   mkdirSync,
   openSync,
   realpathSync,
+  renameSync,
   rmSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
@@ -65,7 +67,108 @@ export type ProvisionOwnedRuntimeOptions = {
 
 export type ProvisionOwnedRuntimeDependencies = {
   allocateLoopbackPort?: typeof allocateAllowedLoopbackPort;
+  databaseCreationOperations?: (input: {
+    adminUrl: string;
+    databaseName: string;
+    ownerDeadline?: ProvisionOwnedRuntimeOptions["ownerDeadline"];
+  }) => CheckedAbsentDatabaseCreationOperations;
 };
+
+export type CheckedAbsentDatabaseCreationEvidence = {
+  intendedDatabaseName: string;
+  state:
+    | "intent-recorded"
+    | "absent-confirmed"
+    | "create-attempted"
+    | "created-acknowledged"
+    | "create-failed-database-present"
+    | "create-failed-database-absent"
+    | "create-failed-presence-unknown"
+    | "preexisting-database-refused"
+    | "marker-verified";
+  absentBeforeCreate?: true;
+  createAttempted: boolean;
+  createAcknowledged: boolean;
+  presenceAfterCreateFailure?: "present" | "absent" | "unknown";
+  ownership: "not-owned" | "unverified-no-marker" | "verified-marker";
+  retainedDatabaseName?: string;
+};
+
+export type CheckedAbsentDatabaseCreationOperations = {
+  databaseExistsBeforeCreate(): Promise<boolean>;
+  createDatabase(): Promise<void>;
+  databaseExistsAfterCreateFailure(): Promise<boolean>;
+};
+
+export async function createCheckedAbsentDatabase(input: {
+  databaseName: string;
+  recordEvidence(evidence: CheckedAbsentDatabaseCreationEvidence): void;
+  operations: CheckedAbsentDatabaseCreationOperations;
+}) {
+  let evidence: CheckedAbsentDatabaseCreationEvidence = {
+    intendedDatabaseName: input.databaseName,
+    state: "intent-recorded",
+    createAttempted: false,
+    createAcknowledged: false,
+    ownership: "not-owned",
+  };
+  const record = (next: CheckedAbsentDatabaseCreationEvidence) => {
+    evidence = next;
+    input.recordEvidence({ ...evidence });
+  };
+  record(evidence);
+
+  if (await input.operations.databaseExistsBeforeCreate()) {
+    record({ ...evidence, state: "preexisting-database-refused" });
+    throw new Error(`Owned runtime database must be absent before creation: ${input.databaseName}`);
+  }
+  record({ ...evidence, state: "absent-confirmed", absentBeforeCreate: true });
+  record({
+    ...evidence,
+    state: "create-attempted",
+    createAttempted: true,
+    ownership: "unverified-no-marker",
+    retainedDatabaseName: input.databaseName,
+  });
+
+  try {
+    await input.operations.createDatabase();
+  } catch (error) {
+    let exists: boolean;
+    try {
+      exists = await input.operations.databaseExistsAfterCreateFailure();
+    } catch (reconciliationError) {
+      record({
+        ...evidence,
+        state: "create-failed-presence-unknown",
+        presenceAfterCreateFailure: "unknown",
+        ownership: "unverified-no-marker",
+        retainedDatabaseName: input.databaseName,
+      });
+      throw new AggregateError(
+        [asError(error), asError(reconciliationError)],
+        "Database creation failed and bounded presence reconciliation did not settle.",
+      );
+    }
+    record({
+      ...evidence,
+      state: exists ? "create-failed-database-present" : "create-failed-database-absent",
+      presenceAfterCreateFailure: exists ? "present" : "absent",
+      ownership: exists ? "unverified-no-marker" : "not-owned",
+      retainedDatabaseName: exists ? input.databaseName : undefined,
+    });
+    throw error;
+  }
+
+  record({
+    ...evidence,
+    state: "created-acknowledged",
+    createAcknowledged: true,
+    ownership: "unverified-no-marker",
+    retainedDatabaseName: input.databaseName,
+  });
+  return evidence;
+}
 
 export type OwnedLocalAcceptanceRuntime = {
   descriptorPath: string;
@@ -123,6 +226,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const failureInventory = path.join(runRoot, "failure-inventory.json");
   const sourceWorktreeOutputManifest = path.join(runRoot, "source-worktree-output-manifest.json");
   const nestedRuntimeManifest = path.join(runRoot, "nested-runtime-manifest.json");
+  const databaseCreationJournal = path.join(runRoot, "database-creation.json");
   const databaseName = buildDatabaseName(runId);
   const databaseUrl = databaseUrlFor(options.baseDatabaseUrl, databaseName);
   const adminUrl = databaseUrlFor(options.baseDatabaseUrl, "postgres");
@@ -132,6 +236,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const started: StartedProcess[] = [];
   let databaseCreated = false;
   let objectRootCreated = false;
+  let databaseCreationEvidence: CheckedAbsentDatabaseCreationEvidence | undefined;
 
   try {
     ensureExistingAncestorsAreNotSymlinks(worktreeRoot, path.dirname(runsRoot));
@@ -180,7 +285,23 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     });
 
     checkpointOwner(options, "database creation");
-    await createCheckedAbsentDatabase(adminUrl, databaseName, options.ownerDeadline);
+    const databaseCreationOperations = dependencies.databaseCreationOperations?.({
+      adminUrl,
+      databaseName,
+      ownerDeadline: options.ownerDeadline,
+    }) ?? buildCheckedAbsentDatabaseCreationOperations(adminUrl, databaseName, options.ownerDeadline);
+    databaseCreationEvidence = await createCheckedAbsentDatabase({
+      databaseName,
+      recordEvidence(evidence) {
+        databaseCreationEvidence = evidence;
+        writeDatabaseCreationJournal(databaseCreationJournal, {
+          runId,
+          sourceCommit: source.commit,
+          evidence,
+        });
+      },
+      operations: databaseCreationOperations,
+    });
     databaseCreated = true;
     await runNpmScriptWithLog(worktreeRoot, "db:migrate", env, provisionLog, options.ownerDeadline);
     await runNpmScriptWithLog(worktreeRoot, "db:seed:all", env, provisionLog, options.ownerDeadline);
@@ -189,6 +310,17 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       runId,
       sourceCommit: source.commit,
     }, options.ownerDeadline);
+    databaseCreationEvidence = {
+      ...databaseCreationEvidence,
+      state: "marker-verified",
+      ownership: "verified-marker",
+      retainedDatabaseName: databaseName,
+    };
+    writeDatabaseCreationJournal(databaseCreationJournal, {
+      runId,
+      sourceCommit: source.commit,
+      evidence: databaseCreationEvidence,
+    });
 
     const api = spawnOwnedProcess({
       cwd: worktreeRoot,
@@ -418,7 +550,8 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         writeProvisionFailure(runRoot, {
           runId,
           sourceCommit: source.commit,
-          databaseName: databaseCreated ? databaseName : undefined,
+          databaseName: databaseCreationEvidence?.retainedDatabaseName ?? (databaseCreated ? databaseName : undefined),
+          databaseCreationEvidence,
           objectRoot: objectRootCreated ? objectRoot : undefined,
           errors: failures,
         });
@@ -571,26 +704,83 @@ function databaseUrlFor(baseUrl: string, databaseName: string) {
   return url.toString();
 }
 
-async function createCheckedAbsentDatabase(
+function buildCheckedAbsentDatabaseCreationOperations(
   adminUrl: string,
   databaseName: string,
   owner?: OwnerAwarePostgresDeadline,
+): CheckedAbsentDatabaseCreationOperations {
+  return {
+    databaseExistsBeforeCreate: () => databaseExists(
+      adminUrl,
+      databaseName,
+      owner,
+      "checked-absent database creation",
+    ),
+    createDatabase: () => withOwnerAwarePostgres({
+      connectionString: adminUrl,
+      owner,
+      stage: "checked-absent database creation",
+    }, (database) => database.query(
+      `create database ${quoteIdentifier(databaseName)}`,
+      [],
+      "create query",
+    ).then(() => undefined)),
+    databaseExistsAfterCreateFailure: () => withBoundedDatabaseCreationReconciliation(
+      (recoveryOwner) => databaseExists(
+        adminUrl,
+        databaseName,
+        recoveryOwner,
+        "database creation failure reconciliation",
+      ),
+    ),
+  };
+}
+
+async function databaseExists(
+  adminUrl: string,
+  databaseName: string,
+  owner: OwnerAwarePostgresDeadline | undefined,
+  stage: string,
 ) {
-  await withOwnerAwarePostgres({
+  return withOwnerAwarePostgres({
     connectionString: adminUrl,
     owner,
-    stage: "checked-absent database creation",
+    stage,
   }, async (database) => {
     const existing = await database.query(
       "select 1 from pg_database where datname = $1",
       [databaseName],
-      "absence query",
+      "presence query",
     );
-    if (existing.rows.length > 0) {
-      throw new Error(`Owned runtime database must be absent before creation: ${databaseName}`);
-    }
-    await database.query(`create database ${quoteIdentifier(databaseName)}`, [], "create query");
+    return existing.rows.length > 0;
   });
+}
+
+async function withBoundedDatabaseCreationReconciliation<T>(
+  operation: (owner: OwnerAwarePostgresDeadline) => Promise<T>,
+) {
+  const timeoutMs = 5_000;
+  const controller = new AbortController();
+  const deadlineAt = Date.now() + timeoutMs;
+  const timer = setTimeout(
+    () => controller.abort(new Error("Database creation reconciliation deadline elapsed.")),
+    timeoutMs,
+  );
+  timer.unref();
+  try {
+    return await operation({
+      signal: controller.signal,
+      remainingMs(stage) {
+        const remaining = deadlineAt - Date.now();
+        if (controller.signal.aborted || remaining <= 0) {
+          throw new Error(`Database creation reconciliation deadline elapsed before ${stage}.`);
+        }
+        return remaining;
+      },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function writeAndReadDatabaseMarker(
@@ -1103,6 +1293,7 @@ function writeProvisionFailure(
     runId: string;
     sourceCommit: string;
     databaseName?: string;
+    databaseCreationEvidence?: CheckedAbsentDatabaseCreationEvidence;
     objectRoot?: string;
     errors: Error[];
   },
@@ -1113,7 +1304,16 @@ function writeProvisionFailure(
       kind: "wiseeff-owned-local-acceptance-provision-failure",
       runId: input.runId,
       sourceCommit: input.sourceCommit,
+      intendedDatabaseName: input.databaseCreationEvidence?.intendedDatabaseName,
       retainedDatabaseName: input.databaseName,
+      databaseOwnership: input.databaseCreationEvidence ? {
+        state: input.databaseCreationEvidence.state,
+        presenceAfterCreateFailure: input.databaseCreationEvidence.presenceAfterCreateFailure,
+        markerStatus: input.databaseCreationEvidence.ownership,
+        uncertainty: input.databaseCreationEvidence.ownership === "unverified-no-marker"
+          ? "No owned database marker was verified; destructive cleanup is refused until exact marker proof succeeds."
+          : undefined,
+      } : undefined,
       retainedObjectRoot: input.objectRoot,
       failures: input.errors.map((error, index) => ({
         stage: index === 0 ? "provision" : "process-cleanup",
@@ -1123,6 +1323,33 @@ function writeProvisionFailure(
     }, null, 2)}\n`,
     "utf8",
   );
+}
+
+function writeDatabaseCreationJournal(
+  journalPath: string,
+  input: {
+    runId: string;
+    sourceCommit: string;
+    evidence: CheckedAbsentDatabaseCreationEvidence;
+  },
+) {
+  const temporaryPath = `${journalPath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-database-creation",
+      runId: input.runId,
+      sourceCommit: input.sourceCommit,
+      ...input.evidence,
+      updatedAt: new Date().toISOString(),
+    }, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    renameSync(temporaryPath, journalPath);
+  } finally {
+    try {
+      unlinkSync(temporaryPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
 }
 
 function quoteIdentifier(value: string) {

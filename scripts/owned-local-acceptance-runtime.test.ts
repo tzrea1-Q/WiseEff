@@ -16,6 +16,7 @@ import {
   buildOwnedChildProcessEnv,
   buildOwnedRuntimeEnv,
   cleanupExactOrphanedOwnedRuntime,
+  createCheckedAbsentDatabase,
   provisionOwnedLocalAcceptanceRuntime,
   readCleanSource,
 } from "./owned-local-acceptance-runtime";
@@ -49,6 +50,73 @@ afterEach(async () => {
 });
 
 describe("owned local acceptance runtime", () => {
+  it("records an unmarked retained database when CREATE commits but its response is lost", async () => {
+    const databaseName = "wiseeff_acceptance_full_response_lost";
+    const evidence: Array<Record<string, unknown>> = [];
+    let committed = false;
+
+    await expect(createCheckedAbsentDatabase({
+      databaseName,
+      recordEvidence: (entry) => evidence.push({ ...entry }),
+      operations: {
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => {
+          committed = true;
+          throw new Error("CREATE response lost after commit");
+        },
+        databaseExistsAfterCreateFailure: async () => committed,
+      },
+    })).rejects.toThrow(/response lost/i);
+
+    expect(evidence.at(-1)).toEqual({
+      intendedDatabaseName: databaseName,
+      state: "create-failed-database-present",
+      absentBeforeCreate: true,
+      createAttempted: true,
+      createAcknowledged: false,
+      presenceAfterCreateFailure: "present",
+      ownership: "unverified-no-marker",
+      retainedDatabaseName: databaseName,
+    });
+  });
+
+  it("distinguishes an absent database from an unknown database after CREATE fails", async () => {
+    const databaseName = "wiseeff_acceptance_full_create_failed";
+    const absentEvidence: Array<Record<string, unknown>> = [];
+    await expect(createCheckedAbsentDatabase({
+      databaseName,
+      recordEvidence: (entry) => absentEvidence.push({ ...entry }),
+      operations: {
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => { throw new Error("CREATE rejected before commit"); },
+        databaseExistsAfterCreateFailure: async () => false,
+      },
+    })).rejects.toThrow(/rejected before commit/i);
+    expect(absentEvidence.at(-1)).toMatchObject({
+      state: "create-failed-database-absent",
+      presenceAfterCreateFailure: "absent",
+      ownership: "not-owned",
+    });
+    expect(absentEvidence.at(-1)?.retainedDatabaseName).toBeUndefined();
+
+    const unknownEvidence: Array<Record<string, unknown>> = [];
+    await expect(createCheckedAbsentDatabase({
+      databaseName,
+      recordEvidence: (entry) => unknownEvidence.push({ ...entry }),
+      operations: {
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => { throw new Error("CREATE response lost"); },
+        databaseExistsAfterCreateFailure: async () => { throw new Error("reconnect deadline elapsed"); },
+      },
+    })).rejects.toThrow(/reconciliation did not settle/i);
+    expect(unknownEvidence.at(-1)).toMatchObject({
+      state: "create-failed-presence-unknown",
+      presenceAfterCreateFailure: "unknown",
+      ownership: "unverified-no-marker",
+      retainedDatabaseName: databaseName,
+    });
+  });
+
   it("drops unrelated inherited credentials before applying the exact owned runtime environment", () => {
     const childEnv = buildOwnedChildProcessEnv(
       {
@@ -227,6 +295,47 @@ describe("owned local acceptance runtime", () => {
       failures: [expect.objectContaining({ message: expect.stringMatching(/loopback port/i) })],
     });
     expect(failure).not.toHaveProperty("retainedDatabaseName");
+  });
+
+  it("persists exact database uncertainty when a post-commit CREATE response is lost before the descriptor", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-create-response-loss-");
+    let committed = false;
+
+    await expect(provisionOwnedLocalAcceptanceRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+    }, {
+      allocateLoopbackPort: async (range) => range.min,
+      databaseCreationOperations: () => ({
+        databaseExistsBeforeCreate: async () => false,
+        createDatabase: async () => {
+          committed = true;
+          throw new Error("CREATE response lost after commit");
+        },
+        databaseExistsAfterCreateFailure: async () => committed,
+      }),
+    })).rejects.toThrow(/provisioning failed/i);
+
+    const { runRoot, failure } = readOnlyProvisionFailure(repo);
+    expect(failure).toMatchObject({
+      intendedDatabaseName: expect.stringMatching(/^wiseeff_acceptance_full_/),
+      retainedDatabaseName: expect.stringMatching(/^wiseeff_acceptance_full_/),
+      databaseOwnership: {
+        state: "create-failed-database-present",
+        presenceAfterCreateFailure: "present",
+        markerStatus: "unverified-no-marker",
+        uncertainty: expect.stringMatching(/destructive cleanup is refused/i),
+      },
+    });
+    const journal = JSON.parse(readFileSync(path.join(runRoot, "database-creation.json"), "utf8"));
+    expect(journal).toMatchObject({
+      kind: "wiseeff-owned-local-acceptance-database-creation",
+      state: "create-failed-database-present",
+      presenceAfterCreateFailure: "present",
+      ownership: "unverified-no-marker",
+      retainedDatabaseName: failure.retainedDatabaseName,
+    });
   });
 
   it("rejects a healthy listener whose PID does not match the owned descriptor", async () => {
