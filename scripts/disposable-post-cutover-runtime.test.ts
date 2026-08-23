@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   allocateLoopbackPort,
+  afterNestedProcessesStop,
   assertDisposableDatabaseIdentity,
   buildDisposableDatabaseName,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
@@ -82,5 +83,16 @@ describe("disposable post-cutover acceptance database safety", () => {
         "xiaoze-action",
       ),
     ).not.toThrow();
+  });
+
+  it("never deletes nested database or object evidence after process cleanup fails", async () => {
+    let resourceCleanupCalls = 0;
+
+    await expect(afterNestedProcessesStop(
+      [new Error("operation not permitted")],
+      async () => { resourceCleanupCalls += 1; },
+    )).rejects.toThrow(/retained for parent takeover/i);
+
+    expect(resourceCleanupCalls).toBe(0);
   });
 });

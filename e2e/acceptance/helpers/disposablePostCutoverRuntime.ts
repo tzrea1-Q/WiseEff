@@ -420,29 +420,25 @@ export async function startDisposablePostCutoverRuntime(
         const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
         const errors: Error[] = [];
         await stopAndRecordNestedProcesses(children, cleanup, errors);
-        if (errors.length > 0) {
-          throw new AggregateError(
-            errors,
-            "Disposable nested runtime process cleanup failed; database and object store were retained for parent takeover.",
-          );
-        }
-        try {
-          await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
-          await withClient(adminUrl, (client) =>
-            client.query(`drop database if exists ${databaseName} with (force)`),
-          );
-          cleanup.database = { status: "removed" };
-        } catch (error) {
-          cleanup.database = { status: "failed", reason: safeNestedCleanupReason(error) };
-          errors.push(asNestedError(error));
-        }
-        try {
-          await rm(objectStoreRoot, { recursive: true, force: true });
-          cleanup.objectStore = { status: "removed" };
-        } catch (error) {
-          cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(error) };
-          errors.push(asNestedError(error));
-        }
+        await afterNestedProcessesStop(errors, async () => {
+          try {
+            await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
+            await withClient(adminUrl, (client) =>
+              client.query(`drop database if exists ${databaseName} with (force)`),
+            );
+            cleanup.database = { status: "removed" };
+          } catch (error) {
+            cleanup.database = { status: "failed", reason: safeNestedCleanupReason(error) };
+            errors.push(asNestedError(error));
+          }
+          try {
+            await rm(objectStoreRoot, { recursive: true, force: true });
+            cleanup.objectStore = { status: "removed" };
+          } catch (error) {
+            cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(error) };
+            errors.push(asNestedError(error));
+          }
+        });
         if (nestedManifestPath && nestedRegistered) {
           recordNestedRuntimeFinish(
             nestedManifestPath,
@@ -460,28 +456,24 @@ export async function startDisposablePostCutoverRuntime(
     const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
     const cleanupErrors: Error[] = [];
     await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError(
-        [asNestedError(error), ...cleanupErrors],
-        "Disposable runtime startup failed and process cleanup did not settle; owned resources were retained for parent takeover.",
+    await afterNestedProcessesStop(cleanupErrors, async () => {
+      await withClient(adminUrl, (client) =>
+        client.query(`drop database if exists ${databaseName} with (force)`),
+      ).then(
+        () => { cleanup.database = { status: "removed" }; },
+        (cleanupError) => {
+          cleanup.database = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+          cleanupErrors.push(asNestedError(cleanupError));
+        },
       );
-    }
-    await withClient(adminUrl, (client) =>
-      client.query(`drop database if exists ${databaseName} with (force)`),
-    ).then(
-      () => { cleanup.database = { status: "removed" }; },
-      (cleanupError) => {
-        cleanup.database = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
-        cleanupErrors.push(asNestedError(cleanupError));
-      },
-    );
-    await rm(objectStoreRoot, { recursive: true, force: true }).then(
-      () => { cleanup.objectStore = { status: "removed" }; },
-      (cleanupError) => {
-        cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
-        cleanupErrors.push(asNestedError(cleanupError));
-      },
-    );
+      await rm(objectStoreRoot, { recursive: true, force: true }).then(
+        () => { cleanup.objectStore = { status: "removed" }; },
+        (cleanupError) => {
+          cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+          cleanupErrors.push(asNestedError(cleanupError));
+        },
+      );
+    }, error);
     if (nestedManifestPath && nestedRegistered) {
       recordNestedRuntimeFinish(
         nestedManifestPath,
@@ -494,6 +486,23 @@ export async function startDisposablePostCutoverRuntime(
       ? error
       : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup and rollback failed.");
   }
+}
+
+export async function afterNestedProcessesStop<T>(
+  processCleanupErrors: readonly Error[],
+  cleanupResources: () => Promise<T>,
+  primaryError?: unknown,
+) {
+  if (processCleanupErrors.length > 0) {
+    const errors = primaryError === undefined
+      ? [...processCleanupErrors]
+      : [asNestedError(primaryError), ...processCleanupErrors];
+    throw new AggregateError(
+      errors,
+      "Nested process cleanup did not settle; database and object store were retained for parent takeover.",
+    );
+  }
+  return cleanupResources();
 }
 
 function nestedCleanupPending() {

@@ -568,7 +568,7 @@ export async function runGate0Cli(options: {
     await (options.execute ?? runAcceptanceGate0)(owner);
   } catch (error) {
     if (!receivedSignal) throw error;
-    console.error(`[acceptance:gate0] ${receivedSignal} received; owned failure finalization completed.`);
+    console.error(`[acceptance:gate0] ${receivedSignal} received; Gate0 returned after its bounded failure-finalization path.`);
   } finally {
     process.off("SIGINT", handlers.SIGINT);
     process.off("SIGTERM", handlers.SIGTERM);
