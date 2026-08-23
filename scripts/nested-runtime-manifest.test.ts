@@ -841,6 +841,46 @@ describe("Gate0 nested disposable runtime contract", () => {
     });
   });
 
+  it("marks a proven-absent nested process stopped during root failure finalization without signaling", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-root-finalizer-pid-absent-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_root_absent",
+      databaseName: "wiseeff_acceptance_disposable_root_absent",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_root_absent"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_root_absent", {
+      apiPid: 111,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+    });
+    const signals: number[] = [];
+
+    await finalizeRunningNestedRuntimesAfterFailure(manifestPath, "Gate0 failure evidence retained.", {
+      stopProcessGroup: async (pid) => { signals.push(pid); },
+      readProcessIdentity: () => undefined,
+      pidExists: () => false,
+      portIsUnused: async (port) => port === 19_100,
+    });
+
+    expect(signals).toEqual([]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "failed-retained",
+      cleanup: {
+        apiProcess: { status: "stopped" },
+        frontendProcess: { status: "not-started" },
+        database: { status: "retained" },
+        objectStore: { status: "retained" },
+      },
+    });
+  });
+
   it("retries a prior cleanup-failed child and closes it as failed-retained after the transient stop error clears", async () => {
     const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-retry-"));
     const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
