@@ -20,6 +20,8 @@
 - `exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout.md`：确定性并行收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059。
 - `exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`：第二批确定性并行收口经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114。
 - `exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`：第三批经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031 / TD-112；TD-003/012/075/076 与其它无关前端余量继续 Open。
+- `exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`：#598–#607 完成后归档；TD-067、TD-105、TD-014、TD-122 按 merged evidence 关闭，TD-005 有界治理切片完成但 TD-005 诚实保持 Open，陈旧 hotspot 计划归档且不虚构 tracker 关闭项。
+- `exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`：TD-122 在最终 clean `main@493a257a1` 上完成 owned/fresh Gate0：visual 20/20、browser 127 expected / 29 planned skipped / 0 unexpected、operation evidence 完整、nested 11/11 清理、root 精确清理、artifact 0 violation，并发布合法 `latest-full.json`。
 - `exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`：已补 assistant message 的 `runSteps` / `runId` metadata 中英设计说明，并归档误用 TD-031 编号的旧 timeline 计划。
 - 2026-08-23 的有界计划治理清单已归档 organization administration（#560）、local evaluation auth hardening（#563）、node-only debugging 与 DTS parameter workbench，并逐项补充实施/取代元数据。它不是 repo-wide inventory，因此 TD-005 继续 Open。
 - `exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md`：精确四维 API 合同、中英 successor 文档与 API-mode Parameter Home 浏览器门禁完成后，热点计划已归档。
@@ -31,7 +33,7 @@
 
 ### 等待外部输入或目标环境
 
-- `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：P1–P3b 已在 `main`。剩下的是专家标注金标准案例、第二个试点域、以及人工 judge 校准记录——不是开放 PR。残留 TD-090 / TD-103 / TD-105 / TD-116。
+- `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：P1–P3b 已在 `main`。剩下的是专家标注金标准案例、第二个试点域、以及人工 judge 校准记录——不是开放 PR。残留 TD-090 / TD-103 / TD-116；TD-105 retention 已由 Wave 4 #599 独立关闭。
 - `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`：语义身份实现已落地；**TD-042** 在干净快照演练完成前仍阻断“生产 cutover 就绪”声明。各轮 review 计划已在 `completed/`。
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md` 与 `2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`：M5.2 目标环境证据。
 - `exec-plans/active/2026-06-02-wiseeff-m6-2-identity-user-governance.md` 至 `2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`：自托管身份、备份、队列、可观测、发布/回滚/容量证据（TD-019–025）。
@@ -44,9 +46,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-4.md`：分阶段推进 TD-105、条件式 TD-014/067、TD-005 有界治理切片、陈旧 hotspot 计划，以及 TD-122 owned-runtime/fresh-database 条件门。条件项只有在各自关闭门全绿后才移出 Open。
-- `exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`：TD-122 承接 Wave 3 合入树诊断暴露的 11 个 Darwin stale/missing visual baseline 与 18 个 full local non-HDC browser failure；必须在 fresh isolated DB 上保存逐用例清单、review snapshot、修正确定性 fixture/runtime ownership，达到 0 个非计划失败并产出合法 full evidence manifest。不得把这些失败藏进四条范围明确的 Wave 3 关闭项。
-- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-014 / TD-075 / TD-097 仍为**部分**开放。第一批确定性收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059，reload workflow sheet 不属于 TD-059；第二批经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114，TD-003/012 与 TD-075/076 仍 Open。第三批随后经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031，以及限定为 `/parameter-admin/projects` Admin list 的 TD-112。
+- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-075 / TD-097 仍为**部分**开放，TD-014 后续已在第四波经 #600 关闭。第一批确定性收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059，reload workflow sheet 不属于 TD-059；第二批经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114，TD-003/012 与 TD-075/076 仍 Open。第三批随后经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031，以及限定为 `/parameter-admin/projects` Admin list 的 TD-112。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。

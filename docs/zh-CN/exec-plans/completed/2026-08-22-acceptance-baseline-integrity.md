@@ -1,10 +1,14 @@
 # 验收基线完整性收口
 
-> English: [English](../../../exec-plans/active/2026-08-22-acceptance-baseline-integrity.md)
+> English: [English](../../../exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md)
 >
-> 状态：**进行中**
+> 状态：**已完成，2026-08-24**
 >
 > Tracker：TD-122
+
+> 实现 PR：#603、#604、#605、#606、#607
+>
+> 最终 merged-main 证明：`493a257a1f3507f883715c5b5235af7a233914c7`
 
 ## 目标
 
@@ -93,14 +97,25 @@ fresh 复现前只做严格、非扩张的归属：
 - `npm run acceptance:browser -- --mode local-non-hdc` 0 个非计划失败，只保留声明的 planned skip。
 - `npm run acceptance:evidence -- --run <runDir>` 校验 full run 与所有 required operation ID。
 - 每组修复的 focused test、`acceptance:coverage`、`acceptance:operations`、`acceptance:quality`、`docs:check`、`git diff --check` 全绿。
-- 每个实现 PR 的 CI/Merge bar 全绿；TD-122 移 Completed 前，final merged-main 重跑仍为绿色。
+- 每个实现 PR 的 required CI/Merge bar 全绿；若 GitHub Actions 无法运行，必须明确记录经仓库负责人批准的完整本地 CI 例外。TD-122 移 Completed 前，final merged-main 重跑仍为绿色。
+
+## 完成证据
+
+- 历史 11 个 visual failure 已由 #604 的逐图评审 baseline 与 deterministic fixture/runtime 修复收口。最终 merged-main Gate0 的 Darwin visual 为 20/20；没有批量接受 snapshot，也没有靠 mask 隐藏缺陷。
+- 历史 18 个 browser failure 已由 #603、#605–#607 的生命周期/runtime/evidence 修复收口。权威 owned run `full-20260823t165107589z-493a257a1f35-046f55ca` 从 clean `main@493a257a1f3507f883715c5b5235af7a233914c7` 启动，创建前确认 fresh database 不存在，应用 113 个 migration 到 `0115_log_webhook_delivery_retention_order.sql`，写入声明的 seed sentinel，并使用 run-scoped object root。
+- 固定工具链通过：dtc/fdtoverlay 1.8.1、dtschema 2026.6。browser 为 127 expected、29 个声明的 planned skip、0 unexpected、0 flaky。运行产出 125 条 operation record，覆盖全部 108 个 required operation ID，missing/invalid/validation error 均为 0；原子发布的 `latest-full.json` 绑定精确 run 与 source commit。
+- 11 个 nested disposable runtime 全部 `cleaned`；每个 nested API/frontend 均 stopped，每个 nested database/object root 均 removed。root cleanup 为 `complete`：owner/API/frontend/visual/browser PID 独立核验均不存在，精确 root database 查询计数为 0，精确 object root 不存在，18800/5180 空闲。
+- artifact finalization 为 0 violation；单独执行事后 `acceptance:artifacts:check` 扫描 672 个文件，0 change、0 replacement、0 violation。前两次失败 Gate0 run 继续保留作取证；成功清理没有删除它们。
+- #607 最终候选通过 scripts 811 passed / 5 planned skip、typecheck、build、docs governance、`acceptance:ci`、lint 0 error / 299 baseline warning、diff check。真实 SIGTERM 用例在一次 full-suite 未复现时序红灯后，定向压力循环 55/55；真实 nested PostgreSQL disposable-runtime smoke 独立证明 process/database/object cleanup。最终 Standards/Spec 复审均为 0 finding。
+- #606/#607 执行时 GitHub Actions 月度额度已耗尽。仓库负责人明确授权在完整本地 CI 通过后合入，因此这两个 PR 按例外合入，不冒充 GitHub CI green；更早实现 PR 仍采用各自记录的 required checks。该例外不降低上述 final merged-main Gate0 证明。
+- 计划其余 Review/No-change 文档行已对 `493a257a1` 复核；本次 closeout 没有改变产品 workflow、API contract、authz/audit 边界、target/HDC/provider 声明或仓库入口。新增 closeout diff 只涉及 planning/tracker 路径与中英文 companion。
 
 ## 文档影响矩阵
 
 | 区域 | 状态 | 精确文件 / 证据 |
 | --- | --- | --- |
 | 仓库地图 | No change | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`、`docs/README.md`、`docs/zh-CN/README.md`；验收基线责任不改变仓库入口。 |
-| 计划 / 技术债 | Update | `docs/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`、`docs/zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`、`docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`、`docs/PLANS.md`、`docs/zh-CN/PLANS.md`。 |
+| 计划 / 技术债 | Update | `docs/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`、`docs/zh-CN/exec-plans/completed/2026-08-22-acceptance-baseline-integrity.md`、`docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`、`docs/PLANS.md`、`docs/zh-CN/PLANS.md`。 |
 | 产品规格 | Review | `docs/product-specs/index.md`、`docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/index.md`、`docs/zh-CN/product-specs/product-spec.md`；只有复现证明产品合同有缺陷才更新，否则记录 unchanged。 |
 | 架构 / 领域 | Review | `CONTEXT.md`、`docs/adr/README.md`、`docs/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`；只有修复改变持久边界才更新。 |
 | 质量 / 测试 | Update | `docs/QUALITY_SCORE.md`、`docs/zh-CN/QUALITY_SCORE.md`、`docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`、`docs/developer/verification-matrix.md`、`docs/zh-CN/developer/verification-matrix.md`、`playwright.quality.config.ts`、`playwright.acceptance.config.ts`；只在平台/基线/运行时门禁语义变化时更新。 |
