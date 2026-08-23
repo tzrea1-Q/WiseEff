@@ -7,6 +7,10 @@ import {
   defaultEvidenceRunsRoot,
   readLatestFullEvidenceRun
 } from "../e2e/acceptance/helpers/evidenceRun";
+import {
+  readNestedRuntimeManifest,
+  type NestedRuntimeProcessIdentity,
+} from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 
 export type OperationEvidenceStatus = "passed" | "failed" | "skipped";
 
@@ -71,6 +75,24 @@ export type OperationEvidenceRecord = {
       frontendUrl: string;
       apiPid: number;
       frontendPid: number;
+    };
+    nestedRuntime?: {
+      id: string;
+      manifestPath: string;
+      parentRunId: string;
+      sourceCommit: string;
+      databaseName: string;
+      markerPurpose: string;
+      migrationRunId: string;
+      objectStoreRoot: string;
+      apiUrl: string;
+      frontendUrl: string;
+      state: "running";
+      apiPid: number;
+      frontendPid: number;
+      apiProcessIdentity: NestedRuntimeProcessIdentity;
+      frontendProcessIdentity: NestedRuntimeProcessIdentity;
+      startedAt: string;
     };
   };
   reproduction?: {
@@ -386,6 +408,14 @@ function validateOwnedRuntimeEvidence(
       message: "Owned runtime identity must match the top-level record and expected run.",
     });
   }
+  const expectedApiUrl = record.runtime?.nestedRuntime?.apiUrl ?? owned.apiUrl;
+  if (record.runtime?.apiBaseUrl !== expectedApiUrl) {
+    errors.push({
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Operation evidence API URL must match its exact root or nested owned runtime.",
+    });
+  }
   const snapshotError = validateRuntimeSnapshot(record, runRoot, expectedRun);
   if (snapshotError) errors.push(snapshotError);
   const descriptorError = validateOwnedDescendant(
@@ -415,6 +445,9 @@ function validateOwnedRuntimeEvidence(
     "directory",
   );
   if (traceError) errors.push(traceError);
+  if (record.runtime?.nestedRuntime) {
+    errors.push(...validateNestedRuntimeEvidence(record, expectedRun));
+  }
   return errors;
 }
 
@@ -446,7 +479,11 @@ function validateRuntimeSnapshot(
     const snapshot = JSON.parse(bytes.toString("utf8")) as {
       kind?: string;
       run?: { id?: string; sourceCommit?: string };
-      artifacts?: { runRoot?: string; descriptor?: string };
+      database?: { name?: string };
+      objectStore?: { markerSha256?: string };
+      endpoints?: { api?: { url?: string }; frontend?: { url?: string } };
+      processes?: { api?: { pid?: number }; frontend?: { pid?: number } };
+      artifacts?: { runRoot?: string; descriptor?: string; nestedRuntimeManifest?: string };
     };
     if (
       snapshot.kind !== "wiseeff-owned-local-acceptance-operation-evidence-runtime" ||
@@ -459,7 +496,15 @@ function validateRuntimeSnapshot(
         snapshot.run?.sourceCommit !== expectedRun.sourceCommit
       )) ||
       resolve(snapshot.artifacts?.runRoot ?? "") !== resolve(runRoot) ||
-      resolve(snapshot.artifacts?.descriptor ?? "") !== resolve(owned.descriptorPath)
+      resolve(snapshot.artifacts?.descriptor ?? "") !== resolve(owned.descriptorPath) ||
+      snapshot.database?.name !== owned.databaseName ||
+      snapshot.objectStore?.markerSha256 !== owned.objectMarkerSha256 ||
+      snapshot.endpoints?.api?.url !== owned.apiUrl ||
+      snapshot.endpoints?.frontend?.url !== owned.frontendUrl ||
+      snapshot.processes?.api?.pid !== owned.apiPid ||
+      snapshot.processes?.frontend?.pid !== owned.frontendPid ||
+      (record.runtime?.nestedRuntime !== undefined &&
+        resolve(snapshot.artifacts?.nestedRuntimeManifest ?? "") !== resolve(record.runtime.nestedRuntime.manifestPath))
     ) {
       throw new Error("identity mismatch");
     }
@@ -471,6 +516,98 @@ function validateRuntimeSnapshot(
     };
   }
   return undefined;
+}
+
+function validateNestedRuntimeEvidence(
+  record: OperationEvidenceRecord,
+  expectedRun?: { runId: string; sourceCommit: string },
+): OperationEvidenceValidationError[] {
+  const errors: OperationEvidenceValidationError[] = [];
+  const owned = record.runtime!.ownedRuntime!;
+  const nested = record.runtime!.nestedRuntime!;
+  const pathError = validateOwnedDescendant(
+    record.operationId,
+    "runtime",
+    owned.runRoot,
+    nested.manifestPath,
+    "nested runtime manifest",
+    "file",
+  );
+  if (pathError) return [pathError];
+  if (
+    nested.parentRunId !== owned.runId ||
+    nested.sourceCommit !== owned.sourceCommit ||
+    nested.parentRunId !== record.runId ||
+    nested.sourceCommit !== record.sourceCommit ||
+    (expectedRun && (
+      nested.parentRunId !== expectedRun.runId ||
+      nested.sourceCommit !== expectedRun.sourceCommit
+    ))
+  ) {
+    errors.push({
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Nested runtime parent identity must match the owned runtime, record, and expected run.",
+    });
+  }
+  try {
+    const manifest = readNestedRuntimeManifest(nested.manifestPath);
+    const child = manifest.children.find((candidate) => candidate.id === nested.id);
+    if (
+      manifest.parentRunId !== nested.parentRunId ||
+      manifest.sourceCommit !== nested.sourceCommit ||
+      !child ||
+      nested.id !== nested.databaseName ||
+      child.id !== nested.id ||
+      child.databaseName !== nested.databaseName ||
+      child.markerPurpose !== nested.markerPurpose ||
+      child.migrationRunId !== nested.migrationRunId ||
+      resolve(child.objectStoreRoot) !== resolve(nested.objectStoreRoot) ||
+      child.apiUrl !== nested.apiUrl ||
+      child.frontendUrl !== nested.frontendUrl ||
+      child.apiPid !== nested.apiPid ||
+      child.frontendPid !== nested.frontendPid ||
+      !sameNestedProcessIdentity(child.apiProcessIdentity, nested.apiProcessIdentity) ||
+      !sameNestedProcessIdentity(child.frontendProcessIdentity, nested.frontendProcessIdentity) ||
+      child.startedAt !== nested.startedAt ||
+      nested.state !== "running" ||
+      record.runtime!.apiBaseUrl !== nested.apiUrl
+    ) {
+      throw new Error("identity mismatch");
+    }
+    if (expectedRun && (
+      child.state !== "cleaned" ||
+      child.cleanup?.apiProcess.status !== "stopped" ||
+      child.cleanup?.frontendProcess.status !== "stopped" ||
+      child.cleanup?.database.status !== "removed" ||
+      child.cleanup?.objectStore.status !== "removed" ||
+      !record.recordedAt ||
+      !Number.isFinite(Date.parse(record.recordedAt)) ||
+      Date.parse(record.recordedAt) < Date.parse(child.startedAt) ||
+      !child.completedAt ||
+      Date.parse(record.recordedAt) > Date.parse(child.completedAt)
+    )) {
+      throw new Error("terminal cleanup mismatch");
+    }
+  } catch {
+    errors.push({
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Nested runtime evidence does not match its exact manifest child or completed cleanup state.",
+    });
+  }
+  return errors;
+}
+
+function sameNestedProcessIdentity(
+  left: NestedRuntimeProcessIdentity | undefined,
+  right: NestedRuntimeProcessIdentity | undefined,
+) {
+  return left !== undefined && right !== undefined &&
+    left.pid === right.pid &&
+    left.port === right.port &&
+    left.startToken === right.startToken &&
+    left.commandSha256 === right.commandSha256;
 }
 
 function validateOwnedDescendant(

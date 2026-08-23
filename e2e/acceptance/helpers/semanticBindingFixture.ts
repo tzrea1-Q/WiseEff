@@ -11,7 +11,10 @@ import {
   type DisposablePostCutoverRuntime
 } from "./disposablePostCutoverRuntime";
 import { OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV } from "./nestedRuntimeManifest";
-import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV,
+} from "./ownedRuntimeDescriptor";
 import { apiRoute } from "./runtime";
 
 const organizationId = "org-chargelab";
@@ -90,6 +93,7 @@ type DisposableEnvSnapshot = {
   authIssuer: string | undefined;
   authSecret: string | undefined;
   ownedDescriptor: string | undefined;
+  parentOwnedDescriptor: string | undefined;
   nestedRuntimeId: string | undefined;
 };
 
@@ -101,6 +105,7 @@ export function captureProcessEnvForDisposableRuntime(): DisposableEnvSnapshot {
     authIssuer: process.env.AUTH_TOKEN_ISSUER,
     authSecret: process.env.AUTH_TOKEN_HMAC_SECRET,
     ownedDescriptor: process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV],
+    parentOwnedDescriptor: process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV],
     nestedRuntimeId: process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]
   };
 }
@@ -111,6 +116,10 @@ export function applyDisposableRuntimeEnv(runtime: DisposablePostCutoverRuntime)
   process.env.WISEEFF_API_BASE_URL = runtime.apiUrl;
   process.env.AUTH_TOKEN_ISSUER = runtime.authIssuer;
   process.env.AUTH_TOKEN_HMAC_SECRET = runtime.authSecret;
+  const parentDescriptor = process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim()
+    || process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]?.trim();
+  if (parentDescriptor) process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV] = parentDescriptor;
+  else delete process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV];
   delete process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV];
   if (runtime.nestedRuntimeId) process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV] = runtime.nestedRuntimeId;
   else delete process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV];
@@ -127,6 +136,7 @@ export function restoreProcessEnvFromDisposableRuntime(snapshot: DisposableEnvSn
   restore("AUTH_TOKEN_ISSUER", snapshot.authIssuer);
   restore("AUTH_TOKEN_HMAC_SECRET", snapshot.authSecret);
   restore(OWNED_ACCEPTANCE_DESCRIPTOR_ENV, snapshot.ownedDescriptor);
+  restore(OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV, snapshot.parentOwnedDescriptor);
   restore(OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV, snapshot.nestedRuntimeId);
 }
 

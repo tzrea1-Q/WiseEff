@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -18,12 +18,229 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "../e2e/acceptance/helpers/operationEvidence";
+import type { OwnedLocalAcceptanceRuntimeDescriptorV1 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
+import {
+  initializeNestedRuntimeManifest,
+  recordNestedRuntimeFinish,
+  recordNestedRuntimeStart,
+} from "../e2e/acceptance/helpers/nestedRuntimeManifest";
+import { captureExactOwnedDirectoryChain } from "./exact-owned-object-root";
 import {
   prepareEvidenceRun,
   publishLatestFullEvidenceRun,
   readLatestFullEvidenceRun,
   resolveEvidenceRunContext
 } from "../e2e/acceptance/helpers/evidenceRun";
+
+function createNestedOwnedEvidenceFixture() {
+  const root = mkdtempSync(join(tmpdir(), "wiseeff-d30-nested-evidence-"));
+  const runId = "full-d30-nested-evidence";
+  const sourceCommit = "d30b465ea1a9f98a92fea3c1e81359363fd0ada4";
+  const runRoot = join(root, "acceptance-runtime-runs", runId);
+  mkdirSync(runRoot, { recursive: true });
+  const parentObjectRoot = join(runRoot, "object-store");
+  const childId = "wiseeff_acceptance_disposable_mod_tree_d30_fixture";
+  const childObjectRoot = join(realpathSync(runRoot), "nested-object-store", childId);
+  const childApiUrl = "http://127.0.0.1:56221";
+  const descriptorPath = join(runRoot, "runtime.json");
+  const snapshotPath = join(runRoot, "runtime-operation-evidence-snapshot.json");
+  const manifestPath = join(runRoot, "nested-runtime-manifest.json");
+  const evidenceRoot = join(runRoot, "operation-evidence");
+  const reportRoot = join(runRoot, "artifacts", "browser", "playwright-report");
+  const traceRoot = join(runRoot, "artifacts", "browser", "test-results");
+  mkdirSync(parentObjectRoot, { recursive: true });
+  mkdirSync(childObjectRoot, { recursive: true });
+  mkdirSync(reportRoot, { recursive: true });
+  mkdirSync(traceRoot, { recursive: true });
+  writeFileSync(join(reportRoot, "index.html"), "report\n");
+  const processIdentity = {
+    startToken: "darwin-lstart:Sun Aug 23 18:29:24 2026",
+    commandSha256: "e".repeat(64),
+  };
+  const descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1 = {
+    version: 1,
+    kind: "wiseeff-owned-local-acceptance",
+    run: {
+      id: runId,
+      sourceCommit,
+      worktreeRoot: realpathSync(root),
+      sourceDirtyBefore: false,
+      ownerPid: 44_009,
+      ownerProcessIdentity: processIdentity,
+      createdAt: "2026-08-23T10:29:25.329Z",
+      state: "running",
+    },
+    database: {
+      name: "wiseeff_acceptance_full_d30_fixture",
+      connection: {
+        host: "127.0.0.1",
+        port: 5432,
+        user: "wiseeff",
+        database: "wiseeff_acceptance_full_d30_fixture",
+      },
+      absentBeforeCreate: true,
+      marker: {
+        table: "wiseeff_acceptance_runtime_markers",
+        purpose: "td-122-gate0",
+        runId,
+        sourceCommit,
+      },
+      migration: {
+        command: "npm run db:migrate",
+        appliedCount: 113,
+        latest: "0115_log_webhook_delivery_retention_order.sql",
+        completedAt: "2026-08-23T10:29:24.285Z",
+      },
+      seed: {
+        command: "npm run db:seed:all",
+        completedAt: "2026-08-23T10:29:24.285Z",
+        sentinels: { organizations: 3 },
+      },
+    },
+    objectStore: {
+      mode: "local",
+      root: parentObjectRoot,
+      absentBeforeCreate: true,
+      markerFile: join(parentObjectRoot, ".wiseeff-acceptance-owner.json"),
+      markerSha256: "7".repeat(64),
+      directoryChain: captureExactOwnedDirectoryChain(root, parentObjectRoot),
+    },
+    endpoints: {
+      api: {
+        host: "127.0.0.1",
+        port: 18_800,
+        url: "http://127.0.0.1:18800",
+        healthUrl: "http://127.0.0.1:18800/health/live",
+      },
+      frontend: {
+        host: "127.0.0.1",
+        port: 5_180,
+        url: "http://127.0.0.1:5180",
+      },
+    },
+    processes: {
+      api: {
+        pid: 46_007,
+        processIdentity,
+        startedAt: "2026-08-23T10:29:25.329Z",
+        command: "node --import tsx server/index.ts",
+        log: join(runRoot, "api.log"),
+      },
+      frontend: {
+        pid: 46_029,
+        processIdentity,
+        startedAt: "2026-08-23T10:29:25.329Z",
+        command: "vite --host 127.0.0.1 --port 5180 --strictPort",
+        log: join(runRoot, "frontend.log"),
+      },
+    },
+    auth: {
+      mode: "production",
+      provider: "hmac",
+      issuer: "wiseeff-full-d30-nested-evidence",
+      smokeSubject: "u-xu-yun",
+    },
+    runtime: {
+      frontendMode: "api",
+      xiaozeDeterministic: true,
+      logAnalysisDeterministic: true,
+      localWebhookAllowed: true,
+      gatewayMode: "simulator",
+      hdcAvailable: false,
+    },
+    phases: {
+      visual: { status: "passed", startedAt: "2026-08-23T10:29:25.748Z", completedAt: "2026-08-23T10:30:37.352Z" },
+      browser: {
+        status: "running",
+        startedAt: "2026-08-23T10:30:37.360Z",
+        process: { pid: 48_591, processIdentity },
+      },
+    },
+    artifacts: {
+      runRoot,
+      descriptor: descriptorPath,
+      operationEvidenceRuntimeSnapshot: snapshotPath,
+      failureInventory: join(runRoot, "failure-inventory.json"),
+      sourceWorktreeOutputManifest: join(runRoot, "source-worktree-output-manifest.json"),
+      nestedRuntimeManifest: manifestPath,
+      runtimeLogs: [join(runRoot, "api.log"), join(runRoot, "frontend.log")],
+    },
+    cleanup: {
+      policy: "success-only",
+      status: "pending",
+      exactDatabaseName: "wiseeff_acceptance_full_d30_fixture",
+      exactObjectStoreRoot: parentObjectRoot,
+      resources: {
+        apiProcess: { status: "pending" },
+        frontendProcess: { status: "pending" },
+        database: { status: "pending" },
+        objectStore: { status: "pending" },
+        descriptor: { status: "pending" },
+        artifacts: { status: "pending" },
+      },
+    },
+  };
+  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
+  const snapshot = {
+    version: 1,
+    kind: "wiseeff-owned-local-acceptance-operation-evidence-runtime",
+    run: {
+      id: runId,
+      sourceCommit,
+      worktreeRoot: descriptor.run.worktreeRoot,
+      ownerPid: descriptor.run.ownerPid,
+      ownerProcessIdentity: descriptor.run.ownerProcessIdentity,
+      createdAt: descriptor.run.createdAt,
+    },
+    database: {
+      name: descriptor.database.name,
+      connection: descriptor.database.connection,
+      marker: descriptor.database.marker,
+      migration: descriptor.database.migration,
+      seed: descriptor.database.seed,
+    },
+    objectStore: {
+      root: descriptor.objectStore.root,
+      markerFile: descriptor.objectStore.markerFile,
+      markerSha256: descriptor.objectStore.markerSha256,
+    },
+    endpoints: descriptor.endpoints,
+    processes: descriptor.processes,
+    auth: descriptor.auth,
+    runtime: descriptor.runtime,
+    artifacts: { runRoot, descriptor: descriptorPath, nestedRuntimeManifest: manifestPath },
+  };
+  writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+  initializeNestedRuntimeManifest(manifestPath, { parentRunId: runId, sourceCommit });
+  recordNestedRuntimeStart(manifestPath, {
+    id: childId,
+    databaseName: childId,
+    markerPurpose: "mod-tree",
+    migrationRunId: "3d71f178-8320-5645-a5d0-b319c294eef5",
+    objectStoreRoot: childObjectRoot,
+    apiUrl: childApiUrl,
+    frontendUrl: "http://127.0.0.1:5173",
+    apiPid: 61_222,
+    frontendPid: 61_313,
+    apiProcessIdentity: { pid: 61_222, port: 56_221, ...processIdentity },
+    frontendProcessIdentity: { pid: 61_313, port: 5_173, ...processIdentity },
+  });
+  return {
+    root,
+    runRoot,
+    runId,
+    sourceCommit,
+    childId,
+    childObjectRoot,
+    childApiUrl,
+    descriptorPath,
+    snapshotPath,
+    manifestPath,
+    evidenceRoot,
+    reportRoot,
+    traceRoot,
+  };
+}
 
 describe("operation evidence helper", () => {
   it("builds stable evidence file names from operation id and title", () => {
@@ -213,6 +430,154 @@ describe("operation evidence helper", () => {
       rmSync(ownedRunRoot, { recursive: true, force: true });
     }
   });
+
+  it("binds a d30-derived nested-runtime evidence shape to its parent snapshot and exact child manifest record", async () => {
+    const fixture = createNestedOwnedEvidenceFixture();
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_ROOT", fixture.evidenceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID", fixture.runId);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT", fixture.sourceCommit);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND", "full");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR", fixture.reportRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR", fixture.traceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_PARENT_RUNTIME_DESCRIPTOR", fixture.descriptorPath);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_NESTED_RUNTIME_ID", fixture.childId);
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", fixture.childApiUrl);
+    vi.stubEnv("DATABASE_URL", `postgres://wiseeff:secret@127.0.0.1:5432/${fixture.childId}`);
+
+    try {
+      const result = await recordOperationEvidence({
+        operationId: "MOD-TREE-AUTHZ-001",
+        title: "d30 nested evidence regression",
+        status: "passed",
+        role: "Hardware User",
+        route: "/parameter-admin",
+        assertions: ["ui"],
+        runtime: {
+          mode: "api",
+          apiBaseUrl: "http://127.0.0.1:59999",
+          envSummary: { D30_NESTED_EVIDENCE: "set" },
+        },
+      });
+
+      expect(result.record.runtime).toMatchObject({
+        apiBaseUrl: fixture.childApiUrl,
+        ownedRuntime: {
+          runId: fixture.runId,
+          sourceCommit: fixture.sourceCommit,
+          descriptorPath: fixture.descriptorPath,
+          descriptorSnapshotPath: fixture.snapshotPath,
+        },
+        nestedRuntime: {
+          id: fixture.childId,
+          manifestPath: fixture.manifestPath,
+          parentRunId: fixture.runId,
+          sourceCommit: fixture.sourceCommit,
+          databaseName: fixture.childId,
+          objectStoreRoot: fixture.childObjectRoot,
+          state: "running",
+          apiPid: 61_222,
+          frontendPid: 61_313,
+        },
+        envSummary: { D30_NESTED_EVIDENCE: "set" },
+      });
+
+      recordNestedRuntimeFinish(fixture.manifestPath, fixture.childId, "cleaned", {
+        apiProcess: { status: "stopped" },
+        frontendProcess: { status: "stopped" },
+        database: { status: "removed" },
+        objectStore: { status: "removed" },
+      });
+
+      const evaluation = evaluateOperationEvidence({
+        operations: [{ id: "MOD-TREE-AUTHZ-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        records: [result.record as OperationEvidenceRecord],
+        expectedRun: { runId: fixture.runId, sourceCommit: fixture.sourceCommit },
+      });
+      expect(evaluation.status).toBe("passed");
+      expect(evaluation.validationErrors).toEqual([]);
+
+      const parentClaimMutations: Array<{
+        label: string;
+        mutate(record: OperationEvidenceRecord): void;
+      }> = [
+        { label: "database", mutate: (record) => { record.runtime!.ownedRuntime!.databaseName += "_foreign"; } },
+        { label: "object marker", mutate: (record) => { record.runtime!.ownedRuntime!.objectMarkerSha256 = "f".repeat(64); } },
+        { label: "API URL", mutate: (record) => { record.runtime!.ownedRuntime!.apiUrl = "http://127.0.0.1:18801"; } },
+        { label: "frontend URL", mutate: (record) => { record.runtime!.ownedRuntime!.frontendUrl = "http://127.0.0.1:5181"; } },
+        { label: "API PID", mutate: (record) => { record.runtime!.ownedRuntime!.apiPid += 1; } },
+        { label: "frontend PID", mutate: (record) => { record.runtime!.ownedRuntime!.frontendPid += 1; } },
+      ];
+      for (const mutation of parentClaimMutations) {
+        const mutated = structuredClone(result.record) as OperationEvidenceRecord;
+        mutation.mutate(mutated);
+        const rejected = evaluateOperationEvidence({
+          operations: [{ id: "MOD-TREE-AUTHZ-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+          records: [mutated],
+          expectedRun: { runId: fixture.runId, sourceCommit: fixture.sourceCommit },
+        });
+        expect(rejected.status, mutation.label).toBe("failed");
+        expect(rejected.validationErrors, mutation.label).toContainEqual(expect.objectContaining({
+          operationId: "MOD-TREE-AUTHZ-001",
+          field: "runtime",
+        }));
+      }
+
+      const childClaimMutations: Array<{
+        label: string;
+        mutate(record: OperationEvidenceRecord): void;
+      }> = [
+        { label: "nested database", mutate: (record) => { record.runtime!.nestedRuntime!.databaseName += "_foreign"; } },
+        { label: "nested child ID", mutate: (record) => { record.runtime!.nestedRuntime!.id += "_foreign"; } },
+        { label: "nested parent run", mutate: (record) => { record.runtime!.nestedRuntime!.parentRunId = "foreign-run"; } },
+        { label: "nested source", mutate: (record) => { record.runtime!.nestedRuntime!.sourceCommit = "f".repeat(40); } },
+        { label: "nested object root", mutate: (record) => { record.runtime!.nestedRuntime!.objectStoreRoot = join(fixture.runRoot, "foreign-object"); } },
+        { label: "nested API URL", mutate: (record) => { record.runtime!.nestedRuntime!.apiUrl = "http://127.0.0.1:56222"; } },
+        { label: "nested frontend URL", mutate: (record) => { record.runtime!.nestedRuntime!.frontendUrl = "http://127.0.0.1:5174"; } },
+        { label: "nested API PID", mutate: (record) => { record.runtime!.nestedRuntime!.apiPid += 1; } },
+        { label: "nested frontend PID", mutate: (record) => { record.runtime!.nestedRuntime!.frontendPid += 1; } },
+        { label: "nested API identity", mutate: (record) => { record.runtime!.nestedRuntime!.apiProcessIdentity.startToken = "reused-process"; } },
+        { label: "nested frontend identity", mutate: (record) => { record.runtime!.nestedRuntime!.frontendProcessIdentity.startToken = "reused-process"; } },
+        { label: "nested manifest", mutate: (record) => { record.runtime!.nestedRuntime!.manifestPath = fixture.descriptorPath; } },
+        { label: "recorded timestamp", mutate: (record) => { record.recordedAt = "not-a-timestamp"; } },
+        {
+          label: "omitted nested binding",
+          mutate: (record) => { delete record.runtime!.nestedRuntime; },
+        },
+      ];
+      for (const mutation of childClaimMutations) {
+        const mutated = structuredClone(result.record) as OperationEvidenceRecord;
+        mutation.mutate(mutated);
+        const rejected = evaluateOperationEvidence({
+          operations: [{ id: "MOD-TREE-AUTHZ-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+          records: [mutated],
+          expectedRun: { runId: fixture.runId, sourceCommit: fixture.sourceCommit },
+        });
+        expect(rejected.status, mutation.label).toBe("failed");
+        expect(rejected.validationErrors, mutation.label).toContainEqual(expect.objectContaining({ field: "runtime" }));
+      }
+
+      const manifest = JSON.parse(readFileSync(fixture.manifestPath, "utf8")) as {
+        children: Array<{ state: string; cleanup: Record<string, { status: string }> }>;
+      };
+      manifest.children[0]!.state = "failed-retained";
+      manifest.children[0]!.cleanup.database.status = "retained";
+      manifest.children[0]!.cleanup.objectStore.status = "retained";
+      writeFileSync(fixture.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const failedCleanup = evaluateOperationEvidence({
+        operations: [{ id: "MOD-TREE-AUTHZ-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        records: [result.record as OperationEvidenceRecord],
+        expectedRun: { runId: fixture.runId, sourceCommit: fixture.sourceCommit },
+      });
+      expect(failedCleanup.status).toBe("failed");
+      expect(failedCleanup.validationErrors).toContainEqual(expect.objectContaining({
+        field: "runtime",
+        message: expect.stringMatching(/cleanup state/i),
+      }));
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("operation evidence checker", () => {
@@ -347,6 +712,13 @@ describe("operation evidence checker", () => {
     const snapshot = `${JSON.stringify({
       kind: "wiseeff-owned-local-acceptance-operation-evidence-runtime",
       run: { id: "full-run-owned", sourceCommit: "abc123" },
+      database: { name: "wiseeff_acceptance_full_owned" },
+      objectStore: { markerSha256: "b".repeat(64) },
+      endpoints: {
+        api: { url: "http://127.0.0.1:18800" },
+        frontend: { url: "http://127.0.0.1:5180" },
+      },
+      processes: { api: { pid: process.pid }, frontend: { pid: process.pid } },
       artifacts: { runRoot, descriptor: descriptorPath },
     })}\n`;
     writeFileSync(descriptorSnapshotPath, snapshot);
@@ -391,6 +763,19 @@ describe("operation evidence checker", () => {
 
       expect(result.status).toBe("passed");
       expect(result.validationErrors).toEqual([]);
+
+      const mismatchedApi = structuredClone(result.records[0]!) as OperationEvidenceRecord;
+      mismatchedApi.runtime!.apiBaseUrl = "http://127.0.0.1:18801";
+      const mismatchedApiResult = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        expectedRun: { runId: "full-run-owned", sourceCommit: "abc123" },
+        records: [mismatchedApi],
+      });
+      expect(mismatchedApiResult.status).toBe("failed");
+      expect(mismatchedApiResult.validationErrors).toContainEqual(expect.objectContaining({
+        field: "runtime",
+        message: expect.stringMatching(/API URL/i),
+      }));
     } finally {
       rmSync(runRoot, { recursive: true, force: true });
     }

@@ -6,9 +6,16 @@ import { acceptanceOperations, type AcceptanceOperationAssertion } from "../oper
 import { resolveEvidenceRunContext } from "./evidenceRun";
 import {
   OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV,
+  loadOwnedRuntimeDescriptor,
   loadOwnedRuntimeDescriptorFromEnv,
   sha256,
 } from "./ownedRuntimeDescriptor";
+import {
+  OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
+  readNestedRuntimeManifest,
+  type NestedRuntimeProcessIdentity,
+} from "./nestedRuntimeManifest";
 
 export type OperationEvidenceStatus = "passed" | "failed" | "skipped";
 
@@ -65,6 +72,24 @@ export type OperationEvidenceRuntimeSummary = {
     frontendUrl: string;
     apiPid: number;
     frontendPid: number;
+  };
+  nestedRuntime?: {
+    id: string;
+    manifestPath: string;
+    parentRunId: string;
+    sourceCommit: string;
+    databaseName: string;
+    markerPurpose: string;
+    migrationRunId: string;
+    objectStoreRoot: string;
+    apiUrl: string;
+    frontendUrl: string;
+    state: "running";
+    apiPid: number;
+    frontendPid: number;
+    apiProcessIdentity: NestedRuntimeProcessIdentity;
+    frontendProcessIdentity: NestedRuntimeProcessIdentity;
+    startedAt: string;
   };
 };
 
@@ -157,7 +182,7 @@ export async function recordOperationEvidence(input: RecordOperationEvidenceInpu
     audit: sanitizeAuditSummaries(input.audit),
     trace: input.trace ?? defaultTraceSummary(process.env),
     report: input.report ?? defaultReportSummary(process.env),
-    runtime: input.runtime ?? defaultRuntimeSummary(),
+    runtime: mergeRuntimeSummary(defaultRuntimeSummary(run), input.runtime),
     reproduction: input.reproduction ?? defaultReproductionSummary(input, operation?.route ?? "unknown", artifacts),
     recordedAt: new Date().toISOString()
   };
@@ -244,15 +269,36 @@ function defaultReportSummary(env: NodeJS.ProcessEnv): OperationEvidenceReportSu
   };
 }
 
-function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
-  const ownedRuntime = loadOwnedRuntimeDescriptorFromEnv();
-  const descriptorPath = process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
+function defaultRuntimeSummary(
+  evidenceRun: { runId: string; sourceCommit: string },
+): OperationEvidenceRuntimeSummary {
+  const nestedRuntimeId = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]?.trim();
+  const parentDescriptorPath = process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]?.trim();
+  if ((nestedRuntimeId && !parentDescriptorPath) || (!nestedRuntimeId && parentDescriptorPath && !process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim())) {
+    throw new Error("Nested operation evidence requires both the nested runtime ID and its parent runtime descriptor.");
+  }
+  const descriptorPath = nestedRuntimeId
+    ? parentDescriptorPath
+    : process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]?.trim();
+  const ownedRuntime = nestedRuntimeId
+    ? loadOwnedRuntimeDescriptor(descriptorPath)
+    : loadOwnedRuntimeDescriptorFromEnv();
+  if (ownedRuntime && (
+    ownedRuntime.run.id !== evidenceRun.runId ||
+    ownedRuntime.run.sourceCommit !== evidenceRun.sourceCommit
+  )) {
+    throw new Error("Operation evidence parent runtime identity does not match its evidence run.");
+  }
+  const apiBaseUrl =
+    process.env.VITE_WISEEFF_API_BASE_URL?.trim() ||
+    process.env.WISEEFF_API_BASE_URL?.trim() ||
+    "http://127.0.0.1:8787";
+  const nestedRuntime = nestedRuntimeId && ownedRuntime && descriptorPath
+    ? resolveNestedRuntimeEvidence(ownedRuntime, nestedRuntimeId, apiBaseUrl)
+    : undefined;
   return {
     mode: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "api",
-    apiBaseUrl:
-      process.env.VITE_WISEEFF_API_BASE_URL?.trim() ||
-      process.env.WISEEFF_API_BASE_URL?.trim() ||
-      "http://127.0.0.1:8787",
+    apiBaseUrl,
     seed: process.env.WISEEFF_ACCEPTANCE_SEED?.trim() || undefined,
     envSummary: {
       DATABASE_URL: process.env.DATABASE_URL ? "set" : "unset",
@@ -278,8 +324,89 @@ function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
             frontendPid: ownedRuntime.processes.frontend.pid,
           },
         }
-      : {})
+      : {}),
+    ...(nestedRuntime ? { nestedRuntime } : {}),
   };
+}
+
+function mergeRuntimeSummary(
+  trusted: OperationEvidenceRuntimeSummary,
+  supplemental: OperationEvidenceRuntimeSummary | undefined,
+): OperationEvidenceRuntimeSummary {
+  if (!supplemental) return trusted;
+  return {
+    ...trusted,
+    mode: supplemental.mode?.trim() || trusted.mode,
+    seed: supplemental.seed ?? trusted.seed,
+    envSummary: {
+      ...trusted.envSummary,
+      ...supplemental.envSummary,
+    },
+  };
+}
+
+function resolveNestedRuntimeEvidence(
+  ownedRuntime: ReturnType<typeof loadOwnedRuntimeDescriptor>,
+  nestedRuntimeId: string,
+  apiBaseUrl: string,
+): NonNullable<OperationEvidenceRuntimeSummary["nestedRuntime"]> {
+  const manifestPath = ownedRuntime.artifacts.nestedRuntimeManifest;
+  const manifest = readNestedRuntimeManifest(manifestPath);
+  if (
+    manifest.parentRunId !== ownedRuntime.run.id ||
+    manifest.sourceCommit !== ownedRuntime.run.sourceCommit
+  ) {
+    throw new Error("Nested operation evidence manifest does not match its parent runtime identity.");
+  }
+  const child = manifest.children.find((candidate) => candidate.id === nestedRuntimeId);
+  if (!child) throw new Error(`Nested operation evidence runtime ${nestedRuntimeId} is not present in its parent manifest.`);
+  if (
+    child.state !== "running" ||
+    child.apiProcessState !== "running" ||
+    child.frontendProcessState !== "running" ||
+    !child.migrationRunId ||
+    !child.apiPid ||
+    !child.frontendPid ||
+    !child.apiProcessIdentity ||
+    !child.frontendProcessIdentity
+  ) {
+    throw new Error(`Nested operation evidence runtime ${nestedRuntimeId} is not fully running.`);
+  }
+  if (apiBaseUrl !== child.apiUrl) {
+    throw new Error(`Nested operation evidence API URL does not match runtime ${nestedRuntimeId}.`);
+  }
+  if (databaseNameFromUrl(process.env.DATABASE_URL) !== child.databaseName) {
+    throw new Error(`Nested operation evidence database does not match runtime ${nestedRuntimeId}.`);
+  }
+  return {
+    id: child.id,
+    manifestPath,
+    parentRunId: manifest.parentRunId,
+    sourceCommit: manifest.sourceCommit,
+    databaseName: child.databaseName,
+    markerPurpose: child.markerPurpose,
+    migrationRunId: child.migrationRunId,
+    objectStoreRoot: child.objectStoreRoot,
+    apiUrl: child.apiUrl,
+    frontendUrl: child.frontendUrl,
+    state: "running",
+    apiPid: child.apiPid,
+    frontendPid: child.frontendPid,
+    apiProcessIdentity: child.apiProcessIdentity,
+    frontendProcessIdentity: child.frontendProcessIdentity,
+    startedAt: child.startedAt,
+  };
+}
+
+function databaseNameFromUrl(value: string | undefined) {
+  try {
+    const parsed = new URL(value ?? "");
+    const databaseName = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+    if (!databaseName) throw new Error("missing database");
+    return databaseName;
+  } catch {
+    throw new Error("Nested operation evidence requires a valid runtime database URL.");
+  }
 }
 
 function defaultReproductionSummary(

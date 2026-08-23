@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
+import {
+  OWNED_ACCEPTANCE_DESCRIPTOR_ENV,
+  OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV,
+} from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   initializeNestedRuntimeManifest,
@@ -368,6 +371,7 @@ describe("Gate0 nested disposable runtime contract", () => {
 
   it("unsets only the root descriptor during child runtime use and restores it afterward", () => {
     vi.stubEnv(OWNED_ACCEPTANCE_DESCRIPTOR_ENV, "/tmp/root-owned-runtime.json");
+    vi.stubEnv(OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV, "/tmp/outer-parent-runtime.json");
     vi.stubEnv(OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV, "parent-scope");
     const snapshot = captureProcessEnvForDisposableRuntime();
     const runtime = {
@@ -385,10 +389,12 @@ describe("Gate0 nested disposable runtime contract", () => {
 
     applyDisposableRuntimeEnv(runtime);
     expect(process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]).toBeUndefined();
+    expect(process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]).toBe("/tmp/root-owned-runtime.json");
     expect(process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]).toBe(runtime.nestedRuntimeId);
 
     restoreProcessEnvFromDisposableRuntime(snapshot);
     expect(process.env[OWNED_ACCEPTANCE_DESCRIPTOR_ENV]).toBe("/tmp/root-owned-runtime.json");
+    expect(process.env[OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV]).toBe("/tmp/outer-parent-runtime.json");
     expect(process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]).toBe("parent-scope");
   });
 

@@ -17,6 +17,8 @@ import { OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV } from "./nestedRuntimeMan
 const execFileAsync = promisify(execFile);
 
 export const OWNED_ACCEPTANCE_DESCRIPTOR_ENV = "WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR";
+export const OWNED_ACCEPTANCE_PARENT_DESCRIPTOR_ENV =
+  "WISEEFF_ACCEPTANCE_PARENT_RUNTIME_DESCRIPTOR";
 export const OWNED_ACCEPTANCE_DATABASE_PREFIX = "wiseeff_acceptance_full_";
 export const OWNED_ACCEPTANCE_MARKER_TABLE = "wiseeff_acceptance_runtime_markers";
 export const OWNED_ACCEPTANCE_MARKER_PURPOSE = "td-122-gate0";

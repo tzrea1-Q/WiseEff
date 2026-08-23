@@ -1633,6 +1633,7 @@ function writeOperationEvidenceRuntimeSnapshot(
     artifacts: {
       runRoot: descriptor.artifacts.runRoot,
       descriptor: descriptor.artifacts.descriptor,
+      nestedRuntimeManifest: descriptor.artifacts.nestedRuntimeManifest,
     },
   };
   writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, {
