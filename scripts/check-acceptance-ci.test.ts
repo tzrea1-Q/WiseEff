@@ -155,6 +155,22 @@ describe("M5.12 acceptance CI configuration", () => {
         "      - name: Unbounded added prerequisite\n        run: npm run surprise\n\n      - name: Owned visual and browser acceptance Gate 0",
       ),
     )).toMatchObject({ status: "failed", missingStepTimeouts: ["Unbounded added prerequisite"] });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - name: Unbounded added finalizer\n        if: always()\n        run: npm run surprise:finalize\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({ status: "failed", missingStepTimeouts: ["Unbounded added finalizer"] });
+    expect(evaluateAcceptanceLocalNonHdcBudget(
+      workflow.replace(
+        "      - name: Upload acceptance evidence",
+        "      - name: Bounded added finalizer\n        if: always()\n        timeout-minutes: 4\n        run: npm run surprise:finalize\n\n      - name: Upload acceptance evidence",
+      ),
+    )).toMatchObject({
+      status: "failed",
+      requiredExclusiveFloorMinutes: 150,
+      missingStepTimeouts: [],
+    });
   });
 
   it("routes every formerly dotenv-backed acceptance spec through the owned-runtime-aware helper", () => {

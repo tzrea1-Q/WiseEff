@@ -3,6 +3,7 @@ import {
   linkSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -181,6 +182,12 @@ export function recordNestedRuntimeProgress(
       if (child.apiPid && child.apiPid !== progress.apiPid) {
         throw new Error(`Nested runtime ${childId} API PID cannot change.`);
       }
+      assertPersistedProcessIdentityUnchanged(
+        childId,
+        "API",
+        child.apiProcessIdentity,
+        progress.apiProcessIdentity,
+      );
       child.apiPid = progress.apiPid;
       if (progress.apiProcessIdentity) child.apiProcessIdentity = progress.apiProcessIdentity;
     }
@@ -188,6 +195,12 @@ export function recordNestedRuntimeProgress(
       if (child.frontendPid && child.frontendPid !== progress.frontendPid) {
         throw new Error(`Nested runtime ${childId} frontend PID cannot change.`);
       }
+      assertPersistedProcessIdentityUnchanged(
+        childId,
+        "frontend",
+        child.frontendProcessIdentity,
+        progress.frontendProcessIdentity,
+      );
       child.frontendPid = progress.frontendPid;
       if (progress.frontendProcessIdentity) child.frontendProcessIdentity = progress.frontendProcessIdentity;
     }
@@ -322,12 +335,79 @@ function recoverStaleManifestLock(lockPath: string) {
   // PID reuse is stale. Parent identity is recorded
   // for audit, but even a mismatched live owner is never stolen from.
   if (!deadOwner && !reusedPid) return false;
+  const recoveryPath = `${lockPath}.recovery`;
+  let claimedRecovery = false;
   try {
+    // A single hard-link claim closes the ABA window between observing a
+    // stale owner and removing its pathname. If another waiter already owns
+    // the recovery claim, this waiter fails closed instead of competing to
+    // unlink a pathname that may since belong to a new live owner.
+    linkSync(lockPath, recoveryPath);
+    claimedRecovery = true;
+    const recoveredOwner = readManifestLockOwner(recoveryPath);
+    if (!sameManifestLockOwner(owner, recoveredOwner)) return false;
+    const current = statSync(lockPath);
+    const recovered = statSync(recoveryPath);
+    if (current.dev !== recovered.dev || current.ino !== recovered.ino) return false;
     unlinkSync(lockPath);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      discardDetachedRecoveryClaim(lockPath, recoveryPath);
+      return false;
+    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
+  } finally {
+    if (claimedRecovery) unlinkIfPresent(recoveryPath);
+  }
+}
+
+function assertPersistedProcessIdentityUnchanged(
+  childId: string,
+  label: "API" | "frontend",
+  persisted: NestedRuntimeProcessIdentity | undefined,
+  incoming: NestedRuntimeProcessIdentity | undefined,
+) {
+  if (!persisted || !incoming) return;
+  if (
+    persisted.pid !== incoming.pid ||
+    persisted.port !== incoming.port ||
+    !sameProcessStartIdentity(persisted, incoming)
+  ) {
+    throw new Error(`Nested runtime ${childId} ${label} process identity cannot change.`);
+  }
+}
+
+function sameManifestLockOwner(
+  expected: ReturnType<typeof readManifestLockOwner>,
+  current: ReturnType<typeof readManifestLockOwner>,
+) {
+  if (!expected || !current) return false;
+  return expected.pid === current.pid &&
+    expected.token === current.token &&
+    expected.parentRunId === current.parentRunId &&
+    (expected.processIdentity === undefined
+      ? current.processIdentity === undefined
+      : current.processIdentity !== undefined && sameProcessStartIdentity(expected.processIdentity, current.processIdentity));
+}
+
+function discardDetachedRecoveryClaim(lockPath: string, recoveryPath: string) {
+  try {
+    const current = statSync(lockPath);
+    const recovery = statSync(recoveryPath);
+    if (current.dev !== recovery.dev || current.ino !== recovery.ino) unlinkIfPresent(recoveryPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
+
+function unlinkIfPresent(targetPath: string) {
+  try {
+    unlinkSync(targetPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 

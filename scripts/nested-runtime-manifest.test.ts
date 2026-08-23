@@ -367,6 +367,76 @@ describe("Gate0 nested disposable runtime contract", () => {
     });
   });
 
+  it("never replaces a persisted process identity while a child is still provisioning", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-immutable-identity-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_immutable_identity",
+      databaseName: "wiseeff_acceptance_disposable_immutable_identity",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const original = fakeProcessIdentity(111, 19_100);
+    const frontendOriginal = fakeProcessIdentity(222, 5_190);
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_immutable_identity", {
+      apiPid: original.pid,
+      apiProcessIdentity: original,
+      frontendPid: frontendOriginal.pid,
+      frontendProcessIdentity: frontendOriginal,
+    });
+
+    for (const changedIdentity of [
+      { ...original, startToken: "different-process-incarnation" },
+      { ...original, commandSha256: "f".repeat(64) },
+      { ...original, port: original.port + 1 },
+    ]) {
+      expect(() => recordNestedRuntimeProgress(
+        manifestPath,
+        "wiseeff_acceptance_disposable_immutable_identity",
+        { apiPid: original.pid, apiProcessIdentity: changedIdentity },
+      )).toThrow(/API process identity cannot change/i);
+    }
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiProcessIdentity).toEqual(original);
+
+    expect(() => recordNestedRuntimeProgress(
+      manifestPath,
+      "wiseeff_acceptance_disposable_immutable_identity",
+      {
+        migrationRunId: "migration-immutable",
+        apiPid: original.pid,
+        apiProcessIdentity: original,
+        frontendPid: frontendOriginal.pid,
+        frontendProcessIdentity: { ...frontendOriginal, commandSha256: "e".repeat(64) },
+        ready: true,
+      },
+    )).toThrow(/frontend process identity cannot change/i);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "provisioning",
+      apiProcessIdentity: original,
+      frontendProcessIdentity: frontendOriginal,
+    });
+
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_immutable_identity", {
+      migrationRunId: "migration-immutable",
+      apiPid: original.pid,
+      apiProcessIdentity: original,
+      frontendPid: frontendOriginal.pid,
+      frontendProcessIdentity: frontendOriginal,
+      ready: true,
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "running",
+      apiProcessIdentity: original,
+      frontendProcessIdentity: frontendOriginal,
+    });
+  });
+
   it("cannot declare success while a nested child is running or terminally failed", () => {
     const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-success-check-"));
     const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
@@ -564,6 +634,45 @@ describe("Gate0 nested disposable runtime contract", () => {
     expect(Date.now() - startedAt).toBeLessThan(1_000);
     expect(readNestedRuntimeManifest(manifestPath).children[0]?.state).toBe("provisioning");
   });
+
+  it("does not let a second stale waiter unlink the new live lock installed by the first", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-stale-lock-aba-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const lockPath = `${manifestPath}.lock`;
+    writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "stale-owner" }));
+    const liveOwner = {
+      pid: process.pid,
+      token: "new-live-owner",
+      parentRunId: "full-owned",
+      processIdentity: readProcessStartIdentity(process.pid),
+    };
+    const kill = vi.spyOn(process, "kill").mockImplementationOnce(() => {
+      unlinkSync(lockPath);
+      writeFileSync(lockPath, JSON.stringify(liveOwner));
+      throw Object.assign(new Error("no such process"), { code: "ESRCH" });
+    });
+
+    expect(() => recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_aba_waiter",
+      databaseName: "wiseeff_acceptance_disposable_aba_waiter",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    })).toThrow(/lock is held by a live owner/i);
+
+    expect(JSON.parse(readFileSync(lockPath, "utf8"))).toMatchObject({
+      pid: process.pid,
+      token: "new-live-owner",
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children).toEqual([]);
+    kill.mockRestore();
+    unlinkSync(lockPath);
+  }, 7_000);
 
   it("never steals an aged manifest lock from its still-live owner", () => {
     const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-live-lock-"));

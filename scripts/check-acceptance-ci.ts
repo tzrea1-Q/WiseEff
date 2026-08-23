@@ -106,6 +106,7 @@ export function evaluateAcceptanceLocalNonHdcBudget(
   const stepTimeouts = new Map(steps.map((step) => [step.name, step.timeoutMinutes]));
   const gate0Index = steps.findIndex((step) => step.name === ACCEPTANCE_GATE0_STEP);
   const preGate0Steps = gate0Index < 0 ? steps : steps.slice(0, gate0Index);
+  const postGate0Steps = gate0Index < 0 ? [] : steps.slice(gate0Index + 1);
   const requiredNamedSteps = [
     ...acceptanceLocalNonHdcPreludeSteps,
     ACCEPTANCE_GATE0_STEP,
@@ -115,6 +116,7 @@ export function evaluateAcceptanceLocalNonHdcBudget(
   const missingStepTimeouts = [...new Set([
     ...requiredNamedSteps.filter((step) => (stepTimeouts.get(step) ?? 0) <= 0),
     ...preGate0Steps.filter((step) => step.timeoutMinutes <= 0).map((step) => step.name),
+    ...postGate0Steps.filter((step) => step.timeoutMinutes <= 0).map((step) => step.name),
   ])];
   const preGate0BudgetMinutes = preGate0Steps.reduce(
     (total, step) => total + step.timeoutMinutes,
@@ -123,11 +125,14 @@ export function evaluateAcceptanceLocalNonHdcBudget(
   const gate0StepTimeoutMinutes = stepTimeouts.get(ACCEPTANCE_GATE0_STEP) ?? 0;
   const artifactSafetyMinutes = stepTimeouts.get(ACCEPTANCE_ARTIFACT_SAFETY_STEP) ?? 0;
   const artifactUploadMinutes = stepTimeouts.get(ACCEPTANCE_ARTIFACT_UPLOAD_STEP) ?? 0;
+  const postGate0BudgetMinutes = postGate0Steps.reduce(
+    (total, step) => total + step.timeoutMinutes,
+    0,
+  );
   const requiredExclusiveFloorMinutes = ACCEPTANCE_LOCAL_NON_HDC_PLATFORM_OVERHEAD_MINUTES
     + preGate0BudgetMinutes
     + ACCEPTANCE_GATE0_OWNER_MINUTES
-    + artifactSafetyMinutes
-    + artifactUploadMinutes;
+    + postGate0BudgetMinutes;
   const status = jobTimeoutMinutes > requiredExclusiveFloorMinutes
     && gate0StepTimeoutMinutes > ACCEPTANCE_GATE0_OWNER_MINUTES
     && missingStepTimeouts.length === 0
