@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,6 +23,7 @@ import {
 } from "./owned-local-acceptance-runtime";
 import { readProcessStartIdentity } from "./process-start-identity";
 import { sanitizeGate0ArtifactTree, scanGate0ArtifactTree } from "./gate0-artifact-sanitizer";
+import { captureExactOwnedDirectoryChain } from "./exact-owned-object-root";
 
 const children: ChildProcess[] = [];
 
@@ -491,7 +492,7 @@ describe("owned local acceptance runtime", () => {
       run: {
         id: "full-red",
         sourceCommit: "0123456789012345678901234567890123456789",
-        worktreeRoot: process.cwd(),
+        worktreeRoot: realpathSync(runRoot),
         sourceDirtyBefore: false,
         ownerPid: process.pid,
         ownerProcessIdentity: currentIdentity,
@@ -531,6 +532,7 @@ describe("owned local acceptance runtime", () => {
         absentBeforeCreate: true,
         markerFile: objectMarker,
         markerSha256: "b".repeat(64),
+        directoryChain: captureExactOwnedDirectoryChain(runRoot, objectRoot),
       },
       endpoints: {
         api: {
@@ -631,6 +633,7 @@ describe("owned local acceptance runtime", () => {
       runId: "wrong-run",
       sourceCommit: "0".repeat(40),
     }));
+    const objectDirectoryChain = captureExactOwnedDirectoryChain(worktreeRoot, objectRoot);
     let destructiveCalls = 0;
 
     await expect(cleanupExactOrphanedOwnedRuntime({
@@ -641,6 +644,7 @@ describe("owned local acceptance runtime", () => {
       runId,
       sourceCommit: "022e85fec8a7bf696bdf8466f48cd7cee9f991e1",
       ports: [18_800, 5_180],
+      objectDirectoryChain,
     }, {
       verifyDatabaseMarker: async () => undefined,
       assertPortsUnused: async () => undefined,
@@ -648,5 +652,94 @@ describe("owned local acceptance runtime", () => {
       assertDatabaseAbsent: async () => undefined,
     })).rejects.toThrow(/object marker.*mismatch/i);
     expect(destructiveCalls).toBe(0);
+  });
+
+  it("refuses orphan object removal when the run ancestor changes during database cleanup", async () => {
+    const worktreeRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-orphan-mutation-"));
+    const runId = "full-20260823t170000000z-0123456789a-12345678";
+    const sourceCommit = "0123456789abcdef0123456789abcdef01234567";
+    const runRoot = path.join(worktreeRoot, "test-results", "acceptance-runtime-runs", runId);
+    const objectRoot = path.join(runRoot, "object-store");
+    mkdirSync(objectRoot, { recursive: true });
+    const markerContent = `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-object-store",
+      purpose: "td-122-gate0",
+      runId,
+      sourceCommit,
+    }, null, 2)}\n`;
+    writeFileSync(path.join(objectRoot, ".wiseeff-acceptance-owner.json"), markerContent);
+    const objectDirectoryChain = captureExactOwnedDirectoryChain(worktreeRoot, objectRoot);
+    const displacedRun = `${runRoot}.displaced`;
+    const externalRun = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-external-run-"));
+    const externalObjectRoot = path.join(externalRun, "object-store");
+    mkdirSync(externalObjectRoot);
+    writeFileSync(path.join(externalObjectRoot, ".wiseeff-acceptance-owner.json"), markerContent);
+    const sentinel = path.join(externalObjectRoot, "must-retain.txt");
+    writeFileSync(sentinel, "external\n", "utf8");
+
+    await expect(cleanupExactOrphanedOwnedRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot,
+      runRoot,
+      databaseName: "wiseeff_acceptance_full_20260823t17000000_01234567_12345678",
+      runId,
+      sourceCommit,
+      ports: [18_800, 5_180],
+      objectDirectoryChain,
+    }, {
+      verifyDatabaseMarker: async () => undefined,
+      assertPortsUnused: async () => undefined,
+      dropDatabase: async () => {
+        renameSync(runRoot, displacedRun);
+        symlinkSync(externalRun, runRoot);
+      },
+      assertDatabaseAbsent: async () => undefined,
+    })).rejects.toThrow(/directory identity|symbolic link|owned object/i);
+
+    expect(existsSync(sentinel)).toBe(true);
+    expect(existsSync(path.join(displacedRun, "object-store"))).toBe(true);
+  });
+
+  it("refuses an orphan object root replaced before cleanup from its provision-time identity", async () => {
+    const worktreeRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-orphan-pre-replaced-"));
+    const runId = "full-20260823t171000000z-0123456789a-87654321";
+    const sourceCommit = "0123456789abcdef0123456789abcdef01234567";
+    const runRoot = path.join(worktreeRoot, "test-results", "acceptance-runtime-runs", runId);
+    const objectRoot = path.join(runRoot, "object-store");
+    mkdirSync(objectRoot, { recursive: true });
+    const markerContent = `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-object-store",
+      purpose: "td-122-gate0",
+      runId,
+      sourceCommit,
+    }, null, 2)}\n`;
+    writeFileSync(path.join(objectRoot, ".wiseeff-acceptance-owner.json"), markerContent);
+    const provisionedDirectoryChain = captureExactOwnedDirectoryChain(worktreeRoot, objectRoot);
+    const displacedRun = `${runRoot}.displaced`;
+    renameSync(runRoot, displacedRun);
+    mkdirSync(objectRoot, { recursive: true });
+    writeFileSync(path.join(objectRoot, ".wiseeff-acceptance-owner.json"), markerContent);
+    const sentinel = path.join(objectRoot, "must-retain.txt");
+    writeFileSync(sentinel, "external\n", "utf8");
+    const input = {
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot,
+      runRoot,
+      databaseName: "wiseeff_acceptance_full_20260823t17100000_01234567_87654321",
+      runId,
+      sourceCommit,
+      ports: [18_800, 5_180],
+      objectDirectoryChain: provisionedDirectoryChain,
+    };
+
+    await expect(cleanupExactOrphanedOwnedRuntime(input, {
+      verifyDatabaseMarker: async () => undefined,
+      assertPortsUnused: async () => undefined,
+      dropDatabase: async () => undefined,
+      assertDatabaseAbsent: async () => undefined,
+    })).rejects.toThrow(/directory identity|owned object/i);
+
+    expect(existsSync(sentinel)).toBe(true);
+    expect(existsSync(path.join(displacedRun, "object-store"))).toBe(true);
   });
 });

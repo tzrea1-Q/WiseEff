@@ -24,6 +24,7 @@ import {
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import {
   readNestedRuntimeManifest,
+  recoverNestedRuntimeManifestPublication,
   type NestedRuntimeProcessIdentity,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 import {
@@ -42,6 +43,7 @@ import {
 import {
   GATE0_PROVISIONING_JOURNAL_FILE,
   readGate0ProvisioningJournal,
+  recoverGate0ProvisioningStagingRuns,
   type Gate0ProvisioningJournalV1,
 } from "./gate0-provisioning-journal";
 import { listGate0OwnedProcessLaunches } from "./gate0-process-launch-supervisor";
@@ -97,7 +99,11 @@ export async function finalizeGate0UploadSnapshot(
     throw new Error("Gate0 upload snapshot must be one exact ZIP archive.");
   }
   assertSeparateSnapshotPath(runsRoot, archivePath);
-  const records = loadRootTakeoverRecords(runsRoot);
+  await recoverGate0ProvisioningStagingRuns(runsRoot, {
+    processExists: options.stopOptions?.processGroupExists,
+    readProcessIdentity: options.stopOptions?.readProcessIdentity,
+  });
+  let records = loadRootTakeoverRecords(runsRoot, { allowUnpublishedNestedManifest: true });
   const descriptors = records.flatMap((record) => record.descriptor ? [record.descriptor] : []);
   await assertOwnersExited(records, options.stopOptions);
   const initialWriters = uniqueOwnedWriters([
@@ -106,7 +112,7 @@ export async function finalizeGate0UploadSnapshot(
   ]);
   await preflightWriterIdentities(initialWriters, options.stopOptions);
   await stopPhaseWriters(initialWriters.filter((writer) => writer.phase), options);
-  const refreshedRecords = loadRootTakeoverRecords(runsRoot);
+  const refreshedRecords = loadRootTakeoverRecords(runsRoot, { allowUnpublishedNestedManifest: true });
   const writers = discoverOwnedWriters(refreshedRecords);
   await preflightWriterIdentities(writers, options.stopOptions);
   for (const writer of writers) {
@@ -118,7 +124,14 @@ export async function finalizeGate0UploadSnapshot(
   }
 
   throwIfAborted(options.signal);
-  await assertOwnersExited(loadRootTakeoverRecords(runsRoot), options.stopOptions);
+  for (const record of refreshedRecords) {
+    recoverNestedRuntimeManifestPublication(record.nestedRuntimeManifest, {
+      parentRunId: record.runId,
+      sourceCommit: record.sourceCommit,
+    });
+  }
+  records = loadRootTakeoverRecords(runsRoot);
+  await assertOwnersExited(records, options.stopOptions);
   const exactValues = [...new Set([
     ...gate0SecretValuesFromEnv(),
     ...loadGate0PersistedExactValuesForSnapshot(runsRoot),
@@ -188,7 +201,10 @@ export async function finalizeGate0UploadSnapshot(
   }
 }
 
-function loadRootTakeoverRecords(runsRoot: string): RootTakeoverRecord[] {
+function loadRootTakeoverRecords(
+  runsRoot: string,
+  options: { allowUnpublishedNestedManifest?: boolean } = {},
+): RootTakeoverRecord[] {
   const runRoots = readdirSync(runsRoot, { withFileTypes: true })
     .filter((entry) => {
       if (entry.isSymbolicLink()) throw new Error("Gate0 live runs root contains a symbolic link.");
@@ -255,7 +271,7 @@ function loadRootTakeoverRecords(runsRoot: string): RootTakeoverRecord[] {
         if (nested.parentRunId !== runId || nested.sourceCommit !== sourceCommit) {
           throw new Error("Nested runtime manifest does not match its parent run/source identity.");
         }
-      } else if (descriptor) {
+      } else if (descriptor && !options.allowUnpublishedNestedManifest) {
         throw new Error("Complete owned runtime descriptor lacks its nested runtime manifest.");
       }
       return {
@@ -352,6 +368,13 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
       throw new Error("Gate0 process launch ledger contains a duplicate declared label.");
     }
     for (const launch of launches) {
+      if (launch.state === "rejected") {
+        throw new Error(`Gate0 process launch ${launch.launchId} was rejected during owner rollback; refusing upload.`);
+      }
+      if (launch.state === "aborted") {
+        assertAbortedLaunchMatchesDeclaredWriter(record, launch);
+        continue;
+      }
       if (launch.state !== "claimed" || !launch.launcherPid || !launch.launcherProcessIdentity) {
         throw new Error(`Gate0 process launch ${launch.launchId} did not publish a safe launcher identity.`);
       }
@@ -478,6 +501,35 @@ function assertLaunchMatchesDeclaredWriter(
   throw new Error(`Gate0 process launch ${launch.label} has no exact declared writer; refusing all signals.`);
 }
 
+function assertAbortedLaunchMatchesDeclaredWriter(
+  record: RootTakeoverRecord,
+  launch: ReturnType<typeof settledProcessLaunches>[number],
+) {
+  for (const label of ["migration", "seed", "api", "frontend"] as const) {
+    if (launch.label === `root:${record.runId}:${label}` && record.journal?.processes[label].state === "launching") {
+      return;
+    }
+  }
+  for (const phaseName of ["visual", "browser"] as const) {
+    if (
+      launch.label === `root:${record.runId}:${phaseName}` &&
+      record.descriptor?.phases[phaseName].status === "launching"
+    ) {
+      return;
+    }
+  }
+  if (existsSync(record.nestedRuntimeManifest)) {
+    const manifest = readNestedRuntimeManifest(record.nestedRuntimeManifest);
+    for (const child of manifest.children) {
+      for (const label of ["api", "frontend"] as const) {
+        const state = label === "api" ? child.apiProcessState : child.frontendProcessState;
+        if (launch.label === `nested:${child.id}:${label}` && state === "launching") return;
+      }
+    }
+  }
+  throw new Error(`Gate0 aborted process launch ${launch.label} has no exact declared launching writer.`);
+}
+
 function settledProcessLaunches(record: RootTakeoverRecord) {
   const deadline = Date.now() + 5_000;
   while (true) {
@@ -487,7 +539,7 @@ function settledProcessLaunches(record: RootTakeoverRecord) {
         throw new Error("Gate0 process launch does not match its canonical run/source identity.");
       }
     }
-    if (launches.every((launch) => launch.state === "claimed")) return launches;
+    if (launches.every((launch) => ["claimed", "aborted", "rejected"].includes(launch.state))) return launches;
     if (Date.now() >= deadline) {
       throw new Error("Gate0 process launcher identity publication did not settle; refusing upload.");
     }

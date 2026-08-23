@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
+  closeSync,
   existsSync,
+  fsyncSync,
   linkSync,
+  lstatSync,
+  openSync,
   readFileSync,
+  realpathSync,
+  readdirSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -71,6 +77,7 @@ export type NestedRuntimeManifest = {
 export function initializeNestedRuntimeManifest(
   manifestPath: string,
   identity: { parentRunId: string; sourceCommit: string },
+  dependencies: { beforePublish?: (candidatePath: string) => void } = {},
 ) {
   if (!path.isAbsolute(manifestPath)) throw new Error("Nested runtime manifest path must be absolute.");
   if (!/^[a-f0-9]{40}$/u.test(identity.sourceCommit)) {
@@ -84,7 +91,7 @@ export function initializeNestedRuntimeManifest(
     children: [],
     updatedAt: new Date().toISOString(),
   };
-  writeManifest(manifestPath, manifest, "wx");
+  writeManifest(manifestPath, manifest, "wx", dependencies);
   return manifestPath;
 }
 
@@ -264,39 +271,341 @@ export function recordNestedRuntimeFinish(
 }
 
 export function readNestedRuntimeManifest(manifestPath: string) {
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NestedRuntimeManifest;
+  const stat = lstatSync(manifestPath);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  let manifest: NestedRuntimeManifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NestedRuntimeManifest;
+  } catch {
+    throw new Error("Nested runtime manifest is malformed.");
+  }
+  assertNestedRuntimeManifest(manifest, manifestPath);
+  return manifest;
+}
+
+function assertNestedRuntimeManifest(
+  value: unknown,
+  manifestPath: string,
+): asserts value is NestedRuntimeManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  const manifest = value as Partial<NestedRuntimeManifest>;
   if (
     manifest.version !== 1 ||
     manifest.kind !== "wiseeff-gate0-nested-runtime-manifest" ||
+    typeof manifest.parentRunId !== "string" || manifest.parentRunId.length === 0 ||
+    !/^[a-f0-9]{40}$/u.test(manifest.sourceCommit ?? "") ||
+    !isTimestamp(manifest.updatedAt) ||
     !Array.isArray(manifest.children)
   ) {
     throw new Error("Nested runtime manifest identity is invalid.");
   }
-  return manifest;
+  const ids = new Set<string>();
+  const databases = new Set<string>();
+  const objectRoots = new Set<string>();
+  for (const child of manifest.children) {
+    assertNestedRuntimeRecord(child, realpathSync(path.dirname(manifestPath)));
+    if (ids.has(child.id) || databases.has(child.databaseName) || objectRoots.has(child.objectStoreRoot)) {
+      throw new Error("Nested runtime manifest identity is invalid.");
+    }
+    ids.add(child.id);
+    databases.add(child.databaseName);
+    objectRoots.add(child.objectStoreRoot);
+  }
+}
+
+function assertNestedRuntimeRecord(
+  value: unknown,
+  parentRunRoot: string,
+): asserts value is NestedRuntimeRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  const child = value as Partial<NestedRuntimeRecord>;
+  if (
+    typeof child.id !== "string" || child.id.length === 0 ||
+    !["provisioning", "running", "cleaned", "failed-retained", "cleanup-failed"].includes(child.state ?? "") ||
+    typeof child.databaseName !== "string" ||
+    !/^wiseeff_acceptance_disposable_[a-z0-9_]+$/u.test(child.databaseName) ||
+    child.id !== child.databaseName ||
+    typeof child.markerPurpose !== "string" || child.markerPurpose.length === 0 ||
+    typeof child.objectStoreRoot !== "string" ||
+    path.resolve(child.objectStoreRoot) !== path.join(parentRunRoot, "nested-object-store", child.databaseName) ||
+    !isLoopbackRuntimeUrl(child.apiUrl) || !isLoopbackRuntimeUrl(child.frontendUrl) ||
+    !["not-started", "launching", "running"].includes(child.apiProcessState ?? "") ||
+    !["not-started", "launching", "running"].includes(child.frontendProcessState ?? "") ||
+    !isTimestamp(child.startedAt) ||
+    (child.migrationRunId !== undefined &&
+      (typeof child.migrationRunId !== "string" || child.migrationRunId.length === 0))
+  ) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  assertNestedProcessRecord(child.apiProcessState!, child.apiPid, child.apiProcessIdentity);
+  assertNestedProcessRecord(child.frontendProcessState!, child.frontendPid, child.frontendProcessIdentity);
+  assertRuntimeUrlMatchesIdentity(child.apiUrl!, child.apiProcessIdentity);
+  assertRuntimeUrlMatchesIdentity(child.frontendUrl!, child.frontendProcessIdentity);
+  if (child.state === "running" && (
+    !child.migrationRunId || child.apiProcessState !== "running" || child.frontendProcessState !== "running"
+  )) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  const terminal = ["cleaned", "failed-retained", "cleanup-failed"].includes(child.state!);
+  const hasCompletedAt = child.completedAt !== undefined;
+  const hasCleanup = child.cleanup !== undefined;
+  if (terminal ? !hasCompletedAt || !hasCleanup : hasCompletedAt || hasCleanup) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (child.completedAt !== undefined && !isTimestamp(child.completedAt)) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (child.cleanup !== undefined) {
+    assertNestedCleanup(child.cleanup);
+    assertNestedCleanupSemantics(child as NestedRuntimeRecord);
+  }
+}
+
+function assertNestedProcessRecord(
+  state: NestedRuntimeRecord["apiProcessState"],
+  pid: number | undefined,
+  identity: NestedRuntimeProcessIdentity | undefined,
+) {
+  const running = state === "running";
+  if (running !== (pid !== undefined && identity !== undefined)) {
+    if (running) {
+      throw new Error("Nested runtime manifest has an unresolved writer identity.");
+    }
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (pid === undefined && identity === undefined) return;
+  if (pid === undefined || identity === undefined) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (
+    !Number.isSafeInteger(pid) || Number(pid) <= 0 || identity.pid !== pid ||
+    !Number.isSafeInteger(identity.port) || identity.port <= 0 ||
+    !identity.startToken || !/^[a-f0-9]{64}$/u.test(identity.commandSha256)
+  ) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+}
+
+function assertNestedCleanup(cleanup: NestedRuntimeCleanup) {
+  const valid = (
+    value: { status?: string; reason?: string } | undefined,
+    statuses: readonly string[],
+  ) => value !== undefined && statuses.includes(value.status ?? "") &&
+    (value.reason === undefined || typeof value.reason === "string");
+  if (
+    !valid(cleanup.apiProcess, ["not-started", "stopped", "failed"]) ||
+    !valid(cleanup.frontendProcess, ["not-started", "stopped", "failed"]) ||
+    !valid(cleanup.database, ["removed", "retained", "failed"]) ||
+    !valid(cleanup.objectStore, ["removed", "retained", "failed"])
+  ) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function isLoopbackRuntimeUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" && url.hostname === "127.0.0.1" &&
+      url.username === "" && url.password === "" && url.hash === "" &&
+      url.search === "" && url.pathname === "/" && /^\d+$/u.test(url.port);
+  } catch {
+    return false;
+  }
+}
+
+function assertRuntimeUrlMatchesIdentity(
+  value: string,
+  identity: NestedRuntimeProcessIdentity | undefined,
+) {
+  if (identity && Number(new URL(value).port) !== identity.port) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+}
+
+function assertNestedCleanupSemantics(child: NestedRuntimeRecord) {
+  const cleanup = child.cleanup!;
+  const processStatusMatches = (
+    processState: NestedRuntimeRecord["apiProcessState"],
+    cleanupStatus: NestedRuntimeCleanup["apiProcess"]["status"],
+  ) => processState === "not-started"
+    ? cleanupStatus === "not-started"
+    : cleanupStatus === "stopped" || cleanupStatus === "failed";
+  if (
+    !processStatusMatches(child.apiProcessState, cleanup.apiProcess.status) ||
+    !processStatusMatches(child.frontendProcessState, cleanup.frontendProcess.status)
+  ) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (child.state === "cleaned" && (
+    cleanup.apiProcess.status === "failed" || cleanup.frontendProcess.status === "failed" ||
+    cleanup.database.status !== "removed" || cleanup.objectStore.status !== "removed"
+  )) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (child.state === "failed-retained" && (
+    cleanup.apiProcess.status === "failed" || cleanup.frontendProcess.status === "failed" ||
+    cleanup.database.status !== "retained" || cleanup.objectStore.status !== "retained"
+  )) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  if (child.state === "cleanup-failed" && ![
+    cleanup.apiProcess.status,
+    cleanup.frontendProcess.status,
+    cleanup.database.status,
+    cleanup.objectStore.status,
+  ].includes("failed")) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+}
+
+export function recoverNestedRuntimeManifestPublication(
+  manifestPath: string,
+  identity: { parentRunId: string; sourceCommit: string },
+) {
+  if (!path.isAbsolute(manifestPath)) throw new Error("Nested runtime manifest path must be absolute.");
+  const parent = path.dirname(manifestPath);
+  const basename = path.basename(manifestPath);
+  const candidatePattern = new RegExp(
+    `^${escapeRegex(basename)}\\.\\d+\\.[a-f0-9-]{36}\\.tmp$`,
+    "iu",
+  );
+  const candidates = readdirSync(parent, { withFileTypes: true })
+    .filter((entry) => candidatePattern.test(entry.name))
+    .map((entry) => {
+      if (entry.isSymbolicLink() || !entry.isFile()) {
+        throw new Error("Nested runtime manifest candidate is not a private regular file.");
+      }
+      const candidatePath = path.join(parent, entry.name);
+      const candidateStat = lstatSync(candidatePath);
+      if (process.platform !== "win32" && (candidateStat.mode & 0o077) !== 0) {
+        throw new Error("Nested runtime manifest candidate permissions are unsafe.");
+      }
+      return candidatePath;
+    });
+  if (existsSync(manifestPath)) {
+    const manifest = readNestedRuntimeManifest(manifestPath);
+    assertNestedManifestIdentity(manifest, identity);
+    if (candidates.length === 0) return false;
+    if (candidates.length !== 1) {
+      throw new Error("Nested runtime manifest has an ambiguous unpublished candidate.");
+    }
+    const candidatePath = candidates[0]!;
+    const candidate = readNestedRuntimeManifest(candidatePath);
+    assertNestedManifestIdentity(candidate, identity);
+    if (candidate.children.length !== 0) {
+      throw new Error("Nested runtime manifest has an ambiguous unpublished candidate.");
+    }
+    const manifestStat = lstatSync(manifestPath);
+    const candidateStat = lstatSync(candidatePath);
+    if (
+      !Number.isSafeInteger(manifestStat.ino) || manifestStat.ino <= 0 ||
+      manifestStat.dev !== candidateStat.dev || manifestStat.ino !== candidateStat.ino
+    ) {
+      throw new Error("Nested runtime manifest has an ambiguous unpublished candidate.");
+    }
+    unlinkSync(candidatePath);
+    fsyncManifestDirectory(parent);
+    return true;
+  }
+  if (candidates.length === 0) return false;
+  if (candidates.length !== 1) {
+    throw new Error("Nested runtime manifest has multiple unpublished candidates.");
+  }
+  const candidatePath = candidates[0]!;
+  const candidate = readNestedRuntimeManifest(candidatePath);
+  assertNestedManifestIdentity(candidate, identity);
+  if (candidate.children.length !== 0) {
+    throw new Error("Nested runtime initial manifest candidate already claims a child writer; refusing recovery.");
+  }
+  try {
+    linkSync(candidatePath, manifestPath);
+    fsyncManifestDirectory(parent);
+    unlinkSync(candidatePath);
+    fsyncManifestDirectory(parent);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("Nested runtime manifest publication raced with another owner.");
+    }
+    throw error;
+  }
+  return true;
+}
+
+function assertNestedManifestIdentity(
+  manifest: NestedRuntimeManifest,
+  identity: { parentRunId: string; sourceCommit: string },
+) {
+  if (manifest.parentRunId !== identity.parentRunId || manifest.sourceCommit !== identity.sourceCommit) {
+    throw new Error("Nested runtime manifest does not match its parent run/source identity.");
+  }
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 const readManifest = readNestedRuntimeManifest;
 
-function writeManifest(manifestPath: string, manifest: NestedRuntimeManifest, flag: "w" | "wx" = "w") {
+function writeManifest(
+  manifestPath: string,
+  manifest: NestedRuntimeManifest,
+  flag: "w" | "wx" = "w",
+  dependencies: { beforePublish?: (candidatePath: string) => void } = {},
+) {
   manifest.updatedAt = new Date().toISOString();
   const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
   if (/postgres(?:ql)?:\/\//iu.test(serialized) || /auth.?secret|authorization|bearer/iu.test(serialized)) {
     throw new Error("Nested runtime manifest must not contain credentials.");
   }
-  if (flag === "wx") {
-    writeFileSync(manifestPath, serialized, { encoding: "utf8", flag });
-    return;
-  }
   const temporaryPath = `${manifestPath}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    writeFileSync(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
+    writeFileSync(temporaryPath, serialized, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+      flush: true,
+    });
+    fsyncManifestDirectory(path.dirname(manifestPath));
+    dependencies.beforePublish?.(temporaryPath);
+    if (flag === "wx") {
+      // Publish via a same-directory hard link so create remains atomically
+      // no-replace; plain rename would overwrite a concurrently published
+      // canonical manifest on POSIX.
+      linkSync(temporaryPath, manifestPath);
+      fsyncManifestDirectory(path.dirname(manifestPath));
+      unlinkSync(temporaryPath);
+      fsyncManifestDirectory(path.dirname(manifestPath));
+      return;
+    }
     renameSync(temporaryPath, manifestPath);
+    fsyncManifestDirectory(path.dirname(manifestPath));
   } finally {
     try {
       unlinkSync(temporaryPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+  }
+}
+
+function fsyncManifestDirectory(directory: string) {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(directory, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
   }
 }
 

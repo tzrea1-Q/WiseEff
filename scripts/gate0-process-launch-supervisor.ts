@@ -4,25 +4,27 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 
 import {
   readProcessStartIdentity,
-  sameProcessStartIdentity,
   type ProcessStartIdentity,
 } from "./process-start-identity";
 
 const LAUNCH_DIRECTORY = ".gate0-owned-process-launches";
 const LAUNCH_KIND = "wiseeff-gate0-owned-process-launch";
 const CONTROL_PREFIX = "WISEEFF_GATE0_LAUNCH_";
+const supervisedProcessIdentities = new WeakMap<ChildProcess, ProcessStartIdentity>();
 
 export type Gate0OwnedProcessLaunchRecord = {
   version: 1;
@@ -33,9 +35,10 @@ export type Gate0OwnedProcessLaunchRecord = {
   label: string;
   ownerPid: number;
   ownerProcessIdentity: ProcessStartIdentity;
-  state: "intent" | "claimed";
+  state: "intent" | "claimed" | "aborted" | "rejected";
   launcherPid?: number;
   launcherProcessIdentity?: ProcessStartIdentity;
+  terminatedAt?: string;
   createdAt: string;
 };
 
@@ -101,27 +104,39 @@ export function spawnGate0SupervisedProcess(input: {
     stdio: input.stdio,
     detached: process.platform !== "win32",
   });
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const claimed = readGate0OwnedProcessLaunchRecord(recordPath, input.supervision.runRoot);
-    if (claimed.state === "claimed") {
-      if (!launcher.pid || claimed.launcherPid !== launcher.pid) {
-        throw new Error("Gate0 process supervisor claim PID does not match the spawned launcher.");
+  try {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const claimed = readGate0OwnedProcessLaunchRecord(recordPath, input.supervision.runRoot);
+      if (claimed.state === "claimed") {
+        if (!launcher.pid || claimed.launcherPid !== launcher.pid || !claimed.launcherProcessIdentity) {
+          throw new Error("Gate0 process supervisor claim identity does not match the spawned launcher.");
+        }
+        publishLaunchControlFile(ackPath, launchId);
+        // The claim was captured by this exact still-running ChildProcess
+        // after the TSX launcher loaded. ACK authorizes that claimed process,
+        // and GO is published only after the ACK is durable. The launcher
+        // validates and removes both exact-token files before execution.
+        // Waiting synchronously for an unlink receipt would prevent Node from
+        // reaping a launcher that exits between claim and ACK.
+        publishLaunchControlFile(goPath, launchId);
+        supervisedProcessIdentities.set(launcher, { ...claimed.launcherProcessIdentity });
+        return launcher;
       }
-      writeFileSync(ackPath, `${launchId}\n`, { encoding: "utf8", flag: "wx", mode: 0o600, flush: true });
-      fsyncDirectory(launchDirectory);
-      waitForLauncherAcknowledgement(launcher.pid, ackPath);
-      waitForStableLauncherIdentity(recordPath);
-      writeFileSync(goPath, `${launchId}\n`, { encoding: "utf8", flag: "wx", mode: 0o600, flush: true });
-      fsyncDirectory(launchDirectory);
-      return launcher;
+      if (launcher.pid && !isProcessAlive(launcher.pid)) {
+        throw new Error("Gate0 process supervisor exited before publishing its identity.");
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
-    if (launcher.pid && !isProcessAlive(launcher.pid)) {
-      throw new Error("Gate0 process supervisor exited before publishing its identity.");
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    throw new Error("Gate0 process supervisor identity publication timed out.");
+  } catch (error) {
+    terminateFailedSupervisedLaunch(launcher, recordPath, input.supervision.runRoot, error);
   }
-  throw new Error("Gate0 process supervisor identity publication timed out.");
+}
+
+export function readGate0SupervisedProcessIdentity(child: ChildProcess) {
+  const identity = supervisedProcessIdentities.get(child);
+  return identity ? { ...identity } : undefined;
 }
 
 export function claimGate0OwnedProcessLaunch(recordPath: string) {
@@ -140,24 +155,6 @@ export function claimGate0OwnedProcessLaunch(recordPath: string) {
   return claimed;
 }
 
-export function refreshGate0OwnedProcessLaunchClaim(recordPath: string) {
-  const runRoot = path.dirname(path.dirname(path.resolve(recordPath)));
-  const record = readGate0OwnedProcessLaunchRecord(recordPath, runRoot);
-  if (record.state !== "claimed" || !record.launcherPid || !record.launcherProcessIdentity) {
-    throw new Error("Gate0 process launch claim cannot be refreshed before it is complete.");
-  }
-  const current = readProcessStartIdentity(record.launcherPid);
-  if (!current || current.startToken !== record.launcherProcessIdentity.startToken) {
-    throw new Error("Gate0 process launcher incarnation changed before acknowledgement.");
-  }
-  const refreshed: Gate0OwnedProcessLaunchRecord = {
-    ...record,
-    launcherProcessIdentity: current,
-  };
-  writeLaunchRecord(recordPath, refreshed, false);
-  return refreshed;
-}
-
 export function listGate0OwnedProcessLaunches(runRoot: string) {
   const launchDirectory = path.join(path.resolve(runRoot), LAUNCH_DIRECTORY);
   if (!existsSync(launchDirectory)) return [];
@@ -170,7 +167,7 @@ export function listGate0OwnedProcessLaunches(runRoot: string) {
       if (entry.isSymbolicLink() || !entry.isFile()) {
         throw new Error("Gate0 process launch directory contains an unsafe entry.");
       }
-      if (/^[a-f0-9-]{36}\.(?:ack|go)$/iu.test(entry.name)) return false;
+      if (/^[a-f0-9-]{36}\.(?:ack|go)(?:\.\d+\.[a-f0-9-]{36}\.tmp)?$/iu.test(entry.name)) return false;
       if (!/^[a-f0-9-]{36}\.json$/iu.test(entry.name)) {
         throw new Error("Gate0 process launch directory contains an unknown record.");
       }
@@ -218,6 +215,27 @@ function writeLaunchRecord(recordPath: string, record: Gate0OwnedProcessLaunchRe
   fsyncDirectory(path.dirname(recordPath));
 }
 
+function publishLaunchControlFile(controlPath: string, launchId: string) {
+  const directory = path.dirname(controlPath);
+  const candidate = `${controlPath}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(candidate, `${launchId}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+    flush: true,
+  });
+  let published = false;
+  try {
+    linkSync(candidate, controlPath);
+    published = true;
+    fsyncDirectory(directory);
+  } finally {
+    unlinkSync(candidate);
+    fsyncDirectory(directory);
+  }
+  if (!published) throw new Error("Gate0 process launch control publication failed.");
+}
+
 function assertLaunchRecord(
   value: unknown,
   recordPath: string,
@@ -236,16 +254,25 @@ function assertLaunchRecord(
     typeof record.label !== "string" || !/^(?:root|nested):[a-z0-9_-]+:(?:migration|seed|api|frontend|visual|browser)$/u.test(record.label) ||
     !Number.isSafeInteger(record.ownerPid) || Number(record.ownerPid) <= 0 ||
     !isProcessStartIdentity(record.ownerProcessIdentity) ||
-    !["intent", "claimed"].includes(record.state ?? "") ||
+    !["intent", "claimed", "aborted", "rejected"].includes(record.state ?? "") ||
     typeof record.createdAt !== "string" || !Number.isFinite(Date.parse(record.createdAt))
   ) {
     throw new Error("Gate0 process launch identity is invalid.");
   }
-  const claimed = record.state === "claimed";
-  if (claimed !== (
-    Number.isSafeInteger(record.launcherPid) && Number(record.launcherPid) > 0 &&
-    isProcessStartIdentity(record.launcherProcessIdentity)
-  )) {
+  const hasLauncherIdentity = Number.isSafeInteger(record.launcherPid) && Number(record.launcherPid) > 0 &&
+    isProcessStartIdentity(record.launcherProcessIdentity);
+  const lacksLauncherIdentity = record.launcherPid === undefined && record.launcherProcessIdentity === undefined;
+  const hasValidTermination = typeof record.terminatedAt === "string" &&
+    Number.isFinite(Date.parse(record.terminatedAt));
+  if (
+    (record.state === "intent" && !lacksLauncherIdentity) ||
+    (record.state === "claimed" && !hasLauncherIdentity) ||
+    (record.state === "aborted" && !hasLauncherIdentity && !lacksLauncherIdentity) ||
+    (record.state === "rejected" && !hasLauncherIdentity) ||
+    (record.state === "aborted" || record.state === "rejected"
+      ? !hasValidTermination
+      : record.terminatedAt !== undefined)
+  ) {
     throw new Error("Gate0 process launcher identity is incomplete.");
   }
 }
@@ -278,30 +305,37 @@ function isProcessAlive(pid: number) {
   }
 }
 
-function waitForLauncherAcknowledgement(pid: number, ackPath: string) {
-  const deadline = Date.now() + 10_000;
-  while (existsSync(ackPath)) {
-    if (!isProcessAlive(pid)) {
-      throw new Error("Gate0 process supervisor exited before acknowledging its launch claim.");
+function terminateFailedSupervisedLaunch(
+  launcher: ChildProcess,
+  recordPath: string,
+  runRoot: string,
+  handshakeError: unknown,
+): never {
+  try {
+    if (launcher.pid && isProcessAlive(launcher.pid)) {
+      if (process.platform === "win32") {
+        if (!launcher.kill("SIGKILL")) throw new Error("Gate0 launcher termination was not delivered.");
+      } else {
+        process.kill(-launcher.pid, "SIGKILL");
+      }
     }
-    if (Date.now() >= deadline) {
-      throw new Error("Gate0 process supervisor launch acknowledgement timed out.");
+    const latest = readGate0OwnedProcessLaunchRecord(recordPath, runRoot);
+    const terminatedAt = new Date().toISOString();
+    if (latest.state === "intent" || (latest.state === "claimed" && latest.launcherPid === launcher.pid)) {
+      writeLaunchRecord(recordPath, { ...latest, state: "aborted", terminatedAt }, false);
+    } else if (latest.state === "claimed") {
+      writeLaunchRecord(recordPath, { ...latest, state: "rejected", terminatedAt }, false);
+      throw new Error("Gate0 process launch ledger claimed a different launcher PID.");
+    } else {
+      throw new Error("Gate0 process launch ledger changed during handshake rollback.");
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  } catch (cleanupError) {
+    throw new AggregateError(
+      [handshakeError, cleanupError],
+      "Gate0 process supervisor handshake and exact launcher-group rollback both failed.",
+    );
   }
-}
-
-function waitForStableLauncherIdentity(recordPath: string) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const before = refreshGate0OwnedProcessLaunchClaim(recordPath);
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    const current = readProcessStartIdentity(before.launcherPid!);
-    if (sameProcessStartIdentity(before.launcherProcessIdentity!, current)) {
-      return;
-    }
-  }
-  throw new Error("Gate0 process launcher identity did not stabilize before execution.");
+  throw handshakeError;
 }
 
 export function gate0LaunchControlEnvironment() {

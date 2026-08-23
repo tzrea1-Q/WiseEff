@@ -9,7 +9,6 @@ import {
   openSync,
   realpathSync,
   renameSync,
-  rmSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
@@ -45,6 +44,7 @@ import {
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import {
+  readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
   type Gate0OwnedProcessSupervision,
 } from "./gate0-process-launch-supervisor";
@@ -62,6 +62,12 @@ import {
   waitForOwnedProcessGroupExit,
   type StopOwnedProcessGroupOptions,
 } from "./owned-process-group";
+import {
+  assertExactOwnedDirectoryChain,
+  captureExactOwnedDirectoryChain,
+  removeExactlyOwnedObjectRoot,
+  type ExactOwnedDirectoryIdentity,
+} from "./exact-owned-object-root";
 import {
   withOwnerAwarePostgres,
   type OwnerAwarePostgresDeadline,
@@ -241,6 +247,7 @@ export type OrphanedOwnedRuntimeCleanupInput = {
   runId: string;
   sourceCommit: string;
   ports: number[];
+  objectDirectoryChain: readonly ExactOwnedDirectoryIdentity[];
   ownerDeadline?: OwnerAwarePostgresDeadline;
 };
 
@@ -279,6 +286,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const started: StartedProcess[] = [];
   let databaseCreated = false;
   let objectRootCreated = false;
+  let objectDirectoryChain: readonly ExactOwnedDirectoryIdentity[] | undefined;
   let databaseCreationEvidence: CheckedAbsentDatabaseCreationEvidence | undefined;
   const ownerProcessIdentity = readProcessStartIdentity(process.pid);
   if (!ownerProcessIdentity) {
@@ -321,6 +329,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
       sourceCommit: source.commit,
     }, null, 2)}\n`;
     writeFileSync(objectMarker, objectMarkerContent, { encoding: "utf8", flag: "wx" });
+    objectDirectoryChain = captureExactOwnedDirectoryChain(worktreeRoot, objectRoot);
     initializeNestedRuntimeManifest(nestedRuntimeManifest, {
       parentRunId: runId,
       sourceCommit: source.commit,
@@ -474,6 +483,9 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     await waitForOwnedHttp(frontendUrl, frontend.child, "frontend", options.ownerDeadline);
 
     const now = new Date().toISOString();
+    if (!objectDirectoryChain) {
+      throw new Error("Owned runtime object directory identity was not captured during provisioning.");
+    }
     const descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1 = {
       version: 1,
       kind: "wiseeff-owned-local-acceptance",
@@ -515,6 +527,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         absentBeforeCreate: true,
         markerFile: objectMarker,
         markerSha256: sha256(objectMarkerContent),
+        directoryChain: objectDirectoryChain,
       },
       endpoints: {
         api: {
@@ -646,7 +659,13 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           await dropExactDatabase(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           descriptor.cleanup.resources.database = { status: "removed" };
           cleanupOwnerDeadline?.remainingMs("exact object-store cleanup");
-          rmSync(descriptor.objectStore.root, { recursive: true, force: false });
+          if (!objectDirectoryChain) {
+            throw new Error("Refusing cleanup: object directory identity was not captured.");
+          }
+          removeExactlyOwnedObjectRoot({
+            directoryChain: objectDirectoryChain,
+            verifyMarker: (rootPath) => verifyObjectMarkerForCleanup(descriptor, rootPath),
+          });
           await assertDatabaseAbsent(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           if (existsSync(descriptor.objectStore.root)) {
             throw new Error("Owned runtime object root still exists after cleanup.");
@@ -731,27 +750,27 @@ export async function cleanupExactOrphanedOwnedRuntime(
   }
   const objectRoot = path.join(runRoot, "object-store");
   const markerPath = path.join(objectRoot, ".wiseeff-acceptance-owner.json");
-  const objectStat = lstatSync(objectRoot);
-  const markerStat = lstatSync(markerPath);
-  if (objectStat.isSymbolicLink() || !objectStat.isDirectory() || markerStat.isSymbolicLink() || !markerStat.isFile()) {
-    throw new Error("Refusing orphan cleanup: object root or marker is not a regular owned path.");
-  }
-  const marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>;
+  const objectDirectoryChain = input.objectDirectoryChain;
   if (
-    marker.kind !== "wiseeff-owned-local-acceptance-object-store" ||
-    marker.purpose !== OWNED_ACCEPTANCE_MARKER_PURPOSE ||
-    marker.runId !== input.runId ||
-    marker.sourceCommit !== input.sourceCommit
+    objectDirectoryChain[0]?.realPath !== worktreeRoot ||
+    objectDirectoryChain.at(-1)?.realPath !== realpathSync(objectRoot)
   ) {
-    throw new Error("Refusing orphan cleanup: object marker identity mismatch.");
+    throw new Error("Refusing orphan cleanup: provision-time object directory identity is not bound to the target.");
   }
+  assertExactOwnedDirectoryChain(objectDirectoryChain);
+  verifyOrphanObjectMarker(markerPath, input);
 
   const databaseUrl = databaseUrlFor(input.baseDatabaseUrl, input.databaseName);
   const adminUrl = databaseUrlFor(input.baseDatabaseUrl, "postgres");
   await (dependencies.verifyDatabaseMarker ?? verifyOrphanDatabaseMarker)(databaseUrl, input);
   await (dependencies.assertPortsUnused ?? assertOwnedPortsUnused)(input.ports);
   await (dependencies.dropDatabase ?? ((url, name) => dropExactDatabase(url, name, input.ownerDeadline)))(adminUrl, input.databaseName);
-  rmSync(objectRoot, { recursive: true, force: false });
+  removeExactlyOwnedObjectRoot({
+    directoryChain: objectDirectoryChain,
+    verifyMarker(rootPath) {
+      verifyOrphanObjectMarker(path.join(rootPath, path.basename(markerPath)), input);
+    },
+  });
   await (dependencies.assertDatabaseAbsent ?? ((url, name) => assertDatabaseAbsent(url, name, input.ownerDeadline)))(adminUrl, input.databaseName);
   if (existsSync(objectRoot)) throw new Error("Orphaned owned object root still exists after exact cleanup.");
   const evidencePath = path.join(runRoot, "exact-cleanup.json");
@@ -1457,18 +1476,57 @@ function verifyObjectRootForCleanup(descriptor: OwnedLocalAcceptanceRuntimeDescr
   const runRoot = realpathSync(descriptor.artifacts.runRoot);
   const objectRoot = realpathSync(descriptor.objectStore.root);
   assertPathWithinWorktree(runRoot, objectRoot, "object root cleanup target");
-  const marker = lstatSync(descriptor.objectStore.markerFile);
-  if (marker.isSymbolicLink()) throw new Error("Refusing cleanup: object marker is a symbolic link.");
-  const markerContent = readFileSync(descriptor.objectStore.markerFile, "utf8");
+  verifyObjectMarkerForCleanup(descriptor, descriptor.objectStore.root);
+}
+
+function verifyObjectMarkerForCleanup(
+  descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+  rootPath: string,
+) {
+  const markerPath = path.join(rootPath, path.basename(descriptor.objectStore.markerFile));
+  const marker = lstatSync(markerPath);
+  if (marker.isSymbolicLink() || !marker.isFile()) {
+    throw new Error("Refusing cleanup: object marker is not a regular owned file.");
+  }
+  const markerContent = readFileSync(markerPath, "utf8");
   if (sha256(markerContent) !== descriptor.objectStore.markerSha256) {
     throw new Error("Refusing cleanup: object marker digest mismatch.");
   }
-  const markerIdentity = JSON.parse(markerContent) as { runId?: string; sourceCommit?: string };
+  let markerIdentity: { runId?: string; sourceCommit?: string };
+  try {
+    markerIdentity = JSON.parse(markerContent) as typeof markerIdentity;
+  } catch {
+    throw new Error("Refusing cleanup: object marker is malformed.");
+  }
   if (
     markerIdentity.runId !== descriptor.run.id ||
     markerIdentity.sourceCommit !== descriptor.run.sourceCommit
   ) {
     throw new Error("Refusing cleanup: object marker run/source mismatch.");
+  }
+}
+
+function verifyOrphanObjectMarker(
+  markerPath: string,
+  input: OrphanedOwnedRuntimeCleanupInput,
+) {
+  const markerStat = lstatSync(markerPath);
+  if (markerStat.isSymbolicLink() || !markerStat.isFile()) {
+    throw new Error("Refusing orphan cleanup: object marker is not a regular owned file.");
+  }
+  let marker: Record<string, unknown>;
+  try {
+    marker = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    throw new Error("Refusing orphan cleanup: object marker is malformed.");
+  }
+  if (
+    marker.kind !== "wiseeff-owned-local-acceptance-object-store" ||
+    marker.purpose !== OWNED_ACCEPTANCE_MARKER_PURPOSE ||
+    marker.runId !== input.runId ||
+    marker.sourceCommit !== input.sourceCommit
+  ) {
+    throw new Error("Refusing orphan cleanup: object marker identity mismatch.");
   }
 }
 
@@ -1687,7 +1745,8 @@ function requirePid(child: ChildProcess, label: string) {
 }
 
 function requireProcessStartIdentity(child: ChildProcess, label: string) {
-  const identity = readProcessStartIdentity(requirePid(child, label));
+  const identity = readGate0SupervisedProcessIdentity(child) ??
+    readProcessStartIdentity(requirePid(child, label));
   if (!identity) throw new Error(`Owned ${label} process-start identity is unavailable.`);
   return identity;
 }

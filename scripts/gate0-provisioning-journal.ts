@@ -6,17 +6,24 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-import type { ProcessStartIdentity } from "./process-start-identity";
+import {
+  readProcessStartIdentity,
+  sameProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "./process-start-identity";
 
 export const GATE0_PROVISIONING_JOURNAL_FILE = "runtime-provisioning.json";
 const JOURNAL_KIND = "wiseeff-owned-local-acceptance-provisioning";
+const STAGING_DIRECTORY = ".gate0-acceptance-provisioning-staging";
 
 export type Gate0ProvisioningProcessLabel = "migration" | "seed" | "api" | "frontend";
 export type Gate0ProvisioningProcess = {
@@ -74,11 +81,16 @@ export function initializeGate0ProvisioningRun(
   input: Omit<Gate0ProvisioningJournalV1, "version" | "kind" | "processes">,
 ) {
   const resolvedRunRoot = path.resolve(runRoot);
-  const parent = path.dirname(resolvedRunRoot);
-  const stagingRoot = path.join(parent, `.${path.basename(resolvedRunRoot)}.${process.pid}.provisioning`);
+  const runsRoot = path.dirname(resolvedRunRoot);
+  const stagingParent = gate0ProvisioningStagingRoot(runsRoot);
+  const stagingRoot = path.join(
+    stagingParent,
+    `${path.basename(resolvedRunRoot)}.${process.pid}.${randomUUID()}.provisioning`,
+  );
   if (existsSync(resolvedRunRoot) || existsSync(stagingRoot)) {
     throw new Error("Gate0 provisioning run root already exists.");
   }
+  requirePrivateStagingDirectory(stagingParent);
   mkdirSync(stagingRoot, { mode: 0o700 });
   const stagingJournal = path.join(stagingRoot, GATE0_PROVISIONING_JOURNAL_FILE);
   const journal: Gate0ProvisioningJournalV1 = {
@@ -101,13 +113,100 @@ export function initializeGate0ProvisioningRun(
       flush: true,
     });
     fsyncDirectory(stagingRoot);
+    fsyncDirectory(stagingParent);
     renameSync(stagingRoot, resolvedRunRoot);
-    fsyncDirectory(parent);
+    fsyncDirectory(runsRoot);
+    fsyncDirectory(stagingParent);
   } catch (error) {
     rmSync(stagingRoot, { force: true, recursive: true });
     throw error;
   }
   return path.join(resolvedRunRoot, GATE0_PROVISIONING_JOURNAL_FILE);
+}
+
+export async function recoverGate0ProvisioningStagingRuns(
+  runsRoot: string,
+  dependencies: {
+    processExists?: (pid: number) => boolean | Promise<boolean>;
+    readProcessIdentity?: (pid: number) => ProcessStartIdentity | undefined;
+  } = {},
+) {
+  const resolvedRunsRoot = path.resolve(runsRoot);
+  const stagingParent = gate0ProvisioningStagingRoot(resolvedRunsRoot);
+  if (!existsSync(stagingParent)) return [];
+  requirePrivateStagingDirectory(stagingParent);
+  const processExists = dependencies.processExists ?? defaultProcessExists;
+  const readIdentity = dependencies.readProcessIdentity ?? readProcessStartIdentity;
+  const recovered: string[] = [];
+  for (const entry of readdirSync(stagingParent, { withFileTypes: true })) {
+    if (entry.isSymbolicLink() || !entry.isDirectory() ||
+      !/^[a-z0-9_-]+\.\d+\.[a-f0-9-]{36}\.provisioning$/iu.test(entry.name)) {
+      throw new Error("Gate0 provisioning staging directory contains an unsafe entry.");
+    }
+    const stagingRoot = path.join(stagingParent, entry.name);
+    const stagingJournal = path.join(stagingRoot, GATE0_PROVISIONING_JOURNAL_FILE);
+    const raw = parseGate0ProvisioningJournal(stagingJournal);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) ||
+      !(raw as Partial<Gate0ProvisioningJournalV1>).resources ||
+      typeof (raw as Partial<Gate0ProvisioningJournalV1>).resources?.runRoot !== "string") {
+      throw new Error("Gate0 provisioning staging journal identity is invalid.");
+    }
+    const canonicalRunRoot = path.resolve(
+      (raw as Partial<Gate0ProvisioningJournalV1>).resources!.runRoot!,
+    );
+    const canonicalJournal = path.join(canonicalRunRoot, GATE0_PROVISIONING_JOURNAL_FILE);
+    assertGate0ProvisioningJournal(raw, canonicalJournal);
+    const journal = raw;
+    const expectedName = `${journal.run.id}.${journal.run.ownerPid}.`;
+    if (
+      !entry.name.startsWith(expectedName) ||
+      path.dirname(canonicalRunRoot) !== resolvedRunsRoot ||
+      path.basename(canonicalRunRoot) !== journal.run.id ||
+      journal.run.state !== "provisioning" ||
+      Object.values(journal.processes).some((record) => record.state !== "not-started")
+    ) {
+      throw new Error("Gate0 provisioning staging identity is not safe for takeover.");
+    }
+    if (existsSync(canonicalRunRoot)) {
+      throw new Error("Gate0 provisioning staging conflicts with an existing canonical run.");
+    }
+    if (await processExists(journal.run.ownerPid)) {
+      const current = readIdentity(journal.run.ownerPid);
+      if (!current) throw new Error("Gate0 provisioning staging owner identity is unknown.");
+      if (sameProcessStartIdentity(journal.run.ownerProcessIdentity, current)) {
+        throw new Error("Gate0 provisioning staging owner is still alive.");
+      }
+    }
+    renameSync(stagingRoot, canonicalRunRoot);
+    fsyncDirectory(resolvedRunsRoot);
+    fsyncDirectory(stagingParent);
+    recovered.push(canonicalRunRoot);
+  }
+  return recovered;
+}
+
+function gate0ProvisioningStagingRoot(runsRoot: string) {
+  return path.join(path.dirname(path.resolve(runsRoot)), STAGING_DIRECTORY);
+}
+
+function requirePrivateStagingDirectory(stagingParent: string) {
+  if (!existsSync(stagingParent)) mkdirSync(stagingParent, { mode: 0o700 });
+  const stat = lstatSync(stagingParent);
+  if (stat.isSymbolicLink() || !stat.isDirectory() ||
+    (process.platform !== "win32" && (stat.mode & 0o077) !== 0)) {
+    throw new Error("Gate0 provisioning staging parent is unsafe.");
+  }
+}
+
+function defaultProcessExists(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
+    throw error;
+  }
 }
 
 export function recordGate0ProvisioningProcessLaunching(
@@ -151,6 +250,12 @@ export function recordGate0ProvisioningState(
 }
 
 export function readGate0ProvisioningJournal(journalPath: string) {
+  const value = parseGate0ProvisioningJournal(journalPath);
+  assertGate0ProvisioningJournal(value, journalPath);
+  return value;
+}
+
+function parseGate0ProvisioningJournal(journalPath: string) {
   const stat = lstatSync(journalPath);
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error("Gate0 provisioning journal must be a regular file.");
@@ -161,7 +266,6 @@ export function readGate0ProvisioningJournal(journalPath: string) {
   } catch {
     throw new Error("Gate0 provisioning journal is malformed.");
   }
-  assertGate0ProvisioningJournal(value, journalPath);
   return value;
 }
 

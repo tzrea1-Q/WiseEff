@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,9 @@ import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   initializeNestedRuntimeManifest,
   readNestedRuntimeManifest,
+  recoverNestedRuntimeManifestPublication,
   recordNestedRuntimeFinish,
+  recordNestedRuntimeProcessLaunching,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
   recordNestedRuntimeStart,
@@ -47,9 +49,163 @@ function realProcessIdentity(pid: number, port: number) {
   return { pid, port, ...identity };
 }
 
+function nestedObjectRoot(runRoot: string, databaseName: string) {
+  return path.join(realpathSync(runRoot), "nested-object-store", databaseName);
+}
+
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Gate0 nested disposable runtime contract", () => {
+  it("publishes the initial nested manifest only after a complete private candidate is durable", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-manifest-atomic-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    let candidatePath = "";
+
+    expect(() => initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-atomic-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    }, {
+      beforePublish(candidate) {
+        candidatePath = candidate;
+        expect(existsSync(manifestPath)).toBe(false);
+        expect(readNestedRuntimeManifest(candidate)).toMatchObject({
+          parentRunId: "full-atomic-manifest",
+          sourceCommit: "0123456789012345678901234567890123456789",
+          children: [],
+        });
+        throw new Error("simulated crash before atomic rename");
+      },
+    })).toThrow(/simulated crash/i);
+
+    expect(existsSync(manifestPath)).toBe(false);
+    expect(candidatePath).not.toBe("");
+    expect(readdirSync(runRoot)).not.toContain("nested-runtime-manifest.json");
+  });
+
+  it("recovers one complete crash-persisted manifest candidate without accepting partial bytes", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-manifest-recover-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const candidatePath = `${manifestPath}.123.01234567-89ab-4cde-8f01-23456789abcd.tmp`;
+    writeFileSync(candidatePath, `${JSON.stringify({
+      version: 1,
+      kind: "wiseeff-gate0-nested-runtime-manifest",
+      parentRunId: "full-recover-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      children: [],
+      updatedAt: "2026-08-23T00:00:00.000Z",
+    }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+
+    recoverNestedRuntimeManifestPublication(manifestPath, {
+      parentRunId: "full-recover-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+
+    expect(readNestedRuntimeManifest(manifestPath)).toMatchObject({
+      parentRunId: "full-recover-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      children: [],
+    });
+    expect(existsSync(candidatePath)).toBe(false);
+  });
+
+  it("finishes a hard-link publication interrupted after the canonical manifest became visible", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-manifest-linked-recover-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const candidatePath = `${manifestPath}.123.01234567-89ab-4cde-8f01-23456789abcd.tmp`;
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-linked-recover-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    linkSync(manifestPath, candidatePath);
+
+    expect(recoverNestedRuntimeManifestPublication(manifestPath, {
+      parentRunId: "full-linked-recover-manifest",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    })).toBe(true);
+
+    expect(readNestedRuntimeManifest(manifestPath).children).toEqual([]);
+    expect(existsSync(candidatePath)).toBe(false);
+  });
+
+  it.each([
+    {
+      label: "completedAt without cleanup",
+      mutate(child: Record<string, unknown>) {
+        child.completedAt = "2026-08-23T00:01:00.000Z";
+      },
+    },
+    {
+      label: "cleanup without completedAt",
+      mutate(child: Record<string, unknown>) {
+        child.cleanup = {
+          apiProcess: { status: "not-started" },
+          frontendProcess: { status: "not-started" },
+          database: { status: "retained" },
+          objectStore: { status: "retained" },
+        };
+      },
+    },
+  ])("rejects a nonterminal child carrying $label", ({ mutate }) => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-manifest-nonterminal-terminal-fields-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_nonterminal_fields";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-nonterminal-fields",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: databaseName,
+      databaseName,
+      markerPurpose: "td-042-post-cutover",
+      objectStoreRoot: nestedObjectRoot(runRoot, databaseName),
+      apiUrl: "http://127.0.0.1:18731",
+      frontendUrl: "http://127.0.0.1:5231",
+    });
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+      children: Array<Record<string, unknown>>;
+    };
+    mutate(manifest.children[0]!);
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    expect(() => readNestedRuntimeManifest(manifestPath)).toThrow(/manifest identity is invalid/i);
+  });
+
+  it("never promotes an unpublished initial-manifest candidate that already claims a writer", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-manifest-writer-candidate-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const candidatePath = `${manifestPath}.123.01234567-89ab-4cde-8f01-23456789abcd.tmp`;
+    const databaseName = "wiseeff_acceptance_disposable_candidate_writer";
+    writeFileSync(candidatePath, `${JSON.stringify({
+      version: 1,
+      kind: "wiseeff-gate0-nested-runtime-manifest",
+      parentRunId: "full-candidate-writer",
+      sourceCommit: "0123456789012345678901234567890123456789",
+      children: [{
+        id: databaseName,
+        state: "provisioning",
+        databaseName,
+        markerPurpose: "parameter-topology",
+        objectStoreRoot: nestedObjectRoot(runRoot, databaseName),
+        apiUrl: "http://127.0.0.1:19100",
+        frontendUrl: "http://127.0.0.1:5190",
+        apiProcessState: "running",
+        frontendProcessState: "not-started",
+        apiPid: 111,
+        apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+        startedAt: "2026-08-23T00:00:00.000Z",
+      }],
+      updatedAt: "2026-08-23T00:00:00.000Z",
+    }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+
+    expect(() => recoverNestedRuntimeManifestPublication(manifestPath, {
+      parentRunId: "full-candidate-writer",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    })).toThrow(/initial.*children|writer/i);
+
+    expect(existsSync(manifestPath)).toBe(false);
+    expect(existsSync(candidatePath)).toBe(true);
+  });
+
   it("exposes a stable process-start identity and returns no identity for a missing PID", () => {
     const identity = readProcessStartIdentity(process.pid);
     expect(identity?.startToken).toMatch(process.platform === "linux"
@@ -80,6 +236,29 @@ describe("Gate0 nested disposable runtime contract", () => {
 
     await expect(removeNestedObjectStoreRoot(ownership)).rejects.toThrow(/symbolic link|owned object/i);
     expect(existsSync(path.join(outside, "must-retain.txt"))).toBe(true);
+  });
+
+  it("refuses recursive removal after the regular nested container is replaced", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-container-replaced-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_container_replaced";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-container-replaced",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const ownership = prepareNestedObjectStoreRoot(databaseName, manifestPath);
+    const markerContent = readFileSync(ownership.markerPath, "utf8");
+    const displaced = `${ownership.containerRoot}.displaced`;
+    renameSync(ownership.containerRoot, displaced);
+    mkdirSync(ownership.root, { recursive: true });
+    writeFileSync(ownership.markerPath, markerContent, "utf8");
+    const externalSentinel = path.join(ownership.root, "must-retain.txt");
+    writeFileSync(externalSentinel, "external\n", "utf8");
+
+    await expect(removeNestedObjectStoreRoot(ownership)).rejects.toThrow(/container|identity|owned object/i);
+
+    expect(readFileSync(externalSentinel, "utf8")).toBe("external\n");
+    expect(existsSync(path.join(displaced, databaseName))).toBe(true);
   });
 
   it("removes exact child resources only after a successful Playwright phase", async () => {
@@ -150,7 +329,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_child",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-child",
-      objectStoreRoot: path.join(runRoot, "object-child"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_child"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
@@ -237,7 +416,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_crash",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-crash",
-      objectStoreRoot: path.join(runRoot, "object-crash"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_crash"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: api.pid!,
@@ -284,7 +463,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_reused_pid",
       databaseName: "wiseeff_acceptance_disposable_reused_pid",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object-reused"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_reused_pid"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -334,7 +513,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_partial",
       databaseName: "wiseeff_acceptance_disposable_partial",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object-partial"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_partial"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -379,7 +558,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_immutable_identity",
       databaseName: "wiseeff_acceptance_disposable_immutable_identity",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_immutable_identity"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -449,7 +628,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_pid_reuse",
       databaseName: "wiseeff_acceptance_disposable_pid_reuse",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_pid_reuse"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -492,7 +671,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_running",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-running",
-      objectStoreRoot: path.join(runRoot, "object-running"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_running"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
@@ -523,7 +702,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_failed_kill",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-failed-kill",
-      objectStoreRoot: path.join(runRoot, "object-failed-kill"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_failed_kill"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
@@ -577,7 +756,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_retry",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-retry",
-      objectStoreRoot: path.join(runRoot, "object-retry"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_retry"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
@@ -622,7 +801,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       databaseName: "wiseeff_acceptance_disposable_partial_cleanup",
       markerPurpose: "parameter-topology",
       migrationRunId: "migration-partial-cleanup",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_partial_cleanup"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
@@ -669,7 +848,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_after_stale_lock",
       databaseName: "wiseeff_acceptance_disposable_after_stale_lock",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_after_stale_lock"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -703,7 +882,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_aba_waiter",
       databaseName: "wiseeff_acceptance_disposable_aba_waiter",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_aba_waiter"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     })).toThrow(/lock is held by a live owner/i);
@@ -742,7 +921,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_after_recovery_crash",
       databaseName: "wiseeff_acceptance_disposable_after_recovery_crash",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_after_recovery_crash"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -776,7 +955,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_after_reclaim_crash",
       databaseName: "wiseeff_acceptance_disposable_after_reclaim_crash",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_after_reclaim_crash"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -808,7 +987,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_live_recovery_owner",
       databaseName: "wiseeff_acceptance_disposable_live_recovery_owner",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_live_recovery_owner"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     })).toThrow(/lock is held by a live owner/i);
@@ -841,7 +1020,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_waiting_writer",
       databaseName: "wiseeff_acceptance_disposable_waiting_writer",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object-waiting"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_waiting_writer"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     })).toThrow(/exist|lock/i);
@@ -859,7 +1038,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_original_writer",
       databaseName: "wiseeff_acceptance_disposable_original_writer",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object-original"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_original_writer"),
       apiUrl: "http://127.0.0.1:19101",
       frontendUrl: "http://127.0.0.1:5191",
     });
@@ -867,7 +1046,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_waiting_writer",
       databaseName: "wiseeff_acceptance_disposable_waiting_writer",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object-waiting"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_waiting_writer"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -899,7 +1078,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_after_pid_reuse",
       databaseName: "wiseeff_acceptance_disposable_after_pid_reuse",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_after_pid_reuse"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -919,7 +1098,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: "wiseeff_acceptance_disposable_spawn_handshake",
       databaseName: "wiseeff_acceptance_disposable_spawn_handshake",
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_spawn_handshake"),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -955,7 +1134,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: childId,
       databaseName: childId,
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -998,7 +1177,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: childId,
       databaseName: childId,
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
@@ -1043,10 +1222,11 @@ describe("Gate0 nested disposable runtime contract", () => {
       id: childId,
       databaseName: childId,
       markerPurpose: "parameter-topology",
-      objectStoreRoot: path.join(runRoot, "object"),
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
       apiUrl: "http://127.0.0.1:19100",
       frontendUrl: "http://127.0.0.1:5190",
     });
+    recordNestedRuntimeProcessLaunching(manifestPath, childId, "api");
     recordNestedRuntimeFinish(manifestPath, childId, "cleanup-failed", {
       apiProcess: { status: "failed", reason: "process identity capture failed" },
       frontendProcess: { status: "not-started" },

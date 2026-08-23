@@ -111,6 +111,12 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
     absentBeforeCreate: true;
     markerFile: string;
     markerSha256: string;
+    directoryChain: readonly {
+      path: string;
+      realPath: string;
+      device: number;
+      inode: number;
+    }[];
   };
   endpoints: {
     api: {
@@ -341,6 +347,33 @@ export function assertOwnedRuntimeDescriptor(
   requireAbsolutePath(objectStore.root, "objectStore.root");
   requireAbsolutePath(objectStore.markerFile, "objectStore.markerFile");
   requireSha256(objectStore.markerSha256, "objectStore.markerSha256");
+  if (!Array.isArray(objectStore.directoryChain) || objectStore.directoryChain.length < 2) {
+    throw new Error("Owned runtime object-store directory identity chain is incomplete.");
+  }
+  for (const [index, rawIdentity] of objectStore.directoryChain.entries()) {
+    const identity = requireRecord(rawIdentity, `objectStore.directoryChain[${index}]`);
+    requireAbsolutePath(identity.path, `objectStore.directoryChain[${index}].path`);
+    requireAbsolutePath(identity.realPath, `objectStore.directoryChain[${index}].realPath`);
+    if (!Number.isSafeInteger(identity.device) || Number(identity.device) < 0 ||
+      !Number.isSafeInteger(identity.inode) || Number(identity.inode) < 0) {
+      throw new Error("Owned runtime object-store directory identity is invalid.");
+    }
+    if (index > 0) {
+      const parent = objectStore.directoryChain[index - 1]!;
+      if (
+        path.dirname(String(identity.path)) !== String(parent.path) ||
+        path.dirname(String(identity.realPath)) !== String(parent.realPath)
+      ) {
+        throw new Error("Owned runtime object-store directory identity chain is not contiguous.");
+      }
+    }
+  }
+  if (String(objectStore.directoryChain[0]!.realPath) !== String(run.worktreeRoot)) {
+    throw new Error("Owned runtime object-store directory identity is not anchored to its worktree.");
+  }
+  if (path.resolve(String(objectStore.directoryChain.at(-1)!.path)) !== path.resolve(String(objectStore.root))) {
+    throw new Error("Owned runtime object-store directory identity does not end at its root.");
+  }
 
   const endpoints = requireRecord(descriptor.endpoints, "endpoints");
   const api = requireRecord(endpoints.api, "endpoints.api");

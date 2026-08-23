@@ -35,6 +35,7 @@ import {
 } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import {
+  readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
   type Gate0OwnedProcessSupervision,
 } from "./gate0-process-launch-supervisor";
@@ -504,7 +505,7 @@ function runGate0ChildCommand(input: {
     detached: process.platform !== "win32",
   });
   if (!child.pid) throw new Error("Gate0 child command did not expose a positive PID.");
-  const processIdentity = readProcessStartIdentity(child.pid);
+  const processIdentity = readGate0SupervisedProcessIdentity(child) ?? readProcessStartIdentity(child.pid);
   if (!processIdentity) throw new Error("Gate0 child command process-start identity could not be captured.");
   input.onStarted?.(child.pid, processIdentity);
   const controller = new AbortController();

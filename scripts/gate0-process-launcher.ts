@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import {
   claimGate0OwnedProcessLaunch,
   gate0LaunchControlEnvironment,
-  refreshGate0OwnedProcessLaunchClaim,
 } from "./gate0-process-launch-supervisor";
 
 const control = gate0LaunchControlEnvironment();
@@ -16,18 +15,10 @@ while (!existsSync(control.ackPath)) {
 if (readFileSync(control.ackPath, "utf8").trim() !== claim.launchId) {
   throw new Error("Gate0 process launcher acknowledgement identity is invalid.");
 }
-const refreshDeadline = Date.now() + 10_000;
-while (true) {
-  try {
-    refreshGate0OwnedProcessLaunchClaim(control.recordPath);
-    break;
-  } catch {
-    if (Date.now() >= refreshDeadline) {
-      throw new Error("Gate0 process launcher could not publish its acknowledged stable identity.");
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-}
+// The durable claim was published by this exact process before ACK. Remove the
+// ACK immediately after validating its token; a second OS identity probe here
+// can starve the symmetric parent deadline under process-table pressure. The
+// parent binds this durable claim to the exact ChildProcess PID before GO.
 unlinkSync(control.ackPath);
 while (!existsSync(control.goPath)) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);

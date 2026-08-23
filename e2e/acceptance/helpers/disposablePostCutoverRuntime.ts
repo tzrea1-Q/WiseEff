@@ -9,7 +9,7 @@ import {
   realpathSync,
   writeFileSync,
 } from "node:fs";
-import { rm, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,8 +38,14 @@ import {
   stopOwnedProcessGroup,
   type StopOwnedProcessGroupOptions,
 } from "../../../scripts/owned-process-group";
+import {
+  captureExactOwnedDirectoryChain,
+  removeExactlyOwnedObjectRoot,
+  type ExactOwnedDirectoryIdentity,
+} from "../../../scripts/exact-owned-object-root";
 import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
 import {
+  readGate0SupervisedProcessIdentity,
   spawnGate0SupervisedProcess,
   type Gate0OwnedProcessSupervision,
 } from "../../../scripts/gate0-process-launch-supervisor";
@@ -167,9 +173,11 @@ export type StartDisposablePostCutoverRuntimeOptions = {
 export type NestedObjectStoreOwnership = {
   root: string;
   containerRoot: string;
+  trustedAnchor: string;
   markerPath: string;
   markerSha256: string;
   databaseName: string;
+  directoryChain?: readonly ExactOwnedDirectoryIdentity[];
 };
 
 function safeSegment(value: string) {
@@ -215,20 +223,25 @@ export function planNestedObjectStoreRoot(
       throw new Error("Nested object-store container must be a regular parent-run directory.");
     }
   }
-  const ownership = buildNestedObjectStoreOwnership(databaseName, containerRoot);
+  const ownership = buildNestedObjectStoreOwnership(databaseName, containerRoot, parentRunRoot);
   if (existsSync(ownership.root)) {
     throw new Error(`Nested object-store root must be absent before provisioning intent: ${ownership.root}`);
   }
   return ownership;
 }
 
-function buildNestedObjectStoreOwnership(databaseName: string, containerRoot: string) {
+function buildNestedObjectStoreOwnership(
+  databaseName: string,
+  containerRoot: string,
+  trustedAnchor = containerRoot,
+) {
   const root = path.join(containerRoot, databaseName);
   const markerPath = path.join(root, ".wiseeff-nested-runtime-owner.json");
   const markerContent = nestedObjectStoreMarkerContent(databaseName);
   return {
     root,
     containerRoot,
+    trustedAnchor,
     markerPath,
     markerSha256: createHash("sha256").update(markerContent).digest("hex"),
     databaseName,
@@ -251,7 +264,10 @@ export function materializeNestedObjectStoreRoot(ownership: NestedObjectStoreOwn
   mkdirSync(ownership.root);
   const markerContent = nestedObjectStoreMarkerContent(ownership.databaseName);
   writeFileSync(ownership.markerPath, markerContent, { encoding: "utf8", flag: "wx" });
-  return ownership;
+  return {
+    ...ownership,
+    directoryChain: captureExactOwnedDirectoryChain(ownership.trustedAnchor, ownership.root),
+  };
 }
 
 function nestedObjectStoreMarkerContent(databaseName: string) {
@@ -275,22 +291,28 @@ export function recordNestedObjectStoreProvisioningIntent(input: {
 }
 
 export async function removeNestedObjectStoreRoot(ownership: NestedObjectStoreOwnership) {
-  assertStrictRealDescendant(ownership.containerRoot, ownership.root, true);
-  const rootStat = lstatSync(ownership.root);
-  const markerStat = lstatSync(ownership.markerPath);
-  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || markerStat.isSymbolicLink() || !markerStat.isFile()) {
-    throw new Error("Refusing nested owned object cleanup: root or marker is a symbolic link or non-regular path.");
+  if (!ownership.directoryChain) {
+    throw new Error("Refusing nested owned object cleanup: directory identity was not captured.");
   }
-  const markerContent = readFileSync(ownership.markerPath, "utf8");
-  const marker = JSON.parse(markerContent) as { kind?: string; databaseName?: string };
-  if (
-    marker.kind !== "wiseeff-owned-nested-runtime-object-store" ||
-    marker.databaseName !== ownership.databaseName ||
-    createHash("sha256").update(markerContent).digest("hex") !== ownership.markerSha256
-  ) {
-    throw new Error("Refusing nested owned object cleanup: ownership marker identity mismatch.");
-  }
-  await rm(ownership.root, { recursive: true, force: false });
+  removeExactlyOwnedObjectRoot({
+    directoryChain: ownership.directoryChain,
+    verifyMarker(rootPath) {
+      const markerPath = path.join(rootPath, path.basename(ownership.markerPath));
+      const markerStat = lstatSync(markerPath);
+      if (markerStat.isSymbolicLink() || !markerStat.isFile()) {
+        throw new Error("Refusing nested owned object cleanup: marker is a symbolic link or non-regular path.");
+      }
+      const markerContent = readFileSync(markerPath, "utf8");
+      const marker = JSON.parse(markerContent) as { kind?: string; databaseName?: string };
+      if (
+        marker.kind !== "wiseeff-owned-nested-runtime-object-store" ||
+        marker.databaseName !== ownership.databaseName ||
+        createHash("sha256").update(markerContent).digest("hex") !== ownership.markerSha256
+      ) {
+        throw new Error("Refusing nested owned object cleanup: ownership marker identity mismatch.");
+      }
+    },
+  });
   if (existsSync(ownership.root)) throw new Error("Nested owned object root still exists after removal.");
 }
 
@@ -592,7 +614,9 @@ export async function startTrackedNestedRuntimeProcess(input: {
   // child even when the atomic parent-manifest handshake itself fails.
   input.track(child);
   const pid = requireRuntimePid(child, input.process === "api" ? "API" : "frontend");
-  const processIdentity = (input.readProcessIdentity ?? readProcessStartIdentity)(pid);
+  const processIdentity = input.readProcessIdentity
+    ? input.readProcessIdentity(pid)
+    : readGate0SupervisedProcessIdentity(child) ?? readProcessStartIdentity(pid);
   if (!processIdentity) {
     throw new TrackedNestedProcessHandshakeError(
       [new Error(`Disposable ${input.process} process start identity could not be verified.`)],
