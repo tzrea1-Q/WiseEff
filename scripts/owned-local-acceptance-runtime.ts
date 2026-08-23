@@ -36,7 +36,10 @@ import {
   recordNestedRuntimeFinish,
   type NestedRuntimeCleanup,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
-import { sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
+import {
+  isGate0SecretEnvKey,
+  sanitizeGate0DiagnosticText,
+} from "./gate0-artifact-sanitizer";
 import {
   stopOwnedProcessGroup,
   waitForOwnedProcessGroupExit,
@@ -654,7 +657,7 @@ function spawnOwnedProcess(input: {
   try {
     const child = spawn(input.command, input.args, {
       cwd: input.cwd,
-      env: { ...process.env, ...input.env },
+      env: buildOwnedChildProcessEnv(input.env),
       stdio: ["ignore", fd, fd],
       detached: process.platform !== "win32",
     });
@@ -663,6 +666,21 @@ function spawnOwnedProcess(input: {
   } finally {
     closeSync(fd);
   }
+}
+
+export function buildOwnedChildProcessEnv(
+  ownedEnv: RuntimeEnv,
+  inheritedEnv: RuntimeEnv = process.env,
+): RuntimeEnv {
+  const childEnv: RuntimeEnv = {};
+  for (const [key, value] of Object.entries(inheritedEnv)) {
+    if (!isGate0SecretEnvKey(key)) childEnv[key] = value;
+  }
+  for (const [key, value] of Object.entries(ownedEnv)) {
+    if (value === undefined) delete childEnv[key];
+    else childEnv[key] = value;
+  }
+  return childEnv;
 }
 
 async function waitForHttp(

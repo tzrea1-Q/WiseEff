@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
 import {
+  gate0SecretValuesFromEnv,
   sanitizeGate0ArtifactTree,
   scanGate0ArtifactTree,
 } from "./gate0-artifact-sanitizer";
@@ -128,5 +129,71 @@ describe("Gate0 artifact sanitizer", () => {
     expect(raw).toContain('"connectionSha256":"[REMOVED_SECRET_DERIVED_VERIFIER]"');
     expect(raw).toContain(`"markerSha256":"${"c".repeat(64)}"`);
     expect((await scanGate0ArtifactTree(root)).violations).toEqual([]);
+  });
+
+  it("redacts canonical secret assignments and injected values across text and trace ZIP artifacts", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-known-secrets-"));
+    const injectedSecret = "injected-provider-secret-9f8e7d6c";
+    const injectedSecretValues = gate0SecretValuesFromEnv({
+      PATH: "/usr/bin",
+      XIAOZE_LLM_API_KEY: injectedSecret,
+    });
+    expect(injectedSecretValues).toEqual([injectedSecret]);
+    const reportPath = path.join(root, "provider.log");
+    writeFileSync(
+      reportPath,
+      [
+        "XIAOZE_LLM_API_KEY=plain-xiaoze-secret",
+        'runtime={"LOG_ANALYSIS_API_KEY":"json-log-secret","EMBEDDING_API_KEY":"json-embedding-secret"}',
+        `provider-response=${injectedSecret}`,
+      ].join("\n"),
+    );
+    const zip = new JSZip();
+    zip.file(
+      "resources/environment.json",
+      JSON.stringify({
+        OBJECT_STORAGE_ACCESS_KEY_ID: "owned-access-key-id",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "owned-secret-access-key",
+      }),
+    );
+    const tracePath = path.join(root, "trace.zip");
+    writeFileSync(tracePath, await zip.generateAsync({ type: "nodebuffer" }));
+
+    const before = await scanGate0ArtifactTree(root, undefined, injectedSecretValues);
+    expect(before.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ categories: ["canonical-secret", "injected-secret"] }),
+        expect.objectContaining({ categories: ["canonical-secret"] }),
+      ]),
+    );
+    expect(JSON.stringify(before)).not.toContain(injectedSecret);
+
+    await sanitizeGate0ArtifactTree(root, undefined, injectedSecretValues);
+    const sanitizedZip = await JSZip.loadAsync(readFileSync(tracePath));
+    const serializedArtifacts = [
+      readFileSync(reportPath, "utf8"),
+      await sanitizedZip.file("resources/environment.json")!.async("string"),
+    ].join("\n");
+    expect(serializedArtifacts).not.toContain("plain-xiaoze-secret");
+    expect(serializedArtifacts).not.toContain("json-log-secret");
+    expect(serializedArtifacts).not.toContain("json-embedding-secret");
+    expect(serializedArtifacts).not.toContain("owned-access-key-id");
+    expect(serializedArtifacts).not.toContain("owned-secret-access-key");
+    expect(serializedArtifacts).not.toContain(injectedSecret);
+    expect(await scanGate0ArtifactTree(root, undefined, injectedSecretValues)).toMatchObject({ violations: [] });
+  });
+
+  it("reports a canonical secret-bearing path by opaque id without exposing the path", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-known-secret-path-"));
+    const secretPath = "XIAOZE_LLM_API_KEY=secret-in-path.json";
+    writeFileSync(path.join(root, secretPath), '{"diagnostic":"safe"}\n');
+
+    const scan = await scanGate0ArtifactTree(root);
+    const serialized = JSON.stringify(scan);
+
+    expect(scan.violations).toEqual([
+      { artifactId: expect.stringMatching(/^artifact-[a-f0-9]{16}$/u), categories: ["canonical-secret"] },
+    ]);
+    expect(serialized).not.toContain("secret-in-path");
   });
 });

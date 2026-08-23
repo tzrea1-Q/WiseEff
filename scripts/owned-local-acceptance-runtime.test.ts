@@ -13,6 +13,7 @@ import {
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import {
   createOwnedAcceptanceAuthorization,
+  buildOwnedChildProcessEnv,
   buildOwnedRuntimeEnv,
   cleanupExactOrphanedOwnedRuntime,
   readCleanSource,
@@ -25,6 +26,44 @@ afterEach(async () => {
 });
 
 describe("owned local acceptance runtime", () => {
+  it("drops unrelated inherited credentials before applying the exact owned runtime environment", () => {
+    const childEnv = buildOwnedChildProcessEnv(
+      {
+        DATABASE_URL: "postgres://owned:owned-password@127.0.0.1:5432/owned",
+        AUTH_TOKEN_HMAC_SECRET: "owned-hmac-secret",
+        M5_SMOKE_AUTHORIZATION: "Bearer owned-authorization",
+      },
+      {
+        PATH: "/usr/local/bin:/usr/bin",
+        LANG: "en_US.UTF-8",
+        XIAOZE_LLM_API_KEY: "host-xiaoze-secret",
+        LOG_ANALYSIS_API_KEY: "host-log-secret",
+        EMBEDDING_API_KEY: "host-embedding-secret",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "host-object-access-key",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "host-object-secret-key",
+        AWS_SESSION_TOKEN: "host-cloud-session",
+        SSH_AUTH_SOCK: "/tmp/host-ssh-agent.sock",
+        DATABASE_URL: "postgres://host:host-password@127.0.0.1:5432/host",
+        AUTH_TOKEN_HMAC_SECRET: "host-hmac-secret",
+      },
+    );
+
+    expect(childEnv).toMatchObject({
+      PATH: "/usr/local/bin:/usr/bin",
+      LANG: "en_US.UTF-8",
+      DATABASE_URL: "postgres://owned:owned-password@127.0.0.1:5432/owned",
+      AUTH_TOKEN_HMAC_SECRET: "owned-hmac-secret",
+      M5_SMOKE_AUTHORIZATION: "Bearer owned-authorization",
+    });
+    expect(childEnv).not.toHaveProperty("XIAOZE_LLM_API_KEY");
+    expect(childEnv).not.toHaveProperty("LOG_ANALYSIS_API_KEY");
+    expect(childEnv).not.toHaveProperty("EMBEDDING_API_KEY");
+    expect(childEnv).not.toHaveProperty("OBJECT_STORAGE_ACCESS_KEY_ID");
+    expect(childEnv).not.toHaveProperty("OBJECT_STORAGE_SECRET_ACCESS_KEY");
+    expect(childEnv).not.toHaveProperty("AWS_SESSION_TOKEN");
+    expect(childEnv).not.toHaveProperty("SSH_AUTH_SOCK");
+  });
+
   it("keeps the visual frontend profile non-proactive while retaining backend suggest coverage", () => {
     const env = buildOwnedRuntimeEnv({
       databaseUrl: "postgres://wiseeff:secret@127.0.0.1:5432/wiseeff_acceptance_full_visual",
