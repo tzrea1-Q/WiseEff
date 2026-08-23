@@ -216,6 +216,43 @@ describe("operation evidence helper", () => {
 });
 
 describe("operation evidence checker", () => {
+  it("requires every expected full-run record to carry owned runtime proof", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-owned-required-"));
+    const artifactPath = join(root, "artifact.json");
+    writeFileSync(artifactPath, "{}\n");
+
+    try {
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        expectedRun: { runId: "full-owned-required", sourceCommit: "abc123" },
+        records: [{
+          operationId: "PARAM-HAPPY-001",
+          runId: "full-owned-required",
+          sourceCommit: "abc123",
+          runKind: "full",
+          status: "passed",
+          role: "Admin",
+          route: "/parameters",
+          assertions: ["ui"],
+          artifacts: [artifactPath],
+          runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:18800" },
+          report: { path: "playwright-report/acceptance/index.html", format: "html" },
+          trace: { mode: "retain-on-failure", path: "test-results/acceptance" },
+          reproduction: { steps: ["Open parameters", "Verify operation"] },
+        }],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toContainEqual(expect.objectContaining({
+        operationId: "PARAM-HAPPY-001",
+        field: "runtime",
+        message: expect.stringMatching(/owned runtime proof/i),
+      }));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects owned Gate0 report and trace paths outside the declared run root", () => {
     const root = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-validation-"));
     const runRoot = join(root, "run");
@@ -338,6 +375,70 @@ describe("operation evidence checker", () => {
 
       expect(result.status).toBe("passed");
       expect(result.validationErrors).toEqual([]);
+    } finally {
+      rmSync(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an immutable owned snapshot that is not bound to the top-level record and expected run", () => {
+    const runRoot = mkdtempSync(join(tmpdir(), "wiseeff-owned-evidence-snapshot-mismatch-"));
+    const descriptorPath = join(runRoot, "runtime.json");
+    const snapshotPath = join(runRoot, "runtime-operation-evidence-snapshot.json");
+    const reportPath = join(runRoot, "report.html");
+    const tracePath = join(runRoot, "trace");
+    const artifactPath = join(runRoot, "artifact.json");
+    mkdirSync(tracePath);
+    for (const file of [descriptorPath, reportPath, artifactPath]) writeFileSync(file, "{}\n");
+    const snapshot = `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-operation-evidence-runtime",
+      run: { id: "foreign-run", sourceCommit: "def456" },
+      artifacts: { runRoot, descriptor: descriptorPath },
+    })}\n`;
+    writeFileSync(snapshotPath, snapshot);
+
+    try {
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
+        expectedRun: { runId: "expected-run", sourceCommit: "abc123" },
+        records: [{
+          operationId: "PARAM-HAPPY-001",
+          runId: "expected-run",
+          sourceCommit: "abc123",
+          runKind: "full",
+          status: "passed",
+          role: "Admin",
+          route: "/parameters",
+          assertions: ["ui"],
+          artifacts: [artifactPath],
+          runtime: {
+            mode: "api",
+            apiBaseUrl: "http://127.0.0.1:18800",
+            ownedRuntime: {
+              runRoot,
+              descriptorPath,
+              descriptorSnapshotPath: snapshotPath,
+              descriptorSnapshotSha256: createHash("sha256").update(snapshot).digest("hex"),
+              runId: "foreign-run",
+              sourceCommit: "def456",
+              databaseName: "wiseeff_acceptance_full_foreign",
+              objectMarkerSha256: "b".repeat(64),
+              apiUrl: "http://127.0.0.1:18800",
+              frontendUrl: "http://127.0.0.1:5180",
+              apiPid: process.pid,
+              frontendPid: process.pid,
+            },
+          },
+          report: { path: reportPath, format: "html" },
+          trace: { mode: "retain-on-failure", path: tracePath },
+          reproduction: { steps: ["Open parameters"] },
+        }],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toContainEqual(expect.objectContaining({
+        field: "runtime",
+        message: expect.stringMatching(/top-level record|expected run/i),
+      }));
     } finally {
       rmSync(runRoot, { recursive: true, force: true });
     }

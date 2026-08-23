@@ -135,7 +135,11 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
     ...runValidationErrors,
     ...input.records
     .filter((record) => record.status === "passed")
-    .flatMap((record) => validateReviewMetadata(record, operationById.get(parentOperationId(record.operationId))))
+    .flatMap((record) => validateReviewMetadata(
+      record,
+      operationById.get(parentOperationId(record.operationId)),
+      input.expectedRun,
+    ))
   ];
   const invalidEvidenceIds = Array.from(new Set(validationErrors.map((error) => error.operationId))).sort();
 
@@ -247,7 +251,8 @@ function isRequiredAutomatedOperation(operation: OperationEvidenceOperation) {
 
 function validateReviewMetadata(
   record: OperationEvidenceRecord,
-  operation?: OperationEvidenceOperation
+  operation?: OperationEvidenceOperation,
+  expectedRun?: { runId: string; sourceCommit: string },
 ): OperationEvidenceValidationError[] {
   const errors: OperationEvidenceValidationError[] = [];
   const recordAssertions = record.assertions ?? [];
@@ -311,8 +316,14 @@ function validateReviewMetadata(
       message: "Evidence requires runtime mode and API base URL metadata."
     });
   }
-  if (record.runtime?.ownedRuntime) {
-    errors.push(...validateOwnedRuntimeEvidence(record));
+  if (expectedRun && !record.runtime?.ownedRuntime) {
+    errors.push({
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Expected full-run evidence requires owned runtime proof and an immutable runtime snapshot.",
+    });
+  } else if (record.runtime?.ownedRuntime) {
+    errors.push(...validateOwnedRuntimeEvidence(record, expectedRun));
   }
   if (!record.report?.path?.trim() || !record.report.format?.trim()) {
     errors.push({
@@ -339,7 +350,10 @@ function validateReviewMetadata(
   return errors;
 }
 
-function validateOwnedRuntimeEvidence(record: OperationEvidenceRecord): OperationEvidenceValidationError[] {
+function validateOwnedRuntimeEvidence(
+  record: OperationEvidenceRecord,
+  expectedRun?: { runId: string; sourceCommit: string },
+): OperationEvidenceValidationError[] {
   const errors: OperationEvidenceValidationError[] = [];
   const owned = record.runtime!.ownedRuntime!;
   const runRoot = owned.runRoot;
@@ -350,7 +364,18 @@ function validateOwnedRuntimeEvidence(record: OperationEvidenceRecord): Operatio
       message: `Owned evidence run root does not exist as a regular directory: ${runRoot}.`,
     }];
   }
-  const snapshotError = validateRuntimeSnapshot(record, runRoot);
+  if (
+    owned.runId !== record.runId ||
+    owned.sourceCommit !== record.sourceCommit ||
+    (expectedRun && (owned.runId !== expectedRun.runId || owned.sourceCommit !== expectedRun.sourceCommit))
+  ) {
+    errors.push({
+      operationId: record.operationId,
+      field: "runtime",
+      message: "Owned runtime identity must match the top-level record and expected run.",
+    });
+  }
+  const snapshotError = validateRuntimeSnapshot(record, runRoot, expectedRun);
   if (snapshotError) errors.push(snapshotError);
   const descriptorError = validateOwnedDescendant(
     record.operationId,
@@ -385,6 +410,7 @@ function validateOwnedRuntimeEvidence(record: OperationEvidenceRecord): Operatio
 function validateRuntimeSnapshot(
   record: OperationEvidenceRecord,
   runRoot: string,
+  expectedRun?: { runId: string; sourceCommit: string },
 ): OperationEvidenceValidationError | undefined {
   const owned = record.runtime!.ownedRuntime!;
   const pathError = validateOwnedDescendant(
@@ -415,6 +441,12 @@ function validateRuntimeSnapshot(
       snapshot.kind !== "wiseeff-owned-local-acceptance-operation-evidence-runtime" ||
       snapshot.run?.id !== owned.runId ||
       snapshot.run?.sourceCommit !== owned.sourceCommit ||
+      snapshot.run?.id !== record.runId ||
+      snapshot.run?.sourceCommit !== record.sourceCommit ||
+      (expectedRun !== undefined && (
+        snapshot.run?.id !== expectedRun.runId ||
+        snapshot.run?.sourceCommit !== expectedRun.sourceCommit
+      )) ||
       resolve(snapshot.artifacts?.runRoot ?? "") !== resolve(runRoot) ||
       resolve(snapshot.artifacts?.descriptor ?? "") !== resolve(owned.descriptorPath)
     ) {
