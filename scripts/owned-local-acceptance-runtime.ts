@@ -62,6 +62,7 @@ import {
   waitForOwnedProcessGroupExit,
   type StopOwnedProcessGroupOptions,
 } from "./owned-process-group";
+import { classifyOwnedProcessForCleanup } from "./owned-process-cleanup-proof";
 import {
   assertExactOwnedDirectoryChain,
   captureExactOwnedDirectoryChain,
@@ -1249,13 +1250,17 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
     signal?: AbortSignal;
     stopProcessGroup?: (pid: number, options?: StopOwnedProcessGroupOptions) => Promise<void>;
     verifyProcessIdentity?: (pid: number, expected: ProcessStartIdentity) => boolean | Promise<boolean>;
+    readProcessIdentity?: (pid: number) => ProcessStartIdentity | undefined;
+    pidExists?: (pid: number) => boolean;
+    portIsUnused?: (port: number) => Promise<boolean>;
   } = {},
 ) {
   const manifest = readNestedRuntimeManifest(manifestPath);
   const errors: Error[] = [];
   const stopProcessGroup = options.stopProcessGroup ?? stopOwnedProcessGroup;
-  const verifyProcessIdentity = options.verifyProcessIdentity ?? ((pid, expected) =>
-    sameProcessStartIdentity(expected, readProcessStartIdentity(pid)));
+  const readProcessIdentity = options.readProcessIdentity ?? (
+    options.verifyProcessIdentity ? undefined : readProcessStartIdentity
+  );
   const safeRetentionReason = safeCleanupReason(retentionReason);
   for (const child of manifest.children.filter((entry) =>
     entry.state === "provisioning" || entry.state === "running" || entry.state === "cleanup-failed"
@@ -1284,7 +1289,24 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         continue;
       }
       try {
-        if (!identity || identity.pid !== pid || !(await verifyProcessIdentity(pid, identity))) {
+        if (!identity) {
+          throw new Error(`Nested ${label} process identity is missing or no longer matches PID ${pid}; refusing signal.`);
+        }
+        if (readProcessIdentity) {
+          const classification = await classifyOwnedProcessForCleanup({
+            label: `Nested ${label}`,
+            pid,
+            expectedIdentity: identity,
+            readProcessIdentity,
+            pidExists: options.pidExists,
+            portIsUnused: options.portIsUnused,
+          });
+          if (classification === "absent") {
+            cleanup[label] = { status: "stopped" };
+            continue;
+          }
+        }
+        if (options.verifyProcessIdentity && !(await options.verifyProcessIdentity(pid, identity))) {
           throw new Error(`Nested ${label} process identity is missing or no longer matches PID ${pid}; refusing signal.`);
         }
         await settleBeforeAbort(stopProcessGroup(pid, {

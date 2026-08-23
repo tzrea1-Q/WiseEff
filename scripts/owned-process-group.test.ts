@@ -38,6 +38,64 @@ describe("owned process-group supervisor", () => {
     })).rejects.toThrow(/operation not permitted/i);
   });
 
+  it("retries a transient EPERM process-group probe until exact absence is observed", async () => {
+    const permissionError = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    const signals: NodeJS.Signals[] = [];
+    let probes = 0;
+
+    await stopOwnedProcessGroup(12_345, {
+      processGroupExists: async () => {
+        probes += 1;
+        if (probes === 1) throw permissionError;
+        return false;
+      },
+      signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+      verifyGraceMs: 50,
+      wait: async () => undefined,
+    });
+
+    expect(probes).toBe(2);
+    expect(signals).toEqual([]);
+  });
+
+  it("propagates persistent EPERM probes instead of classifying the process group absent", async () => {
+    const permissionError = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    const signals: NodeJS.Signals[] = [];
+
+    await expect(stopOwnedProcessGroup(12_345, {
+      processGroupExists: async () => { throw permissionError; },
+      signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+      verifyGraceMs: 0,
+      wait: async () => undefined,
+    })).rejects.toThrow(/operation not permitted/i);
+
+    expect(signals).toEqual([]);
+  });
+
+  it("continues through identity verification and signaling after a transient EPERM resolves present", async () => {
+    const permissionError = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    const expected = { startToken: "owned", commandSha256: "a".repeat(64) };
+    const probes: Array<Error | boolean> = [permissionError, true, false];
+    const signals: NodeJS.Signals[] = [];
+
+    await stopOwnedProcessGroup(12_345, {
+      expectedProcessIdentity: expected,
+      readProcessIdentity: () => expected,
+      processGroupExists: async () => {
+        const result = probes.shift();
+        if (result instanceof Error) throw result;
+        return result ?? false;
+      },
+      signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+      terminateGraceMs: 50,
+      verifyGraceMs: 50,
+      wait: async () => undefined,
+    });
+
+    expect(probes).toEqual([]);
+    expect(signals).toEqual(["SIGTERM"]);
+  });
+
   it("rechecks process-start identity before KILL and never signals a reused PID", async () => {
     const expected = { startToken: "original", commandSha256: "a".repeat(64) };
     const observed = [expected, { startToken: "reused", commandSha256: "b".repeat(64) }];

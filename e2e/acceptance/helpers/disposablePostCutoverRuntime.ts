@@ -38,6 +38,7 @@ import {
   stopOwnedProcessGroup,
   type StopOwnedProcessGroupOptions,
 } from "../../../scripts/owned-process-group";
+import { classifyOwnedProcessForCleanup } from "../../../scripts/owned-process-cleanup-proof";
 import {
   captureExactOwnedDirectoryChain,
   removeExactlyOwnedObjectRoot,
@@ -52,7 +53,6 @@ import {
 import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-registry";
 import {
   readProcessStartIdentity,
-  sameProcessStartIdentity,
 } from "../../../scripts/process-start-identity";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
@@ -683,21 +683,20 @@ export async function stopManifestTrackedNestedProcesses(input: {
       continue;
     }
     try {
-      if (!identity || identity.pid !== pid) {
+      if (!identity) {
         throw new Error(`Nested ${label} process identity is missing or does not match PID ${pid}; refusing signal.`);
       }
-      const readProcessIdentity = input.stopOptions?.readProcessIdentity ?? readProcessStartIdentity;
-      const currentIdentity = readProcessIdentity(pid);
-      if (!currentIdentity) {
-        const pidAbsent = !(input.pidExists ?? processPidExists)(pid);
-        if (pidAbsent && await (input.portIsUnused ?? isLoopbackPortUnused)(identity.port)) {
-          cleanup[label] = { status: "stopped" };
-          continue;
-        }
-        throw new Error(`Nested ${label} PID ${pid} absence could not be proven with port ${identity.port} unused; refusing cleanup.`);
-      }
-      if (!sameProcessStartIdentity(identity, currentIdentity)) {
-        throw new Error(`Nested ${label} process identity changed for PID ${pid}; refusing signal.`);
+      const classification = await classifyOwnedProcessForCleanup({
+        label: `Nested ${label}`,
+        pid,
+        expectedIdentity: identity,
+        readProcessIdentity: input.stopOptions?.readProcessIdentity,
+        pidExists: input.pidExists,
+        portIsUnused: input.portIsUnused,
+      });
+      if (classification === "absent") {
+        cleanup[label] = { status: "stopped" };
+        continue;
       }
       await stopOwnedProcessGroup(pid, {
         ...input.stopOptions,
@@ -715,24 +714,6 @@ export async function stopManifestTrackedNestedProcesses(input: {
     frontendProcess: cleanup.frontendProcess,
     errors,
   };
-}
-
-function processPidExists(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-async function isLoopbackPortUnused(port: number) {
-  if (!Number.isSafeInteger(port) || port <= 0 || port > 65_535) return false;
-  const server = createServer();
-  return new Promise<boolean>((resolve) => {
-    server.once("error", () => resolve(false));
-    server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
-  });
 }
 
 export async function startDisposablePostCutoverRuntime(

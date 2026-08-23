@@ -256,6 +256,33 @@ describe("Gate0 artifact sanitizer", () => {
     expect((await scanGate0ArtifactTree(root)).violations).toEqual([]);
   });
 
+  it("sanitizes printable Markdown in an owned Playwright trace resource", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-playwright-trace-resource-"));
+    const archivePath = path.join(
+      root,
+      "full-owned-run",
+      "artifacts",
+      "browser",
+      "test-results",
+      "parameter-negative-owned-result",
+      "trace.zip",
+    );
+    const resourceName = `resources/${"c".repeat(40)}`;
+    const secret = "b".repeat(64);
+    const archive = new JSZip();
+    archive.file(resourceName, `# Browser failure\n\nAUTH_TOKEN_HMAC_SECRET: ${secret}\n`);
+    mkdirSync(path.dirname(archivePath), { recursive: true });
+    writeFileSync(archivePath, await archive.generateAsync({ type: "nodebuffer" }));
+
+    await sanitizeGate0ArtifactTree(root);
+
+    const sanitizedArchive = await JSZip.loadAsync(readFileSync(archivePath));
+    const content = await sanitizedArchive.file(resourceName)!.async("string");
+    expect(content).toContain("AUTH_TOKEN_HMAC_SECRET: [REDACTED]");
+    expect(content).not.toContain(secret);
+    expect((await scanGate0ArtifactTree(root)).violations).toEqual([]);
+  });
+
   it("refuses extensionless Markdown resources outside a Playwright report archive", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-non-playwright-resource-"));
     const archivePath = path.join(root, "diagnostics.zip");

@@ -1136,7 +1136,8 @@ function isSanitizableTextArtifact(artifactPath: string, value: Buffer) {
 function isPrintablePlaywrightReportResource(entryPath: string, value: Buffer) {
   const isDirectResource = /(?:^|\/)playwright-report\/resources\/[a-f0-9]{20,}$/iu.test(entryPath);
   const isDataArchiveResource = /(?:^|\/)playwright-report\/data\/[a-f0-9]{20,}\.zip!\/resources\/[a-f0-9]{20,}$/iu.test(entryPath);
-  if (!isDirectResource && !isDataArchiveResource) return false;
+  const isOwnedTraceResource = /(?:^|\/)artifacts\/(?:browser|visual)\/test-results\/[^/]+\/trace\.zip!\/resources\/[a-f0-9]{20,}$/iu.test(entryPath);
+  if (!isDirectResource && !isDataArchiveResource && !isOwnedTraceResource) return false;
   const text = value.toString("utf8");
   const hasUnsupportedControl = Array.from(text).some((character) =>
     character !== "\t" && character !== "\n" && character !== "\r" && /\p{C}/u.test(character));

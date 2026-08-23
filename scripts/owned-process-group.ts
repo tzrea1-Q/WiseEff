@@ -41,7 +41,12 @@ export async function stopOwnedProcessGroup(
   const processGroupExists = options.processGroupExists ?? defaultProcessGroupExists;
   const wait = options.wait ?? waitFor;
   const child = typeof childOrPid === "number" ? undefined : childOrPid;
-  if (!(await processGroupExists(pid))) return;
+  if (!(await probeProcessGroupUntilClassified(
+    pid,
+    options.verifyGraceMs ?? defaultVerifyGraceMs,
+    processGroupExists,
+    wait,
+  ))) return;
 
   assertExpectedProcessIdentity(pid, options);
   await signalProcessGroup(pid, "SIGTERM");
@@ -121,11 +126,33 @@ async function waitUntilAbsent(
   wait: (delayMs: number) => Promise<void>,
 ) {
   const deadline = Date.now() + Math.max(0, graceMs);
-  while (await processGroupExists(pid)) {
+  while (await probeProcessGroupUntilClassified(
+    pid,
+    Math.max(0, deadline - Date.now()),
+    processGroupExists,
+    wait,
+  )) {
     if (Date.now() >= deadline) return false;
     await wait(Math.min(25, Math.max(1, deadline - Date.now())));
   }
   return true;
+}
+
+async function probeProcessGroupUntilClassified(
+  pid: number,
+  graceMs: number,
+  processGroupExists: ProcessGroupProbe,
+  wait: (delayMs: number) => Promise<void>,
+) {
+  const deadline = Date.now() + Math.max(0, graceMs);
+  while (true) {
+    try {
+      return await processGroupExists(pid);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM" || Date.now() >= deadline) throw error;
+      await wait(Math.min(25, Math.max(1, deadline - Date.now())));
+    }
+  }
 }
 
 async function waitForChildExitOpportunity(
