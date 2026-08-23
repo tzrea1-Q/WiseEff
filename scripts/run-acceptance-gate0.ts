@@ -413,7 +413,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       ),
     });
   } finally {
-    await secretRegistry.close();
+    await settleBeforeAbort(secretRegistry.close(), owner.finalizationSignal);
   }
 }
 
@@ -626,7 +626,8 @@ export async function runGate0Cli(options: {
   process.on("SIGINT", handlers.SIGINT);
   process.on("SIGTERM", handlers.SIGTERM);
   try {
-    await (options.execute ?? runAcceptanceGate0)(owner);
+    const execution = Promise.resolve().then(() => (options.execute ?? runAcceptanceGate0)(owner));
+    await settleBeforeAbort(execution, owner.finalizationSignal);
   } catch (error) {
     if (!receivedSignal) throw error;
     console.error(`[acceptance:gate0] ${receivedSignal} received; Gate0 returned after its bounded failure-finalization path.`);
@@ -640,4 +641,27 @@ export async function runGate0Cli(options: {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await runGate0Cli();
+  if (process.exitCode) process.exit(process.exitCode);
+}
+
+function settleBeforeAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error("Gate0 hard owner deadline elapsed."));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      reject(signal.reason instanceof Error ? signal.reason : new Error("Gate0 hard owner deadline elapsed."));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
 }

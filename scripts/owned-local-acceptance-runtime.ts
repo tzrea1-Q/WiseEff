@@ -60,6 +60,7 @@ export type ProvisionOwnedRuntimeOptions = {
   runsRoot?: string;
   ownerDeadline?: {
     signal: AbortSignal;
+    finalizationSignal?: AbortSignal;
     deadlineAt: number;
     remainingMs(stage: string): number;
   };
@@ -501,8 +502,10 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           await finalizeRunningNestedRuntimesAfterFailure(
             descriptor.artifacts.nestedRuntimeManifest,
             "Gate0 failure policy retains nested forensic resources.",
+            { signal: cleanupOwnerDeadline?.signal },
           ).catch((error) => cleanupErrors.push(asError(error)));
-          await stopAndRecordOwnedProcesses(started, descriptor).catch((error) => cleanupErrors.push(asError(error)));
+          await stopAndRecordOwnedProcesses(started, descriptor, cleanupOwnerDeadline?.signal)
+            .catch((error) => cleanupErrors.push(asError(error)));
           setRetainedResources(descriptor, "Gate0 failure policy retains forensic resources.");
           await finalizeArtifacts?.().then(
             () => { descriptor.cleanup.resources.artifacts = { status: "verified" }; },
@@ -522,7 +525,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         try {
           assertNestedRuntimesCleanedForSuccess(descriptor.artifacts.nestedRuntimeManifest);
           await verifyOwnedRuntimeOwnership(descriptor, env, cleanupOwnerDeadline);
-          await stopAndRecordOwnedProcesses(started, descriptor);
+          await stopAndRecordOwnedProcesses(started, descriptor, cleanupOwnerDeadline?.signal);
           await finalizeArtifacts?.();
           descriptor.cleanup.resources.artifacts = { status: "verified" };
           await verifyDatabaseCleanupMarker(databaseUrl, descriptor, cleanupOwnerDeadline);
@@ -531,6 +534,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           descriptor.cleanup.resources.objectStore = { status: "verified" };
           await dropExactDatabase(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           descriptor.cleanup.resources.database = { status: "removed" };
+          cleanupOwnerDeadline?.remainingMs("exact object-store cleanup");
           rmSync(descriptor.objectStore.root, { recursive: true, force: false });
           await assertDatabaseAbsent(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           if (existsSync(descriptor.objectStore.root)) {
@@ -547,8 +551,10 @@ export async function provisionOwnedLocalAcceptanceRuntime(
           await finalizeRunningNestedRuntimesAfterFailure(
             descriptor.artifacts.nestedRuntimeManifest,
             "Gate0 success cleanup was refused; nested forensic resources retained.",
+            { signal: cleanupOwnerDeadline?.signal },
           ).catch((nestedError) => cleanupErrors.push(asError(nestedError)));
-          await stopAndRecordOwnedProcesses(started, descriptor).catch((stopError) => cleanupErrors.push(asError(stopError)));
+          await stopAndRecordOwnedProcesses(started, descriptor, cleanupOwnerDeadline?.signal)
+            .catch((stopError) => cleanupErrors.push(asError(stopError)));
           retainPendingCleanupResources(descriptor, "Cleanup aborted after a fail-closed ownership or artifact check.");
           descriptor.cleanup.resources.descriptor = { status: "retained", reason: "Cleanup failure descriptor retained." };
           descriptor.run.state = "cleanup-failed-retained";
@@ -560,7 +566,8 @@ export async function provisionOwnedLocalAcceptanceRuntime(
     };
   } catch (error) {
     const failures = [asError(error)];
-    await stopOwnedProcesses(started).catch((stopError) => failures.push(asError(stopError)));
+    await stopOwnedProcesses(started, options.ownerDeadline?.finalizationSignal)
+      .catch((stopError) => failures.push(asError(stopError)));
     if (existsSync(runRoot)) {
       try {
         writeProvisionFailure(runRoot, {
@@ -943,11 +950,11 @@ function sleepWithAbort(delayMs: number, signal?: AbortSignal) {
   });
 }
 
-async function stopOwnedProcesses(processes: StartedProcess[]) {
+async function stopOwnedProcesses(processes: StartedProcess[], signal?: AbortSignal) {
   const errors: Error[] = [];
   for (const processRecord of [...processes].reverse()) {
     try {
-      await stopOwnedProcess(processRecord.child);
+      await settleBeforeAbort(stopOwnedProcess(processRecord.child), signal);
       processRecord.cleanup = { status: "stopped", reason: "Exact owned process group stopped and verified absent." };
     } catch (error) {
       processRecord.cleanup = { status: "failed", reason: safeCleanupReason(error) };
@@ -960,6 +967,7 @@ async function stopOwnedProcesses(processes: StartedProcess[]) {
 async function stopAndRecordOwnedProcesses(
   processes: StartedProcess[],
   descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+  signal?: AbortSignal,
 ) {
   const errors: Error[] = [];
   for (const [label, processRecord] of ([
@@ -972,7 +980,7 @@ async function stopAndRecordOwnedProcesses(
       continue;
     }
     try {
-      await stopOwnedProcess(processRecord.child);
+      await settleBeforeAbort(stopOwnedProcess(processRecord.child), signal);
       descriptor.cleanup.resources[label] = { status: "stopped" };
     } catch (error) {
       descriptor.cleanup.resources[label] = { status: "failed", reason: safeCleanupReason(error) };
@@ -1027,6 +1035,7 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
   manifestPath: string,
   retentionReason: string,
   options: StopOwnedProcessGroupOptions & {
+    signal?: AbortSignal;
     stopProcessGroup?: (pid: number, options?: StopOwnedProcessGroupOptions) => Promise<void>;
   } = {},
 ) {
@@ -1053,7 +1062,7 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         continue;
       }
       try {
-        await stopProcessGroup(pid, options);
+        await settleBeforeAbort(stopProcessGroup(pid, options), options.signal);
         cleanup[label] = { status: "stopped" };
       } catch (error) {
         cleanup[label] = { status: "failed", reason: safeCleanupReason(error) };
@@ -1077,6 +1086,29 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
   if (errors.length > 0) {
     throw new AggregateError(errors, "One or more nested runtime finalizations did not settle.");
   }
+}
+
+function settleBeforeAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) {
+    return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error("Gate0 finalization deadline elapsed."));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(
+      signal.reason instanceof Error ? signal.reason : new Error("Gate0 finalization deadline elapsed."),
+    );
+    signal.addEventListener("abort", abort, { once: true });
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function allocateAllowedLoopbackPort(

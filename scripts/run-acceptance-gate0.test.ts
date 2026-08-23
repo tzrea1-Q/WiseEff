@@ -16,6 +16,7 @@ import {
   finalizeGate0ArtifactSafety,
   finalizeGate0Failure,
   prepareGate0OwnedRuntime,
+  runGate0Cli,
   runGate0PhaseCommand,
 } from "./run-acceptance-gate0";
 
@@ -151,6 +152,19 @@ describe("acceptance Gate 0 runner", () => {
     expect(owner.finalizationSignal.aborted).toBe(false);
     expect(owner.finalizationRemainingMs("failure finalization")).toBeGreaterThan(0);
     owner.dispose();
+  });
+
+  it("settles the public CLI at the 60ms hard deadline even when finalization ignores cancellation", async () => {
+    const startedAt = Date.now();
+
+    await expect(runGate0Cli({
+      timeoutMs: 60,
+      execute: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      },
+    })).rejects.toThrow(/hard owner deadline/i);
+
+    expect(Date.now() - startedAt).toBeLessThan(180);
   });
 
   it("terminates the exact phase process when the owner deadline elapses", async () => {
