@@ -4,7 +4,10 @@ import { expect, test, type Page } from "playwright/test";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import {
@@ -15,6 +18,7 @@ import {
   seedIsolatedNumericCellBinding,
   seedIsolatedNumericCellPair,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   submitBindingDraftViaApi,
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
@@ -95,7 +99,7 @@ async function submittedDraftEditDbSummary(requestId: string, excludedTargetValu
 
 test.describe("M5.5 parameter negative-path browser acceptance", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -112,9 +116,9 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     await cleanupM55ParameterState();
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("blocks blank draft reasons before API submission", async ({ page }, testInfo) => {

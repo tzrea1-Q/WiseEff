@@ -63,6 +63,10 @@ export type ProvisionOwnedRuntimeOptions = {
   };
 };
 
+export type ProvisionOwnedRuntimeDependencies = {
+  allocateLoopbackPort?: typeof allocateAllowedLoopbackPort;
+};
+
 export type OwnedLocalAcceptanceRuntime = {
   descriptorPath: string;
   descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1;
@@ -100,6 +104,7 @@ const execFileAsync = promisify(execFile);
 
 export async function provisionOwnedLocalAcceptanceRuntime(
   options: ProvisionOwnedRuntimeOptions,
+  dependencies: ProvisionOwnedRuntimeDependencies = {},
 ): Promise<OwnedLocalAcceptanceRuntime> {
   const worktreeRoot = realpathSync(options.worktreeRoot ?? process.cwd());
   checkpointOwner(options, "source inspection");
@@ -108,22 +113,8 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const runId = buildRunId(source.commit);
   const runsRoot = path.resolve(worktreeRoot, options.runsRoot ?? defaultRunsRoot);
   assertPathWithinWorktree(worktreeRoot, runsRoot, "runtime runs root");
-  ensureExistingAncestorsAreNotSymlinks(worktreeRoot, path.dirname(runsRoot));
-  mkdirSync(runsRoot, { recursive: true });
-  if (lstatSync(runsRoot).isSymbolicLink()) {
-    throw new Error("Owned runtime runs root must not be a symbolic link.");
-  }
-
   const runRoot = path.join(runsRoot, runId);
-  if (existsSync(runRoot)) throw new Error(`Owned runtime run root already exists: ${runRoot}`);
-  mkdirSync(runRoot);
   const objectRoot = path.join(runRoot, "object-store");
-  if (existsSync(objectRoot)) throw new Error(`Owned runtime object root already exists: ${objectRoot}`);
-  mkdirSync(objectRoot);
-  if (lstatSync(objectRoot).isSymbolicLink()) {
-    throw new Error("Owned runtime object root must not be a symbolic link.");
-  }
-
   const descriptorPath = path.join(runRoot, "runtime.json");
   const apiLog = path.join(runRoot, "api.log");
   const frontendLog = path.join(runRoot, "frontend.log");
@@ -137,40 +128,56 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   const authSecret = randomBytes(32).toString("hex");
   const authIssuer = `wiseeff-${runId}`;
   const objectMarker = path.join(objectRoot, ".wiseeff-acceptance-owner.json");
-  const objectMarkerContent = `${JSON.stringify({
-    kind: "wiseeff-owned-local-acceptance-object-store",
-    purpose: OWNED_ACCEPTANCE_MARKER_PURPOSE,
-    runId,
-    sourceCommit: source.commit,
-  }, null, 2)}\n`;
-  writeFileSync(objectMarker, objectMarkerContent, { encoding: "utf8", flag: "wx" });
-  initializeNestedRuntimeManifest(nestedRuntimeManifest, {
-    parentRunId: runId,
-    sourceCommit: source.commit,
-  });
-
-  const apiPort = await allocateAllowedLoopbackPort(OWNED_API_PORT_RANGE, options.ownerDeadline);
-  const frontendPort = await allocateAllowedLoopbackPort(OWNED_FRONTEND_PORT_RANGE, options.ownerDeadline);
-  const apiUrl = `http://127.0.0.1:${apiPort}`;
-  const frontendUrl = `http://127.0.0.1:${frontendPort}`;
-  const env = buildOwnedRuntimeEnv({
-    databaseUrl,
-    objectRoot,
-    apiUrl,
-    frontendUrl,
-    apiPort,
-    authIssuer,
-    authSecret,
-    descriptorPath,
-    runId,
-    sourceCommit: source.commit,
-    runRoot,
-    nestedRuntimeManifest,
-  });
   const started: StartedProcess[] = [];
   let databaseCreated = false;
+  let objectRootCreated = false;
 
   try {
+    ensureExistingAncestorsAreNotSymlinks(worktreeRoot, path.dirname(runsRoot));
+    mkdirSync(runsRoot, { recursive: true });
+    if (lstatSync(runsRoot).isSymbolicLink()) {
+      throw new Error("Owned runtime runs root must not be a symbolic link.");
+    }
+    if (existsSync(runRoot)) throw new Error(`Owned runtime run root already exists: ${runRoot}`);
+    mkdirSync(runRoot);
+    if (existsSync(objectRoot)) throw new Error(`Owned runtime object root already exists: ${objectRoot}`);
+    mkdirSync(objectRoot);
+    objectRootCreated = true;
+    if (lstatSync(objectRoot).isSymbolicLink()) {
+      throw new Error("Owned runtime object root must not be a symbolic link.");
+    }
+    const objectMarkerContent = `${JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-object-store",
+      purpose: OWNED_ACCEPTANCE_MARKER_PURPOSE,
+      runId,
+      sourceCommit: source.commit,
+    }, null, 2)}\n`;
+    writeFileSync(objectMarker, objectMarkerContent, { encoding: "utf8", flag: "wx" });
+    initializeNestedRuntimeManifest(nestedRuntimeManifest, {
+      parentRunId: runId,
+      sourceCommit: source.commit,
+    });
+
+    const allocatePort = dependencies.allocateLoopbackPort ?? allocateAllowedLoopbackPort;
+    const apiPort = await allocatePort(OWNED_API_PORT_RANGE, options.ownerDeadline);
+    const frontendPort = await allocatePort(OWNED_FRONTEND_PORT_RANGE, options.ownerDeadline);
+    const apiUrl = `http://127.0.0.1:${apiPort}`;
+    const frontendUrl = `http://127.0.0.1:${frontendPort}`;
+    const env = buildOwnedRuntimeEnv({
+      databaseUrl,
+      objectRoot,
+      apiUrl,
+      frontendUrl,
+      apiPort,
+      authIssuer,
+      authSecret,
+      descriptorPath,
+      runId,
+      sourceCommit: source.commit,
+      runRoot,
+      nestedRuntimeManifest,
+    });
+
     checkpointOwner(options, "database creation");
     await createCheckedAbsentDatabase(adminUrl, databaseName, options.ownerDeadline);
     databaseCreated = true;
@@ -403,13 +410,19 @@ export async function provisionOwnedLocalAcceptanceRuntime(
   } catch (error) {
     const failures = [asError(error)];
     await stopOwnedProcesses(started).catch((stopError) => failures.push(asError(stopError)));
-    writeProvisionFailure(runRoot, {
-      runId,
-      sourceCommit: source.commit,
-      databaseName: databaseCreated ? databaseName : undefined,
-      objectRoot,
-      errors: failures,
-    });
+    if (existsSync(runRoot)) {
+      try {
+        writeProvisionFailure(runRoot, {
+          runId,
+          sourceCommit: source.commit,
+          databaseName: databaseCreated ? databaseName : undefined,
+          objectRoot: objectRootCreated ? objectRoot : undefined,
+          errors: failures,
+        });
+      } catch (failureWriteError) {
+        failures.push(asError(failureWriteError));
+      }
+    }
     throw new AggregateError(failures, "Owned runtime provisioning failed; exact resources were retained.");
   }
 }
@@ -805,21 +818,23 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
   } = {},
 ) {
   const manifest = readNestedRuntimeManifest(manifestPath);
-  const errors: Error[] = manifest.children
-    .filter((entry) => entry.state === "cleanup-failed")
-    .map((entry) => new Error(`Nested runtime ${entry.id} already recorded a cleanup failure.`));
+  const errors: Error[] = [];
   const stopProcessGroup = options.stopProcessGroup ?? stopOwnedProcessGroup;
   const safeRetentionReason = safeCleanupReason(retentionReason);
   for (const child of manifest.children.filter((entry) =>
-    entry.state === "provisioning" || entry.state === "running"
+    entry.state === "provisioning" || entry.state === "running" || entry.state === "cleanup-failed"
   )) {
     const cleanup: NestedRuntimeCleanup = {
       apiProcess: { status: "failed" as const, reason: "Nested API process cleanup did not settle." },
       frontendProcess: { status: "failed" as const, reason: "Nested frontend process cleanup did not settle." },
-      database: { status: "retained" as const, reason: safeRetentionReason },
-      objectStore: { status: "retained" as const, reason: safeRetentionReason },
+      database: child.cleanup?.database ?? { status: "retained" as const, reason: safeRetentionReason },
+      objectStore: child.cleanup?.objectStore ?? { status: "retained" as const, reason: safeRetentionReason },
     };
     for (const [label, pid] of [["apiProcess", child.apiPid], ["frontendProcess", child.frontendPid]] as const) {
+      if (child.cleanup?.[label].status === "stopped") {
+        cleanup[label] = { status: "stopped" };
+        continue;
+      }
       if (pid === undefined) {
         cleanup[label] = { status: "not-started" };
         continue;
@@ -832,17 +847,22 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         errors.push(asError(error));
       }
     }
+    const processesSettled = cleanup.apiProcess.status !== "failed" && cleanup.frontendProcess.status !== "failed";
+    const resourcesRetained = cleanup.database.status === "retained" && cleanup.objectStore.status === "retained";
+    if (!resourcesRetained) {
+      errors.push(new Error(`Nested runtime ${child.id} has partial resource cleanup and cannot be marked retained.`));
+    }
     recordNestedRuntimeFinish(
       manifestPath,
       child.id,
-      cleanup.apiProcess.status !== "failed" && cleanup.frontendProcess.status !== "failed"
+      processesSettled && resourcesRetained
         ? "failed-retained"
         : "cleanup-failed",
       cleanup,
     );
   }
   if (errors.length > 0) {
-    throw new AggregateError(errors, "One or more nested process groups could not be stopped.");
+    throw new AggregateError(errors, "One or more nested runtime finalizations did not settle.");
   }
 }
 
@@ -1047,7 +1067,7 @@ function writeProvisionFailure(
     runId: string;
     sourceCommit: string;
     databaseName?: string;
-    objectRoot: string;
+    objectRoot?: string;
     errors: Error[];
   },
 ) {

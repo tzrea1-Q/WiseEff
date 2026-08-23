@@ -52,8 +52,73 @@ export type DisposablePostCutoverRuntime = {
   authIssuer: string;
   authSecret: string;
   nestedRuntimeId?: string;
-  dispose(): Promise<void>;
+  dispose(outcome?: DisposableRuntimeOutcome): Promise<void>;
 };
+
+export type DisposableRuntimeOutcome = "success" | "failure";
+
+type DisposableProcessCleanupResult = Pick<
+  NestedRuntimeCleanup,
+  "apiProcess" | "frontendProcess"
+> & { errors: Error[] };
+
+export type FinalizeDisposableRuntimeResourcesInput = {
+  outcome: DisposableRuntimeOutcome;
+  retainFailureResources: boolean;
+  stopProcesses(): Promise<DisposableProcessCleanupResult>;
+  removeDatabase(): Promise<void>;
+  removeObjectStore(): Promise<void>;
+};
+
+export function disposableRuntimeOutcomeFromTestInfo(
+  testInfo: { status: string; expectedStatus: string },
+): DisposableRuntimeOutcome {
+  return testInfo.status === testInfo.expectedStatus ? "success" : "failure";
+}
+
+export async function finalizeDisposableRuntimeResources(
+  input: FinalizeDisposableRuntimeResourcesInput,
+) {
+  const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
+  const processCleanup = await input.stopProcesses();
+  cleanup.apiProcess = processCleanup.apiProcess;
+  cleanup.frontendProcess = processCleanup.frontendProcess;
+  const errors = [...processCleanup.errors];
+
+  if (input.outcome === "failure" && input.retainFailureResources) {
+    const reason = "Playwright phase failed; nested forensic resources retained for Gate0 ownership.";
+    cleanup.database = { status: "retained", reason };
+    cleanup.objectStore = { status: "retained", reason };
+    return {
+      state: errors.length === 0 ? "failed-retained" as const : "cleanup-failed" as const,
+      cleanup,
+      errors,
+    };
+  }
+
+  if (errors.length === 0) {
+    await input.removeDatabase().then(
+      () => { cleanup.database = { status: "removed" }; },
+      (error) => {
+        cleanup.database = { status: "failed", reason: safeNestedCleanupReason(error) };
+        errors.push(asNestedError(error));
+      },
+    );
+    await input.removeObjectStore().then(
+      () => { cleanup.objectStore = { status: "removed" }; },
+      (error) => {
+        cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(error) };
+        errors.push(asNestedError(error));
+      },
+    );
+  }
+
+  return {
+    state: errors.length === 0 ? "cleaned" as const : "cleanup-failed" as const,
+    cleanup,
+    errors,
+  };
+}
 
 export type StartDisposablePostCutoverRuntimeOptions = {
   label?: string;
@@ -309,6 +374,24 @@ function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
   return child;
 }
 
+export function startTrackedNestedRuntimeProcess(input: {
+  manifestPath: string;
+  childId: string;
+  process: "api" | "frontend";
+  spawn(): ChildProcess;
+  track(child: ChildProcess): void;
+}) {
+  const child = input.spawn();
+  // Tracking precedes the manifest write so the local startup rollback owns the
+  // child even when the atomic parent-manifest handshake itself fails.
+  input.track(child);
+  const pid = requireRuntimePid(child, input.process === "api" ? "API" : "frontend");
+  recordNestedRuntimeProgress(input.manifestPath, input.childId, input.process === "api"
+    ? { apiPid: pid }
+    : { frontendPid: pid });
+  return child;
+}
+
 async function stopRuntime(child: ChildProcess) {
   await stopOwnedProcessGroup(child, { terminateGraceMs: 3_000 });
 }
@@ -356,7 +439,7 @@ export async function startDisposablePostCutoverRuntime(
       recordNestedRuntimeProgress(nestedManifestPath, databaseName, { migrationRunId });
     }
 
-    const api = spawnRuntime("npm", ["run", "dev:api"], {
+    const spawnApi = () => spawnRuntime("npm", ["run", "dev:api"], {
       DATABASE_URL: databaseUrl,
       PORT: String(apiPort),
       AUTH_MODE: "production",
@@ -370,15 +453,19 @@ export async function startDisposablePostCutoverRuntime(
       [OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV]: databaseName,
       ...(options.apiEnv ?? {}),
     });
-    children.push(api);
-    if (nestedManifestPath) {
-      recordNestedRuntimeProgress(nestedManifestPath, databaseName, {
-        apiPid: requireRuntimePid(api, "API"),
-      });
-    }
+    const api = nestedManifestPath
+      ? startTrackedNestedRuntimeProcess({
+          manifestPath: nestedManifestPath,
+          childId: databaseName,
+          process: "api",
+          spawn: spawnApi,
+          track: (child) => { children.push(child); },
+        })
+      : spawnApi();
+    if (!nestedManifestPath) children.push(api);
     await waitForHttp(`${apiUrl}/health/live`, api);
 
-    const frontend = spawnRuntime(
+    const spawnFrontend = () => spawnRuntime(
       "npx",
       ["vite", "--host", "127.0.0.1", "--port", String(frontendPort), "--strictPort"],
       {
@@ -389,12 +476,16 @@ export async function startDisposablePostCutoverRuntime(
         ...(options.frontendEnv ?? {}),
       },
     );
-    children.push(frontend);
-    if (nestedManifestPath) {
-      recordNestedRuntimeProgress(nestedManifestPath, databaseName, {
-        frontendPid: requireRuntimePid(frontend, "frontend"),
-      });
-    }
+    const frontend = nestedManifestPath
+      ? startTrackedNestedRuntimeProcess({
+          manifestPath: nestedManifestPath,
+          childId: databaseName,
+          process: "frontend",
+          spawn: spawnFrontend,
+          track: (child) => { children.push(child); },
+        })
+      : spawnFrontend();
+    if (!nestedManifestPath) children.push(frontend);
     await waitForHttp(frontendUrl, frontend);
 
     if (nestedManifestPath) {
@@ -416,39 +507,29 @@ export async function startDisposablePostCutoverRuntime(
       authIssuer,
       authSecret,
       nestedRuntimeId: nestedRegistered ? databaseName : undefined,
-      async dispose() {
-        const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
-        const errors: Error[] = [];
-        await stopAndRecordNestedProcesses(children, cleanup, errors);
-        await afterNestedProcessesStop(errors, async () => {
-          try {
+      async dispose(outcome = "success") {
+        const result = await finalizeDisposableRuntimeResources({
+          outcome,
+          retainFailureResources: nestedRegistered,
+          stopProcesses: () => stopAndReportNestedProcesses(children),
+          async removeDatabase() {
             await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
             await withClient(adminUrl, (client) =>
               client.query(`drop database if exists ${databaseName} with (force)`),
             );
-            cleanup.database = { status: "removed" };
-          } catch (error) {
-            cleanup.database = { status: "failed", reason: safeNestedCleanupReason(error) };
-            errors.push(asNestedError(error));
-          }
-          try {
-            await rm(objectStoreRoot, { recursive: true, force: true });
-            cleanup.objectStore = { status: "removed" };
-          } catch (error) {
-            cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(error) };
-            errors.push(asNestedError(error));
-          }
+          },
+          removeObjectStore: () => rm(objectStoreRoot, { recursive: true, force: true }),
         });
         if (nestedManifestPath && nestedRegistered) {
           recordNestedRuntimeFinish(
             nestedManifestPath,
             databaseName,
-            errors.length === 0 ? "cleaned" : "cleanup-failed",
-            cleanup,
+            result.state,
+            result.cleanup,
           );
         }
-        if (errors.length > 0) {
-          throw new AggregateError(errors, "Disposable nested runtime cleanup failed.");
+        if (result.errors.length > 0) {
+          throw new AggregateError(result.errors, "Disposable nested runtime cleanup failed.");
         }
       },
     };
@@ -478,7 +559,7 @@ export async function startDisposablePostCutoverRuntime(
       recordNestedRuntimeFinish(
         nestedManifestPath,
         databaseName,
-        cleanupErrors.length === 0 ? "failed-cleaned" : "cleanup-failed",
+        cleanupErrors.length === 0 ? "cleaned" : "cleanup-failed",
         cleanup,
       );
     }
@@ -532,6 +613,17 @@ async function stopAndRecordNestedProcesses(
       errors.push(asNestedError(error));
     }
   }
+}
+
+async function stopAndReportNestedProcesses(children: ChildProcess[]): Promise<DisposableProcessCleanupResult> {
+  const cleanup = nestedCleanupPending();
+  const errors: Error[] = [];
+  await stopAndRecordNestedProcesses(children, cleanup, errors);
+  return {
+    apiProcess: cleanup.apiProcess,
+    frontendProcess: cleanup.frontendProcess,
+    errors,
+  };
 }
 
 function safeNestedCleanupReason(error: unknown) {

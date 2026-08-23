@@ -4,6 +4,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -18,7 +19,6 @@ export type NestedRuntimeState =
   | "provisioning"
   | "running"
   | "cleaned"
-  | "failed-cleaned"
   | "failed-retained"
   | "cleanup-failed";
 
@@ -171,7 +171,7 @@ export function recordNestedRuntimeFinish(
   updateManifest(manifestPath, (manifest) => {
     const child = manifest.children.find((entry) => entry.id === childId);
     if (!child) throw new Error(`Nested runtime ${childId} is not registered.`);
-    if (child.state !== "running" && child.state !== "provisioning") {
+    if (child.state !== "running" && child.state !== "provisioning" && child.state !== "cleanup-failed") {
       throw new Error(`Nested runtime ${childId} is already finalized.`);
     }
     child.state = state;
@@ -221,13 +221,27 @@ function updateManifest(manifestPath: string, update: (manifest: NestedRuntimeMa
   const lockPath = `${manifestPath}.lock`;
   const deadline = Date.now() + 5_000;
   let lockFd: number | undefined;
+  const lockToken = randomUUID();
   while (lockFd === undefined) {
     try {
       lockFd = openSync(lockPath, "wx");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (recoverStaleManifestLock(lockPath)) continue;
+      if (Date.now() >= deadline) throw error;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
+  }
+  try {
+    writeFileSync(lockFd, `${JSON.stringify({ pid: process.pid, token: lockToken })}\n`, "utf8");
+  } catch (error) {
+    closeSync(lockFd);
+    try {
+      unlinkSync(lockPath);
+    } catch (unlinkError) {
+      if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkError;
+    }
+    throw error;
   }
   try {
     const manifest = readManifest(manifestPath);
@@ -235,6 +249,58 @@ function updateManifest(manifestPath: string, update: (manifest: NestedRuntimeMa
     writeManifest(manifestPath, manifest);
   } finally {
     closeSync(lockFd);
+    const owner = readManifestLockOwner(lockPath);
+    if (owner?.pid === process.pid && owner.token === lockToken) {
+      try {
+        unlinkSync(lockPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+  }
+}
+
+function recoverStaleManifestLock(lockPath: string) {
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(lockPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
+  const owner = readManifestLockOwner(lockPath);
+  const ageMs = Date.now() - stat.mtimeMs;
+  const invalidAndOld = !owner && ageMs > 1_000;
+  const deadOwner = owner ? !isProcessAlive(owner.pid) : false;
+  const expiredOwner = owner ? ageMs > 30_000 : false;
+  if (!invalidAndOld && !deadOwner && !expiredOwner) return false;
+  try {
     unlinkSync(lockPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
+}
+
+function readManifestLockOwner(lockPath: string): { pid: number; token: string } | undefined {
+  try {
+    const owner = JSON.parse(readFileSync(lockPath, "utf8")) as { pid?: unknown; token?: unknown };
+    if (!Number.isSafeInteger(owner.pid) || Number(owner.pid) <= 0 || typeof owner.token !== "string" || !owner.token) {
+      return undefined;
+    }
+    return { pid: Number(owner.pid), token: owner.token };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+
+function isProcessAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }

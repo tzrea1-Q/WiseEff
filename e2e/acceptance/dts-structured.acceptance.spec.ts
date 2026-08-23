@@ -5,7 +5,10 @@ import { expect, test, type APIRequestContext, type Page } from "playwright/test
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -22,6 +25,7 @@ import {
   seedIsolatedBinding,
   seedIsolatedHexChipBindings,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   submitBindingDraftViaApi
 } from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
@@ -509,7 +513,7 @@ test.describe("DTS structured product browser acceptance", () => {
 
 test.describe("DTS structured post-cutover typed edits", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -525,9 +529,9 @@ test.describe("DTS structured post-cutover typed edits", () => {
     restoreDisposable = started.restore;
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("structured edit submit preserves rawText through review merge and CST writeback", async ({

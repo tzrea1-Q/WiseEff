@@ -25,9 +25,13 @@ import {
   seedIsolatedBindings,
   seedSemanticFileUiConflict,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
-import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import {
+  disposableRuntimeOutcomeFromTestInfo,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import {
   annotateFailureRoute,
   PROJECT_CONFIGURATION_BASELINE_FAILURE_ROUTE,
@@ -2388,7 +2392,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 
 test.describe("project configuration workbench post-cutover semantic identity", () => {
   let disposableRuntime: DisposablePostCutoverRuntime;
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -2406,9 +2410,9 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     await bindHardwareUserToProject(projectId);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("edits a property through typed inspector, session dock, and typed binding draft", async ({

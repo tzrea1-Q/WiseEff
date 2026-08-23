@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,10 +16,33 @@ import {
   buildOwnedChildProcessEnv,
   buildOwnedRuntimeEnv,
   cleanupExactOrphanedOwnedRuntime,
+  provisionOwnedLocalAcceptanceRuntime,
   readCleanSource,
 } from "./owned-local-acceptance-runtime";
 
 const children: ChildProcess[] = [];
+
+function createCleanTestRepository(prefix: string) {
+  const repo = mkdtempSync(path.join(tmpdir(), prefix));
+  execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "gate0@example.test"], { cwd: repo });
+  execFileSync("git", ["config", "user.name", "Gate0 Test"], { cwd: repo });
+  writeFileSync(path.join(repo, "tracked.txt"), "clean\n");
+  execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
+  execFileSync("git", ["commit", "-m", "clean"], { cwd: repo, stdio: "ignore" });
+  return repo;
+}
+
+function readOnlyProvisionFailure(repo: string) {
+  const runsRoot = path.join(repo, "runs");
+  const runNames = readdirSync(runsRoot);
+  expect(runNames).toHaveLength(1);
+  const runRoot = realpathSync(path.join(runsRoot, runNames[0]!));
+  return {
+    runRoot,
+    failure: JSON.parse(readFileSync(path.join(runRoot, "provision-failure.json"), "utf8")) as Record<string, unknown>,
+  };
+}
 
 afterEach(async () => {
   for (const child of children.splice(0)) child.kill("SIGTERM");
@@ -145,18 +168,65 @@ describe("owned local acceptance runtime", () => {
   });
 
   it("reads an exact clean HEAD and refuses an isolated dirty repository without provisioning", async () => {
-    const repo = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-source-"));
-    execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "gate0@example.test"], { cwd: repo });
-    execFileSync("git", ["config", "user.name", "Gate0 Test"], { cwd: repo });
-    writeFileSync(path.join(repo, "tracked.txt"), "clean\n");
-    execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
-    execFileSync("git", ["commit", "-m", "clean"], { cwd: repo, stdio: "ignore" });
+    const repo = createCleanTestRepository("wiseeff-owned-source-");
     const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 
     await expect(readCleanSource(repo)).resolves.toEqual({ commit: expectedCommit });
     writeFileSync(path.join(repo, "tracked.txt"), "dirty\n");
     await expect(readCleanSource(repo)).rejects.toThrow(/clean source worktree/i);
+  });
+
+  it("records exact partial-root evidence when the shared owner signal aborts during real port allocation", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-signal-provision-");
+    const controller = new AbortController();
+
+    await expect(provisionOwnedLocalAcceptanceRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+      ownerDeadline: {
+        signal: controller.signal,
+        deadlineAt: Date.now() + 10_000,
+        remainingMs(stage) {
+          if (stage === "loopback port allocation") {
+            const error = new Error("shared Gate0 owner signal aborted port allocation");
+            controller.abort(error);
+            throw error;
+          }
+          return 10_000;
+        },
+      },
+    })).rejects.toThrow(/provisioning failed/i);
+
+    const { runRoot, failure } = readOnlyProvisionFailure(repo);
+    expect(failure).toMatchObject({
+      kind: "wiseeff-owned-local-acceptance-provision-failure",
+      retainedObjectRoot: path.join(runRoot, "object-store"),
+      failures: [expect.objectContaining({ message: expect.stringMatching(/owner signal/i) })],
+    });
+    expect(failure).not.toHaveProperty("retainedDatabaseName");
+  });
+
+  it("records exact partial-root evidence when the production port seam fails before database creation", async () => {
+    const repo = createCleanTestRepository("wiseeff-owned-port-provision-");
+
+    await expect(provisionOwnedLocalAcceptanceRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot: repo,
+      runsRoot: "runs",
+    }, {
+      allocateLoopbackPort: async () => {
+        throw new Error("No owned loopback port is available in the configured range.");
+      },
+    })).rejects.toThrow(/provisioning failed/i);
+
+    const { runRoot, failure } = readOnlyProvisionFailure(repo);
+    expect(failure).toMatchObject({
+      kind: "wiseeff-owned-local-acceptance-provision-failure",
+      retainedObjectRoot: path.join(runRoot, "object-store"),
+      failures: [expect.objectContaining({ message: expect.stringMatching(/loopback port/i) })],
+    });
+    expect(failure).not.toHaveProperty("retainedDatabaseName");
   });
 
   it("rejects a healthy listener whose PID does not match the owned descriptor", async () => {

@@ -57,6 +57,7 @@ export type Gate0OwnerDeadline = {
   signal: AbortSignal;
   finalizationSignal: AbortSignal;
   deadlineAt: number;
+  finalizationDeadlineAt: number;
   remainingMs(stage: string): number;
   finalizationRemainingMs(stage: string): number;
   abort(reason: Error): void;
@@ -116,43 +117,64 @@ export async function prepareGate0OwnedRuntime(
   });
 }
 
-export function createGate0OwnerDeadline(timeoutMs: number): Gate0OwnerDeadline {
+export function createGate0OwnerDeadline(
+  timeoutMs: number,
+  finalizationReserveMs = Math.min(GATE0_FINALIZATION_RESERVE_MS, Math.max(1, Math.floor(timeoutMs / 2))),
+): Gate0OwnerDeadline {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Gate0 owner timeout must be positive.");
+  if (!Number.isFinite(finalizationReserveMs) || finalizationReserveMs <= 0 || finalizationReserveMs >= timeoutMs) {
+    throw new Error("Gate0 finalization reserve must be positive and smaller than the hard owner timeout.");
+  }
   const cancellationController = new AbortController();
-  const deadlineController = new AbortController();
-  const deadlineAt = Date.now() + timeoutMs;
-  const timer = setTimeout(() => {
-    deadlineController.abort(new Error("Gate0 owner deadline elapsed."));
+  const operationDeadlineController = new AbortController();
+  const hardDeadlineController = new AbortController();
+  const finalizationDeadlineAt = Date.now() + timeoutMs;
+  const deadlineAt = finalizationDeadlineAt - finalizationReserveMs;
+  const operationTimer = setTimeout(() => {
+    operationDeadlineController.abort(new Error("Gate0 operation deadline elapsed; bounded failure finalization is required."));
+  }, timeoutMs - finalizationReserveMs);
+  const hardTimer = setTimeout(() => {
+    hardDeadlineController.abort(new Error("Gate0 hard owner deadline elapsed."));
   }, timeoutMs);
-  timer.unref();
-  const signal = AbortSignal.any([cancellationController.signal, deadlineController.signal]);
-  const remaining = (stage: string, allowCancellation: boolean) => {
+  operationTimer.unref();
+  hardTimer.unref();
+  const signal = AbortSignal.any([cancellationController.signal, operationDeadlineController.signal]);
+  const operationRemaining = (stage: string) => {
     const remainingMs = deadlineAt - Date.now();
-    if (deadlineController.signal.aborted || remainingMs <= 0) {
-      throw new Error(`Gate0 owner deadline elapsed before ${stage}.`);
+    if (operationDeadlineController.signal.aborted || remainingMs <= 0) {
+      throw new Error(`Gate0 operation deadline elapsed before ${stage}; bounded failure finalization is required.`);
     }
-    if (!allowCancellation && cancellationController.signal.aborted) {
+    if (cancellationController.signal.aborted) {
       throw cancellationController.signal.reason instanceof Error
         ? cancellationController.signal.reason
         : new Error(`Gate0 owner cancelled before ${stage}.`);
     }
     return remainingMs;
   };
+  const finalizationRemaining = (stage: string) => {
+    const remainingMs = finalizationDeadlineAt - Date.now();
+    if (hardDeadlineController.signal.aborted || remainingMs <= 0) {
+      throw new Error(`Gate0 hard owner deadline elapsed before ${stage}.`);
+    }
+    return remainingMs;
+  };
   return {
     signal,
-    finalizationSignal: deadlineController.signal,
+    finalizationSignal: hardDeadlineController.signal,
     deadlineAt,
+    finalizationDeadlineAt,
     remainingMs(stage) {
-      return remaining(stage, false);
+      return operationRemaining(stage);
     },
     finalizationRemainingMs(stage) {
-      return remaining(stage, true);
+      return finalizationRemaining(stage);
     },
     abort(reason) {
       cancellationController.abort(reason);
     },
     dispose() {
-      clearTimeout(timer);
+      clearTimeout(operationTimer);
+      clearTimeout(hardTimer);
     },
   };
 }
@@ -261,7 +283,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         command,
         runtime.env,
         phaseLog,
-        owner.remainingMs(`${command.phase} phase`) - GATE0_FINALIZATION_RESERVE_MS,
+        owner.remainingMs(`${command.phase} phase`),
         5_000,
         owner.signal,
       );
@@ -363,7 +385,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
 function gate0FinalizationOwner(owner: Gate0OwnerDeadline): NonNullable<Parameters<typeof provisionOwnedLocalAcceptanceRuntime>[0]["ownerDeadline"]> {
   return {
     signal: owner.finalizationSignal,
-    deadlineAt: owner.deadlineAt,
+    deadlineAt: owner.finalizationDeadlineAt,
     remainingMs: (stage) => owner.finalizationRemainingMs(stage),
   };
 }

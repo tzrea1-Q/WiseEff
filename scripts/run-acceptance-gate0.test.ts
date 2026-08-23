@@ -139,6 +139,20 @@ describe("acceptance Gate 0 runner", () => {
     owner.dispose();
   });
 
+  it("reserves the final hard-deadline window across the real prerequisite and provision pipeline", async () => {
+    const owner = createGate0OwnerDeadline(300, 100);
+    const operationAbort = new Promise<void>((resolve) => {
+      owner.signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+
+    await operationAbort;
+
+    expect(owner.signal.aborted).toBe(true);
+    expect(owner.finalizationSignal.aborted).toBe(false);
+    expect(owner.finalizationRemainingMs("failure finalization")).toBeGreaterThan(0);
+    owner.dispose();
+  });
+
   it("terminates the exact phase process when the owner deadline elapses", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-timeout-"));
     const pidFile = path.join(root, "pid");

@@ -7,6 +7,7 @@ import { acceptanceCast } from "./cast";
 import { withPgClient } from "./database";
 import {
   startDisposablePostCutoverRuntime,
+  type DisposableRuntimeOutcome,
   type DisposablePostCutoverRuntime
 } from "./disposablePostCutoverRuntime";
 import { OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV } from "./nestedRuntimeManifest";
@@ -129,13 +130,17 @@ export function restoreProcessEnvFromDisposableRuntime(snapshot: DisposableEnvSn
   restore(OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV, snapshot.nestedRuntimeId);
 }
 
+export type RestoreDisposablePostCutoverRuntime = (
+  outcome?: DisposableRuntimeOutcome,
+) => Promise<void>;
+
 export async function startSwappedDisposablePostCutoverRuntime(
   baseDatabaseUrl: string,
   options: Parameters<typeof startDisposablePostCutoverRuntime>[1]
 ): Promise<{
   runtime: DisposablePostCutoverRuntime;
   snapshot: DisposableEnvSnapshot;
-  restore(): Promise<void>;
+  restore: RestoreDisposablePostCutoverRuntime;
 }> {
   const snapshot = captureProcessEnvForDisposableRuntime();
   const runtime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, options);
@@ -143,9 +148,12 @@ export async function startSwappedDisposablePostCutoverRuntime(
   return {
     runtime,
     snapshot,
-    async restore() {
-      await runtime.dispose();
-      restoreProcessEnvFromDisposableRuntime(snapshot);
+    async restore(outcome = "success") {
+      try {
+        await runtime.dispose(outcome);
+      } finally {
+        restoreProcessEnvFromDisposableRuntime(snapshot);
+      }
     }
   };
 }

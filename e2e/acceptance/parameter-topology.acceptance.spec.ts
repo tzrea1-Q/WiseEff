@@ -10,6 +10,7 @@ import {
 } from "./helpers/acceptanceTaskLookup";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import {
+  disposableRuntimeOutcomeFromTestInfo,
   startDisposablePostCutoverRuntime,
   type DisposablePostCutoverRuntime,
 } from "./helpers/disposablePostCutoverRuntime";
@@ -562,10 +563,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     applyDisposableRuntimeEnv(disposableRuntime);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await disposableRuntime?.dispose();
-    restoreProcessEnvFromDisposableRuntime(originalEnvironment);
+    try {
+      await disposableRuntime?.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo));
+    } finally {
+      restoreProcessEnvFromDisposableRuntime(originalEnvironment);
+    }
   });
 
   test("governs specs, browses real topology, edits, maps identity, and gates publish", async ({

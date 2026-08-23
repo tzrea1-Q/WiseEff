@@ -4,6 +4,7 @@ import { expect, test, type APIRequestContext } from "playwright/test";
 import { pickReviewCandidate } from "./helpers/acceptanceTaskLookup";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import {
+  disposableRuntimeOutcomeFromTestInfo,
   startDisposablePostCutoverRuntime,
   type DisposablePostCutoverRuntime,
 } from "./helpers/disposablePostCutoverRuntime";
@@ -362,10 +363,13 @@ test.describe("Xiaoze P1 action on disposable post-cutover identity", () => {
     applyDisposableRuntimeEnv(disposableRuntime);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await disposableRuntime?.dispose();
-    restoreProcessEnvFromDisposableRuntime(originalEnvironment);
+    try {
+      await disposableRuntime?.dispose(disposableRuntimeOutcomeFromTestInfo(testInfo));
+    } finally {
+      restoreProcessEnvFromDisposableRuntime(originalEnvironment);
+    }
   });
 
   test("approves a semantic parameter change through the post-cutover binding path", async ({

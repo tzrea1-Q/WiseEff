@@ -4,11 +4,13 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
+import { disposableRuntimeOutcomeFromTestInfo } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import {
   seedIsolatedNumericCellBinding,
   startSwappedDisposablePostCutoverRuntime,
+  type RestoreDisposablePostCutoverRuntime,
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
 
@@ -176,7 +178,7 @@ async function seedAssignableBinding(
 }
 
 test.describe("MOD-TREE hierarchical module acceptance", () => {
-  let restoreDisposable: (() => Promise<void>) | undefined;
+  let restoreDisposable: RestoreDisposablePostCutoverRuntime | undefined;
 
   test.beforeAll(async () => {
     test.setTimeout(180_000);
@@ -193,9 +195,9 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     await cleanupAcceptanceModuleRows();
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({}, testInfo) => {
     test.setTimeout(60_000);
-    await restoreDisposable?.();
+    await restoreDisposable?.(disposableRuntimeOutcomeFromTestInfo(testInfo));
   });
 
   test("nested parameter modules support subtree filtering for assigned parameters", async ({
