@@ -32,6 +32,10 @@ import {
   scanGate0ArtifactTree,
 } from "./gate0-artifact-sanitizer";
 import { waitForOwnedProcessGroupExit } from "./owned-process-group";
+import {
+  VISUAL_REVIEW_FIXTURE_ALLOW_ENV,
+  VISUAL_REVIEW_FIXTURE_DATABASE_ENV,
+} from "./quality-visual-review-authorization";
 
 type RuntimeEnv = Record<string, string | undefined>;
 const execFileAsync = promisify(execFile);
@@ -148,7 +152,10 @@ function runGate0PrerequisiteCommand(
   });
 }
 
-export function buildGate0Commands(descriptorPath: string): Gate0Command[] {
+export function buildGate0Commands(
+  descriptorPath: string,
+  ownedDatabaseName: string,
+): Gate0Command[] {
   const runRoot = path.dirname(descriptorPath);
   const sharedEnv = {
     [OWNED_ACCEPTANCE_DESCRIPTOR_ENV]: descriptorPath,
@@ -161,7 +168,11 @@ export function buildGate0Commands(descriptorPath: string): Gate0Command[] {
       phase: "visual",
       command: "npm",
       args: ["run", "acceptance:visual"],
-      env: { ...sharedEnv },
+      env: {
+        ...sharedEnv,
+        [VISUAL_REVIEW_FIXTURE_ALLOW_ENV]: "true",
+        [VISUAL_REVIEW_FIXTURE_DATABASE_ENV]: ownedDatabaseName,
+      },
     },
     {
       phase: "browser",
@@ -210,7 +221,10 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       worktreeRoot: process.cwd(),
       runRoot: runtime.descriptor.artifacts.runRoot,
     });
-    for (const command of buildGate0Commands(runtime.descriptorPath)) {
+    for (const command of buildGate0Commands(
+      runtime.descriptorPath,
+      runtime.descriptor.database.name,
+    )) {
       const startedAt = new Date().toISOString();
       runtime.updatePhase(command.phase, { status: "running", startedAt });
       const phaseLog = path.join(runtime.descriptor.artifacts.runRoot, `${command.phase}.log`);

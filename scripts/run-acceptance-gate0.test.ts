@@ -152,8 +152,11 @@ describe("acceptance Gate 0 runner", () => {
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
-  it("passes one descriptor to visual and full browser while disabling reuse and quality reseed", () => {
-    const commands = buildGate0Commands("/tmp/owned-full/runtime.json");
+  it("authorizes the visual fixture for the exact owned database without widening browser access", () => {
+    const commands = buildGate0Commands(
+      "/tmp/owned-full/runtime.json",
+      "wiseeff_acceptance_full_20260823_gate0",
+    );
 
     expect(commands).toEqual([
       expect.objectContaining({
@@ -163,6 +166,8 @@ describe("acceptance Gate 0 runner", () => {
           WISEEFF_ACCEPTANCE_RUNTIME_DESCRIPTOR: "/tmp/owned-full/runtime.json",
           WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true",
           WISEEFF_QUALITY_SKIP_SEED: "true",
+          WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE: "true",
+          WISEEFF_QUALITY_FIXTURE_DATABASE_NAME: "wiseeff_acceptance_full_20260823_gate0",
           WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR: "/tmp/owned-full/artifacts/visual/test-results",
           WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR: "/tmp/owned-full/artifacts/visual/playwright-report",
           WISEEFF_QUALITY_SNAPSHOT_ROOT: "/tmp/owned-full/artifacts/visual/snapshots",
@@ -188,6 +193,8 @@ describe("acceptance Gate 0 runner", () => {
         }),
       }),
     ]);
+    expect(commands[1]?.env).not.toHaveProperty("WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE");
+    expect(commands[1]?.env).not.toHaveProperty("WISEEFF_QUALITY_FIXTURE_DATABASE_NAME");
   });
 
   it("archives browser preflight outside the Playwright-cleaned output directory", () => {
