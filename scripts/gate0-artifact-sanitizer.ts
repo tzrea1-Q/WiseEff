@@ -1115,9 +1115,14 @@ function isProbablyBinary(value: Buffer) {
 }
 
 function isSanitizableTextArtifact(artifactPath: string, value: Buffer) {
-  const entryPath = artifactPath.includes("!/") ? artifactPath.slice(artifactPath.indexOf("!/") + 2) : artifactPath;
-  if (SANITIZABLE_TEXT_EXTENSIONS.has(path.posix.extname(normalizeRelative(entryPath)).toLowerCase())) return true;
-  if (/^(?:resources\/)?[a-f0-9]{20,}$/iu.test(normalizeRelative(entryPath))) {
+  const normalizedArtifactPath = normalizeRelative(artifactPath);
+  const entryPath = normalizedArtifactPath.includes("!/")
+    ? normalizedArtifactPath.slice(normalizedArtifactPath.lastIndexOf("!/") + 2)
+    : normalizedArtifactPath;
+  const normalizedEntryPath = normalizeRelative(entryPath);
+  if (SANITIZABLE_TEXT_EXTENSIONS.has(path.posix.extname(normalizedEntryPath).toLowerCase())) return true;
+  if (isPrintablePlaywrightReportResource(normalizedArtifactPath, value)) return true;
+  if (/^(?:resources\/)?[a-f0-9]{20,}$/iu.test(normalizedEntryPath)) {
     try {
       JSON.parse(value.toString("utf8"));
       return true;
@@ -1126,6 +1131,16 @@ function isSanitizableTextArtifact(artifactPath: string, value: Buffer) {
     }
   }
   return false;
+}
+
+function isPrintablePlaywrightReportResource(entryPath: string, value: Buffer) {
+  const isDirectResource = /(?:^|\/)playwright-report\/resources\/[a-f0-9]{20,}$/iu.test(entryPath);
+  const isDataArchiveResource = /(?:^|\/)playwright-report\/data\/[a-f0-9]{20,}\.zip!\/resources\/[a-f0-9]{20,}$/iu.test(entryPath);
+  if (!isDirectResource && !isDataArchiveResource) return false;
+  const text = value.toString("utf8");
+  const hasUnsupportedControl = Array.from(text).some((character) =>
+    character !== "\t" && character !== "\n" && character !== "\r" && /\p{C}/u.test(character));
+  return Buffer.from(text, "utf8").equals(value) && !hasUnsupportedControl;
 }
 
 function safeArtifactId(artifactPath: string) {

@@ -651,7 +651,7 @@ describe("Gate0 nested disposable runtime contract", () => {
       childId: "wiseeff_acceptance_disposable_pid_reuse",
       stopOptions: {
         processGroupExists: async () => true,
-        readProcessIdentity: () => identityReads++ === 0
+        readProcessIdentity: () => identityReads++ < 2
           ? identity
           : { startToken: "reused", commandSha256: "f".repeat(64) },
         signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
@@ -663,6 +663,97 @@ describe("Gate0 nested disposable runtime contract", () => {
 
     expect(result.apiProcess).toMatchObject({ status: "failed", reason: expect.stringMatching(/identity/i) });
     expect(signals).toEqual(["SIGTERM"]);
+  });
+
+  it("treats a proven-absent nested process as stopped without signaling its stale PID", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-disposable-pid-absent-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_pid_absent",
+      databaseName: "wiseeff_acceptance_disposable_pid_absent",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_pid_absent"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_pid_absent", {
+      apiPid: 111,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+    });
+    const signals: NodeJS.Signals[] = [];
+    const removed: string[] = [];
+
+    const result = await finalizeDisposableRuntimeResources({
+      outcome: "success",
+      retainFailureResources: true,
+      stopProcesses: () => stopManifestTrackedNestedProcesses({
+        manifestPath,
+        childId: "wiseeff_acceptance_disposable_pid_absent",
+        pidExists: () => false,
+        portIsUnused: async (port) => port === 19_100,
+        stopOptions: {
+          processGroupExists: async () => true,
+          readProcessIdentity: () => undefined,
+          signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+        },
+      }),
+      removeDatabase: async () => { removed.push("database"); },
+      removeObjectStore: async () => { removed.push("object-store"); },
+    });
+
+    expect(result).toMatchObject({
+      state: "cleaned",
+      cleanup: {
+        apiProcess: { status: "stopped" },
+        database: { status: "removed" },
+        objectStore: { status: "removed" },
+      },
+      errors: [],
+    });
+    expect(removed).toEqual(["database", "object-store"]);
+    expect(signals).toEqual([]);
+  });
+
+  it("refuses a live reused nested PID even when the recorded listener port is unused", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-disposable-live-reuse-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_live_reuse",
+      databaseName: "wiseeff_acceptance_disposable_live_reuse",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, "wiseeff_acceptance_disposable_live_reuse"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_live_reuse", {
+      apiPid: 111,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+    });
+    const signals: NodeJS.Signals[] = [];
+
+    const result = await stopManifestTrackedNestedProcesses({
+      manifestPath,
+      childId: "wiseeff_acceptance_disposable_live_reuse",
+      pidExists: () => true,
+      portIsUnused: async () => true,
+      stopOptions: {
+        processGroupExists: async () => true,
+        readProcessIdentity: () => ({ startToken: "reused", commandSha256: "f".repeat(64) }),
+        signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+      },
+    });
+
+    expect(result.apiProcess).toMatchObject({ status: "failed", reason: expect.stringMatching(/identity/i) });
+    expect(result.errors).toHaveLength(1);
+    expect(signals).toEqual([]);
   });
 
   it("cannot declare success while a nested child is running or terminally failed", () => {
