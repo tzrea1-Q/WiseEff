@@ -68,7 +68,11 @@ export type OwnedLocalAcceptanceRuntime = {
     phase: "visual" | "browser",
     update: Partial<OwnedLocalAcceptanceRuntimeDescriptorV1["phases"]["visual"]>,
   ): void;
-  finish(outcome: "success" | "failure", finalizeArtifacts?: () => Promise<void>): Promise<void>;
+  finish(
+    outcome: "success" | "failure",
+    finalizeArtifacts?: () => Promise<void>,
+    cleanupOwnerDeadline?: ProvisionOwnedRuntimeOptions["ownerDeadline"],
+  ): Promise<void>;
 };
 
 type StartedProcess = {
@@ -328,7 +332,7 @@ export async function provisionOwnedLocalAcceptanceRuntime(
         Object.assign(descriptor.phases[phase], update);
         writeDescriptor(descriptorPath, descriptor);
       },
-      async finish(outcome, finalizeArtifacts) {
+      async finish(outcome, finalizeArtifacts, cleanupOwnerDeadline = options.ownerDeadline) {
         if (finished) throw new Error("Owned runtime is already finalized.");
         finished = true;
         if (outcome === "failure") {
@@ -356,18 +360,18 @@ export async function provisionOwnedLocalAcceptanceRuntime(
 
         try {
           assertNestedRuntimesCleanedForSuccess(descriptor.artifacts.nestedRuntimeManifest);
-          await verifyOwnedRuntimeOwnership(descriptor, env, options.ownerDeadline);
+          await verifyOwnedRuntimeOwnership(descriptor, env, cleanupOwnerDeadline);
           await stopAndRecordOwnedProcesses(started, descriptor);
           await finalizeArtifacts?.();
           descriptor.cleanup.resources.artifacts = { status: "verified" };
-          await verifyDatabaseCleanupMarker(databaseUrl, descriptor, options.ownerDeadline);
+          await verifyDatabaseCleanupMarker(databaseUrl, descriptor, cleanupOwnerDeadline);
           descriptor.cleanup.resources.database = { status: "verified" };
           verifyObjectRootForCleanup(descriptor);
           descriptor.cleanup.resources.objectStore = { status: "verified" };
-          await dropExactDatabase(adminUrl, descriptor.database.name, options.ownerDeadline);
+          await dropExactDatabase(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           descriptor.cleanup.resources.database = { status: "removed" };
           rmSync(descriptor.objectStore.root, { recursive: true, force: false });
-          await assertDatabaseAbsent(adminUrl, descriptor.database.name, options.ownerDeadline);
+          await assertDatabaseAbsent(adminUrl, descriptor.database.name, cleanupOwnerDeadline);
           if (existsSync(descriptor.objectStore.root)) {
             throw new Error("Owned runtime object root still exists after cleanup.");
           }
@@ -788,7 +792,9 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
     .map((entry) => new Error(`Nested runtime ${entry.id} already recorded a cleanup failure.`));
   const stopProcessGroup = options.stopProcessGroup ?? stopOwnedProcessGroup;
   const safeRetentionReason = safeCleanupReason(retentionReason);
-  for (const child of manifest.children.filter((entry) => entry.state === "running")) {
+  for (const child of manifest.children.filter((entry) =>
+    entry.state === "provisioning" || entry.state === "running"
+  )) {
     const cleanup: NestedRuntimeCleanup = {
       apiProcess: { status: "failed" as const, reason: "Nested API process cleanup did not settle." },
       frontendProcess: { status: "failed" as const, reason: "Nested frontend process cleanup did not settle." },
@@ -796,6 +802,10 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
       objectStore: { status: "retained" as const, reason: safeRetentionReason },
     };
     for (const [label, pid] of [["apiProcess", child.apiPid], ["frontendProcess", child.frontendPid]] as const) {
+      if (pid === undefined) {
+        cleanup[label] = { status: "not-started" };
+        continue;
+      }
       try {
         await stopProcessGroup(pid, options);
         cleanup[label] = { status: "stopped" };
@@ -807,7 +817,7 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
     recordNestedRuntimeFinish(
       manifestPath,
       child.id,
-      cleanup.apiProcess.status === "stopped" && cleanup.frontendProcess.status === "stopped"
+      cleanup.apiProcess.status !== "failed" && cleanup.frontendProcess.status !== "failed"
         ? "failed-retained"
         : "cleanup-failed",
       cleanup,

@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { provisionOwnedLocalAcceptanceRuntime } from "./owned-local-acceptance-runtime";
 
@@ -128,6 +129,16 @@ describe("acceptance Gate 0 runner", () => {
     expect(GATE0_FINALIZATION_RESERVE_MS).toBe(5 * 60 * 1_000);
   });
 
+  it("keeps the hard finalization budget available after an external cancellation", () => {
+    const owner = createGate0OwnerDeadline(10_000);
+    owner.abort(new Error("Gate0 owner received SIGTERM."));
+
+    expect(() => owner.remainingMs("new phase")).toThrow(/SIGTERM/);
+    expect(owner.finalizationRemainingMs("failure cleanup")).toBeGreaterThan(0);
+    expect(owner.finalizationSignal.aborted).toBe(false);
+    owner.dispose();
+  });
+
   it("terminates the exact phase process when the owner deadline elapses", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-timeout-"));
     const pidFile = path.join(root, "pid");
@@ -151,6 +162,61 @@ describe("acceptance Gate 0 runner", () => {
     expect(result).toMatchObject({ timedOut: true });
     expect(() => process.kill(pid, 0)).toThrow();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "traps a real SIGTERM, waits for owned child finalization, and exits with signal semantics",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "wiseeff-gate0-signal-"));
+      const scriptPath = path.join(root, "signal-owner.mjs");
+      const workerPidPath = path.join(root, "worker.pid");
+      const finalizedPath = path.join(root, "finalized");
+      const runnerUrl = pathToFileURL(path.resolve("scripts/run-acceptance-gate0.ts")).href;
+      const processGroupUrl = pathToFileURL(path.resolve("scripts/owned-process-group.ts")).href;
+      writeFileSync(scriptPath, `
+        import { spawn } from "node:child_process";
+        import { writeFileSync } from "node:fs";
+        import { runGate0Cli } from ${JSON.stringify(runnerUrl)};
+        import { stopOwnedProcessGroup } from ${JSON.stringify(processGroupUrl)};
+        await runGate0Cli({
+          timeoutMs: 10_000,
+          execute: async (owner) => {
+            const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+              detached: true,
+              stdio: "ignore",
+            });
+            await new Promise((resolve, reject) => {
+              child.once("spawn", resolve);
+              child.once("error", reject);
+            });
+            writeFileSync(${JSON.stringify(workerPidPath)}, String(child.pid));
+            await new Promise((resolve) => owner.signal.addEventListener("abort", resolve, { once: true }));
+            await stopOwnedProcessGroup(child, { terminateGraceMs: 25, verifyGraceMs: 250 });
+            writeFileSync(${JSON.stringify(finalizedPath)}, "complete");
+            throw owner.signal.reason;
+          },
+        });
+      `);
+      const cli = spawn(process.execPath, ["--import", "tsx", scriptPath], {
+        cwd: process.cwd(),
+        stdio: "ignore",
+      });
+      for (let attempt = 0; attempt < 100 && !existsSync(workerPidPath); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(existsSync(workerPidPath)).toBe(true);
+      const workerPid = Number(readFileSync(workerPidPath, "utf8"));
+
+      cli.kill("SIGTERM");
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        cli.once("close", resolve);
+        cli.once("error", reject);
+      });
+
+      expect(exitCode).toBe(143);
+      expect(readFileSync(finalizedPath, "utf8")).toBe("complete");
+      expect(() => process.kill(workerPid, 0)).toThrow();
+    },
+  );
 
   it("authorizes the visual fixture for the exact owned database without widening browser access", () => {
     const commands = buildGate0Commands(

@@ -17,7 +17,8 @@ import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   recordNestedRuntimeFinish,
-  recordNestedRuntimeStart,
+  recordNestedRuntimeProgress,
+  recordNestedRuntimeProvisioning,
   type NestedRuntimeCleanup,
 } from "./nestedRuntimeManifest";
 import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
@@ -335,10 +336,25 @@ export async function startDisposablePostCutoverRuntime(
   const children: ChildProcess[] = [];
   let nestedRegistered = false;
 
+  if (nestedManifestPath) {
+    recordNestedRuntimeProvisioning(nestedManifestPath, {
+      id: databaseName,
+      databaseName,
+      markerPurpose: purpose,
+      objectStoreRoot,
+      apiUrl,
+      frontendUrl,
+    });
+    nestedRegistered = true;
+  }
+
   await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
   try {
     const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
     await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
+    if (nestedManifestPath) {
+      recordNestedRuntimeProgress(nestedManifestPath, databaseName, { migrationRunId });
+    }
 
     const api = spawnRuntime("npm", ["run", "dev:api"], {
       DATABASE_URL: databaseUrl,
@@ -355,6 +371,11 @@ export async function startDisposablePostCutoverRuntime(
       ...(options.apiEnv ?? {}),
     });
     children.push(api);
+    if (nestedManifestPath) {
+      recordNestedRuntimeProgress(nestedManifestPath, databaseName, {
+        apiPid: requireRuntimePid(api, "API"),
+      });
+    }
     await waitForHttp(`${apiUrl}/health/live`, api);
 
     const frontend = spawnRuntime(
@@ -369,21 +390,20 @@ export async function startDisposablePostCutoverRuntime(
       },
     );
     children.push(frontend);
+    if (nestedManifestPath) {
+      recordNestedRuntimeProgress(nestedManifestPath, databaseName, {
+        frontendPid: requireRuntimePid(frontend, "frontend"),
+      });
+    }
     await waitForHttp(frontendUrl, frontend);
 
     if (nestedManifestPath) {
-      recordNestedRuntimeStart(nestedManifestPath, {
-        id: databaseName,
-        databaseName,
-        markerPurpose: purpose,
+      recordNestedRuntimeProgress(nestedManifestPath, databaseName, {
         migrationRunId,
-        objectStoreRoot,
-        apiUrl,
-        frontendUrl,
         apiPid: requireRuntimePid(api, "API"),
         frontendPid: requireRuntimePid(frontend, "frontend"),
+        ready: true,
       });
-      nestedRegistered = true;
     }
 
     return {
@@ -400,6 +420,12 @@ export async function startDisposablePostCutoverRuntime(
         const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
         const errors: Error[] = [];
         await stopAndRecordNestedProcesses(children, cleanup, errors);
+        if (errors.length > 0) {
+          throw new AggregateError(
+            errors,
+            "Disposable nested runtime process cleanup failed; database and object store were retained for parent takeover.",
+          );
+        }
         try {
           await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
           await withClient(adminUrl, (client) =>
@@ -434,6 +460,12 @@ export async function startDisposablePostCutoverRuntime(
     const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
     const cleanupErrors: Error[] = [];
     await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [asNestedError(error), ...cleanupErrors],
+        "Disposable runtime startup failed and process cleanup did not settle; owned resources were retained for parent takeover.",
+      );
+    }
     await withClient(adminUrl, (client) =>
       client.query(`drop database if exists ${databaseName} with (force)`),
     ).then(
@@ -466,8 +498,8 @@ export async function startDisposablePostCutoverRuntime(
 
 function nestedCleanupPending() {
   return {
-    apiProcess: { status: "failed" as const, reason: "Nested API process cleanup did not complete." },
-    frontendProcess: { status: "failed" as const, reason: "Nested frontend process cleanup did not complete." },
+    apiProcess: { status: "not-started" as const },
+    frontendProcess: { status: "not-started" as const },
     database: { status: "retained" as const, reason: "Nested database cleanup did not complete." },
     objectStore: { status: "retained" as const, reason: "Nested object-store cleanup did not complete." },
   };

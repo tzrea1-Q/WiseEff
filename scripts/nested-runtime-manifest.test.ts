@@ -10,6 +10,8 @@ import {
   initializeNestedRuntimeManifest,
   readNestedRuntimeManifest,
   recordNestedRuntimeFinish,
+  recordNestedRuntimeProgress,
+  recordNestedRuntimeProvisioning,
   recordNestedRuntimeStart,
 } from "../e2e/acceptance/helpers/nestedRuntimeManifest";
 import {
@@ -142,6 +144,58 @@ describe("Gate0 nested disposable runtime contract", () => {
       cleanup: {
         apiProcess: { status: "stopped" },
         frontendProcess: { status: "stopped" },
+        database: { status: "retained", reason: "Gate0 browser worker crashed." },
+        objectStore: { status: "retained", reason: "Gate0 browser worker crashed." },
+      },
+    });
+  });
+
+  it("takes over a partially provisioned child as soon as its first detached PID is known", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-provisioning-crash-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const api = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+    });
+    await new Promise<void>((resolve, reject) => {
+      api.once("spawn", resolve);
+      api.once("error", reject);
+    });
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_partial",
+      databaseName: "wiseeff_acceptance_disposable_partial",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object-partial"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_partial", {
+      migrationRunId: "migration-partial",
+      apiPid: api.pid!,
+    });
+
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "provisioning",
+      migrationRunId: "migration-partial",
+      apiPid: api.pid,
+    });
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.frontendPid).toBeUndefined();
+
+    await finalizeRunningNestedRuntimesAfterFailure(manifestPath, "Gate0 browser worker crashed.", {
+      terminateGraceMs: 25,
+      verifyGraceMs: 250,
+    });
+
+    expect(() => process.kill(api.pid!, 0)).toThrow();
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "failed-retained",
+      cleanup: {
+        apiProcess: { status: "stopped" },
+        frontendProcess: { status: "not-started" },
         database: { status: "retained", reason: "Gate0 browser worker crashed." },
         objectStore: { status: "retained", reason: "Gate0 browser worker crashed." },
       },

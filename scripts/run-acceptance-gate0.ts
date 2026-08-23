@@ -55,8 +55,11 @@ export type Gate0PrerequisiteCommandRunner = (
 
 export type Gate0OwnerDeadline = {
   signal: AbortSignal;
+  finalizationSignal: AbortSignal;
   deadlineAt: number;
   remainingMs(stage: string): number;
+  finalizationRemainingMs(stage: string): number;
+  abort(reason: Error): void;
   dispose(): void;
 };
 
@@ -115,21 +118,38 @@ export async function prepareGate0OwnedRuntime(
 
 export function createGate0OwnerDeadline(timeoutMs: number): Gate0OwnerDeadline {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Gate0 owner timeout must be positive.");
-  const controller = new AbortController();
+  const cancellationController = new AbortController();
+  const deadlineController = new AbortController();
   const deadlineAt = Date.now() + timeoutMs;
   const timer = setTimeout(() => {
-    controller.abort(new Error("Gate0 owner deadline elapsed."));
+    deadlineController.abort(new Error("Gate0 owner deadline elapsed."));
   }, timeoutMs);
   timer.unref();
+  const signal = AbortSignal.any([cancellationController.signal, deadlineController.signal]);
+  const remaining = (stage: string, allowCancellation: boolean) => {
+    const remainingMs = deadlineAt - Date.now();
+    if (deadlineController.signal.aborted || remainingMs <= 0) {
+      throw new Error(`Gate0 owner deadline elapsed before ${stage}.`);
+    }
+    if (!allowCancellation && cancellationController.signal.aborted) {
+      throw cancellationController.signal.reason instanceof Error
+        ? cancellationController.signal.reason
+        : new Error(`Gate0 owner cancelled before ${stage}.`);
+    }
+    return remainingMs;
+  };
   return {
-    signal: controller.signal,
+    signal,
+    finalizationSignal: deadlineController.signal,
     deadlineAt,
     remainingMs(stage) {
-      const remaining = deadlineAt - Date.now();
-      if (controller.signal.aborted || remaining <= 0) {
-        throw new Error(`Gate0 owner deadline elapsed before ${stage}.`);
-      }
-      return remaining;
+      return remaining(stage, false);
+    },
+    finalizationRemainingMs(stage) {
+      return remaining(stage, true);
+    },
+    abort(reason) {
+      cancellationController.abort(reason);
     },
     dispose() {
       clearTimeout(timer);
@@ -211,6 +231,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     baseDatabaseUrl,
     worktreeRoot: process.cwd(),
   }, {}, owner);
+  const finalizationOwner = gate0FinalizationOwner(owner);
   const phaseResults = new Map<Gate0Phase, boolean>();
   let timedOutPhase: Gate0Phase | undefined;
   let sourceOutputs: Gate0SourceOutputSnapshot | undefined;
@@ -241,6 +262,8 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
         runtime.env,
         phaseLog,
         owner.remainingMs(`${command.phase} phase`) - GATE0_FINALIZATION_RESERVE_MS,
+        5_000,
+        owner.signal,
       );
       const passed = !result.error && result.status === 0;
       phaseResults.set(command.phase, passed);
@@ -271,10 +294,10 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       ],
     });
     writeAcceptanceFailureInventory(runtime.descriptor.artifacts.failureInventory, inventory);
-    owner.remainingMs("source-output restoration");
+    finalizationOwner.remainingMs("source-output restoration");
     restoreAndArchiveGate0SourceOutputs(sourceOutputs);
     sourceOutputsRestored = true;
-    await assertGate0SourceWorktreeRestored(process.cwd(), owner.signal);
+    await assertGate0SourceWorktreeRestored(process.cwd(), finalizationOwner.signal);
     const outcome = evaluateGate0Outcome({
       visualPassed: phaseResults.get("visual") === true,
       browserPassed: phaseResults.get("browser") === true,
@@ -293,7 +316,11 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
     });
 
     finishAttempted = true;
-    await runtime.finish(outcome, () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, owner.signal).then(() => undefined));
+    await runtime.finish(
+      outcome,
+      () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, finalizationOwner.signal).then(() => undefined),
+      finalizationOwner,
+    );
     if (outcome === "success") {
       publishLatestFullEvidenceRun(resolveEvidenceRunContext(runtime.env));
       console.log(`[acceptance:gate0] passed; exact runtime cleanup completed for ${runtime.descriptor.run.id}.`);
@@ -310,7 +337,7 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       try {
         restoreAndArchiveGate0SourceOutputs(sourceOutputs);
         sourceOutputsRestored = true;
-        await assertGate0SourceWorktreeRestored(process.cwd(), owner.signal);
+        await assertGate0SourceWorktreeRestored(process.cwd(), finalizationOwner.signal);
       } catch (restoreError) {
         failures.push(asGate0Error(restoreError));
       }
@@ -323,9 +350,22 @@ export async function runAcceptanceGate0(owner: Gate0OwnerDeadline) {
       failures,
       finish: finishAttempted
         ? undefined
-        : () => runtime.finish("failure", () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, owner.signal).then(() => undefined)),
+        : () => runtime.finish(
+          "failure",
+          () => finalizeGate0ArtifactSafety(runtime.descriptor.artifacts.runRoot, finalizationOwner.signal).then(() => undefined),
+          finalizationOwner,
+        ),
+      artifactSafety: (runRoot) => finalizeGate0ArtifactSafety(runRoot, finalizationOwner.signal),
     });
   }
+}
+
+function gate0FinalizationOwner(owner: Gate0OwnerDeadline): NonNullable<Parameters<typeof provisionOwnedLocalAcceptanceRuntime>[0]["ownerDeadline"]> {
+  return {
+    signal: owner.finalizationSignal,
+    deadlineAt: owner.deadlineAt,
+    remainingMs: (stage) => owner.finalizationRemainingMs(stage),
+  };
 }
 
 async function assertGate0SourceWorktreeRestored(worktreeRoot: string, signal?: AbortSignal) {
@@ -345,6 +385,7 @@ export function runGate0PhaseCommand(
   logPath: string,
   timeoutMs: number,
   terminateGraceMs = 5_000,
+  signal?: AbortSignal,
 ) {
   const fd = openSync(logPath, "a");
   if (timeoutMs <= 0) {
@@ -364,6 +405,7 @@ export function runGate0PhaseCommand(
     stdio: ["ignore", fd, fd],
     timeoutMs,
     terminateGraceMs,
+    signal,
   }).finally(() => closeSync(fd));
 }
 
@@ -505,11 +547,36 @@ export async function finalizeGate0ArtifactSafety(runRoot: string, signal?: Abor
   return report;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const owner = createGate0OwnerDeadline(GATE0_OWNER_TIMEOUT_MS);
+export async function runGate0Cli(options: {
+  execute?: (owner: Gate0OwnerDeadline) => Promise<void>;
+  timeoutMs?: number;
+} = {}) {
+  const owner = createGate0OwnerDeadline(options.timeoutMs ?? GATE0_OWNER_TIMEOUT_MS);
+  let receivedSignal: "SIGINT" | "SIGTERM" | undefined;
+  const handleSignal = (signal: "SIGINT" | "SIGTERM") => {
+    if (receivedSignal) return;
+    receivedSignal = signal;
+    owner.abort(new Error(`Gate0 owner received ${signal}; failure finalization is required.`));
+  };
+  const handlers = {
+    SIGINT: () => handleSignal("SIGINT"),
+    SIGTERM: () => handleSignal("SIGTERM"),
+  } as const;
+  process.on("SIGINT", handlers.SIGINT);
+  process.on("SIGTERM", handlers.SIGTERM);
   try {
-    await runAcceptanceGate0(owner);
+    await (options.execute ?? runAcceptanceGate0)(owner);
+  } catch (error) {
+    if (!receivedSignal) throw error;
+    console.error(`[acceptance:gate0] ${receivedSignal} received; owned failure finalization completed.`);
   } finally {
+    process.off("SIGINT", handlers.SIGINT);
+    process.off("SIGTERM", handlers.SIGTERM);
     owner.dispose();
   }
+  if (receivedSignal) process.exitCode = receivedSignal === "SIGINT" ? 130 : 143;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await runGate0Cli();
 }
