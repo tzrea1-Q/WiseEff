@@ -38,6 +38,7 @@ For code changes:
 - Run `npm run acceptance:models` when workflow state transitions, permission contracts, or seeded API/domain fixtures change behind automated browser flows.
 - Run `npm run acceptance:ci` when GitHub Actions acceptance jobs, synthetic modes, or artifact archive paths change.
 - Run `npm run acceptance:quality` when accessibility, visual, or responsive quality-gate wiring changes.
+- Populated `/parameter-review` visual coverage may install `PRQ-8910` only on an ephemeral quality database. Both `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` and `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>` are required; the fixture command fails closed on a database-name mismatch or a pre-existing fixed-ID ownership collision. Target synthetic quality runs set neither variable, remain read-only, and planned-skip only that populated visual case while retaining the other visual routes and all accessibility/responsive coverage.
 - Run `npm run selfhost:check` when self-hosted runtime templates or docs change.
 - Run `npm run selfhost:smoke` against a live self-hosted target before claiming the M6.1 runtime is deployed.
 - Run `npm run capacity:gate` and `npm run selfhost:release-gate` when release, rollback, capacity, or self-hosted release evidence changes.

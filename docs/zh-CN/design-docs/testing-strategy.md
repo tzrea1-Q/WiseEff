@@ -103,6 +103,10 @@ M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动
 
 质量与验收 Playwright 配置（`playwright.quality.config.ts`、`playwright.acceptance.config.ts`）在产品用例之前运行 `runtime-warmup` 依赖项目。webServer 报告 ready 后，预热通过 `page.goto` 加载 SPA 入口，使 Vite 首次编译不计入首条 a11y/视觉/响应式或验收用例；产品用例超时未放宽。
 
+`/parameter-review` 的 populated 视觉用例使用证据专属测试数据，不属于通用 seed。隔离 runner 必须同时设置 `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` 与 `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`；seed/cleanup 脚本在任何写入前校验实际数据库名和固定 ID 的精确归属。Target synthetic 不设置这两个变量，只 planned-skip 这一条依赖写入的视觉用例，因此保持目标库只读；其余视觉路由和全部 a11y/响应式用例仍运行。必须展示的易变值（例如组织创建时间）应在测试读取接缝规范化，不得用截图遮罩隐藏。
+
+提交到仓库的 Linux 视觉快照只有在从 GitHub Actions `Acceptance quality` runner 工件逐图接纳后，才是合并权威。该 runner 正是 PR 上执行门禁的环境，包含 production/HMAC seed 身份和其安装的中文字体栈。仓库兼容的本地 MCR Playwright arm64 容器仍可用于 Linux 预检，但当其渲染结果与已审查的 GitHub runner 工件不同时，不得用容器截图替换已提交的 Linux 基线。只能在原始分辨率逐图审查后接纳精确失败图片，禁止批量更新快照。
+
 M5.11 之后，浏览器质量门禁还包括无障碍、视觉回归和响应式可用性检查。脚本入口包括 `npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual` 和 `npm run acceptance:responsive`，分别覆盖脚本/spec wiring、WCAG A/AA 扫描、稳定区域截图和 desktop/tablet/mobile overflow/usable state。这些门禁补充 A-H browser acceptance，不替代 operation evidence 或人工视觉判断。
 
 M5.9 在浏览器验收背后新增确定性的状态模型门禁：

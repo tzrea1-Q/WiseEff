@@ -1,15 +1,25 @@
 import { expect, test, type Page } from "playwright/test";
 import {
+  cleanupQualityVisualReviewFixture,
+  closeXiaozePopupIfOpen,
+  dismissCopilotDevOverlays,
+  dismissXiaozeToggleHintIfPresent,
   expectUsablePage,
   focusViaKeyboard,
   openXiaozePopup,
   prepareInteractionSurface,
   seedQualityRuntime,
+  seedQualityVisualReviewFixture,
   settleAppToasts,
   settleQualityRoute,
+  settleXiaozePopupClosed,
   stableMasks,
+  stabilizeOrganizationVisualClock,
+  visualReviewFixtureAllowed,
   waitForFontsAndNextPaint
 } from "./helpers";
+
+const allowVisualReviewFixture = visualReviewFixtureAllowed();
 
 const stableRoutes = [
   { path: "/", name: "home-shell" },
@@ -29,17 +39,56 @@ const stableRoutes = [
   { path: "/node-debugging", name: "node-debugging-workbench" }
 ] as const;
 
+async function expectLocalizedVisualReviewFixture(page: Page) {
+  const detail = page.getByRole("complementary", { name: "审阅详情" });
+  await expect(detail).toContainText("cccv_0");
+  await expect(detail).toContainText("恒流恒压（CCCV）相关参数「cccv_0」。");
+
+  const impact = detail.getByLabel("影响面");
+  await expect(impact).toContainText("参数");
+  await expect(impact).toContainText("低风险");
+  await expect(impact).toContainText("将 battery0 模块的参数值从 <4500 0> 调整为 <4600 0>。");
+  await expect(impact).toContainText("建议对低风险模块变更进行审阅。");
+
+  await expect(detail).not.toContainText(/Provisional surface spec|Changes .* parameter|Low risk/);
+}
+
 test.describe("M5.11 visual quality gate", () => {
   test.beforeAll(() => {
     seedQualityRuntime();
+    if (allowVisualReviewFixture) {
+      seedQualityVisualReviewFixture();
+    }
+  });
+
+  test.afterAll(() => {
+    if (allowVisualReviewFixture) {
+      cleanupQualityVisualReviewFixture();
+    }
   });
 
   for (const route of stableRoutes) {
     test(`keeps stable visual baseline for ${route.path}`, async ({ page }) => {
+      test.skip(
+        route.path === "/parameter-review" && !allowVisualReviewFixture,
+        "planned target-synthetic skip: populated review visual requires an explicitly isolated fixture database"
+      );
+      if (route.path === "/organization") {
+        await stabilizeOrganizationVisualClock(page);
+      }
       await page.goto(route.path);
       await expectUsablePage(page);
       await settleQualityRoute(page, route.path);
+      await closeXiaozePopupIfOpen(page);
+      await settleXiaozePopupClosed(page);
+      await dismissXiaozeToggleHintIfPresent(page);
+      if (route.path === "/") {
+        await dismissCopilotDevOverlays(page);
+      }
       await settleAppToasts(page);
+      if (route.path === "/parameter-review") {
+        await expectLocalizedVisualReviewFixture(page);
+      }
 
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
         mask: stableMasks(page, route.path)
@@ -51,9 +100,7 @@ test.describe("M5.11 visual quality gate", () => {
     const popup = await openXiaozePopup(page);
     await settleAppToasts(page);
 
-    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png", {
-      mask: stableMasks(page)
-    });
+    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png");
   });
 });
 
@@ -77,6 +124,14 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await prepareInteractionSurface(page);
     await expect(page.getByRole("table", { name: "平台用户" })).toBeVisible({ timeout: 20_000 });
     await settleAppToasts(page);
+  }
+
+  async function expectProductionFirstUser(page: Page) {
+    const firstRow = page.getByRole("table", { name: "平台用户" }).locator("tbody tr").first();
+    await expect(firstRow).toContainText("Chen Na");
+    await expect(firstRow).toContainText("chen.na");
+    await expect(firstRow).not.toContainText("chen@chargelab.cn");
+    return firstRow;
   }
 
   test("captures the primary button hover state", async ({ page }) => {
@@ -121,7 +176,7 @@ test.describe("M5.11 interaction-state visual gate", () => {
   test("captures the data-table row hover state", async ({ page }) => {
     await openUserPermissions(page);
 
-    const firstRow = page.getByRole("table", { name: "平台用户" }).locator("tbody tr").first();
+    const firstRow = await expectProductionFirstUser(page);
     // Hover the first (user) cell: the row background still activates via
     // `tbody tr:hover`, while the role-select cell's capability tooltip
     // (mouseenter on the role control) stays closed.
@@ -136,6 +191,7 @@ test.describe("M5.11 interaction-state visual gate", () => {
     await openUserPermissions(page);
 
     const table = page.getByRole("table", { name: "平台用户" });
+    await expectProductionFirstUser(page);
     const sortButton = table.getByRole("button", { name: "用户", exact: true });
     await focusViaKeyboard(page, sortButton);
     await expect(table.locator("thead th").first()).toHaveAttribute("aria-sort", "none");

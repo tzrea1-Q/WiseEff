@@ -23,6 +23,12 @@
 
 ## 补充验收流程
 
+### 视觉 fixture 安全边界
+
+Populated review 视觉 fixture 只能写入本次验收独占且可丢弃的数据库。运行 `npm run seed:quality:visual-review` 或 `npm run cleanup:quality:visual-review` 前，必须同时设置 `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true`，并把 `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME` 设为 `current_database()` 的精确结果。数据库名不一致或固定 ID 已归属其他数据时，命令会在写入前 fail-closed。共享库、客户库、staging 或 target synthetic 数据库一律不得设置这两个变量。
+
+Target synthetic 质量运行只 planned-skip populated `/parameter-review` 视觉用例，其他视觉用例以及 a11y/响应式项目仍必须只读执行。确需更新基线时，只更新点名的 PNG，逐张实际审图，再在不带 `--update-snapshots` 的条件下重跑；禁止批量接纳快照。
+
 ### F2. ADB Device-Lab Loop
 
 仅当本机 ADB 设备连接在 API 主机上，且所选节点已按目标模式审批后运行。默认模式为只读。只能使用已有且启用的 ADB 参数绑定；本 lab 不得创建或变更参数绑定。生成的 operation evidence 会脱敏并记录 shape、状态和一致性摘要；原始 target、node 和 value 输入只保留在操作者 shell。本机 ADB 证据只能补充调试覆盖，不能替代 HDC full-pilot 签核。

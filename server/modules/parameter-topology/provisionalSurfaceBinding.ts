@@ -2,6 +2,10 @@ import type { Queryable } from "../../shared/database/client";
 import { findParameterSpecByIdentity } from "../parameter-specs/repository";
 import { buildSubjectScopedManualSpecIds } from "../parameter-specs/specIdentity";
 import {
+  PROVISIONAL_SURFACE_DOCUMENTATION,
+  provisionalSurfaceDescription,
+} from "../parameter-specs/provisionalSurfacePresentation";
+import {
   draftValueShapeToJson,
   inferDraftValueShapeFromOccurrence,
 } from "../parameter-specs/valueShapeInference";
@@ -74,7 +78,7 @@ export async function upsertProvisionalSurfacePropertySpec(
       ids.parameterSpecVersionId,
       ids.parameterSpecId,
       input.propertyKey,
-      `Provisional surface spec for ${input.propertyKey}`,
+      provisionalSurfaceDescription(input.propertyKey),
       JSON.stringify(valueShape),
     ],
   );
@@ -91,7 +95,7 @@ export async function upsertProvisionalSurfacePropertySpec(
       ids.parameterSpecId,
       input.propertyKey,
       ids.schemaNamespace,
-      `Provisional surface binding; activate after schema review.`,
+      PROVISIONAL_SURFACE_DOCUMENTATION,
     ],
   );
 

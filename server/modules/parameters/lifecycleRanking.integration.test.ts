@@ -179,7 +179,7 @@ describe.skipIf(!databaseAvailable)("D6 lifecycle ranking", () => {
     );
   });
 
-  it("change-request display pins the locked binding revision version", async () => {
+  it("change-request display localizes a pinned legacy provisional description without rewriting it", async () => {
     await db.query(`alter table parameter_change_requests drop column if exists parameter_definition_id`);
     await db.query(`alter table parameter_change_requests drop column if exists project_parameter_value_id`);
     await db.query(`alter table parameter_submission_items drop column if exists project_parameter_value_id`);
@@ -223,15 +223,49 @@ describe.skipIf(!databaseAvailable)("D6 lifecycle ranking", () => {
       projectParameterBindingId: BINDING
     });
 
+    const customById = await getChangeRequestById(db, {
+      organizationId: ORG,
+      requestId: "cr-td049"
+    });
+    expect(customById).toMatchObject({ parameterDescription: "pinned-deprecated-meaning" });
+
+    const legacyDescription = `Provisional surface spec for ${PROPERTY_KEY}`;
+    await db.query(
+      `update parameter_spec_versions
+       set description = $2, version_status = 'superseded'
+       where id = $1`,
+      [PINNED_VERSION, legacyDescription]
+    );
+
     const listed = await listChangeRequests(db, { organizationId: ORG, projectId: PROJECT });
     expect(listed.find((row) => row.id === "cr-td049")).toMatchObject({
-      parameterDescription: "pinned-deprecated-meaning"
+      parameterDescription: `参数「${PROPERTY_KEY}」由 DTS 表面发现，等待参数定义审阅。`
     });
 
     const byId = await getChangeRequestById(db, { organizationId: ORG, requestId: "cr-td049" });
     expect(byId).toMatchObject({
-      parameterDescription: "pinned-deprecated-meaning"
+      parameterDescription: `参数「${PROPERTY_KEY}」由 DTS 表面发现，等待参数定义审阅。`
     });
+
+    const supersededStored = await db.query<{ description: string }>(
+      `select description from parameter_spec_versions where id = $1`,
+      [PINNED_VERSION]
+    );
+    expect(supersededStored.rows[0]?.description).toBe(legacyDescription);
+
+    await db.query(
+      `update parameter_spec_versions set version_status = 'active' where id = $1`,
+      [PINNED_VERSION]
+    );
+    const activeById = await getChangeRequestById(db, { organizationId: ORG, requestId: "cr-td049" });
+    expect(activeById).toMatchObject({
+      parameterDescription: `参数「${PROPERTY_KEY}」由 DTS 表面发现，等待参数定义审阅。`
+    });
+    const activeStored = await db.query<{ description: string }>(
+      `select description from parameter_spec_versions where id = $1`,
+      [PINNED_VERSION]
+    );
+    expect(activeStored.rows[0]?.description).toBe(legacyDescription);
 
     const rounds = await listSubmissionRounds(db, { organizationId: ORG });
     expect(rounds[0]?.items[0]).toMatchObject({
