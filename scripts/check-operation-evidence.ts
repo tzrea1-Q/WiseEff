@@ -129,7 +129,10 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
     .sort();
   const operationById = new Map(input.operations.map((operation) => [operation.id, operation]));
   const runValidationErrors = input.expectedRun
-    ? input.records.flatMap((record) => validateRunIdentity(record, input.expectedRun!))
+    ? input.records.flatMap((record) => [
+        ...validateRunIdentity(record, input.expectedRun!),
+        ...validateExpectedOwnedRuntime(record, input.expectedRun!),
+      ])
     : [];
   const validationErrors = [
     ...runValidationErrors,
@@ -205,6 +208,20 @@ function validateRunIdentity(
       message: `Evidence belongs to run ${record.runId ?? "missing"} at ${record.sourceCommit ?? "missing"}; expected full run ${expectedRun.runId} at ${expectedRun.sourceCommit}.`
     }
   ];
+}
+
+function validateExpectedOwnedRuntime(
+  record: OperationEvidenceRecord,
+  expectedRun: { runId: string; sourceCommit: string },
+) {
+  if (!record.runtime?.ownedRuntime) {
+    return [{
+      operationId: record.operationId,
+      field: "runtime" as const,
+      message: "Expected full-run evidence requires owned runtime proof and an immutable runtime snapshot.",
+    }];
+  }
+  return validateOwnedRuntimeEvidence(record, expectedRun);
 }
 
 export function writeOperationEvidenceIndex(input: {
@@ -316,13 +333,7 @@ function validateReviewMetadata(
       message: "Evidence requires runtime mode and API base URL metadata."
     });
   }
-  if (expectedRun && !record.runtime?.ownedRuntime) {
-    errors.push({
-      operationId: record.operationId,
-      field: "runtime",
-      message: "Expected full-run evidence requires owned runtime proof and an immutable runtime snapshot.",
-    });
-  } else if (record.runtime?.ownedRuntime) {
+  if (!expectedRun && record.runtime?.ownedRuntime) {
     errors.push(...validateOwnedRuntimeEvidence(record, expectedRun));
   }
   if (!record.report?.path?.trim() || !record.report.format?.trim()) {

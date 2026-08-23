@@ -225,26 +225,42 @@ describe("operation evidence checker", () => {
       const result = evaluateOperationEvidence({
         operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated", assertions: ["ui"] }],
         expectedRun: { runId: "full-owned-required", sourceCommit: "abc123" },
-        records: [{
-          operationId: "PARAM-HAPPY-001",
-          runId: "full-owned-required",
-          sourceCommit: "abc123",
-          runKind: "full",
-          status: "passed",
-          role: "Admin",
-          route: "/parameters",
-          assertions: ["ui"],
-          artifacts: [artifactPath],
-          runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:18800" },
-          report: { path: "playwright-report/acceptance/index.html", format: "html" },
-          trace: { mode: "retain-on-failure", path: "test-results/acceptance" },
-          reproduction: { steps: ["Open parameters", "Verify operation"] },
-        }],
+        records: [
+          {
+            operationId: "PARAM-HAPPY-001",
+            runId: "full-owned-required",
+            sourceCommit: "abc123",
+            runKind: "full",
+            status: "passed",
+            role: "Admin",
+            route: "/parameters",
+            assertions: ["ui"],
+            artifacts: [artifactPath],
+            runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:18800" },
+            report: { path: "playwright-report/acceptance/index.html", format: "html" },
+            trace: { mode: "retain-on-failure", path: "test-results/acceptance" },
+            reproduction: { steps: ["Open parameters", "Verify operation"] },
+          },
+          {
+            operationId: "OPTIONAL-SKIP-001",
+            runId: "full-owned-required",
+            sourceCommit: "abc123",
+            runKind: "full",
+            status: "skipped",
+            artifacts: [],
+            runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:18800" },
+          },
+        ],
       });
 
       expect(result.status).toBe("failed");
       expect(result.validationErrors).toContainEqual(expect.objectContaining({
         operationId: "PARAM-HAPPY-001",
+        field: "runtime",
+        message: expect.stringMatching(/owned runtime proof/i),
+      }));
+      expect(result.validationErrors).toContainEqual(expect.objectContaining({
+        operationId: "OPTIONAL-SKIP-001",
         field: "runtime",
         message: expect.stringMatching(/owned runtime proof/i),
       }));
