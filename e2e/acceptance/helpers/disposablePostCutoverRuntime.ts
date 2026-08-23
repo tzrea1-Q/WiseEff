@@ -35,6 +35,7 @@ import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 import { stopOwnedProcessGroup } from "../../../scripts/owned-process-group";
 import { buildGate0OwnedChildProcessEnv } from "../../../scripts/gate0-child-process-env";
 import { registerGate0GeneratedSecrets } from "../../../scripts/gate0-secret-registry";
+import { readProcessStartIdentity } from "../../../scripts/process-start-identity";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
 /** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
@@ -478,6 +479,7 @@ export function startTrackedNestedRuntimeProcess(input: {
   manifestPath: string;
   childId: string;
   process: "api" | "frontend";
+  port: number;
   spawn(): ChildProcess;
   track(child: ChildProcess): void;
 }) {
@@ -486,9 +488,14 @@ export function startTrackedNestedRuntimeProcess(input: {
   // child even when the atomic parent-manifest handshake itself fails.
   input.track(child);
   const pid = requireRuntimePid(child, input.process === "api" ? "API" : "frontend");
+  const processIdentity = readProcessStartIdentity(pid);
+  if (!processIdentity) {
+    throw new Error(`Disposable ${input.process} process start identity could not be verified.`);
+  }
+  const identity = { pid, port: input.port, ...processIdentity };
   recordNestedRuntimeProgress(input.manifestPath, input.childId, input.process === "api"
-    ? { apiPid: pid }
-    : { frontendPid: pid });
+    ? { apiPid: pid, apiProcessIdentity: identity }
+    : { frontendPid: pid, frontendProcessIdentity: identity });
   return child;
 }
 
@@ -561,6 +568,7 @@ export async function startDisposablePostCutoverRuntime(
           manifestPath: nestedManifestPath,
           childId: databaseName,
           process: "api",
+          port: apiPort,
           spawn: spawnApi,
           track: (child) => { children.push(child); },
         })
@@ -584,6 +592,7 @@ export async function startDisposablePostCutoverRuntime(
           manifestPath: nestedManifestPath,
           childId: databaseName,
           process: "frontend",
+          port: frontendPort,
           spawn: spawnFrontend,
           track: (child) => { children.push(child); },
         })
@@ -596,6 +605,8 @@ export async function startDisposablePostCutoverRuntime(
         migrationRunId,
         apiPid: requireRuntimePid(api, "API"),
         frontendPid: requireRuntimePid(frontend, "frontend"),
+        apiProcessIdentity: readRequiredProcessIdentity(api, apiPort, "API"),
+        frontendProcessIdentity: readRequiredProcessIdentity(frontend, frontendPort, "frontend"),
         ready: true,
       });
     }
@@ -764,4 +775,11 @@ function asNestedError(error: unknown) {
 function requireRuntimePid(child: ChildProcess, label: string) {
   if (!child.pid) throw new Error(`Disposable ${label} runtime did not expose a PID.`);
   return child.pid;
+}
+
+function readRequiredProcessIdentity(child: ChildProcess, port: number, label: string) {
+  const pid = requireRuntimePid(child, label);
+  const identity = readProcessStartIdentity(pid);
+  if (!identity) throw new Error(`Disposable ${label} process start identity could not be verified.`);
+  return { pid, port, ...identity };
 }

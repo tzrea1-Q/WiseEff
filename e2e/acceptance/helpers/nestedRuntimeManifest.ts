@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import type { ProcessStartIdentity } from "../../../scripts/process-start-identity";
 
 export const OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV =
   "WISEEFF_ACCEPTANCE_NESTED_RUNTIME_MANIFEST";
@@ -28,6 +29,11 @@ export type NestedRuntimeCleanup = {
   objectStore: { status: "removed" | "retained" | "failed"; reason?: string };
 };
 
+export type NestedRuntimeProcessIdentity = ProcessStartIdentity & {
+  pid: number;
+  port: number;
+};
+
 export type NestedRuntimeRecord = {
   id: string;
   state: NestedRuntimeState;
@@ -39,6 +45,8 @@ export type NestedRuntimeRecord = {
   frontendUrl: string;
   apiPid?: number;
   frontendPid?: number;
+  apiProcessIdentity?: NestedRuntimeProcessIdentity;
+  frontendProcessIdentity?: NestedRuntimeProcessIdentity;
   startedAt: string;
   completedAt?: string;
   cleanup?: NestedRuntimeCleanup;
@@ -79,14 +87,25 @@ export function recordNestedRuntimeStart(
     migrationRunId: string;
     apiPid: number;
     frontendPid: number;
+    apiProcessIdentity: NestedRuntimeProcessIdentity;
+    frontendProcessIdentity: NestedRuntimeProcessIdentity;
   },
 ) {
-  const { migrationRunId, apiPid, frontendPid, ...provisioning } = child;
+  const {
+    migrationRunId,
+    apiPid,
+    frontendPid,
+    apiProcessIdentity,
+    frontendProcessIdentity,
+    ...provisioning
+  } = child;
   recordNestedRuntimeProvisioning(manifestPath, provisioning);
   recordNestedRuntimeProgress(manifestPath, child.id, {
     migrationRunId,
     apiPid,
     frontendPid,
+    apiProcessIdentity,
+    frontendProcessIdentity,
     ready: true,
   });
 }
@@ -95,7 +114,8 @@ export function recordNestedRuntimeProvisioning(
   manifestPath: string,
   child: Omit<
     NestedRuntimeRecord,
-    "state" | "startedAt" | "completedAt" | "migrationRunId" | "apiPid" | "frontendPid"
+    "state" | "startedAt" | "completedAt" | "migrationRunId" | "apiPid" | "frontendPid" |
+      "apiProcessIdentity" | "frontendProcessIdentity"
   >,
 ) {
   updateManifest(manifestPath, (manifest) => {
@@ -120,6 +140,8 @@ export function recordNestedRuntimeProgress(
     migrationRunId?: string;
     apiPid?: number;
     frontendPid?: number;
+    apiProcessIdentity?: NestedRuntimeProcessIdentity;
+    frontendProcessIdentity?: NestedRuntimeProcessIdentity;
     ready?: boolean;
   },
 ) {
@@ -134,6 +156,18 @@ export function recordNestedRuntimeProgress(
         throw new Error(`Nested ${label} PID must be a positive integer.`);
       }
     }
+    for (const [label, identity, pid] of [
+      ["api", progress.apiProcessIdentity, progress.apiPid],
+      ["frontend", progress.frontendProcessIdentity, progress.frontendPid],
+    ] as const) {
+      if (identity !== undefined && (
+        identity.pid !== pid ||
+        !Number.isSafeInteger(identity.port) || identity.port <= 0 ||
+        !identity.startToken || !/^[a-f0-9]{64}$/u.test(identity.commandSha256)
+      )) {
+        throw new Error(`Nested ${label} process identity is invalid or does not match its PID.`);
+      }
+    }
     if (progress.migrationRunId !== undefined) {
       if (child.migrationRunId && child.migrationRunId !== progress.migrationRunId) {
         throw new Error(`Nested runtime ${childId} migration identity cannot change.`);
@@ -145,15 +179,20 @@ export function recordNestedRuntimeProgress(
         throw new Error(`Nested runtime ${childId} API PID cannot change.`);
       }
       child.apiPid = progress.apiPid;
+      if (progress.apiProcessIdentity) child.apiProcessIdentity = progress.apiProcessIdentity;
     }
     if (progress.frontendPid !== undefined) {
       if (child.frontendPid && child.frontendPid !== progress.frontendPid) {
         throw new Error(`Nested runtime ${childId} frontend PID cannot change.`);
       }
       child.frontendPid = progress.frontendPid;
+      if (progress.frontendProcessIdentity) child.frontendProcessIdentity = progress.frontendProcessIdentity;
     }
     if (progress.ready) {
-      if (!child.migrationRunId || !child.apiPid || !child.frontendPid) {
+      if (
+        !child.migrationRunId || !child.apiPid || !child.frontendPid ||
+        !child.apiProcessIdentity || !child.frontendProcessIdentity
+      ) {
         throw new Error(`Nested runtime ${childId} cannot become ready before all owned resources are recorded.`);
       }
       child.state = "running";

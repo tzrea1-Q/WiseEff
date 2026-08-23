@@ -51,6 +51,11 @@ import {
   withOwnerAwarePostgres,
   type OwnerAwarePostgresDeadline,
 } from "./owner-aware-postgres";
+import {
+  readProcessStartIdentity,
+  sameProcessStartIdentity,
+  type ProcessStartIdentity,
+} from "./process-start-identity";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -1037,11 +1042,14 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
   options: StopOwnedProcessGroupOptions & {
     signal?: AbortSignal;
     stopProcessGroup?: (pid: number, options?: StopOwnedProcessGroupOptions) => Promise<void>;
+    verifyProcessIdentity?: (pid: number, expected: ProcessStartIdentity) => boolean | Promise<boolean>;
   } = {},
 ) {
   const manifest = readNestedRuntimeManifest(manifestPath);
   const errors: Error[] = [];
   const stopProcessGroup = options.stopProcessGroup ?? stopOwnedProcessGroup;
+  const verifyProcessIdentity = options.verifyProcessIdentity ?? ((pid, expected) =>
+    sameProcessStartIdentity(expected, readProcessStartIdentity(pid)));
   const safeRetentionReason = safeCleanupReason(retentionReason);
   for (const child of manifest.children.filter((entry) =>
     entry.state === "provisioning" || entry.state === "running" || entry.state === "cleanup-failed"
@@ -1052,7 +1060,10 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
       database: child.cleanup?.database ?? { status: "retained" as const, reason: safeRetentionReason },
       objectStore: child.cleanup?.objectStore ?? { status: "retained" as const, reason: safeRetentionReason },
     };
-    for (const [label, pid] of [["apiProcess", child.apiPid], ["frontendProcess", child.frontendPid]] as const) {
+    for (const [label, pid, identity] of [
+      ["apiProcess", child.apiPid, child.apiProcessIdentity],
+      ["frontendProcess", child.frontendPid, child.frontendProcessIdentity],
+    ] as const) {
       if (child.cleanup?.[label].status === "stopped") {
         cleanup[label] = { status: "stopped" };
         continue;
@@ -1062,6 +1073,9 @@ export async function finalizeRunningNestedRuntimesAfterFailure(
         continue;
       }
       try {
+        if (!identity || identity.pid !== pid || !(await verifyProcessIdentity(pid, identity))) {
+          throw new Error(`Nested ${label} process identity is missing or no longer matches PID ${pid}; refusing signal.`);
+        }
         await settleBeforeAbort(stopProcessGroup(pid, options), options.signal);
         cleanup[label] = { status: "stopped" };
       } catch (error) {

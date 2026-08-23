@@ -32,6 +32,20 @@ import {
   assertNestedRuntimesCleanedForSuccess,
   finalizeRunningNestedRuntimesAfterFailure,
 } from "./owned-local-acceptance-runtime";
+import { readProcessStartIdentity } from "./process-start-identity";
+
+const fakeProcessIdentity = (pid: number, port: number) => ({
+  pid,
+  port,
+  startToken: `test-start:${pid}`,
+  commandSha256: String(pid).padStart(64, "0"),
+});
+
+function realProcessIdentity(pid: number, port: number) {
+  const identity = readProcessStartIdentity(pid);
+  if (!identity) throw new Error(`Test process ${pid} identity is unavailable.`);
+  return { pid, port, ...identity };
+}
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -142,6 +156,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
       frontendPid: 222,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
     });
     recordNestedRuntimeFinish(manifestPath, "wiseeff_acceptance_disposable_child", "cleaned", {
       apiProcess: { status: "stopped" },
@@ -227,6 +243,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: api.pid!,
       frontendPid: frontend.pid!,
+      apiProcessIdentity: realProcessIdentity(api.pid!, 19_100),
+      frontendProcessIdentity: realProcessIdentity(frontend.pid!, 5_190),
     });
 
     await finalizeRunningNestedRuntimesAfterFailure(manifestPath, "Gate0 browser worker crashed.", {
@@ -245,6 +263,57 @@ describe("Gate0 nested disposable runtime contract", () => {
         objectStore: { status: "retained", reason: "Gate0 browser worker crashed." },
       },
     });
+  });
+
+  it("refuses to signal a live reused PID when its persisted process-start identity does not match", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-pid-reuse-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-owned",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    const current = realProcessIdentity(child.pid!, 19_100);
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: "wiseeff_acceptance_disposable_reused_pid",
+      databaseName: "wiseeff_acceptance_disposable_reused_pid",
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: path.join(runRoot, "object-reused"),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_reused_pid", {
+      apiPid: child.pid!,
+      apiProcessIdentity: { ...current, startToken: "prior-process-incarnation" },
+    });
+    const signaled: number[] = [];
+
+    await expect(finalizeRunningNestedRuntimesAfterFailure(
+      manifestPath,
+      "Gate0 worker crashed.",
+      { stopProcessGroup: async (pid) => { signaled.push(pid); } },
+    )).rejects.toThrow(/finalizations did not settle/i);
+
+    expect(signaled).toEqual([]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "cleanup-failed",
+      cleanup: {
+        apiProcess: { status: "failed", reason: expect.stringMatching(/identity.*refusing signal/i) },
+        frontendProcess: { status: "not-started" },
+        database: { status: "retained" },
+        objectStore: { status: "retained" },
+      },
+    });
+
+    child.kill("SIGTERM");
+    await new Promise((resolve) => child.once("close", resolve));
   });
 
   it("takes over a partially provisioned child as soon as its first detached PID is known", async () => {
@@ -273,6 +342,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     recordNestedRuntimeProgress(manifestPath, "wiseeff_acceptance_disposable_partial", {
       migrationRunId: "migration-partial",
       apiPid: api.pid!,
+      apiProcessIdentity: realProcessIdentity(api.pid!, 19_100),
     });
 
     expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
@@ -316,6 +386,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
       frontendPid: 222,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
     });
 
     expect(() => assertNestedRuntimesCleanedForSuccess(manifestPath)).toThrow(/not clean.*running/i);
@@ -345,6 +417,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
       frontendPid: 222,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
     });
 
     await expect(finalizeRunningNestedRuntimesAfterFailure(
@@ -354,6 +428,7 @@ describe("Gate0 nested disposable runtime contract", () => {
         stopProcessGroup: async (pid) => {
           if (pid === 111) throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
         },
+        verifyProcessIdentity: async () => true,
       },
     )).rejects.toThrow(/nested runtime finalizations did not settle/i);
     expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
@@ -368,7 +443,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     await finalizeRunningNestedRuntimesAfterFailure(
       manifestPath,
       "Gate0 owner timeout.",
-      { stopProcessGroup: async () => undefined },
+      { stopProcessGroup: async () => undefined, verifyProcessIdentity: async () => true },
     );
     expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
       state: "failed-retained",
@@ -396,6 +471,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
       frontendPid: 222,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
     });
     recordNestedRuntimeFinish(manifestPath, "wiseeff_acceptance_disposable_retry", "cleanup-failed", {
       apiProcess: { status: "failed", reason: "transient stop failure" },
@@ -407,6 +484,7 @@ describe("Gate0 nested disposable runtime contract", () => {
 
     await finalizeRunningNestedRuntimesAfterFailure(manifestPath, "Gate0 failure evidence retained.", {
       stopProcessGroup: async (pid) => { retried.push(pid); },
+      verifyProcessIdentity: async () => true,
     });
 
     expect(retried).toEqual([111]);
@@ -438,6 +516,8 @@ describe("Gate0 nested disposable runtime contract", () => {
       frontendUrl: "http://127.0.0.1:5190",
       apiPid: 111,
       frontendPid: 222,
+      apiProcessIdentity: fakeProcessIdentity(111, 19_100),
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
     });
     recordNestedRuntimeFinish(manifestPath, "wiseeff_acceptance_disposable_partial_cleanup", "cleanup-failed", {
       apiProcess: { status: "stopped" },
@@ -449,7 +529,7 @@ describe("Gate0 nested disposable runtime contract", () => {
     await expect(finalizeRunningNestedRuntimesAfterFailure(
       manifestPath,
       "Gate0 failure evidence retained.",
-      { stopProcessGroup: async () => undefined },
+      { stopProcessGroup: async () => undefined, verifyProcessIdentity: async () => true },
     )).rejects.toThrow(/nested runtime finalizations did not settle/i);
 
     expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
