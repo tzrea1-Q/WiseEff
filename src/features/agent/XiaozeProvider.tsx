@@ -100,16 +100,13 @@ export function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
   );
 }
 
-export function XiaozeProvider({
+type EnabledXiaozeProviderProps = Pick<XiaozeProviderProps, "children" | "agentUrl" | "enableInspector">;
+
+function EnabledXiaozeProvider({
   children,
   agentUrl,
-  enabled = true,
   enableInspector = false
-}: XiaozeProviderProps) {
-  if (!enabled) {
-    return children;
-  }
-
+}: EnabledXiaozeProviderProps) {
   const xiaozeAgent = useMemo(() => createXiaozeHttpAgent({ agentUrl }), [agentUrl]);
 
   return (
@@ -137,5 +134,17 @@ export function XiaozeProvider({
         </XiaozeThreadProvider>
       </CopilotKit>
     </XiaozePromptDebugProvider>
+  );
+}
+
+export function XiaozeProvider({ enabled = true, children, agentUrl, enableInspector = false }: XiaozeProviderProps) {
+  if (!enabled) {
+    return children;
+  }
+
+  return (
+    <EnabledXiaozeProvider agentUrl={agentUrl} enableInspector={enableInspector}>
+      {children}
+    </EnabledXiaozeProvider>
   );
 }
