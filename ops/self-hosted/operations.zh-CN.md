@@ -246,6 +246,14 @@ chmod 600 .build-network.env
 | `web` | 构建后的前端预览 | 容器健康和页面响应 |
 | `proxy` | Caddy 公网 HTTP/TLS 入口 | 端口、证书/路由日志、上游连通性 |
 
+### 升级就绪语义
+
+升级控制器不会采用一个通用的 `running` 规则。PostgreSQL 和 Redis 必须是 Docker `healthy`；MinIO 的 `running` 只表示进程存活；`minio-init` 必须 `exited` 且退出码为 `0`。由于 Compose 文件有意没有 MinIO healthcheck，initializer 成功执行 `mc alias set` 并创建 bucket 才是 MinIO 就绪的权威证明。
+
+部分升级失败后，`old-stack-restored` 表示旧 checkout/image set 已重建，且数据平面、queue resume、API live/ready、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连、旧应用 image identity、proxy/public 健康等恢复门禁全部通过。image identity 同时包含记录的 image 引用和不可变的 Docker image ID。`recovery-required` 表示至少一个门禁失败；在按 journal 执行 `resume` 或显式整点回滚前，proxy 保持停止、queue 保持暂停。禁止手工改 journal 或自行写入 `next_action=none`。
+
+使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified` 和 `next_action`。`failure_summary` 有长度限制并脱敏。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
+
 常用命令：
 
 ```bash

@@ -246,6 +246,14 @@ Bring the same containers back with `start`. Prefer `stop`/`start` over `down`/`
 | `web` | Built frontend preview | container health and page response |
 | `proxy` | Caddy public HTTP/TLS edge | ports, certificate/routing logs, upstream reachability |
 
+### Upgrade readiness semantics
+
+The upgrade controller does not use one generic `running` rule. PostgreSQL and Redis must be Docker `healthy`; MinIO `running` is only process liveness; and `minio-init` must be `exited` with code `0`. The initializer's successful `mc alias set` and bucket creation is the authoritative MinIO readiness proof because the Compose file intentionally has no MinIO healthcheck.
+
+After a partial upgrade, `old-stack-restored` means the previous checkout/image set was recreated and all recovery gates passed: data plane, queue resume, API live/ready, worker `127.0.0.1:8788/health/live` plus Docker health, web direct access, previous app image identity, and proxy/public health. Image identity includes both the recorded image reference and immutable Docker image ID. `recovery-required` means at least one gate failed; proxy traffic stays stopped and the queue stays paused until the journal's `resume` or explicit whole-state rollback action is completed. Never change the journal by hand or set `next_action=none` yourself.
+
+For an actionable diagnosis, read `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, and `next_action` from `./scripts/upgrade.sh status --run-id <run-id> --json`. `failure_summary` is bounded and redacted. Public probes explicitly use `curl --noproxy '*'`; a Vite 403 caused by `Host: web:5173` is a Host allowlist result, so use loopback or the configured allowed hostname when checking TCP reachability.
+
 Useful commands:
 
 ```bash

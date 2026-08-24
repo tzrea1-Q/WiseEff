@@ -63,6 +63,19 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 
 这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要受管代理/镜像路径，除非另行打包。其他服务镜像拉取仍属于 Docker daemon 网络边界。控制器不会削弱宿主机/运行时 TLS 或包完整性/签名校验，也不会删除镜像或清理 Docker 状态；只有显式授权的构建期策略可以跳过 endpoint 证书校验。
 
+## 数据平面就绪与恢复验证
+
+`apply` 重建 `postgres`、`redis`、`minio` 和 `minio-init` 后，控制器按服务分别执行就绪门禁：
+
+- PostgreSQL 只有 Docker 报告 `healthy` 才算就绪。
+- Redis 只有 Docker 报告 `healthy` 才算就绪。
+- MinIO 的 `running` 只证明进程存活。只有 `minio-init` 退出码为 `0` 后，MinIO 才算就绪；该 initializer 成功执行 `mc alias set` 并创建 `wiseeff`/`wiseeff-restore` bucket，是 endpoint、凭据和 bucket 可用的权威证明。
+- MinIO 主进程异常退出会立即失败。`minio-init` 非零退出或超时会失败；控制器不会采用“所有 running 容器都算健康”的通用放宽方案。
+
+写入 `old-stack-restored` 前，恢复流程会重建旧栈并验证数据平面、queue resume、API `/health/live` 与 `/health/ready`、worker `http://127.0.0.1:8788/health/live` 及 Docker health、web 直连、旧 API/worker/web image identity，以及 proxy/public 健康入口。镜像身份同时比较记录的 image 引用和不可变的 Docker image ID。任一门禁失败都会写入 `recovery-required`，保持 proxy 停止和 queue 暂停，并且绝不写 `next_action=none`。
+
+通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。公网探测使用 `curl --noproxy '*'`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
+
 ## 一次性宿主机准备
 
 首次升级前，先把曾由 root 初始化或操作过的宿主机规范化：
@@ -93,6 +106,8 @@ cd ops/self-hosted
 检查当前与目标 SHA、变化的 migration、Compose project、volume identity、备份目录和空间门禁。首次接入必须在非客户主机完成一次带恢复点的演练。
 
 旧控制器无法执行只存在于目标 commit 中的新行为。如果部署机当前控制器早于“自动准备基础镜像”版本，并且已经卡在 Docker metadata 解析，可按[自托管基础镜像](images/README.zh-CN.md)中的手工 `docker load`/`docker tag` fallback 做一次接入。安装本版本后发起的后续升级都会走集成流程。
+
+如果部署机仍 checkout 在旧控制器提交上，必须先 fetch 并切换到包含本次就绪/恢复修复的 release 或 commit，再执行 `plan` 和 `apply`；旧控制器无法解释或执行新的数据平面与恢复门禁。
 
 ## 日常升级
 

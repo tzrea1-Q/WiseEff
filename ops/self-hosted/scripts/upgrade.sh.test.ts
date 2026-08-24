@@ -14,6 +14,61 @@ function runUpgrade(args: string[], env: NodeJS.ProcessEnv = {}) {
   });
 }
 
+function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
+  return spawnSync("bash", ["-c", `source ops/self-hosted/scripts/upgrade-lib.sh\n${command}`, "test", ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env }
+  });
+}
+
+function runDataPlaneFixture(
+  statuses: {
+    postgresHealth?: string;
+    redisHealth?: string;
+    minioState?: string;
+    minioInitState?: string;
+    minioInitExitCode?: string;
+  },
+  attempts = 1
+) {
+  const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-data-plane-"));
+  const script = `
+    upgrade_run_dir="$1"
+    upgrade_run_id=data-plane-test
+    upgrade_health_attempts=${attempts}
+    upgrade_health_interval_seconds=0
+    wiseeff_upgrade_state_write phase restarting-data
+    wiseeff_upgrade_compose() {
+      if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; fi
+    }
+    wiseeff_upgrade_docker() {
+      [ "$1" = "inspect" ] || return 1
+      template="$3"
+      container="$4"
+      case "$container:$template" in
+        postgres-container:*Health*) printf '%s\\n' '${statuses.postgresHealth ?? "healthy"}' ;;
+        redis-container:*Health*) printf '%s\\n' '${statuses.redisHealth ?? "healthy"}' ;;
+        minio-container:*State.Status*) printf 'call\\n' >> "$upgrade_run_dir/minio-status-calls"; printf '%s\\n' '${statuses.minioState ?? "running"}' ;;
+        minio-init-container:*State.Status*) printf '%s\\n' '${statuses.minioInitState ?? "exited"}' ;;
+        minio-init-container:*ExitCode*) printf '%s\\n' '${statuses.minioInitExitCode ?? "0"}' ;;
+        *) return 1 ;;
+      esac
+    }
+    if wiseeff_upgrade_wait_data_plane_ready; then
+      exit 0
+    else
+      result=$?
+      printf 'minio-status-calls=%s\\n' "$(wc -l < "$upgrade_run_dir/minio-status-calls" 2>/dev/null | tr -d ' ' || printf '0')"
+      exit "$result"
+    fi
+  `;
+  const result = runLibrary(script, [runDir], {
+    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: String(attempts),
+    WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS: "0"
+  });
+  return { result, runDir };
+}
+
 describe("upgrade.sh public interface", () => {
   it("documents the small operator interface without touching the runtime", () => {
     const result = runUpgrade(["--help"]);
@@ -232,6 +287,253 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/public-health-passed[\s\S]*already running/);
     expect(result.stdout).not.toContain("must-not-upgrade");
+  });
+
+  it("does not treat a running MinIO process as complete data-plane readiness", () => {
+    const { result, runDir } = runDataPlaneFixture({ minioState: "running", minioInitState: "running" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("minio-init");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio-init\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-timeout\n");
+  });
+
+  it("accepts a running MinIO process only after minio-init exits successfully", () => {
+    const { result } = runDataPlaneFixture({ minioState: "running", minioInitState: "exited", minioInitExitCode: "0" });
+
+    expect(result.status).toBe(0);
+  });
+
+  it("reports a non-zero minio-init exit as the failing service", () => {
+    const { result, runDir } = runDataPlaneFixture({ minioState: "running", minioInitState: "exited", minioInitExitCode: "17" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("minio-init");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
+  });
+
+  it("times out when minio-init stays running", () => {
+    const { result, runDir } = runDataPlaneFixture({ minioState: "running", minioInitState: "running" }, 2);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-timeout\n");
+  });
+
+  it.each([
+    ["postgres", { postgresHealth: "starting" }],
+    ["redis", { redisHealth: "starting" }]
+  ] as const)("requires Docker healthy for %s, not merely running", (_service, statuses) => {
+    const { result, runDir } = runDataPlaneFixture(statuses);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${_service}\n`);
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe(`${_service}-not-healthy\n`);
+  });
+
+  it("fails MinIO immediately when its process exits unexpectedly", () => {
+    const { result, runDir } = runDataPlaneFixture({ minioState: "exited", minioInitState: "running" }, 5);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("minio");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-exited\n");
+    expect(result.stdout).toContain("minio-status-calls=1");
+  });
+
+  it("records a bounded, stable data-plane failure diagnostic", () => {
+    const { result, runDir } = runDataPlaneFixture({ postgresHealth: "starting" });
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("restarting-data\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("postgres\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("postgres-not-healthy\n");
+    expect(readFileSync(join(runDir, "failure_summary"), "utf8").trim().length).toBeLessThanOrEqual(240);
+  });
+
+  it("marks old-stack-restored only after every restore verification gate passes", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-restore-success-"));
+    writeFileSync(join(runDir, "previous_sha"), "previous-sha\n");
+    for (const service of ["api", "worker", "web"]) {
+      writeFileSync(join(runDir, `previous_image_tag_${service}`), `wiseeff-app:previous-${service}\n`);
+    }
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=restore-success
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_compose_for_image() { return 0; }
+      wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_verify_previous_app_images() { return 0; }
+      wiseeff_upgrade_public_probe() { return 0; }
+      wiseeff_upgrade_restore_old_stack_after_stop
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "phase"), "utf8")).toBe("old-stack-restored\n");
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("old-stack-restored\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toBe("none\n");
+    expect(readFileSync(join(runDir, "recovery_started"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "recovery_verified"), "utf8")).toBe("true\n");
+  });
+
+  it.each(["api", "worker", "web", "proxy", "queue"])(
+    "records recovery-required when restored %s verification fails",
+    (failureService) => {
+      const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-restore-${failureService}-`));
+      writeFileSync(join(runDir, "previous_sha"), "previous-sha\n");
+      for (const service of ["api", "worker", "web"]) {
+        writeFileSync(join(runDir, `previous_image_tag_${service}`), `wiseeff-app:previous-${service}\n`);
+      }
+
+      const result = runLibrary(`
+        upgrade_run_dir="$1"
+        upgrade_run_id=restore-failure
+        upgrade_target_sha=target-sha
+        failure_service="$2"
+        wiseeff_upgrade_git() { return 0; }
+        wiseeff_upgrade_compose() { return 0; }
+        wiseeff_upgrade_compose_for_image() {
+          if [ "$failure_service" = "proxy" ] && [ "\${!#}" = "proxy" ]; then return 91; fi
+          return 0
+        }
+        wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+        wiseeff_upgrade_wait_data_plane_ready() { return 0; }
+        wiseeff_upgrade_queue_command_for_image() {
+          if [ "$failure_service" = "queue" ] && [ "$1" = "resume" ]; then return 92; fi
+          return 0
+        }
+        wiseeff_upgrade_probe_api() {
+          [ "$failure_service" != "api" ]
+        }
+        wiseeff_upgrade_probe_worker() {
+          [ "$failure_service" != "worker" ]
+        }
+        wiseeff_upgrade_probe_web() {
+          [ "$failure_service" != "web" ]
+        }
+        wiseeff_upgrade_verify_previous_app_images() { return 0; }
+        wiseeff_upgrade_public_probe() { return 0; }
+        if wiseeff_upgrade_restore_old_stack_after_stop; then exit 0; else exit $?; fi
+      `, [runDir, failureService]);
+
+      expect(result.status).toBe(70);
+      expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+      expect(readFileSync(join(runDir, "next_action"), "utf8")).not.toBe("none\n");
+      expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${failureService}\n`);
+      expect(result.stderr).toContain(failureService);
+    }
+  );
+
+  it("requires the recorded Docker image ID in addition to the previous image tag", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-image-identity-"));
+    for (const service of ["api", "worker", "web"]) {
+      writeFileSync(join(runDir, `previous_image_tag_${service}`), `wiseeff-app:previous-${service}\n`);
+      writeFileSync(join(runDir, `previous_image_id_${service}`), `sha256:previous-${service}\n`);
+    }
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; fi
+      }
+      wiseeff_upgrade_docker() {
+        case "$3" in
+          *Config.Image*) printf 'wiseeff-app:previous-%s\\n' "\${4%-container}" ;;
+          *Image*)
+            if [ "$4" = "api-container" ]; then printf 'sha256:retagged\\n'; else printf 'sha256:previous-%s\\n' "\${4%-container}"; fi
+            ;;
+          *) return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_verify_previous_app_images; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("api\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("restore-api-image-mismatch\n");
+  });
+
+  it("uses the worker liveness endpoint during restore verification", () => {
+    const trace = join(mkdtempSync(join(tmpdir(), "wiseeff-upgrade-worker-probe-")), "trace.log");
+    const result = runLibrary(`
+      trace="$1"
+      upgrade_health_attempts=1
+      upgrade_health_interval_seconds=0
+      wiseeff_upgrade_compose() {
+        printf '%s\\n' "$*" >> "$trace"
+        if [ "$1" = "ps" ]; then printf 'worker-container\\n'; fi
+      }
+      wiseeff_upgrade_docker() {
+        case "$3" in
+          *State.Health*) printf 'healthy\\n' ;;
+          *) return 1 ;;
+        esac
+      }
+      wiseeff_upgrade_probe_worker
+      cat "$trace"
+    `, [trace]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("8788");
+    expect(result.stdout).toContain("health/live");
+  });
+
+  it("bypasses the host proxy for public restore probes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-public-probe-"));
+    const envFile = join(directory, "env");
+    const curlLog = join(directory, "curl.log");
+    const result = runLibrary(`
+      upgrade_env_file="$1"
+      printf 'WISEEFF_PUBLIC_URL=http://127.0.0.1\\n' > "$upgrade_env_file"
+      WISEEFF_TEST_CURL_LOG="$2"
+      curl() { printf '%s\\n' "$*" >> "$WISEEFF_TEST_CURL_LOG"; }
+      wiseeff_upgrade_public_probe
+    `, [envFile, curlLog]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(curlLog, "utf8")).toContain("--noproxy *");
+  });
+
+  it("redacts credentials from failure summaries and events", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-redaction-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_upgrade_phase=restarting-data
+      wiseeff_upgrade_record_failure restarting-data minio-init minio-init-failed \
+        'minio-init failed password=mock-password HTTPS_PROXY=http://operator:proxy-password@proxy.example.test:8080'
+      cat "$upgrade_run_dir/failure_summary"
+      cat "$upgrade_run_dir/events.log"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("mock-password");
+    expect(result.stdout).not.toContain("proxy-password");
+  });
+
+  it("records when recovery cannot prove that the queue was paused", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-recovery-isolation-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=recovery-isolation
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 97; }
+      wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
+      printf '%s\\n' "$(cat "$upgrade_run_dir/recovery_queue_paused")"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("queue pause failed");
+    expect(result.stdout).toContain("false");
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).not.toBe("none\n");
   });
 
   it("prepares the bundled base image before the candidate build", () => {
@@ -1010,6 +1312,12 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "build_transport_fingerprint"), `${"a".repeat(64)}\n`);
     writeFileSync(join(runDir, "completed_with_insecure_build_transport"), "true\n");
     writeFileSync(join(runDir, "runtime_proxy_status"), "false\n");
+    writeFileSync(join(runDir, "failed_phase"), "old-stack-restore\n");
+    writeFileSync(join(runDir, "failure_service"), "worker\n");
+    writeFileSync(join(runDir, "failure_code"), "restore-worker-health\n");
+    writeFileSync(join(runDir, "failure_summary"), "The restored worker liveness or Docker health probe failed.\n");
+    writeFileSync(join(runDir, "recovery_started"), "true\n");
+    writeFileSync(join(runDir, "recovery_verified"), "false\n");
     writeFileSync(join(runDir, "next_action"), "none\n");
     writeFileSync(join(runDir, "status"), "run_id=run-1\nphase=completed\noutcome=completed\n");
 
@@ -1038,7 +1346,13 @@ describe("upgrade.sh public interface", () => {
         transportFingerprint: "a".repeat(64),
         runtimeProxy: false
       },
-      completedWithInsecureBuildTransport: true
+      completedWithInsecureBuildTransport: true,
+      failedPhase: "old-stack-restore",
+      failureService: "worker",
+      failureCode: "restore-worker-health",
+      failureSummary: "The restored worker liveness or Docker health probe failed.",
+      recoveryStarted: "true",
+      recoveryVerified: "false"
     });
     expect(result.stdout).not.toContain("POSTGRES_PASSWORD");
   });
