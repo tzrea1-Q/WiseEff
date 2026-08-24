@@ -2,7 +2,7 @@
 
 > English: [English](../../design-docs/ui-design-system.md)
 
-状态：**Current** · 日期：2026-08-12
+状态：**Current** · 日期：2026-08-24
 
 这是 WiseEff 全部产品界面的可执行视觉与交互标准。它把 [`docs/DESIGN.md`](../../DESIGN.md) 的原则落成可强制执行的规则：设计令牌、组件契约、交互状态、动效、布局与产品文案语言。强制执行本规范的完成门禁是 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md)。存量代码向本标准的迁移由 [`docs/zh-CN/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`](../exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md) 交付完成;剩余存量以技术债 TD-111–TD-115 追踪。
 
@@ -102,6 +102,14 @@
 - 页面内容内边距:桌面 24px,移动 16px。
 - 卡片内边距:16–20px。分区间距:24px。工具栏控件间距:8px。
 - 偏离 4px 栅格的值（6px、10px、14px 间距等）只做迁移,不再新增。
+
+### 内容宽度
+
+| 令牌 | 值 | 用途 |
+| --- | --- | --- |
+| `--xiaoze-welcome-copy-width` | `270px` | 与字体无关的小泽欢迎页副标题最大宽度；在不同 CJK 回退字体度量下保持已提交的 Linux 视觉基线稳定 |
+
+内容宽度令牌描述有意设置的换行约束，不属于通用容器几何。小泽欢迎文案宽度必须保持令牌化的固定像素值：字符相对单位 `ch` 会使中文换行随实际生效的回退字体变化。
 
 ### 圆角
 

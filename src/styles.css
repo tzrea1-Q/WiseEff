@@ -195,6 +195,7 @@
   --xiaoze-shadow-soft: 0 10px 24px rgba(0, 61, 155, 0.08);
   --xiaoze-radius-md: 12px;
   --xiaoze-radius-sm: 6px;
+  --xiaoze-welcome-copy-width: 270px;
 
   /* ── shadcn keys (alias the semantic tokens; never a second palette) ── */
   --background: var(--bg);
@@ -12607,7 +12608,7 @@ body.xiaoze-popup-resize-active {
 
 .xiaoze-welcome__subtitle {
   margin: 0 auto;
-  max-width: 30ch;
+  max-width: var(--xiaoze-welcome-copy-width);
   color: #475569;
   font-size: var(--text-base);
   line-height: 1.65;

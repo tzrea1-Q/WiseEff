@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/design-docs/ui-design-system.md)
 
-Status: **Current** · Date: 2026-08-12
+Status: **Current** · Date: 2026-08-24
 
 This is the operational visual and interaction standard for every WiseEff product surface. It turns the principles in [`docs/DESIGN.md`](../DESIGN.md) into enforceable rules: tokens, component contracts, interaction states, motion, layout, and content language. The completion gate that enforces this document is [`docs/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md). The migration of existing code toward this standard was delivered by [`docs/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`](../exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md); residual stock is tracked as TD-111–TD-115 in the tech-debt tracker.
 
@@ -102,6 +102,14 @@ No other `font-size` values. `letter-spacing` is limited to `0` (body) and `0.04
 - Page content padding: 24px (desktop), 16px (mobile).
 - Card padding: 16–20px. Section gap: 24px. Control gap in toolbars: 8px.
 - Values off the 4px grid (e.g. 6px, 10px, 14px gaps) are migrated, not multiplied.
+
+### Content Widths
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--xiaoze-welcome-copy-width` | `270px` | Font-independent maximum width for the Xiaoze welcome subtitle; keeps the committed Linux visual baseline stable across CJK fallback metrics |
+
+Content-width tokens describe deliberate wrapping constraints, not general container geometry. The Xiaoze welcome-copy width must remain tokenized and fixed in pixels: character-relative `ch` units make the Chinese line breaks depend on the active fallback font.
 
 ### Radius
 
