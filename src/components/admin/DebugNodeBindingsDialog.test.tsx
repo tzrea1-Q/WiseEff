@@ -79,6 +79,32 @@ describe("DebugNodeBindingsDialog", () => {
     expect(onSaveBinding).toHaveBeenCalledWith("hdc");
   });
 
+  it("allows changing the HDC access mode from the modal", async () => {
+    const onBindingChange = vi.fn();
+    const user = (await import("@testing-library/user-event")).default.setup();
+
+    render(
+      <DebugNodeBindingsDialog
+        nodeName="快充电流限制"
+        draft={buildBindings()}
+        nodeId="node-1"
+        isApiMode
+        canEdit
+        loading={false}
+        onBindingChange={onBindingChange}
+        onSave={vi.fn()}
+        onSaveBinding={vi.fn()}
+        onArchiveBinding={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "HDC 访问模式" }));
+    await user.click(await screen.findByRole("option", { name: "WO · 只写" }));
+
+    expect(onBindingChange).toHaveBeenCalledWith("hdc", { accessMode: "WO" });
+  });
+
   it("disables protocol save when node path is invalid", () => {
     render(
       <DebugNodeBindingsDialog

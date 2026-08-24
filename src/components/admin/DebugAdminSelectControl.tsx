@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type SelectOption<Value extends string> = {
   value: Value;
@@ -13,6 +14,7 @@ type DebugAdminSelectControlProps<Value extends string> = {
   options: ReadonlyArray<SelectOption<Value>>;
   ariaLabel?: string;
   disabled?: boolean;
+  withinModal?: boolean;
 };
 
 export function DebugAdminSelectControl<Value extends string>({
@@ -20,14 +22,19 @@ export function DebugAdminSelectControl<Value extends string>({
   onValueChange,
   options,
   ariaLabel,
-  disabled = false
+  disabled = false,
+  withinModal = false
 }: DebugAdminSelectControlProps<Value>) {
   return (
     <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
       <SelectTrigger aria-label={ariaLabel} className="w-full">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent position="popper" sideOffset={4}>
+      <SelectContent
+        className={cn(withinModal && "debug-admin-select-content--modal")}
+        position="popper"
+        sideOffset={4}
+      >
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
