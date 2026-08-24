@@ -257,6 +257,150 @@ function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: bo
   return { result, runDir };
 }
 
+type AdvancedResumePhase = "queue-resumed" | "starting-proxy" | "validating-public";
+
+function runAdvancedResumeFixture(
+  phase: AdvancedResumePhase,
+  options: {
+    workerHealthy?: boolean;
+    proxyStopSucceeds?: boolean;
+    apiReady?: boolean;
+    webReady?: boolean;
+    finalWorkerHealthy?: boolean;
+  } = {}
+) {
+  const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-advanced-resume-${phase}-`));
+  writeFileSync(join(runDir, "outcome"), "running\n");
+  writeFileSync(join(runDir, "phase"), `${phase}\n`);
+  writeFileSync(join(runDir, "migration_started"), "true\n");
+  writeFileSync(join(runDir, "candidate_image_tag"), "wiseeff-app:candidate\n");
+  writeFileSync(join(runDir, "trace.log"), "");
+
+  const result = runLibrary(`
+    run_dir="$1"
+    phase="$2"
+    worker_healthy="$3"
+    proxy_stop_succeeds="$4"
+    api_ready="$5"
+    web_ready="$6"
+    final_worker_healthy="$7"
+    upgrade_run_dir="$run_dir"
+    upgrade_backup_dir="$run_dir/backup"
+    upgrade_run_id=advanced-resume
+    upgrade_target_sha=target-sha
+    upgrade_previous_sha=previous-sha
+    upgrade_env_file="$run_dir/env"
+    : > "$upgrade_env_file"
+    upgrade_json=false
+    upgrade_candidate_image_tag=wiseeff-app:candidate
+    wiseeff_upgrade_state_write phase "$phase"
+    wiseeff_upgrade_state_write outcome running
+    wiseeff_upgrade_state_write migration_started true
+
+    wiseeff_upgrade_reject_root_runtime() { return 0; }
+    wiseeff_upgrade_acquire_lock() { return 0; }
+    wiseeff_upgrade_release_lock() { :; }
+    wiseeff_upgrade_validate_env() { return 0; }
+    wiseeff_upgrade_write_status() { :; }
+    wiseeff_upgrade_status() { :; }
+    wiseeff_upgrade_load_run() {
+      upgrade_run_dir="$run_dir"
+      upgrade_previous_sha=previous-sha
+      upgrade_target_sha=target-sha
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+    }
+    wiseeff_upgrade_git() { :; }
+    wiseeff_upgrade_compose() {
+      case "$1" in
+        stop)
+          service="\${!#}"
+          printf '%s\n' "\${service}-stop" >> "$run_dir/trace.log"
+          [ "$service" != "proxy" ] || [ "$proxy_stop_succeeds" = "true" ]
+          ;;
+        *)
+          printf 'compose %s\n' "$*" >> "$run_dir/trace.log"
+          ;;
+      esac
+    }
+    wiseeff_upgrade_compose_for_image() {
+      printf '%s\n' "proxy-up" >> "$run_dir/trace.log"
+      return 0
+    }
+    wiseeff_upgrade_probe_api() {
+      printf 'api-probe %s\n' "$1" >> "$run_dir/trace.log"
+      [ "$1" != "/health/ready" ] || [ "$api_ready" = "true" ]
+    }
+    wiseeff_upgrade_probe_worker() {
+      printf 'worker-probe\n' >> "$run_dir/trace.log"
+      [ "$worker_healthy" = "true" ]
+    }
+    wiseeff_upgrade_probe_web() {
+      printf 'web-probe\n' >> "$run_dir/trace.log"
+      [ "$web_ready" = "true" ]
+    }
+    wiseeff_upgrade_public_probe() {
+      printf 'public-probe\n' >> "$run_dir/trace.log"
+      return 0
+    }
+    wiseeff_upgrade_verify_final_state() {
+      printf 'final-verification\n' >> "$run_dir/trace.log"
+      if [ "$final_worker_healthy" = "true" ]; then
+        return 0
+      fi
+      wiseeff_upgrade_record_failure validating-public worker candidate-worker-health \\
+        'The candidate worker liveness or Docker health probe failed during final verification.'
+      return 1
+    }
+    wiseeff_upgrade_queue_command_for_image() {
+      printf 'queue-image %s\n' "$*" >> "$run_dir/trace.log"
+      return 0
+    }
+    if wiseeff_upgrade_run_resume; then
+      status=0
+    else
+      status=$?
+    fi
+    cat "$run_dir/trace.log"
+    exit "$status"
+  `, [
+    runDir,
+    phase,
+    String(options.workerHealthy ?? true),
+    String(options.proxyStopSucceeds ?? true),
+    String(options.apiReady ?? true),
+    String(options.webReady ?? true),
+    String(options.finalWorkerHealthy ?? true)
+  ]);
+  return { result, runDir };
+}
+
+const diagnosticCanaries = [
+  { label: "url credentials", text: "GET https://url-user:url-password@example.test/path", secret: "url-password" },
+  { label: "authorization bearer", text: "Authorization: Bearer bearer-secret", secret: "bearer-secret" },
+  { label: "authorization basic", text: "Authorization: Basic basic-secret", secret: "basic-secret" },
+  { label: "proxy authorization", text: "Proxy-Authorization: Basic proxy-auth-secret", secret: "proxy-auth-secret" },
+  { label: "json password", text: '{"PaSsWoRd":"json-password-secret"}', secret: "json-password-secret" },
+  { label: "json pass", text: '{"PASS":"json-pass-secret"}', secret: "json-pass-secret" },
+  { label: "json secret", text: '{"secret":"json-secret-secret"}', secret: "json-secret-secret" },
+  { label: "json token", text: '{"ToKeN":"json-token-secret"}', secret: "json-token-secret" },
+  { label: "json authorization", text: '{"AUTHORIZATION":"json-authorization-secret"}', secret: "json-authorization-secret" },
+  { label: "json credential", text: '{"credential":"json-credential-secret"}', secret: "json-credential-secret" },
+  { label: "json access key", text: '{"access-key":"json-access-key-secret"}', secret: "json-access-key-secret" },
+  { label: "json api key", text: '{"api_key":"json-api-key-secret"}', secret: "json-api-key-secret" },
+  { label: "plain assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD=plain-password-secret", secret: "plain-password-secret" },
+  { label: "double quoted assignment", text: 'WISEEFF_BUILD_PROXY_PASSWORD="double-password-secret"', secret: "double-password-secret" },
+  { label: "single quoted assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD='single-password-secret'", secret: "single-password-secret" },
+  { label: "bearer assignment", text: "M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer assignment-bearer-secret", secret: "assignment-bearer-secret" },
+  { label: "basic assignment", text: "OBJECT_STORAGE_ACCESS_KEY_ID=Basic assignment-basic-secret", secret: "assignment-basic-secret" },
+  { label: "password equals flag", text: "--password=flag-equals-secret", secret: "flag-equals-secret" },
+  { label: "password spaced flag", text: "--password flag-spaced-secret", secret: "flag-spaced-secret" },
+  { label: "npm token", text: "NPM_TOKEN=npm-token-secret", secret: "npm-token-secret" },
+  { label: "node auth token", text: "NODE_AUTH_TOKEN=node-auth-token-secret", secret: "node-auth-token-secret" },
+  { label: "npm auth token", text: "_authToken=npm-auth-token-secret", secret: "npm-auth-token-secret" },
+  { label: "known object secret", text: "OBJECT_STORAGE_SECRET_ACCESS_KEY=object-secret-canary", secret: "object-secret-canary" },
+  { label: "known postgres secret", text: "POSTGRES_PASSWORD=postgres-secret-canary", secret: "postgres-secret-canary" }
+] as const;
+
 describe("upgrade.sh public interface", () => {
   it("documents the small operator interface without touching the runtime", () => {
     const result = runUpgrade(["--help"]);
@@ -966,6 +1110,127 @@ describe("upgrade.sh public interface", () => {
     expect(result.stderr).not.toContain("raw-queue-secret");
     expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain("raw-queue-secret");
     expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("queue\n");
+  });
+
+  it.each(["queue-resumed", "starting-proxy", "validating-public"] as const)(
+    "keeps %s resume isolated when the worker is unhealthy",
+    (phase) => {
+      const { result, runDir } = runAdvancedResumeFixture(phase, { workerHealthy: false });
+      const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+      expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+      expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+      expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+      expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-worker-health\n");
+      expect(trace.indexOf("proxy-stop")).toBeGreaterThanOrEqual(0);
+      expect(trace.indexOf("worker-probe")).toBeGreaterThan(trace.indexOf("proxy-stop"));
+      expect(trace).toContain("queue-image pause");
+      expect(trace).toContain("worker-stop");
+      expect(trace).not.toContain("proxy-up");
+      expect(trace).not.toContain("public-probe");
+      expect(readFileSync(join(runDir, "next_action"), "utf8")).not.toBe("none\n");
+    }
+  );
+
+  it.each(["queue-resumed", "starting-proxy", "validating-public"] as const)(
+    "rechecks candidate readiness before restoring traffic from %s",
+    (phase) => {
+      const { result, runDir } = runAdvancedResumeFixture(phase);
+      const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+      const events = ["proxy-stop", "api-probe /health/ready", "worker-probe", "web-probe", "proxy-up", "public-probe", "final-verification"];
+      const positions = events.map((event) => trace.indexOf(event));
+
+      expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(0);
+      expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("completed\n");
+      expect(readFileSync(join(runDir, "phase"), "utf8")).toBe("completed\n");
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    }
+  );
+
+  it.each(["starting-proxy", "validating-public"] as const)(
+    "isolates a possibly-running proxy before resuming %s",
+    (phase) => {
+      const { result, runDir } = runAdvancedResumeFixture(phase);
+      const trace = readFileSync(join(runDir, "trace.log"), "utf8").trim().split("\n");
+
+      expect(result.status, `${result.stderr}\n${result.stdout}\n${trace.join("\n")}`).toBe(0);
+      expect(trace[0]).toBe("proxy-stop");
+    }
+  );
+
+  it("blocks advanced resume when proxy isolation fails", () => {
+    const { result, runDir } = runAdvancedResumeFixture("starting-proxy", { proxyStopSucceeds: false });
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("proxy\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-proxy-isolation\n");
+    expect(readFileSync(join(runDir, "recovery_proxy_stopped"), "utf8")).toBe("false\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toMatch(/^Manually isolate proxy traffic/);
+    expect(trace).not.toContain("api-probe");
+    expect(trace).not.toContain("worker-probe");
+    expect(trace).not.toContain("proxy-up");
+    expect(trace).not.toContain("public-probe");
+  });
+
+  it.each(["queue-resumed", "starting-proxy", "validating-public"] as const)(
+    "blocks %s resume when API or web readiness fails before proxy/public",
+    (phase) => {
+      for (const failure of ["api", "web"] as const) {
+        const { result, runDir } = runAdvancedResumeFixture(phase, {
+        apiReady: failure !== "api",
+        webReady: failure !== "web"
+        });
+        const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+        expect(result.status, `${phase}/${failure}: ${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+        expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${failure}\n`);
+        expect(trace).not.toContain("proxy-up");
+        expect(trace).not.toContain("public-probe");
+      }
+    }
+  );
+
+  it("keeps the final worker drift gate after advanced resume restores public traffic", () => {
+    const { result, runDir } = runAdvancedResumeFixture("validating-public", { finalWorkerHealthy: false });
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-worker-health\n");
+    expect(trace).toContain("proxy-up");
+    expect(trace).toContain("public-probe");
+    expect(trace).toContain("final-verification");
+    expect(trace).not.toContain("completed");
+  });
+
+  it.each(diagnosticCanaries)("redacts $label from recovery diagnostics", ({ text, secret }) => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-redaction-corpus-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=redaction-corpus
+      WISEEFF_TEST_DIAGNOSTIC="$WISEEFF_TEST_DIAGNOSTIC"
+      wiseeff_upgrade_record_failure restarting-data minio-init minio-init-failed "$WISEEFF_TEST_DIAGNOSTIC"
+      recovery_action() {
+        printf '%s\\n' "$WISEEFF_TEST_DIAGNOSTIC"
+        return 91
+      }
+      wiseeff_upgrade_run_recovery_action recovery-corpus recovery_action || true
+      cat "$upgrade_run_dir/failure_summary"
+      cat "$upgrade_run_dir/recovery_failure_summary"
+      cat "$upgrade_run_dir/events.log"
+    `, [runDir], { WISEEFF_TEST_DIAGNOSTIC: text });
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(result.stdout).not.toContain(secret);
+    expect(result.stderr).not.toContain(secret);
+    expect(readFileSync(join(runDir, "failure_summary"), "utf8")).not.toContain(secret);
+    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain(secret);
+    expect(readFileSync(join(runDir, "events.log"), "utf8")).not.toContain(secret);
+    expect(result.stdout).toContain("minio-init-failed");
   });
 
   it("bypasses the host proxy for public restore probes", () => {

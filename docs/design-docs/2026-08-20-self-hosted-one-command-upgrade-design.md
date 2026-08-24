@@ -3,7 +3,7 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 Date: 2026-08-20
-Status: Implemented locally; non-customer target rehearsal remains required
+Status: PR #621 and its merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` are on `main`; the advanced-resume follow-up is implemented on the follow-up branch. Non-customer target rehearsal remains required.
 Scope: The source-checkout-based Docker Compose runtime under `ops/self-hosted/`
 
 The implementation is available at `ops/self-hosted/scripts/upgrade.sh`, with local script, configuration, and build gates passing. A real Ubuntu rehearsal is deployment evidence and is intentionally not implied by repository-local tests.
@@ -292,6 +292,8 @@ A partial backup is never considered a recovery point. On failure here, the cont
 The data-plane wait is one deep interface, `wiseeff_upgrade_wait_data_plane_ready`; callers do not encode service-specific state rules. It waits for PostgreSQL healthy, Redis healthy, MinIO process running, and `minio-init` exited with code `0`, in that order. MinIO running alone is not object-store readiness, and an exited MinIO process fails immediately. The successful initializer is the authoritative proof for the endpoint credentials and required buckets because the Compose MinIO service has no Docker healthcheck.
 
 Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` helper. It verifies the data plane, API live/ready, worker liveness plus Docker health on port `8788`, direct web access, and service-specific previous image identity before resuming the queue; it then recreates the proxy and runs public probes last, before writing `old-stack-restored`. Any failure records `failed_phase`, `failure_service`, a stable `failure_code`, a bounded redacted `failure_summary`, `recovery_started`, `recovery_verified`, and a non-`none` `next_action`. Recovery attempts to stop proxy traffic and pause queue/worker traffic; the isolation fields and `next_action` identify any action that still requires manual intervention.
+
+Advanced resume is a separate guarded sequence for `queue-resumed`, `starting-proxy`, and `validating-public`: it stops and isolates the candidate proxy first, then rechecks API `/health/ready`, worker `127.0.0.1:8788/health/live` plus Docker health, and direct web access. Until all three pass, candidate proxy-up and public probing are forbidden. A worker failure uses stable code `candidate-worker-health`; proxy isolation failure uses `candidate-proxy-isolation`, persists `recovery_proxy_stopped=false`, and places manual proxy isolation first in `next_action`. The final worker verification remains after public validation so health drift cannot be declared completed.
 
 No seed, bootstrap, setup renderer, or configuration rewrite runs in this phase.
 

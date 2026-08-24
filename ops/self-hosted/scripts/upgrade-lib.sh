@@ -1196,84 +1196,15 @@ wiseeff_upgrade_build_candidate() {
 }
 
 wiseeff_upgrade_sanitize_diagnostic_stream() {
-  sed \
-    -e 's#\(https\{0,1\}://\)[^/@[:space:]][^/@[:space:]]*@#\1[REDACTED]@#g' \
-    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\("[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Tt][Oo][Kk][Ee][Nn]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[Cc][Ll][Ii][Ee][Nn][Tt][_ -]*[Ss][Ee][Cc][Rr][Ee][Tt]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Pp][Aa][Ss][Ss][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Ss][Ee][Cc][Rr][Ee][Tt][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Tt][Oo][Kk][Ee][Nn][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("[^"]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
-    -e 's#\(_authToken[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(_password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(NPM_TOKEN[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(NODE_AUTH_TOKEN[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\("_authToken"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("password"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\("token"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
-    -e 's#\(authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(Authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' |
   sed -E \
-    -e 's#("[^"]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[^"]*"[[:space:]]*:[[:space:]]*")[^"]*#\1[REDACTED]#g' \
-    -e 's#(([[:alnum:]_]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[[:alnum:]_]*)[=:][[:space:]]*)[^,;[:space:]]*#\1[REDACTED]#g' \
-    -e 's#(--([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])([=]|[[:space:]]+))"[^"]*"#\1[REDACTED]#g' \
-    -e 's#(--([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])([=]|[[:space:]]+))[^,[:space:]]*#\1[REDACTED]#g'
+    -e 's#(https?://)[^/@[:space:]]+@#\1[REDACTED]@#g' \
+    -e 's#(([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]):[[:space:]]*)([Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss][Ii][Cc])[[:space:]]+[^,[:space:]]*#\1\3 [REDACTED]#g' \
+    -e 's#(([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]):[[:space:]]+)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#("[^"]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[^"]*"[:space:]*:[[:space:]]*")[^"]*#\1[REDACTED]#g' \
+    -e 's#(([[:alnum:]_]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[[:alnum:]_]*[=:][[:space:]]*))[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^,;[:space:]]*#\1[REDACTED]#g' \
+    -e 's#(([[:alnum:]_]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[[:alnum:]_]*[=:][[:space:]]*))[Bb][Aa][Ss][Ii][Cc][[:space:]]+[^,;[:space:]]*#\1[REDACTED]#g' \
+    -e 's#(([[:alnum:]_]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[[:alnum:]_]*[=:][[:space:]]*))("[^"]*"|'"'"'[^'"'"']*'"'"'|[^,;[:space:]]+)#\1[REDACTED]#g' \
+    -e 's#(--([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][-_ ]*[Kk][Ee][Yy]|[Aa][Pp][Ii][-_ ]*[Kk][Ee][Yy])([=]|[[:space:]]+))("[^"]*"|'"'"'[^'"'"']*'"'"'|[^,[:space:]]+)#\1[REDACTED]#g'
 }
 
 wiseeff_upgrade_write_build_summary() {
@@ -1959,6 +1890,22 @@ wiseeff_upgrade_complete_candidate() {
   fi
 }
 
+wiseeff_upgrade_prepare_candidate_resume_traffic() {
+  local phase
+  phase="$(wiseeff_upgrade_state_read phase)"
+  if ! wiseeff_upgrade_run_recovery_action candidate-proxy-isolation \
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
+    wiseeff_upgrade_record_failure "$phase" proxy candidate-proxy-isolation \
+      "The candidate proxy could not be isolated before readiness verification."
+    wiseeff_upgrade_mark_recovery_required
+    return 1
+  fi
+  if ! wiseeff_upgrade_verify_candidate_app_readiness; then
+    wiseeff_upgrade_mark_recovery_required
+    return 1
+  fi
+}
+
 wiseeff_upgrade_run_resume() {
   wiseeff_upgrade_reject_root_runtime || return $?
   wiseeff_upgrade_load_run || return $?
@@ -2035,6 +1982,9 @@ wiseeff_upgrade_run_resume() {
     phase="queue-resumed"
   fi
   if [ "$phase" = "queue-resumed" ] || [ "$phase" = "starting-proxy" ] || [ "$phase" = "validating-public" ]; then
+    if ! wiseeff_upgrade_prepare_candidate_resume_traffic; then
+      return 70
+    fi
     wiseeff_upgrade_set_phase starting-proxy running
     if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps proxy; then
       wiseeff_upgrade_mark_recovery_required proxy candidate-proxy-recreate "The candidate proxy could not be recreated during resume."

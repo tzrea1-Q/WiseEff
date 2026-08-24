@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 日期：2026-08-20
-状态：本地已实现；非客户目标演练仍需完成
+状态：PR #621 及其 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 已在 `main`；advanced-resume follow-up 已在 follow-up 分支实现。非客户目标演练仍需完成。
 范围：`ops/self-hosted/` 下基于源码 checkout 的 Docker Compose 运行时
 
 实现入口已落在 `ops/self-hosted/scripts/upgrade.sh`，本地脚本、配置和构建门禁已通过。真实 Ubuntu 演练属于部署证据，仓库内测试不会把它默认为已完成。
@@ -292,6 +292,8 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 数据平面等待收敛为一个深接口 `wiseeff_upgrade_wait_data_plane_ready`；调用者不再编码服务特定的状态规则。它按顺序等待 PostgreSQL healthy、Redis healthy、MinIO 进程 running，以及 `minio-init` 退出码 `0`。MinIO 单独 running 不代表对象存储就绪，MinIO 进程退出会立即失败。由于 Compose 的 MinIO 服务没有 Docker healthcheck，initializer 成功才是 endpoint 凭据和所需 bucket 可用的权威证明。
 
 旧栈恢复使用独立的 `wiseeff_upgrade_verify_restored_stack` helper。在恢复 queue 之前，它验证数据平面、API live/ready、8788 端口上的 worker liveness 与 Docker health、web 直连以及按服务记录的旧 image identity；随后才重建 proxy 并最后执行公网探测，全部通过后才写入 `old-stack-restored`。任一失败都会记录 `failed_phase`、`failure_service`、稳定的 `failure_code`、有长度限制且脱敏的 `failure_summary`、`recovery_started`、`recovery_verified` 和非 `none` 的 `next_action`。恢复会尝试停止 proxy、暂停 queue/worker；隔离布尔值和 `next_action` 会标明仍需人工处理的动作。
+
+Advanced resume 对 `queue-resumed`、`starting-proxy` 和 `validating-public` 使用单独的受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。三者全部通过前，禁止启动候选 proxy 或执行公网探测。worker 失败使用稳定码 `candidate-worker-health`；proxy 隔离失败使用 `candidate-proxy-isolation`，持久化 `recovery_proxy_stopped=false`，并把人工隔离 proxy 放在 `next_action` 首位。公网验证后仍保留最终 worker 复查，因此健康漂移不能被声明为完成。
 
 本阶段不会执行 seed、bootstrap、setup renderer 或配置重写。
 
