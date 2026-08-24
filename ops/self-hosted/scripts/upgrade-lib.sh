@@ -1197,7 +1197,7 @@ wiseeff_upgrade_build_candidate() {
 
 wiseeff_upgrade_sanitize_diagnostic_stream() {
   sed -E \
-    -e 's#([[:alpha:]][[:alnum:].+-]*://)[^/@[:space:]]+@#\1[REDACTED]@#g' \
+    -e 's|([A-Za-z][A-Za-z0-9.+-]*://)[^/?#@[:space:]]+@|\1[REDACTED]@|g' \
     -e 's#(([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]):[[:space:]]*)([Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss][Ii][Cc])[[:space:]]+[^,[:space:]]*#\1\3 [REDACTED]#g' \
     -e 's#(([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]):[[:space:]]+)[^,[:space:]]*#\1[REDACTED]#g' \
     -e 's#("[^"]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[^"]*"[[:space:]]*:[[:space:]]*")[^"]*#\1[REDACTED]#g' \

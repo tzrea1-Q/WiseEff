@@ -4,7 +4,9 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）也已合入 `main` 并提供 advanced-resume worker/proxy 门禁；main-line 仓库实现还包含与 scheme 无关的诊断凭据脱敏，并由 mock 测试与适用 CI 覆盖。声称发布就绪前，非客户目标主机的干净前向升级和恢复演练仍是唯一未完成的环境证据；条件式 target-synthetic 与 local-non-HDC job 在缺少前置条件时是 skipped，不是通过。
+**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）也已合入 `main` 并提供 advanced-resume worker/proxy 门禁；仓库实现还包含与 scheme 无关的诊断凭据脱敏，并由 mock 测试与适用 CI 覆盖。剩余仓库内覆盖包括 Phase 0 的完整稳定退出码/禁用命令矩阵和 Phase 5 的完整信号中断矩阵；后续阶段列出的非客户目标主机演练也仍未完成。条件式 target-synthetic 与 local-non-HDC job 在缺少前置条件时是 skipped，不是通过。
+
+**Checklist 解释：** Phase 0-5 现在区分已交付的仓库实现和仍缺的仓库内覆盖，不再保留未勾选的实现前占位项。Phase 5 之后未勾选的条目均为目标主机证据，除非条目文字明确指出其他仓库内覆盖缺口。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -54,11 +56,11 @@
 
 **任务：**
 
-- [ ] 为 `apply`、`plan`、`status`、`resume`、`rollback` 解析增加黑盒测试。
+- [x] 为 `apply`、`plan`、`status`、`resume`、`rollback` 解析增加黑盒测试。
 - [ ] 锁定稳定退出码 `0/2/10/20/30/40/50/60/70/75`。
-- [ ] 测试相同 SHA no-op 和 `--restart`。
-- [ ] 测试非交互确认和 run-specific restore 确认。
-- [ ] 用数据库、对象存储、API key、bearer token canary 测试控制台/journal 脱敏。
+- [x] 测试相同 SHA no-op 和 `--restart`。
+- [x] 测试非交互确认和 run-specific restore 确认。
+- [x] 用数据库、对象存储、API key、bearer token canary 测试控制台/journal 脱敏。
 - [ ] 测试禁用命令 canary：`down -v`、`volume rm`、`system prune`、Git reset/clean、seed/provision、`setup.sh --force`。
 
 **验证：**
@@ -82,14 +84,14 @@ npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
 
 **任务：**
 
-- [ ] 实现稳定 launcher 和严格命令解析，不使用 `eval`，不 source 运行状态数据。
-- [ ] 为升级、setup 的修改动作和未来 restore 增加共享宿主机锁。
-- [ ] 持久化权限 `0700` 的运行目录、原子阶段字段和脱敏 append-only event log。
-- [ ] 定义协议版本兼容和目标 checkout 重新执行行为。
-- [ ] `plan` 校验 checkout、`.env` 权限/键、当前容器、Compose project/volume 身份、Docker/Compose 版本、磁盘/inode、备份目录、目标 ref 与 migration 变化。
-- [ ] `status` 只读 journal，支持 text/JSON。
-- [ ] 停机前拒绝 dirty tree、symlink escape、未知数据量、project 漂移、空间不足。
-- [ ] 只记录 `.env` 指纹，不输出包含已展开密钥的 `compose config`。
+- [x] 实现稳定 launcher 和严格命令解析，不使用 `eval`，不 source 运行状态数据。
+- [x] 为升级、setup 的修改动作和未来 restore 增加共享宿主机锁。
+- [x] 持久化权限 `0700` 的运行目录、原子阶段字段和脱敏 append-only event log。
+- [x] 定义协议版本兼容和目标 checkout 重新执行行为。
+- [x] `plan` 校验 checkout、`.env` 权限/键、当前容器、Compose project/volume 身份、Docker/Compose 版本、磁盘/inode、备份目录、目标 ref 与 migration 变化。
+- [x] `status` 只读 journal，支持 text/JSON。
+- [x] 停机前拒绝 dirty tree、symlink escape、未知数据量、project 漂移、空间不足。
+- [x] 只记录 `.env` 指纹，不输出包含已展开密钥的 `compose config`。
 
 **验证：**
 
@@ -110,14 +112,14 @@ npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-host
 
 **任务：**
 
-- [ ] Fetch 请求 ref，并只解析一次 `<sha>^{commit}`。
-- [ ] 记录当前运行应用镜像 ID，打上 run-specific previous tag。
-- [ ] 以 detached 部署模式 checkout 目标 SHA，不触碰已忽略 `.env`/state。
-- [ ] 校验协议后重新执行目标实现。
-- [ ] API、worker、web 使用一个显式 commit 镜像契约，避免重复构建相同源码。
-- [ ] 旧容器仍服务时完成构建和镜像/配置校验。
-- [ ] 协议、checkout 或构建失败时恢复旧 checkout，不停止任何容器。
-- [ ] 未传 upgrade tag 时，保持普通 `setup.sh up` 行为。
+- [x] Fetch 请求 ref，并只解析一次 `<sha>^{commit}`。
+- [x] 记录当前运行应用镜像 ID，打上 run-specific previous tag。
+- [x] 以 detached 部署模式 checkout 目标 SHA，不触碰已忽略 `.env`/state。
+- [x] 校验协议后重新执行目标实现。
+- [x] API、worker、web 使用一个显式 commit 镜像契约，避免重复构建相同源码。
+- [x] 旧容器仍服务时完成构建和镜像/配置校验。
+- [x] 协议、checkout 或构建失败时恢复旧 checkout，不停止任何容器。
+- [x] 未传 upgrade tag 时，保持普通 `setup.sh up` 行为。
 
 **验证：**
 
@@ -139,15 +141,15 @@ npm run selfhost:check
 
 **任务：**
 
-- [ ] 为 durable BullMQ 实现 `pause`、`drain-status`、`resume`；polling 模式明确 no-op。
-- [ ] 暂停 intake，停止公网 proxy，等待活跃工作，优雅停止 API/worker/web。
-- [ ] 快照前证明没有 app writer。
-- [ ] 生成并通过 `pg_restore --list` 验证 custom-format PostgreSQL dump。
-- [ ] 通过固定 `minio/mc` 镜像复制 S3 bucket，并校验 key/size/checksum manifest。
-- [ ] durable queue 开启时生成、复制并校验 Redis RDB。
-- [ ] 全部 store 通过后才写完整 SHA-256 manifest 和 verified 状态。
-- [ ] 静默或备份失败时先通过数据平面门禁再重建旧应用容器，验证内部健康和镜像身份，恢复队列，最后重建 proxy 并探测公网；若隔离失败则要求人工隔离，在全部门禁通过前保持 `recovery-required`。
-- [ ] 保留部分备份用于诊断，但绝不标记为可恢复。
+- [x] 为 durable BullMQ 实现 `pause`、`drain-status`、`resume`；polling 模式明确 no-op。
+- [x] 暂停 intake，停止公网 proxy，等待活跃工作，优雅停止 API/worker/web。
+- [x] 快照前证明没有 app writer。
+- [x] 生成并通过 `pg_restore --list` 验证 custom-format PostgreSQL dump。
+- [x] 通过固定 `minio/mc` 镜像复制 S3 bucket，并校验 key/size/checksum manifest。
+- [x] durable queue 开启时生成、复制并校验 Redis RDB。
+- [x] 全部 store 通过后才写完整 SHA-256 manifest 和 verified 状态。
+- [x] 静默或备份失败时先通过数据平面门禁再重建旧应用容器，验证内部健康和镜像身份，恢复队列，最后重建 proxy 并探测公网；若隔离失败则要求人工隔离，在全部门禁通过前保持 `recovery-required`。
+- [x] 保留部分备份用于诊断，但绝不标记为可恢复。
 
 **验证：**
 
@@ -161,15 +163,15 @@ npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-host
 
 **任务：**
 
-- [ ] 基于既有 volume 重建 PostgreSQL、Redis、MinIO、`minio-init`，等待健康并核对 mount。
-- [ ] 候选 API 启动前立刻记录 `migration-started`。
-- [ ] 单独启动 API，观察现有 migrate-before-serve 命令。
-- [ ] 证明迁移完成且内部 API liveness 通过后启动 web/worker。
-- [ ] 验证完整内部 readiness/健康后恢复队列，最后启动/recreate Caddy。
-- [ ] 执行公网 liveness/readiness 与有界 self-hosted smoke。
-- [ ] 校验全部长期容器 ID 已变化、镜像正确、volume 身份相同、`.env` 指纹相同，且没有 seed/provision。
-- [ ] 完成前记录停机、迁移、smoke 与备份 manifest。
-- [ ] 迁移开始后失败时尝试隔离 proxy 与 queue/worker，标记 `recovery-required`；任一隔离失败先要求人工隔离，并返回 `70`，不做破坏性恢复。
+- [x] 基于既有 volume 重建 PostgreSQL、Redis、MinIO、`minio-init`，等待健康并核对 mount。
+- [x] 候选 API 启动前立刻记录 `migration-started`。
+- [x] 单独启动 API，观察现有 migrate-before-serve 命令。
+- [x] 证明迁移完成且内部 API liveness 通过后启动 web/worker。
+- [x] 验证完整内部 readiness/健康后恢复队列，最后启动/recreate Caddy。
+- [x] 执行公网 liveness/readiness 与有界 self-hosted smoke。
+- [x] 校验全部长期容器 ID 已变化、镜像正确、volume 身份相同、`.env` 指纹相同，且没有 seed/provision。
+- [x] 完成前记录停机、迁移、smoke 与备份 manifest。
+- [x] 迁移开始后失败时尝试隔离 proxy 与 queue/worker，标记 `recovery-required`；任一隔离失败先要求人工隔离，并返回 `70`，不做破坏性恢复。
 
 **验证：**
 
@@ -184,13 +186,13 @@ npm run selfhost:check
 
 **任务：**
 
-- [ ] `resume` 只做单调前进，先检查可观察状态，只复用 checksum 有效备份，绝不重置 `migration-started`。
-- [ ] 仅在迁移前或已明确证明 schema 向后兼容时支持不恢复数据的应用 rollback。
-- [ ] 实现需要确认的 PostgreSQL、对象存储、Redis 整体恢复。
-- [ ] 正常接口拒绝跨存储部分恢复。
-- [ ] 已完成/已承载流量的运行恢复旧数据前，提示数据丢失并要求 run-specific token。
+- [x] `resume` 只做单调前进，先检查可观察状态，只复用 checksum 有效备份，绝不重置 `migration-started`。
+- [x] 仅在迁移前或已明确证明 schema 向后兼容时支持不恢复数据的应用 rollback。
+- [x] 实现需要确认的 PostgreSQL、对象存储、Redis 整体恢复。
+- [x] 正常接口拒绝跨存储部分恢复。
+- [x] 已完成/已承载流量的运行恢复旧数据前，提示数据丢失并要求 run-specific token。
 - [ ] 在每个状态转换注入 SIGTERM/SIGHUP/宿主机重启式中断。
-- [ ] 中断和 `recovery-required` 备份永不自动清理。
+- [x] 中断和 `recovery-required` 备份永不自动清理。
 
 **验证：**
 
@@ -216,7 +218,7 @@ npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
 - [ ] 成功执行一次前向升级，证明全部成功标准。
 - [ ] 注入一次迁移后 readiness 故障，证明 proxy 保持停止并按确认流程完成整体验证点恢复。
 - [ ] 只保存脱敏 manifest、命令状态、hash 和证据引用；不提交 dump、对象 bytes、`.env` 或内部凭据。
-- [ ] 双语文档写清首次采用、正常升级、status/resume 和恢复命令。
+- [x] 双语文档写清首次采用、正常升级、status/resume 和恢复命令。
 
 **最终验证：**
 
@@ -254,7 +256,7 @@ git diff --check
 - [x] 从 Docker 构建上下文排除升级状态，并移除废弃的 Compose version 字段。
 - [x] 更新中英文运维指南/设计，写清一次性准备流程、自动兼容行为、锁决策表和成功证据。
 - [x] 本地运行脚本测试、`selfhost:check`、`docs:check`、TypeScript build 与 `git diff --check`。
-- [ ] 只在 CI merge bar 通过后合入。
+- [x] 只在 CI merge bar 通过后合入。
 
 **预期结果：** 全新或曾由 root 操作的 Ubuntu checkout 可通过一条显式宿主机准备命令完成规范化；日常升级由部署用户执行；历史应用镜像无需人工预先收敛；任何失败门禁立即停止；操作员不再手工删除锁文件或锁目录。
 
@@ -399,7 +401,7 @@ git diff --check
 - [x] 增加策略解析、两把钥匙授权、npm adapter、Compose/Dockerfile 接线、禁止全局关闭、缓存指纹变化和状态来源的黑盒测试。
 - [x] 同步更新 setup、upgrade、operations、环境变量、设计、可靠性、README 和计划的中英文文档。
 - [ ] 在报告问题的无 CA 目标机演练 `plan` 与 `apply --allow-insecure-build`，并确认运行镜像环境不包含关闭 TLS 的变量。
-- [ ] 仅在 PR 全部必需检查通过后合入。
+- [x] 仅在 PR 全部必需检查通过后合入。
 
 **验证：**
 
@@ -431,6 +433,7 @@ git diff --check
 - [x] 更新中英文操作员文档、可靠性/runbook、设计说明和本计划，明确部署机验收边界。
 - [x] 为 `queue-resumed`、`starting-proxy` 和 `validating-public` 实现 advanced-resume proxy 隔离/就绪门禁：API/worker/web 复查全部通过前不得启动 proxy 或公网探测，并保留最终 worker 漂移复查。
 - [x] 扩展诊断凭据 corpus 与持久化出口测试，覆盖 HTTP(S)、SOCKS 变体、合法扩展 scheme、混合大小写认证 header、非敏感 context 保留及全部既有 secret 类别，并保持失败 service/code 与 next_action 证据完整。
+- [x] 将 URI scheme 限定为 ASCII，并在 `/`、`?` 或 `#` 处停止 authority userinfo 扫描；保留 query/fragment 中的邮箱诊断，并分别验证每个持久化出口的 context。
 - [x] 通过 PR #621 及 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 将 MinIO/就绪/恢复 hotfix 合入 `main`；通过 PR #624 及 merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5` 将 advanced-resume 实现合入 `main`，并在本计划中记录诊断脱敏回归覆盖。
 - [ ] 在非客户目标主机部署已合入的控制器，演练一次干净前向升级和一次恢复路径；本地 mock 测试与 CI 不能关闭这项目标环境证据。
 

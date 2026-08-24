@@ -1237,15 +1237,22 @@ describe("upgrade.sh public interface", () => {
       cat "$upgrade_run_dir/events.log"
     `, [runDir], { WISEEFF_TEST_DIAGNOSTIC: text });
 
+    const failureSummary = readFileSync(join(runDir, "failure_summary"), "utf8");
+    const recoveryFailureSummary = readFileSync(join(runDir, "recovery_failure_summary"), "utf8");
+    const events = readFileSync(join(runDir, "events.log"), "utf8");
+
     expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stdout).not.toContain(secret);
     expect(result.stderr).not.toContain(secret);
-    expect(readFileSync(join(runDir, "failure_summary"), "utf8")).not.toContain(secret);
-    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain(secret);
-    expect(readFileSync(join(runDir, "events.log"), "utf8")).not.toContain(secret);
+    expect(failureSummary).not.toContain(secret);
+    expect(recoveryFailureSummary).not.toContain(secret);
+    expect(events).not.toContain(secret);
     expect(result.stdout).toContain("minio-init-failed");
     expect(result.stdout).toContain(context);
     expect(result.stderr).toContain(context);
+    expect(failureSummary).toContain(context);
+    expect(recoveryFailureSummary).toContain(context);
+    expect(events).toContain(context);
     expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio-init\n");
     expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
     if (preserved) {
@@ -1266,6 +1273,32 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).not.toContain("review-secret");
   });
 
+  it.each([
+    "GET https://example.test?contact=review-user@example.net context=query-email",
+    "GET https://example.test#contact=review-user@example.net context=fragment-email"
+  ])("does not mistake an email after an authority delimiter for URI userinfo: %s", (diagnostic) => {
+    const result = runLibrary(`
+      printf '%s\\n' "$WISEEFF_TEST_DIAGNOSTIC" | wiseeff_upgrade_sanitize_diagnostic_stream
+    `, [], { WISEEFF_TEST_DIAGNOSTIC: diagnostic });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(diagnostic);
+  });
+
+  it("does not treat a Unicode pseudo-scheme as a valid URI scheme in a UTF-8 locale", () => {
+    const diagnostic = "é://review-user@example.test context=unicode-pseudo-scheme";
+    const result = runLibrary(`
+      printf '%s\\n' "$WISEEFF_TEST_DIAGNOSTIC" | wiseeff_upgrade_sanitize_diagnostic_stream
+    `, [], {
+      WISEEFF_TEST_DIAGNOSTIC: diagnostic,
+      LC_ALL: "C.UTF-8",
+      LANG: "C.UTF-8"
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(diagnostic);
+  });
+
   it("keeps SOCKS5H credentials out of persisted failure and event outputs", () => {
     const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-socks5h-persistence-"));
     const result = runLibrary(`
@@ -1283,13 +1316,20 @@ describe("upgrade.sh public interface", () => {
       cat "$upgrade_run_dir/events.log"
     `, [runDir]);
 
+    const failureSummary = readFileSync(join(runDir, "failure_summary"), "utf8");
+    const recoveryFailureSummary = readFileSync(join(runDir, "recovery_failure_summary"), "utf8");
+    const events = readFileSync(join(runDir, "events.log"), "utf8");
+
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain("persisted-socks-secret");
     expect(result.stderr).not.toContain("persisted-socks-secret");
-    expect(readFileSync(join(runDir, "failure_summary"), "utf8")).not.toContain("persisted-socks-secret");
-    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain("persisted-socks-secret");
-    expect(readFileSync(join(runDir, "events.log"), "utf8")).not.toContain("persisted-socks-secret");
+    expect(failureSummary).not.toContain("persisted-socks-secret");
+    expect(recoveryFailureSummary).not.toContain("persisted-socks-secret");
+    expect(events).not.toContain("persisted-socks-secret");
     expect(result.stdout).toContain("context=socks5h-persist-39");
+    expect(failureSummary).toContain("context=socks5h-persist-39");
+    expect(recoveryFailureSummary).toContain("context=socks5h-persist-39");
+    expect(events).toContain("context=socks5h-persist-39");
     expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio-init\n");
     expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
   });
