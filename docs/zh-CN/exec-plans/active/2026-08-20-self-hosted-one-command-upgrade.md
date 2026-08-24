@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。本 follow-up 为 `queue-resumed`、`starting-proxy` 和 `validating-public` 增加 advanced-resume worker/proxy 门禁；本地/CI 门禁覆盖实现。声称发布就绪前仍需在非客户目标主机完成一次干净的前向升级和恢复演练证据。
+**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）也已合入 `main` 并提供 advanced-resume worker/proxy 门禁；main-line 仓库实现还包含与 scheme 无关的诊断凭据脱敏，并由 mock 测试与适用 CI 覆盖。声称发布就绪前，非客户目标主机的干净前向升级和恢复演练仍是唯一未完成的环境证据；条件式 target-synthetic 与 local-non-HDC job 在缺少前置条件时是 skipped，不是通过。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -35,7 +35,7 @@
 - 目标演练兼容性加固使用从当前 `main` 创建的 `fix/self-hosted-upgrade-host-compat`；父代理/会话 owner 在本地门禁与 CI merge bar 通过后开 PR 并合入。
 - 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - 仅构建期 insecure TLS 兼容使用 `fix/selfhost-insecure-build-tls-policy`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
-- advanced-resume worker/proxy follow-up 使用 `codex/selfhost-resume-worker-gate`；会话 owner 开 PR，并且只在所有适用的 required CI check 通过后合入。原始脏 `main` 工作区合入后不得为了同步而切换或改写。
+- PR #624 在 `main` 维护 advanced-resume worker/proxy 门禁；诊断凭据脱敏是随后进入 main-line 的维护变更。会话 owner 仅在所有适用的 required CI check 通过后合入。原始脏 `main` 工作区合入后不得为了同步而切换或改写。
 
 ## 前置条件
 
@@ -430,7 +430,8 @@ git diff --check
 - [x] 在任何恢复操作前进入 `old-stack-restore`，避免恢复数据平面失败继续保留候选 phase；恢复成功时保留原候选失败证据以便追溯。
 - [x] 更新中英文操作员文档、可靠性/runbook、设计说明和本计划，明确部署机验收边界。
 - [x] 为 `queue-resumed`、`starting-proxy` 和 `validating-public` 实现 advanced-resume proxy 隔离/就绪门禁：API/worker/web 复查全部通过前不得启动 proxy 或公网探测，并保留最终 worker 漂移复查。
-- [x] 通过 PR #621 和 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 将 MinIO/就绪/恢复 hotfix 合入 `main`。
+- [x] 扩展诊断凭据 corpus 与持久化出口测试，覆盖 HTTP(S)、SOCKS 变体、合法扩展 scheme、混合大小写认证 header、非敏感 context 保留及全部既有 secret 类别，并保持失败 service/code 与 next_action 证据完整。
+- [x] 通过 PR #621 及 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 将 MinIO/就绪/恢复 hotfix 合入 `main`；通过 PR #624 及 merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5` 将 advanced-resume 实现合入 `main`，并在本计划中记录诊断脱敏回归覆盖。
 - [ ] 在非客户目标主机部署已合入的控制器，演练一次干净前向升级和一次恢复路径；本地 mock 测试与 CI 不能关闭这项目标环境证据。
 
 **验证：**
