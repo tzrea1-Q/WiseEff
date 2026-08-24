@@ -12,7 +12,8 @@ import { randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
-import { createAuditEvent } from "./repository";
+import { createAuditEvent, writePlatformAuditEvent } from "./repository";
+import { buildTrustedAuditEventInput, type TrustedAuditEventInput } from "./trustedAudit";
 import type { AuditActorType, AuditSeverity } from "./types";
 
 declare const auditTxBrand: unique symbol;
@@ -81,6 +82,21 @@ export async function writeAuditEventInTx(
   });
 }
 
+async function writeTrustedAuditEvent(db: Queryable, input: TrustedAuditEventInput): Promise<void> {
+  const event = buildTrustedAuditEventInput(input);
+  const { organizationId, id, ...auditFields } = event;
+  if (organizationId === null) {
+    await writePlatformAuditEvent(db, { ...auditFields, id, affectedOrganizationIds: [] });
+    return;
+  }
+  await createAuditEvent(db, { ...auditFields, id, organizationId });
+}
+
+/** Write a trusted audit event inside a transaction proven by `AuditTx`. */
+export async function writeTrustedAuditEventInTx(tx: AuditTx, input: TrustedAuditEventInput): Promise<void> {
+  await writeTrustedAuditEvent(tx, input);
+}
+
 async function writeStandaloneAuditEvent(
   db: Database,
   auth: AuthContext,
@@ -119,6 +135,11 @@ export async function writeRefusalAudit(
   spec: AuditSpec
 ): Promise<void> {
   await writeStandaloneAuditEvent(db, auth, context, spec);
+}
+
+/** Write trusted refusal evidence through the pool so it survives a rolled-back domain transaction. */
+export async function writeTrustedRefusalAudit(db: Database, input: TrustedAuditEventInput): Promise<void> {
+  await writeTrustedAuditEvent(db, input);
 }
 
 /**
