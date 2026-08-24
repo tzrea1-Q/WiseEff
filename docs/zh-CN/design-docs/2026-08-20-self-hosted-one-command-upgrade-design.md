@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 日期：2026-08-20
-状态：PR #621 及其 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 已在 `main`；advanced-resume follow-up 已在 follow-up 分支实现。非客户目标演练仍需完成。
+状态：PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）和 PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）均已合入 `main`；PR #624 提供 advanced-resume proxy/就绪门禁。main-line 仓库实现还包含有界、与 scheme 无关的诊断凭据脱敏。非客户目标主机的前向/恢复演练是唯一未完成的环境证据；条件式 target-synthetic 与 local-non-HDC CI job 在缺少前置条件时为 skipped，不是通过。
 范围：`ops/self-hosted/` 下基于源码 checkout 的 Docker Compose 运行时
 
 实现入口已落在 `ops/self-hosted/scripts/upgrade.sh`，本地脚本、配置和构建门禁已通过。真实 Ubuntu 演练属于部署证据，仓库内测试不会把它默认为已完成。
@@ -295,6 +295,8 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 Advanced resume 对 `queue-resumed`、`starting-proxy` 和 `validating-public` 使用单独的受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。三者全部通过前，禁止启动候选 proxy 或执行公网探测。worker 失败使用稳定码 `candidate-worker-health`；proxy 隔离失败使用 `candidate-proxy-isolation`，持久化 `recovery_proxy_stopped=false`，并把人工隔离 proxy 放在 `next_action` 首位。公网验证后仍保留最终 worker 复查，因此健康漂移不能被声明为完成。
 
+诊断持久化会在写入终端输出、`failure_summary`、恢复摘要或 `events.log` 前统一经过同一个深模块脱敏器。它对合法 scheme 的 URI userinfo 做通用脱敏，覆盖 HTTP(S) 和 SOCKS 变体，同时保留 scheme、host、port、path 及非敏感上下文；普通邮箱文本和无 userinfo 的 URL 保持不变。操作员应从 `failure_service` 读取失败服务，从 `failure_code` 读取稳定失败类别，从有长度限制的 `failure_summary` 读取安全上下文，并按 `next_action` 执行恢复动作。只有恢复已验证且 `next_action=none` 才能写入 `old-stack-restored`；`recovery-required` 必须携带非 `none` 的下一步。
+
 本阶段不会执行 seed、bootstrap、setup renderer 或配置重写。
 
 ### 6. 收尾
@@ -326,6 +328,7 @@ Advanced resume 对 `queue-resumed`、`starting-proxy` 和 `validating-public` �
 
 - 不记录 `.env` 内容和含密钥命令行。
 - 构建日志和摘要属于私有 journal 产物（目录 `0700`、文件 `0600`）；URL 凭据、registry token、密码和 bearer token 在持久化前完成脱敏。
+- URI userinfo 脱敏对合法的 `scheme://userinfo@host` 通用，覆盖 HTTP(S)、SOCKS、SOCKS4/SOCKS4A、SOCKS5/SOCKS5H 及扩展 scheme；普通邮箱文本和没有 userinfo 的 URL 不会被当作凭据。
 - 包含配置或客户数据的备份目录权限必须为 `0700`，敏感文件为 `0600`。
 - 备份根目录不得位于 Git checkout、Docker volume 根目录或 live 对象存储路径内。
 - 用户传入的 Git ref 和路径只能作为参数传递，不能由 shell 求值。

@@ -374,32 +374,45 @@ function runAdvancedResumeFixture(
   return { result, runDir };
 }
 
-const diagnosticCanaries = [
-  { label: "url credentials", text: "GET https://url-user:url-password@example.test/path", secret: "url-password" },
-  { label: "authorization bearer", text: "Authorization: Bearer bearer-secret", secret: "bearer-secret" },
-  { label: "authorization basic", text: "Authorization: Basic basic-secret", secret: "basic-secret" },
-  { label: "proxy authorization", text: "Proxy-Authorization: Basic proxy-auth-secret", secret: "proxy-auth-secret" },
-  { label: "json password", text: '{"PaSsWoRd":"json-password-secret"}', secret: "json-password-secret" },
-  { label: "json pass", text: '{"PASS":"json-pass-secret"}', secret: "json-pass-secret" },
-  { label: "json secret", text: '{"secret":"json-secret-secret"}', secret: "json-secret-secret" },
-  { label: "json token", text: '{"ToKeN":"json-token-secret"}', secret: "json-token-secret" },
-  { label: "json authorization", text: '{"AUTHORIZATION":"json-authorization-secret"}', secret: "json-authorization-secret" },
-  { label: "json credential", text: '{"credential":"json-credential-secret"}', secret: "json-credential-secret" },
-  { label: "json access key", text: '{"access-key":"json-access-key-secret"}', secret: "json-access-key-secret" },
-  { label: "json api key", text: '{"api_key":"json-api-key-secret"}', secret: "json-api-key-secret" },
-  { label: "plain assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD=plain-password-secret", secret: "plain-password-secret" },
-  { label: "double quoted assignment", text: 'WISEEFF_BUILD_PROXY_PASSWORD="double-password-secret"', secret: "double-password-secret" },
-  { label: "single quoted assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD='single-password-secret'", secret: "single-password-secret" },
-  { label: "bearer assignment", text: "M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer assignment-bearer-secret", secret: "assignment-bearer-secret" },
-  { label: "basic assignment", text: "OBJECT_STORAGE_ACCESS_KEY_ID=Basic assignment-basic-secret", secret: "assignment-basic-secret" },
-  { label: "password equals flag", text: "--password=flag-equals-secret", secret: "flag-equals-secret" },
-  { label: "password spaced flag", text: "--password flag-spaced-secret", secret: "flag-spaced-secret" },
-  { label: "npm token", text: "NPM_TOKEN=npm-token-secret", secret: "npm-token-secret" },
-  { label: "node auth token", text: "NODE_AUTH_TOKEN=node-auth-token-secret", secret: "node-auth-token-secret" },
-  { label: "npm auth token", text: "_authToken=npm-auth-token-secret", secret: "npm-auth-token-secret" },
-  { label: "known object secret", text: "OBJECT_STORAGE_SECRET_ACCESS_KEY=object-secret-canary", secret: "object-secret-canary" },
-  { label: "known postgres secret", text: "POSTGRES_PASSWORD=postgres-secret-canary", secret: "postgres-secret-canary" }
-] as const;
+const diagnosticCanaries: Array<{ label: string; text: string; secret: string; context: string; preserved?: string }> = [
+  { label: "http URL credentials", text: "GET http://http-user:http-password@example.test:8080/path context=http-url-01", secret: "http-password", context: "context=http-url-01" },
+  { label: "https URL credentials", text: "GET https://url-user:url-password@example.test/path context=https-url-02", secret: "url-password", context: "context=https-url-02" },
+  { label: "socks URL credentials", text: "ALL_PROXY=socks://socks-user:socks-password@proxy.example.test:1080/path context=socks-url-03", secret: "socks-password", context: "context=socks-url-03" },
+  { label: "socks4 URL credentials", text: "ALL_PROXY=socks4://socks4-user:socks4-password@proxy.example.test:1080/path context=socks4-url-04", secret: "socks4-password", context: "context=socks4-url-04" },
+  { label: "socks4a URL credentials", text: "ALL_PROXY=socks4a://socks4a-user:socks4a-password@proxy.example.test:1080/path context=socks4a-url-05", secret: "socks4a-password", context: "context=socks4a-url-05" },
+  { label: "socks5 URL credentials", text: "ALL_PROXY=socks5://socks5-user:socks5-password@proxy.example.test:1080/path context=socks5-url-06", secret: "socks5-password", context: "context=socks5-url-06" },
+  { label: "socks5h URL credentials", text: "ALL_PROXY=socks5h://review-user:review-secret@proxy.example.test:1080/path context=socks5h-url-07", secret: "review-secret", context: "context=socks5h-url-07" },
+  { label: "extension scheme URL credentials", text: "PROXY=x+proxy.v1-socks://extension-user:extension-secret@proxy.example.test:9443/path context=extension-url-08", secret: "extension-secret", context: "context=extension-url-08" },
+  { label: "URL without userinfo", text: "ALL_PROXY=socks5h://proxy.example.test:1080/path context=url-without-userinfo-09", secret: "not-present-url-secret", context: "context=url-without-userinfo-09", preserved: "ALL_PROXY=socks5h://proxy.example.test:1080/path" },
+  { label: "ordinary email", text: "contact=review-user@example.test context=ordinary-email-10", secret: "not-present-email-secret", context: "context=ordinary-email-10", preserved: "contact=review-user@example.test" },
+  { label: "authorization bearer", text: "Authorization: Bearer bearer-secret context=authorization-bearer-11", secret: "bearer-secret", context: "context=authorization-bearer-11" },
+  { label: "authorization basic", text: "Authorization: Basic basic-secret context=authorization-basic-12", secret: "basic-secret", context: "context=authorization-basic-12" },
+  { label: "proxy authorization bearer", text: "Proxy-Authorization: Bearer proxy-bearer-secret context=proxy-bearer-13", secret: "proxy-bearer-secret", context: "context=proxy-bearer-13" },
+  { label: "proxy authorization basic", text: "Proxy-Authorization: Basic proxy-auth-secret context=proxy-basic-14", secret: "proxy-auth-secret", context: "context=proxy-basic-14" },
+  { label: "mixed-case authorization bearer", text: "aUtHoRiZaTiOn: bEaReR mixed-bearer-secret context=mixed-header-15", secret: "mixed-bearer-secret", context: "context=mixed-header-15" },
+  { label: "mixed-case proxy authorization basic", text: "pRoXy-AuThOrIzAtIoN: BaSiC mixed-proxy-secret context=mixed-proxy-header-16", secret: "mixed-proxy-secret", context: "context=mixed-proxy-header-16" },
+  { label: "json password", text: '{"PaSsWoRd":"json-password-secret"} context=json-password-17', secret: "json-password-secret", context: "context=json-password-17" },
+  { label: "json pass", text: '{"PASS":"json-pass-secret"} context=json-pass-18', secret: "json-pass-secret", context: "context=json-pass-18" },
+  { label: "json secret", text: '{"secret":"json-secret-secret"} context=json-secret-19', secret: "json-secret-secret", context: "context=json-secret-19" },
+  { label: "json token", text: '{"ToKeN":"json-token-secret"} context=json-token-20', secret: "json-token-secret", context: "context=json-token-20" },
+  { label: "json authorization", text: '{"AUTHORIZATION":"json-authorization-secret"} context=json-authorization-21', secret: "json-authorization-secret", context: "context=json-authorization-21" },
+  { label: "json credential", text: '{"credential":"json-credential-secret"} context=json-credential-22', secret: "json-credential-secret", context: "context=json-credential-22" },
+  { label: "json access key", text: '{"access-key":"json-access-key-secret"} context=json-access-key-23', secret: "json-access-key-secret", context: "context=json-access-key-23" },
+  { label: "json api key", text: '{"api_key":"json-api-key-secret"} context=json-api-key-24', secret: "json-api-key-secret", context: "context=json-api-key-24" },
+  { label: "plain assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD=plain-password-secret context=assignment-plain-25", secret: "plain-password-secret", context: "context=assignment-plain-25" },
+  { label: "double quoted assignment", text: 'WISEEFF_BUILD_PROXY_PASSWORD="double-password-secret" context=assignment-double-26', secret: "double-password-secret", context: "context=assignment-double-26" },
+  { label: "single quoted assignment", text: "WISEEFF_BUILD_PROXY_PASSWORD='single-password-secret' context=assignment-single-27", secret: "single-password-secret", context: "context=assignment-single-27" },
+  { label: "bearer assignment", text: "M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer assignment-bearer-secret context=assignment-bearer-28", secret: "assignment-bearer-secret", context: "context=assignment-bearer-28" },
+  { label: "basic assignment", text: "OBJECT_STORAGE_ACCESS_KEY_ID=Basic assignment-basic-secret context=assignment-basic-29", secret: "assignment-basic-secret", context: "context=assignment-basic-29" },
+  { label: "password equals flag", text: "--password=flag-equals-secret context=flag-equals-30", secret: "flag-equals-secret", context: "context=flag-equals-30" },
+  { label: "password spaced flag", text: "--password flag-spaced-secret context=flag-spaced-31", secret: "flag-spaced-secret", context: "context=flag-spaced-31" },
+  { label: "npm token", text: "NPM_TOKEN=npm-token-secret context=npm-token-32", secret: "npm-token-secret", context: "context=npm-token-32" },
+  { label: "node auth token", text: "NODE_AUTH_TOKEN=node-auth-token-secret context=node-auth-token-33", secret: "node-auth-token-secret", context: "context=node-auth-token-33" },
+  { label: "npm auth token", text: "_authToken=npm-auth-token-secret context=npm-auth-token-34", secret: "npm-auth-token-secret", context: "context=npm-auth-token-34" },
+  { label: "known object secret", text: "OBJECT_STORAGE_SECRET_ACCESS_KEY=object-secret-canary context=object-store-secret-35", secret: "object-secret-canary", context: "context=object-store-secret-35" },
+  { label: "known postgres secret", text: "POSTGRES_PASSWORD=postgres-secret-canary context=postgres-secret-36", secret: "postgres-secret-canary", context: "context=postgres-secret-36" },
+  { label: "known smoke auth secret", text: "M6_SELFHOSTED_SMOKE_AUTHORIZATION=smoke-auth-canary context=smoke-auth-secret-37", secret: "smoke-auth-canary", context: "context=smoke-auth-secret-37" }
+];
 
 describe("upgrade.sh public interface", () => {
   it("documents the small operator interface without touching the runtime", () => {
@@ -1207,7 +1220,7 @@ describe("upgrade.sh public interface", () => {
     expect(trace).not.toContain("completed");
   });
 
-  it.each(diagnosticCanaries)("redacts $label from recovery diagnostics", ({ text, secret }) => {
+  it.each(diagnosticCanaries)("redacts $label from recovery diagnostics", ({ text, secret, context, preserved }) => {
     const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-redaction-corpus-"));
     const result = runLibrary(`
       upgrade_run_dir="$1"
@@ -1231,6 +1244,54 @@ describe("upgrade.sh public interface", () => {
     expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain(secret);
     expect(readFileSync(join(runDir, "events.log"), "utf8")).not.toContain(secret);
     expect(result.stdout).toContain("minio-init-failed");
+    expect(result.stdout).toContain(context);
+    expect(result.stderr).toContain(context);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio-init\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
+    if (preserved) {
+      expect(result.stdout).toContain(preserved);
+    }
+  });
+
+  it("redacts generic URL userinfo while preserving URL structure and error context", () => {
+    const result = runLibrary(`
+      printf '%s\\n' 'ERROR ALL_PROXY=socks5h://review-user:review-secret@proxy.example.test:1080/path?q=1 context=socks5h-direct-38 connect timed out' | wiseeff_upgrade_sanitize_diagnostic_stream
+    `);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("ALL_PROXY=socks5h://[REDACTED]@proxy.example.test:1080/path?q=1");
+    expect(result.stdout).toContain("context=socks5h-direct-38");
+    expect(result.stdout).toContain("connect timed out");
+    expect(result.stdout).not.toContain("review-user");
+    expect(result.stdout).not.toContain("review-secret");
+  });
+
+  it("keeps SOCKS5H credentials out of persisted failure and event outputs", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-socks5h-persistence-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=socks5h-persistence
+      recovery_input='ALL_PROXY=socks5h://user:persisted-socks-secret@proxy.example.test:1080 context=socks5h-persist-39'
+      wiseeff_upgrade_record_failure restarting-data minio-init minio-init-failed "$recovery_input"
+      recovery_action() {
+        printf '%s\\n' "$recovery_input"
+        return 91
+      }
+      wiseeff_upgrade_run_recovery_action socks5h-persistence recovery_action || true
+      cat "$upgrade_run_dir/failure_summary"
+      cat "$upgrade_run_dir/recovery_failure_summary"
+      cat "$upgrade_run_dir/events.log"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("persisted-socks-secret");
+    expect(result.stderr).not.toContain("persisted-socks-secret");
+    expect(readFileSync(join(runDir, "failure_summary"), "utf8")).not.toContain("persisted-socks-secret");
+    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain("persisted-socks-secret");
+    expect(readFileSync(join(runDir, "events.log"), "utf8")).not.toContain("persisted-socks-secret");
+    expect(result.stdout).toContain("context=socks5h-persist-39");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio-init\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
   });
 
   it("bypasses the host proxy for public restore probes", () => {

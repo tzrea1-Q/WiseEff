@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. This follow-up adds the advanced-resume worker/proxy gate for `queue-resumed`, `starting-proxy`, and `validating-public`; local/CI gates cover the implementation. A clean forward upgrade and recovery rehearsal on a non-customer target host remain required evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) is also merged into `main` and provides the advanced-resume worker/proxy gate; the main-line repository implementation additionally includes scheme-agnostic diagnostic credential redaction, covered by mock tests and applicable CI. A clean forward upgrade and recovery rehearsal on a non-customer target host remain the only unfinished environment evidence before claiming release readiness; conditional target-synthetic and local-non-HDC jobs are skipped when prerequisites are absent, not passed.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -35,7 +35,7 @@
 - Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
-- The advanced-resume worker/proxy follow-up uses `codex/selfhost-resume-worker-gate`; the session owner opens its PR and merges only after every applicable required CI check passes. Do not switch or rewrite a dirty shared `main` worktree to synchronize it after merge.
+- PR #624 maintains the advanced-resume worker/proxy gate on `main`; diagnostic redaction is a subsequent main-line maintenance change. The session owner merges only after every applicable required CI check passes. Do not switch or rewrite a dirty shared `main` worktree to synchronize it after merge.
 
 ## Preconditions
 
@@ -458,7 +458,8 @@ The incident run `20260824T021935Z-2079618` showed two controller-truth defects:
 - [x] Enter `old-stack-restore` before any restore operation so recovery data-plane failures cannot retain a candidate phase while preserving earlier candidate failure evidence on successful recovery.
 - [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
 - [x] Implement the advanced-resume proxy isolation/readiness gate for `queue-resumed`, `starting-proxy`, and `validating-public`; keep proxy/public blocked until API/worker/web rechecks pass, and retain final worker drift verification.
-- [x] Merge the MinIO/readiness/recovery hotfix into `main` through PR #621 and merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5`.
+- [x] Extend the diagnostic credential corpus and persistence tests for HTTP(S), SOCKS variants, valid extension schemes, mixed-case authorization headers, non-secret context preservation, and all existing secret categories; keep failure service/code and next-action evidence intact.
+- [x] Merge the MinIO/readiness/recovery hotfix into `main` through PR #621 and merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5`; merge the advanced-resume implementation through PR #624 and merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5`, with the diagnostic-redaction regression coverage recorded in this plan.
 - [ ] Deploy the merged controller on a non-customer target host and rehearse one clean forward upgrade plus one recovery path; local mock tests and CI do not close this target evidence.
 
 **Verification:**

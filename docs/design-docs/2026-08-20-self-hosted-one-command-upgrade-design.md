@@ -3,7 +3,7 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 Date: 2026-08-20
-Status: PR #621 and its merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` are on `main`; the advanced-resume follow-up is implemented on the follow-up branch. Non-customer target rehearsal remains required.
+Status: PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) and PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) are merged into `main`; PR #624 supplies the advanced-resume proxy/readiness gate. The main-line repository implementation also includes bounded, scheme-agnostic diagnostic credential redaction. A non-customer target-host forward/recovery rehearsal is the only unfinished environment evidence; conditional target-synthetic and local-non-HDC CI jobs are skipped when their prerequisites are absent, not passed.
 Scope: The source-checkout-based Docker Compose runtime under `ops/self-hosted/`
 
 The implementation is available at `ops/self-hosted/scripts/upgrade.sh`, with local script, configuration, and build gates passing. A real Ubuntu rehearsal is deployment evidence and is intentionally not implied by repository-local tests.
@@ -295,6 +295,8 @@ Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` 
 
 Advanced resume is a separate guarded sequence for `queue-resumed`, `starting-proxy`, and `validating-public`: it stops and isolates the candidate proxy first, then rechecks API `/health/ready`, worker `127.0.0.1:8788/health/live` plus Docker health, and direct web access. Until all three pass, candidate proxy-up and public probing are forbidden. A worker failure uses stable code `candidate-worker-health`; proxy isolation failure uses `candidate-proxy-isolation`, persists `recovery_proxy_stopped=false`, and places manual proxy isolation first in `next_action`. The final worker verification remains after public validation so health drift cannot be declared completed.
 
+Diagnostic persistence uses the same deep sanitizer before writing console output, `failure_summary`, recovery summaries, or `events.log`. It redacts URI userinfo for valid schemes including HTTP(S) and SOCKS variants while preserving scheme, host, port, path, and non-sensitive context; ordinary email text and URLs without userinfo remain unchanged. Operators read `failure_service` to identify the failing service, `failure_code` for the stable failure class, the bounded `failure_summary` for safe context, and `next_action` for the executable recovery step. `old-stack-restored` is valid only with verified recovery and `next_action=none`; `recovery-required` always carries a non-`none` next action.
+
 No seed, bootstrap, setup renderer, or configuration rewrite runs in this phase.
 
 ### 6. Finalize
@@ -326,6 +328,7 @@ Rollback without data restore is allowed automatically only when migration start
 
 - `.env` contents and secret-bearing command lines are never logged.
 - Build logs and summaries are private journal artifacts (`0700` directory, `0600` files); URL credentials, registry tokens, passwords, and bearer tokens are redacted before persistence.
+- URI userinfo redaction is scheme-agnostic for valid `scheme://userinfo@host` forms, including HTTP(S), SOCKS, SOCKS4/SOCKS4A, SOCKS5/SOCKS5H, and extension schemes; ordinary email text and URLs without userinfo are not treated as credentials.
 - Backup directories containing configuration or customer data must be mode `0700`; sensitive files are mode `0600`.
 - The backup root must not be inside the Git checkout, Docker volume root, or a live object-store path.
 - User-provided Git refs and paths are passed as arguments, not evaluated as shell.
