@@ -22,6 +22,32 @@
 
 所有 `VITE_*` 值都会公开并固化进前端 bundle。自托管部署修改页脚元数据后必须重新构建应用镜像；只重启旧镜像不会生效。不要在这些变量中放置 secret。
 
+### 配置应用页脚
+
+本地开发时，在仓库根目录的 `.env` 中增加公开元数据；自托管部署则编辑 `ops/self-hosted/.env`：
+
+```dotenv
+VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER=示例科技有限公司
+VITE_WISEEFF_APP_VERSION=1.4.0
+VITE_WISEEFF_CONTACT_HREF=https://support.example.com/contact
+```
+
+需要使用邮箱时，把联系方式写成 `mailto:support@example.com`。当前只支持一个可选联系地址，界面文字固定使用本地化后的“联系我们”。将 `VITE_WISEEFF_CONTACT_HREF` 留空即可隐藏。不要填写电话号码、相对路径、JavaScript URL、凭据或 secret。
+
+修改仓库根目录 `.env` 后需要重启 Vite 开发服务器；生产构建需要重新执行 `npm run build`。自托管首次安装时，将[配置向导](../../../ops/self-hosted/setup.zh-CN.md)拆成以下步骤，以便在第一次构建镜像前编辑向导生成的环境文件：
+
+```bash
+cd ops/self-hosted
+./scripts/setup.sh init
+# 编辑 .env 中的三个页脚配置键。
+./scripts/setup.sh up
+./scripts/setup.sh provision
+```
+
+已有部署应保留当前 `.env`，只修改上述键，然后使用正常的[升级 `plan` 与 `apply` 入口](../../../ops/self-hosted/upgrade.zh-CN.md)；不要使用 `setup.sh --force`，因为它会替换部署环境并轮换自动生成的 secret。
+
+重新构建后，登录系统并滚动到普通页面底部，核对版权所有者、规范化后的 `v` 版本和可选联系方式，同时检查首页的信息行。全高项目配置工作台按设计不显示紧凑页脚。如果已配置的联系方式没有出现，先确认它是绝对 `https:` 或 `mailto:` URL，并确认执行的是镜像重建而不是只重启旧镜像。
+
 ## 认证
 
 | 变量 | 本地默认值 | 用途 | 说明 |
