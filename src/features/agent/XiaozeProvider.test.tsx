@@ -1,6 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozeProvider } from "./XiaozeProvider";
+
+const providerTestDoubles = vi.hoisted(() => ({
+  agents: [] as unknown[],
+  createXiaozeHttpAgent: vi.fn(() => ({ kind: "xiaoze-agent" }))
+}));
 
 vi.mock("./XiaozeCopilotPopup", () => ({
   XiaozeCopilotPopup: () => null
@@ -13,15 +18,22 @@ vi.mock("./XiaozePopupOpenPolicy", () => ({
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotKit: ({
     children,
-    enableInspector
+    enableInspector,
+    selfManagedAgents
   }: {
     children: React.ReactNode;
     enableInspector?: boolean;
-  }) => (
-    <div data-testid="copilot-kit" data-enable-inspector={String(enableInspector ?? false)}>
-      {children}
-    </div>
-  ),
+    selfManagedAgents?: { default?: unknown };
+  }) => {
+    if (selfManagedAgents?.default) {
+      providerTestDoubles.agents.push(selfManagedAgents.default);
+    }
+    return (
+      <div data-testid="copilot-kit" data-enable-inspector={String(enableInspector ?? false)}>
+        {children}
+      </div>
+    );
+  },
   CopilotChatConfigurationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useCopilotChatConfiguration: () => ({ setModalOpen: vi.fn() }),
   CopilotChat: () => null,
@@ -41,6 +53,11 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   useInterrupt: vi.fn()
 }));
 
+vi.mock("./xiaozeHttpAgent", () => ({
+  clearXiaozeAgentPendingTurn: vi.fn(),
+  createXiaozeHttpAgent: providerTestDoubles.createXiaozeHttpAgent
+}));
+
 vi.mock("@ag-ui/client", () => ({
   HttpAgent: class MockHttpAgent {
     agentId = "xiaoze";
@@ -49,6 +66,47 @@ vi.mock("@ag-ui/client", () => ({
 }));
 
 describe("XiaozeProvider", () => {
+  beforeEach(() => {
+    providerTestDoubles.agents.length = 0;
+    providerTestDoubles.createXiaozeHttpAgent.mockClear();
+  });
+
+  it("keeps one agent instance across provider rerenders", () => {
+    const { rerender } = render(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>child</div>
+      </XiaozeProvider>
+    );
+    const initialAgent = providerTestDoubles.agents.at(-1);
+
+    rerender(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>updated child</div>
+      </XiaozeProvider>
+    );
+
+    expect(providerTestDoubles.createXiaozeHttpAgent).toHaveBeenCalledTimes(1);
+    expect(providerTestDoubles.agents.at(-1)).toBe(initialAgent);
+  });
+
+  it("creates a new agent when agentUrl changes", () => {
+    const { rerender } = render(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>child</div>
+      </XiaozeProvider>
+    );
+    const initialAgent = providerTestDoubles.agents.at(-1);
+
+    rerender(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze?variant=next" enabled>
+        <div>child</div>
+      </XiaozeProvider>
+    );
+
+    expect(providerTestDoubles.createXiaozeHttpAgent).toHaveBeenCalledTimes(2);
+    expect(providerTestDoubles.agents.at(-1)).not.toBe(initialAgent);
+  });
+
   it("renders children inside the provider", () => {
     render(
       <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
@@ -67,6 +125,93 @@ describe("XiaozeProvider", () => {
     );
     expect(screen.getByText("plain-child")).toBeInTheDocument();
     expect(screen.queryByTestId("copilot-kit")).not.toBeInTheDocument();
+  });
+
+  it("does not create an agent while disabled", () => {
+    render(
+      <XiaozeProvider enabled={false}>
+        <div>plain-child</div>
+      </XiaozeProvider>
+    );
+
+    expect(providerTestDoubles.createXiaozeHttpAgent).not.toHaveBeenCalled();
+  });
+
+  it("supports disabled to enabled to disabled without a Hook order error", () => {
+    const { rerender } = render(
+      <XiaozeProvider enabled={false}>
+        <div>plain-child</div>
+      </XiaozeProvider>
+    );
+
+    expect(() => {
+      rerender(
+        <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+          <div>enabled-child</div>
+        </XiaozeProvider>
+      );
+    }).not.toThrow();
+
+    expect(() => {
+      rerender(
+        <XiaozeProvider enabled={false}>
+          <div>plain-child-again</div>
+        </XiaozeProvider>
+      );
+    }).not.toThrow();
+
+    expect(screen.getByText("plain-child-again")).toBeInTheDocument();
+    expect(screen.queryByTestId("copilot-kit")).not.toBeInTheDocument();
+  });
+
+  it("supports enabled to disabled without a Hook order error", () => {
+    const { rerender } = render(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>enabled-child</div>
+      </XiaozeProvider>
+    );
+
+    expect(() => {
+      rerender(
+        <XiaozeProvider enabled={false}>
+          <div>plain-child</div>
+        </XiaozeProvider>
+      );
+    }).not.toThrow();
+
+    expect(screen.getByText("plain-child")).toBeInTheDocument();
+    expect(screen.queryByTestId("copilot-kit")).not.toBeInTheDocument();
+  });
+
+  it("works and creates a fresh agent when re-enabled", () => {
+    const { rerender } = render(
+      <XiaozeProvider enabled={false}>
+        <div>plain-child</div>
+      </XiaozeProvider>
+    );
+
+    rerender(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>enabled-child</div>
+      </XiaozeProvider>
+    );
+    const firstEnabledAgent = providerTestDoubles.agents.at(-1);
+
+    rerender(
+      <XiaozeProvider enabled={false}>
+        <div>plain-child-again</div>
+      </XiaozeProvider>
+    );
+    rerender(
+      <XiaozeProvider agentUrl="/api/v1/agent/xiaoze" enabled>
+        <div>enabled-child-again</div>
+      </XiaozeProvider>
+    );
+
+    expect(providerTestDoubles.createXiaozeHttpAgent).toHaveBeenCalledTimes(2);
+    expect(providerTestDoubles.agents.at(-1)).not.toBe(firstEnabledAgent);
+    expect(screen.getByTestId("copilot-kit")).toBeInTheDocument();
+    expect(screen.getByText("enabled-child-again")).toBeInTheDocument();
   });
 
   it("keeps the CopilotKit inspector disabled by default", () => {
