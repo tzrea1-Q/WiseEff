@@ -71,7 +71,22 @@ The same public resume path rejects a different approval id, a different body th
 - Verification-matrix acceptance specs were run separately with isolated ports and object roots, not the running 5173/8787 services. `xiaoze-perception.acceptance.spec.ts` at frontend `5175` / API `18787` with `/tmp/wiseeff-611-perception.47mXaE` passed 4/4 including warmup. `xiaoze-action.acceptance.spec.ts` at frontend `5176` / API `18788` with `/tmp/wiseeff-611-action.73LvlO` completed 6 passed, 1 skipped, 1 failed; the only failure was the known main-red browser approval-card timeout at `e2e/acceptance/xiaoze-action.acceptance.spec.ts:776` after 60 seconds. The other action flows passed, and this UI baseline issue is outside the #611 durable provenance repair.
 - After the plan updates and documentation commit, `git diff --check origin/main...HEAD` passed.
 
-No PR was opened or merged. This addendum does not claim complete local CI green because the known action UI baseline failure remains and the pgvector schema check is skipped.
+### #611 cleanup repair continuation
+
+This continuation is test-only and does not change production behavior, the trusted invocation model, ToolRegistry authorization proof, or AG-UI interfaces.
+
+- Cleanup repair commit: `79d059635` (`test(agent): guarantee durable resume cleanup (#611)`).
+- The entire `withTempDatabase` callback is covered by an outer `try/finally`. Instance A and B saver handles are registered immediately after construction, before saver setup can fail; the instance B database connection is registered immediately after creation. The cleanup closes the instance B connection, instance A saver, instance B saver, and shared checkpointer/probe saver in that order, with optional handles and repeated cleanup handled safely.
+- Reset of shared saver state is present in the callback `finally` and the surrounding test `finally`. Each cleanup operation catches its own failure so cleanup cannot replace the first setup, interrupt, resume, or assertion error.
+- The focused regression deliberately throws after instance A is ready and before instance B is created. It asserts the original sentinel error is preserved and instance A's saver is closed. This covers the failure boundary requested for A setup/interrupt-to-B creation; the same outer boundary also covers B connection/setup and every positive/negative resume assertion.
+- TDD red: before this repair, `npm run test:server -- server/modules/agent/xiaoze/durableAgentResume.integration.test.ts` reported 1 failed test (A saver end count 0) and an unhandled PostgreSQL `57P01` connection error. Green: the same file passed 3/3 tests.
+- Requested focused command passed: `npm run test:server -- server/modules/agent/xiaoze/durableAgentResume.integration.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/toolRegistry.test.ts server/modules/agent/xiaoze/agUiEndpoint.test.ts server/modules/agent/xiaoze/planningGraph.test.ts` — 5 files, 60 tests passed.
+- Repeated full server command passed: `npm run test:server` — 355 files passed, 2 skipped; 2744 tests passed, 8 skipped.
+- Repeated `npm run build` passed with the existing Vite large-chunk warning. `npm run contract:check` passed: OpenAPI contract artifact is current. `npm run lint` passed with 0 errors and 299 existing warnings.
+- Parent/current pgvector revalidation used `TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check` against the local `pgvector/pgvector:pg16` container. Documentation governance passed and `db-schema artifact is current`; the schema check was not skipped.
+- After this plan update and its separate documentation commit, `git diff --check origin/main...HEAD` passed.
+
+The preceding #611 repair evidence retains its original host boundary, where the pgvector check was skipped; this cleanup continuation records the later pgvector revalidation above. No PR was opened or merged. This plan does not claim complete local CI green because the known action UI baseline failure remains.
 
 ## Documentation Impact Matrix
 
