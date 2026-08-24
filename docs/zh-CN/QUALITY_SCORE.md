@@ -30,6 +30,7 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 ## CI 合入门槛
 
 PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。浏览器 job 的权威入口是 `npm run acceptance:gate0`：visual 与 full browser 共用 fresh exact-owned runtime，60 分钟时限覆盖 provision/finalize，输出全部写入 runRoot，失败保留取证资源，只有成功才清理数据库/对象根。CI 上传前由 fresh finalizer 接管所有可由 process-start identity 证明的 writer，在私有 staging 内递归脱敏与扫描（含 ZIP trace），再原子发布 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`；upload action 只接受这个不可变 ZIP，绝不重新遍历 live runs root。直接 `acceptance:browser` 仅用于聚焦/人工候选，不替代 Gate0。完整评分与门禁表以英文版为准。
+自托管升级控制器的本地回归入口是 `npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts`：mock Docker/Compose 状态覆盖 PostgreSQL/Redis/MinIO 服务特定就绪、`minio-init` 权威门禁、旧栈恢复真实性、稳定失败诊断、脱敏和公网探测代理绕过。该本地门禁不能替代目标部署机验收。
 
 小泽离线验收使用 `XIAOZE_DETERMINISTIC=true`；live LLM 质量证据必须在目标环境配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 后采集。
 

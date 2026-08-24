@@ -289,6 +289,10 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 7. 最后重新创建/启动 Caddy，同时保留 data/config volume。
 8. 执行公网 liveness/readiness 和有界 self-hosted smoke。
 
+数据平面等待收敛为一个深接口 `wiseeff_upgrade_wait_data_plane_ready`；调用者不再编码服务特定的状态规则。它按顺序等待 PostgreSQL healthy、Redis healthy、MinIO 进程 running，以及 `minio-init` 退出码 `0`。MinIO 单独 running 不代表对象存储就绪，MinIO 进程退出会立即失败。由于 Compose 的 MinIO 服务没有 Docker healthcheck，initializer 成功才是 endpoint 凭据和所需 bucket 可用的权威证明。
+
+旧栈恢复使用独立的 `wiseeff_upgrade_verify_restored_stack` helper。在写入 `old-stack-restored` 之前，它验证数据平面、queue resume、API live/ready、8788 端口上的 worker liveness 与 Docker health、web 直连、按服务记录的旧 image identity，以及 proxy/public 探测。任一失败都会记录 `failed_phase`、`failure_service`、稳定的 `failure_code`、有长度限制且脱敏的 `failure_summary`、`recovery_started`、`recovery_verified` 和非 `none` 的 `next_action`，随后在 `recovery-required` 下保持 proxy 停止和 queue 暂停。
+
 本阶段不会执行 seed、bootstrap、setup renderer 或配置重写。
 
 ### 6. 收尾

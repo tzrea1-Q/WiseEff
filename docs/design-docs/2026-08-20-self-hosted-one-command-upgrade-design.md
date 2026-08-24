@@ -289,6 +289,10 @@ A partial backup is never considered a recovery point. On failure here, restart 
 7. Recreate/start Caddy last, preserving its data/config volumes.
 8. Run public liveness/readiness and the bounded self-hosted smoke.
 
+The data-plane wait is one deep interface, `wiseeff_upgrade_wait_data_plane_ready`; callers do not encode service-specific state rules. It waits for PostgreSQL healthy, Redis healthy, MinIO process running, and `minio-init` exited with code `0`, in that order. MinIO running alone is not object-store readiness, and an exited MinIO process fails immediately. The successful initializer is the authoritative proof for the endpoint credentials and required buckets because the Compose MinIO service has no Docker healthcheck.
+
+Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` helper. It verifies the data plane, queue resume, API live/ready, worker liveness plus Docker health on port `8788`, direct web access, service-specific previous image identity, and proxy/public probes before writing `old-stack-restored`. Any failure records `failed_phase`, `failure_service`, a stable `failure_code`, a bounded redacted `failure_summary`, `recovery_started`, `recovery_verified`, and a non-`none` `next_action`, then leaves proxy traffic stopped and the queue paused under `recovery-required`.
+
 No seed, bootstrap, setup renderer, or configuration rewrite runs in this phase.
 
 ### 6. Finalize

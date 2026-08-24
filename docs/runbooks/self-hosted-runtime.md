@@ -196,6 +196,8 @@ Pin controlled releases with `--ref refs/tags/<release>` or a commit SHA. Run `p
 
 Use `status --run-id <id>` after an interruption. A `recovery-required` run keeps the proxy stopped; use `resume` only for the journal's idempotent finalization action, or use the token-gated `rollback --restore-data --confirm restore-<id>` whole-state restore. Do not use `setup.sh --force` or `compose down -v` as an upgrade shortcut. After a successful upgrade, run self-hosted smoke and review proxy/API/worker logs.
 
+The controller waits for PostgreSQL and Redis Docker `healthy`, MinIO process `running`, and `minio-init` exited `0`; MinIO `running` alone is not readiness. Before it records `old-stack-restored`, it verifies data plane, queue resume, API live/ready, worker `127.0.0.1:8788/health/live` plus Docker health, web direct access, previous image identity, and proxy/public health. Inspect `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, and `next_action` with `status --json`. The public probe bypasses the host proxy with `curl --noproxy '*'`; a Vite 403 for `Host: web:5173` is a Host check, not proof that the container port is unreachable.
+
 ## Known M6.1 Boundaries
 
 - Production identity is still the M5 HMAC boundary until M6.2.

@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 核心实现、宿主机兼容加固、持久构建诊断和 Node 基础镜像离线包准备均已进入 `main`。受限网络路径现在同时提供组织 CA 默认方案，以及面向无法安装 CA 主机的“两把钥匙、仅构建期”insecure TLS 兼容策略；本地/CI 门禁覆盖策略授权、下载 adapter、缓存失效、运行时隔离和脱敏来源。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
+**状态：** 核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪恢复修复均已在本实现分支。受限网络路径现在同时提供组织 CA 默认方案，以及面向无法安装 CA 主机的“两把钥匙、仅构建期”insecure TLS 兼容策略；本地/CI 门禁覆盖策略授权、下载 adapter、缓存失效、运行时隔离和脱敏来源。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -22,6 +22,8 @@
 - API 迁移完成后才恢复公网流量。
 - 中断运行只有一个合法下一步：安全退出、`resume` 或显式 `rollback`。
 - 迁移后失败会保持 proxy 停止并暴露 `recovery-required`，绝不宣称自动回滚。
+- 数据平面门禁要求 PostgreSQL/Redis 为 Docker `healthy`，MinIO 进程为 `running`，且 `minio-init` 成功退出 `0`；不能只凭 MinIO `running` 判定就绪。
+- 只有数据平面、queue resume、API、worker、web、旧 image、proxy/public 恢复门禁全部通过，才写入 `old-stack-restored`；否则写入带非 `none` 下一步的 `recovery-required`。
 - 非客户 Ubuntu 演练证明一次前向升级和一次注入迁移后故障的恢复路径，并产出脱敏证据。
 
 ## Git 与 PR 工作流
@@ -410,6 +412,33 @@ git diff --check
 
 **预期结果：** 无 CA 企业主机获得一个显式、可审计的单次构建兼容路径，同时不把不安全传输设为默认、不泄露凭据、不削弱包身份/完整性，也不改变运行时 TLS。
 
+## 阶段 13 —— MinIO 就绪与旧栈恢复真实性
+
+事故运行 `20260824T021935Z-2079618` 暴露了两个控制器真实性缺陷：MinIO 没有 Docker healthcheck，却被通用 `healthy` 等待逻辑固定等待；旧栈恢复也可能在没有验证 worker、web、proxy/public、queue resume 和旧镜像身份时写入 `old-stack-restored`。本阶段把服务特定就绪语义与恢复验证收敛在 `upgrade-lib.sh`，使 `apply` 只表达数据平面就绪。
+
+**任务：**
+
+- [x] 增加 mock Docker/Compose RED 测试，覆盖 MinIO running 与 `minio-init` 退出 `0`、MinIO 异常退出、initializer 失败/超时、PostgreSQL/Redis 健康、恢复门禁、稳定失败字段、脱敏和代理绕过。
+- [x] 实现 `wiseeff_upgrade_wait_data_plane_ready`，封装服务特定语义和 bounded 诊断（`failed_phase`、`failure_service`、`failure_code`、`failure_summary`）。
+- [x] 实现只用于恢复的验证 helper，覆盖数据平面、queue resume、API live/ready、worker live/healthy、web 直连、旧应用 image identity 和 proxy/public 健康。
+- [x] 将 `old-stack-restored` 与 `next_action=none` 放在 `recovery_verified=true` 之后；失败时持久化 `recovery-required`、暂停 queue、保持 proxy 停止。
+- [x] 公网探测使用 `curl --noproxy '*'`，并保持 `WISEEFF_BUILD_TLS_POLICY` 的仅构建期安全边界，不引入全局 TLS 关闭。
+- [x] 更新中英文操作员文档、可靠性/runbook、设计说明和本计划，明确部署机验收边界。
+- [ ] 将合入后的控制器部署到事故主机并执行前向/恢复演练；本地 mock 不能关闭目标环境证据。
+
+**验证：**
+
+```bash
+bash -n ops/self-hosted/scripts/upgrade.sh
+bash -n ops/self-hosted/scripts/upgrade-lib.sh
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
+npm run test:scripts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
 ## 推广与兼容
 
 1. 落地实现，但不改变既有 setup/start 默认行为。
@@ -425,17 +454,18 @@ git diff --check
 
 | 区域 | 状态 | 文件 | 要求 |
 | --- | --- | --- | --- |
-| 仓库导航 | Update | `README.md`、必要时 `docs/README.md` | 指向新升级入口，并与 setup 分离。 |
-| 计划 | Update | 本计划及英文版、双语 `docs/PLANS.md` | 跟踪实现与证据。 |
+| 仓库导航 | Review | `README.md`、必要时 `docs/README.md` | 现有 self-hosted 链接已经指向 `ops/self-hosted/upgrade.md`；本缺陷修复不需要修改导航。 |
+| 计划 | Update | 本计划及英文版；Review 双语 `docs/PLANS.md` | 跟踪实现与证据。 |
 | 产品规格 | No change | `docs/product-specs/` | 运维流程，不是产品用户行为。 |
 | 架构 | Update | 设计文档双语版；Review `ARCHITECTURE.md`；deployment-operations 双语版 | 记录升级模块与源码部署 seam。 |
-| 质量/测试 | Review | QUALITY、testing strategy、verification matrix 双语版 | 若增加常驻目标测试命令则纳入门禁。 |
-| 可靠性/runbook | Update | RELIABILITY 及 self-hosted/release/backup runbook 双语版 | 顺序、失败分类、恢复权限、证据。 |
+| 质量/测试 | Update | QUALITY 双语版；Review testing strategy、verification matrix 双语版 | 记录 controller mock 回归门禁；现有通用脚本套件条目已经覆盖该命令，目标环境演练仍属于部署证据。 |
+| 可靠性/runbook | Update | RELIABILITY 及 self-hosted-runtime 双语版；Review release/rollback/backup runbook 双语版 | 顺序、失败分类、恢复权限、证据。 |
 | 安全/治理 | Review | SECURITY、secrets、data classification 双语版 | 备份敏感性、日志脱敏、恢复确认。 |
 | 前端/设计 | No change | `docs/FRONTEND.md`、UI 文档 | 无产品 UI 变化。 |
 | 生成产物 | Review | 仅目标运行 manifest/证据路径 | 不提交客户数据、dump、`.env` 或密钥。 |
 | References | Review | `docs/references/` | 仅在精简协议参考确有价值时新增。 |
 | 自托管运维 | Update | `ops/self-hosted/**`、Compose、示例、脚本 | 核心实现面。 |
+| 环境变量 | Review | `docs/developer/environment-variables.md`、`docs/zh-CN/developer/environment-variables.md` | 没有新增变量；既有仅构建期 TLS 和 runtime-proxy 语义不变。 |
 | 中文开发文档 | Update | 上述所有 companion | 中英文独立并相互链接。 |
 
 ## 文档更新门禁

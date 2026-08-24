@@ -65,6 +65,10 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default and probes `/health/live`, `/health/ready`, `/api/v1/me`, and `/api/v1/operations/pilot-readiness`. M6.4 requires `/health/ready` to include `dependencies.durableQueue.transport` and `dependencies.durableQueue.database`. Allowing `deviceGateway` as the only blocked gate is valid only for non-HDC staging.
 
+### Self-hosted upgrade readiness and recovery truth
+
+The upgrade controller keeps data-plane readiness service-specific: PostgreSQL and Redis require Docker `healthy`, MinIO `running` means process liveness only, and `minio-init` must exit `0` after its endpoint/credential/bucket initialization. A MinIO healthcheck is intentionally not inferred from `running`; the successful initializer is the object-store readiness proof. Before `old-stack-restored` is persisted, a separate restore verification helper checks the data plane, queue resume, API live/ready, worker liveness plus Docker health on `8788`, web direct access, previous app image identity, and proxy/public health. Any failure remains `recovery-required` with proxy stopped and queue paused, and persists bounded/redacted `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, and `next_action` evidence. Local mock tests do not establish target-environment readiness.
+
 ## M6.5 Observability Baseline
 
 M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and four Grafana dashboards for services, overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.

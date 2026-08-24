@@ -63,6 +63,19 @@ The contract pins both the OCI manifest digest (`base_image_id`) and the Docker 
 
 This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not make the whole build air-gapped. Alpine packages, the pinned DTC Git source, Python packages, and npm packages still need the managed proxy/mirror path unless separately bundled. Other service image pulls remain a Docker daemon network responsibility. The controller never weakens host/runtime TLS, package integrity/signature checks, deletes images, or prunes Docker state; only the explicitly authorized build-only policy can skip endpoint certificate verification.
 
+## Data-plane readiness and recovery verification
+
+After `apply` recreates `postgres`, `redis`, `minio`, and `minio-init`, the controller applies service-specific readiness semantics:
+
+- PostgreSQL is ready only when Docker reports `healthy`.
+- Redis is ready only when Docker reports `healthy`.
+- MinIO's `running` state proves only that its process is alive. MinIO is ready only after `minio-init` has exited with code `0`; that initializer's successful `mc alias set` and bucket creation are the authoritative proof that the endpoint, credentials, and `wiseeff`/`wiseeff-restore` buckets are usable.
+- An exited MinIO process fails immediately. A `minio-init` non-zero exit or timeout fails the data-plane gate; the controller never treats every `running` container as healthy.
+
+Before writing `old-stack-restored`, recovery recreates the previous stack and verifies the data plane, queue resume, API `/health/live` and `/health/ready`, worker `http://127.0.0.1:8788/health/live` plus Docker health, web direct access, previous API/worker/web image identities, and the proxy/public health endpoints. Image identity verification compares both the recorded image reference and the immutable Docker image ID. If any gate fails, the controller writes `recovery-required`, keeps proxy traffic stopped and the queue paused, and never writes `next_action=none`.
+
+Use `status` or `status --json` to inspect `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, and `next_action`. Summaries are bounded and redacted; they do not contain proxy passwords, access credentials, or complete sensitive environment values. Public probes use `curl --noproxy '*'`. A Vite `Host: web:5173` 403 inside a container is a Host allowlist result, not proof of a TCP outage; use loopback or the configured allowed hostname for direct probes.
+
 ## One-time host preparation
 
 Normalize a host that was initialized or operated through root before running the first upgrade:
@@ -93,6 +106,8 @@ cd ops/self-hosted
 Review the current and target SHA, changed migrations, Compose project, volume identities, backup root, and free-space gate. The first adoption must be rehearsed on a non-customer host with a disposable recovery point.
 
 An older controller cannot execute behavior that exists only in its target commit. If the currently installed controller predates automatic base-image preparation and is already blocked at Docker metadata resolution, use the manual `docker load`/`docker tag` fallback in [Self-Hosted Base Images](images/README.md) once to install this release. Upgrades started from this release onward use the integrated path.
+
+If a deployment machine is still checked out at an older controller commit, first fetch and check out the release or commit containing this readiness/recovery fix. Only then run `plan` and `apply`; the old controller cannot interpret or execute the new data-plane and recovery gates.
 
 ## Normal upgrade
 

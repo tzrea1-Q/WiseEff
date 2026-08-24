@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, and bundled Node base-image preparation are on `main`. The restricted-network path now includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and MinIO/readiness recovery fix are on this implementation branch. The restricted-network path now includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -22,6 +22,8 @@
 - API migrations complete before public traffic resumes.
 - an interrupted run has exactly one valid next action: safe exit, `resume`, or explicit `rollback`.
 - post-migration failures keep the proxy stopped and surface `recovery-required`; they never claim automatic rollback.
+- the data-plane gate requires PostgreSQL/Redis Docker `healthy`, MinIO process `running`, and successful `minio-init` exit `0`; MinIO is never considered ready from `running` alone.
+- `old-stack-restored` is written only after data plane, queue resume, API, worker, web, previous-image, and proxy/public recovery gates pass; otherwise the journal records `recovery-required` with a non-`none` next action.
 - a non-customer Ubuntu rehearsal proves a forward upgrade and an injected post-migration recovery path with redacted evidence.
 
 ## Git & PR Workflow
@@ -438,6 +440,33 @@ git diff --check
 
 **Expected outcome:** CA-less enterprise hosts have an explicit, auditable one-build compatibility path without making insecure transport the default, leaking credentials, weakening package identity/integrity, or changing runtime TLS.
 
+## Phase 13 — MinIO Readiness And Truthful Previous-Stack Recovery
+
+The incident run `20260824T021935Z-2079618` showed two controller-truth defects: MinIO has no Docker healthcheck and was held to a generic `healthy` wait, while previous-stack recovery could write `old-stack-restored` without verifying worker, web, proxy/public access, queue resume, or previous image identity. This phase keeps service-specific readiness and recovery verification behind `upgrade-lib.sh` so `apply` expresses only data-plane readiness and the restore operation.
+
+**Tasks:**
+
+- [x] Add mock Docker/Compose RED tests for MinIO running vs `minio-init` exit `0`, MinIO exit, initializer failure/timeout, PostgreSQL/Redis health, restore gates, stable failure fields, redaction, and proxy bypass.
+- [x] Implement `wiseeff_upgrade_wait_data_plane_ready` with service-specific semantics and bounded diagnostics (`failed_phase`, `failure_service`, `failure_code`, `failure_summary`).
+- [x] Implement a restore-only verification helper covering data plane, queue resume, API live/ready, worker live/healthy, web direct, previous app image identity, and proxy/public health.
+- [x] Keep `old-stack-restored` and `next_action=none` behind `recovery_verified=true`; otherwise persist `recovery-required`, pause the queue, and keep the proxy stopped.
+- [x] Use `curl --noproxy '*'` for public probes and preserve the build-only `WISEEFF_BUILD_TLS_POLICY` security boundary without introducing a global TLS bypass.
+- [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
+- [ ] Deploy the merged controller to the reported host and execute the forward/recovery rehearsal; local mocks do not close target evidence.
+
+**Verification:**
+
+```bash
+bash -n ops/self-hosted/scripts/upgrade.sh
+bash -n ops/self-hosted/scripts/upgrade-lib.sh
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
+npm run test:scripts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
 ## Rollout And Compatibility
 
 1. Land the implementation without changing existing setup/start defaults.
@@ -453,17 +482,18 @@ If standalone Compose behavior cannot satisfy a required invariant, fail preflig
 
 | Area | Status | Files | Requirement |
 | --- | --- | --- | --- |
-| Repository maps | Update | `README.md`, `docs/README.md` if needed | Point upgrade operators to the new entry; keep setup separate. |
-| Planning docs | Update | this plan, Chinese companion, `docs/PLANS.md`, `docs/zh-CN/PLANS.md` | Track implementation and completion evidence. |
+| Repository maps | Review | `README.md`, `docs/README.md` if needed | Existing self-hosted links already route to `ops/self-hosted/upgrade.md`; no map change is needed for this defect fix. |
+| Planning docs | Update | this plan and Chinese companion; review `docs/PLANS.md`, `docs/zh-CN/PLANS.md` | Track implementation and completion evidence. |
 | Product specs | No change | `docs/product-specs/` | Operator workflow, not end-user product behavior. |
 | Architecture docs | Update | design doc pair; review `ARCHITECTURE.md`; `docs/design-docs/deployment-operations.md` pair | Record the upgrade module and source-checkout deployment seam. |
-| Quality/testing docs | Review | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md` and companions | Add target integration gate if it becomes a recurring command. |
-| Reliability/runbooks | Update | `docs/RELIABILITY.md` and companion; self-hosted, release/rollback, backup/restore runbook pairs | Exact ordering, failure classes, restore authority, evidence. |
+| Quality/testing docs | Update | `docs/QUALITY_SCORE.md` and companion; review `docs/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md` and companions | Record the mock controller regression gate; the existing generic script-suite entries already cover this command, and target integration remains deployment evidence. |
+| Reliability/runbooks | Update | `docs/RELIABILITY.md` and companion; `docs/runbooks/self-hosted-runtime.md` and companion; review release/rollback and backup/restore runbook pairs | Exact ordering, failure classes, restore authority, evidence. |
 | Security/governance docs | Review | `docs/SECURITY.md`, `docs/security/secrets-management.md`, `docs/security/data-classification.md` and companions | Backup sensitivity, log redaction, restore confirmation. |
 | Frontend/design docs | No change | `docs/FRONTEND.md`, UI design docs | No product UI or browser interaction change. |
 | Generated artifacts | Review | target run manifest/evidence path only | Never commit customer data, dumps, `.env`, or secrets. |
 | References | Review | `docs/references/` | Add no reference unless a concise upgrade protocol reference proves useful. |
 | Self-hosted ops | Update | `ops/self-hosted/**`, `compose.yaml`, examples, scripts | Implementation surface. |
+| Environment variables | Review | `docs/developer/environment-variables.md`, `docs/zh-CN/developer/environment-variables.md` | No new variable is introduced; existing build-only TLS and runtime-proxy semantics remain unchanged. |
 | Chinese developer docs | Update | every companion named above | Separate, linked English and Chinese pages. |
 
 ## Documentation Update Gate

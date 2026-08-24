@@ -84,7 +84,7 @@ Remaining M5 risks: local smoke can prove the release gate structure, but full t
 
 ## M6 Coverage
 
-M6.1 is covered by self-hosted compose/env/proxy metadata checks and a smoke runner for deployed Linux targets. M6.6 adds `npm run capacity:gate`, `npm run selfhost:release-gate`, `ops/self-hosted/releases/`, and the release/rollback runbook so a release candidate has version, artifact, migration, identity, backup, rollback, capacity, synthetic acceptance, and HDC-scope evidence slots.
+M6.1 is covered by self-hosted compose/env/proxy metadata checks and a smoke runner for deployed Linux targets. The upgrade controller regression gate is `npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts`: mock Docker/Compose states cover service-specific PostgreSQL/Redis/MinIO readiness, `minio-init` authority, truthful previous-stack recovery, stable failure diagnostics, redaction, and public-probe proxy bypass. This local gate does not establish target-host acceptance. M6.6 adds `npm run capacity:gate`, `npm run selfhost:release-gate`, `ops/self-hosted/releases/`, and the release/rollback runbook so a release candidate has version, artifact, migration, identity, backup, rollback, capacity, synthetic acceptance, and HDC-scope evidence slots.
 
 Remaining M6 risks: the M6.2-M6.5 implementation PRs and target evidence are still separate workstreams. M6.6 consumes M6.2 identity readiness as an explicit release dependency, but local script output is not an identity, capacity, or rollback pass unless backed by target OIDC evidence, target metrics, rollback rehearsal, queue drain/pause/resume, observability snapshots, and target synthetic artifacts.
 
