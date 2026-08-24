@@ -4,7 +4,9 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) is also merged into `main` and provides the advanced-resume worker/proxy gate; the main-line repository implementation additionally includes scheme-agnostic diagnostic credential redaction, covered by mock tests and applicable CI. A clean forward upgrade and recovery rehearsal on a non-customer target host remain the only unfinished environment evidence before claiming release readiness; conditional target-synthetic and local-non-HDC jobs are skipped when prerequisites are absent, not passed.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) is also merged into `main` and provides the advanced-resume worker/proxy gate; the repository implementation additionally includes scheme-agnostic diagnostic credential redaction, covered by mock tests and applicable CI. Remaining repository-local coverage is the complete stable-exit/forbidden-command matrix in Phase 0 and the exhaustive signal-interruption matrix in Phase 5; non-customer target-host rehearsals remain open in later phases. Conditional target-synthetic and local-non-HDC jobs are skipped when prerequisites are absent, not passed.
+
+**Checklist interpretation:** Phases 0-5 distinguish delivered repository implementation from the remaining repository-local coverage gaps rather than preserving unchecked pre-implementation placeholders. All unchecked items after Phase 5 are target-host evidence unless their text explicitly identifies another repository-local coverage gap.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -54,11 +56,11 @@
 
 **Tasks:**
 
-- [ ] Add black-box tests for `apply`, `plan`, `status`, `resume`, and `rollback` parsing.
+- [x] Add black-box tests for `apply`, `plan`, `status`, `resume`, and `rollback` parsing.
 - [ ] Lock stable exit classes `0`, `2`, `10`, `20`, `30`, `40`, `50`, `60`, `70`, and `75`.
-- [ ] Test same-SHA no-op and `--restart` behavior.
-- [ ] Test non-interactive confirmation requirements and run-specific restore confirmation.
-- [ ] Test console/journal redaction with database, object-store, API-key, and bearer-token canaries.
+- [x] Test same-SHA no-op and `--restart` behavior.
+- [x] Test non-interactive confirmation requirements and run-specific restore confirmation.
+- [x] Test console/journal redaction with database, object-store, API-key, and bearer-token canaries.
 - [ ] Test forbidden command canaries: `down -v`, `volume rm`, `system prune`, Git reset/clean, seed/provision, and `setup.sh --force`.
 
 **Verification:**
@@ -82,14 +84,14 @@ Expected before implementation: failures because the public entry does not exist
 
 **Tasks:**
 
-- [ ] Implement the stable launcher and strict command parser without `eval` or sourcing run-state data.
-- [ ] Add one shared host lock for upgrade, mutating setup actions, and future restore operations.
-- [ ] Persist a mode-`0700` run directory with atomic phase/field writes and a redacted append-only event log.
-- [ ] Define protocol version compatibility and target-checkout re-exec behavior.
-- [ ] Implement `plan` to validate checkout shape, `.env` mode/keys, current containers, Compose project/volume identities, Docker/Compose versions, disk/inode headroom, backup-root safety, target ref resolution, and changed migration files.
-- [ ] Implement `status` as a read-only journal renderer with text and JSON output.
-- [ ] Reject dirty tracked/unignored files, symlink escapes, unknown data size, project identity drift, and insufficient backup/image headroom before downtime.
-- [ ] Record `.env` fingerprint only; never print resolved `compose config` containing secrets.
+- [x] Implement the stable launcher and strict command parser without `eval` or sourcing run-state data.
+- [x] Add one shared host lock for upgrade, mutating setup actions, and future restore operations.
+- [x] Persist a mode-`0700` run directory with atomic phase/field writes and a redacted append-only event log.
+- [x] Define protocol version compatibility and target-checkout re-exec behavior.
+- [x] Implement `plan` to validate checkout shape, `.env` mode/keys, current containers, Compose project/volume identities, Docker/Compose versions, disk/inode headroom, backup-root safety, target ref resolution, and changed migration files.
+- [x] Implement `status` as a read-only journal renderer with text and JSON output.
+- [x] Reject dirty tracked/unignored files, symlink escapes, unknown data size, project identity drift, and insufficient backup/image headroom before downtime.
+- [x] Record `.env` fingerprint only; never print resolved `compose config` containing secrets.
 
 **Verification:**
 
@@ -113,14 +115,14 @@ Expected: plan/status, protocol, lock contention, dirty tree, path safety, disk,
 
 **Tasks:**
 
-- [ ] Fetch the requested ref and resolve it once to `<sha>^{commit}`.
-- [ ] Record current running application image IDs and tag them with a run-specific previous tag.
-- [ ] Check out the target SHA in detached deployment mode without touching ignored `.env`/state paths.
-- [ ] Re-exec the target implementation after verifying protocol compatibility.
-- [ ] Give API, worker, and web one explicit commit-addressed application image contract; avoid rebuilding the same source three times where Compose permits reuse.
-- [ ] Build and run image/config validation while old containers continue serving.
-- [ ] On protocol, checkout, or build failure, restore the previous checkout pointer and exit without stopping a container.
-- [ ] Preserve ordinary `setup.sh up` behavior when no upgrade tag override is supplied.
+- [x] Fetch the requested ref and resolve it once to `<sha>^{commit}`.
+- [x] Record current running application image IDs and tag them with a run-specific previous tag.
+- [x] Check out the target SHA in detached deployment mode without touching ignored `.env`/state paths.
+- [x] Re-exec the target implementation after verifying protocol compatibility.
+- [x] Give API, worker, and web one explicit commit-addressed application image contract; avoid rebuilding the same source three times where Compose permits reuse.
+- [x] Build and run image/config validation while old containers continue serving.
+- [x] On protocol, checkout, or build failure, restore the previous checkout pointer and exit without stopping a container.
+- [x] Preserve ordinary `setup.sh up` behavior when no upgrade tag override is supplied.
 
 **Verification:**
 
@@ -145,15 +147,15 @@ Expected: a moving ref cannot change the recorded target mid-run; a build failur
 
 **Tasks:**
 
-- [ ] Add `pause`, `drain-status`, and `resume` queue maintenance behavior for durable BullMQ mode; polling mode reports an explicit no-op.
-- [ ] Pause queue intake, stop public proxy, wait for active work, and gracefully stop API/worker/web.
-- [ ] Prove no app writer remains before snapshot begins.
-- [ ] Stream a custom-format PostgreSQL dump to a partial path and validate it with `pg_restore --list` before atomic completion.
-- [ ] Mirror the configured S3-compatible bucket with a pinned `minio/mc` image and verify a key/size/checksum manifest.
-- [ ] Force/copy/verify a Redis RDB checkpoint when durable queue mode is enabled.
-- [ ] Write a complete SHA-256 artifact manifest and mark the recovery point verified only when all required stores pass.
-- [ ] On quiescence or backup failure, pass the data-plane gate before recreating old app containers, verify internal health and image identity, resume the queue, recreate proxy, and probe public health last; if isolation failed, require manual isolation and keep `recovery-required` until all gates pass.
-- [ ] Keep partial backup directories for diagnosis; never present them as restorable.
+- [x] Add `pause`, `drain-status`, and `resume` queue maintenance behavior for durable BullMQ mode; polling mode reports an explicit no-op.
+- [x] Pause queue intake, stop public proxy, wait for active work, and gracefully stop API/worker/web.
+- [x] Prove no app writer remains before snapshot begins.
+- [x] Stream a custom-format PostgreSQL dump to a partial path and validate it with `pg_restore --list` before atomic completion.
+- [x] Mirror the configured S3-compatible bucket with a pinned `minio/mc` image and verify a key/size/checksum manifest.
+- [x] Force/copy/verify a Redis RDB checkpoint when durable queue mode is enabled.
+- [x] Write a complete SHA-256 artifact manifest and mark the recovery point verified only when all required stores pass.
+- [x] On quiescence or backup failure, pass the data-plane gate before recreating old app containers, verify internal health and image identity, resume the queue, recreate proxy, and probe public health last; if isolation failed, require manual isolation and keep `recovery-required` until all gates pass.
+- [x] Keep partial backup directories for diagnosis; never present them as restorable.
 
 **Verification:**
 
@@ -176,15 +178,15 @@ Expected: every backup failure injection restores the old online stack without m
 
 **Tasks:**
 
-- [ ] Recreate PostgreSQL, Redis, MinIO, and `minio-init` against the recorded existing volumes; wait for health and re-check mounts.
-- [ ] Mark `migration-started` immediately before candidate API startup.
-- [ ] Start API alone and observe the existing migrate-before-serve command.
-- [ ] Prove migration completion and API liveness before starting web/worker.
-- [ ] Start web and worker from the candidate image, validate full internal readiness and health, then resume the queue.
-- [ ] Start/recreate Caddy last and run public liveness/readiness plus bounded self-hosted smoke.
-- [ ] Verify every expected long-running container id changed, expected images run, volume identities match, `.env` fingerprint is unchanged, and no seed/provision command ran.
-- [ ] Record downtime, migrations, health/smoke result, and backup manifest before `completed`.
-- [ ] If failure occurs after migration startup, attempt proxy and queue/worker isolation, mark `recovery-required`, require manual isolation first when either attempt fails, and return exit `70` without destructive restore.
+- [x] Recreate PostgreSQL, Redis, MinIO, and `minio-init` against the recorded existing volumes; wait for health and re-check mounts.
+- [x] Mark `migration-started` immediately before candidate API startup.
+- [x] Start API alone and observe the existing migrate-before-serve command.
+- [x] Prove migration completion and API liveness before starting web/worker.
+- [x] Start web and worker from the candidate image, validate full internal readiness and health, then resume the queue.
+- [x] Start/recreate Caddy last and run public liveness/readiness plus bounded self-hosted smoke.
+- [x] Verify every expected long-running container id changed, expected images run, volume identities match, `.env` fingerprint is unchanged, and no seed/provision command ran.
+- [x] Record downtime, migrations, health/smoke result, and backup manifest before `completed`.
+- [x] If failure occurs after migration startup, attempt proxy and queue/worker isolation, mark `recovery-required`, require manual isolation first when either attempt fails, and return exit `70` without destructive restore.
 
 **Verification:**
 
@@ -206,13 +208,13 @@ Expected: state-machine fault injection proves the correct safe/recovery behavio
 
 **Tasks:**
 
-- [ ] Implement monotonic `resume`: re-check observable state, reuse only checksum-valid backups, and never reset `migration-started`.
-- [ ] Implement application-image rollback without data restore only for proven pre-migration or explicitly backward-compatible cases.
-- [ ] Implement confirmation-gated whole-state restore of PostgreSQL, object storage, and Redis as one recovery point.
-- [ ] Refuse partial cross-store restore through the normal interface.
-- [ ] Warn and require a run-specific token if a completed/traffic-served run would discard later writes.
+- [x] Implement monotonic `resume`: re-check observable state, reuse only checksum-valid backups, and never reset `migration-started`.
+- [x] Implement application-image rollback without data restore only for proven pre-migration or explicitly backward-compatible cases.
+- [x] Implement confirmation-gated whole-state restore of PostgreSQL, object storage, and Redis as one recovery point.
+- [x] Refuse partial cross-store restore through the normal interface.
+- [x] Warn and require a run-specific token if a completed/traffic-served run would discard later writes.
 - [ ] Test SIGTERM/SIGHUP/host-reboot-style interruption at every state transition.
-- [ ] Ensure interrupted and `recovery-required` backups are never auto-pruned.
+- [x] Ensure interrupted and `recovery-required` backups are never auto-pruned.
 
 **Verification:**
 
@@ -244,7 +246,7 @@ Expected: each interrupted phase has one valid next action; explicit restore ret
 - [ ] Run one successful forward upgrade and prove every success criterion.
 - [ ] Inject one post-migration readiness failure; prove proxy remains stopped and whole-state recovery follows the documented confirmation flow.
 - [ ] Store only redacted run manifest, command status, hashes, and target evidence references; do not commit dumps, object bytes, `.env`, or internal credentials.
-- [ ] Update all operator docs with exact first-adoption, normal upgrade, status/resume, and recovery commands.
+- [x] Update all operator docs with exact first-adoption, normal upgrade, status/resume, and recovery commands.
 
 **Verification:**
 
@@ -282,7 +284,7 @@ The first Ubuntu rehearsal established the upgrade state-machine shape but expos
 - [x] Exclude upgrade state from Docker build context and remove the obsolete Compose version field.
 - [x] Update the operator guide/design pair with the one-time preparation flow, automatic compatibility behavior, lock decision table, and exact success evidence.
 - [x] Run script tests, `selfhost:check`, `docs:check`, TypeScript build, and `git diff --check` locally.
-- [ ] Merge only after the CI merge bar passes.
+- [x] Merge only after the CI merge bar passes.
 
 **Expected outcome:** a fresh or previously root-operated Ubuntu checkout can be normalized with one explicit host-preparation command, normal upgrade commands run as the deployment user, legacy application images require no manual convergence, failed gates stop immediately, and operators never manually delete a lock file or directory.
 
@@ -427,7 +429,7 @@ Some enterprise deployment hosts can use an authenticated proxy but cannot insta
 - [x] Add black-box tests for policy parsing, two-key authorization, npm adapter behavior, Compose/Dockerfile wiring, forbidden global disablement, cache fingerprint changes, and status provenance.
 - [x] Update setup, upgrade, operations, environment-variable, design, reliability, README, and plan documentation in both languages.
 - [ ] Rehearse `plan` plus `apply --allow-insecure-build` on the reported CA-less target host and confirm runtime image environment contains no TLS-disable variable.
-- [ ] Merge only after every required PR check passes.
+- [x] Merge only after every required PR check passes.
 
 **Verification:**
 
@@ -459,6 +461,7 @@ The incident run `20260824T021935Z-2079618` showed two controller-truth defects:
 - [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
 - [x] Implement the advanced-resume proxy isolation/readiness gate for `queue-resumed`, `starting-proxy`, and `validating-public`; keep proxy/public blocked until API/worker/web rechecks pass, and retain final worker drift verification.
 - [x] Extend the diagnostic credential corpus and persistence tests for HTTP(S), SOCKS variants, valid extension schemes, mixed-case authorization headers, non-secret context preservation, and all existing secret categories; keep failure service/code and next-action evidence intact.
+- [x] Restrict URI schemes to ASCII and stop authority userinfo scanning at `/`, `?`, or `#`; preserve query/fragment email diagnostics and verify context independently in every persisted output.
 - [x] Merge the MinIO/readiness/recovery hotfix into `main` through PR #621 and merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5`; merge the advanced-resume implementation through PR #624 and merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5`, with the diagnostic-redaction regression coverage recorded in this plan.
 - [ ] Deploy the merged controller on a non-customer target host and rehearse one clean forward upgrade plus one recovery path; local mock tests and CI do not close this target evidence.
 
