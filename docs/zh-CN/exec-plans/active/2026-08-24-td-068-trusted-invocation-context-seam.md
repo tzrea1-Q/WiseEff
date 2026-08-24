@@ -24,7 +24,7 @@
 - `npm run lint` 完成，0 errors，保留前端基线 299 warnings。`git diff --check origin/main...HEAD` 通过。
 - `npm run ui:check` 通过，全部 ratchet 保持 baseline。`npm run logs:eval` 的 16/16 场景与 4/4 meta checks 通过；生成时间戳已还原，未纳入提交。
 - 继承的 main-red 视觉失败已由 #617 / PR #619 独立修复，未改动任何已提交 PNG。在当前 #610 最终树上，workflow-equivalent MCR Playwright 从空 pgvector 数据库和独立对象根运行，`acceptance:quality` 及 97/97 质量测试全部通过；另一个空数据库和对象根按 CI production-HMAC 配置通过 `acceptance:smoke` 4/4。
-- 本证据更新后分别执行 Standards 与 Spec 复审，零未解决 finding 才允许合入。因额度耗尽而无法运行的 GitHub checks 不被描述为绿色；owner 已明确批准用最终树完整本地矩阵作为合入依据。
+- 已针对 `origin/main...HEAD` 分别执行最终 Standards 与 Spec 复审，两者均为零 finding。因额度耗尽而无法运行的 GitHub checks 不被描述为绿色；owner 已明确批准用最终树完整本地矩阵作为合入依据。
 
 ## 后续边界
 
@@ -49,7 +49,7 @@
 - [x] 没有公开契约或前端文档因此变陈旧。
 - [x] 已如实记录第一次全量失败与同树完整重跑通过，没有把失败运行宣称为绿色。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
-- [ ] 合入前取得 Standards 与 Spec 最终复审零 finding。
+- [x] 合入前已取得 Standards 与 Spec 最终复审零 finding。
 - [ ] 只有完整 TD-068 迁移和收口证据落地后，才能将本计划移入 `completed/`。
 
 ## Git & PR Workflow

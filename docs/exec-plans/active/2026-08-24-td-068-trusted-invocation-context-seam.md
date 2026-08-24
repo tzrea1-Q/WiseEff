@@ -24,7 +24,7 @@ Provide one branded, server-owned `user` / `agent` / `system` trusted invocation
 - `npm run lint` completed with 0 errors and the 299-warning frontend baseline. `git diff --check origin/main...HEAD` passed.
 - `npm run ui:check` passed with every ratchet at baseline. `npm run logs:eval` passed 16/16 scenarios and 4/4 meta checks; generated timestamps were restored and not committed.
 - The inherited main-red visual failures were repaired independently by #617 / PR #619 without changing any committed PNG. On this final #610 tree, workflow-equivalent MCR Playwright from an empty pgvector database and isolated object root passed `acceptance:quality` and all 97/97 quality tests. A separate empty database and object root passed `acceptance:smoke` 4/4 under the CI production-HMAC profile.
-- Standards and Spec reviews are run separately after this evidence update. Merge requires zero unresolved findings. GitHub checks that cannot run because of the exhausted quota are not described as green; the owner explicitly approved the complete final-tree local matrix as merge authority.
+- Final Standards and Spec reviews were run separately against `origin/main...HEAD`; each reported zero findings. GitHub checks that cannot run because of the exhausted quota are not described as green; the owner explicitly approved the complete final-tree local matrix as merge authority.
 
 ## Follow-up boundary
 
@@ -49,7 +49,7 @@ Tickets #611–#615 construct context at HTTP/Xiaoze/system entry points and mig
 - [x] No public contract or frontend documentation became stale.
 - [x] The failed first full run and the successful exact-tree full rerun are recorded without calling the failed run green.
 - [x] Resolved the inherited acceptance-quality failures through #617 / PR #619 and reran the complete required local CI on the rebased final tree.
-- [ ] Obtain zero-finding final Standards and Spec reviews before merge.
+- [x] Obtained zero-finding final Standards and Spec reviews before merge.
 - [ ] Move this plan to `completed/` only after the complete TD-068 migration and closure evidence land.
 
 ## Git & PR Workflow
