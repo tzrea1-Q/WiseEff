@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes are implemented in the current feature change and will be maintained on `main` after merge. The restricted-network path includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. This follow-up adds the advanced-resume worker/proxy gate for `queue-resumed`, `starting-proxy`, and `validating-public`; local/CI gates cover the implementation. A clean forward upgrade and recovery rehearsal on a non-customer target host remain required evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -35,6 +35,7 @@
 - Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
+- The advanced-resume worker/proxy follow-up uses `codex/selfhost-resume-worker-gate`; the session owner opens its PR and merges only after every applicable required CI check passes. Do not switch or rewrite a dirty shared `main` worktree to synchronize it after merge.
 
 ## Preconditions
 
@@ -456,7 +457,9 @@ The incident run `20260824T021935Z-2079618` showed two controller-truth defects:
 - [x] Make `recovery-required` next actions executable: pre-migration runs may retry old-stack restore, post-migration runs require token-gated whole-state rollback, and failed isolation requires manual traffic/queue isolation first.
 - [x] Enter `old-stack-restore` before any restore operation so recovery data-plane failures cannot retain a candidate phase while preserving earlier candidate failure evidence on successful recovery.
 - [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
-- [ ] Merge the readiness/recovery hotfix into `main`; target-host forward/recovery rehearsal remains pending because local mocks do not close target evidence.
+- [x] Implement the advanced-resume proxy isolation/readiness gate for `queue-resumed`, `starting-proxy`, and `validating-public`; keep proxy/public blocked until API/worker/web rechecks pass, and retain final worker drift verification.
+- [x] Merge the MinIO/readiness/recovery hotfix into `main` through PR #621 and merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5`.
+- [ ] Deploy the merged controller on a non-customer target host and rehearse one clean forward upgrade plus one recovery path; local mock tests and CI do not close this target evidence.
 
 **Verification:**
 

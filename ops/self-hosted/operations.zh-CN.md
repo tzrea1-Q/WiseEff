@@ -252,6 +252,8 @@ chmod 600 .build-network.env
 
 候选 queue resume 前，`apply` 和 `resume` 都必须通过 API readiness、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连检查；worker 容器存在或 image identity 正确都不代表就绪。部分升级失败后，`old-stack-restored` 表示旧 checkout/image set 已重建、内部恢复门禁通过、queue 已恢复，且最后的 proxy/public 健康也通过。image identity 同时包含记录的 image 引用和不可变的 Docker image ID。`recovery-required` 表示至少一个门禁失败；读取隔离布尔值并只执行记录中的一个 `next_action`。禁止手工改 journal 或自行写入 `next_action=none`。
 
+对于 `queue-resumed`、`starting-proxy` 和 `validating-public`，advanced resume 会先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。readiness 失败或 worker 不健康时，候选 proxy 启动和公网探测都会被阻止。proxy 隔离失败会记录 `failure_service=proxy`、`failure_code=candidate-proxy-isolation`、`recovery_proxy_stopped=false`，并给出人工隔离的 `next_action`；只有整条顺序通过后才进入 proxy/public 验证，之后仍会执行最终 worker 复查。
+
 使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。两个 summary 都有长度限制并脱敏；任一恢复动作（包括 stop、pause 或 queue resume）失败时，其脱敏诊断会打印、写入 journal，并暴露为 `recovery_failure_summary`。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
 
 常用命令：
