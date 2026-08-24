@@ -143,6 +143,9 @@ export function createMemoryAgentDb(options: MemoryAgentDbOptions = {}) {
           }
           const nextStatus = values[2];
           const isTerminal = ["succeeded", "failed", "rejected"].includes(String(row.status));
+          if (values[7] !== null && row.status !== values[7]) {
+            return { rows: [] as Row[], rowCount: 0 };
+          }
           if (nextStatus !== null && row.status !== nextStatus && isTerminal) {
             return { rows: [] as Row[], rowCount: 0 };
           }

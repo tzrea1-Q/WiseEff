@@ -30,6 +30,20 @@ Provide one branded, server-owned `user` / `agent` / `system` trusted invocation
 
 Tickets #611–#615 construct context at HTTP/Xiaoze/system entry points and migrate the five DTS reload mutations and parameter-sensitive production writes. This plan does not close TD-068, refactor unrelated audits, or claim target/device readiness.
 
+## #611 implementation checkpoint
+
+- [x] Xiaoze read-only and approval-gated tool calls receive server-owned durable tool-call ids and persist through the orchestrator/tool-registry seam.
+- [x] Execution reconstructs `AgentInvocationContext` from the active authenticated principal plus persisted session, tool-call, and approval records.
+- [x] Approval resume validates session/tool-call/approval correlation before execution; edited arguments replace the persisted payload and are re-authorized in the same transaction.
+- [x] Request-local auth, invocation, and approval data remain outside checkpoint channel state; missing durable resume correlation fails before execution.
+- [ ] #612–#615 remain open follow-up migrations.
+
+## #611 verification
+
+- Focused Xiaoze/orchestrator/AG-UI tests passed: 5 files, 57 tests.
+- Full server suite passed on this branch: 354 files passed, 2 skipped; 2738 tests passed, 8 skipped.
+- `npm run build`, `npm run contract:check`, `npm run docs:check`, and `git diff --check` passed. The local database-schema portion of `docs:check` was skipped because pgvector is unavailable on this host.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Evidence |

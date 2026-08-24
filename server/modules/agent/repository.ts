@@ -134,6 +134,7 @@ export type CreateAgentToolCallInput = {
 
 export type UpdateAgentToolCallInput = {
   status?: AgentToolStatus;
+  expectedStatus?: AgentToolStatus;
   payload?: Record<string, unknown>;
   result?: AgentToolResult;
   errorMessage?: string;
@@ -386,6 +387,7 @@ export async function updateAgentToolCall(
         or status = $3::text
         or status not in ('succeeded', 'failed', 'rejected')
       )
+      and ($8::text is null or status = $8::text)
     `,
     [
       organizationId,
@@ -394,7 +396,8 @@ export async function updateAgentToolCall(
       input.result === undefined ? null : serializePostgresJsonb(input.result),
       input.errorMessage ?? null,
       input.auditEventId ?? null,
-      input.payload === undefined ? null : serializePostgresJsonb(input.payload)
+      input.payload === undefined ? null : serializePostgresJsonb(input.payload),
+      input.expectedStatus ?? null
     ]
   );
 

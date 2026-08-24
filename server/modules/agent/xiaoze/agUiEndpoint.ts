@@ -10,6 +10,7 @@ import { resolveXiaozeLlmConfig } from "../../../config/xiaozeLlmConfig";
 import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
+import { createAgentInvocation } from "../../auth/trustedInvocation";
 import type { AgentToolName, AgentCitation } from "../types";
 import { createAgentOrchestrator, type AgentOrchestrator, type ApprovalBeginResult } from "../orchestrator";
 import { createXiaozeCheckpointer, resolveXiaozeCheckpointerFromEnv } from "./checkpointer";
@@ -21,7 +22,7 @@ import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./model
 import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
 import { runXiaozeSuggest } from "./suggest";
-import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
+import { buildXiaozePlanningToolDescriptors, getXiaozeToolLabel, toOpenAiToolDefinitions } from "./toolCatalog";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
 import { createRunEventSink, serializeTurnSteps, type RunEventSink } from "./runEventSink";
 import {
@@ -386,6 +387,7 @@ export function createXiaozeAgUiHandler(options: {
             toolName: result.interrupt.toolName as AgentToolName,
             payload: result.interrupt.payload,
             citations: result.interrupt.citations,
+            toolCallId: result.interrupt.toolCallId,
             pageKey: pageContext.pageKey,
             projectId: pageContext.projectId
           });
@@ -463,6 +465,7 @@ export function createXiaozeAgentFactory(options: {
   modelFactory?: typeof createProductionModel;
   checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
   toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
+  orchestrator?: AgentOrchestrator;
   objectStore?: ObjectStore;
   approvalResolver?: PlanningApprovalResolver;
 }) {
@@ -474,17 +477,48 @@ export function createXiaozeAgentFactory(options: {
   const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...readTools, ...actionTools]);
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
+  const executionOrchestrator = options.orchestrator;
   const approvalResolver =
-    options.approvalResolver ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
+    options.approvalResolver ?? executionOrchestrator ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const planningAgent = createPlanningAgent({
     model: isXiaozeDeterministicMode()
       ? createDeterministicPerceptionModel()
       : modelFactory(options.env, planningToolDescriptors),
-    runTool: (name, payload, requestContext) => {
+    runTool: async (name, payload, requestContext, toolCallId) => {
       if (!requestContext) {
         throw new Error("Xiaoze execution context is not bound for this request.");
       }
-      return registry.run(name as never, requestContext, payload);
+      if (executionOrchestrator) {
+        const recorded = await executionOrchestrator.recordToolRequest({
+          auth: requestContext.auth,
+          requestId: requestContext.requestId,
+          sessionId: requestContext.sessionId,
+          toolCallId,
+          request: {
+            name: name as AgentToolName,
+            label: getXiaozeToolLabel(name),
+            payload
+          }
+        });
+        if (!recorded.result) {
+          throw new ApiError("INTERNAL_ERROR", "Agent tool execution did not produce a result.", {
+            toolCallId: recorded.id
+          });
+        }
+        return recorded.result;
+      }
+      return registry.run(
+        name as never,
+        {
+          ...requestContext,
+          invocation: createAgentInvocation(requestContext.auth, {
+            sessionId: requestContext.sessionId,
+            toolCallId: toolCallId ?? randomUUID(),
+            approval: { required: false }
+          })
+        },
+        payload
+      );
     },
     listTools: () => planningToolDescriptors,
     checkpointer,
@@ -560,6 +594,7 @@ export function registerXiaozeRoutes(
       db: options.db,
       env: envDefaults,
       toolRegistry: registry,
+      orchestrator: orchestrator,
       approvalResolver: orchestrator,
       ...(options.env
         ? {}

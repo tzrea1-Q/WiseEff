@@ -36,6 +36,8 @@ export type PerceptionAgentRunResult = {
   promptDebug?: XiaozePromptDebugSnapshot;
   runSteps?: XiaozeRunStep[];
   interrupt?: {
+    /** Server-owned durable id used to bind the checkpointed action to its approval row. */
+    toolCallId?: string;
     toolName: string;
     payload: Record<string, unknown>;
     citations: AgentToolResult["citations"];

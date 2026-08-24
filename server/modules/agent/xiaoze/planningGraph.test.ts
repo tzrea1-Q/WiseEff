@@ -25,6 +25,7 @@ describe("createPlanningAgent", () => {
     });
     const result = await agent.run({ message: "summarize p1", context: { projectId: "p1" }, threadId: "t1" });
     expect(result.text).toContain("12 parameters");
+    expect(runTool).toHaveBeenCalledWith("perception.getProjectOverview", { projectId: "p1" }, undefined, expect.any(String));
   });
 
   it("namespaces checkpoints by organization and user when request context is bound", async () => {
@@ -121,6 +122,7 @@ describe("createPlanningAgent", () => {
       requestContext: { auth: anyAuth, requestId: "req-0", sessionId: "t9" }
     });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
+    expect(interrupted.interrupt?.toolCallId).toEqual(expect.any(String));
 
     const resumed = await agent.run({
       message: "",
@@ -135,9 +137,38 @@ describe("createPlanningAgent", () => {
 
     expect(approvalResolver.resolveApproval).toHaveBeenCalledOnce();
     expect(approvalResolver.resolveApproval).toHaveBeenCalledWith(
-      expect.objectContaining({ approvalId: "approval-1", decision: "approve", auth: anyAuth, requestId: "req-1" })
+      expect.objectContaining({
+        approvalId: "approval-1",
+        decision: "approve",
+        auth: anyAuth,
+        requestId: "req-1",
+        expectedSessionId: "t9",
+        expectedToolCallId: interrupted.interrupt?.toolCallId
+      })
     );
     expect(resumed.text).toContain("cr-1");
+  });
+
+  it("keeps request-local auth and invocation data out of checkpoint channel state", async () => {
+    const checkpointer = createXiaozeCheckpointer();
+    const agent = createPlanningAgent({
+      model: fakeModelSequence([{ content: "hello" }]),
+      runTool: vi.fn(),
+      listTools: () => [],
+      checkpointer
+    });
+
+    await agent.run({
+      message: "hello",
+      context: {},
+      threadId: "t-no-auth-checkpoint",
+      requestContext: { auth: anyAuth, requestId: "req-private", sessionId: "t-no-auth-checkpoint" }
+    });
+
+    const tuple = await checkpointer.saver.getTuple({ configurable: { thread_id: "org1:u1:t-no-auth-checkpoint" } });
+    expect(JSON.stringify(tuple?.checkpoint.channel_values ?? {})).not.toContain("req-private");
+    expect(JSON.stringify(tuple?.checkpoint.channel_values ?? {})).not.toContain("invocation");
+    expect(JSON.stringify(tuple?.checkpoint.channel_values ?? {})).not.toContain("approvalId");
   });
 
   it("answers a fresh turn on the same thread without reusing prior text", async () => {

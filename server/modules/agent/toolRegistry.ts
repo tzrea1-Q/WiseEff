@@ -3,6 +3,7 @@ import type { Database } from "../../shared/database/client";
 import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../logs/objectStore";
 import type { AuthContext } from "../auth/types";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AgentToolName, AgentToolResult } from "./types";
 import type { AgentToolMetadata } from "./toolMetadata";
 import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
@@ -12,6 +13,8 @@ import { createKnowledgeTools } from "./tools/knowledgeTools";
 
 export type AgentToolExecutionContext = {
   auth: AuthContext;
+  /** Present on server-owned Xiaoze executions; legacy direct tool tests may omit it until later migrations. */
+  invocation?: TrustedInvocationContext;
   requestId: string;
   sessionId: string;
   projectId?: string;
