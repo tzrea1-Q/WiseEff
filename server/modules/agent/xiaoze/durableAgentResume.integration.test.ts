@@ -13,7 +13,8 @@ import { createXiaozeAgUiHandler, createXiaozeAgentFactory } from "./agUiEndpoin
 import {
   closeSharedPostgresCheckpointerSaversForTests,
   createPostgresCheckpointerSaver,
-  resetSharedPostgresCheckpointerSaverForTests
+  resetSharedPostgresCheckpointerSaverForTests,
+  type PostgresCheckpointerHandle
 } from "./durableCheckpointer";
 import { createXiaozeCheckpointer } from "./checkpointer";
 import { fakeModelSequence, toolCall } from "./testing/fakeModel";
@@ -94,6 +95,27 @@ function testEnv(connectionString: string) {
   };
 }
 
+type DurableResumeResources = {
+  instanceASaver?: PostgresCheckpointerHandle["saver"];
+  instanceBSaver?: PostgresCheckpointerHandle["saver"];
+  instanceBConnection?: ReturnType<typeof openDatabaseConnection>;
+};
+
+async function closeDurableResumeResources(resources: DurableResumeResources): Promise<void> {
+  const closeQuietly = async (close: () => Promise<void> | undefined): Promise<void> => {
+    try {
+      await close();
+    } catch {
+      // Cleanup must not mask the first setup or assertion failure.
+    }
+  };
+
+  await closeQuietly(() => resources.instanceBConnection?.close());
+  await closeQuietly(() => resources.instanceASaver?.end());
+  await closeQuietly(() => resources.instanceBSaver?.end());
+  await closeQuietly(() => closeSharedPostgresCheckpointerSaversForTests());
+}
+
 async function createInstance(options: {
   db: Parameters<typeof createAgentOrchestrator>[0]["db"];
   connectionString: string;
@@ -101,8 +123,10 @@ async function createInstance(options: {
   model: ReturnType<typeof fakeModelSequence>;
   domainWrites: { count: number };
   observed: ObservedExecution[];
+  registerSaver?: (saver: PostgresCheckpointerHandle["saver"]) => void;
 }) {
   const saverHandle = createPostgresCheckpointerSaver({ connectionString: options.connectionString });
+  options.registerSaver?.(saverHandle.saver);
   await saverHandle.ensureSetup();
   const checkpointer = createXiaozeCheckpointer({
     mode: "postgres",
@@ -227,10 +251,53 @@ const initialActionModel = () =>
   ]);
 
 describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
+  it("cleans instance A when failure occurs before instance B is created", async () => {
+    resetSharedPostgresCheckpointerSaverForTests();
+    const originalError = new Error("instance B setup was intentionally not reached");
+    let saverEndCalls = 0;
+
+    try {
+      await expect(
+        withTempDatabase({ prefix: "xiaoze_resume_611_cleanup" }, async ({ db, connectionString }) => {
+          const resources: DurableResumeResources = {};
+          try {
+            const instanceA = await createInstance({
+              db,
+              connectionString,
+              auth: authFor("resume-user"),
+              model: initialActionModel(),
+              domainWrites: { count: 0 },
+              observed: [],
+              registerSaver: (saver) => {
+                resources.instanceASaver = saver;
+              }
+            });
+            const originalEnd = instanceA.saverHandle.saver.end.bind(instanceA.saverHandle.saver);
+            vi.spyOn(instanceA.saverHandle.saver, "end").mockImplementation(async () => {
+              saverEndCalls += 1;
+              await originalEnd();
+            });
+
+            throw originalError;
+          } finally {
+            await closeDurableResumeResources(resources);
+            resetSharedPostgresCheckpointerSaverForTests();
+          }
+        })
+      ).rejects.toBe(originalError);
+      expect(saverEndCalls).toBe(1);
+    } finally {
+      resetSharedPostgresCheckpointerSaverForTests();
+    }
+  });
+
   it("reconstructs instance B from durable state and rejects public resume substitutions before execution", async () => {
     resetSharedPostgresCheckpointerSaverForTests();
-    await withTempDatabase({ prefix: "xiaoze_resume_611" }, async ({ db, connectionString }) => {
-      await db.query(
+    try {
+      await withTempDatabase({ prefix: "xiaoze_resume_611" }, async ({ db, connectionString }) => {
+        const resources: DurableResumeResources = {};
+        try {
+          await db.query(
         `insert into organizations (id, name)
          values ($1, 'Resume Organization'), ($2, 'Other Resume Organization')`,
         [authFor("seed-user").organization.id, "org-other"]
@@ -256,7 +323,10 @@ describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
         auth,
         model: initialActionModel(),
         domainWrites,
-        observed
+        observed,
+        registerSaver: (saver) => {
+          resources.instanceASaver = saver;
+        }
       });
       const handlerA = createHandler({ db, auth, factory: instanceA.factory, orchestrator: instanceA.orchestrator });
       const threadId = `resume-${randomUUID()}`;
@@ -273,17 +343,18 @@ describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
       expect(interrupted.approvalId).toBeTruthy();
 
       const instanceBConnection = openDatabaseConnection(connectionString);
-      let instanceBSaver: Awaited<ReturnType<typeof createInstance>>["saverHandle"] | undefined;
-      try {
-        const instanceB = await createInstance({
+      resources.instanceBConnection = instanceBConnection;
+      const instanceB = await createInstance({
           db: instanceBConnection.db,
           connectionString,
           auth,
           model: fakeModelSequence([{ content: "The edited change was submitted." }]),
           domainWrites,
-          observed
+          observed,
+          registerSaver: (saver) => {
+            resources.instanceBSaver = saver;
+          }
         });
-        instanceBSaver = instanceB.saverHandle;
         const handlerB = createHandler({
           db: instanceBConnection.db,
           auth,
@@ -532,14 +603,14 @@ describe.skipIf(!databaseAvailable)("Xiaoze PostgreSQL durable resume", () => {
         expect(await getAgentApproval(instanceBConnection.db, auth.organization.id, interrupted.approvalId)).toMatchObject({
           status: "approved"
         });
-      } finally {
-        await instanceBConnection.close();
-        await instanceBSaver?.saver.end();
-        await instanceA.saverHandle.saver.end();
-        await closeSharedPostgresCheckpointerSaversForTests();
-      }
-    });
-    resetSharedPostgresCheckpointerSaverForTests();
+        } finally {
+          await closeDurableResumeResources(resources);
+          resetSharedPostgresCheckpointerSaverForTests();
+        }
+      });
+    } finally {
+      resetSharedPostgresCheckpointerSaverForTests();
+    }
   });
 });
 
