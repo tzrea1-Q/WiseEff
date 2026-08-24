@@ -21,6 +21,16 @@ function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv
   });
 }
 
+function runDataPlaneLibrary(prefix: string, command: string, env: NodeJS.ProcessEnv = {}) {
+  const runDir = mkdtempSync(join(tmpdir(), prefix));
+  const result = runLibrary(command, [runDir], {
+    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: "1",
+    WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS: "0",
+    ...env
+  });
+  return { result, runDir };
+}
+
 function runDataPlaneFixture(
   statuses: {
     postgresHealth?: string;
@@ -31,12 +41,9 @@ function runDataPlaneFixture(
   },
   attempts = 1
 ) {
-  const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-data-plane-"));
   const script = `
     upgrade_run_dir="$1"
     upgrade_run_id=data-plane-test
-    upgrade_health_attempts=${attempts}
-    upgrade_health_interval_seconds=0
     wiseeff_upgrade_state_write phase restarting-data
     wiseeff_upgrade_compose() {
       if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; fi
@@ -62,10 +69,191 @@ function runDataPlaneFixture(
       exit "$result"
     fi
   `;
-  const result = runLibrary(script, [runDir], {
-    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: String(attempts),
-    WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS: "0"
+  return runDataPlaneLibrary("wiseeff-upgrade-data-plane-", script, {
+    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: String(attempts)
   });
+}
+
+function runDataPlaneSequenceFixture(
+  sequences: {
+    minioStates: string[];
+    minioInitStates: string[];
+    minioInitExitCodes?: string[];
+  },
+  attempts = 3
+) {
+  return runDataPlaneLibrary("wiseeff-upgrade-data-plane-sequence-", `
+    upgrade_run_dir="$1"
+    upgrade_run_id=data-plane-sequence-test
+    minio_states=(${sequences.minioStates.join(" ")})
+    minio_init_states=(${sequences.minioInitStates.join(" ")})
+    minio_init_exit_codes=(${(sequences.minioInitExitCodes ?? ["0"]).join(" ")})
+    minio_inspection_file="$upgrade_run_dir/minio-inspections"
+    minio_init_inspection_file="$upgrade_run_dir/minio-init-inspections"
+    printf '0\\n' > "$minio_inspection_file"
+    printf '0\\n' > "$minio_init_inspection_file"
+    wiseeff_upgrade_state_write phase restarting-data
+    sequence_value() {
+      local sequence_name="$1"
+      local index="$2"
+      local last
+      if [ "$sequence_name" = "minio" ]; then
+        last=$((\${#minio_states[@]} - 1))
+        [ "$index" -le "$last" ] || index="$last"
+        printf '%s\\n' "\${minio_states[$index]}"
+      else
+        last=$((\${#minio_init_states[@]} - 1))
+        [ "$index" -le "$last" ] || index="$last"
+        printf '%s\\n' "\${minio_init_states[$index]}"
+      fi
+    }
+    wiseeff_upgrade_compose() {
+      if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; fi
+    }
+    wiseeff_upgrade_docker() {
+      [ "$1" = "inspect" ] || return 1
+      template="$3"
+      container="$4"
+      case "$container:$template" in
+        minio-container:*State.Status*)
+          index="$(cat "$minio_inspection_file")"
+          printf '%s\\n' "$((index + 1))" > "$minio_inspection_file"
+          sequence_value minio "$index"
+          ;;
+        minio-init-container:*State.Status*)
+          index="$(cat "$minio_init_inspection_file")"
+          printf '%s\\n' "$((index + 1))" > "$minio_init_inspection_file"
+          sequence_value minio-init "$index"
+          ;;
+        minio-init-container:*ExitCode*)
+          index=$(( $(cat "$minio_init_inspection_file") - 1 ))
+          last=$((\${#minio_init_exit_codes[@]} - 1))
+          [ "$index" -le "$last" ] || index="$last"
+          printf '%s\\n' "\${minio_init_exit_codes[$index]}"
+          ;;
+        postgres-container:*Health*|redis-container:*Health*) printf 'healthy\\n' ;;
+        *) return 1 ;;
+      esac
+    }
+    if wiseeff_upgrade_wait_data_plane_ready; then
+      printf 'minio-inspections=%s\\n' "$(cat "$minio_inspection_file")"
+      exit 0
+    else
+      result=$?
+      printf 'minio-inspections=%s\\n' "$(cat "$minio_inspection_file")"
+      printf 'minio-init-inspections=%s\\n' "$(cat "$minio_init_inspection_file")"
+      exit "$result"
+    fi
+  `, {
+    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: String(attempts)
+  });
+}
+
+function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: boolean, resumePhase = "api-ready", queueFailure = false) {
+  const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-candidate-${action}-`));
+  writeFileSync(join(runDir, "trace.log"), "");
+  if (action === "resume") {
+    writeFileSync(join(runDir, "outcome"), "running\n");
+    writeFileSync(join(runDir, "phase"), `${resumePhase}\n`);
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "candidate_image_tag"), "wiseeff-app:candidate\n");
+  }
+  const result = runLibrary(`
+    run_dir="$1"
+    trace="$run_dir/trace.log"
+    worker_healthy="$2"
+    queue_failure="$4"
+    upgrade_run_dir="$run_dir"
+    upgrade_backup_dir="$run_dir/backup"
+    upgrade_run_id=candidate-${action}
+    upgrade_target_sha=target-sha
+    upgrade_previous_sha=previous-sha
+    upgrade_env_file="$run_dir/env"
+    : > "$upgrade_env_file"
+    upgrade_json=false
+    upgrade_restart=false
+    upgrade_yes=true
+    upgrade_non_interactive=true
+    upgrade_candidate_image_tag=wiseeff-app:candidate
+    if [ "$3" = "apply" ]; then wiseeff_upgrade_state_write phase initialized; fi
+    wiseeff_upgrade_acquire_lock() { return 0; }
+    wiseeff_upgrade_release_lock() { :; }
+    wiseeff_upgrade_validate_env() { return 0; }
+    wiseeff_upgrade_write_status() { :; }
+    wiseeff_upgrade_preflight() {
+      upgrade_previous_sha=previous-sha
+      upgrade_target_sha=target-sha
+      return 0
+    }
+    wiseeff_upgrade_init_run() {
+      upgrade_run_dir="$run_dir"
+      wiseeff_upgrade_state_write phase initialized
+    }
+    wiseeff_upgrade_collect_runtime() { :; }
+    wiseeff_upgrade_collect_volumes() { :; }
+    wiseeff_upgrade_store_plan() { :; }
+    wiseeff_upgrade_print_plan() { :; }
+    wiseeff_upgrade_confirm() { :; }
+    wiseeff_upgrade_tag_previous_images() { :; }
+    wiseeff_upgrade_build_candidate() { :; }
+    wiseeff_upgrade_stop_old_stack() { :; }
+    wiseeff_upgrade_snapshot_all() { :; }
+    wiseeff_upgrade_wait_data_plane_ready() { :; }
+    wiseeff_upgrade_git() { :; }
+    wiseeff_upgrade_compose() {
+      printf 'compose %s\\n' "$*" >> "$trace"
+      return 0
+    }
+    wiseeff_upgrade_compose_for_image() {
+      printf 'compose-image %s\\n' "$*" >> "$trace"
+      return 0
+    }
+    wiseeff_upgrade_probe_api() { :; }
+    wiseeff_upgrade_probe_web() {
+      printf 'web-probe\\n' >> "$trace"
+      return 0
+    }
+    wiseeff_upgrade_probe_worker() {
+      printf 'worker-probe\\n' >> "$trace"
+      [ "$worker_healthy" = "true" ]
+    }
+    wiseeff_upgrade_queue_command() {
+      printf 'queue %s\\n' "$*" >> "$trace"
+      if [ "$queue_failure" = "true" ]; then
+        printf 'queue resume failed M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer raw-queue-secret\\n'
+        return 97
+      fi
+      return 0
+    }
+    wiseeff_upgrade_queue_command_for_image() {
+      printf 'queue-image %s\\n' "$*" >> "$trace"
+      if [ "$queue_failure" = "true" ]; then
+        printf 'queue resume failed M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer raw-queue-secret\\n'
+        return 97
+      fi
+      return 0
+    }
+    wiseeff_upgrade_public_probe() {
+      printf 'public-probe\\n' >> "$trace"
+      return 0
+    }
+    wiseeff_upgrade_verify_final_state() { return 0; }
+    wiseeff_upgrade_status() { :; }
+    wiseeff_upgrade_load_run() {
+      upgrade_run_dir="$run_dir"
+      upgrade_previous_sha=previous-sha
+      upgrade_target_sha=target-sha
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+    }
+    if [ "$3" = "apply" ]; then
+      wiseeff_upgrade_run_apply
+    else
+      wiseeff_upgrade_run_resume
+    fi
+    status=$?
+    cat "$trace" 2>/dev/null || true
+    exit "$status"
+  `, [runDir, String(workerHealthy), action, String(queueFailure)]);
   return { result, runDir };
 }
 
@@ -339,6 +527,133 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("minio-status-calls=1");
   });
 
+  it("fails MinIO immediately when it is restarting after a process crash", () => {
+    const { result, runDir } = runDataPlaneFixture({ minioState: "restarting", minioInitState: "running" }, 5);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-exited\n");
+    expect(result.stdout).toContain("minio-status-calls=1");
+  });
+
+  it("rechecks MinIO during initializer polling and reports a later MinIO exit immediately", () => {
+    const { result, runDir } = runDataPlaneSequenceFixture({
+      minioStates: ["running", "running", "exited"],
+      minioInitStates: ["running", "running", "running"]
+    }, 5);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-exited\n");
+    expect(result.stdout).toContain("minio-inspections=3");
+    expect(result.stdout).not.toContain("minio-init-timeout");
+  });
+
+  it("performs a final MinIO check after minio-init exits successfully", () => {
+    const { result, runDir } = runDataPlaneSequenceFixture({
+      minioStates: ["running", "running", "exited"],
+      minioInitStates: ["exited"],
+      minioInitExitCodes: ["0"]
+    }, 1);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-exited\n");
+    expect(result.stdout).toContain("minio-inspections=3");
+  });
+
+  it("classifies a non-running MinIO state after successful minio-init", () => {
+    const { result, runDir } = runDataPlaneSequenceFixture({
+      minioStates: ["running", "running", "created"],
+      minioInitStates: ["exited"],
+      minioInitExitCodes: ["0"]
+    }, 1);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-not-running\n");
+  });
+
+  it("accepts MinIO only when it stays running through successful minio-init", () => {
+    const { result } = runDataPlaneSequenceFixture({
+      minioStates: ["running"],
+      minioInitStates: ["exited"],
+      minioInitExitCodes: ["0"]
+    }, 1);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(result.stdout).toContain("minio-inspections=3");
+  });
+
+  it("keeps initializer failure and timeout classifications when MinIO stays running", () => {
+    const failed = runDataPlaneSequenceFixture({
+      minioStates: ["running"],
+      minioInitStates: ["exited"],
+      minioInitExitCodes: ["17"]
+    }, 1);
+    const timedOut = runDataPlaneSequenceFixture({
+      minioStates: ["running"],
+      minioInitStates: ["running"]
+    }, 2);
+
+    expect(failed.result.status).toBe(1);
+    expect(readFileSync(join(failed.runDir, "failure_service"), "utf8")).toBe("minio-init\n");
+    expect(readFileSync(join(failed.runDir, "failure_code"), "utf8")).toBe("minio-init-failed\n");
+    expect(timedOut.result.status).toBe(1);
+    expect(readFileSync(join(timedOut.runDir, "failure_service"), "utf8")).toBe("minio-init\n");
+    expect(readFileSync(join(timedOut.runDir, "failure_code"), "utf8")).toBe("minio-init-timeout\n");
+  });
+
+  it("uses a stable failure code when the MinIO container is missing", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-minio-missing-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=minio-missing
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS=1
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS=0
+      wiseeff_upgrade_state_write phase restarting-data
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "ps" ] && [ "$3" != "minio" ]; then printf '%s-container\\n' "$3"; fi
+      }
+      wiseeff_upgrade_docker() {
+        case "$4:$3" in
+          postgres-container:*Health*|redis-container:*Health*) printf 'healthy\\n' ;;
+          *) printf 'docker-must-not-inspect\\n'; return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_wait_data_plane_ready; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-container-missing\n");
+    expect(result.stdout).not.toContain("docker-must-not-inspect");
+  });
+
+  it("reports a stable MinIO inspect failure when the container exists", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-minio-inspect-failure-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=minio-inspect-failure
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS=1
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS=0
+      wiseeff_upgrade_state_write phase restarting-data
+      wiseeff_upgrade_compose() { printf '%s-container\\n' "$3"; }
+      wiseeff_upgrade_docker() {
+        case "$4:$3" in
+          postgres-container:*Health*|redis-container:*Health*) printf 'healthy\\n' ;;
+          minio-container:*) return 1 ;;
+          *) return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_wait_data_plane_ready; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-inspect-failed\n");
+  });
+
   it("records a bounded, stable data-plane failure diagnostic", () => {
     const { result, runDir } = runDataPlaneFixture({ postgresHealth: "starting" });
 
@@ -347,6 +662,95 @@ describe("upgrade.sh public interface", () => {
     expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("postgres\n");
     expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("postgres-not-healthy\n");
     expect(readFileSync(join(runDir, "failure_summary"), "utf8").trim().length).toBeLessThanOrEqual(240);
+  });
+
+  it("keeps an aggregate service when a group startup failure has no service evidence", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-data-compose-failure-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_compose() {
+        [ "$1" = "ps" ] && return 1
+        printf 'compose data services failed M6_SELFHOSTED_SMOKE_AUTHORIZATION=auth-secret\\n'
+        return 91
+      }
+      if wiseeff_upgrade_start_candidate_data_plane; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("restarting-data\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("data-plane\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("data-plane-compose-up\n");
+    expect(result.stderr).not.toContain("auth-secret");
+  });
+
+  it("attributes a group startup failure to MinIO when its stopped container proves the cause", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-data-compose-minio-failure-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; return 0; fi
+        return 91
+      }
+      wiseeff_upgrade_docker() {
+        case "$4:$3" in
+          postgres-container:*Health*|redis-container:*Health*) printf 'healthy\\n' ;;
+          minio-container:*State.Status*) printf 'exited\\n' ;;
+          *) return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_start_candidate_data_plane; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("data-plane-compose-up\n");
+  });
+
+  it("keeps an aggregate service when Docker inspection provides no state evidence", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-data-compose-no-evidence-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; return 0; fi
+        return 91
+      }
+      wiseeff_upgrade_docker() { return 1; }
+      if wiseeff_upgrade_start_candidate_data_plane; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("data-plane\n");
+  });
+
+  it("reports an actual MinIO failure during restored data-plane verification", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-restore-minio-readiness-"));
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:previous-api\n");
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=restore-minio-readiness
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS=1
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS=0
+      wiseeff_upgrade_state_write phase old-stack-restore
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "ps" ]; then printf '%s-container\\n' "$3"; fi
+      }
+      wiseeff_upgrade_docker() {
+        case "$4:$3" in
+          postgres-container:*Health*|redis-container:*Health*) printf 'healthy\\n' ;;
+          minio-container:*State.Status*) printf 'exited\\n' ;;
+          *) return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_verify_restored_stack; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).toBe(1);
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("old-stack-restore\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("minio\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("minio-exited\n");
   });
 
   it("marks old-stack-restored only after every restore verification gate passes", () => {
@@ -359,19 +763,25 @@ describe("upgrade.sh public interface", () => {
     const result = runLibrary(`
       upgrade_run_dir="$1"
       upgrade_run_id=restore-success
+      trace="$2"
       wiseeff_upgrade_git() { return 0; }
       wiseeff_upgrade_compose() { return 0; }
-      wiseeff_upgrade_compose_for_image() { return 0; }
-      wiseeff_upgrade_recreate_previous_app_services() { return 0; }
-      wiseeff_upgrade_wait_data_plane_ready() { return 0; }
-      wiseeff_upgrade_queue_command_for_image() { return 0; }
-      wiseeff_upgrade_probe_api() { return 0; }
-      wiseeff_upgrade_probe_worker() { return 0; }
-      wiseeff_upgrade_probe_web() { return 0; }
-      wiseeff_upgrade_verify_previous_app_images() { return 0; }
-      wiseeff_upgrade_public_probe() { return 0; }
+      wiseeff_upgrade_compose_for_image() {
+        case "$*" in
+          *" proxy") printf 'proxy\n' >> "$trace" ;;
+        esac
+        return 0
+      }
+      wiseeff_upgrade_recreate_previous_app_services() { printf 'apps\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { printf 'data-ready\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_queue_command_for_image() { printf 'queue\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_api() { printf 'api\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_worker() { printf 'worker\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_web() { printf 'web\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_verify_previous_app_images() { printf 'images\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_public_probe() { printf 'public\n' >> "$trace"; return 0; }
       wiseeff_upgrade_restore_old_stack_after_stop
-    `, [runDir]);
+    `, [runDir, join(runDir, "trace.log")]);
 
     expect(result.status).toBe(0);
     expect(readFileSync(join(runDir, "phase"), "utf8")).toBe("old-stack-restored\n");
@@ -379,6 +789,11 @@ describe("upgrade.sh public interface", () => {
     expect(readFileSync(join(runDir, "next_action"), "utf8")).toBe("none\n");
     expect(readFileSync(join(runDir, "recovery_started"), "utf8")).toBe("true\n");
     expect(readFileSync(join(runDir, "recovery_verified"), "utf8")).toBe("true\n");
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+    expect(trace.indexOf("data-ready")).toBeLessThan(trace.indexOf("apps"));
+    expect(trace.indexOf("worker")).toBeLessThan(trace.indexOf("queue"));
+    expect(trace.indexOf("queue")).toBeLessThan(trace.indexOf("proxy"));
+    expect(trace.indexOf("proxy")).toBeLessThan(trace.indexOf("public"));
   });
 
   it.each(["api", "worker", "web", "proxy", "queue"])(
@@ -404,7 +819,10 @@ describe("upgrade.sh public interface", () => {
         wiseeff_upgrade_recreate_previous_app_services() { return 0; }
         wiseeff_upgrade_wait_data_plane_ready() { return 0; }
         wiseeff_upgrade_queue_command_for_image() {
-          if [ "$failure_service" = "queue" ] && [ "$1" = "resume" ]; then return 92; fi
+          if [ "$failure_service" = "queue" ] && [ "$1" = "resume" ]; then
+            printf 'queue resume failed M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer raw-restore-queue-secret\\n'
+            return 92
+          fi
           return 0
         }
         wiseeff_upgrade_probe_api() {
@@ -425,6 +843,7 @@ describe("upgrade.sh public interface", () => {
       expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
       expect(readFileSync(join(runDir, "next_action"), "utf8")).not.toBe("none\n");
       expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${failureService}\n`);
+      expect(result.stderr).not.toContain("raw-restore-queue-secret");
       expect(result.stderr).toContain(failureService);
     }
   );
@@ -462,8 +881,8 @@ describe("upgrade.sh public interface", () => {
     const trace = join(mkdtempSync(join(tmpdir(), "wiseeff-upgrade-worker-probe-")), "trace.log");
     const result = runLibrary(`
       trace="$1"
-      upgrade_health_attempts=1
-      upgrade_health_interval_seconds=0
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS=1
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS=0
       wiseeff_upgrade_compose() {
         printf '%s\\n' "$*" >> "$trace"
         if [ "$1" = "ps" ]; then printf 'worker-container\\n'; fi
@@ -481,6 +900,72 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("8788");
     expect(result.stdout).toContain("health/live");
+  });
+
+  it("requires both worker liveness and Docker health before candidate queue resume", () => {
+    const result = runLibrary(`
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS=1
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS=0
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "exec" ]; then return 0; fi
+        if [ "$1" = "ps" ]; then printf 'worker-container\\n'; fi
+      }
+      wiseeff_upgrade_docker() {
+        case "$3" in
+          *State.Health*) printf 'unhealthy\\n' ;;
+          *) return 1 ;;
+        esac
+      }
+      if wiseeff_upgrade_probe_worker; then exit 0; else exit $?; fi
+    `);
+
+    expect(result.status).not.toBe(0);
+  });
+
+  it.each(["apply", "resume"] as const)("blocks %s before queue resume and proxy recreation when worker is unhealthy", (action) => {
+    const { result, runDir } = runCandidateWorkerFixture(action, false);
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "recovery_started"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-worker-health\n");
+    expect(trace).toContain("worker-probe");
+    expect(trace).not.toMatch(/queue(?:-image)? resume/);
+    expect(trace).not.toMatch(/compose(?:-image)? .* up .* proxy/);
+    expect(trace).not.toContain("public-probe");
+    expect(trace).not.toContain("web-probe");
+  });
+
+  it("rechecks worker readiness before queue resume when resume starts at app-services-ready", () => {
+    const { result, runDir } = runCandidateWorkerFixture("resume", false, "app-services-ready");
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(70);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-worker-health\n");
+    expect(trace).not.toMatch(/queue(?:-image)? resume/);
+  });
+
+  it.each(["apply", "resume"] as const)("resumes the candidate queue only after a healthy worker on %s", (action) => {
+    const { result, runDir } = runCandidateWorkerFixture(action, true);
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+    const workerIndex = trace.indexOf("worker-probe");
+    const queueIndex = trace.search(/queue(?:-image)? resume/);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(0);
+    expect(workerIndex).toBeGreaterThanOrEqual(0);
+    expect(queueIndex).toBeGreaterThan(workerIndex);
+  });
+
+  it.each(["apply", "resume"] as const)("sanitizes candidate queue resume diagnostics on %s", (action) => {
+    const { result, runDir } = runCandidateWorkerFixture(action, true, "api-ready", true);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(70);
+    expect(result.stderr).not.toContain("raw-queue-secret");
+    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).not.toContain("raw-queue-secret");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("queue\n");
   });
 
   it("bypasses the host proxy for public restore probes", () => {
@@ -524,16 +1009,504 @@ describe("upgrade.sh public interface", () => {
       upgrade_target_sha=target-sha
       wiseeff_upgrade_state_write phase starting-app-services
       wiseeff_upgrade_compose() { return 0; }
-      wiseeff_upgrade_queue_command_for_image() { return 97; }
+      wiseeff_upgrade_queue_command_for_image() {
+        printf 'queue pause failed password=mock-password OBJECT_STORAGE_SECRET_ACCESS_KEY=object-secret POSTGRES_PASSWORD=postgres-secret DB_PASS=pass-secret M6_SELFHOSTED_SMOKE_AUTHORIZATION=auth-secret Authorization: Bearer header-secret {"authorization":"json-auth","access_token":"json-token","client_secret":"json-client"} HTTPS_PROXY=http://operator:proxy-password@proxy.example.test:8080\\n'
+        return 97
+      }
       wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
       printf '%s\\n' "$(cat "$upgrade_run_dir/recovery_queue_paused")"
     `, [runDir]);
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("queue pause failed");
+    expect(result.stderr).toContain("action=queue-pause");
+    expect(result.stderr).toContain("[REDACTED]");
+    expect(result.stderr).not.toContain("mock-password");
+    expect(result.stderr).not.toContain("object-secret");
+    expect(result.stderr).not.toContain("postgres-secret");
+    expect(result.stderr).not.toContain("pass-secret");
+    expect(result.stderr).not.toContain("auth-secret");
+    expect(result.stderr).not.toContain("header-secret");
+    expect(result.stderr).not.toContain("json-auth");
+    expect(result.stderr).not.toContain("json-token");
+    expect(result.stderr).not.toContain("json-client");
+    expect(result.stderr).not.toContain("proxy-password");
     expect(result.stdout).toContain("false");
+    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).toContain("action=queue-pause");
     expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "recovery_started"), "utf8")).toBe("true\n");
     expect(readFileSync(join(runDir, "next_action"), "utf8")).not.toBe("none\n");
+  });
+
+  it("redacts authorization headers and credential-bearing JSON fields", () => {
+    const result = runLibrary(`
+      printf '%s\\n' 'Authorization: Bearer header-secret Authorization: Basic basic-secret Proxy-Authorization: Basic proxy-secret M6_SELFHOSTED_SMOKE_AUTHORIZATION=Bearer env-auth-secret CREDENTIALS=Bearer credential-secret API_KEY=Bearer api-secret ACCESS_KEY=Basic access-secret POSTGRES_PASSWORD="quoted password" {"authorization":"json-auth","access_token":"json-token","client_secret":"json-client","M6_SELFHOSTED_SMOKE_AUTHORIZATION":"json-prefixed-auth","PROXY_AUTHORIZATION":"json-proxy","POSTGRES_PASSWORD":"json-password","OBJECT_STORAGE_SECRET_ACCESS_KEY":"json-object-secret","DB_PASS":"json-pass"} --password cli-password --token cli-token' | wiseeff_upgrade_sanitize_diagnostic_stream
+    `);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("[REDACTED]");
+    expect(result.stdout).not.toContain("header-secret");
+    expect(result.stdout).not.toContain("basic-secret");
+    expect(result.stdout).not.toContain("proxy-secret");
+    expect(result.stdout).not.toContain("env-auth-secret");
+    expect(result.stdout).not.toContain("credential-secret");
+    expect(result.stdout).not.toContain("api-secret");
+    expect(result.stdout).not.toContain("access-secret");
+    expect(result.stdout).not.toContain("quoted password");
+    expect(result.stdout).not.toContain("json-prefixed-auth");
+    expect(result.stdout).not.toContain("json-proxy");
+    expect(result.stdout).not.toContain("json-auth");
+    expect(result.stdout).not.toContain("json-token");
+    expect(result.stdout).not.toContain("json-client");
+    expect(result.stdout).not.toContain("json-password");
+    expect(result.stdout).not.toContain("json-object-secret");
+    expect(result.stdout).not.toContain("json-pass");
+    expect(result.stdout).not.toContain("cli-password");
+    expect(result.stdout).not.toContain("cli-token");
+  });
+
+  it("preserves non-secret diagnostic text after redacting a spaced credential", () => {
+    const result = runLibrary(`
+      printf '%s\\n' 'CREDENTIALS=Bearer credential-secret actual-failure=91' | wiseeff_upgrade_sanitize_diagnostic_stream
+    `);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("credential-secret");
+    expect(result.stdout).toContain("actual-failure=91");
+  });
+
+  it("records the exact quiescence service and redacted diagnostic when stopping proxy fails", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-quiescence-failure-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=quiescence-failure
+      wiseeff_upgrade_state_write phase quiescing
+      wiseeff_upgrade_compose() {
+        printf 'proxy stop failed M6_SELFHOSTED_SMOKE_AUTHORIZATION=auth-secret\\n'
+        return 91
+      }
+      wiseeff_upgrade_queue_command() { printf 'must-not-pause\\n'; return 0; }
+      if wiseeff_upgrade_stop_old_stack; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("quiescing\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("proxy\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("quiesce-proxy-stop\n");
+    expect(readFileSync(join(runDir, "recovery_failure_summary"), "utf8")).toContain("action=quiesce-proxy-stop");
+    expect(result.stderr).not.toContain("auth-secret");
+    expect(result.stdout).not.toContain("must-not-pause");
+  });
+
+  it("allows pre-migration recovery-required resume to retry old-stack restoration", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-resume-pre-migration-"));
+    writeFileSync(join(runDir, "outcome"), "recovery-required\n");
+    writeFileSync(join(runDir, "phase"), "recovery-required\n");
+    writeFileSync(join(runDir, "migration_started"), "false\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=resume-pre-migration
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_load_run() { :; }
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { :; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_restore_old_stack_after_stop() {
+        printf 'old-stack-restore-retried\\n'
+        return 0
+      }
+      wiseeff_upgrade_restore_postgres() { printf 'rollback-must-not-run\\n'; return 1; }
+      wiseeff_upgrade_status() { :; }
+      wiseeff_upgrade_run_resume
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("old-stack-restore-retried");
+    expect(result.stdout).not.toContain("rollback-must-not-run");
+  });
+
+  it("keeps post-migration recovery-required resume behind the token-gated rollback action", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-resume-post-migration-"));
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "phase"), "starting-app-services\n");
+    writeFileSync(join(runDir, "outcome"), "running\n");
+    writeFileSync(join(runDir, "previous_sha"), "previous-sha\n");
+    writeFileSync(join(runDir, "target_sha"), "target-sha\n");
+    writeFileSync(join(runDir, "candidate_image_tag"), "wiseeff-app:candidate\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=post-migration
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
+      cat "$upgrade_run_dir/next_action"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    const nextAction = readFileSync(join(runDir, "next_action"), "utf8");
+    expect(nextAction).toContain("rollback");
+    expect(nextAction).toContain("--restore-data");
+    expect(nextAction).toContain("--confirm restore-post-migration");
+    expect(nextAction).not.toMatch(/\\bresume\\b/);
+  });
+
+  it.each([
+    ["proxy", "Manually isolate proxy traffic"],
+    ["queue", "Manually isolate queue/worker traffic"]
+  ] as const)("puts manual %s isolation first when recovery isolation fails", (failedIsolation, expectedAction) => {
+    const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-next-action-${failedIsolation}-`));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=isolation-${failedIsolation}
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      upgrade_target_sha=target-sha
+      migration_started=true
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "stop" ] && [ "$4" = "proxy" ] && [ "$2" = "-t" ]; then
+          [ "$2" != "-t" ]
+        fi
+        return 0
+      }
+      wiseeff_upgrade_queue_command_for_image() {
+        if [ "$1" = "pause" ]; then
+          [ "$2" != "wiseeff-app:candidate" ]
+        fi
+        return 0
+      }
+      if [ "$2" = "proxy" ]; then
+        wiseeff_upgrade_compose() {
+          if [ "$1" = "stop" ] && [ "$4" = "proxy" ]; then return 91; fi
+          return 0
+        }
+        wiseeff_upgrade_queue_command_for_image() { return 0; }
+      else
+        wiseeff_upgrade_compose() { return 0; }
+        wiseeff_upgrade_queue_command_for_image() {
+          if [ "$1" = "pause" ]; then return 92; fi
+          return 0
+        }
+      fi
+      wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
+      cat "$upgrade_run_dir/next_action"
+    `, [runDir, failedIsolation]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toContain(expectedAction);
+  });
+
+  it("does not add manual isolation instructions when both recovery gates succeed", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-next-action-clean-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=isolation-clean
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_state_write migration_started true
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
+      cat "$upgrade_run_dir/next_action"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    const nextAction = readFileSync(join(runDir, "next_action"), "utf8");
+    expect(nextAction).toContain("rollback");
+    expect(nextAction).not.toContain("Manually isolate");
+    expect(readFileSync(join(runDir, "recovery_proxy_stopped"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "recovery_queue_paused"), "utf8")).toBe("true\n");
+  });
+
+  it("requires manual queue/worker isolation when stopping the worker fails", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-next-action-worker-stop-"));
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=isolation-worker-stop
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      migration_started=true
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "stop" ] && [ "$4" = "worker" ]; then return 93; fi
+        return 0
+      }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_mark_recovery_required api candidate-api-live 'The candidate API liveness probe failed.'
+      cat "$upgrade_run_dir/next_action"
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "recovery_queue_paused"), "utf8")).toBe("false\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toContain("Manually isolate queue/worker traffic");
+  });
+
+  it("blocks rollback before data restoration when isolation cannot be verified", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-rollback-isolation-"));
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "outcome"), "recovery-required\n");
+    writeFileSync(join(runDir, "phase"), "recovery-required\n");
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:previous-api\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=rollback-isolation
+      upgrade_previous_sha=previous-sha
+      upgrade_restore_data=true
+      upgrade_confirm=restore-rollback-isolation
+      upgrade_json=false
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_load_run() { :; }
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { :; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "stop" ] && [ "$4" = "proxy" ]; then
+          printf 'proxy stop failed password=mock-password HTTPS_PROXY=http://operator:proxy-password@proxy.example.test:8080\\n'
+          return 91
+        fi
+        return 0
+      }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_git() { printf 'git-must-not-run\\n'; return 0; }
+      wiseeff_upgrade_compose_for_image() { printf 'restore-must-not-run\\n'; return 0; }
+      wiseeff_upgrade_restore_postgres() { printf 'restore-data-must-not-run\\n'; return 1; }
+      wiseeff_upgrade_run_rollback
+    `, [runDir]);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(70);
+    expect(result.stderr).toContain("action=proxy-stop");
+    expect(result.stderr).not.toContain("mock-password");
+    expect(result.stderr).not.toContain("proxy-password");
+    expect(result.stdout).not.toContain("restore-must-not-run");
+    expect(result.stdout).not.toContain("restore-data-must-not-run");
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("proxy\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("rollback-proxy-stop\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toContain("Manually isolate proxy traffic");
+  });
+
+  it("uses full restore verification before marking rollback complete", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-rollback-verification-"));
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "outcome"), "recovery-required\n");
+    writeFileSync(join(runDir, "phase"), "recovery-required\n");
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:previous-api\n");
+    writeFileSync(join(runDir, "previous_image_tag_worker"), "wiseeff-app:previous-worker\n");
+    writeFileSync(join(runDir, "previous_image_tag_web"), "wiseeff-app:previous-web\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      trace="$1/trace.log"
+      upgrade_run_id=rollback-verification
+      upgrade_previous_sha=previous-sha
+      upgrade_restore_data=true
+      upgrade_confirm=restore-rollback-verification
+      upgrade_json=false
+      : > "$trace"
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_load_run() { :; }
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { :; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_compose() {
+        printf 'compose %s\\n' "$*" >> "$trace"
+        return 0
+      }
+      wiseeff_upgrade_queue_command_for_image() {
+        printf 'queue-%s\\n' "$1" >> "$trace"
+        return 0
+      }
+      wiseeff_upgrade_git() { printf 'checkout\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_compose_for_image() {
+        case "$*" in
+          *" postgres redis minio minio-init") printf 'data\\n' >> "$trace" ;;
+          *" proxy") printf 'proxy\\n' >> "$trace" ;;
+        esac
+        return 0
+      }
+      wiseeff_upgrade_verify_backup_manifest() { printf 'manifest\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_restore_postgres() { printf 'postgres-restore\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_restore_objects() { printf 'object-restore\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_restore_redis() { printf 'redis-restore\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_snapshot_manifest() { printf 'manifest-snapshot\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_recreate_previous_app_services() { printf 'apps\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { printf 'data-ready\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_api() { printf 'api-%s\\n' "$1" >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_worker() { printf 'worker\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_probe_web() { printf 'web\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_verify_previous_app_images() { printf 'images\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_public_probe() { printf 'public\\n' >> "$trace"; return 0; }
+      wiseeff_upgrade_mark_recovery_required() { printf 'recovery-required\\n' >> "$trace"; return 70; }
+      wiseeff_upgrade_run_rollback
+    `, [runDir]);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("rolled-back\n");
+    expect(readFileSync(join(runDir, "phase"), "utf8")).toBe("rolled-back\n");
+    expect(readFileSync(join(runDir, "recovery_verified"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "next_action"), "utf8")).toBe("none\n");
+    const events = readFileSync(join(runDir, "trace.log"), "utf8").trim().split("\n");
+    expect(events.indexOf("images")).toBeGreaterThan(events.indexOf("apps"));
+    expect(events.indexOf("queue-resume")).toBeGreaterThan(events.indexOf("images"));
+    expect(events.indexOf("proxy")).toBeGreaterThan(events.indexOf("queue-resume"));
+    expect(events.indexOf("public")).toBeGreaterThan(events.indexOf("proxy"));
+  });
+
+  it.each([
+    ["manifest", "recovery-point", "rollback-backup-manifest"],
+    ["postgres", "postgres", "rollback-postgres-restore"],
+    ["minio", "minio", "rollback-minio-restore"],
+    ["redis", "redis", "rollback-redis-restore"]
+  ] as const)("records the restoring-data failure for rollback %s", (failureTarget, expectedService, expectedCode) => {
+    const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-rollback-data-${failureTarget}-`));
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "outcome"), "recovery-required\n");
+    writeFileSync(join(runDir, "phase"), "recovery-required\n");
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:previous-api\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      failure_target="$2"
+      upgrade_run_id=rollback-data-failure
+      upgrade_previous_sha=previous-sha
+      upgrade_backup_dir="$upgrade_run_dir/backup"
+      upgrade_restore_data=true
+      upgrade_confirm=restore-rollback-data-failure
+      upgrade_json=false
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_load_run() { :; }
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { :; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_run_recovery_action() { shift; "$@"; }
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_compose_for_image() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { return 0; }
+      wiseeff_upgrade_verify_backup_manifest() { [ "$failure_target" != "manifest" ]; }
+      wiseeff_upgrade_restore_postgres() { [ "$failure_target" != "postgres" ]; }
+      wiseeff_upgrade_restore_objects() { [ "$failure_target" != "minio" ]; }
+      wiseeff_upgrade_restore_redis() { [ "$failure_target" != "redis" ]; }
+      wiseeff_upgrade_snapshot_manifest() { return 0; }
+      wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+      wiseeff_upgrade_verify_restored_stack() { return 0; }
+      wiseeff_upgrade_mark_recovery_required() { :; }
+      wiseeff_upgrade_run_rollback
+    `, [runDir, failureTarget]);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(70);
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8"), `${result.stderr}\n${result.stdout}`).toBe("restoring-data\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${expectedService}\n`);
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe(`${expectedCode}\n`);
+  });
+
+  it.each(["postgres", "redis", "minio", "minio-init"] as const)(
+    "records %s readiness failure under old-stack-restore and preserves candidate evidence on success",
+    (failureService) => {
+      const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-restore-phase-${failureService}-`));
+      writeFileSync(join(runDir, "previous_sha"), "previous-sha\n");
+      for (const service of ["api", "worker", "web"]) {
+        writeFileSync(join(runDir, `previous_image_tag_${service}`), `wiseeff-app:previous-${service}\n`);
+      }
+
+      const result = runLibrary(`
+        upgrade_run_dir="$1"
+        upgrade_run_id=restore-phase-${failureService}
+        upgrade_target_sha=target-sha
+        wiseeff_upgrade_state_write phase restarting-data
+        wiseeff_upgrade_state_write failed_phase restarting-data
+        wiseeff_upgrade_state_write failure_service api
+        wiseeff_upgrade_state_write failure_code candidate-api-live
+        wiseeff_upgrade_state_write failure_summary 'The candidate API liveness probe failed.'
+        wiseeff_upgrade_git() { return 0; }
+        wiseeff_upgrade_compose() { return 0; }
+        wiseeff_upgrade_compose_for_image() { return 0; }
+        wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+        wiseeff_upgrade_wait_data_plane_ready() {
+          wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" "${failureService}" "restore-${failureService}-not-ready" "The restored ${failureService} readiness probe failed."
+          return 1
+        }
+        wiseeff_upgrade_verify_restored_stack() { wiseeff_upgrade_wait_data_plane_ready; }
+        wiseeff_upgrade_queue_command_for_image() { return 0; }
+        wiseeff_upgrade_mark_recovery_required() {
+          wiseeff_upgrade_state_write outcome recovery-required
+          wiseeff_upgrade_state_write next_action 'rollback --restore-data --confirm restore-token'
+          return 0
+        }
+        if wiseeff_upgrade_restore_old_stack_after_stop; then exit 0; else exit $?; fi
+      `, [runDir, failureService]);
+
+      expect(result.status).toBe(70);
+      expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("old-stack-restore\n");
+      expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe(`${failureService}\n`);
+      expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe(`restore-${failureService}-not-ready\n`);
+    }
+  );
+
+  it("preserves candidate failure evidence when old-stack restoration succeeds", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-restore-preserves-failure-"));
+    writeFileSync(join(runDir, "previous_sha"), "previous-sha\n");
+    writeFileSync(join(runDir, "failed_phase"), "restarting-data\n");
+    writeFileSync(join(runDir, "failure_service"), "api\n");
+    writeFileSync(join(runDir, "failure_code"), "candidate-api-live\n");
+    writeFileSync(join(runDir, "failure_summary"), "The candidate API liveness probe failed.\n");
+    for (const service of ["api", "worker", "web"]) {
+      writeFileSync(join(runDir, `previous_image_tag_${service}`), `wiseeff-app:previous-${service}\n`);
+    }
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=restore-preserves-failure
+      upgrade_target_sha=target-sha
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_compose_for_image() { return 0; }
+      wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_verify_previous_app_images() { return 0; }
+      wiseeff_upgrade_public_probe() { return 0; }
+      wiseeff_upgrade_restore_old_stack_after_stop
+    `, [runDir]);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "phase"), "utf8")).toBe("old-stack-restored\n");
+    expect(readFileSync(join(runDir, "failed_phase"), "utf8")).toBe("restarting-data\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("api\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-api-live\n");
+  });
+
+  it("preserves a final worker failure when entering recovery-required", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-final-worker-failure-"));
+    writeFileSync(join(runDir, "phase"), "validating-public\n");
+    writeFileSync(join(runDir, "outcome"), "running\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=final-worker-failure
+      upgrade_json=false
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      wiseeff_upgrade_public_probe() { return 0; }
+      wiseeff_upgrade_verify_final_state() {
+        wiseeff_upgrade_record_failure validating-public worker candidate-worker-health 'The candidate worker liveness or Docker health probe failed during final verification.'
+        return 1
+      }
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      if wiseeff_upgrade_complete_candidate; then exit 0; else exit $?; fi
+    `, [runDir]);
+
+    expect(result.status).toBe(70);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "recovery_started"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-worker-health\n");
   });
 
   it("prepares the bundled base image before the candidate build", () => {
@@ -1318,6 +2291,7 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "failure_summary"), "The restored worker liveness or Docker health probe failed.\n");
     writeFileSync(join(runDir, "recovery_started"), "true\n");
     writeFileSync(join(runDir, "recovery_verified"), "false\n");
+    writeFileSync(join(runDir, "recovery_failure_summary"), "action=queue-pause code=97 summary=queue pause failed.\n");
     writeFileSync(join(runDir, "next_action"), "none\n");
     writeFileSync(join(runDir, "status"), "run_id=run-1\nphase=completed\noutcome=completed\n");
 
@@ -1352,7 +2326,8 @@ describe("upgrade.sh public interface", () => {
       failureCode: "restore-worker-health",
       failureSummary: "The restored worker liveness or Docker health probe failed.",
       recoveryStarted: "true",
-      recoveryVerified: "false"
+      recoveryVerified: "false",
+      recoveryFailureSummary: "action=queue-pause code=97 summary=queue pause failed."
     });
     expect(result.stdout).not.toContain("POSTGRES_PASSWORD");
   });

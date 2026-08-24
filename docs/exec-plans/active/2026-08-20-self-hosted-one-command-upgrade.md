@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and MinIO/readiness recovery fix are on this implementation branch. The restricted-network path now includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes are implemented in the current feature change and will be maintained on `main` after merge. The restricted-network path includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -20,18 +20,18 @@
 - PostgreSQL, object storage, and durable Redis state form one verified pre-migration recovery point.
 - every long-running Compose service is recreated while all persistent volume identities stay unchanged.
 - API migrations complete before public traffic resumes.
-- an interrupted run has exactly one valid next action: safe exit, `resume`, or explicit `rollback`.
-- post-migration failures keep the proxy stopped and surface `recovery-required`; they never claim automatic rollback.
+- an interrupted run has exactly one valid next action: safe exit, pre-migration `resume`, or post-migration token-gated `rollback`; failed proxy/queue isolation puts the required manual isolation step first.
+- post-migration failures attempt to stop the proxy and surface `recovery-required`; failed isolation is recorded as a manual first step, and the controller never claims automatic rollback.
 - the data-plane gate requires PostgreSQL/Redis Docker `healthy`, MinIO process `running`, and successful `minio-init` exit `0`; MinIO is never considered ready from `running` alone.
-- `old-stack-restored` is written only after data plane, queue resume, API, worker, web, previous-image, and proxy/public recovery gates pass; otherwise the journal records `recovery-required` with a non-`none` next action.
+- `old-stack-restored` is written only after data plane, API, worker, web, previous-image, queue resume, and last-stage proxy/public recovery gates pass; otherwise the journal records `recovery-required` with a non-`none` next action.
 - a non-customer Ubuntu rehearsal proves a forward upgrade and an injected post-migration recovery path with redacted evidence.
 
 ## Git & PR Workflow
 
-- Create `feat/self-hosted-one-command-upgrade` from the latest `main`.
+- Create `codex/selfhost-upgrade-recovery-hotfix` from the latest `main`.
 - Implementation agents commit only on that feature branch. They do not push to `main`, open/merge a PR, or fast-forward local `main`.
 - The parent/session owner reviews the branch, runs or spot-checks the required gates, opens the PR, merges after approval, and then runs `git pull origin main`.
-- Keep this as one implementation branch unless the target-environment rehearsal needs a follow-up evidence-only branch.
+- Keep this as one implementation branch (`codex/selfhost-upgrade-recovery-hotfix`) unless the target-environment rehearsal needs a follow-up evidence-only branch.
 - Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
@@ -151,7 +151,7 @@ Expected: a moving ref cannot change the recorded target mid-run; a build failur
 - [ ] Mirror the configured S3-compatible bucket with a pinned `minio/mc` image and verify a key/size/checksum manifest.
 - [ ] Force/copy/verify a Redis RDB checkpoint when durable queue mode is enabled.
 - [ ] Write a complete SHA-256 artifact manifest and mark the recovery point verified only when all required stores pass.
-- [ ] On quiescence or backup failure, restart the stopped old containers, resume queue/proxy, and record `failed-safe` or `old-stack-restored`.
+- [ ] On quiescence or backup failure, pass the data-plane gate before recreating old app containers, verify internal health and image identity, resume the queue, recreate proxy, and probe public health last; if isolation failed, require manual isolation and keep `recovery-required` until all gates pass.
 - [ ] Keep partial backup directories for diagnosis; never present them as restorable.
 
 **Verification:**
@@ -183,7 +183,7 @@ Expected: every backup failure injection restores the old online stack without m
 - [ ] Start/recreate Caddy last and run public liveness/readiness plus bounded self-hosted smoke.
 - [ ] Verify every expected long-running container id changed, expected images run, volume identities match, `.env` fingerprint is unchanged, and no seed/provision command ran.
 - [ ] Record downtime, migrations, health/smoke result, and backup manifest before `completed`.
-- [ ] If failure occurs after migration startup, stop proxy, pause queue, mark `recovery-required`, and return exit `70` without destructive restore.
+- [ ] If failure occurs after migration startup, attempt proxy and queue/worker isolation, mark `recovery-required`, require manual isolation first when either attempt fails, and return exit `70` without destructive restore.
 
 **Verification:**
 
@@ -440,19 +440,23 @@ git diff --check
 
 **Expected outcome:** CA-less enterprise hosts have an explicit, auditable one-build compatibility path without making insecure transport the default, leaking credentials, weakening package identity/integrity, or changing runtime TLS.
 
-## Phase 13 — MinIO Readiness And Truthful Previous-Stack Recovery
+## Phase 13 — MinIO Readiness, Candidate Worker Gates, And Truthful Recovery
 
-The incident run `20260824T021935Z-2079618` showed two controller-truth defects: MinIO has no Docker healthcheck and was held to a generic `healthy` wait, while previous-stack recovery could write `old-stack-restored` without verifying worker, web, proxy/public access, queue resume, or previous image identity. This phase keeps service-specific readiness and recovery verification behind `upgrade-lib.sh` so `apply` expresses only data-plane readiness and the restore operation.
+The incident run `20260824T021935Z-2079618` showed two controller-truth defects: MinIO has no Docker healthcheck and was held to a generic `healthy` wait, while previous-stack recovery could write `old-stack-restored` without verifying worker, web, proxy/public access, queue resume, or previous image identity. Follow-up acceptance found four additional state-machine gaps: MinIO could exit while `minio-init` was still being polled, an unhealthy candidate worker could precede queue/proxy recovery, `recovery-required` could recommend an unusable action, and restore readiness failures retained the candidate phase. This phase keeps service-specific readiness, candidate app readiness, and recovery verification behind `upgrade-lib.sh` so callers express only data-plane readiness and the restore operation.
 
 **Tasks:**
 
 - [x] Add mock Docker/Compose RED tests for MinIO running vs `minio-init` exit `0`, MinIO exit, initializer failure/timeout, PostgreSQL/Redis health, restore gates, stable failure fields, redaction, and proxy bypass.
 - [x] Implement `wiseeff_upgrade_wait_data_plane_ready` with service-specific semantics and bounded diagnostics (`failed_phase`, `failure_service`, `failure_code`, `failure_summary`).
 - [x] Implement a restore-only verification helper covering data plane, queue resume, API live/ready, worker live/healthy, web direct, previous app image identity, and proxy/public health.
-- [x] Keep `old-stack-restored` and `next_action=none` behind `recovery_verified=true`; otherwise persist `recovery-required`, pause the queue, and keep the proxy stopped.
+- [x] Keep `old-stack-restored` and `next_action=none` behind `recovery_verified=true`; otherwise persist `recovery-required`, attempt queue/worker and proxy isolation, and record any failed isolation as a manual first step.
 - [x] Use `curl --noproxy '*'` for public probes and preserve the build-only `WISEEFF_BUILD_TLS_POLICY` security boundary without introducing a global TLS bypass.
+- [x] Recheck MinIO on every `minio-init` poll and once after exit `0`; classify exit, inspect, initializer failure, and timeout paths separately.
+- [x] Require candidate worker liveness plus Docker health before queue resume in both `apply` and `resume`, and retain the same gate during final verification.
+- [x] Make `recovery-required` next actions executable: pre-migration runs may retry old-stack restore, post-migration runs require token-gated whole-state rollback, and failed isolation requires manual traffic/queue isolation first.
+- [x] Enter `old-stack-restore` before any restore operation so recovery data-plane failures cannot retain a candidate phase while preserving earlier candidate failure evidence on successful recovery.
 - [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
-- [ ] Deploy the merged controller to the reported host and execute the forward/recovery rehearsal; local mocks do not close target evidence.
+- [ ] Merge the readiness/recovery hotfix into `main`; target-host forward/recovery rehearsal remains pending because local mocks do not close target evidence.
 
 **Verification:**
 

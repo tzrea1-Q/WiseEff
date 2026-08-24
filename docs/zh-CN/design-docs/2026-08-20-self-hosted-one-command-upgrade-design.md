@@ -73,7 +73,7 @@ WiseEff 当前有三条相关但不完整的操作路径：
 
 ### 迁移开始后禁止破坏性的自动恢复
 
-API 迁移命令开始前，控制器可以安全地重新启动旧容器并恢复队列。一旦迁移启动，即使进程失败，也必须认为数据库可能已经变化。此时保持公网 proxy 停止、保持队列暂停，把运行标记为 `recovery-required`，并打印精确的 `resume` 或 `rollback` 命令。
+API 迁移命令开始前，控制器可以安全地重新启动旧容器并恢复队列，但必须先通过完整的旧栈恢复验证。如果迁移前恢复失败，`recovery-required` 只提供一个可执行的 `resume --run-id <run-id>` 重试动作，绝不恢复数据。一旦迁移启动，即使进程失败，也必须认为数据库可能已经变化。此时控制器会尝试停止公网 proxy、暂停 queue；运行标记为 `recovery-required`，普通 `resume` 会被拒绝，并记录带 token 的整点恢复命令。如果 proxy 或 queue/worker 隔离失败，journal 会把对应的人工隔离动作放在第一步。
 
 `rollback --restore-data` 会替换现有状态，因此必须显式执行并确认。成功升级并已经承载流量后，再恢复旧数据还会丢弃升级后的新写入；这种恢复在非交互模式下必须提供针对该 run id 的确认 token，否则绝不执行。
 
@@ -131,7 +131,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 | `40` | 备份/校验失败，已恢复旧栈 |
 | `50` | 迁移前数据服务/部署失败，旧栈恢复已完成或已尝试 |
 | `60` | 服务健康已通过，但收尾/证据写入失败；通过 `resume` 收尾 |
-| `70` | 明确需要恢复，公网流量保持停止 |
+| `70` | 明确需要恢复；控制器会尝试停止公网流量，任何持久化隔离标记为 `false` 的路径都必须由操作员先人工隔离 |
 | `75` | 另一项 setup/upgrade 操作持有宿主机锁 |
 
 ## 模块形态
@@ -264,7 +264,7 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 4. 带 grace period 停止 API、worker 和 web 容器。
 5. 确认没有应用容器仍可写 PostgreSQL、Redis 或对象存储。
 
-若停止写入超时，控制器恢复队列和旧 proxy，不进入备份与部署。
+若停止写入失败，控制器进入 `old-stack-restore`，按恢复流程完整验证数据平面、应用、queue、镜像身份以及 proxy/public。只有所有门禁通过才写入 `old-stack-restored`；否则记录带可执行 `next_action` 的 `recovery-required`。
 
 ### 4. 生成并验证恢复点
 
@@ -276,7 +276,7 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 4. 为每项产物生成 SHA-256 manifest，并通过 fsync/rename 完成落盘。
 5. 只有全部必需存储均通过，才标记 `recovery-point-verified`。
 
-部分备份永远不能视为恢复点。本阶段失败时重新启动已停止的旧容器、恢复队列，并保留部分目录供诊断。
+部分备份永远不能视为恢复点。本阶段失败时控制器会尝试完整的旧栈恢复验证，并保留部分目录供诊断。验证失败应记录 `recovery-required`，不能记录为 `old-stack-restored`。
 
 ### 5. 不删 volume，重建全部服务
 
@@ -291,7 +291,7 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 数据平面等待收敛为一个深接口 `wiseeff_upgrade_wait_data_plane_ready`；调用者不再编码服务特定的状态规则。它按顺序等待 PostgreSQL healthy、Redis healthy、MinIO 进程 running，以及 `minio-init` 退出码 `0`。MinIO 单独 running 不代表对象存储就绪，MinIO 进程退出会立即失败。由于 Compose 的 MinIO 服务没有 Docker healthcheck，initializer 成功才是 endpoint 凭据和所需 bucket 可用的权威证明。
 
-旧栈恢复使用独立的 `wiseeff_upgrade_verify_restored_stack` helper。在写入 `old-stack-restored` 之前，它验证数据平面、queue resume、API live/ready、8788 端口上的 worker liveness 与 Docker health、web 直连、按服务记录的旧 image identity，以及 proxy/public 探测。任一失败都会记录 `failed_phase`、`failure_service`、稳定的 `failure_code`、有长度限制且脱敏的 `failure_summary`、`recovery_started`、`recovery_verified` 和非 `none` 的 `next_action`，随后在 `recovery-required` 下保持 proxy 停止和 queue 暂停。
+旧栈恢复使用独立的 `wiseeff_upgrade_verify_restored_stack` helper。在恢复 queue 之前，它验证数据平面、API live/ready、8788 端口上的 worker liveness 与 Docker health、web 直连以及按服务记录的旧 image identity；随后才重建 proxy 并最后执行公网探测，全部通过后才写入 `old-stack-restored`。任一失败都会记录 `failed_phase`、`failure_service`、稳定的 `failure_code`、有长度限制且脱敏的 `failure_summary`、`recovery_started`、`recovery_verified` 和非 `none` 的 `next_action`。恢复会尝试停止 proxy、暂停 queue/worker；隔离布尔值和 `next_action` 会标明仍需人工处理的动作。
 
 本阶段不会执行 seed、bootstrap、setup renderer 或配置重写。
 
@@ -310,13 +310,13 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 | 失败位置 | 自动动作 | 结果 |
 | --- | --- | --- |
 | Fetch、协议、配置、磁盘或构建 | 必要时恢复旧 checkout | 旧栈在线，`failed-safe` |
-| 队列暂停或 drain | 恢复队列/proxy | 旧栈在线，`failed-safe` |
-| 备份或备份校验 | 重启旧应用容器并恢复队列/proxy | 未迁移，`old-stack-restored` |
-| API 迁移启动前的数据服务重启 | 使用旧镜像启动旧应用栈 | 保留快照，`old-stack-restored` |
-| 迁移启动或候选 API 失败 | 保持 proxy 停止和队列暂停 | `recovery-required`，选择继续或显式恢复 |
-| 迁移后的内部健康失败 | 保持 proxy 停止和队列暂停 | `recovery-required` |
-| 公网 smoke 失败 | 立即停止 proxy，不自动恢复数据 | `recovery-required`，候选可能短暂接收流量 |
-| 信号/宿主机重启 | journal 仍为真相 | 先 `status`，再 `resume` 或 `rollback` |
+| 队列暂停或 drain | 尝试执行包含数据平面、应用、队列、proxy 和公网门禁的完整旧栈恢复 | 只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
+| 备份或备份校验 | 启动旧数据平面并通过就绪门禁，重建旧应用栈，验证内部健康和镜像身份，恢复队列，重建 proxy，最后探测公网健康 | 未迁移；只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
+| API 迁移启动前的数据服务重启 | 启动旧数据服务，等待就绪，再启动并验证旧应用栈，之后才执行队列/proxy/公网门禁 | 保留快照；只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
+| 迁移启动或候选 API 失败 | 尝试停止 proxy、暂停队列；任一操作失败则先人工隔离 | `recovery-required`；migration 后拒绝普通 `resume`，必须使用带 run token 的整体验证点恢复 |
+| 迁移后的内部健康失败 | 尝试停止 proxy、暂停队列；任一操作失败则先人工隔离 | `recovery-required` |
+| 公网 smoke 失败 | 尝试立即停止 proxy；停止失败则先人工隔离，不自动恢复数据 | `recovery-required`，候选可能短暂接收流量 |
+| 信号/宿主机重启 | journal 仍为真相 | 先 `status`，migration 前执行 `resume`，migration 后执行带 token 的 `rollback` |
 
 只有明确知道迁移未启动，或 release record 已证明 schema 向后兼容时，才允许自动进行不恢复数据的应用 rollback。其他情况必须依照 release runbook 选择 forward-fix 或显式整体验证点恢复。
 
