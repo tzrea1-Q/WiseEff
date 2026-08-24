@@ -22,6 +22,32 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 
 All `VITE_*` values are public and baked into the frontend bundle. In self-hosted deployments, changing footer metadata requires rebuilding the application image; restarting an existing image does not update it. Never place secrets in these variables.
 
+### Configure the application footer
+
+For local development, add the public metadata to the repository-root `.env` file. For a self-hosted deployment, edit `ops/self-hosted/.env` instead:
+
+```dotenv
+VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER=Example Company Ltd.
+VITE_WISEEFF_APP_VERSION=1.4.0
+VITE_WISEEFF_CONTACT_HREF=https://support.example.com/contact
+```
+
+Use a `mailto:` URL instead when email is the intended contact method, for example `mailto:support@example.com`. There is one optional contact destination and its visible label remains the localized “Contact us” copy. Leave `VITE_WISEEFF_CONTACT_HREF` blank to hide it. Do not put a phone number, relative path, JavaScript URL, credential, or secret in these variables.
+
+Restart the Vite development server after changing the repository-root `.env`. A production build requires `npm run build`. For a self-hosted first installation, split the [setup wizard](../../ops/self-hosted/setup.md) so the generated environment can be edited before the first image build:
+
+```bash
+cd ops/self-hosted
+./scripts/setup.sh init
+# Edit the three footer keys in .env.
+./scripts/setup.sh up
+./scripts/setup.sh provision
+```
+
+For an existing deployment, keep its current `.env`, edit only these keys, then use the normal [upgrade `plan` and `apply` entry](../../ops/self-hosted/upgrade.md); do not use `setup.sh --force`, because that replaces the deployment environment and rotates generated secrets.
+
+After the rebuild, sign in and scroll to the end of a normal page. Verify the legal owner, normalized `v` version, and optional contact link. Also verify the homepage metadata row. The full-height project configuration workbench intentionally has no compact footer. If a configured contact does not appear, first confirm that it is an absolute `https:` or `mailto:` URL and that the image was rebuilt rather than only restarted.
+
 ## Auth
 
 | Variable | Local default | Required for | Notes |
