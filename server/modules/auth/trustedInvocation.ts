@@ -1,0 +1,240 @@
+import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS, type AuthContext } from "./types";
+
+const trustedInvocationBrand = Symbol("wiseeff.trusted-invocation");
+
+type TrustedInvocationBrand = {
+  readonly [trustedInvocationBrand]: true;
+};
+
+export type AgentInvocationApproval =
+  | { required: false }
+  | { required: true; approvalId: string };
+
+export type AgentInvocationInput = {
+  sessionId: string;
+  toolCallId: string;
+  approval: AgentInvocationApproval;
+};
+
+export type SystemInvocationInput = {
+  kind: "service" | "job";
+  name: string;
+};
+
+export type UserInvocationContext = {
+  readonly initiator: "user";
+  readonly principal: AuthContext;
+} & TrustedInvocationBrand;
+
+export type AgentInvocationContext = {
+  readonly initiator: "agent";
+  readonly principal: AuthContext;
+  readonly sessionId: string;
+  readonly toolCallId: string;
+  readonly approvalRequired: boolean;
+  readonly approvalId: string | null;
+} & TrustedInvocationBrand;
+
+export type SystemInvocationContext = {
+  readonly initiator: "system";
+  readonly identity: Readonly<SystemInvocationInput>;
+} & TrustedInvocationBrand;
+
+export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext;
+
+const backendRoleIds = new Set<string>(BACKEND_ROLE_IDS);
+const backendPermissions = new Set<string>(BACKEND_PERMISSIONS);
+
+export const TRUSTED_INVOCATION_CONTEXT_ERROR_CODE = "INVALID_TRUSTED_INVOCATION_CONTEXT" as const;
+
+export class TrustedInvocationContextError extends Error {
+  readonly code = TRUSTED_INVOCATION_CONTEXT_ERROR_CODE;
+
+  constructor(readonly reason: string) {
+    super(`Invalid trusted invocation context: ${reason}`);
+    this.name = "TrustedInvocationContextError";
+  }
+}
+
+function invalid(reason: string): never {
+  throw new TrustedInvocationContextError(reason);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return invalid(`${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function validateAuthContext(value: unknown): asserts value is AuthContext {
+  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.organization)) {
+    invalid("principal must be an AuthContext");
+  }
+
+  const user = value.user;
+  const organization = value.organization;
+  nonEmptyString(user.id, "principal.user.id");
+  const userOrganizationId = nonEmptyString(user.organizationId, "principal.user.organizationId");
+  const organizationId = nonEmptyString(organization.id, "principal.organization.id");
+  nonEmptyString(user.name, "principal.user.name");
+  nonEmptyString(user.title, "principal.user.title");
+  nonEmptyString(organization.name, "principal.organization.name");
+
+  if (userOrganizationId !== organizationId) {
+    invalid("principal user and organization must belong to the same Organization");
+  }
+  if (typeof user.isActive !== "boolean") {
+    invalid("principal.user.isActive must be a boolean");
+  }
+  if (user.email !== undefined && typeof user.email !== "string") {
+    invalid("principal.user.email must be a string when present");
+  }
+  if (user.emailVerified !== undefined && typeof user.emailVerified !== "boolean") {
+    invalid("principal.user.emailVerified must be a boolean when present");
+  }
+  if (user.username !== undefined && typeof user.username !== "string") {
+    invalid("principal.user.username must be a string when present");
+  }
+  if (!Array.isArray(value.roles) || !Array.isArray(value.permissions)) {
+    invalid("principal roles and permissions must be arrays");
+  }
+  if (
+    !Array.from(value.roles).every(
+      (role) =>
+        isRecord(role) &&
+        (role.projectId === null || (typeof role.projectId === "string" && role.projectId.trim().length > 0)) &&
+        typeof role.roleId === "string" &&
+        backendRoleIds.has(role.roleId)
+    )
+  ) {
+    invalid("principal roles are malformed");
+  }
+  if (
+    !Array.from(value.permissions).every(
+      (permission) => typeof permission === "string" && backendPermissions.has(permission)
+    )
+  ) {
+    invalid("principal permissions are malformed");
+  }
+}
+
+function snapshotAuthContext(principal: AuthContext): AuthContext {
+  return Object.freeze({
+    user: Object.freeze({ ...principal.user }),
+    organization: Object.freeze({ ...principal.organization }),
+    roles: Object.freeze(principal.roles.map((role) => Object.freeze({ ...role }))),
+    permissions: Object.freeze([...principal.permissions])
+  }) as AuthContext;
+}
+
+function brand<T extends object>(value: T): T & TrustedInvocationBrand {
+  const branded = { ...value };
+  Object.defineProperty(branded, trustedInvocationBrand, { value: true, enumerable: false });
+  return Object.freeze(branded) as T & TrustedInvocationBrand;
+}
+
+function validateAgentInvocationInput(value: unknown): AgentInvocationInput {
+  if (!isRecord(value) || !isRecord(value.approval)) {
+    return invalid("Agent invocation requires session, tool-call, and approval correlation");
+  }
+
+  const sessionId = nonEmptyString(value.sessionId, "agent.sessionId");
+  const toolCallId = nonEmptyString(value.toolCallId, "agent.toolCallId");
+  const approval = value.approval;
+
+  if (approval.required === true) {
+    const approvalId = nonEmptyString(approval.approvalId, "agent.approval.approvalId");
+    return { sessionId, toolCallId, approval: { required: true, approvalId } };
+  }
+  if (approval.required === false && !Object.hasOwn(approval, "approvalId")) {
+    return { sessionId, toolCallId, approval: { required: false } };
+  }
+
+  return invalid("agent.approval must explicitly declare required=true with approvalId or required=false");
+}
+
+function validateSystemInvocationInput(value: unknown): SystemInvocationInput {
+  if (!isRecord(value) || (value.kind !== "service" && value.kind !== "job")) {
+    return invalid("system identity kind must be service or job");
+  }
+  return { kind: value.kind, name: nonEmptyString(value.name, "system.name") };
+}
+
+export function createUserInvocation(principal: AuthContext): UserInvocationContext {
+  validateAuthContext(principal);
+  return brand({ initiator: "user" as const, principal: snapshotAuthContext(principal) });
+}
+
+export function createAgentInvocation(principal: AuthContext, input: AgentInvocationInput): AgentInvocationContext {
+  validateAuthContext(principal);
+  const validated = validateAgentInvocationInput(input);
+  return brand({
+    initiator: "agent" as const,
+    principal: snapshotAuthContext(principal),
+    sessionId: validated.sessionId,
+    toolCallId: validated.toolCallId,
+    approvalRequired: validated.approval.required,
+    approvalId: validated.approval.required ? validated.approval.approvalId : null
+  });
+}
+
+export function createSystemInvocation(input: SystemInvocationInput): SystemInvocationContext {
+  const identity = validateSystemInvocationInput(input);
+  return brand({ initiator: "system" as const, identity: Object.freeze(identity) });
+}
+
+function validateBrandedContext(value: unknown): TrustedInvocationContext {
+  if (!isRecord(value) || (value as Record<PropertyKey, unknown>)[trustedInvocationBrand] !== true || !Object.isFrozen(value)) {
+    return invalid("context must come from a server-owned constructor");
+  }
+
+  if (value.initiator === "user") {
+    validateAuthContext(value.principal);
+    return value as UserInvocationContext;
+  }
+
+  if (value.initiator === "agent") {
+    validateAuthContext(value.principal);
+    nonEmptyString(value.sessionId, "agent.sessionId");
+    nonEmptyString(value.toolCallId, "agent.toolCallId");
+    if (typeof value.approvalRequired !== "boolean") {
+      return invalid("agent.approvalRequired must be a boolean");
+    }
+    if (value.approvalRequired) {
+      nonEmptyString(value.approvalId, "agent.approvalId");
+    } else if (value.approvalId !== null) {
+      return invalid("agent.approvalId must be null when approval is not required");
+    }
+    return value as AgentInvocationContext;
+  }
+
+  if (value.initiator === "system") {
+    if (!isRecord(value.identity)) {
+      return invalid("system identity is malformed");
+    }
+    const identityValue = value.identity;
+    const identity = validateSystemInvocationInput(identityValue);
+    if (!Object.isFrozen(identityValue)) {
+      return invalid("system identity must be immutable");
+    }
+    if (Object.hasOwn(value, "principal")) {
+      return invalid("system invocation must not contain a synthetic principal");
+    }
+    if (identity.name !== identityValue.name) {
+      return invalid("system identity cannot be changed after construction");
+    }
+    return value as SystemInvocationContext;
+  }
+
+  return invalid("initiator must be user, agent, or system");
+}
+
+/** Validate the server-owned brand before a sensitive policy or write is reached. */
+export function assertTrustedInvocationContext(value: unknown): TrustedInvocationContext {
+  return validateBrandedContext(value);
+}
