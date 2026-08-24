@@ -110,7 +110,7 @@ export function XiaozeProvider({
     return children;
   }
 
-  const xiaozeAgent = createXiaozeHttpAgent({ agentUrl });
+  const xiaozeAgent = useMemo(() => createXiaozeHttpAgent({ agentUrl }), [agentUrl]);
 
   return (
     <XiaozePromptDebugProvider>
