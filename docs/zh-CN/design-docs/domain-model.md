@@ -166,6 +166,8 @@ stateDiagram-v2
 
 **敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
 
+**认证主体与调用溯源（ADR-0038 / TD-068）：** 认证主体拥有身份、Organization、角色、权限与问责；一次操作的 initiator 是独立、由服务端信任构造的 `user` / `agent` / `system` 事实。#610 已实现共享上下文、严格构造器及策略/审计投影；生产入口构造和完整路径传递仍由 #611–#615 负责。user 与 Agent 调用保留认证主体；Agent 还携带 session/tool-call 及适用的审批关联。system 点名 service/job，不伪造用户。审批不会改变 Agent 溯源。DTS 重载与关键参数的 human-required 策略只接受 `user`；缺失溯源不得默认 user。该边界只诚实分类服务端已知路径，不声称普通 bearer credential 能证明物理人类在场。
+
 #### 语义拓扑身份（增量模型 → 原子切换）
 
 路径派生身份（`(name, module)` / 完整 DTS 路径）由下列概念替换：

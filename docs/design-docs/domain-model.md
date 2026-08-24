@@ -127,6 +127,8 @@ A **structured change set** aggregates node/property-level diffs from baseline c
 
 **Sensitive node RBAC:** org/project rules in `dts_sensitive_node_rules` match `path` or `compatible` patterns to a risk tier (`high` \| `critical`) and required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent (`actorType=agent`) writes that hit `critical` are always denied and audited as `parameter-sensitive-node-denied` with `requireHuman: true` — a human must perform the change.
 
+**Principal and invocation provenance (ADR-0038 / TD-068):** the authenticated principal owns identity, Organization, roles, permissions, and accountability. The operation initiator is a separate server-trusted `user` / `agent` / `system` fact. #610 implements the shared context, strict constructors, and policy/audit projection; #611–#615 still own production entry construction and full path propagation. User and Agent invocations retain the authenticated principal; Agent also carries session/tool-call and applicable approval correlation. System names a service/job and has no synthetic user. Approval does not change Agent provenance. Human-required DTS reload and critical parameter policies accept only `user`; missing provenance cannot default to user. This is honest classification of known server paths, not physical-human detection for ordinary bearer credentials.
+
 ### Semantic topology identity (additive → atomic cutover)
 
 Path-derived `(name, module)` / full DTS path identity is being replaced by:

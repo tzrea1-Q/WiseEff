@@ -30,7 +30,7 @@
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
 - **TD-033（遗留调试 catalog 表）：** `debugging_parameters` / `debugging_parameter_node_bindings` 仍为审计/历史保留。`parameter_reload_bindings` 已在迁移 `0037` **删除**，不得再写成存活 schema；`/debugging` 参数重载保持产品下线，且与 `/dts-reload`（DTS 重载）不是同一概念。详见英文版 Open 表。
 - **TD-075（验收治理，部分）：** 第一阶段 2026-08-12 已落地。**#528 只做 results 绑定**：`npm run acceptance:coverage` 把 `@acceptance` ID 绑到 Playwright `results.json`，required 且运行时全 skip 会失败。未做四注册表合一，也未改 `requirements.ts` / `operationMatrix.ts`；三个工作流状态机仍复刻生产规则。#528 没有关闭 TD-076；TD-077 后由 #583 独立关闭，TD-071 由 #575 独立关闭。
-- **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
+- **TD-068（DTS 重载可信调用溯源）：** **ADR-0038 与父规格 #609 已完成设计裁决，实现仍 Open。** #610 建立共享的服务端内部 `user` / `agent` / `system` 可信上下文、策略及审计 seam；#611–#615 分别负责 Xiaoze 持久溯源、DTS 重载五条写路径、参数提交/治理/回写传递，以及 legacy actor label 与验收证据收紧。各生产路径在对应迁移票据落地前仍可能使用调用方传入或默认的溯源，因此 Agent/system 策略与持久审计尚未端到端可信。按依赖顺序完成 #610–#615，禁止 default-user 兼容。关闭门槛须覆盖缺失上下文、同一主体 user/Agent 结果分叉、伪造/降级无效、system 拒绝、全部 owned path、跨实例审批恢复，以及 API/DB/审计证据；mock/HDC 不构成安全证明。普通用户 token 不能证明物理人类在场，这是明确边界而非本 TD 范围。**负责人：Security / Backend。**
 - **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
 - **TD-097（HCI Wave 2–3 遗留，部分）：** 信任修复审计的剩余延期范围。**已交付**：权限拒绝页中文化 + 错误话术接缝 + 审计搜索下推/时间窗/CSV 导出（PR #411）；检视阶段批量通过；审计 CSV 中文化与详情深链。**#533 切片**：`/parameter-review` 流程状态中文化（含筛选标签）、应用壳 skip-link / banner / main、macOS 主键约定（新快捷键不占用 ⌘/Ctrl+字母）、审查页对话框外的 landmark/heading 与 J/K/Enter/Alt+1/2。**剩余**：其它页术语清洗、AI 输出中文化（agent 模块）、全站 a11y 系统化，以及已关闭 TD-112 Admin-list 范围之外更广的表格/工具栏响应式工作。**保持 Open，不要标成 Closed。** **负责人：Frontend。**
 - **TD-100（HDC 真机验证欠账）：** 审批流浏览器走查已于 2026-08-13 完成（证据 `work/ui-checks/td100/`）：审批卡在聊天打开时正常渲染、批准/拒绝点击可达、带理由拒绝零错误走通，并由新增验收 `XIAOZE-APPROVAL-CARD-001` 自动守护。剩余：批量高风险设备写入仍缺 HDC 真机手工验证（聚合确认、写入/跳过记账）。**负责人：QA。**
@@ -41,6 +41,7 @@
 - **TD-119（组织管理 / 邀请）：** 邀请链接与邮箱验证不在组织管理 v1（ADR-0037 D4）。目标环境入职仍是 OIDC JIT + Admin 开账号。有邮箱或令牌通道后再设计邀请；不要重开「部门即租户」。**负责人：Identity。**
 - **TD-120（组织管理 / 平台目录）：** 平台组织目录（创建 / 归档 / 切换）不在 v1（ADR-0037 D3）。多余 `organizations` 行仍是 bootstrap 或夹具；`platform-admin` 仍不能列出其它租户用户。仅当一次部署要把多家客户 Organization 做成产品时再开。**负责人：Platform。**
 - **TD-121（组织管理 / 项目成员）：** `ProjectMember` 与 `user_role_bindings.project_id` 预留未交付（ADR-0037 D5）。组织内成员仍看见全部项目。若需要项目 ACL，另做产品，不要折进 `/organization`。**负责人：Identity / Parameters。**
+- **TD-123（调试设备写审计溯源）：** Agent 审批后的 debugging device-write 已校验动作绑定审批，但一条嵌套领域审计路径仍固定写 `actorType=user`，导致授权正确而持久审计可能误报 initiator。它与 TD-068 相邻，但不属于 DTS 重载/参数敏感 owned scope。另开有界变更复用 ADR-0038 可信调用上下文，证明审批关联与 Agent initiator 穿过嵌套写；不要把 TD-068 扩成平台级审计重构。**负责人：Debugging / Security。**
 
 
 ## 近期关闭项

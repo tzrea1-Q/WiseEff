@@ -159,6 +159,8 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 
 独立模块 `/api/v1/dts-reload/*`（勿与已退役的 `/api/v1/debugging/reload-targets` / `.../parameters/reload` 的 `410` 面混淆）。
 
+ADR-0038 为敏感写定义服务端内部可信调用上下文，#610 已实现共享构造器及策略/审计 seam。客户端不能发送或覆盖 `user` / `agent` / `system` initiator。human-required 路由只接受由服务端构造的 `user`；已批准的 Agent 调用仍是 Agent initiator，system 无人值守调用也默认拒绝。缺失上下文时在写入前按内部不变量失败；上下文有效但 initiator 不允许时返回稳定 `403` 并保留拒绝证据。生产入口重建以及 DTS 重载五条写路径与全部参数敏感生产路径的迁移仍由 #611–#615 负责；这些迁移完成前，legacy `actorType` 传递仍不可信。
+
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。每个候选同时返回目录原始 `valueShapeKind`（仅展示）与服务端解析的 `resolvedValueShape`（归一化的重载值形态词汇，或 null）；客户端的录入校验、占位符与示例一律以 `resolvedValueShape` 为准，绝不使用目录原始 kind——解析需要 DTS 解析器与库基线。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。presence 形态（`boolean` / `empty`）允许空 RHS 基线。已支持形态含 u32/u8/u16 cell（含 `/bits/ 8`）、目录 `string` 单字符串（如 `replace_sensor`）、`string-list`、GPIO 风格 `phandle-cells`、裸 phandle 列表（`<&gic>` → `phandle-list`）、布尔、空属性、mixed 字符串+cell。显式 `/delete-property/` 是 overlay 动词，从不由空 cell/字符串推断。 |
@@ -167,7 +169,7 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
 | `GET` | `/api/v1/dts-reload/residue` | 查看路径 | 设备残留记账 |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/restore-baseline` | `debugging:dts-reload` | 启动恢复基线运行 |
-| `POST` | `/api/v1/dts-reload/runs/:runId/promote-to-drafts` | 重载读取门加 `parameter:edit`，并具备 `debugging:dts-reload` 或 `admin:access`。仅人类 actor（`actorType` 须诚实；Agent 拒绝）。 | 把所选已存调试值经 `createBindingDraft` 写成 `parameter_drafts` 后停止。Body `{ bindingIds, unverifiableAcknowledged? }`。普通 `verified` 运行，或带 `unverifiableAcknowledged: true` 的普通 `unverifiable` 运行。**不**创建变更请求、不自动提交、不把调试值写进 binding。返回草稿 id 与 `/parameters?project=` 工作台深链。里程碑审计 `reload-value-promoted-to-draft`。 |
+| `POST` | `/api/v1/dts-reload/runs/:runId/promote-to-drafts` | 重载读取门加 `parameter:edit`，并具备 `debugging:dts-reload` 或 `admin:access`。human-required：TD-068 完成后，可信 initiator 必须为 `user`；Agent 与 system 均拒绝。 | 把所选已存调试值经 `createBindingDraft` 写成 `parameter_drafts` 后停止。Body `{ bindingIds, unverifiableAcknowledged? }`。普通 `verified` 运行，或带 `unverifiableAcknowledged: true` 的普通 `unverifiable` 运行。**不**创建变更请求、不自动提交、不把调试值写进 binding。返回草稿 id 与 `/parameters?project=` 工作台深链。里程碑审计 `reload-value-promoted-to-draft`。 |
 | `*` | `/api/v1/dts-reload/configuration` | `debugging:admin` | 组织级重载配置默认值 |
 
 请求/响应 schema 以已提交的 OpenAPI（`docs/generated/openapi.json`）为准。

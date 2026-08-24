@@ -183,6 +183,8 @@ Agent 不直接访问数据库，不直接执行生产变更。它通过工具�
 
 P1 增加 mutating `action.submitParameterChange`（`requiresApproval: true`）。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链：`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt，仅通过 `resolveApproval` 恢复并在事务内重新鉴权、审计 `actorType=agent`；审批状态以数据库行为唯一载体、绝不驻留进程内存，`editedArgs` 在批准时重鉴权前完整替换载荷（ADR-0024）。前端 CopilotKit 挂载 `XiaozeApprovalCard`（`useInterrupt`）与低风险前端工具。live LLM 使用 atomic `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` 组三键；验收可用 `XIAOZE_DETERMINISTIC=true`，但不能据此声称 live provider ready。
 
+ADR-0038 把认证主体与可信调用溯源分开。#610 已实现共享的 `user` / `agent` / `system` 上下文、严格构造器及策略/审计 seam；上下文由后端而非客户端拥有。Agent 溯源包含 session/tool-call 及适用的审批关联；审批是授权，不会把 Agent 改写成 user。system job 点名自身，不伪造用户。human-required 策略只接受 `user`，缺失上下文时 fail closed，绝不默认 user。生产入口重建及 DTS 重载、参数敏感写的原样传递仍由 #611–#615 负责；这些迁移完成前，legacy 调用方传入的 `actorType` 仍不是可信边界。
+
 ### 小泽 P2 规划
 
 P2 将单轮循环替换为 LangGraph `StateGraph` 规划循环：intent → perceive → plan → act → observe，直至计划完成或某步被拒绝。按 `threadId` 的 checkpointer 保留 mutating interrupt 间的感知上下文；生产与自托管部署使用 `XIAOZE_CHECKPOINTER=postgres`（表由 `npm run db:migrate` 确保），本地开发/测试默认进程内 checkpoint。人工批准后，`agUiEndpoint` 通过 `Command({ resume })` 将 resume 委托给 planning agent，从挂起的 `act` 节点继续执行、观察结果并可能进入后续步骤。opt-in 主动建议通过 `POST /api/v1/agent/xiaoze/suggest`（仅只读 perception 工具），由 `XIAOZE_PROACTIVE_ENABLED` 与 `VITE_XIAOZE_PROACTIVE_ENABLED` 控制（默认关闭）。前端通过 `useXiaozeSuggestions` 在 `AgentInsightBar` 展示建议。用户可见聊天历史仍为独立项（TD-030）。
