@@ -1,4 +1,4 @@
-import type { AuthContext, BackendPermission, BackendRoleId } from "./types";
+import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS, type AuthContext } from "./types";
 
 const trustedInvocationBrand = Symbol("wiseeff.trusted-invocation");
 
@@ -42,42 +42,8 @@ export type SystemInvocationContext = {
 
 export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext;
 
-const BACKEND_ROLE_IDS = new Set<BackendRoleId>([
-  "guest",
-  "hardware-user",
-  "software-user",
-  "hardware-committer",
-  "software-committer",
-  "admin",
-  "platform-admin"
-]);
-
-const BACKEND_PERMISSIONS = new Set<BackendPermission>([
-  "parameter:view",
-  "parameter:edit",
-  "parameter:edit-critical",
-  "debugging:use",
-  "debugging:view",
-  "debugging:read",
-  "debugging:write",
-  "debugging:rollback",
-  "debugging:dts-reload",
-  "debugging:admin",
-  "logs:view",
-  "logs:upload",
-  "logs:analyze",
-  "logs:archive",
-  "logs:feedback",
-  "logs:admin-domains",
-  "knowledge:view",
-  "knowledge:edit",
-  "knowledge:manage",
-  "parameter:review",
-  "admin:access",
-  "users:manage",
-  "platform:access",
-  "platform:schema-promote"
-]);
+const backendRoleIds = new Set<string>(BACKEND_ROLE_IDS);
+const backendPermissions = new Set<string>(BACKEND_PERMISSIONS);
 
 export const TRUSTED_INVOCATION_CONTEXT_ERROR_CODE = "INVALID_TRUSTED_INVOCATION_CONTEXT" as const;
 
@@ -143,14 +109,14 @@ function validateAuthContext(value: unknown): asserts value is AuthContext {
         isRecord(role) &&
         (role.projectId === null || (typeof role.projectId === "string" && role.projectId.trim().length > 0)) &&
         typeof role.roleId === "string" &&
-        BACKEND_ROLE_IDS.has(role.roleId as BackendRoleId)
+        backendRoleIds.has(role.roleId)
     )
   ) {
     invalid("principal roles are malformed");
   }
   if (
     !Array.from(value.permissions).every(
-      (permission) => typeof permission === "string" && BACKEND_PERMISSIONS.has(permission as BackendPermission)
+      (permission) => typeof permission === "string" && backendPermissions.has(permission)
     )
   ) {
     invalid("principal permissions are malformed");

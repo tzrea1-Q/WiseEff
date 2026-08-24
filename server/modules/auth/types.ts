@@ -1,37 +1,43 @@
-export type BackendRoleId =
-  | "guest"
-  | "hardware-user"
-  | "software-user"
-  | "hardware-committer"
-  | "software-committer"
-  | "admin"
-  | "platform-admin";
+export const BACKEND_ROLE_IDS = [
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+] as const;
 
-export type BackendPermission =
-  | "parameter:view"
-  | "parameter:edit"
-  | "parameter:edit-critical"
-  | "debugging:use"
-  | "debugging:view"
-  | "debugging:read"
-  | "debugging:write"
-  | "debugging:rollback"
-  | "debugging:dts-reload"
-  | "debugging:admin"
-  | "logs:view"
-  | "logs:upload"
-  | "logs:analyze"
-  | "logs:archive"
-  | "logs:feedback"
-  | "logs:admin-domains"
-  | "knowledge:view"
-  | "knowledge:edit"
-  | "knowledge:manage"
-  | "parameter:review"
-  | "admin:access"
-  | "users:manage"
-  | "platform:access"
-  | "platform:schema-promote";
+export type BackendRoleId = (typeof BACKEND_ROLE_IDS)[number];
+
+export const BACKEND_PERMISSIONS = [
+  "parameter:view",
+  "parameter:edit",
+  "parameter:edit-critical",
+  "debugging:use",
+  "debugging:view",
+  "debugging:read",
+  "debugging:write",
+  "debugging:rollback",
+  "debugging:dts-reload",
+  "debugging:admin",
+  "logs:view",
+  "logs:upload",
+  "logs:analyze",
+  "logs:archive",
+  "logs:feedback",
+  "logs:admin-domains",
+  "knowledge:view",
+  "knowledge:edit",
+  "knowledge:manage",
+  "parameter:review",
+  "admin:access",
+  "users:manage",
+  "platform:access",
+  "platform:schema-promote"
+] as const;
+
+export type BackendPermission = (typeof BACKEND_PERMISSIONS)[number];
 
 export type AuthenticatedUser = {
   id: string;
