@@ -10,7 +10,6 @@ import { resolveXiaozeLlmConfig } from "../../../config/xiaozeLlmConfig";
 import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
-import { createAgentInvocation } from "../../auth/trustedInvocation";
 import type { AgentToolName, AgentCitation } from "../types";
 import { createAgentOrchestrator, type AgentOrchestrator, type ApprovalBeginResult } from "../orchestrator";
 import { createXiaozeCheckpointer, resolveXiaozeCheckpointerFromEnv } from "./checkpointer";
@@ -20,7 +19,7 @@ import { wrapLangChainChatModel } from "./perceptionAgent";
 import { createDeterministicPerceptionModel } from "./deterministicModel";
 import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./modelTypes";
 import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
-import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
+import { createPlanningAgent } from "./planningGraph";
 import { runXiaozeSuggest } from "./suggest";
 import { buildXiaozePlanningToolDescriptors, getXiaozeToolLabel, toOpenAiToolDefinitions } from "./toolCatalog";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
@@ -465,10 +464,12 @@ export function createXiaozeAgentFactory(options: {
   modelFactory?: typeof createProductionModel;
   checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
   toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
-  orchestrator?: AgentOrchestrator;
+  orchestrator: AgentOrchestrator;
   objectStore?: ObjectStore;
-  approvalResolver?: PlanningApprovalResolver;
 }) {
+  if (!options.orchestrator) {
+    throw new Error("Xiaoze agent factory requires a persistent Agent orchestrator.");
+  }
   const registry =
     options.toolRegistry ?? createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
   // Read tools (perception + knowledge) bind before approval-gated action tools.
@@ -478,8 +479,6 @@ export function createXiaozeAgentFactory(options: {
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
   const executionOrchestrator = options.orchestrator;
-  const approvalResolver =
-    options.approvalResolver ?? executionOrchestrator ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const planningAgent = createPlanningAgent({
     model: isXiaozeDeterministicMode()
       ? createDeterministicPerceptionModel()
@@ -488,41 +487,27 @@ export function createXiaozeAgentFactory(options: {
       if (!requestContext) {
         throw new Error("Xiaoze execution context is not bound for this request.");
       }
-      if (executionOrchestrator) {
-        const recorded = await executionOrchestrator.recordToolRequest({
-          auth: requestContext.auth,
-          requestId: requestContext.requestId,
-          sessionId: requestContext.sessionId,
-          toolCallId,
-          request: {
-            name: name as AgentToolName,
-            label: getXiaozeToolLabel(name),
-            payload
-          }
-        });
-        if (!recorded.result) {
-          throw new ApiError("INTERNAL_ERROR", "Agent tool execution did not produce a result.", {
-            toolCallId: recorded.id
-          });
+      const recorded = await executionOrchestrator.recordToolRequest({
+        auth: requestContext.auth,
+        requestId: requestContext.requestId,
+        sessionId: requestContext.sessionId,
+        toolCallId,
+        request: {
+          name: name as AgentToolName,
+          label: getXiaozeToolLabel(name),
+          payload
         }
-        return recorded.result;
+      });
+      if (!recorded.result) {
+        throw new ApiError("INTERNAL_ERROR", "Agent tool execution did not produce a result.", {
+          toolCallId: recorded.id
+        });
       }
-      return registry.run(
-        name as never,
-        {
-          ...requestContext,
-          invocation: createAgentInvocation(requestContext.auth, {
-            sessionId: requestContext.sessionId,
-            toolCallId: toolCallId ?? randomUUID(),
-            approval: { required: false }
-          })
-        },
-        payload
-      );
+      return recorded.result;
     },
     listTools: () => planningToolDescriptors,
     checkpointer,
-    approvalResolver
+    approvalResolver: executionOrchestrator
   });
 
   return (executionContext: AgentToolExecutionContext): XiaozePerceptionAgent => ({
@@ -559,6 +544,8 @@ export function registerXiaozeRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
     approvalChain?: XiaozeApprovalChain;
+    orchestrator?: AgentOrchestrator;
+    toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
     objectStore?: ObjectStore;
     knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   }
@@ -582,12 +569,14 @@ export function registerXiaozeRoutes(
         XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
         XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({})
       };
-  const registry = createAgentToolRegistry({
-    db: options.db,
-    objectStore: options.objectStore,
-    knowledgeEmbeddingClient: options.knowledgeEmbeddingClient
-  });
-  const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: registry });
+  const registry =
+    options.toolRegistry ??
+    createAgentToolRegistry({
+      db: options.db,
+      objectStore: options.objectStore,
+      knowledgeEmbeddingClient: options.knowledgeEmbeddingClient
+    });
+  const orchestrator = options.orchestrator ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =
     options.createAgent ??
     createXiaozeAgentFactory({
@@ -595,7 +584,6 @@ export function registerXiaozeRoutes(
       env: envDefaults,
       toolRegistry: registry,
       orchestrator: orchestrator,
-      approvalResolver: orchestrator,
       ...(options.env
         ? {}
         : {
@@ -653,16 +641,26 @@ export function registerXiaozeRoutes(
     }
 
     const context = body.context ?? {};
-    const executionContext: AgentToolExecutionContext = {
-      auth,
-      requestId: request.requestId,
-      sessionId: `suggest-${request.requestId}`,
-      projectId: context.projectId
-    };
-
     const result = await runXiaozeSuggest({
       context,
-      runTool: (name, payload) => registry.run(name as never, executionContext, payload),
+      runTool: async (name, payload) => {
+        const recorded = await orchestrator.recordToolRequest({
+          auth,
+          requestId: request.requestId,
+          sessionId: `suggest-${request.requestId}`,
+          request: {
+            name: name as AgentToolName,
+            label: getXiaozeToolLabel(name),
+            payload
+          }
+        });
+        if (!recorded.result) {
+          throw new ApiError("INTERNAL_ERROR", "Xiaoze suggestion tool did not produce a result.", {
+            toolCallId: recorded.id
+          });
+        }
+        return recorded.result;
+      },
       listReadTools: () => registry.list().filter((tool) => tool.name.startsWith("perception.")).map((tool) => tool.name)
     });
 

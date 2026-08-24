@@ -29,7 +29,12 @@ function createToolDefinition(input: {
 
 function createRegistry(
   definitions: AgentToolDefinition[],
-  run: (name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) => Promise<AgentToolResult>
+  run: (
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>,
+    authorization?: unknown
+  ) => Promise<AgentToolResult>
 ) {
   const byName = new Map<AgentToolName, AgentToolDefinition>(
     definitions.map((definition) => [definition.name, definition])
@@ -881,6 +886,48 @@ describe("agent approval chain (beginApproval / resolveApproval)", () => {
     expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
     expect(tables.approvals[0]).toMatchObject({ status: "approved" });
     expect(resolved.text).toContain("9999");
+  });
+
+  it("passes one transaction authorization through the public registry run seam", async () => {
+    const { db } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const authorization = { kind: "agent-tool-authorization" };
+    registry.authorize.mockReturnValue(authorization);
+    registry.run.mockImplementation(
+      async (
+        name: AgentToolName,
+        context: AgentToolExecutionContext,
+        payload: Record<string, unknown>,
+        passedAuthorization?: unknown
+      ) => {
+        if (passedAuthorization === undefined) {
+          registry.authorize(name, context, payload);
+        }
+        return {
+          summary: `Submitted parameter change with target ${String(payload.targetValue)}.`,
+          data: {},
+          citations: []
+        };
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-single-auth"));
+
+    await orchestrator.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-single-auth",
+      approvalId: begun.approvalId,
+      decision: "approve",
+      editedArgs: { ...mutatingPayload, targetValue: "7777" }
+    });
+
+    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.run).toHaveBeenCalledWith(
+      "action.submitParameterChange",
+      expect.anything(),
+      expect.objectContaining({ targetValue: "7777" }),
+      authorization
+    );
   });
 
   it("resolveApproval with editedArgs on a decided approval raises an invalid-state conflict", async () => {

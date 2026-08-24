@@ -108,6 +108,15 @@ export function resetSharedPostgresCheckpointerSaverForTests(): void {
   interruptDurabilityProbe = undefined;
 }
 
+export async function closeSharedPostgresCheckpointerSaversForTests(): Promise<void> {
+  const handles = [sharedPostgresCheckpointer, interruptDurabilityProbe].filter(
+    (handle, index, all): handle is PostgresCheckpointerHandle => Boolean(handle) && all.indexOf(handle) === index
+  );
+  sharedPostgresCheckpointer = undefined;
+  interruptDurabilityProbe = undefined;
+  await Promise.all(handles.map((handle) => handle.saver.end()));
+}
+
 export async function setupXiaozeCheckpointerTables(options: {
   mode: "memory" | "postgres";
   connectionString?: string;

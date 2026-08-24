@@ -500,12 +500,18 @@ export function createAgentOrchestrator(options: {
       }
       const executionContext = buildAgentExecutionContext(input, executableToolCall, persistedApproval.id);
       const txToolRegistry = registryFor(tx);
-      txToolRegistry.authorize(executableToolCall.name, executionContext, executableToolCall.payload);
+      const authorization = txToolRegistry.authorize(
+        executableToolCall.name,
+        executionContext,
+        executableToolCall.payload
+      );
 
       let result: AgentToolResult;
       try {
         result = await withToolExecutionSpan(executableToolCall, () =>
-          txToolRegistry.run(executableToolCall.name, executionContext, executableToolCall.payload)
+          authorization === undefined
+            ? txToolRegistry.run(executableToolCall.name, executionContext, executableToolCall.payload)
+            : txToolRegistry.run(executableToolCall.name, executionContext, executableToolCall.payload, authorization)
         );
       } catch (error) {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, executableToolCall.id, {
