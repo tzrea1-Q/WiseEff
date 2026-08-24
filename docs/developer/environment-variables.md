@@ -15,7 +15,12 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | Used by M5 smoke scripts. |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api` (code default and `.env.example`) | frontend runtime | `npm run dev` / `npm run dev:all` also inject `api`. Use `mock` for frontend-only tests or demos. |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | frontend API runtime | Must point at the API process. |
+| `VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER` | application default owner | public footer metadata | Trimmed at build time; blank falls back to the localized default declared in `src/config/appFooterConfig.ts`. Set the deployment's legal owner when known. |
+| `VITE_WISEEFF_APP_VERSION` | root `package.json` version | public footer metadata | Optional release-label override. The UI normalizes it to exactly one leading `v`. |
+| `VITE_WISEEFF_CONTACT_HREF` | blank | optional public contact | Absolute `https:` or `mailto:` only. Blank or invalid values hide the contact link. |
 | `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | ignored (deprecated) | — | Retired in #240. The Project configuration workbench is always the canonical project-operations route; setting this env has no effect. |
+
+All `VITE_*` values are public and baked into the frontend bundle. In self-hosted deployments, changing footer metadata requires rebuilding the application image; restarting an existing image does not update it. Never place secrets in these variables.
 
 ## Auth
 

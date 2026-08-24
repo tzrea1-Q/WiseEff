@@ -143,6 +143,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "SHELL-FOOTER-001",
+    workflow: "A",
+    title:
+      "Included routes expose one page-ending footer with current-page feedback; the homepage does not duplicate its footer, approved contact protocols remain safe, and auth/bootstrap/error/download/full-height-workbench exclusions stay unchanged.",
+    required: true
+  },
+  {
     id: "SHELL-DISCOVERY-001",
     workflow: "A",
     title: "Sidebar and homepage discovery surfaces offer only allowlisted workflows; hidden workflows remain deep-linkable.",

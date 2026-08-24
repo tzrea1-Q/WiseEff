@@ -15,7 +15,12 @@
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |
+| `VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER` | `雷泽（WiseEff）` | 公开页脚元数据 | 构建时去除首尾空格；空值回退默认值。明确部署主体后应填写其法定名称。 |
+| `VITE_WISEEFF_APP_VERSION` | 根目录 `package.json` 版本 | 公开页脚元数据 | 可选发布标签覆盖值；界面规范化为恰好一个前导 `v`。 |
+| `VITE_WISEEFF_CONTACT_HREF` | 空 | 可选公开联系方式 | 只接受绝对 `https:` 或 `mailto:`；空值或非法值隐藏联系方式。 |
 | `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | 已忽略（已废弃） | — | 在 #240 退役。项目配置工作台始终为规范项目运营路由；设置此环境变量无效。 |
+
+所有 `VITE_*` 值都会公开并固化进前端 bundle。自托管部署修改页脚元数据后必须重新构建应用镜像；只重启旧镜像不会生效。不要在这些变量中放置 secret。
 
 ## 认证
 

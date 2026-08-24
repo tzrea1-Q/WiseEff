@@ -328,6 +328,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();
   });
 
@@ -361,6 +362,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     expect(await screen.findByRole("heading", { name: "无法连接服务" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
@@ -388,6 +390,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
     expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
+    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
     expect(screen.queryByText("Xu Yun")).not.toBeInTheDocument();
     expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
@@ -3406,6 +3409,34 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
+    const footers = screen.getAllByRole("contentinfo");
+    expect(footers).toHaveLength(1);
+    expect(footers[0]).toHaveTextContent("版本 v0.1.0");
+  });
+
+  it("ends a normal authenticated page with one shared footer and current-page feedback", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    renderAppForCurrentPath();
+
+    const main = screen.getByRole("main", { name: "参数管理首页" });
+    const footer = screen.getByLabelText("页脚信息", { selector: "footer" });
+    expect(main).toContainElement(footer);
+    expect(footer).toHaveTextContent("©");
+    expect(footer).toHaveTextContent("版本 v0.1.0");
+
+    fireEvent.click(within(footer).getByRole("button", { name: "问题反馈" }));
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    expect(within(dialog).getByText("我的工作台")).toBeInTheDocument();
+    expect(within(dialog).getByText("/parameter-home")).toBeInTheDocument();
+  });
+
+  it("omits the application footer from the full-height project configuration workbench", () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects/project-1/configuration");
+
+    renderAppForCurrentPath();
+
+    expect(screen.queryByLabelText("页脚信息", { selector: "footer" })).not.toBeInTheDocument();
   });
 
   it("provides a left-bottom feedback entry for internal testing feedback", async () => {
@@ -3413,7 +3444,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderAppForCurrentPath();
 
-    const feedbackEntry = screen.getByRole("button", { name: "问题反馈" });
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    const feedbackEntry = within(sidebar).getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
     expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
     const css = readStylesheet("src/styles.css");
@@ -3544,7 +3576,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "问题反馈" }));
 
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
     expect(dialog).toHaveClass("feedback-dialog");

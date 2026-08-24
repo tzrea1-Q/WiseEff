@@ -46,7 +46,7 @@ Implementation note: the mock prototype remains available for demos and componen
 - 当前项目上下文：通过项目选择器切换当前项目，影响参数、日志等页面的数据视角。
 - 当前角色上下文：通过角色选择器切换硬件开发、项目开发、参数管理员、Admin 等演示身份。
 - 页面标题与路由高亮：帮助演示时快速说明当前所在业务场景。
-- 全局「问题反馈」入口：从当前页面打开 `FeedbackDialog`，带入页面路径和标题，支持图片附件。
+- 侧边栏与页面末尾的「问题反馈」入口：从当前页面打开同一个 `FeedbackDialog`，带入页面路径和标题，支持图片附件。
 - 统一视觉语言：所有页面共用布局、卡片、表格、状态、时间线、按钮和 Agent 悬浮入口。
 
 ### 3.2 统一数据与状态模型
@@ -66,7 +66,7 @@ Implementation note: the mock prototype remains available for demos and componen
 
 ### 3.3 Internal Beta 问题反馈
 
-Internal Beta 用户可以从侧边栏「问题反馈」提交产品级反馈。弹窗要求选择反馈类型（`experience`、`data`、`export_submit`、`feature`）并填写描述，可附加多张图片作为界面或数据问题证据。提交时记录当前 `pagePath` 和 `pageTitle`，方便后续定位问题。
+Internal Beta 用户可以从侧边栏或页面末尾的「问题反馈」提交产品级反馈；两个入口打开应用壳层持有的同一个弹窗。弹窗要求选择反馈类型（`experience`、`data`、`export_submit`、`feature`）并填写描述，可附加多张图片作为界面或数据问题证据。提交时记录当前 `pagePath` 和 `pageTitle`，方便后续定位问题。普通页面末尾同时展示公开的版权主体、构建版本和可选部署联系方式；营销首页保留原有丰富页脚，全高项目配置工作台不展示紧凑页脚。
 
 `/feedback-admin` 是 Admin-only 处理页面。管理员可以筛选、搜索、查看详情与附件，填写处理备注，并按 `open -> in_progress -> closed` 推进状态。该反馈闭环服务于产品内测，不等同于日志分析页面里的分析质量反馈。
 

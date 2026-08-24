@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppShellConnectionError } from "@/components/common/AppShellConnectionError";
 import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
+import { AppFooter } from "@/components/common/AppFooter";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -75,6 +76,8 @@ import { isDiscoveryGroupVisible } from "@/domain/workflowDiscovery";
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
+import { appFooterConfig } from "@/config/appFooterConfig";
+import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -312,6 +315,7 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
@@ -334,6 +338,7 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const showsApplicationFooter = !isProjectConfigurationWorkbenchPath(path);
   const usesProjectScope = pageUsesProjectScope(page.key);
   const xiaozePageContext = useMemo(
     () => ({
@@ -1022,7 +1027,7 @@ function AppShell({
             isCollapsed={effectiveSidebarCollapsed}
             onNavigate={navigateFromSidebar}
             onToggleCollapsed={toggleSidebarCollapsed}
-            productFeedbackRepository={productFeedbackRepositoryClient}
+            onFeedback={() => setFeedbackOpen(true)}
           />
         ) : null}
         {!isPlatformHome && mobileNavOpen ? (
@@ -1058,6 +1063,7 @@ function AppShell({
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
+                onFeedback={() => setFeedbackOpen(true)}
                 state={state}
                 dispatch={dispatch}
                 onNavigate={navigate}
@@ -1098,6 +1104,7 @@ function AppShell({
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
+                onFeedback={() => setFeedbackOpen(true)}
                 state={state}
                 dispatch={dispatch}
                 onNavigate={navigate}
@@ -1126,6 +1133,9 @@ function AppShell({
                 onAuthContextRefresh={hydrateAuthContext}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
+              {showsApplicationFooter ? (
+                <AppFooter config={appFooterConfig} onFeedback={() => setFeedbackOpen(true)} />
+              ) : null}
             </main>
           )}
         </TopBarActionsContext.Provider>
@@ -1146,6 +1156,13 @@ function AppShell({
             onClose={() => setProjectInitOpen(false)}
           />
         ) : null}
+      <FeedbackDialog
+        open={feedbackOpen}
+        pagePath={path}
+        pageTitle={page.title}
+        productFeedbackRepository={productFeedbackRepositoryClient}
+        onOpenChange={setFeedbackOpen}
+      />
       <AppToastLayer notifications={state.notifications} onDismiss={dismissNotification} />
       </div>
   );
@@ -1165,17 +1182,15 @@ function Sidebar({
   isCollapsed,
   onNavigate,
   onToggleCollapsed,
-  productFeedbackRepository
+  onFeedback
 }: {
   activePath: string;
   currentRoleId: string;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
   onToggleCollapsed: () => void;
-  productFeedbackRepository: ProductFeedbackRepository;
+  onFeedback: () => void;
 }) {
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const pageTitle = getPageByPath(activePath).title;
   const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter(
     (item) => canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group)
@@ -1255,7 +1270,7 @@ function Sidebar({
           className="nav-item compact feedback-entry"
           type="button"
           variant="ghost"
-          onClick={() => setFeedbackOpen(true)}
+          onClick={onFeedback}
         >
           <MessageSquareText size={18} />
           <span>
@@ -1293,13 +1308,6 @@ function Sidebar({
             );
           })}
       </div>
-      <FeedbackDialog
-        open={feedbackOpen}
-        pagePath={activePath}
-        pageTitle={pageTitle}
-        productFeedbackRepository={productFeedbackRepository}
-        onOpenChange={setFeedbackOpen}
-      />
     </aside>
   );
 }

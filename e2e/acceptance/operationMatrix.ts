@@ -298,6 +298,24 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui"]
   },
   {
+    id: "SHELL-FOOTER-001",
+    priority: "P1",
+    area: "shell",
+    route: "included routes plus auth, error, download, and configuration-workbench exclusions",
+    roles: ["Admin"],
+    action:
+      "Reach page-ending copyright/version metadata and open current-page feedback; preserve one homepage footer, approved contact protocols, and auth/error/download/full-height-workbench exclusions.",
+    coverage: "automated",
+    acceptanceIds: ["SHELL-FOOTER-001"],
+    specFiles: [
+      "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+      "src/config/appFooterConfig.test.ts",
+      "src/components/common/AppFooter.test.tsx",
+      "src/App.test.tsx"
+    ],
+    assertions: ["ui", "screenshot"]
+  },
+  {
     id: "SHELL-DISCOVERY-001",
     priority: "P1",
     area: "shell",

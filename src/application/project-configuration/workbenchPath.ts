@@ -1,5 +1,9 @@
 import type { DtsConfigSet } from "@/application/ports/DtsStructuredRepository";
 
+export function isProjectConfigurationWorkbenchPath(pathname: string) {
+  return /^\/parameter-admin\/projects\/[^/]+\/configuration\/?$/.test(pathname);
+}
+
 export function queryValue(search: string, name: string) {
   return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get(name);
 }

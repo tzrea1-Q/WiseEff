@@ -23,7 +23,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。
 - `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。样式在同目录 `parameter-review.css`（#479）。
 - `src/components/project-configuration-workbench/`：配置工作台。样式在同目录 `configuration-workbench.css`（#484）；共享 `.workbench-page` / `.workbench-sheet` 仍在 `src/styles.css`。
-- `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
+- `src/features/product-feedback/`：应用壳层共享的 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
@@ -189,7 +189,9 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 产品反馈：
 
-- 全局「问题反馈」入口打开 `FeedbackDialog`，通过 `ProductFeedbackRepository.submit` 提交当前 `pagePath`、`pageTitle`、反馈类型、描述和图片文件。
+- 应用壳层持有唯一的 `FeedbackDialog`；侧边栏和页面末尾的 `AppFooter` 都只触发这一实例，通过 `ProductFeedbackRepository.submit` 提交当前 `pagePath`、`pageTitle`、反馈类型、描述和图片文件。
+- 普通认证页面在主滚动容器内渲染语义化页脚；全高项目配置工作台不渲染。营销首页在原有丰富页脚内嵌非 landmark 变体，避免嵌套 footer。
+- `src/config/appFooterConfig.ts` 在构建时解析公开的版权所有者、版本和可选联系方式；联系方式不是绝对 `https:` 或 `mailto:` 时失败关闭并隐藏。
 - `/feedback-admin`：Admin-only 反馈处理页，通过同一 port 列表/搜索/筛选、查看详情与附件、填写 `adminNote`，并按 `open -> in_progress -> closed` 推进状态。
 - mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback` 及附件内容路由。
 

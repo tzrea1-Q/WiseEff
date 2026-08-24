@@ -4,6 +4,7 @@ import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
+import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import {
   buildParameterAdminOrganizationPath,
@@ -131,7 +132,7 @@ export function ParameterAdminNextPage({
   const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
-    /^\/parameter-admin\/projects\/[^/]+\/configuration\/?$/.test(pathname);
+    isProjectConfigurationWorkbenchPath(pathname);
 
   useEffect(() => {
     if (area !== "organization") {

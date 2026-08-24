@@ -119,6 +119,7 @@ function mockDebuggingBridgeSeams() {
 
 export type PageRouterProps = PageProps & {
   page: PageConfig;
+  onFeedback: () => void;
   onNewProject?: () => void;
   TopBarProjectId?: string;
   DebuggingAdminPage: (props: PageProps & { area?: "parameter" | "nodes" }) => ReactNode;
@@ -145,6 +146,7 @@ export function PageRouter({
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onAuthContextRefresh,
+  onFeedback,
   onNewProject,
   TopBarProjectId,
   DebuggingAdminPage
@@ -468,6 +470,6 @@ export function PageRouter({
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <LinearTemplateHome onNavigate={onNavigate} />;
+      return <LinearTemplateHome onNavigate={onNavigate} onFeedback={onFeedback} />;
   }
 }

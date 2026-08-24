@@ -19,6 +19,7 @@
 
 ## 当前覆盖重点
 
+- `SHELL-FOOTER-001`：纳入范围的路由、两个有意保留的 `NoEntryPage` 与权限拒绝结果显示一个页面末尾版权/版本页脚及当前页反馈入口；首页仍只有一个 footer landmark；空白或非法联系方式隐藏，已配置 `https:`/`mailto:` 保持安全属性；认证、启动骨架、服务故障、下载交接与全高配置工作台保持原有排除边界（`e2e/acceptance/shell-navigation.acceptance.spec.ts`、`src/config/appFooterConfig.test.ts`、`src/components/common/AppFooter.test.tsx`、`src/App.test.tsx`）。
 - `SHELL-DISCOVERY-001`：侧栏和首页发现面只提供 allowlist 上的工作流（第一次是参数管理和调试）；日志分析和知识库不在发现面，直达仍可用（单元测试 + `work/ui-checks/workflow-discovery/`）。
 - `AUTH-RUNTIME-001`：API mode 浏览器运行时与本地 dev auth 契约一致。
 - `AUTH-LOCAL-PASSWORD-001`：已登录本地用户在个人资料改密；当前会话保持，其它会话退出（单元测试；浏览器 e2e 为 planned）。
