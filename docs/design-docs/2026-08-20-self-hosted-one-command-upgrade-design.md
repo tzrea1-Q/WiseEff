@@ -73,7 +73,7 @@ The live `.env` is not changed. If a copy is retained for disaster recovery, it 
 
 ### No destructive automatic recovery after migration starts
 
-Before the API migration command starts, the controller may safely bring the old containers back and resume the queue. Once migration startup has begun, the database must be treated as possibly changed even if the process failed. The controller then keeps the public proxy stopped, keeps the queue paused, marks the run `recovery-required`, and prints the exact `resume` or `rollback` command.
+Before the API migration command starts, the controller may safely bring the old containers back and resume the queue, but only after the complete old-stack verification passes. If that restoration fails before migration, `recovery-required` offers one executable `resume --run-id <run-id>` retry and never restores data. Once migration startup has begun, the database must be treated as possibly changed even if the process failed. The controller attempts to stop the public proxy and pause queue/worker traffic, marks the run `recovery-required`, rejects ordinary `resume`, and records the exact token-gated whole-state rollback command. If proxy or queue/worker isolation itself fails, the journal puts the required manual isolation step first.
 
 `rollback --restore-data` is explicit and confirmation-gated because it replaces live state. After a completed upgrade has served traffic, restore also warns that post-upgrade writes would be lost and never proceeds non-interactively without a run-id-specific confirmation token.
 
@@ -131,7 +131,7 @@ Stable exit classes are part of the interface:
 | `40` | backup/verification failure; old stack restored |
 | `50` | pre-migration data-service/deploy failure; old stack restoration completed or was attempted |
 | `60` | finalization/evidence write failure after service health passed; use `resume` to finalize |
-| `70` | explicit recovery required; public traffic remains stopped |
+| `70` | explicit recovery required; the controller attempts to stop public traffic, and the operator must manually isolate any path whose persisted isolation flag is `false` |
 | `75` | another setup/upgrade operation holds the host lock |
 
 ## Module Shape
@@ -264,7 +264,7 @@ The pinned DTC source is also the source of the Python `libfdt` binding. The bui
 4. Stop API, worker, and web containers with a grace period.
 5. Confirm no application container remains capable of writing PostgreSQL, Redis, or object storage.
 
-If quiescence times out, the controller resumes the queue and old proxy and exits without snapshot or deployment.
+If quiescence fails, the controller enters `old-stack-restore` and performs the same full data-plane, application, queue, image-identity, and proxy/public verification used for recovery. It writes `old-stack-restored` only after every gate passes; otherwise it records `recovery-required` with an executable `next_action`.
 
 ### 4. Capture and verify the recovery point
 
@@ -276,7 +276,7 @@ With all application writers stopped but data services available:
 4. Write a SHA-256 manifest for every artifact and fsync/rename the completed manifest.
 5. Mark `recovery-point-verified` only after every required store passes.
 
-A partial backup is never considered a recovery point. On failure here, restart the stopped old containers, resume the queue, and keep the partial directory for diagnosis.
+A partial backup is never considered a recovery point. On failure here, the controller attempts the full old-stack restore verification and keeps the partial directory for diagnosis. A failed verification is `recovery-required`, not `old-stack-restored`.
 
 ### 5. Recreate every service without deleting volumes
 
@@ -291,7 +291,7 @@ A partial backup is never considered a recovery point. On failure here, restart 
 
 The data-plane wait is one deep interface, `wiseeff_upgrade_wait_data_plane_ready`; callers do not encode service-specific state rules. It waits for PostgreSQL healthy, Redis healthy, MinIO process running, and `minio-init` exited with code `0`, in that order. MinIO running alone is not object-store readiness, and an exited MinIO process fails immediately. The successful initializer is the authoritative proof for the endpoint credentials and required buckets because the Compose MinIO service has no Docker healthcheck.
 
-Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` helper. It verifies the data plane, queue resume, API live/ready, worker liveness plus Docker health on port `8788`, direct web access, service-specific previous image identity, and proxy/public probes before writing `old-stack-restored`. Any failure records `failed_phase`, `failure_service`, a stable `failure_code`, a bounded redacted `failure_summary`, `recovery_started`, `recovery_verified`, and a non-`none` `next_action`, then leaves proxy traffic stopped and the queue paused under `recovery-required`.
+Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` helper. It verifies the data plane, API live/ready, worker liveness plus Docker health on port `8788`, direct web access, and service-specific previous image identity before resuming the queue; it then recreates the proxy and runs public probes last, before writing `old-stack-restored`. Any failure records `failed_phase`, `failure_service`, a stable `failure_code`, a bounded redacted `failure_summary`, `recovery_started`, `recovery_verified`, and a non-`none` `next_action`. Recovery attempts to stop proxy traffic and pause queue/worker traffic; the isolation fields and `next_action` identify any action that still requires manual intervention.
 
 No seed, bootstrap, setup renderer, or configuration rewrite runs in this phase.
 
@@ -310,13 +310,13 @@ No backup is automatically pruned by `apply`. A future explicit retention comman
 | Failure point | Automatic action | Result |
 | --- | --- | --- |
 | Fetch, protocol, config, disk, or build | Restore previous checkout if needed | Old stack remains online; `failed-safe` |
-| Queue pause or drain | Resume queue/proxy | Old stack remains online; `failed-safe` |
-| Backup or backup verification | Restart old app containers and resume queue/proxy | No migration; `old-stack-restored` |
-| Data-service restart before API migration starts | Start previous image and old app stack | Snapshot retained; `old-stack-restored` |
-| Migration startup or candidate API failure | Keep proxy stopped and queue paused | `recovery-required`; choose resume or explicit restore |
-| Internal health failure after migration | Keep proxy stopped and queue paused | `recovery-required` |
-| Public smoke failure | Immediately stop proxy; do not auto-restore data | `recovery-required`; candidate may have briefly accepted traffic |
-| Signal/host reboot | Journal remains authoritative | `status` then `resume` or `rollback` |
+| Queue pause or drain | Attempt complete previous-stack restoration with data-plane, app, queue, proxy, and public gates | `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
+| Backup or backup verification | Start the previous data plane and pass its readiness gate, recreate the previous app stack, verify internal health and image identity, resume the queue, recreate proxy, and probe public health last | No migration; `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
+| Data-service restart before API migration starts | Start previous data services, wait for readiness, then start and verify the previous app stack before queue/proxy/public gates | Snapshot retained; `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
+| Migration startup or candidate API failure | Attempt to keep proxy stopped and queue paused; require manual isolation if either operation fails | `recovery-required`; ordinary `resume` is rejected after migration, so use the run-token-gated whole-state restore |
+| Internal health failure after migration | Attempt to keep proxy stopped and queue paused; require manual isolation if either operation fails | `recovery-required` |
+| Public smoke failure | Attempt to stop proxy; require manual isolation if that operation fails; do not auto-restore data | `recovery-required`; candidate may have briefly accepted traffic |
+| Signal/host reboot | Journal remains authoritative | `status`, then pre-migration `resume` or post-migration token-gated `rollback` |
 
 Rollback without data restore is allowed automatically only when migration startup is known not to have begun, or when the release record explicitly proves backward-compatible schema use. Otherwise the operator must choose forward-fix or explicit whole-state restore according to the release runbook.
 

@@ -248,11 +248,11 @@ Bring the same containers back with `start`. Prefer `stop`/`start` over `down`/`
 
 ### Upgrade readiness semantics
 
-The upgrade controller does not use one generic `running` rule. PostgreSQL and Redis must be Docker `healthy`; MinIO `running` is only process liveness; and `minio-init` must be `exited` with code `0`. The initializer's successful `mc alias set` and bucket creation is the authoritative MinIO readiness proof because the Compose file intentionally has no MinIO healthcheck.
+The upgrade controller does not use one generic `running` rule. PostgreSQL and Redis must be Docker `healthy`; MinIO `running` is only process liveness; and `minio-init` must be `exited` with code `0`. The initializer's successful `mc alias set` and bucket creation is the authoritative MinIO readiness proof because the Compose file intentionally has no MinIO healthcheck. MinIO is re-inspected on every initializer poll and once after exit `0`.
 
-After a partial upgrade, `old-stack-restored` means the previous checkout/image set was recreated and all recovery gates passed: data plane, queue resume, API live/ready, worker `127.0.0.1:8788/health/live` plus Docker health, web direct access, previous app image identity, and proxy/public health. Image identity includes both the recorded image reference and immutable Docker image ID. `recovery-required` means at least one gate failed; proxy traffic stays stopped and the queue stays paused until the journal's `resume` or explicit whole-state rollback action is completed. Never change the journal by hand or set `next_action=none` yourself.
+Before candidate queue resume, both `apply` and `resume` require API readiness, worker `127.0.0.1:8788/health/live` plus Docker health, and web direct access. A worker container or image identity alone is not readiness. After a partial upgrade, `old-stack-restored` means the previous checkout/image set was recreated, internal recovery gates passed, the queue was resumed, and proxy/public health passed last. Image identity includes both the recorded image reference and immutable Docker image ID. `recovery-required` means at least one gate failed; inspect the isolation booleans and follow the single `next_action`. Never change the journal by hand or set `next_action=none` yourself.
 
-For an actionable diagnosis, read `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, and `next_action` from `./scripts/upgrade.sh status --run-id <run-id> --json`. `failure_summary` is bounded and redacted. Public probes explicitly use `curl --noproxy '*'`; a Vite 403 caused by `Host: web:5173` is a Host allowlist result, so use loopback or the configured allowed hostname when checking TCP reachability.
+For an actionable diagnosis, read `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, `recovery_failure_summary`, and `next_action` from `./scripts/upgrade.sh status --run-id <run-id> --json`. Both summaries are bounded and redacted; a failed recovery action—including stop, pause, or queue resume—has its sanitized diagnostic printed, journaled, and exposed as `recovery_failure_summary`. Public probes explicitly use `curl --noproxy '*'`; a Vite 403 caused by `Host: web:5173` is a Host allowlist result, so use loopback or the configured allowed hostname when checking TCP reachability.
 
 Useful commands:
 
@@ -281,6 +281,8 @@ Normal interactive upgrade; no `--ref` means the freshly fetched `origin/main`:
 ./scripts/upgrade.sh plan
 ./scripts/upgrade.sh apply
 ```
+
+If this deployment host is still checked out at a controller commit from before the readiness/recovery fix, first fetch and check out the merged controller release or commit containing the fix. Only then run `plan` and `apply`; preserve `.env`, journal/backup state, and named volumes while updating the checkout because the old controller cannot interpret the new state machine.
 
 `plan` also verifies the target commit's checksum-pinned `linux/amd64` Dockerfile base-image bundle without changing Docker. Its `base image` line tells whether the exact image is already local or `apply` will load and tag the verified repository tar. `apply` performs that preparation before Compose build and before downtime; no manual `docker load` is needed after this controller release is installed. The run's text/JSON status records both the OCI manifest and Docker config digests plus whether the image came from `local` or `bundled-archive`; this supports both containerd-backed and classic `overlay2` Docker image stores.
 
@@ -337,14 +339,14 @@ Inspect a setup/upgrade lock:
 
 `unlock` is safe and repeatable: it refuses with exit `75` when a live operation owns the lock and never kills that process. Do not delete `.operation.lock`, its owner metadata, or fallback lock directories manually.
 
-A post-migration `recovery-required` state is an incident. Keep the proxy stopped and follow the journal. Whole-state restore requires the exact confirmation token:
+A post-migration `recovery-required` state is an incident. Follow the journal's isolation action first; rollback retries and verifies isolation and blocks before data restoration if proxy or queue/worker isolation is still incomplete. Ordinary `resume` is rejected after migration. Whole-state restore requires the exact confirmation token:
 
 ```bash
 ./scripts/upgrade.sh rollback --run-id <run-id> \
   --restore-data --confirm restore-<run-id>
 ```
 
-This can discard PostgreSQL, object-store, and durable Redis writes after the recovery point. Only the incident owner should approve it.
+This can discard PostgreSQL, object-store, and durable Redis writes after the recovery point. Rollback marks `rolled-back` only after the complete previous-stack verification, including worker health and proxy/public checks. Only the incident owner should approve it.
 
 ## Backup And Restore Evidence
 
@@ -420,7 +422,7 @@ npm run selfhost:release-gate -- \
 | `already running` after `apply` | checkout, all three application image refs, and public health were verified against the same target SHA | the target is active; use `--restart` only for an intentional same-version full recreation |
 | `/health/live` passes but `/health/ready` fails | API is alive but a required dependency is blocked | preserve readiness JSON and route to the named dependency |
 | `worker` repeatedly exits despite `restart: unless-stopped` | startup/config/dependency failure, not a simple stopped service | preserve logs and dependency readiness before any restart loop |
-| `recovery-required` | candidate migration started and automatic safe completion failed | keep proxy stopped; use recorded `resume` or approved whole-state rollback |
+| `recovery-required` | a candidate or restore gate failed | inspect `failed_phase`, `failure_service`, `failure_code`, and isolation flags; use pre-migration `resume`, or post-migration token-gated whole-state rollback exactly as recorded |
 
 ## Incident First Response
 

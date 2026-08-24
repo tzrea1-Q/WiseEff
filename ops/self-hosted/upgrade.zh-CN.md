@@ -71,10 +71,11 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 - Redis 只有 Docker 报告 `healthy` 才算就绪。
 - MinIO 的 `running` 只证明进程存活。只有 `minio-init` 退出码为 `0` 后，MinIO 才算就绪；该 initializer 成功执行 `mc alias set` 并创建 `wiseeff`/`wiseeff-restore` bucket，是 endpoint、凭据和 bucket 可用的权威证明。
 - MinIO 主进程异常退出会立即失败。`minio-init` 非零退出或超时会失败；控制器不会采用“所有 running 容器都算健康”的通用放宽方案。
+- 等待 `minio-init` 时每一轮都会复查 MinIO，并在退出 `0` 后再复查一次；MinIO 后续退出不会被误报为 `minio-init-timeout`。
 
-写入 `old-stack-restored` 前，恢复流程会重建旧栈并验证数据平面、queue resume、API `/health/live` 与 `/health/ready`、worker `http://127.0.0.1:8788/health/live` 及 Docker health、web 直连、旧 API/worker/web image identity，以及 proxy/public 健康入口。镜像身份同时比较记录的 image 引用和不可变的 Docker image ID。任一门禁失败都会写入 `recovery-required`，保持 proxy 停止和 queue 暂停，并且绝不写 `next_action=none`。
+候选 `apply`/`resume` 恢复 queue 前，控制器会检查 API readiness、worker `http://127.0.0.1:8788/health/live` 及 Docker health、web 直连；worker 容器存在或镜像正确都不够。旧栈恢复时，控制器先验证数据平面、API live/ready、worker 健康、web 直连和旧 API/worker/web image identity，再恢复 queue；最后重建 proxy 并检查公网健康入口，全部通过后才写入 `old-stack-restored`。镜像身份同时比较记录的 image 引用和不可变的 Docker image ID。任一门禁失败都会写入 `recovery-required`，绝不写 `next_action=none`，并记录 proxy 与 queue/worker 隔离是否真实成功。
 
-通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。公网探测使用 `curl --noproxy '*'`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
+通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。任一恢复动作失败（包括 stop、pause 或 queue resume）时，`recovery_failure_summary` 保存有长度限制且脱敏的动作/错误码/输出摘要，同一摘要也会打印并写入 journal。公网探测使用 `curl --noproxy '*'`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
 
 ## 一次性宿主机准备
 
@@ -153,7 +154,7 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 基础镜像契约、tar 或平台失败会归类为 `base-image`。身份不匹配时，报错会打印固定的 manifest/config digest、平台和 Docker 实际身份；修改任何标签前先与 `status --json` 中的相同字段对照。其他故障会自动分类为 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
 
-在 migration 启动前，排空或备份失败会恢复旧服务，并记录 `old-stack-restored` 或 `failed-safe`。候选 API 启动后失败会记录 `recovery-required`，保持 proxy 停止并保持队列暂停。不要手工修改 journal 或直接恢复流量。
+在 migration 启动前，排空或备份失败会尝试完整恢复旧栈；只有全部恢复门禁通过才记录 `old-stack-restored`，否则保持 `recovery-required`。`failed-safe` 仅用于停机前发生的失败。如果迁移前旧栈恢复本身失败，`recovery-required` 可以给出可执行的 `resume --run-id <run-id>` 重试动作，不会恢复数据。migration 启动后失败会记录 `recovery-required`，不再提供普通 `resume`，下一步是带 token 的整点回滚。若 proxy 或 queue 隔离失败，journal 会把对应的人工隔离动作放在第一步；rollback 会再次检查隔离，未成功前不会恢复数据。随后 rollback 复用旧栈全部验证门禁，只有内部健康、queue resume、旧 image identity 和 proxy/public 全部通过才写入 `rolled-back`。不要手工修改 journal 或直接恢复流量。
 
 对于可幂等的候选健康/收尾阶段，执行 journal 给出的动作：
 
@@ -161,7 +162,7 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ./scripts/upgrade.sh resume --run-id <run-id>
 ```
 
-`resume` 不会重置 `migration_started`，也不会静默恢复数据。如果状态是 `recovery-required`，必须走显式 rollback 流程。
+`resume` 不会重置 `migration_started`，也不会静默恢复数据。只有 `migration_started=false` 时，它才会重试旧栈恢复；migration 后的 `recovery-required` 执行普通 `resume` 会返回退出码 `70`，必须按 journal 执行带 token 的 rollback。
 
 ### 宿主机锁状态与恢复
 
@@ -205,5 +206,5 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 - `ops/self-hosted/.state/` 必须排除在 Docker 构建上下文之外；它保存私有运维 journal，不是应用源码。
 - 构建诊断属于私有运维数据。脚本会自动脱敏，但对外分享前仍需再次检查。
 - 保持同一个 Compose project 与命名 volume identity，升级时不要增加新的 project name。
-- 把 `recovery-required` 当作维护事故处理；直到 `resume` 或获批的整点恢复结束，都保持 proxy 停止。
+- 把 `recovery-required` 当作维护事故处理，并且只执行 journal 给出的一个动作：迁移前旧栈 `resume`，或迁移后带本次 run token 的整点回滚。如果 `recovery_proxy_stopped=false` 或 `recovery_queue_paused=false`，先人工隔离对应流量。直到记录的恢复动作完成，都保持公网流量停止。
 - 本地测试和 `selfhost:check` 只能验证入口与模板，不能替代目标环境、试点或生产就绪证据。

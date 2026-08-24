@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪恢复修复均已在本实现分支。受限网络路径现在同时提供组织 CA 默认方案，以及面向无法安装 CA 主机的“两把钥匙、仅构建期”insecure TLS 兼容策略；本地/CI 门禁覆盖策略授权、下载 adapter、缓存失效、运行时隔离和脱敏来源。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
+**状态：** 核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已在当前 feature change 中实现，合入后将由 `main` 维护。受限网络路径现在同时提供组织 CA 默认方案，以及面向无法安装 CA 主机的“两把钥匙、仅构建期”insecure TLS 兼容策略；本地/CI 门禁覆盖策略授权、下载 adapter、缓存失效、运行时隔离和脱敏来源。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -20,18 +20,18 @@
 - PostgreSQL、对象存储和 durable Redis 状态形成一个迁移前已验证恢复点。
 - 所有长期运行 Compose 服务完成重建，所有持久化 volume 身份保持不变。
 - API 迁移完成后才恢复公网流量。
-- 中断运行只有一个合法下一步：安全退出、`resume` 或显式 `rollback`。
-- 迁移后失败会保持 proxy 停止并暴露 `recovery-required`，绝不宣称自动回滚。
+- 中断运行只有一个合法下一步：迁移前 `resume` 或迁移后的带 token `rollback`；proxy/queue 隔离失败时，下一步必须先要求人工隔离。
+- 迁移后失败会尝试停止 proxy 并暴露 `recovery-required`；隔离失败会记录为第一步人工动作，绝不宣称自动回滚。
 - 数据平面门禁要求 PostgreSQL/Redis 为 Docker `healthy`，MinIO 进程为 `running`，且 `minio-init` 成功退出 `0`；不能只凭 MinIO `running` 判定就绪。
-- 只有数据平面、queue resume、API、worker、web、旧 image、proxy/public 恢复门禁全部通过，才写入 `old-stack-restored`；否则写入带非 `none` 下一步的 `recovery-required`。
+- 只有数据平面、API、worker、web、旧 image、queue resume 以及最后执行的 proxy/public 恢复门禁全部通过，才写入 `old-stack-restored`；否则写入带非 `none` 下一步的 `recovery-required`。
 - 非客户 Ubuntu 演练证明一次前向升级和一次注入迁移后故障的恢复路径，并产出脱敏证据。
 
 ## Git 与 PR 工作流
 
-- 从最新 `main` 创建 `feat/self-hosted-one-command-upgrade`。
+- 从最新 `main` 创建 `codex/selfhost-upgrade-recovery-hotfix`。
 - 实现代理只在 feature branch 提交；不得 push `main`、开/合 PR 或快进本地 `main`。
 - 父代理/会话 owner 评审分支，执行或抽查门禁，批准后开 PR、合并，再运行 `git pull origin main`。
-- 原则上一份计划一个实现分支；只有目标环境证据确需后续时才建 evidence-only 分支。
+- 原则上一份计划一个实现分支（`codex/selfhost-upgrade-recovery-hotfix`）；只有目标环境证据确需后续时才建 evidence-only 分支。
 - 目标演练兼容性加固使用从当前 `main` 创建的 `fix/self-hosted-upgrade-host-compat`；父代理/会话 owner 在本地门禁与 CI merge bar 通过后开 PR 并合入。
 - 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - 仅构建期 insecure TLS 兼容使用 `fix/selfhost-insecure-build-tls-policy`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
@@ -145,7 +145,7 @@ npm run selfhost:check
 - [ ] 通过固定 `minio/mc` 镜像复制 S3 bucket，并校验 key/size/checksum manifest。
 - [ ] durable queue 开启时生成、复制并校验 Redis RDB。
 - [ ] 全部 store 通过后才写完整 SHA-256 manifest 和 verified 状态。
-- [ ] 静默或备份失败时恢复旧容器、队列和 proxy，并记录安全结果。
+- [ ] 静默或备份失败时先通过数据平面门禁再重建旧应用容器，验证内部健康和镜像身份，恢复队列，最后重建 proxy 并探测公网；若隔离失败则要求人工隔离，在全部门禁通过前保持 `recovery-required`。
 - [ ] 保留部分备份用于诊断，但绝不标记为可恢复。
 
 **验证：**
@@ -168,7 +168,7 @@ npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-host
 - [ ] 执行公网 liveness/readiness 与有界 self-hosted smoke。
 - [ ] 校验全部长期容器 ID 已变化、镜像正确、volume 身份相同、`.env` 指纹相同，且没有 seed/provision。
 - [ ] 完成前记录停机、迁移、smoke 与备份 manifest。
-- [ ] 迁移开始后失败时停止 proxy、暂停队列、标记 `recovery-required` 并返回 `70`，不做破坏性恢复。
+- [ ] 迁移开始后失败时尝试隔离 proxy 与 queue/worker，标记 `recovery-required`；任一隔离失败先要求人工隔离，并返回 `70`，不做破坏性恢复。
 
 **验证：**
 
@@ -412,19 +412,23 @@ git diff --check
 
 **预期结果：** 无 CA 企业主机获得一个显式、可审计的单次构建兼容路径，同时不把不安全传输设为默认、不泄露凭据、不削弱包身份/完整性，也不改变运行时 TLS。
 
-## 阶段 13 —— MinIO 就绪与旧栈恢复真实性
+## 阶段 13 —— MinIO 就绪、候选 worker 门禁与真实恢复
 
-事故运行 `20260824T021935Z-2079618` 暴露了两个控制器真实性缺陷：MinIO 没有 Docker healthcheck，却被通用 `healthy` 等待逻辑固定等待；旧栈恢复也可能在没有验证 worker、web、proxy/public、queue resume 和旧镜像身份时写入 `old-stack-restored`。本阶段把服务特定就绪语义与恢复验证收敛在 `upgrade-lib.sh`，使 `apply` 只表达数据平面就绪。
+事故运行 `20260824T021935Z-2079618` 暴露了两个控制器真实性缺陷：MinIO 没有 Docker healthcheck，却被通用 `healthy` 等待逻辑固定等待；旧栈恢复也可能在没有验证 worker、web、proxy/public、queue resume 和旧镜像身份时写入 `old-stack-restored`。后续独立验收又发现四个状态机缺陷：`minio-init` 轮询期间 MinIO 退出不会被发现、不健康的候选 worker 可能先恢复 queue/proxy、`recovery-required` 可能推荐不可执行的动作，以及恢复就绪失败仍保留候选 phase。本阶段把服务特定就绪、候选 app 就绪和恢复验证收敛在 `upgrade-lib.sh`，使调用者只表达数据平面就绪和恢复操作。
 
 **任务：**
 
 - [x] 增加 mock Docker/Compose RED 测试，覆盖 MinIO running 与 `minio-init` 退出 `0`、MinIO 异常退出、initializer 失败/超时、PostgreSQL/Redis 健康、恢复门禁、稳定失败字段、脱敏和代理绕过。
 - [x] 实现 `wiseeff_upgrade_wait_data_plane_ready`，封装服务特定语义和 bounded 诊断（`failed_phase`、`failure_service`、`failure_code`、`failure_summary`）。
 - [x] 实现只用于恢复的验证 helper，覆盖数据平面、queue resume、API live/ready、worker live/healthy、web 直连、旧应用 image identity 和 proxy/public 健康。
-- [x] 将 `old-stack-restored` 与 `next_action=none` 放在 `recovery_verified=true` 之后；失败时持久化 `recovery-required`、暂停 queue、保持 proxy 停止。
+- [x] 将 `old-stack-restored` 与 `next_action=none` 放在 `recovery_verified=true` 之后；失败时持久化 `recovery-required`、尝试隔离 queue/worker 与 proxy，并把隔离失败记录为第一步人工动作。
 - [x] 公网探测使用 `curl --noproxy '*'`，并保持 `WISEEFF_BUILD_TLS_POLICY` 的仅构建期安全边界，不引入全局 TLS 关闭。
+- [x] 在每轮 `minio-init` 轮询中复查 MinIO，并在退出 `0` 后再次复查；分别归类退出、inspect、initializer 失败和超时。
+- [x] 在 `apply` 和 `resume` 的 queue resume 前都要求候选 worker liveness 与 Docker health，并在最终验证中保留同一门禁。
+- [x] 使 `recovery-required` 下一步真实可执行：迁移前可重试旧栈恢复，迁移后只能使用带 token 的整点回滚，隔离失败时先要求人工隔离流量/队列。
+- [x] 在任何恢复操作前进入 `old-stack-restore`，避免恢复数据平面失败继续保留候选 phase；恢复成功时保留原候选失败证据以便追溯。
 - [x] 更新中英文操作员文档、可靠性/runbook、设计说明和本计划，明确部署机验收边界。
-- [ ] 将合入后的控制器部署到事故主机并执行前向/恢复演练；本地 mock 不能关闭目标环境证据。
+- [ ] 就绪/恢复 hotfix 合入 `main`；目标主机前向/恢复演练仍待执行，本地 mock 不能关闭目标环境证据。
 
 **验证：**
 

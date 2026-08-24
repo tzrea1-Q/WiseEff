@@ -171,6 +171,7 @@ wiseeff_upgrade_write_status() {
     printf 'recovery_verified=%s\n' "$(wiseeff_upgrade_state_read recovery_verified)"
     printf 'recovery_proxy_stopped=%s\n' "$(wiseeff_upgrade_state_read recovery_proxy_stopped)"
     printf 'recovery_queue_paused=%s\n' "$(wiseeff_upgrade_state_read recovery_queue_paused)"
+    printf 'recovery_failure_summary=%s\n' "$(wiseeff_upgrade_state_read recovery_failure_summary)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
   chmod 600 "$temp_path"
@@ -1197,6 +1198,67 @@ wiseeff_upgrade_build_candidate() {
 wiseeff_upgrade_sanitize_diagnostic_stream() {
   sed \
     -e 's#\(https\{0,1\}://\)[^/@[:space:]][^/@[:space:]]*@#\1[REDACTED]@#g' \
+    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Pp][Rr][Oo][Xx][Yy]-[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*\)[^,[:space:]]*#\1[REDACTED]#g' \
+    -e 's#\("[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Tt][Oo][Kk][Ee][Nn]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[Cc][Ll][Ii][Ee][Nn][Tt][_ -]*[Ss][Ee][Cc][Rr][Ee][Tt]"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Pp][Aa][Ss][Ss][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Ss][Ee][Cc][Rr][Ee][Tt][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Tt][Oo][Kk][Ee][Nn][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\("[^"]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][^"]*"[^:]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Pp][Aa][Ss][Ss][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Ss][Ee][Cc][Rr][Ee][Tt][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Tt][Oo][Kk][Ee][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*"[^"]*"#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*'"'"'[^'"'"']*'"'"'#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]*[^,[:space:]]*#\1=Bearer [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[Bb][Aa][Ss][Ii][Cc][[:space:]]*[^,[:space:]]*#\1=Basic [REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
+    -e 's#\([[:alnum:]_]*[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy][[:alnum:]_]*\)[=:][[:space:]]*[^,[:space:]]*#\1=[REDACTED]#g' \
     -e 's#\(_authToken[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
     -e 's#\(_password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
     -e 's#\(password[=:][[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
@@ -1206,7 +1268,12 @@ wiseeff_upgrade_sanitize_diagnostic_stream() {
     -e 's#\("password"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
     -e 's#\("token"[[:space:]]*:[[:space:]]*"\)[^"]*#\1[REDACTED]#g' \
     -e 's#\(authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' \
-    -e 's#\(Authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g'
+    -e 's#\(Authorization:[[:space:]]*Bearer[[:space:]]*\)[^,[:space:]][^,[:space:]]*#\1[REDACTED]#g' |
+  sed -E \
+    -e 's#("[^"]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[^"]*"[[:space:]]*:[[:space:]]*")[^"]*#\1[REDACTED]#g' \
+    -e 's#(([[:alnum:]_]*([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])[[:alnum:]_]*)[=:][[:space:]]*)[^,;[:space:]]*#\1[REDACTED]#g' \
+    -e 's#(--([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])([=]|[[:space:]]+))"[^"]*"#\1[REDACTED]#g' \
+    -e 's#(--([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Cc][Cc][Ee][Ss][Ss][_ -]*[Kk][Ee][Yy]|[Aa][Pp][Ii][_ -]*[Kk][Ee][Yy])([=]|[[:space:]]+))[^,[:space:]]*#\1[REDACTED]#g'
 }
 
 wiseeff_upgrade_write_build_summary() {
@@ -1308,15 +1375,121 @@ wiseeff_upgrade_queue_command() {
 
 wiseeff_upgrade_restore_queue() {
   if [ -n "${upgrade_candidate_image_tag:-}" ]; then
-    wiseeff_upgrade_queue_command_for_image resume "$upgrade_candidate_image_tag" >/dev/null 2>&1 || true
+    if ! wiseeff_upgrade_run_recovery_action queue-resume wiseeff_upgrade_queue_command_for_image resume "$upgrade_candidate_image_tag"; then
+      wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" queue recovery-queue-resume "The candidate queue could not be resumed during recovery."
+      return 1
+    fi
   fi
 }
 
+wiseeff_upgrade_candidate_data_plane_up() {
+  local services=("$@")
+  if [ "${#services[@]}" -eq 0 ]; then
+    services=(postgres redis minio minio-init)
+  fi
+  WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build "${services[@]}"
+}
+
+wiseeff_upgrade_previous_data_plane_up() {
+  local image_ref="$1"
+  shift
+  local services=("$@")
+  if [ "${#services[@]}" -eq 0 ]; then
+    services=(postgres redis minio minio-init)
+  fi
+  wiseeff_upgrade_compose_for_image "$image_ref" up -d --force-recreate --no-build "${services[@]}"
+}
+
+wiseeff_upgrade_data_plane_failure_service() {
+  local service container state health exit_code
+  for service in postgres redis minio minio-init; do
+    container="$(wiseeff_upgrade_compose ps -aq "$service" 2>/dev/null || true)"
+    [ -n "$container" ] || continue
+    case "$service" in
+      postgres|redis)
+        health="$(wiseeff_upgrade_docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" 2>/dev/null || true)"
+        if [ -n "$health" ] && [ "$health" != "healthy" ]; then
+          printf '%s\n' "$service"
+          return 0
+        fi
+        ;;
+      minio)
+        state="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)"
+        case "$state" in
+          running) ;;
+          "") ;;
+          *) printf '%s\n' minio; return 0 ;;
+        esac
+        ;;
+      minio-init)
+        state="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)"
+        case "$state" in
+          ""|running) ;;
+          exited)
+            exit_code="$(wiseeff_upgrade_docker inspect -f '{{.State.ExitCode}}' "$container" 2>/dev/null || true)"
+            if [ -n "$exit_code" ] && [ "$exit_code" != "0" ]; then
+              printf '%s\n' minio-init
+              return 0
+            fi
+            ;;
+          *)
+            printf '%s\n' minio-init
+            return 0
+            ;;
+        esac
+        ;;
+    esac
+  done
+  printf '%s\n' data-plane
+}
+
+wiseeff_upgrade_start_data_plane_with() {
+  local failed_phase="$1"
+  local failure_code="$2"
+  local action_prefix="$3"
+  shift 3
+
+  if wiseeff_upgrade_run_recovery_action "${action_prefix}-all" "$@"; then
+    return 0
+  fi
+
+  local failure_service
+  failure_service="$(wiseeff_upgrade_data_plane_failure_service)"
+  if [ "$failure_service" = "data-plane" ]; then
+    wiseeff_upgrade_record_failure "$failed_phase" data-plane "$failure_code" \
+      "The data-plane startup command failed, but no individual service failure could be isolated."
+  else
+    wiseeff_upgrade_record_failure "$failed_phase" "$failure_service" "$failure_code" \
+      "The ${failure_service} data service could not be started; inspect its bounded diagnostic summary."
+  fi
+  return 1
+}
+
+wiseeff_upgrade_start_candidate_data_plane() {
+  wiseeff_upgrade_start_data_plane_with restarting-data data-plane-compose-up candidate-data-plane-up \
+    wiseeff_upgrade_candidate_data_plane_up
+}
+
 wiseeff_upgrade_stop_old_stack() {
-  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy >/dev/null || return $?
-  wiseeff_upgrade_queue_command pause >/dev/null || return $?
-  wiseeff_upgrade_queue_command drain >/dev/null || return $?
-  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" api worker web >/dev/null || return $?
+  if ! wiseeff_upgrade_run_recovery_action quiesce-proxy-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
+    wiseeff_upgrade_record_failure quiescing proxy quiesce-proxy-stop "The proxy could not be stopped before the recovery point was created."
+    return 1
+  fi
+  if ! wiseeff_upgrade_run_recovery_action quiesce-queue-pause wiseeff_upgrade_queue_command pause; then
+    wiseeff_upgrade_record_failure quiescing queue quiesce-queue-pause "The durable queue could not be paused before the recovery point was created."
+    return 1
+  fi
+  if ! wiseeff_upgrade_run_recovery_action quiesce-queue-drain wiseeff_upgrade_queue_command drain; then
+    wiseeff_upgrade_record_failure quiescing queue quiesce-queue-drain "The durable queue could not be drained before the recovery point was created."
+    return 1
+  fi
+  local service
+  for service in api worker web; do
+    if ! wiseeff_upgrade_run_recovery_action "quiesce-${service}-stop" wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" "$service"; then
+      wiseeff_upgrade_record_failure quiescing "$service" "quiesce-${service}-stop" "The ${service} service could not be stopped before the recovery point was created."
+      return 1
+    fi
+  done
 }
 
 wiseeff_upgrade_probe_api() {
@@ -1365,54 +1538,87 @@ wiseeff_upgrade_wait_data_service_healthy() {
   return 1
 }
 
-wiseeff_upgrade_wait_minio_process() {
-  local container status attempt attempts
-  container="$(wiseeff_upgrade_compose ps -aq minio 2>/dev/null || true)"
+wiseeff_upgrade_wait_object_store_ready() {
+  local minio_container init_container minio_status init_status exit_code attempt attempts
+  minio_container="$(wiseeff_upgrade_compose ps -aq minio 2>/dev/null || true)"
+  init_container="$(wiseeff_upgrade_compose ps -aq minio-init 2>/dev/null || true)"
   attempts="${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}"
   [ "$attempts" -gt 0 ] || attempts=1
-  if [ -z "$container" ]; then
+  if [ -z "$minio_container" ]; then
     wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-container-missing "The MinIO container could not be identified."
     return 1
   fi
-  for attempt in $(seq 1 "$attempts"); do
-    status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)"
-    case "$status" in
-      running)
-        return 0
-        ;;
-      exited|dead)
-        wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-exited "The MinIO process exited unexpectedly (status=${status})."
-        return 1
-        ;;
-    esac
-    if [ "$attempt" -lt "$attempts" ]; then
-      sleep "${WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS:-2}"
-    fi
-  done
-  wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-not-running "The MinIO process did not reach running state."
-  return 1
-}
-
-wiseeff_upgrade_wait_minio_init() {
-  local container status exit_code attempt attempts
-  container="$(wiseeff_upgrade_compose ps -aq minio-init 2>/dev/null || true)"
-  attempts="${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}"
-  [ "$attempts" -gt 0 ] || attempts=1
-  if [ -z "$container" ]; then
+  if [ -z "$init_container" ]; then
     wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio-init minio-init-container-missing "The minio-init container could not be identified."
     return 1
   fi
+
   for attempt in $(seq 1 "$attempts"); do
-    status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)"
-    if [ "$status" = "exited" ]; then
-      exit_code="$(wiseeff_upgrade_docker inspect -f '{{.State.ExitCode}}' "$container" 2>/dev/null || true)"
+    minio_status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$minio_container" 2>/dev/null || true)"
+    if [ -z "$minio_status" ]; then
+      wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-inspect-failed "The MinIO container state could not be inspected."
+      return 1
+    fi
+    case "$minio_status" in
+      running)
+        break
+        ;;
+      exited|dead|restarting)
+        wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-exited "The MinIO process exited unexpectedly (status=${minio_status})."
+        return 1
+        ;;
+    esac
+    if [ "$attempt" -eq "$attempts" ]; then
+      wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-not-running "The MinIO process did not reach running state."
+      return 1
+    fi
+    sleep "${WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS:-2}"
+  done
+
+  for attempt in $(seq 1 "$attempts"); do
+    # MinIO and its initializer form one readiness unit. Re-checking MinIO on
+    # every initializer poll prevents a stale first running observation from
+    # being mistaken for object-store readiness.
+    minio_status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$minio_container" 2>/dev/null || true)"
+    if [ -z "$minio_status" ]; then
+      wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-inspect-failed "The MinIO container state could not be inspected."
+      return 1
+    fi
+    case "$minio_status" in
+      exited|dead|restarting)
+        wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-exited "The MinIO process exited unexpectedly (status=${minio_status})."
+        return 1
+        ;;
+      running) ;;
+      *)
+        wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-not-running "The MinIO process stopped being ready (status=${minio_status})."
+        return 1
+        ;;
+    esac
+
+    init_status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$init_container" 2>/dev/null || true)"
+    if [ -z "$init_status" ]; then
+      wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio-init minio-init-inspect-failed "The minio-init container state could not be inspected."
+      return 1
+    fi
+    if [ "$init_status" = "exited" ]; then
+      exit_code="$(wiseeff_upgrade_docker inspect -f '{{.State.ExitCode}}' "$init_container" 2>/dev/null || true)"
       if [ "$exit_code" = "0" ]; then
-        return 0
+        # The initializer is authoritative, but MinIO must still be alive at
+        # the exact moment the readiness gate returns success.
+        minio_status="$(wiseeff_upgrade_docker inspect -f '{{.State.Status}}' "$minio_container" 2>/dev/null || true)"
+        case "$minio_status" in
+          running) return 0 ;;
+          exited|dead|restarting) wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-exited "The MinIO process exited unexpectedly during final readiness verification (status=${minio_status})." ;;
+          "") wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-inspect-failed "The MinIO process could not be inspected during final readiness verification." ;;
+          *) wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio minio-not-running "The MinIO process was not running during final readiness verification (status=${minio_status})." ;;
+        esac
+        return 1
       fi
       wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio-init minio-init-failed "The minio-init container exited with code ${exit_code:-unknown}."
       return 1
     fi
-    if [ "$status" = "dead" ]; then
+    if [ "$init_status" = "dead" ]; then
       wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" minio-init minio-init-failed "The minio-init container entered dead state."
       return 1
     fi
@@ -1430,11 +1636,8 @@ wiseeff_upgrade_wait_data_service() {
     postgres|redis)
       wiseeff_upgrade_wait_data_service_healthy "$service"
       ;;
-    minio)
-      wiseeff_upgrade_wait_minio_process
-      ;;
-    minio-init)
-      wiseeff_upgrade_wait_minio_init
+    minio|minio-init)
+      wiseeff_upgrade_wait_object_store_ready
       ;;
     *)
       wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" "$service" data-service-unsupported "Unsupported data service readiness check."
@@ -1446,8 +1649,7 @@ wiseeff_upgrade_wait_data_service() {
 wiseeff_upgrade_wait_data_plane_ready() {
   wiseeff_upgrade_wait_data_service postgres || return 1
   wiseeff_upgrade_wait_data_service redis || return 1
-  wiseeff_upgrade_wait_data_service minio || return 1
-  wiseeff_upgrade_wait_data_service minio-init || return 1
+  wiseeff_upgrade_wait_object_store_ready || return 1
   printf 'Data plane ready: postgres healthy, redis healthy, MinIO running, minio-init exited 0.\n'
 }
 
@@ -1468,6 +1670,21 @@ wiseeff_upgrade_probe_worker() {
     fi
   done
   return 1
+}
+
+wiseeff_upgrade_verify_candidate_app_readiness() {
+  if ! wiseeff_upgrade_probe_api /health/ready; then
+    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-api-ready "The candidate API readiness probe failed."
+    return 1
+  fi
+  if ! wiseeff_upgrade_probe_worker; then
+    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" worker candidate-worker-health "The candidate worker liveness or Docker health probe failed."
+    return 1
+  fi
+  if ! wiseeff_upgrade_probe_web; then
+    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" web candidate-web-direct "The candidate web direct probe failed."
+    return 1
+  fi
 }
 
 wiseeff_upgrade_snapshot_postgres() {
@@ -1610,10 +1827,6 @@ wiseeff_upgrade_verify_restored_stack() {
   if ! wiseeff_upgrade_wait_data_plane_ready; then
     return 1
   fi
-  if ! wiseeff_upgrade_queue_command_for_image resume "$previous_api_tag"; then
-    wiseeff_upgrade_record_failure old-stack-restore queue restore-queue-resume "The durable queue could not be resumed after restoring the previous stack."
-    return 1
-  fi
   if ! wiseeff_upgrade_probe_api /health/live; then
     wiseeff_upgrade_record_failure old-stack-restore api restore-api-live "The restored API liveness probe failed."
     return 1
@@ -1633,6 +1846,14 @@ wiseeff_upgrade_verify_restored_stack() {
   if ! wiseeff_upgrade_verify_previous_app_images; then
     return 1
   fi
+  if ! wiseeff_upgrade_run_recovery_action restore-queue-resume wiseeff_upgrade_queue_command_for_image resume "$previous_api_tag"; then
+    wiseeff_upgrade_record_failure old-stack-restore queue restore-queue-resume "The durable queue could not be resumed after restoring the previous stack."
+    return 1
+  fi
+  if ! wiseeff_upgrade_compose_for_image "$previous_api_tag" up -d --force-recreate --no-build --no-deps proxy; then
+    wiseeff_upgrade_record_failure old-stack-restore proxy restore-proxy-recreate "The previous proxy could not be recreated."
+    return 1
+  fi
   if ! wiseeff_upgrade_public_probe; then
     wiseeff_upgrade_record_failure old-stack-restore proxy restore-proxy-public "The restored proxy/public health probe failed."
     return 1
@@ -1643,6 +1864,7 @@ wiseeff_upgrade_restore_old_stack_after_stop() {
   local previous_sha previous_api_tag
   wiseeff_upgrade_state_write recovery_started true
   wiseeff_upgrade_state_write recovery_verified false
+  wiseeff_upgrade_set_phase old-stack-restore running || return 70
   previous_sha="$(wiseeff_upgrade_state_read previous_sha)"
   previous_api_tag="$(wiseeff_upgrade_previous_image_tag_for api)"
   [ -n "$previous_sha" ] && [ -n "$previous_api_tag" ] || {
@@ -1656,17 +1878,16 @@ wiseeff_upgrade_restore_old_stack_after_stop() {
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
-  if ! wiseeff_upgrade_compose_for_image "$previous_api_tag" up -d --force-recreate --no-build postgres redis minio minio-init; then
-    wiseeff_upgrade_record_failure old-stack-restore data-plane restore-data-compose "The previous data services could not be recreated."
+  if ! wiseeff_upgrade_start_data_plane_with old-stack-restore restore-data-compose restore-data-plane-up \
+    wiseeff_upgrade_previous_data_plane_up "$previous_api_tag"; then
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  if ! wiseeff_upgrade_wait_data_plane_ready; then
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
   if ! wiseeff_upgrade_recreate_previous_app_services; then
-    wiseeff_upgrade_mark_recovery_required
-    return 70
-  fi
-  if ! wiseeff_upgrade_compose_for_image "$previous_api_tag" up -d --force-recreate --no-build --no-deps proxy; then
-    wiseeff_upgrade_record_failure old-stack-restore proxy restore-proxy-recreate "The previous proxy could not be recreated."
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
@@ -1723,7 +1944,7 @@ wiseeff_upgrade_complete_candidate() {
     return 70
   fi
   if ! wiseeff_upgrade_verify_final_state; then
-    wiseeff_upgrade_mark_recovery_required recovery candidate-final-state "The candidate stack did not satisfy final identity or volume invariants."
+    wiseeff_upgrade_mark_recovery_required
     return 70
   fi
   wiseeff_upgrade_state_write outcome completed
@@ -1753,7 +1974,7 @@ wiseeff_upgrade_run_resume() {
     wiseeff_upgrade_status "$upgrade_run_id"
     return 0
   fi
-  if [ "$outcome" = "recovery-required" ]; then
+  if [ "$outcome" = "recovery-required" ] && [ "$migration_started" = "true" ]; then
     wiseeff_upgrade_status "$upgrade_run_id"
     return 70
   fi
@@ -1793,20 +2014,20 @@ wiseeff_upgrade_run_resume() {
       wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web or worker containers could not be recreated during resume."
       return 70
     fi
-    if ! wiseeff_upgrade_probe_api /health/ready; then
-      wiseeff_upgrade_mark_recovery_required api candidate-api-ready "The candidate API readiness probe failed during resume."
-      return 70
-    fi
-    if ! wiseeff_upgrade_probe_web; then
-      wiseeff_upgrade_mark_recovery_required web candidate-web-direct "The candidate web direct probe failed during resume."
+    if ! wiseeff_upgrade_verify_candidate_app_readiness; then
+      wiseeff_upgrade_mark_recovery_required
       return 70
     fi
     wiseeff_upgrade_set_phase app-services-ready complete
     phase="app-services-ready"
   fi
   if [ "$phase" = "app-services-ready" ]; then
+    if ! wiseeff_upgrade_verify_candidate_app_readiness; then
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
     wiseeff_upgrade_set_phase resuming-queue running
-    if ! wiseeff_upgrade_queue_command_for_image resume "$candidate_image"; then
+    if ! wiseeff_upgrade_run_recovery_action candidate-queue-resume wiseeff_upgrade_queue_command_for_image resume "$candidate_image"; then
       wiseeff_upgrade_mark_recovery_required queue candidate-queue-resume "The candidate durable queue could not be resumed during resume."
       return 70
     fi
@@ -1851,11 +2072,11 @@ wiseeff_upgrade_restore_redis() {
   [ -d "${redis_dir}/data" ] || { wiseeff_upgrade_die 40 "Redis recovery point is missing: ${redis_dir}"; return $?; }
   container="$(wiseeff_upgrade_compose ps -aq redis)" || return $?
   [ -n "$container" ] || { wiseeff_upgrade_die 40 "Redis container is unavailable for recovery."; return $?; }
-  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" redis >/dev/null || return $?
-  wiseeff_upgrade_docker start "$container" >/dev/null || return $?
+  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" redis || return $?
+  wiseeff_upgrade_docker start "$container" || return $?
   wiseeff_upgrade_docker exec "$container" sh -lc 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' || return $?
   wiseeff_upgrade_docker cp "${redis_dir}/data/." "${container}:/data/" || return $?
-  wiseeff_upgrade_compose exec -T redis redis-check-rdb /data/dump.rdb >/dev/null || return $?
+  wiseeff_upgrade_compose exec -T redis redis-check-rdb /data/dump.rdb || return $?
 }
 
 wiseeff_upgrade_run_rollback() {
@@ -1865,7 +2086,8 @@ wiseeff_upgrade_run_rollback() {
   trap wiseeff_upgrade_release_lock EXIT
   wiseeff_upgrade_validate_env || return 10
 
-  local outcome migration_started previous_api_tag
+  local outcome migration_started previous_api_tag isolation_service isolation_code isolation_summary
+  local proxy_stop_status=0 queue_pause_status=0 worker_stop_status=0 app_stop_status=0
   outcome="$(wiseeff_upgrade_state_read outcome)"
   migration_started="$(wiseeff_upgrade_state_read migration_started)"
   if [ "$outcome" = "rolled-back" ]; then
@@ -1884,43 +2106,110 @@ wiseeff_upgrade_run_rollback() {
   previous_api_tag="$(wiseeff_upgrade_previous_image_tag_for api)"
   [ -n "$previous_api_tag" ] || { wiseeff_upgrade_die 70 "Previous application image identity is missing."; return $?; }
   upgrade_recovery_queue_image_tag="$previous_api_tag"
+  wiseeff_upgrade_state_write recovery_started true
+  wiseeff_upgrade_state_write recovery_verified false
   wiseeff_upgrade_set_phase rollback-stopping running
-  wiseeff_upgrade_queue_command_for_image pause "$previous_api_tag" >/dev/null 2>&1 || true
-  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy api worker web >/dev/null 2>&1 || true
-  wiseeff_upgrade_git checkout --detach "$upgrade_previous_sha" >/dev/null || {
-    wiseeff_upgrade_die 70 "Could not restore the previous checkout; manual recovery is required."
-    return $?
-  }
-  wiseeff_upgrade_compose_for_image "$previous_api_tag" up -d --force-recreate --no-build postgres redis minio minio-init >/dev/null || {
-    wiseeff_upgrade_die 70 "Could not restart data services for rollback."
-    return $?
-  }
+
+  if wiseeff_upgrade_run_recovery_action proxy-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
+    :
+  else
+    proxy_stop_status=$?
+  fi
+  if wiseeff_upgrade_run_recovery_action queue-pause wiseeff_upgrade_queue_command_for_image pause "$previous_api_tag"; then
+    :
+  else
+    queue_pause_status=$?
+  fi
+  if wiseeff_upgrade_run_recovery_action worker-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" worker; then
+    :
+  else
+    worker_stop_status=$?
+    if [ "$queue_pause_status" -eq 0 ]; then
+      queue_pause_status="$worker_stop_status"
+    fi
+  fi
+  if wiseeff_upgrade_run_recovery_action app-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" api web; then
+    :
+  else
+    app_stop_status=$?
+  fi
+  wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
+  wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && printf true || printf false)"
+  if [ "$proxy_stop_status" -ne 0 ] || [ "$queue_pause_status" -ne 0 ] || [ "$app_stop_status" -ne 0 ]; then
+    isolation_service=recovery
+    isolation_code=rollback-isolation
+    isolation_summary="Rollback isolation did not complete; inspect recovery_failure_summary and isolate traffic before retrying."
+    if [ "$proxy_stop_status" -ne 0 ]; then
+      isolation_service=proxy
+      isolation_code=rollback-proxy-stop
+      isolation_summary="The proxy could not be stopped before rollback data restoration."
+    elif [ "$queue_pause_status" -ne 0 ]; then
+      isolation_service=queue
+      isolation_code=rollback-queue-pause
+      isolation_summary="The queue or worker traffic could not be isolated before rollback data restoration."
+    elif [ "$app_stop_status" -ne 0 ]; then
+      isolation_service=app-services
+      isolation_code=rollback-app-stop
+      isolation_summary="The application services could not be stopped before rollback data restoration."
+    fi
+    wiseeff_upgrade_record_failure rollback-stopping "$isolation_service" "$isolation_code" "$isolation_summary"
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+
+  wiseeff_upgrade_set_phase old-stack-restore running
+  if ! wiseeff_upgrade_git checkout --detach "$upgrade_previous_sha"; then
+    wiseeff_upgrade_record_failure old-stack-restore checkout restore-checkout "The previous checkout could not be selected for rollback."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  if ! wiseeff_upgrade_start_data_plane_with old-stack-restore rollback-data-compose rollback-data-plane-up \
+    wiseeff_upgrade_previous_data_plane_up "$previous_api_tag"; then
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
   wiseeff_upgrade_wait_data_plane_ready || {
-    wiseeff_upgrade_die 70 "Data plane failed during rollback; inspect failure_service and failure_code."
+    wiseeff_upgrade_mark_recovery_required
     return 70
   }
   if [ "$upgrade_restore_data" = "true" ]; then
     wiseeff_upgrade_set_phase restoring-data running
-    if ! wiseeff_upgrade_verify_backup_manifest || ! wiseeff_upgrade_restore_postgres || ! wiseeff_upgrade_restore_objects || ! wiseeff_upgrade_restore_redis; then
+    if ! wiseeff_upgrade_run_recovery_action restore-recovery-point wiseeff_upgrade_verify_backup_manifest; then
+      wiseeff_upgrade_record_failure restoring-data recovery-point rollback-backup-manifest "The recorded recovery-point manifest could not be verified."
       wiseeff_upgrade_mark_recovery_required
       return 70
     fi
-    wiseeff_upgrade_snapshot_manifest
+    if ! wiseeff_upgrade_run_recovery_action restore-postgres wiseeff_upgrade_restore_postgres; then
+      wiseeff_upgrade_record_failure restoring-data postgres rollback-postgres-restore "The PostgreSQL recovery point could not be restored."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    if ! wiseeff_upgrade_run_recovery_action restore-minio wiseeff_upgrade_restore_objects; then
+      wiseeff_upgrade_record_failure restoring-data minio rollback-minio-restore "The object-store recovery point could not be restored."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    if ! wiseeff_upgrade_run_recovery_action restore-redis wiseeff_upgrade_restore_redis; then
+      wiseeff_upgrade_record_failure restoring-data redis rollback-redis-restore "The Redis recovery point could not be restored."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    if ! wiseeff_upgrade_run_recovery_action snapshot-recovery-point wiseeff_upgrade_snapshot_manifest; then
+      wiseeff_upgrade_record_failure restoring-data recovery-point rollback-manifest-write "The post-restore recovery manifest could not be written."
+      wiseeff_upgrade_mark_recovery_required
+      return 70
+    fi
+    wiseeff_upgrade_set_phase old-stack-restore running
   fi
   if ! wiseeff_upgrade_recreate_previous_app_services; then
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
-  if ! wiseeff_upgrade_compose_for_image "$previous_api_tag" up -d --force-recreate --no-build --no-deps proxy; then
+  if ! wiseeff_upgrade_verify_restored_stack; then
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
-  if ! wiseeff_upgrade_queue_command_for_image resume "$previous_api_tag" >/dev/null; then
-    wiseeff_upgrade_mark_recovery_required
-    return 70
-  fi
-  wiseeff_upgrade_probe_api /health/ready || { wiseeff_upgrade_mark_recovery_required; return 70; }
-  wiseeff_upgrade_public_probe || { wiseeff_upgrade_mark_recovery_required; return 70; }
+  wiseeff_upgrade_state_write recovery_verified true
   wiseeff_upgrade_state_write outcome rolled-back
   wiseeff_upgrade_state_write next_action none
   wiseeff_upgrade_set_phase rolled-back rolled-back
@@ -1932,50 +2221,122 @@ wiseeff_upgrade_run_rollback() {
   fi
 }
 
+wiseeff_upgrade_recovery_next_action() {
+  local migration_started proxy_stopped queue_paused action recovery_command
+  migration_started="$(wiseeff_upgrade_state_read migration_started)"
+  proxy_stopped="$(wiseeff_upgrade_state_read recovery_proxy_stopped)"
+  queue_paused="$(wiseeff_upgrade_state_read recovery_queue_paused)"
+  action=""
+  if [ "$proxy_stopped" != "true" ]; then
+    action="Manually isolate proxy traffic"
+  fi
+  if [ "$queue_paused" != "true" ]; then
+    if [ -n "$action" ]; then
+      action="${action} and queue/worker traffic"
+    else
+      action="Manually isolate queue/worker traffic"
+    fi
+  fi
+  if [ "$migration_started" = "true" ]; then
+    recovery_command="./scripts/upgrade.sh rollback --run-id ${upgrade_run_id} --restore-data --confirm restore-${upgrade_run_id}"
+  else
+    recovery_command="./scripts/upgrade.sh resume --run-id ${upgrade_run_id}"
+  fi
+  if [ -n "$action" ]; then
+    printf '%s, then run: %s' "$action" "$recovery_command"
+  else
+    printf '%s' "$recovery_command"
+  fi
+}
+
+wiseeff_upgrade_run_recovery_action() {
+  local action="$1"
+  shift
+  local output_path="${upgrade_run_dir}/recovery-action-output.tmp.$$"
+  local status diagnostic summary pipeline_status
+  local -a pipeline_statuses
+  : > "$output_path"
+  chmod 600 "$output_path"
+  if "$@" 2>&1 \
+    | wiseeff_upgrade_sanitize_diagnostic_stream \
+    | tr '\r\n\t' '   ' \
+    | cut -c1-200 > "$output_path"; then
+    pipeline_statuses=("${PIPESTATUS[@]}")
+  else
+    pipeline_statuses=("${PIPESTATUS[@]}")
+  fi
+  status="${pipeline_statuses[0]:-1}"
+  if [ "$status" -eq 0 ]; then
+    for pipeline_status in "${pipeline_statuses[@]:1}"; do
+      if [ "$pipeline_status" -ne 0 ]; then
+        status="$pipeline_status"
+        break
+      fi
+    done
+  fi
+  if [ "$status" -eq 0 ]; then
+    rm -f -- "$output_path"
+    return 0
+  fi
+  diagnostic="$(cat "$output_path" 2>/dev/null || true)"
+  summary="${diagnostic:-No diagnostic output was emitted.}"
+  summary="${summary:0:200}"
+  summary="action=${action} code=${status} summary=${summary}"
+  summary="${summary:0:240}"
+  wiseeff_upgrade_state_write recovery_failure_summary "$summary"
+  wiseeff_upgrade_event recovery-action-failed "$summary"
+  printf 'WiseEff recovery warning: %s\n' "$summary" >&2
+  rm -f -- "$output_path"
+  return "$status"
+}
+
 wiseeff_upgrade_mark_recovery_required() {
   local failure_service="${1:-recovery}"
   local failure_code="${2:-recovery-required}"
   local failure_summary="${3:-The upgrade requires operator recovery.}"
   local proxy_stop_status=0
   local queue_pause_status=0
+  local worker_stop_status=0
+  wiseeff_upgrade_state_write recovery_started true
   if [ -n "${1:-}" ] || [ -z "$(wiseeff_upgrade_state_read failure_code)" ]; then
     wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" "$failure_service" "$failure_code" "$failure_summary"
   fi
-  if wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy >/dev/null 2>&1; then
+  if wiseeff_upgrade_run_recovery_action proxy-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
     :
   else
     proxy_stop_status=$?
-    printf 'WiseEff recovery warning: proxy stop failed (code=%s); manual traffic isolation is required.\n' "$proxy_stop_status" >&2
-    wiseeff_upgrade_event recovery-proxy-stop-failed "code=${proxy_stop_status}"
   fi
   if [ -n "${upgrade_recovery_queue_image_tag:-}" ]; then
-    if wiseeff_upgrade_queue_command_for_image pause "$upgrade_recovery_queue_image_tag" >/dev/null 2>&1; then
+    if wiseeff_upgrade_run_recovery_action queue-pause wiseeff_upgrade_queue_command_for_image pause "$upgrade_recovery_queue_image_tag"; then
       :
     else
       queue_pause_status=$?
     fi
   elif [ -n "${upgrade_candidate_image_tag:-}" ]; then
-    if wiseeff_upgrade_queue_command_for_image pause "$upgrade_candidate_image_tag" >/dev/null 2>&1; then
+    if wiseeff_upgrade_run_recovery_action queue-pause wiseeff_upgrade_queue_command_for_image pause "$upgrade_candidate_image_tag"; then
       :
     else
       queue_pause_status=$?
     fi
   else
-    if wiseeff_upgrade_queue_command pause >/dev/null 2>&1; then
+    if wiseeff_upgrade_run_recovery_action queue-pause wiseeff_upgrade_queue_command pause; then
       :
     else
       queue_pause_status=$?
     fi
   fi
-  if [ "$queue_pause_status" -ne 0 ]; then
-    printf 'WiseEff recovery warning: queue pause failed (code=%s); manual queue isolation is required.\n' "$queue_pause_status" >&2
-    wiseeff_upgrade_event recovery-queue-pause-failed "code=${queue_pause_status}"
+  if wiseeff_upgrade_run_recovery_action worker-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" worker; then
+    :
+  else
+    worker_stop_status=$?
+    if [ "$queue_pause_status" -eq 0 ]; then
+      queue_pause_status="$worker_stop_status"
+    fi
   fi
-  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" worker >/dev/null 2>&1 || true
   wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write outcome recovery-required
-  wiseeff_upgrade_state_write next_action "resume or rollback --restore-data --confirm restore-${upgrade_run_id}"
+  wiseeff_upgrade_state_write next_action "$(wiseeff_upgrade_recovery_next_action)"
   wiseeff_upgrade_state_write restore_token "restore-${upgrade_run_id}"
   wiseeff_upgrade_state_write recovery_verified false
   wiseeff_upgrade_set_phase recovery-required recovery-required
@@ -1986,6 +2347,10 @@ wiseeff_upgrade_verify_final_state() {
   local service before after expected_image
   expected_image="$(wiseeff_upgrade_docker image inspect "$(wiseeff_upgrade_state_read candidate_image_tag)" -q 2>/dev/null || true)"
   [ -n "$expected_image" ] || return 1
+  if ! wiseeff_upgrade_probe_worker; then
+    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" worker candidate-worker-health "The candidate worker liveness or Docker health probe failed during final verification."
+    return 1
+  fi
   for service in postgres redis minio api worker web proxy; do
     after="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
     [ -n "$after" ] || return 1
@@ -2089,7 +2454,7 @@ wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_set_phase recovery-point-verified complete
 
   wiseeff_upgrade_set_phase restarting-data running
-  if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build postgres redis minio minio-init; then
+  if ! wiseeff_upgrade_start_candidate_data_plane; then
     if ! wiseeff_upgrade_restore_old_stack_after_stop; then
       return 70
     fi
@@ -2119,18 +2484,14 @@ wiseeff_upgrade_run_apply() {
     wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web or worker containers could not be recreated."
     return 70
   fi
-  if ! wiseeff_upgrade_probe_api /health/ready; then
-    wiseeff_upgrade_mark_recovery_required api candidate-api-ready "The candidate API readiness probe failed."
-    return 70
-  fi
-  if ! wiseeff_upgrade_probe_web; then
-    wiseeff_upgrade_mark_recovery_required web candidate-web-direct "The candidate web direct probe failed."
+  if ! wiseeff_upgrade_verify_candidate_app_readiness; then
+    wiseeff_upgrade_mark_recovery_required
     return 70
   fi
   wiseeff_upgrade_set_phase app-services-ready complete
 
   wiseeff_upgrade_set_phase resuming-queue running
-  if ! wiseeff_upgrade_queue_command resume; then
+  if ! wiseeff_upgrade_run_recovery_action candidate-queue-resume wiseeff_upgrade_queue_command resume; then
     wiseeff_upgrade_mark_recovery_required queue candidate-queue-resume "The candidate durable queue could not be resumed."
     return 70
   fi
@@ -2147,7 +2508,7 @@ wiseeff_upgrade_run_apply() {
     return 70
   fi
   if ! wiseeff_upgrade_verify_final_state; then
-    wiseeff_upgrade_mark_recovery_required recovery candidate-final-state "The candidate stack did not satisfy final identity or volume invariants."
+    wiseeff_upgrade_mark_recovery_required
     return 70
   fi
 
@@ -2207,7 +2568,7 @@ wiseeff_upgrade_status() {
           true|false) ;;
           *) runtime_proxy_status=false ;;
         esac
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -2241,6 +2602,7 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_verified" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_proxy_stopped" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_queue_paused" 2>/dev/null || printf 'false')")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_failure_summary" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"

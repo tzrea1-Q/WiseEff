@@ -248,11 +248,11 @@ chmod 600 .build-network.env
 
 ### 升级就绪语义
 
-升级控制器不会采用一个通用的 `running` 规则。PostgreSQL 和 Redis 必须是 Docker `healthy`；MinIO 的 `running` 只表示进程存活；`minio-init` 必须 `exited` 且退出码为 `0`。由于 Compose 文件有意没有 MinIO healthcheck，initializer 成功执行 `mc alias set` 并创建 bucket 才是 MinIO 就绪的权威证明。
+升级控制器不会采用一个通用的 `running` 规则。PostgreSQL 和 Redis 必须是 Docker `healthy`；MinIO 的 `running` 只表示进程存活；`minio-init` 必须 `exited` 且退出码为 `0`。由于 Compose 文件有意没有 MinIO healthcheck，initializer 成功执行 `mc alias set` 并创建 bucket 才是 MinIO 就绪的权威证明。等待 initializer 的每一轮和退出 `0` 后都会再次 inspect MinIO。
 
-部分升级失败后，`old-stack-restored` 表示旧 checkout/image set 已重建，且数据平面、queue resume、API live/ready、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连、旧应用 image identity、proxy/public 健康等恢复门禁全部通过。image identity 同时包含记录的 image 引用和不可变的 Docker image ID。`recovery-required` 表示至少一个门禁失败；在按 journal 执行 `resume` 或显式整点回滚前，proxy 保持停止、queue 保持暂停。禁止手工改 journal 或自行写入 `next_action=none`。
+候选 queue resume 前，`apply` 和 `resume` 都必须通过 API readiness、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连检查；worker 容器存在或 image identity 正确都不代表就绪。部分升级失败后，`old-stack-restored` 表示旧 checkout/image set 已重建、内部恢复门禁通过、queue 已恢复，且最后的 proxy/public 健康也通过。image identity 同时包含记录的 image 引用和不可变的 Docker image ID。`recovery-required` 表示至少一个门禁失败；读取隔离布尔值并只执行记录中的一个 `next_action`。禁止手工改 journal 或自行写入 `next_action=none`。
 
-使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified` 和 `next_action`。`failure_summary` 有长度限制并脱敏。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
+使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。两个 summary 都有长度限制并脱敏；任一恢复动作（包括 stop、pause 或 queue resume）失败时，其脱敏诊断会打印、写入 journal，并暴露为 `recovery_failure_summary`。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
 
 常用命令：
 
@@ -281,6 +281,8 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 ./scripts/upgrade.sh plan
 ./scripts/upgrade.sh apply
 ```
+
+如果部署机仍 checkout 在本次就绪/恢复修复之前的旧控制器提交，必须先 fetch 并切换到包含修复的已合入 release 或 commit，再执行 `plan` 和 `apply`；旧控制器无法解释新的状态机。切换 checkout 时保留 `.env`、journal/备份状态和 named volumes。
 
 `plan` 还会只读校验目标 commit 中固定校验和的 `linux/amd64` Dockerfile 基础镜像包。输出中的 `base image` 会说明本地是否已有完全一致的镜像，或 `apply` 将自动 load/tag 已验证的仓库 tar。安装本控制器版本后不再需要手工执行 `docker load`；准备动作发生在 Compose build 和停流量之前。运行的文本/JSON status 会同时记录 OCI manifest 与 Docker config digest，以及来源 `local` 或 `bundled-archive`，兼容 containerd 与经典 `overlay2` Docker 镜像存储。
 
@@ -337,14 +339,14 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 `unlock` 可安全重复执行：真实操作仍持锁时会返回退出码 `75`，且不会结束该进程。禁止手工删除 `.operation.lock`、owner 元数据或 fallback 锁目录。
 
-migration 后出现 `recovery-required` 属于事故状态。保持 proxy 停止，并按 journal 执行。整点恢复必须使用精确确认 token：
+migration 后出现 `recovery-required` 属于事故状态。先按 journal 完成隔离动作；rollback 会重试并验证隔离，proxy 或 queue/worker 仍未隔离时不会恢复数据。migration 后普通 `resume` 会被拒绝。整点恢复必须使用精确确认 token：
 
 ```bash
 ./scripts/upgrade.sh rollback --run-id <run-id> \
   --restore-data --confirm restore-<run-id>
 ```
 
-该操作可能丢弃恢复点之后的 PostgreSQL、对象存储和 durable Redis 写入，只能由事故负责人批准。
+该操作可能丢弃恢复点之后的 PostgreSQL、对象存储和 durable Redis 写入；只有旧栈完整验证（包括 worker 健康和 proxy/public）通过后才会写入 `rolled-back`，只能由事故负责人批准。
 
 ## 备份与恢复证据
 
@@ -420,7 +422,7 @@ npm run selfhost:release-gate -- \
 | `apply` 输出 `already running` | checkout、三个应用镜像引用和公网健康状态均已针对同一个目标 SHA 验证 | 目标版本已生效；只有确实要同版本全量重建时才加 `--restart` |
 | `/health/live` 通过但 `/health/ready` 失败 | API 存活，但必需依赖阻塞 | 保留 readiness JSON，按其中命名的依赖排查 |
 | `worker` 配置了 `restart: unless-stopped` 仍反复退出 | 属于启动、配置或依赖错误，而不是普通停止 | 先保留日志并检查依赖 readiness，禁止盲目重启循环 |
-| `recovery-required` | candidate migration 已开始，但自动安全收尾失败 | 保持 proxy 停止；执行 journal 指定的 `resume` 或获批整点回滚 |
+| `recovery-required` | 候选或恢复门禁失败 | 查看 `failed_phase`、`failure_service`、`failure_code` 和隔离布尔值；迁移前执行记录的 `resume`，迁移后执行带 token 的整点回滚 |
 
 ## 事故首轮处置
 
