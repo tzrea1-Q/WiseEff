@@ -93,6 +93,7 @@ export function DebugParameterBindingsDialog({
                         value={binding.accessMode}
                         onValueChange={(accessMode) => onBindingChange(protocol, { accessMode })}
                         disabled={fieldsDisabled}
+                        withinModal
                         options={[
                           { value: "RO", label: "RO · 只读" },
                           { value: "WO", label: "WO · 只写" },

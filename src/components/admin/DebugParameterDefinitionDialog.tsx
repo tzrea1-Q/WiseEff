@@ -158,6 +158,7 @@ export function DebugParameterDefinitionDialog({
                     onDraftChange(applyValueKindChange(valueKind as DebugValueKind));
                   }}
                   disabled={fieldsDisabled}
+                  withinModal
                   options={[
                     { value: DEBUG_VALUE_KIND_SCALAR, label: "标量" },
                     { value: DEBUG_VALUE_KIND_COMPLEX, label: "复杂配置" }
@@ -176,6 +177,7 @@ export function DebugParameterDefinitionDialog({
                         onDraftChange(applyValueFormatChange(valueFormat as DebugValueFormat));
                       }}
                       disabled={fieldsDisabled}
+                      withinModal
                       options={[
                         { value: DEBUG_VALUE_FORMAT_RAW, label: "原始文本" },
                         { value: DEBUG_VALUE_FORMAT_JSON, label: "JSON" },
@@ -195,6 +197,7 @@ export function DebugParameterDefinitionDialog({
                         onDraftChange(applyNormalizationModeChange(normalizationMode as DebugNormalizationMode));
                       }}
                       disabled={fieldsDisabled}
+                      withinModal
                       options={[
                         { value: DEBUG_NORMALIZATION_MODE_EXACT, label: "精确匹配" },
                         { value: DEBUG_NORMALIZATION_MODE_TRIM, label: "去除首尾空白" },
@@ -287,6 +290,7 @@ export function DebugParameterDefinitionDialog({
                   value={draft.risk}
                   onValueChange={(risk) => onDraftChange({ risk })}
                   disabled={fieldsDisabled}
+                  withinModal
                   options={[
                     { value: "High", label: "高" },
                     { value: "Medium", label: "中" },

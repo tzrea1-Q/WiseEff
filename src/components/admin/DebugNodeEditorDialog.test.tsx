@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DebugNodeEditorDialog } from "./DebugNodeEditorDialog";
 import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
@@ -61,5 +61,28 @@ describe("DebugNodeEditorDialog", () => {
         moduleId: "mod-a"
       })
     );
+  });
+
+  it("keeps the module tree menu inside the editor selector contract", () => {
+    render(
+      <DebugNodeEditorDialog
+        canEdit
+        loading={false}
+        mode="edit"
+        moduleNodes={moduleNodes}
+        node={node}
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "编辑节点" });
+    const trigger = within(dialog).getByRole("button", { name: "模块", expanded: false });
+    fireEvent.click(trigger);
+
+    expect(dialog).toHaveClass("debug-admin-definition-dialog");
+    expect(trigger).toHaveClass("module-tree-trigger");
+    expect(within(dialog).getByRole("tree")).toHaveClass("dropdown-menu", "module-tree-menu");
   });
 });

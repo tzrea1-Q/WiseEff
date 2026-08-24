@@ -5686,6 +5686,11 @@ td small {
   width: 100%;
 }
 
+/* SelectContent is portaled to body; modal forms need to clear the modal backdrop layer. */
+.debug-admin-select-content--modal[data-slot="select-content"] {
+  z-index: var(--z-modal-backdrop-nested);
+}
+
 .debug-admin-field select {
   min-height: 36px;
   padding: var(--space-2) 10px;
@@ -5791,6 +5796,68 @@ td small {
 .debug-admin-definition-dialog.param-admin-editor-dialog {
   width: min(720px, calc(100vw - 48px));
   max-height: min(88vh, 920px);
+}
+
+.debug-admin-definition-dialog .debug-admin-field:has(.module-tree-select) {
+  position: relative;
+  z-index: var(--z-sticky);
+}
+
+.debug-admin-definition-dialog .module-tree-select {
+  position: relative;
+  min-width: 0;
+}
+
+.debug-admin-definition-dialog .module-tree-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.debug-admin-definition-dialog .module-tree-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.debug-admin-definition-dialog .module-tree-trigger:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.debug-admin-definition-dialog .module-tree-trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-color: var(--app-primary);
+}
+
+.debug-admin-definition-dialog .module-tree-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.debug-admin-definition-dialog .module-tree-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: var(--z-sidebar);
+  width: 100%;
+  min-width: 260px;
+  max-width: none;
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  box-sizing: border-box;
 }
 
 .debug-admin-definition-dialog--complex.param-admin-editor-dialog {
