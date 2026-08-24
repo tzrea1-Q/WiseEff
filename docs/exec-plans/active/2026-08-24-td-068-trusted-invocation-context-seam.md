@@ -44,6 +44,35 @@ Tickets #611–#615 construct context at HTTP/Xiaoze/system entry points and mig
 - Full server suite passed on this branch: 354 files passed, 2 skipped; 2738 tests passed, 8 skipped.
 - `npm run build`, `npm run contract:check`, `npm run docs:check`, and `git diff --check` passed. The local database-schema portion of `docs:check` was skipped because pgvector is unavailable on this host.
 
+## #611 repair addendum (current branch)
+
+The #610 history and verification above are retained unchanged. The current #611 repair is recorded on:
+
+- Branch: `codex/td-068-durable-agent-provenance`
+- Base: `origin/main@f52038848`
+- Repair commit: `0dd0b39c6` (`fix(agent): close durable Xiaoze execution gaps (#611)`)
+- Boundary: reuse the #610 trusted invocation context seam; require a persistent `AgentOrchestrator` at `createXiaozeAgentFactory`; route proactive read-only perception through the same durable orchestrator; and pass one transaction authorization proof through the public `ToolRegistry.run` seam. No new provenance foundation, temporary UUID, or test-only execution fallback was added.
+- Every executing Xiaoze tool, including read-only perception, now obtains its persisted session/tool-call record through the orchestrator. Read-only contexts carry the persisted `sessionId` and `toolCallId`, with `approvalId: null`.
+
+The PostgreSQL durable-resume proof creates the session, action tool call, approval, and interrupt through public AG-UI input in instance A. Instance B then uses a fresh PostgreSQL connection, checkpointer, registry, orchestrator, and the same authenticated principal to resume from the persisted checkpoint. The public registry execution seam captures and asserts `initiator: agent`, the unchanged user/organization principal, and the persisted session/tool-call/approval ids. It also asserts that `editedArgs` is the complete persisted payload replacement, that the replacement is re-authorized once inside the transaction, and that the authorization proof is passed into execution before the domain-write seam.
+
+The same public resume path rejects a different approval id, a different body thread, an approval/tool-call mismatch, a tool-call/checkpoint mismatch, another user in the organization, and another organization. Each rejection occurs before `ToolRegistry.run`; the integration seam observes no additional execution and no domain write, while the pending durable rows remain pending.
+
+### #611 repair verification
+
+- TDD red evidence: the focused factory/orchestrator command first reported 2 failing tests (missing persistent-orchestrator enforcement and duplicate-authorization expectation); the suggest-route test first reported 1 failing persistence/context assertion while the old direct registry fallback was temporarily present.
+- Focused green command passed: `npm run test:server -- server/modules/agent/orchestrator.test.ts server/modules/agent/toolRegistry.test.ts server/modules/agent/xiaoze/agUiEndpoint.test.ts server/modules/agent/xiaoze/agUiEndpoint.concurrency.test.ts server/modules/agent/xiaoze/agUiEndpoint.assembly.test.ts server/modules/agent/xiaoze/planningGraph.test.ts server/modules/agent/xiaoze/durableAgentResume.integration.test.ts server/modules/agent/xiaoze/suggestRoutes.test.ts` — 8 files, 73 tests passed.
+- PostgreSQL durable-resume command passed: `npm run test:server -- server/modules/agent/xiaoze/durableAgentResume.integration.test.ts server/modules/agent/xiaoze/suggestRoutes.test.ts` — 2 files, 8 tests passed.
+- Full server command passed: `npm run test:server` — 355 files passed, 2 skipped; 2743 tests passed, 8 skipped.
+- `npm run build` passed (`tsc -b` and Vite build); Vite retained the existing large-chunk warning.
+- `npm run contract:check` passed: OpenAPI contract artifact is current.
+- `npm run docs:check` passed. Its database-schema/pgvector check was skipped because the host does not provide the pgvector extension; CI remains the pgvector/pgvector:pg16 verification boundary.
+- `npm run lint` passed with 0 errors and the existing 299 frontend warnings.
+- Verification-matrix acceptance specs were run separately with isolated ports and object roots, not the running 5173/8787 services. `xiaoze-perception.acceptance.spec.ts` at frontend `5175` / API `18787` with `/tmp/wiseeff-611-perception.47mXaE` passed 4/4 including warmup. `xiaoze-action.acceptance.spec.ts` at frontend `5176` / API `18788` with `/tmp/wiseeff-611-action.73LvlO` completed 6 passed, 1 skipped, 1 failed; the only failure was the known main-red browser approval-card timeout at `e2e/acceptance/xiaoze-action.acceptance.spec.ts:776` after 60 seconds. The other action flows passed, and this UI baseline issue is outside the #611 durable provenance repair.
+- After the plan updates and documentation commit, `git diff --check origin/main...HEAD` passed.
+
+No PR was opened or merged. This addendum does not claim complete local CI green because the known action UI baseline failure remains and the pgvector schema check is skipped.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Evidence |
