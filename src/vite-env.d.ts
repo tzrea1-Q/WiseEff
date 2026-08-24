@@ -30,6 +30,9 @@ interface ImportMetaEnv {
   readonly MODE: string;
   readonly VITE_WISEEFF_API_AUTHORIZATION?: string;
   readonly VITE_WISEEFF_API_BASE_URL?: string;
+  readonly VITE_WISEEFF_APP_VERSION?: string;
+  readonly VITE_WISEEFF_CONTACT_HREF?: string;
+  readonly VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER?: string;
   readonly VITE_WISEEFF_RUNTIME_MODE?: string;
   /** @deprecated Flag retired (#240); workbench is always enabled and this value is ignored. */
   readonly VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED?: string;

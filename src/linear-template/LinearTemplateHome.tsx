@@ -5,6 +5,8 @@ import { PlatformFlowSection } from "./PlatformFlowSection";
 import { SubAppEntryRow } from "./SubAppEntryRow";
 import { handleSpaLinkClick } from "./spaLinkNavigation";
 import { homepageHeroWorkflowPhrase, isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
+import { AppFooter } from "@/components/common/AppFooter";
+import { appFooterConfig } from "@/config/appFooterConfig";
 import "./linear-template.css";
 
 type OnNavigate = (path: string) => void;
@@ -42,7 +44,13 @@ const footerColumns = [
   }
 ];
 
-export function LinearTemplateHome({ onNavigate }: { onNavigate?: OnNavigate }) {
+export function LinearTemplateHome({
+  onNavigate,
+  onFeedback
+}: {
+  onNavigate?: OnNavigate;
+  onFeedback: () => void;
+}) {
   return (
     <div className="linear-template-home light-homepage" data-theme="light">
       <TemplateHeader onNavigate={onNavigate} />
@@ -54,7 +62,7 @@ export function LinearTemplateHome({ onNavigate }: { onNavigate?: OnNavigate }) 
         </section>
         <PlatformFlowSection />
       </main>
-      <TemplateFooter onNavigate={onNavigate} />
+      <TemplateFooter onNavigate={onNavigate} onFeedback={onFeedback} />
     </div>
   );
 }
@@ -146,7 +154,13 @@ function Hero({ onNavigate }: { onNavigate?: OnNavigate }) {
   );
 }
 
-function TemplateFooter({ onNavigate }: { onNavigate?: OnNavigate }) {
+function TemplateFooter({
+  onNavigate,
+  onFeedback
+}: {
+  onNavigate?: OnNavigate;
+  onFeedback: () => void;
+}) {
   return (
     <footer className="linear-footer">
       <Container className="linear-footer-inner">
@@ -176,6 +190,9 @@ function TemplateFooter({ onNavigate }: { onNavigate?: OnNavigate }) {
             </div>
           ))}
         </div>
+      </Container>
+      <Container>
+        <AppFooter config={appFooterConfig} onFeedback={onFeedback} variant="homepage" />
       </Container>
     </footer>
   );

@@ -1675,6 +1675,31 @@ body {
   scrollbar-gutter: stable;
 }
 
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.app-footer__meta,
+.app-footer__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.app-footer--homepage {
+  margin-top: var(--space-8);
+  color: var(--linear-grey);
+}
+
 .home-content {
   padding: 0;
 }
@@ -6870,6 +6895,16 @@ td small {
 }
 
 @media (max-width: 768px) {
+  .app-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-footer__meta,
+  .app-footer__actions {
+    justify-content: flex-start;
+  }
+
   .app-shell-skeleton__sidebar {
     display: none;
   }

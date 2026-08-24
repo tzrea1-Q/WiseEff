@@ -28,6 +28,7 @@
 
 ## 当前操作重点
 
+- `SHELL-FOOTER-001`：Admin 在纳入范围的路由到达页面末尾版权/版本信息并打开当前页反馈；首页不重复 footer landmark，全高配置工作台不减少工作高度。`coverage: automated`，见 `e2e/acceptance/shell-navigation.acceptance.spec.ts`。
 - `AUTH-LOCAL-PASSWORD-001`：已登录用户在个人资料改密并吊销其它会话。`coverage: future`（单元测试；共享验收仍注入 HMAC smoke，不走本地登录表单）。
 - `AUTH-LOCAL-ADMIN-RESET-001`：Admin 在 `/organization/members` 重置成员密码并吊销该用户全部会话。`coverage: future`。
 - `AUTH-LOCAL-SELF-REGISTER-001`：关闭自助注册后隐藏「注册」且 API 拒绝注册。`coverage: future`。
