@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CircleX } from "lucide-react";
 import { bindingForProtocol } from "@/debugAdminDraft";
 import type { DebugConnectionProtocol, DebugNodeProtocolBinding } from "@/domain/debugging/types";
 import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
@@ -60,6 +61,16 @@ export function DebugNodeBindingsDialog({
             <h2 id={titleId}>{nodeName}</h2>
             <p>配置 HDC / ADB 节点路径、访问模式与启用状态。</p>
           </div>
+          <button
+            type="button"
+            className="audit-dialog-close-icon"
+            onClick={onClose}
+            disabled={loading}
+            aria-label="关闭协议节点绑定"
+            title={loading ? "操作进行中，暂时无法关闭。" : undefined}
+          >
+            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+          </button>
         </div>
 
         <div className="param-admin-editor-dialog-body">
@@ -146,12 +157,25 @@ export function DebugNodeBindingsDialog({
         </div>
 
         <div className="dialog-actions">
-          <Button type="button" onClick={onSave} disabled={fieldsDisabled}>
-            {isApiMode ? "关闭" : "保存"}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            取消
-          </Button>
+          {isApiMode ? (
+            <Button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              title={loading ? "操作进行中，暂时无法关闭。" : undefined}
+            >
+              关闭
+            </Button>
+          ) : (
+            <>
+              <Button type="button" onClick={onSave} disabled={fieldsDisabled}>
+                保存
+              </Button>
+              <Button type="button" variant="outline" onClick={onClose}>
+                取消
+              </Button>
+            </>
+          )}
         </div>
         </>
       )}

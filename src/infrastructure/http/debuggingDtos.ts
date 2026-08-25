@@ -294,6 +294,8 @@ export type DebugRuntimeNodeDto = {
   writeFormatExample?: string;
   writeFormatHint?: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   protocol: DebugConnectionProtocol;
   nodePath: string;
   accessMode: DebugParameterAccessMode;
@@ -315,6 +317,8 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     writeFormatExample: dto.writeFormatExample,
     writeFormatHint: dto.writeFormatHint,
     module: dto.module || "Device Nodes",
+    moduleId: dto.moduleId,
+    modulePath: dto.modulePath,
     currentValue: "",
     targetValue: "",
     unit: "",

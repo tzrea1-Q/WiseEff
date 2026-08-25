@@ -7,6 +7,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
+import { ModuleTreeSelect } from "./components/common/ModuleTreeSelect";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
 import { NodeOperationHistoryPanel } from "./components/NodeOperationHistoryPanel";
@@ -38,6 +39,11 @@ import {
 } from "./debugValueKind";
 import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debugging/writeFormat";
 import { nodeRowSubtitle } from "@/domain/debugging/nodeRowSubtitle";
+import {
+  buildRuntimeDebugModuleTree,
+  filterDebugNodesByModuleTree,
+  modulePathLabelForDebugNode
+} from "@/debugAdminModules";
 import type { PrototypeState } from "@/domain/prototype/types";
 
 export { readInitialNodeDebuggingProtocol };
@@ -293,6 +299,7 @@ export function NodeDebuggingPage({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [moduleFilters, setModuleFilters] = useState<string[]>([]);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -314,8 +321,16 @@ export function NodeDebuggingPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [protocol, runtimeReady]);
 
+  const moduleNodes = useMemo(() => buildRuntimeDebugModuleTree(rows), [rows]);
+  const activeModuleFilters = useMemo(() => {
+    const availableModuleIds = new Set(moduleNodes.map((node) => node.id));
+    return moduleFilters.filter((moduleId) => availableModuleIds.has(moduleId));
+  }, [moduleFilters, moduleNodes]);
+  const moduleScopedRows = useMemo(() => {
+    return filterDebugNodesByModuleTree(rows, moduleNodes, activeModuleFilters);
+  }, [activeModuleFilters, moduleNodes, rows]);
   const visibleRows = useMemo(() => {
-    return rows.filter((row) => {
+    return moduleScopedRows.filter((row) => {
       const matchesSearch =
         !normalizedQuery ||
         row.name.toLowerCase().includes(normalizedQuery) ||
@@ -324,7 +339,7 @@ export function NodeDebuggingPage({
       const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus);
       return matchesSearch && matchesStatus;
     });
-  }, [normalizedQuery, rows, statusFilters]);
+  }, [moduleScopedRows, normalizedQuery, statusFilters]);
 
   const statusOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.runtimeStatus))).map((status) => ({ value: status, label: status })),
@@ -342,6 +357,18 @@ export function NodeDebuggingPage({
     [selectableVisibleIds, selectedIds]
   );
   const allVisibleSelected = selectableVisibleIds.length > 0 && selectedVisibleCount === selectableVisibleIds.length;
+
+  const renderModuleFilter = (label: string) => (
+    <ModuleTreeSelect
+      label={label}
+      mode="multi-filter"
+      nodes={moduleNodes}
+      value={activeModuleFilters}
+      onChange={(next) => setModuleFilters(Array.isArray(next) ? next : [next])}
+      disabled={moduleNodes.length === 0}
+      portalMenu
+    />
+  );
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -441,10 +468,13 @@ export function NodeDebuggingPage({
                 />
               </label>
               <span className="parameters-table-count">显示 {visibleRows.length} / {rows.length} 个参数</span>
+              <div className="node-debugging-mobile-filters">
+                {renderModuleFilter("模块筛选")}
+              </div>
             </div>
 
             <HorizontalDragScroll className="parameters-table-scroll">
-              <table className="parameters-table-grid">
+              <table className="parameters-table-grid node-debugging-grid">
                 <thead>
                   <tr>
                     <th scope="col">
@@ -460,6 +490,11 @@ export function NodeDebuggingPage({
                     <th scope="col">
                       <div className="parameters-table-head-cell">
                         <span>参数名称</span>
+                      </div>
+                    </th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        {renderModuleFilter("模块")}
                       </div>
                     </th>
                     <th scope="col">
@@ -496,6 +531,7 @@ export function NodeDebuggingPage({
                 <tbody>
                   {visibleRows.map((row) => {
                     const subtitle = nodeRowSubtitle(row);
+                    const modulePath = modulePathLabelForDebugNode(row, moduleNodes);
                     return (
                     <tr key={row.id}>
                       <td data-label="选择">
@@ -510,6 +546,14 @@ export function NodeDebuggingPage({
                       <td data-label="参数名称">
                         <strong>{row.name}</strong>
                         {subtitle ? <small>{subtitle}</small> : null}
+                      </td>
+                      <td data-label="模块">
+                        <span
+                          className="node-debug-module-cell"
+                          title={modulePath}
+                        >
+                          {modulePath || "未分类"}
+                        </span>
                       </td>
                       <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
@@ -559,6 +603,7 @@ export function NodeDebuggingPage({
                     onClick={() => {
                       setSearchQuery("");
                       setStatusFilters([]);
+                      setModuleFilters([]);
                     }}
                   >
                     清除筛选条件

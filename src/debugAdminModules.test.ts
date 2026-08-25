@@ -3,6 +3,7 @@ import {
   buildDebugModuleTree,
   buildDebugModulesFromNodes,
   buildModuleSelectOptions,
+  buildRuntimeDebugModuleTree,
   countDebugNodesByModuleId,
   debugNodeModuleId,
   debugNodesInModuleId,
@@ -68,6 +69,41 @@ describe("debugAdminModules", () => {
     const moduleNodes = buildDebugModuleTree(nodes);
     const chargingId = legacyModuleIdFromName("Battery Charging");
     expect(filterDebugNodesByModuleTree(nodes, moduleNodes, [chargingId]).map((node) => node.id)).toEqual(["node-1"]);
+  });
+
+  it("builds a runtime tree from API module ids and breadcrumb paths", () => {
+    const runtimeNodes = [
+      { id: "node-1", module: "Charging", moduleId: "debug-charging", modulePath: ["Power", "Charging"] },
+      { id: "node-2", module: "Thermal", moduleId: "debug-thermal", modulePath: ["Power", "Thermal"] }
+    ];
+    const moduleNodes = buildRuntimeDebugModuleTree(runtimeNodes);
+
+    expect(moduleNodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "runtime:Power", name: "Power", parentId: null }),
+        expect.objectContaining({ id: "debug-charging", name: "Charging", parentId: "runtime:Power" })
+      ])
+    );
+    expect(filterDebugNodesByModuleTree(runtimeNodes, moduleNodes, ["runtime:Power"]).map((node) => node.id)).toEqual([
+      "node-1",
+      "node-2"
+    ]);
+  });
+
+  it("reuses an explicit parent id when a parent also owns a direct node", () => {
+    const runtimeNodes = [
+      { id: "node-parent", module: "Power", moduleId: "debug-power", modulePath: ["Power"] },
+      { id: "node-child", module: "Charging", moduleId: "debug-charging", modulePath: ["Power", "Charging"] }
+    ];
+    const moduleNodes = buildRuntimeDebugModuleTree(runtimeNodes);
+    const powerNodes = moduleNodes.filter((node) => node.name === "Power");
+
+    expect(powerNodes).toHaveLength(1);
+    expect(powerNodes[0]).toMatchObject({ id: "debug-power", parentId: null });
+    expect(filterDebugNodesByModuleTree(runtimeNodes, moduleNodes, ["debug-power"]).map((node) => node.id)).toEqual([
+      "node-parent",
+      "node-child"
+    ]);
   });
 
   it("resolves debug node module id from legacy name", () => {

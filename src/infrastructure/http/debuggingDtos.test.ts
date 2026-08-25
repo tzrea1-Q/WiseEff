@@ -124,6 +124,8 @@ describe("debugging dto mappers", () => {
       writeFormatExample: "3100",
       writeFormatHint: "第一行说明。\n第二行说明。",
       module: "Charging",
+      moduleId: "debug-module-charging",
+      modulePath: ["Power", "Charging"],
       protocol: "hdc",
       nodePath: "/sys/class/power/input_current",
       accessMode: "RW",
@@ -134,6 +136,8 @@ describe("debugging dto mappers", () => {
       id: nodeId,
       key: nodeId,
       module: "Charging",
+      moduleId: "debug-module-charging",
+      modulePath: ["Power", "Charging"],
       detailedDescription: "用于限制适配器输入电流。\n写入前确认电源规格。",
       writeFormatExample: "3100",
       writeFormatHint: "第一行说明。\n第二行说明。"

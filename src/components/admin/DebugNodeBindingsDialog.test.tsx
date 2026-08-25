@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DebugNodeProtocolBinding } from "@/domain/debugging/types";
 import { DebugNodeBindingsDialog } from "./DebugNodeBindingsDialog";
@@ -31,8 +31,62 @@ describe("DebugNodeBindingsDialog", () => {
     expect(screen.getByRole("dialog", { name: "快充电流限制" })).toBeInTheDocument();
     expect(screen.getByLabelText("HDC 节点路径")).toBeInTheDocument();
     expect(screen.getByLabelText("ADB 节点路径")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "快充电流限制" });
+    expect(within(dialog).getByRole("button", { name: "关闭协议节点绑定" })).toBeInTheDocument();
+    const footer = dialog.querySelector(".dialog-actions");
+    expect(footer).not.toBeNull();
+    expect(within(footer as HTMLElement).getByRole("button", { name: "关闭" })).toBeInTheDocument();
+    expect(within(footer as HTMLElement).queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+  });
+
+  it("calls onClose from the top-right close button", () => {
+    const onClose = vi.fn();
+
+    render(
+      <DebugNodeBindingsDialog
+        nodeName="快充电流限制"
+        draft={buildBindings()}
+        nodeId="node-1"
+        isApiMode
+        canEdit
+        loading={false}
+        onBindingChange={vi.fn()}
+        onSave={vi.fn()}
+        onSaveBinding={vi.fn()}
+        onArchiveBinding={vi.fn()}
+        onClose={onClose}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭协议节点绑定" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the API footer close action available to read-only users", () => {
+    const onClose = vi.fn();
+
+    render(
+      <DebugNodeBindingsDialog
+        nodeName="快充电流限制"
+        draft={buildBindings()}
+        nodeId="node-1"
+        isApiMode
+        canEdit={false}
+        loading={false}
+        onBindingChange={vi.fn()}
+        onSave={vi.fn()}
+        onSaveBinding={vi.fn()}
+        onArchiveBinding={vi.fn()}
+        onClose={onClose}
+      />
+    );
+
+    const closeButton = screen.getByRole("button", { name: "关闭" });
+    expect(closeButton).toBeEnabled();
+    fireEvent.click(closeButton);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("calls onSave from footer action in mock mode", () => {
@@ -55,6 +109,8 @@ describe("DebugNodeBindingsDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(onSave).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "关闭协议节点绑定" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   });
 
   it("calls save callback for protocol action", () => {

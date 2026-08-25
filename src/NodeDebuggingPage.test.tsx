@@ -1391,8 +1391,11 @@ describe("/node-debugging", () => {
     expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选访问模式" })).not.toBeInTheDocument();
+
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    expect(within(moduleHeader).getByRole("button", { name: "模块", expanded: false })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "模块筛选", expanded: false })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "待写入" }));
@@ -1424,7 +1427,6 @@ describe("/node-debugging", () => {
     expect(screen.queryByRole("button", { name: "筛选当前值" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选目标写入值" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选范围" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
 
     const statusHeader = screen.getByRole("columnheader", { name: /状态/ });
     fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
@@ -1432,6 +1434,39 @@ describe("/node-debugging", () => {
 
     expect(findRowByText("charger.trickle_switch_soc")).toBeInTheDocument();
     expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("shows a hierarchical module column and filters rows by a selected module subtree", async () => {
+    const debugParameters = userState.debugParameters.map((parameter) => {
+      const modulePath = parameter.module === "Charging Policy"
+        ? ["Power", "Charging Policy"]
+        : parameter.module === "Battery Safety"
+          ? ["Power", "Battery Safety"]
+          : ["Power", parameter.module];
+      return {
+        ...parameter,
+        moduleId: `debug-${parameter.module.toLowerCase().replaceAll(" ", "-")}`,
+        modulePath
+      };
+    });
+
+    renderApp({ initialAppState: { ...userState, debugParameters }, runtimeMode: "mock" });
+
+    await screen.findByText(mockStoryConnectedLabel);
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    expect(within(moduleHeader).getByRole("button", { name: "模块", expanded: false })).toBeInTheDocument();
+    expect(findRowByText("charger.input_current_limit_ma").querySelector('[data-label="模块"]')).toHaveTextContent(
+      "Power / Charging Policy"
+    );
+
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "模块", expanded: false }));
+    const tree = screen.getByRole("tree");
+    expect(within(tree).getByText("Power")).toBeInTheDocument();
+    fireEvent.click(within(tree).getByRole("checkbox", { name: "Charging Policy" }));
+
+    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByText("battery.impedance_mohm")).not.toBeInTheDocument();
+    expect(within(moduleHeader).getByRole("button", { name: /模块 \(1\)/ })).toHaveTextContent("模块 (1)");
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {

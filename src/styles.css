@@ -2484,6 +2484,10 @@ body {
   white-space: nowrap;
 }
 
+.node-debugging-mobile-filters {
+  display: none;
+}
+
 .debugging-action-buttons {
   display: flex;
   gap: 9px;
@@ -8462,6 +8466,17 @@ td small {
   font-weight: 700;
 }
 
+.node-debugging-page .node-debug-module-cell {
+  display: block;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node-debugging-page .parameters-table-grid th:nth-child(7),
 .node-debugging-page .parameters-table-grid td:nth-child(7),
 .node-debugging-page .parameters-table-grid th:last-child,
@@ -8745,18 +8760,20 @@ td small {
 
   .node-debugging-page .parameters-table-grid th:nth-child(3),
   .node-debugging-page .parameters-table-grid td:nth-child(3) {
-    position: sticky;
-    width: 88px;
-    min-width: 88px;
-    left: 308px;
-    z-index: 3;
-    background: var(--surface);
-    text-align: center;
+    width: 20%;
+    min-width: 140px;
+    max-width: 220px;
+    text-align: left;
+    vertical-align: top;
   }
 
-  .node-debugging-page .parameters-table-grid th:nth-child(3) {
-    z-index: 5;
-    background: var(--surface-low);
+  .node-debugging-page .parameters-table-grid th:nth-child(4),
+  .node-debugging-page .parameters-table-grid td:nth-child(4) {
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .node-debugging-page .parameters-table-grid th:last-child,
@@ -10605,6 +10622,7 @@ td small {
 
 .feedback-dialog-header {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
@@ -11003,6 +11021,20 @@ td small {
     display: none;
   }
 
+  .parameters-table-grid.node-debugging-grid th:nth-child(3),
+  .parameters-table-grid.node-debugging-grid td:nth-child(3),
+  .parameters-table-grid.node-debugging-grid th:nth-child(6),
+  .parameters-table-grid.node-debugging-grid td:nth-child(6) {
+    display: table-cell;
+  }
+
+  .parameters-table-grid.node-debugging-grid th:nth-child(4),
+  .parameters-table-grid.node-debugging-grid td:nth-child(4),
+  .parameters-table-grid.node-debugging-grid th:nth-child(7),
+  .parameters-table-grid.node-debugging-grid td:nth-child(7) {
+    display: none;
+  }
+
   .parameters-table-grid th:nth-child(2),
   .parameters-table-grid td:nth-child(2) {
     width: clamp(128px, 34vw, 220px);
@@ -11077,6 +11109,17 @@ td small {
     max-width: none;
     min-width: 0;
     height: auto;
+  }
+
+  .node-debugging-mobile-filters {
+    display: flex;
+    width: 100%;
+  }
+
+  .node-debugging-mobile-filters .module-tree-select,
+  .node-debugging-mobile-filters .module-tree-trigger {
+    width: 100%;
+    min-width: 0;
   }
 
   .parameters-table-scroll {
@@ -16040,6 +16083,58 @@ body.xiaoze-popup-resize-active {
   min-width: 148px;
 }
 
+/* Portaled to document.body so the menu is not clipped by the module table's
+   horizontal scrollport or the dialog's overflow boundary. */
+.param-admin-module-more-menu-list {
+  position: fixed;
+  z-index: var(--z-sticky);
+  display: grid;
+  gap: var(--space-1);
+  max-height: none;
+  overflow: visible;
+  right: auto;
+  left: auto;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+}
+
+.param-admin-module-more-menu-list .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.param-admin-module-more-menu-list .dropdown-item:hover {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.param-admin-module-more-menu-list .dropdown-item--danger {
+  color: var(--danger);
+}
+
+.param-admin-module-more-menu-list .dropdown-item--danger:disabled {
+  color: color-mix(in srgb, var(--danger) 45%, var(--surface));
+  cursor: not-allowed;
+}
+
+.param-admin-module-more-menu-list .dropdown-item--danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
 .param-admin-shell .dropdown-item--danger {
   color: #b42318;
 }
@@ -16237,6 +16332,22 @@ body.xiaoze-popup-resize-active {
   color: var(--text);
 }
 
+.module-tree-menu--portal {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  min-width: 260px;
+  width: max-content;
+  max-width: min(400px, calc(100vw - 1rem));
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-1);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+}
+
 .module-tree-option-row {
   display: flex;
   align-items: flex-start;
@@ -16356,6 +16467,11 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-2);
   width: 100%;
   text-align: left;
+}
+
+.module-tree-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .module-tree-trigger-content {
@@ -17483,6 +17599,11 @@ body.xiaoze-popup-resize-active {
     background-color var(--duration-fast) var(--ease-out);
 }
 
+.audit-dialog-close-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .audit-dialog-close-icon:hover {
   color: var(--foreground);
   background: color-mix(in srgb, var(--muted) 55%, transparent);
@@ -17984,10 +18105,10 @@ body.xiaoze-popup-resize-active {
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
-.param-admin-shell .dropdown-menu {
+.param-admin-shell .dropdown-menu,
+.param-admin-module-dialog .dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
   z-index: var(--z-sticky);
   min-width: 210px;
   max-height: 280px;
@@ -17999,7 +18120,12 @@ body.xiaoze-popup-resize-active {
   box-shadow: var(--shadow-soft);
 }
 
-.param-admin-shell .dropdown-item {
+.param-admin-shell .dropdown-menu {
+  left: 0;
+}
+
+.param-admin-shell .dropdown-item,
+.param-admin-module-dialog .dropdown-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -18015,7 +18141,8 @@ body.xiaoze-popup-resize-active {
   text-align: left;
 }
 
-.param-admin-shell .dropdown-item:hover {
+.param-admin-shell .dropdown-item:hover,
+.param-admin-module-dialog .dropdown-item:hover {
   background: rgba(16, 28, 45, 0.04);
 }
 

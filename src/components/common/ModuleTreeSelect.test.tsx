@@ -94,4 +94,23 @@ describe("ModuleTreeSelect", () => {
     fireEvent.click(within(tree).getByRole("button", { name: "电池" }));
     expect(onChange).toHaveBeenCalledWith("pm-b");
   });
+
+  it("can portal its menu outside an overflow container", () => {
+    render(
+      <div style={{ overflow: "hidden" }}>
+        <ModuleTreeSelect
+          mode="multi-filter"
+          label="模块"
+          nodes={[...nodes]}
+          value={[]}
+          onChange={() => undefined}
+          portalMenu
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "模块" }));
+
+    expect(screen.getByRole("tree").parentElement).toBe(document.body);
+  });
 });

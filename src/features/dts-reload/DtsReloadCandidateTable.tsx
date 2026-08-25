@@ -117,7 +117,6 @@ export function DtsReloadCandidateTable({
         columns={columns}
         pageSize={pageSize}
         selectedRowKeys={selectedBindingIds}
-        onRowClick={(candidate) => onToggle(candidate.bindingId)}
         emptyMessage="当前筛选条件下没有可列出的参数。"
         emptyState={loading ? <p className="text-sm text-muted-foreground">加载中…</p> : undefined}
         toolbar={

@@ -314,6 +314,37 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
   });
 
+  it("shows registration guidance only while the registration form is active", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active.")),
+      getLocalAuthConfig: vi.fn(async () => ({
+        provider: "local" as const,
+        selfRegisterEnabled: true,
+        hasLocalAdmin: true,
+        evaluationOrganizationName: "ChargeLab"
+      })),
+      register: vi.fn()
+    };
+
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(screen.queryByText(/新账号将加入评估组织/)).not.toBeInTheDocument();
+    expect(screen.queryByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("用户名")).not.toHaveAttribute("aria-describedby", "local-auth-username-hint");
+
+    fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
+
+    expect(screen.getByText(/新账号将加入评估组织「ChargeLab」/)).toBeInTheDocument();
+    expect(screen.getByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).toBeInTheDocument();
+    expect(screen.getByLabelText("用户名")).toHaveAttribute("aria-describedby", "local-auth-username-hint");
+  });
+
   it("clears the stored token and shows login when the auth probe is rejected as unauthenticated", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     window.localStorage.setItem("wiseeff.localAuthToken", "stale-token");
@@ -602,7 +633,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
-    expect(await screen.findByText(/评估组织「ChargeLab」/)).toBeInTheDocument();
+    expect(screen.queryByText(/新账号将加入评估组织/)).not.toBeInTheDocument();
+    expect(screen.queryByText("3–64 个字符，仅限字母、数字、点、下划线和连字符。")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "注册" })).not.toBeInTheDocument();
     expect(authClient.getLocalAuthConfig).toHaveBeenCalled();
   });

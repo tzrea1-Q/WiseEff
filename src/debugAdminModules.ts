@@ -2,13 +2,19 @@ import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
 import { collectSubtreeModuleIds, legacyModuleIdFromName, type FlatModuleNode } from "@/domain/modules/moduleTree";
 import { buildPowerManagementModuleTree, type PowerManagementParameterModule } from "@/powerManagementConfig";
 
+type DebugModuleSource = {
+  module: string;
+  moduleId?: string;
+  modulePath?: readonly string[];
+};
+
 /** Resolve the module id used for tree filters from a debug node row. */
-export function debugNodeModuleId(entry: { module: string; moduleId?: string }) {
-  return entry.moduleId ?? legacyModuleIdFromName(entry.module);
+export function debugNodeModuleId(entry: DebugModuleSource) {
+  return entry.moduleId?.trim() || legacyModuleIdFromName(entry.module);
 }
 
 export function modulePathLabelForDebugNode(
-  node: { module: string; modulePath?: string[] },
+  node: { module: string; modulePath?: readonly string[] },
   moduleNodes: readonly FlatModuleNode[]
 ) {
   if (node.modulePath && node.modulePath.length > 0) {
@@ -26,6 +32,60 @@ export function modulePathLabelForDebugNode(
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   return segments.join(" / ");
+}
+
+/** Build a runtime module tree from the API's explicit module ids and paths. */
+export function buildRuntimeDebugModuleTree(nodes: readonly DebugModuleSource[]): FlatModuleNode[] {
+  const moduleNodes = new Map<string, FlatModuleNode>();
+  const normalizedNodes = nodes.flatMap((node) => {
+    const leafName = node.module.trim();
+    if (!leafName) {
+      return [];
+    }
+
+    const pathSegments = (node.modulePath ?? []).map((segment) => segment.trim()).filter(Boolean);
+    if (pathSegments.length === 0) {
+      pathSegments.push(leafName);
+    } else if (pathSegments[pathSegments.length - 1] !== leafName) {
+      pathSegments.push(leafName);
+    }
+
+    return [{ leafName, pathSegments, leafId: debugNodeModuleId({ module: leafName, moduleId: node.moduleId }) }];
+  });
+  const explicitIdsByPath = new Map<string, string>();
+
+  // A parent can be both a real module row and an ancestor synthesized from a
+  // child row. Resolve all explicit ids first so both rows share one tree node.
+  normalizedNodes.forEach(({ pathSegments, leafId }) => {
+    explicitIdsByPath.set(JSON.stringify(pathSegments), leafId);
+  });
+  let sortOrder = 0;
+
+  for (const { pathSegments, leafId } of normalizedNodes) {
+    let parentId: string | null = null;
+    const pathIds: string[] = [];
+    pathSegments.forEach((name, index) => {
+      const isLeaf = index === pathSegments.length - 1;
+      const pathKey = JSON.stringify(pathSegments.slice(0, index + 1));
+      const id = explicitIdsByPath.get(pathKey) ??
+        (isLeaf ? leafId : `runtime:${pathSegments.slice(0, index + 1).join("/")}`);
+      pathIds.push(id);
+
+      if (!moduleNodes.has(id)) {
+        moduleNodes.set(id, {
+          id,
+          name,
+          parentId,
+          path: pathIds.join("/"),
+          depth: index + 1,
+          sortOrder: sortOrder++
+        });
+      }
+      parentId = id;
+    });
+  }
+
+  return Array.from(moduleNodes.values());
 }
 
 export function buildDebugModuleTree(
@@ -48,13 +108,13 @@ export function debugNodesInModuleId(nodes: readonly DebugNodeRegistryEntry[], m
     .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
 }
 
-export function filterDebugNodesByModuleTree(
-  nodes: readonly DebugNodeRegistryEntry[],
+export function filterDebugNodesByModuleTree<T extends DebugModuleSource>(
+  nodes: readonly T[],
   moduleNodes: readonly FlatModuleNode[],
   selectedModuleIds: readonly string[]
-) {
+): T[] {
   if (selectedModuleIds.length === 0) {
-    return nodes;
+    return [...nodes];
   }
   const allowed = collectSubtreeModuleIds(moduleNodes, selectedModuleIds);
   return nodes.filter((node) => allowed.has(debugNodeModuleId(node)));
