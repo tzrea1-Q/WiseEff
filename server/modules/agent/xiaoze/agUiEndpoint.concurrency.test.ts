@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import { createAgentOrchestrator } from "../orchestrator";
+import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import type { createAgentToolRegistry } from "../toolRegistry";
 import { createXiaozeAgentFactory } from "./agUiEndpoint";
 import { createXiaozeCheckpointer } from "./checkpointer";
@@ -14,11 +15,6 @@ function authFor(userId: string): AuthContext {
     roles: [{ projectId: null, roleId: "admin" }]
   } as AuthContext;
 }
-
-const stubDb = {
-  query: async () => ({ rows: [], rowCount: 0 }),
-  transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({ query: async () => ({ rows: [], rowCount: 0 }) })
-} as unknown as Database;
 
 type RecordedCall = { projectId: string; userId: string };
 
@@ -55,13 +51,30 @@ describe("createXiaozeAgentFactory request isolation", () => {
     vi.unstubAllEnvs();
   });
 
+  it("requires a persistent orchestrator before constructing an agent factory", () => {
+    expect(() =>
+      createXiaozeAgentFactory({
+        db: createMemoryAgentDb().db,
+        env: {
+          XIAOZE_CHECKPOINTER: "memory",
+          XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
+          DATABASE_URL: undefined
+        } as never,
+        checkpointer: createXiaozeCheckpointer(),
+        toolRegistry: createFakeRegistry([])
+      } as never)
+    ).toThrow("persistent Agent orchestrator");
+  });
+
   it("runs without constructing the production model in deterministic mode", async () => {
     vi.stubEnv("XIAOZE_DETERMINISTIC", "true");
     const productionModelFactory = vi.fn(() => {
       throw new Error("external provider model must not be constructed");
     });
+    const { db } = createMemoryAgentDb();
+    const toolRegistry = createFakeRegistry([]);
     const factory = createXiaozeAgentFactory({
-      db: stubDb,
+      db,
       env: {
         XIAOZE_LLM_CONFIG: {
           source: "canonical",
@@ -74,8 +87,8 @@ describe("createXiaozeAgentFactory request isolation", () => {
       },
       modelFactory: productionModelFactory,
       checkpointer: createXiaozeCheckpointer(),
-      toolRegistry: createFakeRegistry([]),
-      approvalResolver: { resolveApproval: vi.fn() }
+      toolRegistry,
+      orchestrator: createAgentOrchestrator({ db, toolRegistry })
     });
 
     const agent = factory({ auth: authFor("deterministic-user"), requestId: "req-deterministic", sessionId: "t-deterministic" });
@@ -91,6 +104,8 @@ describe("createXiaozeAgentFactory request isolation", () => {
 
   it("keeps auth context and sink per request when runs overlap", async () => {
     const calls: RecordedCall[] = [];
+    const { db } = createMemoryAgentDb();
+    const toolRegistry = createFakeRegistry(calls);
     let releaseSlow: (() => void) | undefined;
     const slowGate = new Promise<void>((resolve) => {
       releaseSlow = resolve;
@@ -117,7 +132,7 @@ describe("createXiaozeAgentFactory request isolation", () => {
     };
 
     const factory = createXiaozeAgentFactory({
-      db: stubDb,
+      db,
       env: {
         XIAOZE_CHECKPOINTER: "memory",
         XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
@@ -129,8 +144,8 @@ describe("createXiaozeAgentFactory request isolation", () => {
       } as never,
       modelFactory: () => model,
       checkpointer: createXiaozeCheckpointer(),
-      toolRegistry: createFakeRegistry(calls),
-      approvalResolver: { resolveApproval: vi.fn() }
+      toolRegistry,
+      orchestrator: createAgentOrchestrator({ db, toolRegistry })
     });
 
     const slowAuth = authFor("user-slow");

@@ -105,6 +105,10 @@ const PlanningState = Annotation.Root({
     reducer: (_, update) => (update === null ? undefined : update),
     default: () => undefined
   }),
+  pendingMutatingToolCallId: Annotation<string | undefined>({
+    reducer: (_, update) => (update === null ? undefined : update),
+    default: () => undefined
+  }),
   turnCount: Annotation<number>({
     reducer: (_, update) => update ?? 0,
     default: () => 0
@@ -139,6 +143,7 @@ function beginTurnState(): Partial<PlanningGraphState> {
     reasoning: "",
     halted: false,
     pendingMutatingCall: null as unknown as undefined,
+    pendingMutatingToolCallId: null as unknown as undefined,
     interrupt: null as unknown as undefined,
     perceivedCitations: []
   };
@@ -165,12 +170,13 @@ function buildInitialMessages(input: PlanningAgentRunInput, tools: PerceptionToo
 
 function extractInterruptFromState(finalState: PlanningGraphState & { __interrupt__?: Array<{ value?: unknown }> }): PerceptionAgentRunResult["interrupt"] | undefined {
   const interruptEntry = finalState.__interrupt__?.[0]?.value as
-    | { toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
+    | { toolCallId?: string; toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
     | undefined;
   if (!interruptEntry?.toolName || !interruptEntry.payload) {
     return undefined;
   }
   return {
+    toolCallId: interruptEntry.toolCallId,
     toolName: interruptEntry.toolName,
     payload: interruptEntry.payload,
     citations: interruptEntry.citations ?? finalState.perceivedCitations
@@ -182,7 +188,8 @@ export function createPlanningAgent(options: {
   runTool: (
     name: string,
     payload: Record<string, unknown>,
-    requestContext?: PlanningRequestContext
+    requestContext?: PlanningRequestContext,
+    toolCallId?: string
   ) => Promise<AgentToolResult>;
   listTools: () => PerceptionToolDescriptor[];
   checkpointer?: XiaozeCheckpointer;
@@ -248,21 +255,23 @@ export function createPlanningAgent(options: {
     const messages = [...state.messages, { role: "assistant", tool_calls: response.toolCalls }];
     const citations = [...state.perceivedCitations];
     let pendingMutating: PerceptionModelToolCall | undefined;
+    let pendingMutatingToolCallId: string | undefined;
 
     for (const call of response.toolCalls) {
       const toolDefinition = options.listTools().find((tool) => tool.name === call.name);
       if (toolDefinition?.requiresApproval) {
         pendingMutating = call;
+        pendingMutatingToolCallId = createToolCallId();
         break;
       }
       const payload = mergeToolPayload(call.args, state.context);
-      const toolCallId = call.id || createToolCallId();
+      const toolCallId = createToolCallId();
       const label = getXiaozeToolLabel(call.name);
       const { step, finish } = startRunStep({ kind: "tool", label, toolName: call.name });
       pushSink(config, { type: "step_started", step });
       pushSink(config, { type: "tool_call", toolCallId, toolName: call.name, args: payload });
       try {
-        const result = await options.runTool(call.name, payload, readRunScope(config).requestContext);
+        const result = await options.runTool(call.name, payload, readRunScope(config).requestContext, toolCallId);
         citations.push(...result.citations);
         messages.push({
           role: "tool",
@@ -305,6 +314,7 @@ export function createPlanningAgent(options: {
         messages,
         perceivedCitations: citations,
         pendingMutatingCall: pendingMutating,
+        pendingMutatingToolCallId,
         reasoning: mergeReasoningText(state.reasoning, response.reasoning),
         turnCount: state.turnCount + 1
       };
@@ -337,8 +347,16 @@ export function createPlanningAgent(options: {
       return {};
     }
 
+    const pendingToolCallId = state.pendingMutatingToolCallId;
+    if (!pendingToolCallId) {
+      throw new ApiError("CONFLICT", "Xiaoze approval checkpoint is missing durable tool-call correlation.", {
+        sessionId: readRunScope(config).requestContext?.sessionId
+      });
+    }
+
     const payload = mergeToolPayload(pending.args, state.context);
     const interruptPayload = {
+      toolCallId: pendingToolCallId,
       toolName: pending.name,
       payload,
       citations: state.perceivedCitations
@@ -359,12 +377,15 @@ export function createPlanningAgent(options: {
         requestId: requestContext.requestId,
         approvalId: resumeDecision.approvalId,
         decision: "reject",
+        expectedSessionId: requestContext.sessionId,
+        expectedToolCallId: pendingToolCallId,
         reason: resumeDecision.reason
       });
       return {
         text: resumed.text,
         halted: true,
         pendingMutatingCall: undefined,
+        pendingMutatingToolCallId: undefined,
         interrupt: undefined,
         step: state.step + 1
       };
@@ -384,6 +405,8 @@ export function createPlanningAgent(options: {
         requestId: requestContext.requestId,
         approvalId: resumeDecision.approvalId,
         decision: resumeDecision.decision,
+        expectedSessionId: requestContext.sessionId,
+        expectedToolCallId: pendingToolCallId,
         editedArgs: resumeDecision.editedArgs,
         reason: resumeDecision.reason
       });
@@ -397,6 +420,7 @@ export function createPlanningAgent(options: {
         text: summary,
         halted: true,
         pendingMutatingCall: undefined,
+        pendingMutatingToolCallId: undefined,
         interrupt: undefined,
         step: state.step + 1
       };
@@ -415,6 +439,7 @@ export function createPlanningAgent(options: {
     return {
       messages,
       pendingMutatingCall: undefined,
+      pendingMutatingToolCallId: undefined,
       interrupt: undefined,
       step: state.step + 1
     };
@@ -577,7 +602,7 @@ export function createPlanningAgent(options: {
       } catch (error) {
         if (isGraphInterrupt(error)) {
           const value = error.interrupts?.[0]?.value as
-            | { toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
+            | { toolCallId?: string; toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
             | undefined;
           if (value?.toolName && value.payload) {
             await checkpointer.ensureInterruptCheckpointDurable(checkpointThreadId);
@@ -592,6 +617,7 @@ export function createPlanningAgent(options: {
               citations: value.citations ?? [],
               promptDebug: buildPromptDebug(llmMessages),
               interrupt: {
+                toolCallId: value.toolCallId,
                 toolName: value.toolName,
                 payload: value.payload,
                 citations: value.citations ?? []
@@ -605,4 +631,3 @@ export function createPlanningAgent(options: {
     }
   };
 }
-

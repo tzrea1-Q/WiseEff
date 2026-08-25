@@ -29,7 +29,12 @@ function createToolDefinition(input: {
 
 function createRegistry(
   definitions: AgentToolDefinition[],
-  run: (name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) => Promise<AgentToolResult>
+  run: (
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>,
+    authorization?: unknown
+  ) => Promise<AgentToolResult>
 ) {
   const byName = new Map<AgentToolName, AgentToolDefinition>(
     definitions.map((definition) => [definition.name, definition])
@@ -316,6 +321,45 @@ describe("agent orchestrator", () => {
     expect(JSON.stringify(spans)).not.toContain("req-turn-secret");
   });
 
+  it("persists read-only Xiaoze calls and derives Agent provenance from the durable row", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.getProjectOverview", requiresApproval: false })],
+      async () => ({ summary: "Project overview ready.", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext,
+      requestId: "req-read-provenance",
+      sessionId,
+      toolCallId: "server-tool-read-1",
+      request: {
+        name: "perception.getProjectOverview",
+        label: "Get project overview",
+        payload: { projectId: "aurora" }
+      }
+    });
+
+    expect(toolCall).toMatchObject({ id: "server-tool-read-1", status: "succeeded" });
+    expect(tables.toolCalls[0]).toMatchObject({ id: "server-tool-read-1", session_id: sessionId, status: "succeeded" });
+    expect(registry.run).toHaveBeenCalledWith(
+      "perception.getProjectOverview",
+      expect.objectContaining({
+        sessionId,
+        invocation: expect.objectContaining({
+          initiator: "agent",
+          sessionId,
+          toolCallId: "server-tool-read-1",
+          approvalId: null,
+          principal: expect.objectContaining({ user: expect.objectContaining({ id: developmentAuthContext.user.id }) })
+        })
+      }),
+      expect.any(Object)
+    );
+  });
+
   it("runToolCall rejects pending approval calls with an approval-required ApiError", async () => {
     const { db } = createMemoryDb();
     const orchestrator = createAgentOrchestrator({ db });
@@ -379,7 +423,15 @@ describe("agent orchestrator", () => {
     expect(registry.run).toHaveBeenCalledTimes(1);
     expect(registry.run).toHaveBeenCalledWith(
       "action.submitParameterChange",
-      expect.objectContaining({ approvalId: toolCall.approvalId }),
+      expect.objectContaining({
+        approvalId: toolCall.approvalId,
+        invocation: expect.objectContaining({
+          initiator: "agent",
+          sessionId,
+          toolCallId: toolCall.id,
+          approvalId: toolCall.approvalId
+        })
+      }),
       expect.any(Object)
     );
     expect(turn.approvals[0]).toMatchObject({ status: "approved", decidedByUserId: developmentAuthContext.user.id });
@@ -836,6 +888,48 @@ describe("agent approval chain (beginApproval / resolveApproval)", () => {
     expect(resolved.text).toContain("9999");
   });
 
+  it("passes one transaction authorization through the public registry run seam", async () => {
+    const { db } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const authorization = { kind: "agent-tool-authorization" };
+    registry.authorize.mockReturnValue(authorization);
+    registry.run.mockImplementation(
+      async (
+        name: AgentToolName,
+        context: AgentToolExecutionContext,
+        payload: Record<string, unknown>,
+        passedAuthorization?: unknown
+      ) => {
+        if (passedAuthorization === undefined) {
+          registry.authorize(name, context, payload);
+        }
+        return {
+          summary: `Submitted parameter change with target ${String(payload.targetValue)}.`,
+          data: {},
+          citations: []
+        };
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-single-auth"));
+
+    await orchestrator.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-single-auth",
+      approvalId: begun.approvalId,
+      decision: "approve",
+      editedArgs: { ...mutatingPayload, targetValue: "7777" }
+    });
+
+    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.run).toHaveBeenCalledWith(
+      "action.submitParameterChange",
+      expect.anything(),
+      expect.objectContaining({ targetValue: "7777" }),
+      authorization
+    );
+  });
+
   it("resolveApproval with editedArgs on a decided approval raises an invalid-state conflict", async () => {
     const { db } = createMemoryDb();
     const registry = createMutatingRegistry();
@@ -883,5 +977,27 @@ describe("agent approval chain (beginApproval / resolveApproval)", () => {
     );
     expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "4242" });
     expect(resolved.text).toContain("4242");
+  });
+
+  it("rejects a resume approval that does not target the checkpointed durable tool call", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-resume-target"));
+
+    await expect(
+      orchestrator.resolveApproval({
+        auth: developmentAuthContext,
+        requestId: "req-resume-mismatch",
+        approvalId: begun.approvalId,
+        decision: "approve",
+        expectedSessionId: "another-session",
+        expectedToolCallId: begun.toolCallId
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]).toMatchObject({ status: "pending" });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval" });
   });
 });
