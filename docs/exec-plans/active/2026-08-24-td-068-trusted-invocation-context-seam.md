@@ -100,16 +100,40 @@ The preceding #611 repair evidence retains its original host boundary, where the
 - `npm run acceptance:evidence` was run but did not pass because this focused Xiaoze run does not contain the full P0/P1 operation-record corpus. The command is required when operation-evidence coverage changes; #611 changes neither the operation matrix nor evidence helpers, so this focused-corpus failure is recorded but is not claimed as a pass or used as the #611 landing gate.
 - GitHub Actions remain unavailable because the monthly quota is exhausted. The owner authorized the complete exact-tree local matrix as merge authority. The parent/session owner still owns final review, PR creation, merge, issue closure, and local `main` synchronization.
 
+## #612 implementation checkpoint
+
+- Scope: migrate all five DTS reload mutation entries — start-run, restore-baseline, deploy, configuration update, and promote-to-drafts — plus their five HTTP mutation routes to the branded `TrustedInvocationContext` seam.
+- HTTP routes construct `createUserInvocation(auth)` inside the server and pass the server-owned refusal pool handle. Request bodies, query strings, headers, DTO fields, and arbitrary `actorType` strings do not select provenance; the route regression tests cover all five routes with body/header spoof values.
+- Every domain entry validates the brand and authenticated-principal match before mutation. User calls retain the existing permission, sensitive-token, lease, snapshot, bridge-capability, transaction, and audit behavior; Agent and System calls fail before domain/device writes.
+- The mutation context requires a server-owned refusal pool handle and rejects a missing or malformed handle as an internal invariant failure; refusal writers never fall back to the caller's transaction.
+- Agent refusal remains `dts-reload-agent-refused`. System refusal is fixed as `dts-reload-system-refused`; System refusal audits use the platform path with `actorUserId: null`, `organizationId: null`, and the constructed service/job identity. Agent refusal audits retain principal, session, tool-call, approval, action, target, request, and `requireHuman` correlation.
+- Refusal evidence uses the existing trusted audit writer on the server-owned refusal handle. The real PostgreSQL matrix runs each of the 25 operation/context cells inside an outer transaction, rolls that transaction back, and verifies durable refusal evidence, unchanged domain tables, no lease/snapshot/device side effect, and no success audit.
+
+### #612 TDD and verification evidence
+
+- Red: `npm run test:server -- server/modules/dts-reload/routes.test.ts --run` failed 1 test on the pre-migration implementation because the configuration route passed only `{ requestId: "test-request" }`; the test required a formally constructed server-owned user invocation and client `actorType: "agent"` was not allowed to affect it.
+- Focused green: `npm run test:server -- server/modules/dts-reload --run` passed 18 files / 217 tests, including service, deploy, restore-baseline, configuration, promote, routes, and the real PostgreSQL provenance matrix.
+- The provenance matrix has five operations × user/agent/system/missing/malformed contexts. User cases reach the original business validation path; Agent/System cases return stable 403s with durable truthful refusal audits; missing/malformed cases raise `INVALID_TRUSTED_INVOCATION_CONTEXT`; all rejected cells have no mutation, success audit, lease, snapshot, or device call.
+- Hardware/HDC validation is intentionally out of scope. The deploy matrix uses an adapter spy to prove refusal happens before the bridge/device seam; it is not hardware evidence.
+- #613–#615 remain open follow-up migrations. This shared plan stays active and is not moved to `completed/` by #612.
+
+### #612 final verification boundary
+
+- `npx tsc -b`, `npm run build`, `npm run contract:check`, `TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`, `npm run selfhost:check`, and `git diff --check` passed on the implementation tree. The build retained the existing Vite large-chunk warnings; lint passed with 0 errors and 300 existing warnings.
+- `npm run test:server` passed 357 files / 2 skipped and 2754 tests / 8 skipped. `npm run test:scripts` passed 69 files / 948 tests with 5 skipped; `npm run bridge:test` passed 21 files / 138 tests.
+- `npm run test:all` was not green: its frontend phase failed 5 existing UI tests by the repository's 5-second timeout (410/415 files and 3067/3072 tests passed). The same command was reproduced on the clean `origin/main` worktree, where 3 different existing frontend failures occurred (412/415 files and 3069/3072 tests passed). No unrelated frontend fix was included in #612.
+- `npm run acceptance:evidence` was not run because #612 does not change operation-evidence coverage, and no HDC or hardware acceptance was requested or claimed. GitHub Actions remain unavailable because the monthly quota is exhausted.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Repository maps and agent guidance | Review | `AGENTS.md`; it already routes security/auth/audit work to the relevant docs. |
 | Planning and technical-debt tracking | Review | `docs/PLANS.md`, `docs/exec-plans/tech-debt-tracker.md`; both retain TD-068 Open and its migration boundary. |
-| Product and API contracts | No change | `docs/design-docs/api-contract.md`, `server/modules/contracts/`; no route, request DTO, `/me`, header, body, or OpenAPI surface changed. |
+| Product and API contracts | Review | `docs/design-docs/api-contract.md`, `server/modules/contracts/`; route paths and request contracts remain unchanged, while server-owned provenance and actor-field stripping are covered by route tests. |
 | Architecture and domain model | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md`. |
 | Security and audit guidance | Review | `docs/SECURITY.md`, `server/modules/audit/auditedWrite.ts`; trusted-context and no-default-user rules remain a partial migration. |
-| Quality and verification docs | No change | `docs/QUALITY_SCORE.md`, `docs/developer/verification-matrix.md`; existing server, contract, docs, build, and diff gates apply. |
+| Quality and verification docs | Review | `docs/QUALITY_SCORE.md`, `docs/developer/verification-matrix.md`; #612 adds a real PostgreSQL five-operation provenance matrix and keeps HDC outside its evidence boundary. |
 | Chinese developer docs | Review | `docs/zh-CN/SECURITY.md`, `docs/zh-CN/design-docs/full-stack-architecture.md`, `docs/zh-CN/design-docs/domain-model.md`, `docs/zh-CN/PLANS.md`. |
 | Generated artifacts, runbooks, frontend/design, references | No change | `docs/generated/`, `docs/runbooks/`, `src/`, `docs/references/`; no generated schema, operation, runtime, UI, or operator-procedure change. |
 
@@ -117,7 +141,9 @@ The preceding #611 repair evidence retains its original host boundary, where the
 
 - [x] ADR-0038 and the bilingual security/architecture/domain/API planning references were reviewed against the implemented seam.
 - [x] No public contract or frontend documentation became stale.
-- [x] The failed first full run and the successful exact-tree full rerun are recorded without calling the failed run green.
+- [x] #612 scope, Red evidence, the 25-cell PostgreSQL matrix, refusal codes, rollback-audit boundary, and HDC evidence boundary are recorded here and in the synchronized Chinese plan.
+- [x] #612 did not absorb or modify the compact-footer documentation work in the original dirty worktree.
+- [x] #612's failed frontend phase, clean-`origin/main` reproduction, and successful independent server/scripts/bridge gates are recorded without calling `npm run test:all` green.
 - [x] Resolved the inherited acceptance-quality failures through #617 / PR #619 and reran the complete required local CI on the rebased final tree.
 - [x] #610 obtained zero-finding final Standards and Spec reviews before its merge; #611 receives its own final parent review after this landing record.
 - [ ] Move this plan to `completed/` only after the complete TD-068 migration and closure evidence land.

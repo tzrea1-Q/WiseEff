@@ -100,16 +100,40 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - 已运行 `npm run acceptance:evidence`，但因本次 focused Xiaoze run 不包含全量 P0/P1 operation records，该命令未通过。只有 operation-evidence coverage 发生变化时才要求该命令；#611 未修改 operation matrix 或 evidence helper，因此如实记录该 focused-corpus 失败，不将其宣称为通过，也不把它用作 #611 合入门禁。
 - GitHub Actions 因月度额度耗尽仍不可用。Owner 已授权以精确树完整本地矩阵作为合入依据。最终 review、PR 创建、合入、Issue 关闭与本地 `main` 同步仍由 parent/session owner 负责。
 
+## #612 实现检查点
+
+- 范围：将 DTS 重载五个领域 mutation 入口——start-run、restore-baseline、deploy、configuration update、promote-to-drafts——及其五个 HTTP mutation route 全部迁移到 branded `TrustedInvocationContext` seam。
+- HTTP route 在服务端内部创建 `createUserInvocation(auth)`，并传入服务端拥有的拒绝审计 pool handle。request body、query、header、DTO 字段及任意 `actorType` 字符串都不能选择 provenance；route 回归测试在五个 route 上覆盖 body/header spoof。
+- 每个领域入口在任何 mutation 前校验 brand 与认证主体匹配。User 保留既有 permission、敏感操作 token、lease、snapshot、bridge capability、transaction 与审计行为；Agent/System 在领域或设备写入前 fail closed。
+- mutation context 要求服务端拥有的 refusal pool handle；handle 缺失或 malformed 时按内部不变量失败，拒绝写入器绝不回退到调用者事务。
+- Agent 拒绝继续使用 `dts-reload-agent-refused`。System 拒绝固定为 `dts-reload-system-refused`；System 拒绝审计使用 platform path，`actorUserId: null`、`organizationId: null`，并记录构造出的 service/job identity。Agent 拒绝保留 principal、session、tool-call、approval、action、target、request、`requireHuman` correlation。
+- 拒绝证据复用现有 trusted audit writer，并通过服务端拥有的 refusal handle 写入。真实 PostgreSQL 矩阵把 25 个 operation/context cell 分别放入外层事务，随后回滚该事务，再验证拒绝审计仍持久、领域表无变化、没有 lease/snapshot/device side effect，也没有 success audit。
+
+### #612 TDD 与验证证据
+
+- Red：`npm run test:server -- server/modules/dts-reload/routes.test.ts --run` 在迁移前实现上 1 个测试失败，原因是 configuration route 只传 `{ requestId: "test-request" }`；测试要求正式构造的服务端 user invocation，且客户端 `actorType: "agent"` 不得影响它。
+- 聚焦 Green：`npm run test:server -- server/modules/dts-reload --run` 通过 18 个文件 / 217 个测试，包含 service、deploy、restore-baseline、configuration、promote、routes 及真实 PostgreSQL provenance matrix。
+- provenance matrix 为五个操作 × user/agent/system/missing/malformed。User case 进入原有业务校验路径；Agent/System 返回稳定 403 并留下真实 durable refusal audit；missing/malformed 抛出 `INVALID_TRUSTED_INVOCATION_CONTEXT`；所有拒绝 cell 均无 mutation、success audit、lease、snapshot 或 device call。
+- 硬件/HDC 验证明确不在本 Issue 范围内。deploy 矩阵用 adapter spy 证明拒绝发生在 bridge/device seam 之前；该证据不等同硬件验证。
+- #613–#615 仍是开放的后续迁移。本共享计划保持 active，#612 不把它移入 `completed/`。
+
+### #612 最终验证边界
+
+- `npx tsc -b`、`npm run build`、`npm run contract:check`、`TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`、`npm run selfhost:check` 和 `git diff --check` 在实现树上通过。build 保留既有 Vite large-chunk warnings；lint 通过，0 errors、300 个既有 warnings。
+- `npm run test:server` 通过 357 个文件 / 2 个跳过、2754 个测试 / 8 个跳过。`npm run test:scripts` 通过 69 个文件 / 948 个测试，5 个跳过；`npm run bridge:test` 通过 21 个文件 / 138 个测试。
+- `npm run test:all` 未全绿：其 frontend 阶段有 5 个既有 UI 测试触发仓库 5 秒超时（410/415 文件、3067/3072 测试通过）。同一命令在干净 `origin/main` worktree 复现出 3 个不同的既有 frontend 失败（412/415 文件、3069/3072 测试通过）。#612 未混入任何无关 frontend 修复。
+- 因 #612 没有改变 operation-evidence coverage，未运行 `npm run acceptance:evidence`；没有要求或宣称 HDC/硬件验收。GitHub Actions 因本月额度耗尽仍不可用。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |
 | --- | --- | --- |
 | 仓库地图与 Agent 指引 | Review | `AGENTS.md`；已将安全/auth/审计工作路由到相关文档。 |
 | 计划与技术债台账 | Review | `docs/PLANS.md`、`docs/exec-plans/tech-debt-tracker.md`；已保留 TD-068 Open 及迁移边界。 |
-| 产品与 API 契约 | No change | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；未修改 route、request DTO、`/me`、header、body 或 OpenAPI 表面。 |
+| 产品与 API 契约 | Review | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；route path 与 request contract 不变，服务端 provenance 与 actor 字段剥离由 route 测试覆盖。 |
 | 架构与领域模型 | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`、`docs/design-docs/full-stack-architecture.md`、`docs/design-docs/domain-model.md`。 |
 | 安全与审计指引 | Review | `docs/SECURITY.md`、`server/modules/audit/auditedWrite.ts`；可信上下文及禁止 default-user 仍是部分迁移。 |
-| 质量与验证文档 | No change | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；使用现有 server、contract、docs、build、diff 门禁。 |
+| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#612 增加真实 PostgreSQL 五操作 provenance matrix，并明确 HDC 不在本证据边界内。 |
 | 中文开发文档 | Review | `docs/zh-CN/SECURITY.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/zh-CN/PLANS.md`。 |
 | 生成物、runbook、前端/设计、references | No change | `docs/generated/`、`docs/runbooks/`、`src/`、`docs/references/`；没有生成 schema、operation、运行时、UI 或运维流程变化。 |
 
@@ -117,7 +141,9 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 - [x] 已按实现 seam 复核 ADR-0038 及英中文安全/架构/领域/API/计划引用。
 - [x] 没有公开契约或前端文档因此变陈旧。
-- [x] 已如实记录第一次全量失败与同树完整重跑通过，没有把失败运行宣称为绿色。
+- [x] 已在本文件及同步的英文计划中记录 #612 范围、Red、25-cell PostgreSQL matrix、拒绝 code、rollback audit 边界及 HDC 证据边界。
+- [x] #612 没有吸收或修改原脏工作树中的 compact-footer 文档改动。
+- [x] 已如实记录 #612 的 frontend 阶段失败、干净 `origin/main` 复现及独立 server/scripts/bridge 门禁通过，没有把 `npm run test:all` 失败运行宣称为绿色。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
 - [x] #610 在自身合入前取得 Standards 与 Spec 最终复审零 finding；#611 在本合入记录后由 parent 独立进行最终复审。
 - [ ] 只有完整 TD-068 迁移和收口证据落地后，才能将本计划移入 `completed/`。
