@@ -44,9 +44,9 @@ Tickets #611–#615 construct context at HTTP/Xiaoze/system entry points and mig
 - Full server suite passed on this branch: 354 files passed, 2 skipped; 2738 tests passed, 8 skipped.
 - `npm run build`, `npm run contract:check`, `npm run docs:check`, and `git diff --check` passed. The local database-schema portion of `docs:check` was skipped because pgvector is unavailable on this host.
 
-## #611 repair addendum (current branch)
+## #611 repair addendum (historical pre-final-rebase checkpoint)
 
-The #610 history and verification above are retained unchanged. The current #611 repair is recorded on:
+The #610 history and verification above are retained unchanged. This historical #611 repair checkpoint was recorded on:
 
 - Branch: `codex/td-068-durable-agent-provenance`
 - Base: `origin/main@f52038848`
@@ -71,7 +71,7 @@ The same public resume path rejects a different approval id, a different body th
 - Verification-matrix acceptance specs were run separately with isolated ports and object roots, not the running 5173/8787 services. `xiaoze-perception.acceptance.spec.ts` at frontend `5175` / API `18787` with `/tmp/wiseeff-611-perception.47mXaE` passed 4/4 including warmup. `xiaoze-action.acceptance.spec.ts` at frontend `5176` / API `18788` with `/tmp/wiseeff-611-action.73LvlO` completed 6 passed, 1 skipped, 1 failed; the only failure was the known main-red browser approval-card timeout at `e2e/acceptance/xiaoze-action.acceptance.spec.ts:776` after 60 seconds. The other action flows passed, and this UI baseline issue is outside the #611 durable provenance repair.
 - After the plan updates and documentation commit, `git diff --check origin/main...HEAD` passed.
 
-### #611 cleanup repair continuation
+### #611 cleanup repair continuation (historical pre-final-rebase checkpoint)
 
 This continuation is test-only and does not change production behavior, the trusted invocation model, ToolRegistry authorization proof, or AG-UI interfaces.
 
@@ -86,7 +86,19 @@ This continuation is test-only and does not change production behavior, the trus
 - Parent/current pgvector revalidation used `TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check` against the local `pgvector/pgvector:pg16` container. Documentation governance passed and `db-schema artifact is current`; the schema check was not skipped.
 - After this plan update and its separate documentation commit, `git diff --check origin/main...HEAD` passed.
 
-The preceding #611 repair evidence retains its original host boundary, where the pgvector check was skipped; this cleanup continuation records the later pgvector revalidation above. No PR was opened or merged. This plan does not claim complete local CI green because the known action UI baseline failure remains.
+The preceding #611 repair evidence retains its original host boundary, where the pgvector check was skipped; this cleanup continuation records the later pgvector revalidation above. No PR was opened or merged at that checkpoint. It did not claim complete local CI green because the action UI baseline failure still existed at that time.
+
+## #611 final rebase and landing verification
+
+- Finalization branch/worktree: `codex/td-068-durable-agent-provenance-final` at `/Users/tzrea1/Develop/WiseEff-td611-final`.
+- Final rebase base: `origin/main@c9abd61c7bcf1508c7728f330cb6b2e40f4534ba`. The five rebased commits are `8284fc8e0`, `a13550b73`, `be77cd27d`, `9977885a2`, and production/test tip `68d76d88e`; `git range-diff` reported each patch exactly equivalent to its pre-rebase commit.
+- The final diff contains only the bilingual active plan and the related `server/modules/agent/**` implementation/tests. The `XiaozeProvider` repair from #625 is inherited from `main` and is not reintroduced by #611.
+- Exact-tree PostgreSQL verification passed: the durable-resume file passed 3/3; the five-file Agent focus passed 60/60; the complete server suite passed 356 files with 2747 tests passed and 5 tests skipped.
+- `npm run test:all` passed: frontend 411 files / 3048 tests, scripts 69 files / 926 passed / 5 skipped, bridge 21 files / 138 tests, and server 356 files / 2747 passed / 5 skipped. `npm run build`, `npm run contract:check`, pgvector-backed `npm run docs:check`, `npm run lint` (0 errors; existing 299 warnings), `npm run selfhost:check`, `npm run acceptance:ci`, `npm run acceptance:models`, `npm run acceptance:coverage`, `npm run acceptance:operations`, and `git diff --check` passed.
+- Owned-runtime Xiaoze acceptance passed on source-clean production/test tip `68d76d88e`: action 7 passed / 1 planned skip, perception 4 passed, two consecutive approval-card runs each passed 2/2 including warmup, and planning passed 3/3 including warmup. The planning run `full-20260825t013501071z-68d76d88e58d-880ccd19` finished with both processes stopped and its exact database/object root removed.
+- The earlier approval-card main-red was repaired independently by #625 before this final rebase. Final action evidence confirms the card is visible and approvable, the chat remains open, no domain write occurs before approval, resume completes with Agent provenance, and the open change-request count changes from 0 to 1.
+- `npm run acceptance:evidence` was run but did not pass because this focused Xiaoze run does not contain the full P0/P1 operation-record corpus. The command is required when operation-evidence coverage changes; #611 changes neither the operation matrix nor evidence helpers, so this focused-corpus failure is recorded but is not claimed as a pass or used as the #611 landing gate.
+- GitHub Actions remain unavailable because the monthly quota is exhausted. The owner authorized the complete exact-tree local matrix as merge authority. The parent/session owner still owns final review, PR creation, merge, issue closure, and local `main` synchronization.
 
 ## Documentation Impact Matrix
 
@@ -107,9 +119,9 @@ The preceding #611 repair evidence retains its original host boundary, where the
 - [x] No public contract or frontend documentation became stale.
 - [x] The failed first full run and the successful exact-tree full rerun are recorded without calling the failed run green.
 - [x] Resolved the inherited acceptance-quality failures through #617 / PR #619 and reran the complete required local CI on the rebased final tree.
-- [x] Obtained zero-finding final Standards and Spec reviews before merge.
+- [x] #610 obtained zero-finding final Standards and Spec reviews before its merge; #611 receives its own final parent review after this landing record.
 - [ ] Move this plan to `completed/` only after the complete TD-068 migration and closure evidence land.
 
 ## Git & PR Workflow
 
-Implementation and review fixes are committed separately from this documentation record on `codex/td-068-trusted-invocation-context`. The parent/session owner retains responsibility for the PR, the owner-approved full-local-CI exception, merge, and main synchronization.
+The historical #610 implementation and review fixes were committed separately from its documentation record on `codex/td-068-trusted-invocation-context`. The current #611 finalization branch is `codex/td-068-durable-agent-provenance-final`; the parent/session owner retains responsibility for the PR, the owner-approved full-local-CI exception, merge, issue closure, and main synchronization.
