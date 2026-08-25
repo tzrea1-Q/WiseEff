@@ -48,6 +48,7 @@ import type {
   DeviceBridgePairingCode,
   LocalBridgeHealthState
 } from "@/infrastructure/http/deviceBridgeClient";
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { cn } from "@/lib/utils";
 
 export type DtsReloadBridgeOption = {
@@ -77,7 +78,10 @@ export type DtsReloadPageProps = {
   /** Optional pairing-code seam for the bridge panel — defaults to the HTTP client. */
   createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
   /** Optional reachable-target detection (same seam as /node-debugging detectTargets). */
-  detectTargets?: (protocol: DtsReloadDeployProtocol) => Promise<DtsReloadReachableTarget[]>;
+  detectTargets?: (
+    protocol: DtsReloadDeployProtocol,
+    bridgeId?: string
+  ) => Promise<DtsReloadReachableTarget[]>;
   /** Test/demo seam: seed deploy target without the removed manual targetRef field. */
   initialTargetRef?: string;
   /** Optional module registry for navigator nesting (defaults to runtime resolve). */
@@ -181,24 +185,37 @@ export function DtsReloadPage({
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [detectingTargets, setDetectingTargets] = useState(false);
+  const [targetDetectionError, setTargetDetectionError] = useState("");
   const [distilPending, setDistilPending] = useState(false);
   const [distilError, setDistilError] = useState("");
   const [promotePending, setPromotePending] = useState(false);
   const [promoteError, setPromoteError] = useState("");
   const [promoteConfirmOpen, setPromoteConfirmOpen] = useState(false);
   const openedInitialRunRef = useRef(false);
+  const detectRequestSeqRef = useRef(0);
+  const previousConnectedBridgeIdRef = useRef("");
+  const lastDetectedProtocolRef = useRef<DtsReloadDeployProtocol | null>(null);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
     [bridges, bridgeId]
   );
 
+  const connectedBridgeId = useMemo(() => {
+    const healthBridgeId = bridgeHealth?.connected ? bridgeHealth.bridgeId?.trim() : "";
+    return healthBridgeId && bridges.some((bridge) => bridge.id === healthBridgeId)
+      ? healthBridgeId
+      : "";
+  }, [bridgeHealth, bridges]);
+
   const targetsForSelectedBridge = useMemo(
     () =>
-      reachableTargets.filter(
-        (target) => !target.bridgeId || !bridgeId || target.bridgeId === bridgeId
-      ),
-    [reachableTargets, bridgeId]
+      connectedBridgeId
+        ? reachableTargets.filter(
+            (target) => !target.bridgeId || target.bridgeId === connectedBridgeId
+          )
+        : [],
+    [connectedBridgeId, reachableTargets]
   );
 
   useEffect(() => {
@@ -351,39 +368,134 @@ export function DtsReloadPage({
     [session]
   );
 
-  const runDetectTargets = useCallback(async () => {
+  useEffect(() => {
+    const previousBridgeId = previousConnectedBridgeIdRef.current;
+    if (previousBridgeId && previousBridgeId !== connectedBridgeId) {
+      detectRequestSeqRef.current += 1;
+      setReachableTargets([]);
+      setDetectingTargets(false);
+      if (session.getSnapshot().targetRef.trim()) {
+        session.setTargetRef("");
+      }
+      setTargetDetectionError(
+        connectedBridgeId
+          ? "本地 Device Bridge 已切换，请重新检测设备。"
+          : "本地 Device Bridge 已断开，请重新连接后再检测。"
+      );
+    }
+    previousConnectedBridgeIdRef.current = connectedBridgeId;
+  }, [connectedBridgeId, session]);
+
+  const runDetectTargets = useCallback(async (options: { manual?: boolean } = {}) => {
+    const requestSeq = detectRequestSeqRef.current + 1;
+    detectRequestSeqRef.current = requestSeq;
+    const requestProtocol = protocol;
+    const requestBridgeId = connectedBridgeId;
+
     if (!detectTargets) {
       setReachableTargets([]);
       return;
     }
+
+    if (!requestBridgeId) {
+      setReachableTargets([]);
+      if (session.getSnapshot().targetRef.trim()) {
+        session.setTargetRef("");
+      }
+      if (options.manual) {
+        setTargetDetectionError("本地 Device Bridge 未连接，请先连接本机后重新检测。");
+      }
+      setDetectingTargets(false);
+      return;
+    }
+
+    if (
+      lastDetectedProtocolRef.current &&
+      lastDetectedProtocolRef.current !== requestProtocol &&
+      session.getSnapshot().targetRef.trim()
+    ) {
+      session.setTargetRef("");
+    }
+    lastDetectedProtocolRef.current = requestProtocol;
+    setTargetDetectionError("");
     setDetectingTargets(true);
     try {
-      const targets = await detectTargets(protocol);
-      setReachableTargets(targets);
-      if (targets.length === 1) {
-        const only = targets[0]!.targetRef.trim();
-        if (only && !session.getSnapshot().targetRef.trim()) {
-          session.setTargetRef(only);
+      const targets = await detectTargets(requestProtocol, requestBridgeId);
+      if (detectRequestSeqRef.current !== requestSeq) return;
+
+      const scopedTargets = targets.filter(
+        (target) => !target.bridgeId || target.bridgeId === requestBridgeId
+      );
+      setReachableTargets(scopedTargets);
+      if (scopedTargets.length === 0) {
+        setTargetDetectionError(
+          `未检测到 ${requestProtocol.toUpperCase()} 设备，请检查设备连接与调试授权后重新检测。`
+        );
+        if (session.getSnapshot().targetRef.trim()) {
+          session.setTargetRef("");
+        }
+      } else {
+        setTargetDetectionError("");
+        const currentTargetRef = session.getSnapshot().targetRef.trim();
+        const currentTargetStillAvailable = scopedTargets.some(
+          (target) => target.targetRef.trim() === currentTargetRef
+        );
+        if (currentTargetRef && !currentTargetStillAvailable) {
+          session.setTargetRef("");
+        }
+        if (scopedTargets.length === 1) {
+          const only = scopedTargets[0]!.targetRef.trim();
+          if (only && !currentTargetStillAvailable) {
+            session.setTargetRef(only);
+          }
         }
       }
-    } catch {
+    } catch (error) {
+      if (detectRequestSeqRef.current !== requestSeq) return;
       setReachableTargets([]);
+      if (session.getSnapshot().targetRef.trim()) {
+        session.setTargetRef("");
+      }
+      setTargetDetectionError(
+        toUserErrorMessage(error, "设备检测失败，请稍后重试。")
+      );
     } finally {
-      setDetectingTargets(false);
+      if (detectRequestSeqRef.current === requestSeq) {
+        setDetectingTargets(false);
+      }
     }
-  }, [detectTargets, protocol, session]);
+  }, [connectedBridgeId, detectTargets, protocol, session]);
 
   useEffect(() => {
-    if (!detectTargets || bridges.length === 0) {
+    if (!detectTargets || !connectedBridgeId) {
       setReachableTargets([]);
+      if (detectTargets && session.getSnapshot().targetRef.trim()) {
+        session.setTargetRef("");
+      }
       return;
     }
     void runDetectTargets();
-  }, [detectTargets, protocol, bridges.length, runDetectTargets]);
+  }, [connectedBridgeId, detectTargets, protocol, runDetectTargets]);
 
-  const connectedTargetRef = targetRef.trim();
+  const handleProtocolChange = useCallback(
+    (nextProtocol: DtsReloadDeployProtocol) => {
+      if (nextProtocol === protocol) return;
+      detectRequestSeqRef.current += 1;
+      lastDetectedProtocolRef.current = null;
+      setReachableTargets([]);
+      setTargetDetectionError("");
+      setDetectingTargets(false);
+      if (session.getSnapshot().targetRef.trim()) {
+        session.setTargetRef("");
+      }
+      session.setProtocol(nextProtocol);
+    },
+    [protocol, session]
+  );
+
+  const connectedTargetRef = connectedBridgeId ? targetRef.trim() : "";
   const connectedTargetLabel =
-    reachableTargets.find((target) => target.targetRef === connectedTargetRef)?.label?.trim()
+    targetsForSelectedBridge.find((target) => target.targetRef === connectedTargetRef)?.label?.trim()
     || connectedTargetRef;
 
   useTopBarActions(
@@ -398,7 +510,7 @@ export function DtsReloadPage({
         className="link-button"
         type="button"
         disabled={!detectTargets}
-        onClick={() => void runDetectTargets()}
+        onClick={() => void runDetectTargets({ manual: true })}
       >
         重新检测
       </button>
@@ -579,7 +691,7 @@ export function DtsReloadPage({
                 className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
                 aria-pressed={protocol === item}
                 disabled={!canStartRun}
-                onClick={() => session.setProtocol(item)}
+                onClick={() => handleProtocolChange(item)}
               >
                 {item.toUpperCase()}
               </button>
@@ -602,16 +714,22 @@ export function DtsReloadPage({
         </div>
 
         <LocalDeviceBridgePanel
-          target={targetRef.trim() || undefined}
+          target={connectedBridgeId ? targetRef.trim() || undefined : undefined}
           detecting={detectingTargets}
           protocol={protocol}
-          onDetect={() => void runDetectTargets()}
+          onDetect={() => void runDetectTargets({ manual: true })}
           bridgesOverride={bridgesOverride}
           listBridges={listBridgesForPanel}
           probeHealth={probeHealthForPanel}
           createPairingCode={createBridgePairingCode}
           onBridgeStateChange={handleBridgeStateChange}
         />
+
+        {targetDetectionError ? (
+          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+            {targetDetectionError}
+          </p>
+        ) : null}
 
         {targetsForSelectedBridge.length > 1 ? (
           <section className="bridge-target-picker" aria-label="设备代理目标选择">

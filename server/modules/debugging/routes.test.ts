@@ -407,6 +407,29 @@ describe("debugging routes", () => {
     );
   });
 
+  it("passes a connected bridge id to target detection and keeps the canonical route", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    serviceMocks.detectTargets.mockResolvedValue([targetRecord({ bridgeId: "bridge-1" })]);
+
+    const response = await requestJson<{ items: DebugTargetRecord[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/targets/detect",
+      {
+        method: "POST",
+        body: JSON.stringify({ protocol: "hdc", bridgeId: "bridge-1" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items[0]).toMatchObject({ bridgeId: "bridge-1" });
+    expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
+      makeAuth(),
+      { bridgeId: "bridge-1", protocol: "hdc" },
+      { requestId: "test-request" }
+    );
+  });
+
   it("GET /api/v1/debugging/parameters returns debug parameter DTOs", async () => {
     const db = makeDb();
     const gateway = makeGateway();
@@ -1012,6 +1035,27 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it.each([
+    ["DEVICE_UNAVAILABLE", "Bridge target detection is unavailable."],
+    ["PROTOCOL_UNSUPPORTED", "HDC is not enabled in this deployment."]
+  ] as const)("keeps typed target-detection failure %s distinguishable in the 409 response", async (code, message) => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    serviceMocks.detectTargets.mockRejectedValue(new ApiError(code, message));
+
+    const response = await requestJson<{ error: { code: string; requestId: string } }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/targets/detect",
+      {
+        method: "POST",
+        body: JSON.stringify({ protocol: "hdc", bridgeId: "bridge-1" })
+      }
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatchObject({ code, requestId: "test-request" });
   });
 
   it("write route rejects auth without debugging write permission before service work", async () => {

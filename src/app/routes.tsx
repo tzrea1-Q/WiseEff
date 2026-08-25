@@ -214,8 +214,12 @@ export function PageRouter({
     if (!debuggingGateway) {
       return undefined;
     }
-    return async (protocol: DtsReloadDeployProtocol) => {
-      const targets = await debuggingGateway.detectTargets({ protocol });
+    return async (protocol: DtsReloadDeployProtocol, bridgeId?: string) => {
+      const normalizedBridgeId = bridgeId?.trim();
+      const targets = await debuggingGateway.detectTargets({
+        protocol,
+        ...(normalizedBridgeId ? { bridgeId: normalizedBridgeId } : {})
+      });
       return targets
         .filter((target) => Boolean(target.targetRef?.trim()))
         .map((target) => ({

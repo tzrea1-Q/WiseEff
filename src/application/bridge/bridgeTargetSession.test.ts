@@ -42,6 +42,12 @@ describe("pickPreferredBridgeId", () => {
     expect(pickPreferredBridgeId(bridges, null, "bridge-b")).toBe("bridge-b");
   });
 
+  it("moves to a newly connected bridge even when the old bridge remains listed", () => {
+    expect(pickPreferredBridgeId(bridges, { connected: true, bridgeId: "bridge-a" }, "bridge-b")).toBe(
+      "bridge-a"
+    );
+  });
+
   it("falls back to the first listed bridge when the current id is gone", () => {
     expect(pickPreferredBridgeId([{ id: "bridge-a" }], null, "bridge-b")).toBe("bridge-a");
   });

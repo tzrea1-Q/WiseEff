@@ -37,24 +37,22 @@ export function normalizeBridgeProtocol(
   return value === "hdc" || value === "adb" ? value : fallback;
 }
 
-/**
- * Keep the current bridge when it is still listed; otherwise prefer the healthy
- * bridge when it is listed, else the first listed bridge.
- */
+/** Prefer the connected, registered bridge; otherwise keep a listed selection or use the first entry. */
 export function pickPreferredBridgeId(
   bridges: ReadonlyArray<Pick<BridgeSummary, "id">>,
   health: BridgeHealthSummary,
   currentBridgeId: string
 ): string {
-  const preferred =
-    (health?.bridgeId && bridges.some((bridge) => bridge.id === health.bridgeId)
+  const healthyBridgeId =
+    health?.connected && health.bridgeId && bridges.some((bridge) => bridge.id === health.bridgeId)
       ? health.bridgeId
-      : null) ??
-    bridges[0]?.id ??
-    "";
+      : "";
+  if (healthyBridgeId) {
+    return healthyBridgeId;
+  }
   return currentBridgeId && bridges.some((bridge) => bridge.id === currentBridgeId)
     ? currentBridgeId
-    : preferred;
+    : bridges[0]?.id ?? "";
 }
 
 /** Map a `DeviceTarget` (or reload snapshot) onto the shared selection fields. */
