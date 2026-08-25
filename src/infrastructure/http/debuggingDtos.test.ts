@@ -114,6 +114,58 @@ describe("debugging dto mappers", () => {
     });
   });
 
+  it("preserves runtime node documentation while retaining the internal node identity", () => {
+    const nodeId = "5f7c1a2e-4a3b-4e6d-9f8a-1234567890ab";
+    const parameter = debugRuntimeNodeToDebugParameter({
+      id: nodeId,
+      name: "充电输入节点",
+      description: "限制适配器输入电流。",
+      detailedDescription: "用于限制适配器输入电流。\n写入前确认电源规格。",
+      writeFormatExample: "3100",
+      writeFormatHint: "第一行说明。\n第二行说明。",
+      module: "Charging",
+      protocol: "hdc",
+      nodePath: "/sys/class/power/input_current",
+      accessMode: "RW",
+      enabled: true
+    } as DebugRuntimeNodeDto);
+
+    expect(parameter).toMatchObject({
+      id: nodeId,
+      key: nodeId,
+      module: "Charging",
+      detailedDescription: "用于限制适配器输入电流。\n写入前确认电源规格。",
+      writeFormatExample: "3100",
+      writeFormatHint: "第一行说明。\n第二行说明。"
+    });
+    expect(parameter.selectedProtocol).toBe("hdc");
+  });
+
+  it("leaves optional runtime documentation empty for sparse catalog nodes", () => {
+    const nodeId = "debug-node-without-documentation";
+    const parameter = debugRuntimeNodeToDebugParameter({
+      id: nodeId,
+      name: "稀疏节点",
+      description: "仅有简述。",
+      module: "Diagnostics",
+      protocol: "adb",
+      nodePath: "/sys/class/debug/sparse",
+      accessMode: "RO",
+      enabled: true
+    });
+
+    expect(parameter).toMatchObject({
+      id: nodeId,
+      key: nodeId,
+      description: "仅有简述。",
+      module: "Diagnostics",
+      selectedProtocol: "adb"
+    });
+    expect(parameter.detailedDescription).toBeUndefined();
+    expect(parameter.writeFormatExample).toBeUndefined();
+    expect(parameter.writeFormatHint).toBeUndefined();
+  });
+
   it("maps debug device status to the existing domain literal", () => {
     expect(debugDeviceFromDto(deviceDto)).toMatchObject({
       id: "device-1",

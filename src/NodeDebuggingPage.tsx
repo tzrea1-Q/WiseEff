@@ -192,7 +192,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
         <div className="node-write-format-example">
           <strong>示例</strong>
           <code>{exampleValue}</code>
-          <span>{exampleHint}</span>
+          <span className="node-write-format-hint">{exampleHint}</span>
         </div>
       ) : null}
     </section>
@@ -333,7 +333,6 @@ export function NodeDebuggingPage({
   const toggleArrayFilter = (currentValues: string[], value: string) =>
     currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
   const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null;
-  const editingRowSubtitle = editingRow ? nodeRowSubtitle(editingRow) : "";
   const selectableVisibleIds = useMemo(
     () => visibleRows.filter((row) => canWrite(row)).map((row) => row.id),
     [visibleRows]
@@ -608,8 +607,8 @@ export function NodeDebuggingPage({
         <WorkbenchSheet
           open
           onClose={() => setEditingRowId(null)}
-          title="节点详情"
-          description={editingRowSubtitle ? `${editingRow.name} · ${editingRowSubtitle}` : editingRow.name}
+          title={editingRow.name}
+          description={editingRow.description.trim() || undefined}
           footer={
             canWrite(editingRow) ? (
               <div className="draft-sheet-footer">
@@ -647,14 +646,13 @@ export function NodeDebuggingPage({
           <div className="draft-sheet-stack">
             <div className="debug-detail-card node-detail-card">
               <div className="debug-detail-head">
-                <div>
-                  <strong>{editingRow.name}</strong>
-                  <code>{editingRow.key}</code>
-                </div>
                 <span className={statusClass(editingRow.runtimeStatus)}>{editingRow.runtimeStatus}</span>
               </div>
-              {editingRow.description ? (
-                <p className="debug-detail-description">{editingRow.description}</p>
+              {editingRow.detailedDescription?.trim() ? (
+                <section className="debug-detail-description-panel" aria-label="详细描述">
+                  <h3>详细描述</h3>
+                  <p className="node-debug-detail-description">{editingRow.detailedDescription}</p>
+                </section>
               ) : null}
               <div className="debug-detail-fields">
                 <div className="debug-detail-row">
