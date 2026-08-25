@@ -132,6 +132,10 @@ function findRowByText(text: string) {
   return row as HTMLElement;
 }
 
+function getNodeDetailDialog(name?: string) {
+  return screen.getByRole("dialog", { name: name ?? /.+/ });
+}
+
 function currentValueCell(row: HTMLElement) {
   const cell = row.querySelector('[data-label="当前值"]');
   if (!cell) {
@@ -628,7 +632,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -707,7 +711,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3702" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -737,7 +741,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     const confirmDialog = await screen.findByRole("dialog", { name: /确认高风险节点写入/ });
@@ -755,7 +759,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -779,7 +783,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -819,7 +823,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -870,7 +874,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
     await confirmHighRiskWriteIfPrompted();
@@ -975,7 +979,7 @@ describe("/node-debugging", () => {
     const stashTarget = (rowText: string, value: string) => {
       const row = findRowByText(rowText);
       fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-      const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+      const dialog = getNodeDetailDialog();
       fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value } });
       fireEvent.click(within(dialog).getByRole("button", { name: "暂存" }));
     };
@@ -1277,7 +1281,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -1454,8 +1458,10 @@ describe("/node-debugging", () => {
     await within(row).findByText("68");
     fireEvent.click(within(row).getByRole("button", { name: /查看详情/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
-    expect(within(dialog).getByText("battery.impedance_mohm")).toBeInTheDocument();
+    const dialog = getNodeDetailDialog();
+    expect(within(dialog).getByRole("heading", { name: "电池内阻估算" })).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent("battery.impedance_mohm");
+    expect(within(dialog).queryByRole("region", { name: "详细描述" })).not.toBeInTheDocument();
     expect(dialog).toHaveTextContent("68 mΩ");
     expect(within(dialog).queryByLabelText("目标写入值")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /写入/ })).not.toBeInTheDocument();
@@ -1468,7 +1474,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
@@ -1485,11 +1491,11 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "暂存" }));
 
-    expect(screen.queryByRole("dialog", { name: /节点详情/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(within(row).getByText("3700")).toBeInTheDocument();
     expect(within(row).getByText("待写入")).toHaveClass("node-status-pending");
     expect(within(row).getByRole("checkbox", { name: /选择 充电输入限流/ })).toBeChecked();
@@ -1517,7 +1523,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
 
     expect(formatSection).toHaveTextContent("写入格式");
@@ -1527,6 +1533,41 @@ describe("/node-debugging", () => {
     expect(formatSection).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
   });
 
+  it("uses node metadata for the sidebar identity and hides internal ids from the body", async () => {
+    const nodeId = "5f7c1a2e-4a3b-4e6d-9f8a-1234567890ab";
+    const briefDescription = "限制适配器输入电流。";
+    const detailedDescription = "用于限制适配器输入电流。\n写入前确认电源规格。";
+    const writeFormatHint = "第一行说明。\n第二行说明。";
+    const parameter = {
+      ...userState.debugParameters[0],
+      id: nodeId,
+      key: nodeId,
+      name: "充电输入节点",
+      description: briefDescription,
+      detailedDescription,
+      writeFormatExample: "3100",
+      writeFormatHint
+    };
+
+    renderNodeDebuggingPage({
+      state: { ...userState, debugParameters: [parameter] },
+      debuggingActions: createDebuggingActions()
+    });
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const row = findRowByText("充电输入节点");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "充电输入节点" });
+    expect(within(dialog).getByRole("heading", { name: "充电输入节点" })).toBeInTheDocument();
+    expect(within(dialog).getAllByText(briefDescription, { exact: true })).toHaveLength(1);
+    expect(within(dialog).getByText((_, element) => element?.textContent === detailedDescription)).toBeInTheDocument();
+    expect(within(dialog).getByText((_, element) => element?.textContent === writeFormatHint)).toBeInTheDocument();
+    expect(within(dialog).getAllByText("充电输入节点", { exact: true })).toHaveLength(1);
+    expect(dialog).not.toHaveTextContent(nodeId);
+    expect(screen.queryByRole("dialog", { name: /节点详情/ })).not.toBeInTheDocument();
+  });
+
   it("places the target value input after the write format section", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
@@ -1534,7 +1575,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
     const targetInput = within(dialog).getByLabelText("目标写入值");
 
@@ -1548,7 +1589,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     const formatSection = within(dialog).getByRole("region", { name: "写入格式" });
 
     expect(formatSection).toHaveTextContent("例如输入 3600");
@@ -1565,7 +1606,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.policy_overlay_json");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     expect(dialog.closest(".node-complex-editor")).toBeInTheDocument();
     const targetEditor = within(dialog).getByLabelText("目标写入值");
     const multilineValue = "{\n  \"inputLimitMa\": 3700\n}";
@@ -1655,7 +1696,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.policy_overlay_json");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: /节点详情/ })).getByRole("button", { name: /写入并回读/ }));
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalled());
@@ -1733,7 +1774,7 @@ describe("/node-debugging", () => {
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    const dialog = getNodeDetailDialog();
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();

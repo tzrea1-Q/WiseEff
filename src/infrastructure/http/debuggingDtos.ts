@@ -290,6 +290,7 @@ export type DebugRuntimeNodeDto = {
   id: string;
   name: string;
   description: string;
+  detailedDescription?: string;
   writeFormatExample?: string;
   writeFormatHint?: string;
   module: string;
@@ -310,6 +311,7 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     name: dto.name,
     key: dto.id,
     description: dto.description,
+    detailedDescription: dto.detailedDescription,
     writeFormatExample: dto.writeFormatExample,
     writeFormatHint: dto.writeFormatHint,
     module: dto.module || "Device Nodes",

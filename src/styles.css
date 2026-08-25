@@ -2626,11 +2626,30 @@ body {
   font-size: var(--text-sm);
 }
 
-.debug-detail-description {
+.debug-detail-description,
+.node-debug-detail-description {
   margin: 0;
   color: var(--app-muted);
   font-size: var(--text-base);
   line-height: 1.55;
+}
+
+.node-debug-detail-description,
+.node-write-format-hint {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.debug-detail-description-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.debug-detail-description-panel h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 .debug-detail-fields {
@@ -8608,6 +8627,10 @@ td small {
   background: #eef2ff;
   border-radius: var(--radius-sm);
   overflow-wrap: anywhere;
+}
+
+.node-write-format-hint {
+  display: block;
 }
 
 .debug-value-cell {
