@@ -120,7 +120,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 ### #612 最终验证边界
 
 - `npx tsc -b`、`npm run build`、`npm run contract:check`、`TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`、`npm run selfhost:check` 和 `git diff --check` 在实现树上通过。build 保留既有 Vite large-chunk warnings；lint 通过，0 errors、300 个既有 warnings。
-- `npm run test:server` 通过 357 个文件 / 2 个跳过、2754 个测试 / 8 个跳过。`npm run test:scripts` 通过 69 个文件 / 948 个测试，5 个跳过；`npm run bridge:test` 通过 21 个文件 / 138 个测试。
+- 最终树上的 `npm run test:server` 未全绿：4 个未修改的 parameter/parameter-topology PostgreSQL 集成测试超时；其余为 353 个文件通过 / 2 个跳过、2750 个测试通过 / 8 个跳过。DTS 聚焦 server 命令仍为 18 个文件 / 217 个测试通过。`npm run test:scripts` 通过 69 个文件 / 948 个测试，5 个跳过；`npm run bridge:test` 通过 21 个文件 / 138 个测试。
 - `npm run test:all` 未全绿：其 frontend 阶段有 5 个既有 UI 测试触发仓库 5 秒超时（410/415 文件、3067/3072 测试通过）。同一命令在干净 `origin/main` worktree 复现出 3 个不同的既有 frontend 失败（412/415 文件、3069/3072 测试通过）。#612 未混入任何无关 frontend 修复。
 - 因 #612 没有改变 operation-evidence coverage，未运行 `npm run acceptance:evidence`；没有要求或宣称 HDC/硬件验收。GitHub Actions 因本月额度耗尽仍不可用。
 
@@ -143,7 +143,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - [x] 没有公开契约或前端文档因此变陈旧。
 - [x] 已在本文件及同步的英文计划中记录 #612 范围、Red、25-cell PostgreSQL matrix、拒绝 code、rollback audit 边界及 HDC 证据边界。
 - [x] #612 没有吸收或修改原脏工作树中的 compact-footer 文档改动。
-- [x] 已如实记录 #612 的 frontend 阶段失败、干净 `origin/main` 复现及独立 server/scripts/bridge 门禁通过，没有把 `npm run test:all` 失败运行宣称为绿色。
+- [x] 已如实记录 #612 的 frontend 与完整 server 阶段失败、干净 `origin/main` 复现及 focused server/scripts/bridge 门禁通过，没有把 `npm run test:all` 或完整 `npm run test:server` 失败运行宣称为绿色。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
 - [x] #610 在自身合入前取得 Standards 与 Spec 最终复审零 finding；#611 在本合入记录后由 parent 独立进行最终复审。
 - [ ] 只有完整 TD-068 迁移和收口证据落地后，才能将本计划移入 `completed/`。

@@ -120,7 +120,7 @@ The preceding #611 repair evidence retains its original host boundary, where the
 ### #612 final verification boundary
 
 - `npx tsc -b`, `npm run build`, `npm run contract:check`, `TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`, `npm run selfhost:check`, and `git diff --check` passed on the implementation tree. The build retained the existing Vite large-chunk warnings; lint passed with 0 errors and 300 existing warnings.
-- `npm run test:server` passed 357 files / 2 skipped and 2754 tests / 8 skipped. `npm run test:scripts` passed 69 files / 948 tests with 5 skipped; `npm run bridge:test` passed 21 files / 138 tests.
+- The final-tree `npm run test:server` run was not green: 4 unchanged parameter/parameter-topology PostgreSQL integration tests timed out, while 353 files passed / 2 skipped and 2750 tests passed / 8 skipped. The DTS-focused server command remained green at 18 files / 217 tests. `npm run test:scripts` passed 69 files / 948 tests with 5 skipped; `npm run bridge:test` passed 21 files / 138 tests.
 - `npm run test:all` was not green: its frontend phase failed 5 existing UI tests by the repository's 5-second timeout (410/415 files and 3067/3072 tests passed). The same command was reproduced on the clean `origin/main` worktree, where 3 different existing frontend failures occurred (412/415 files and 3069/3072 tests passed). No unrelated frontend fix was included in #612.
 - `npm run acceptance:evidence` was not run because #612 does not change operation-evidence coverage, and no HDC or hardware acceptance was requested or claimed. GitHub Actions remain unavailable because the monthly quota is exhausted.
 
@@ -143,7 +143,7 @@ The preceding #611 repair evidence retains its original host boundary, where the
 - [x] No public contract or frontend documentation became stale.
 - [x] #612 scope, Red evidence, the 25-cell PostgreSQL matrix, refusal codes, rollback-audit boundary, and HDC evidence boundary are recorded here and in the synchronized Chinese plan.
 - [x] #612 did not absorb or modify the compact-footer documentation work in the original dirty worktree.
-- [x] #612's failed frontend phase, clean-`origin/main` reproduction, and successful independent server/scripts/bridge gates are recorded without calling `npm run test:all` green.
+- [x] #612's failed frontend and full-server phases, clean-`origin/main` reproductions, and successful focused server/scripts/bridge gates are recorded without calling `npm run test:all` or full `npm run test:server` green.
 - [x] Resolved the inherited acceptance-quality failures through #617 / PR #619 and reran the complete required local CI on the rebased final tree.
 - [x] #610 obtained zero-finding final Standards and Spec reviews before its merge; #611 receives its own final parent review after this landing record.
 - [ ] Move this plan to `completed/` only after the complete TD-068 migration and closure evidence land.
