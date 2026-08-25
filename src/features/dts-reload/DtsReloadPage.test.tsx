@@ -757,7 +757,7 @@ describe("DtsReloadPage", () => {
     expect(within(bodyRows[1]!).getByText("Watchdog")).toBeInTheDocument();
   });
 
-  it("paginates the candidate DataTable and toggles a row from the keyboard", async () => {
+  it("paginates the candidate DataTable and toggles a row from its checkbox", async () => {
     const user = userEvent.setup();
     const repository = createRepository({
       listCandidates: vi.fn(async () => ({
@@ -782,8 +782,11 @@ describe("DtsReloadPage", () => {
     expect(within(table).getByText("参数 11")).toBeInTheDocument();
 
     const row = within(table).getByRole("row", { name: /参数 11/ });
-    row.focus();
-    await user.keyboard("{Enter}");
+    expect(row).not.toHaveAttribute("tabindex");
+    await user.click(within(row).getByText("参数 11"));
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+
+    await user.click(within(row).getByRole("checkbox", { name: "选择 参数 11" }));
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
     expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
   });

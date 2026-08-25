@@ -108,20 +108,19 @@ describe("DtsReloadCandidateTable", () => {
     expect(screen.queryByText("参数 01")).not.toBeInTheDocument();
   });
 
-  it("toggles a focused row with Enter and Space", async () => {
+  it("only toggles the batch selection when its checkbox is clicked", async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
     renderTable({ onToggle });
 
     const watchdogRow = screen.getByRole("row", { name: /Watchdog/ });
-    watchdogRow.focus();
-    expect(watchdogRow).toHaveFocus();
+    expect(watchdogRow).not.toHaveAttribute("tabindex");
 
-    await user.keyboard("{Enter}");
+    await user.click(within(watchdogRow).getByText("Watchdog"));
+    expect(onToggle).not.toHaveBeenCalled();
+
+    await user.click(within(watchdogRow).getByRole("checkbox", { name: "选择 Watchdog" }));
     expect(onToggle).toHaveBeenCalledWith("binding-1");
-
-    await user.keyboard(" ");
-    expect(onToggle).toHaveBeenCalledTimes(2);
   });
 
   it("does not toggle when the edit action is clicked", async () => {

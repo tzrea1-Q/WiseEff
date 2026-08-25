@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   buildExpandedTreeIdsForDropdown,
   modulePathSegments
@@ -22,8 +23,15 @@ type ModuleTreeSelectProps = {
   onChange: (next: string | string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** Render the menu at document level so ancestor overflow cannot clip it. */
+  portalMenu?: boolean;
   /** When set, only these node ids can be chosen (ancestors remain visible for tree context). */
   selectableIds?: ReadonlySet<string>;
+};
+
+type MenuPosition = {
+  top: number;
+  left: number;
 };
 
 function treeHasBranches(nodes: readonly ModuleTreeNode[]): boolean {
@@ -154,11 +162,15 @@ export function ModuleTreeSelect({
   onChange,
   placeholder,
   disabled = false,
+  portalMenu = false,
   selectableIds
 }: ModuleTreeSelectProps) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildModuleTree(nodes), [nodes]);
   const showExpandColumn = useMemo(() => treeHasBranches(tree), [tree]);
   const selectedIds = useMemo(() => new Set(Array.isArray(value) ? value : value ? [value] : []), [value]);
@@ -176,18 +188,59 @@ export function ModuleTreeSelect({
     return segments.join(" / ");
   }, [nodes, selectedNode]);
 
+  const updateMenuPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    const gutter = 8;
+    const menuWidth = Math.min(400, Math.max(260, window.innerWidth - gutter * 2));
+    const menuHeight = 288;
+    const left = Math.min(
+      Math.max(gutter, rect.left),
+      Math.max(gutter, window.innerWidth - menuWidth - gutter)
+    );
+    const top =
+      rect.bottom + 4 + menuHeight <= window.innerHeight - gutter
+        ? rect.bottom + 4
+        : Math.max(gutter, rect.top - menuHeight - 4);
+    setMenuPosition({ top, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!open || !portalMenu) {
+      return;
+    }
+    updateMenuPosition();
+  }, [open, portalMenu]);
+
   useEffect(() => {
     if (!open) {
       return;
     }
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleReposition = () => updateMenuPosition();
+    const handleScroll = () => {
+      if (portalMenu) setOpen(false);
     };
     window.addEventListener("mousedown", handleOutsideClick);
-    return () => window.removeEventListener("mousedown", handleOutsideClick);
-  }, [open]);
+    if (portalMenu) {
+      window.addEventListener("resize", handleReposition);
+      window.addEventListener("scroll", handleScroll, true);
+    }
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideClick);
+      if (portalMenu) {
+        window.removeEventListener("resize", handleReposition);
+        window.removeEventListener("scroll", handleScroll, true);
+      }
+    };
+  }, [open, portalMenu]);
 
   const triggerLabel = useMemo(() => {
     if (mode === "single") {
@@ -246,14 +299,42 @@ export function ModuleTreeSelect({
     });
   };
 
+  const menuContent = open ? (
+    <div
+      ref={menuRef}
+      className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}`}
+      role="tree"
+      style={portalMenu && menuPosition ? { top: menuPosition.top, left: menuPosition.left } : undefined}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {tree.length === 0 ? <div className="module-tree-empty">{placeholder ?? "暂无模块"}</div> : null}
+      {tree.map((node) => (
+        <TreeOption
+          key={node.id}
+          depth={0}
+          expanded={expanded}
+          mode={mode}
+          node={node}
+          selectedIds={selectedIds}
+          selectableIds={selectableIds}
+          showExpandColumn={showExpandColumn}
+          onToggleExpand={toggleExpand}
+          onSelect={handleSelect}
+        />
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className="dropdown-root module-tree-select" ref={rootRef}>
       <button
+        ref={triggerRef}
         aria-expanded={open}
         aria-haspopup="tree"
         aria-labelledby={labelledBy}
         className="dropdown-trigger module-tree-trigger"
         disabled={disabled}
+        title={disabled ? "暂无可用模块。" : undefined}
         type="button"
         onClick={handleToggleOpen}
       >
@@ -264,29 +345,7 @@ export function ModuleTreeSelect({
           ▾
         </span>
       </button>
-      {open ? (
-        <div
-          className="dropdown-menu module-tree-menu"
-          role="tree"
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          {tree.length === 0 ? <div className="module-tree-empty">{placeholder ?? "暂无模块"}</div> : null}
-          {tree.map((node) => (
-            <TreeOption
-              key={node.id}
-              depth={0}
-              expanded={expanded}
-              mode={mode}
-              node={node}
-              selectedIds={selectedIds}
-              selectableIds={selectableIds}
-              showExpandColumn={showExpandColumn}
-              onToggleExpand={toggleExpand}
-              onSelect={handleSelect}
-            />
-          ))}
-        </div>
-      ) : null}
+      {portalMenu && menuPosition ? createPortal(menuContent, document.body) : menuContent}
     </div>
   );
 }

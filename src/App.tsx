@@ -1669,13 +1669,15 @@ function ApiAuthPage({
           </div>
         ) : null}
 
-        <p className="auth-help">
-          {`${
-            localConfig?.evaluationOrganizationName
-              ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
-              : "新账号将加入评估组织。"
-          } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
-        </p>
+        {mode === "register" ? (
+          <p className="auth-help">
+            {`${
+              localConfig?.evaluationOrganizationName
+                ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
+                : "新账号将加入评估组织。"
+            } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
+          </p>
+        ) : null}
 
         {pendingRegistration ? (
           <section className="auth-pending-notice" aria-labelledby="auth-pending-title">
@@ -1733,13 +1735,15 @@ function ApiAuthPage({
                   autoComplete="username"
                   minLength={3}
                   maxLength={64}
-                  aria-describedby="local-auth-username-hint"
+                  aria-describedby={mode === "register" ? "local-auth-username-hint" : undefined}
                   required
                 />
               </label>
-              <span className="auth-field-hint" id="local-auth-username-hint">
-                3–64 个字符，仅限字母、数字、点、下划线和连字符。
-              </span>
+              {mode === "register" ? (
+                <span className="auth-field-hint" id="local-auth-username-hint">
+                  3–64 个字符，仅限字母、数字、点、下划线和连字符。
+                </span>
+              ) : null}
             </div>
             <label>
               <span>密码</span>

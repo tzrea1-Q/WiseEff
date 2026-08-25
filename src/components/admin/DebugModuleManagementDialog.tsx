@@ -170,6 +170,7 @@ export function DebugModuleManagementDialog({
                 placeholder="根级（无父模块）"
                 value={moveParentId}
                 onChange={(next) => setMoveParentId(typeof next === "string" ? next : next[0] ?? "")}
+                portalMenu
               />
               <div className="param-admin-module-add-actions">
                 <button
