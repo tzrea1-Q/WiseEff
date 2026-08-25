@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 日期：2026-08-20
-状态：PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）和 PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）均已合入 `main`；PR #624 提供 advanced-resume proxy/就绪门禁。main-line 仓库实现还包含有界、与 scheme 无关的诊断凭据脱敏。非客户目标主机的前向/恢复演练是唯一未完成的环境证据；条件式 target-synthetic 与 local-non-HDC CI job 在缺少前置条件时为 skipped，不是通过。
+状态：PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）和 PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）均已合入 `main`；PR #624 提供 advanced-resume proxy/就绪门禁。仓库实现还包含有界、与 scheme 无关的诊断凭据脱敏，以及 Phase 14 的最终验证/受保护候选恢复修复。目标 run `20260825T012411Z-3326268` 仍需部署机执行；条件式 target-synthetic 与 local-non-HDC CI job 在缺少前置条件时为 skipped，不是通过。
 范围：`ops/self-hosted/` 下基于源码 checkout 的 Docker Compose 运行时
 
 实现入口已落在 `ops/self-hosted/scripts/upgrade.sh`，本地脚本、配置和构建门禁已通过。真实 Ubuntu 演练属于部署证据，仓库内测试不会把它默认为已完成。
@@ -73,7 +73,7 @@ WiseEff 当前有三条相关但不完整的操作路径：
 
 ### 迁移开始后禁止破坏性的自动恢复
 
-API 迁移命令开始前，控制器可以安全地重新启动旧容器并恢复队列，但必须先通过完整的旧栈恢复验证。如果迁移前恢复失败，`recovery-required` 只提供一个可执行的 `resume --run-id <run-id>` 重试动作，绝不恢复数据。一旦迁移启动，即使进程失败，也必须认为数据库可能已经变化。此时控制器会尝试停止公网 proxy、暂停 queue；运行标记为 `recovery-required`，普通 `resume` 会被拒绝，并记录带 token 的整点恢复命令。如果 proxy 或 queue/worker 隔离失败，journal 会把对应的人工隔离动作放在第一步。
+API 迁移命令开始前，控制器可以安全地重新启动旧容器并恢复队列，但必须先通过完整的旧栈恢复验证。如果迁移前恢复失败，`recovery-required` 只提供一个可执行的 `resume --run-id <run-id>` 重试动作，绝不恢复数据。一旦迁移启动，即使进程失败，也必须认为数据库可能已经变化。此时控制器会尝试停止公网 proxy、暂停 queue；运行标记为 `recovery-required`，普通 `resume` 会被拒绝。仅候选收尾阶段失败时可提供带 run token、保留数据的 `recover-candidate`；更早或不受支持的阶段仍记录精确的带 token 整点恢复命令。如果 proxy 或 queue/worker 隔离失败，journal 会把对应的人工隔离动作放在第一步。
 
 `rollback --restore-data` 会替换现有状态，因此必须显式执行并确认。成功升级并已经承载流量后，再恢复旧数据还会丢弃升级后的新写入；这种恢复在非交互模式下必须提供针对该 run id 的确认 token，否则绝不执行。
 
@@ -106,6 +106,7 @@ upgrade.sh lock-status
 upgrade.sh unlock
 upgrade.sh status [--run-id <id>] [--json]
 upgrade.sh resume --run-id <id>
+upgrade.sh recover-candidate --run-id <id> --confirm recover-candidate-<id>
 upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 ```
 
@@ -115,6 +116,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `lock-status` 报告内核/fallback 锁状态与脱敏持锁者元数据；`unlock` 只清理已证明陈旧的元数据/fallback 锁，并拒绝真实在运行的操作。
 - `status` 只读取持久化运行记录，包括候选构建状态、诊断路径和可执行下一步。
 - `resume` 从第一个未完成的幂等阶段继续；不会盲目重复已验证的快照或迁移。
+- `recover-candidate` 是受保护的 migration 后收尾修复：只接受已验证恢复点、失败阶段属于候选收尾门禁的 `recovery-required` run；它重新隔离流量，校验 manifest 与本地候选镜像，再恢复 worker、queue、proxy 和公网验证，不恢复数据。
 - `rollback` 恢复旧应用镜像；增加 `--restore-data` 后同时恢复 PostgreSQL、对象存储和 Redis 恢复点。
 - 若 checkout 与目标 SHA 一致、API/worker/web 都引用该 commit 的精确镜像、公网探测通过且未传 `--restart`，`apply` 才以成功 no-op 退出。
 - 非交互升级必须同时传 `--non-interactive --yes`；破坏性数据恢复还必须提供脚本打印的本次运行确认 token。
@@ -295,6 +297,10 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 Advanced resume 对 `queue-resumed`、`starting-proxy` 和 `validating-public` 使用单独的受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。三者全部通过前，禁止启动候选 proxy 或执行公网探测。worker 失败使用稳定码 `candidate-worker-health`；proxy 隔离失败使用 `candidate-proxy-isolation`，持久化 `recovery_proxy_stopped=false`，并把人工隔离 proxy 放在 `next_action` 首位。公网验证后仍保留最终 worker 复查，因此健康漂移不能被声明为完成。
 
+最终验证通过 Docker 支持的 `image inspect --format '{{.Id}}'` 接口解析候选镜像。每个 named-volume `name=destination` 列表都会规范化后再比较，Docker 枚举顺序不会制造假不一致，但任何名称或目标路径变化仍会失败。候选镜像查询、容器存在/重建、应用镜像身份、Compose project、volume identity 和环境指纹会分别记录稳定的失败 service/code。
+
+`recover-candidate` 是独立而狭窄的恢复事务，不会放宽普通 `resume`。它只接受 migration 后、结果为 `recovery-required`、记录的失败属于候选收尾阶段且恢复点已验证的 run。任何修改前先验证精确的 run-bound token；随后隔离 proxy 和 queue/worker，校验备份 manifest 与本地候选镜像，切换到记录的目标 checkout，重建 worker，复查 API/worker/web，恢复 queue，重建 proxy，最后执行公网与最终验证。任一门禁失败都回到 `recovery-required` 并重复隔离；该动作无法进入 PostgreSQL、对象存储或 Redis 恢复函数。
+
 诊断持久化会在写入终端输出、`failure_summary`、恢复摘要或 `events.log` 前统一经过同一个深模块脱敏器。它只对合法 ASCII scheme 的 URI userinfo 做脱敏，并在 authority 扫描遇到 `/`、`?` 或 `#` 时停止，同时保留 scheme、host、port、path 及非敏感上下文。普通邮箱文本、query/fragment 中的邮箱值、Unicode 伪 scheme 和无 userinfo 的 URL 保持不变。操作员应从 `failure_service` 读取失败服务，从 `failure_code` 读取稳定失败类别，从有长度限制的 `failure_summary` 读取安全上下文，并按 `next_action` 执行恢复动作。只有恢复已验证且 `next_action=none` 才能写入 `old-stack-restored`；`recovery-required` 必须携带非 `none` 的下一步。
 
 本阶段不会执行 seed、bootstrap、setup renderer 或配置重写。
@@ -317,10 +323,10 @@ Advanced resume 对 `queue-resumed`、`starting-proxy` 和 `validating-public` �
 | 队列暂停或 drain | 尝试执行包含数据平面、应用、队列、proxy 和公网门禁的完整旧栈恢复 | 只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
 | 备份或备份校验 | 启动旧数据平面并通过就绪门禁，重建旧应用栈，验证内部健康和镜像身份，恢复队列，重建 proxy，最后探测公网健康 | 未迁移；只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
 | API 迁移启动前的数据服务重启 | 启动旧数据服务，等待就绪，再启动并验证旧应用栈，之后才执行队列/proxy/公网门禁 | 保留快照；只有全部门禁通过才写 `old-stack-restored`，否则写 `recovery-required` |
-| 迁移启动或候选 API 失败 | 尝试停止 proxy、暂停队列；任一操作失败则先人工隔离 | `recovery-required`；migration 后拒绝普通 `resume`，必须使用带 run token 的整体验证点恢复 |
-| 迁移后的内部健康失败 | 尝试停止 proxy、暂停队列；任一操作失败则先人工隔离 | `recovery-required` |
-| 公网 smoke 失败 | 尝试立即停止 proxy；停止失败则先人工隔离，不自动恢复数据 | `recovery-required`，候选可能短暂接收流量 |
-| 信号/宿主机重启 | journal 仍为真相 | 先 `status`，migration 前执行 `resume`，migration 后执行带 token 的 `rollback` |
+| 迁移启动或候选 API 失败 | 尝试停止 proxy、暂停队列；任一操作失败则先人工隔离 | `recovery-required`；普通 `resume` 被拒绝，且该较早阶段必须使用带 run token 的整体验证点恢复 |
+| queue resume 后的内部收尾健康失败 | 保持 proxy 与 queue/worker 隔离；任一操作失败则先人工隔离 | `recovery-required`；符合条件的阶段提供带 run token 的 `recover-candidate` |
+| 公网或最终身份验证失败 | 停止 proxy、暂停 queue/worker，保留具体失败不变量，不自动恢复数据 | `recovery-required`；符合条件的阶段提供带 run token 的 `recover-candidate` |
+| 信号/宿主机重启 | journal 仍为真相 | 先 `status`，再执行其中唯一、按阶段生成的 `next_action` |
 
 只有明确知道迁移未启动，或 release record 已证明 schema 向后兼容时，才允许自动进行不恢复数据的应用 rollback。其他情况必须依照 release runbook 选择 forward-fix 或显式整体验证点恢复。
 

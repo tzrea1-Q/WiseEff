@@ -3,7 +3,7 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
 Date: 2026-08-20
-Status: PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) and PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) are merged into `main`; PR #624 supplies the advanced-resume proxy/readiness gate. The main-line repository implementation also includes bounded, scheme-agnostic diagnostic credential redaction. A non-customer target-host forward/recovery rehearsal is the only unfinished environment evidence; conditional target-synthetic and local-non-HDC CI jobs are skipped when their prerequisites are absent, not passed.
+Status: PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) and PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) are merged into `main`; PR #624 supplies the advanced-resume proxy/readiness gate. The repository implementation also includes bounded, scheme-agnostic diagnostic credential redaction plus the Phase 14 final-verification and protected candidate-recovery repair. Target run `20260825T012411Z-3326268` still requires deployment-host execution; conditional target-synthetic and local-non-HDC CI jobs are skipped when their prerequisites are absent, not passed.
 Scope: The source-checkout-based Docker Compose runtime under `ops/self-hosted/`
 
 The implementation is available at `ops/self-hosted/scripts/upgrade.sh`, with local script, configuration, and build gates passing. A real Ubuntu rehearsal is deployment evidence and is intentionally not implied by repository-local tests.
@@ -73,7 +73,7 @@ The live `.env` is not changed. If a copy is retained for disaster recovery, it 
 
 ### No destructive automatic recovery after migration starts
 
-Before the API migration command starts, the controller may safely bring the old containers back and resume the queue, but only after the complete old-stack verification passes. If that restoration fails before migration, `recovery-required` offers one executable `resume --run-id <run-id>` retry and never restores data. Once migration startup has begun, the database must be treated as possibly changed even if the process failed. The controller attempts to stop the public proxy and pause queue/worker traffic, marks the run `recovery-required`, rejects ordinary `resume`, and records the exact token-gated whole-state rollback command. If proxy or queue/worker isolation itself fails, the journal puts the required manual isolation step first.
+Before the API migration command starts, the controller may safely bring the old containers back and resume the queue, but only after the complete old-stack verification passes. If that restoration fails before migration, `recovery-required` offers one executable `resume --run-id <run-id>` retry and never restores data. Once migration startup has begun, the database must be treated as possibly changed even if the process failed. The controller attempts to stop the public proxy and pause queue/worker traffic, marks the run `recovery-required`, and rejects ordinary `resume`. A failure confined to candidate completion phases may offer the run-token-gated, data-preserving `recover-candidate` action; earlier or unsupported phases retain the exact token-gated whole-state rollback command. If proxy or queue/worker isolation itself fails, the journal puts the required manual isolation step first.
 
 `rollback --restore-data` is explicit and confirmation-gated because it replaces live state. After a completed upgrade has served traffic, restore also warns that post-upgrade writes would be lost and never proceeds non-interactively without a run-id-specific confirmation token.
 
@@ -106,6 +106,7 @@ upgrade.sh lock-status
 upgrade.sh unlock
 upgrade.sh status [--run-id <id>] [--json]
 upgrade.sh resume --run-id <id>
+upgrade.sh recover-candidate --run-id <id> --confirm recover-candidate-<id>
 upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 ```
 
@@ -115,6 +116,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `lock-status` reports the kernel/fallback lock state plus redacted holder metadata. `unlock` clears only proven-stale metadata/fallback locks and refuses a live operation.
 - `status` reads the durable journal only, including candidate-build status, diagnostic paths, and the actionable next step.
 - `resume` continues the first incomplete idempotent phase; it does not repeat a verified snapshot or migration blindly.
+- `recover-candidate` is a protected post-migration completion repair. It accepts only a recorded completion-phase `recovery-required` run with a verified recovery point, re-isolates traffic, verifies the manifest and local candidate image, and restores worker, queue, proxy, and public validation without restoring data.
 - `rollback` restores the previous application image. `--restore-data` additionally restores the recorded PostgreSQL, object-store, and Redis recovery point.
 - if checkout and resolved SHA match, API/worker/web all reference the exact commit-addressed image, the public probe passes, and `--restart` is absent, `apply` exits successfully as a no-op.
 - non-interactive apply requires both `--non-interactive` and `--yes`; destructive restore additionally requires the printed run-specific token.
@@ -295,6 +297,10 @@ Previous-stack recovery uses a separate `wiseeff_upgrade_verify_restored_stack` 
 
 Advanced resume is a separate guarded sequence for `queue-resumed`, `starting-proxy`, and `validating-public`: it stops and isolates the candidate proxy first, then rechecks API `/health/ready`, worker `127.0.0.1:8788/health/live` plus Docker health, and direct web access. Until all three pass, candidate proxy-up and public probing are forbidden. A worker failure uses stable code `candidate-worker-health`; proxy isolation failure uses `candidate-proxy-isolation`, persists `recovery_proxy_stopped=false`, and places manual proxy isolation first in `next_action`. The final worker verification remains after public validation so health drift cannot be declared completed.
 
+Final verification resolves the candidate through Docker's supported `image inspect --format '{{.Id}}'` interface. It canonicalizes each named-volume `name=destination` list before comparison, so Docker enumeration order cannot create a false mismatch while any changed name or destination still fails. Candidate image lookup, container presence/recreation, app image identity, Compose project identity, volume identity, and environment fingerprint each record a stable failure service/code.
+
+`recover-candidate` is a separate narrow recovery transaction, not a relaxation of ordinary `resume`. Eligibility is limited to a post-migration `recovery-required` run whose recorded failure belongs to the candidate completion phases and whose recovery point was verified. The exact run-bound confirmation token is checked before mutation. The transaction then isolates proxy and queue/worker traffic, verifies the backup manifest and local candidate image, selects the recorded target checkout, recreates worker, rechecks API/worker/web, resumes queue, recreates proxy, and runs public/final verification. Failure at any gate returns to `recovery-required` and repeats isolation; no PostgreSQL, object-store, or Redis restore function is reachable from this action.
+
 Diagnostic persistence uses the same deep sanitizer before writing console output, `failure_summary`, recovery summaries, or `events.log`. It redacts URI userinfo only for valid ASCII schemes, and authority scanning stops at `/`, `?`, or `#`, while preserving scheme, host, port, path, and non-sensitive context. Ordinary email text, email values in query or fragment data, Unicode pseudo-schemes, and URLs without userinfo remain unchanged. Operators read `failure_service` to identify the failing service, `failure_code` for the stable failure class, the bounded `failure_summary` for safe context, and `next_action` for the executable recovery step. `old-stack-restored` is valid only with verified recovery and `next_action=none`; `recovery-required` always carries a non-`none` next action.
 
 No seed, bootstrap, setup renderer, or configuration rewrite runs in this phase.
@@ -317,10 +323,10 @@ No backup is automatically pruned by `apply`. A future explicit retention comman
 | Queue pause or drain | Attempt complete previous-stack restoration with data-plane, app, queue, proxy, and public gates | `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
 | Backup or backup verification | Start the previous data plane and pass its readiness gate, recreate the previous app stack, verify internal health and image identity, resume the queue, recreate proxy, and probe public health last | No migration; `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
 | Data-service restart before API migration starts | Start previous data services, wait for readiness, then start and verify the previous app stack before queue/proxy/public gates | Snapshot retained; `old-stack-restored` only after every gate passes, otherwise `recovery-required` |
-| Migration startup or candidate API failure | Attempt to keep proxy stopped and queue paused; require manual isolation if either operation fails | `recovery-required`; ordinary `resume` is rejected after migration, so use the run-token-gated whole-state restore |
-| Internal health failure after migration | Attempt to keep proxy stopped and queue paused; require manual isolation if either operation fails | `recovery-required` |
-| Public smoke failure | Attempt to stop proxy; require manual isolation if that operation fails; do not auto-restore data | `recovery-required`; candidate may have briefly accepted traffic |
-| Signal/host reboot | Journal remains authoritative | `status`, then pre-migration `resume` or post-migration token-gated `rollback` |
+| Migration startup or candidate API failure | Attempt to keep proxy stopped and queue paused; require manual isolation if either operation fails | `recovery-required`; ordinary `resume` is rejected and this earlier phase requires run-token-gated whole-state restore |
+| Internal completion health failure after queue resume | Keep proxy and queue/worker isolated; require manual isolation if either operation fails | `recovery-required`; eligible phases offer run-token-gated `recover-candidate` |
+| Public/final identity verification failure | Stop proxy and pause queue/worker; preserve the specific failing invariant; do not auto-restore data | `recovery-required`; eligible phases offer run-token-gated `recover-candidate` |
+| Signal/host reboot | Journal remains authoritative | `status`, then execute its single phase-specific `next_action` |
 
 Rollback without data restore is allowed automatically only when migration startup is known not to have begun, or when the release record explicitly proves backward-compatible schema use. Otherwise the operator must choose forward-fix or explicit whole-state restore according to the release runbook.
 

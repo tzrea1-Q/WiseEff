@@ -77,6 +77,8 @@ Before candidate queue resume, the `apply`/`resume` path checks API readiness, w
 
 Advanced resume is one guarded sequence for `queue-resumed`, `starting-proxy`, and `validating-public`: it first stops and isolates the candidate proxy, then rechecks API `/health/ready`, worker `127.0.0.1:8788/health/live` plus Docker health, and direct web access. An unhealthy worker or any readiness failure therefore runs no candidate proxy-up and no public probe. If proxy isolation fails, the journal records `failure_service=proxy`, `failure_code=candidate-proxy-isolation`, `recovery_proxy_stopped=false`, and a `next_action` beginning with manual proxy isolation. Only after these checks does the controller recreate the proxy and run the public probe; the final worker verification remains in place to catch health drift.
 
+Final verification resolves the candidate image with Docker's supported `image inspect --format '{{.Id}}'` interface and compares named-volume mappings as unordered `name=destination` sets. Docker's mount enumeration order is not identity. Image lookup, missing/not-recreated containers, application image identity, Compose project identity, named-volume identity, and `.env` fingerprint failures each persist a stable service/code instead of collapsing to a generic recovery error.
+
 Use `status` or `status --json` to inspect `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, `recovery_failure_summary`, and `next_action`. Summaries are bounded and redacted; they do not contain proxy passwords, access credentials, or complete sensitive environment values. If any recovery action fails—including stop, pause, or queue resume—`recovery_failure_summary` contains its bounded sanitized action/code/output summary and the same detail is printed and journaled. Public probes use `curl --noproxy '*'`. A Vite `Host: web:5173` 403 inside a container is a Host allowlist result, not proof of a TCP outage; use loopback or the configured allowed hostname for direct probes.
 
 ## One-time host preparation
@@ -90,7 +92,7 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 
 `prepare-host` does not fetch Git, build an image, stop a service, or touch application data. It identifies the invoking `SUDO_USER`, adds that operator to the Docker socket group when needed, creates and secures the upgrade journal and backup roots, and transfers ownership of existing upgrade state/recovery artifacts to that operator. Membership in the Docker group is effectively root-equivalent host access, so use a dedicated trusted deployment account. A direct root session must pass `--operator <deployment-user>`. Log out and reconnect when the command adds Docker group membership.
 
-Run `plan`, `apply`, `resume`, and `rollback` as the deployment user without `sudo`. The upgrade entry rejects those actions whenever the effective user is root—including direct root shells—because root does not normally inherit the deployment user's proxy environment or Git configuration and would recreate root-owned state.
+Run `plan`, `apply`, `resume`, `recover-candidate`, and `rollback` as the deployment user without `sudo`. The upgrade entry rejects those actions whenever the effective user is root—including direct root shells—because root does not normally inherit the deployment user's proxy environment or Git configuration and would recreate root-owned state.
 
 The compatibility path accepts legacy deployments whose API, worker, and web containers have different image IDs. It records and tags each previous service image independently, then uses those exact service-specific images if pre-migration recovery or rollback is required. Operators no longer need to rebuild/recreate the three services merely to satisfy preflight.
 
@@ -156,7 +158,7 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 Base-image contract/archive/platform failures use the `base-image` category. An identity mismatch prints the pinned manifest/config digests, platform, and Docker-reported actual identity; compare the same fields in `status --json` before changing any tag. Other common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
 
-Before migration starts, a quiescence or backup failure attempts complete previous-stack restoration; only full verification records `old-stack-restored`, otherwise the run remains `recovery-required`. `failed-safe` is reserved for failures that occur before downtime. If old-stack restoration itself fails before migration, `recovery-required` may offer the executable `resume --run-id <run-id>` retry; it does not restore data. A failure after migration starts records `recovery-required` and does not offer ordinary `resume`; the next action is the token-gated whole-state rollback. If proxy or queue isolation failed, the journal puts the required manual isolation step first; rollback rechecks isolation and blocks before data restoration unless it succeeds. Rollback then uses the same old-stack verification gates and writes `rolled-back` only after internal health, queue resume, previous image identity, and proxy/public checks pass. Do not edit the journal or manually resume traffic.
+Before migration starts, a quiescence or backup failure attempts complete previous-stack restoration; only full verification records `old-stack-restored`, otherwise the run remains `recovery-required`. `failed-safe` is reserved for failures that occur before downtime. If old-stack restoration itself fails before migration, `recovery-required` may offer the executable `resume --run-id <run-id>` retry; it does not restore data. A post-migration failure does not offer ordinary `resume`. If the failure is limited to `queue-resumed`, `starting-proxy`, `validating-public`, or a retry of those completion gates, the journal offers the run-bound `recover-candidate` action below. Earlier or unsupported post-migration phases still require token-gated whole-state rollback. If proxy or queue isolation failed, the journal puts the required manual isolation step first. Do not edit the journal or manually resume traffic.
 
 For an idempotent post-migration health/finalization phase, use the journal's printed action:
 
@@ -164,7 +166,16 @@ For an idempotent post-migration health/finalization phase, use the journal's pr
 ./scripts/upgrade.sh resume --run-id <run-id>
 ```
 
-`resume` never resets `migration_started` and never silently restores data. It retries old-stack restoration only when `migration_started` is false. A post-migration `recovery-required` run returns exit `70` from ordinary `resume`; follow the journal's token-gated rollback action instead.
+`resume` never resets `migration_started` and never silently restores data. It retries old-stack restoration only when `migration_started` is false. A post-migration `recovery-required` run returns exit `70` from ordinary `resume`; follow the journal's printed action.
+
+For an eligible isolated completion failure, copy the exact command from `next_action`:
+
+```bash
+./scripts/upgrade.sh recover-candidate --run-id <run-id> \
+  --confirm recover-candidate-<run-id>
+```
+
+`recover-candidate` is intentionally narrower than `resume`. It accepts only a post-migration `recovery-required` run whose recorded failure phase is a candidate completion gate and whose pre-migration recovery point was verified. It requires the run-bound token, re-isolates proxy and queue/worker traffic, verifies the backup manifest and local candidate image, selects the recorded target checkout, then restores worker, queue, proxy, public probes, and final identity checks in that order. It never restores PostgreSQL, object-store, or Redis data and never changes `.env` or named volumes. Any failed gate returns `70`, re-enters `recovery-required`, and keeps traffic isolated.
 
 ### Host lock status and recovery
 
@@ -208,5 +219,5 @@ Stable exit classes are useful for automation: `0` completed/no-op, `2` invalid 
 - Keep `ops/self-hosted/.state/` outside the Docker build context; it contains private operation journals, not application source.
 - Treat build diagnostics as private operational data. They are redacted automatically, but review them again before sharing outside the operations team.
 - Preserve the same Compose project and named volume identities. Do not add a new project name during an upgrade.
-- Treat `recovery-required` as a maintenance incident. Follow exactly one journal action: pre-migration old-stack `resume`, or post-migration whole-state rollback with its run-specific token. If `recovery_proxy_stopped=false` or `recovery_queue_paused=false`, manually isolate that traffic first. Keep public traffic stopped until the recorded recovery action completes.
+- Treat `recovery-required` as a maintenance incident. Follow exactly one journal action: pre-migration old-stack `resume`; eligible post-migration completion-only `recover-candidate`; or post-migration whole-state rollback with its run-specific token. If `recovery_proxy_stopped=false` or `recovery_queue_paused=false`, manually isolate that traffic first. Keep public traffic stopped until the recorded recovery action completes.
 - Local tests and `selfhost:check` validate the entry and templates; they do not constitute target-environment, pilot, or production-readiness evidence.
