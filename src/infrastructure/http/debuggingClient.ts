@@ -95,6 +95,18 @@ function writeNodeRequestBody(input: WriteNodeInput): WriteNodeInput {
   return body;
 }
 
+function detectTargetsRequestBody(input?: DetectTargetsInput): DetectTargetsInput {
+  if (!input) {
+    return {};
+  }
+  const bridgeId = input.bridgeId?.trim();
+  if (!bridgeId) {
+    const { bridgeId: _bridgeId, ...body } = input;
+    return body;
+  }
+  return { ...input, bridgeId };
+}
+
 export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultApiClient()): DebuggingGateway {
   return {
     async listDevices() {
@@ -124,7 +136,10 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     async detectTargets(input?: DetectTargetsInput) {
       const response = parseContractDto(
         debugTargetListResponseSchema,
-        await apiClient.post<ItemsEnvelope<DebugTargetDto>>("/api/v1/debugging/targets/detect", input ?? {}),
+        await apiClient.post<ItemsEnvelope<DebugTargetDto>>(
+          "/api/v1/debugging/targets/detect",
+          detectTargetsRequestBody(input)
+        ),
         "DebugTargetListResponse"
       );
       return response.items.map(debugTargetFromDto);

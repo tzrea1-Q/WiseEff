@@ -178,6 +178,31 @@ describe("createHttpDebuggingGateway", () => {
     );
   });
 
+  it("serializes an optional bridge id for bridge-backed detection", async () => {
+    const fetchMock = createFetchMock({ items: [] });
+    const gateway = createGateway(fetchMock);
+
+    await gateway.detectTargets({ protocol: "hdc", bridgeId: "bridge-1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/debugging/targets/detect",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ protocol: "hdc", bridgeId: "bridge-1" })
+      })
+    );
+  });
+
+  it("omits an unavailable bridge id from detection requests", async () => {
+    const fetchMock = createFetchMock({ items: [] });
+    const gateway = createGateway(fetchMock);
+
+    await gateway.detectTargets({ protocol: "hdc", bridgeId: "   " });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ protocol: "hdc" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty("bridgeId");
+  });
+
   it("creates debugging sessions through the production endpoint", async () => {
     const fetchMock = createFetchMock({ item: sessionDto });
     const gateway = createGateway(fetchMock);
