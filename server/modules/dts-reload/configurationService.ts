@@ -1,10 +1,6 @@
-import { randomUUID } from "node:crypto";
-
-import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
-import type { AuditCorrelationContext } from "../audit/types";
+import { asAuditTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { requireDebugAdmin } from "../debugging/policy";
-import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
   SEEDED_RELOAD_CONFIGURATION,
@@ -19,16 +15,13 @@ import {
   upsertOrganisationDefault,
   type OrganisationDefaultRow
 } from "./configurationRepository";
-import { assertDtsReloadHumanActor } from "./policy";
+import {
+  assertDtsReloadInvocationContext,
+  requireDtsReloadUserInvocation,
+  type DtsReloadInvocationContext
+} from "./policy";
 
-export type ReloadConfigurationServiceContext = AuditCorrelationContext & {
-  /**
-   * Caller-supplied actor label (parameters `SensitiveWriteActorType` pattern).
-   * Mutating entry points must pass this through rather than hard-coding `"user"`.
-   * HTTP admin routes omit it and default to `"user"` at the gate/audit boundary.
-   */
-  actorType?: SensitiveWriteActorType;
-};
+export type ReloadConfigurationServiceContext = DtsReloadInvocationContext;
 
 function toIso(value: string | Date | null | undefined): string | null {
   if (!value) return null;
@@ -64,17 +57,17 @@ async function writeConfigurationAudit(
     targetId: string;
     previous: ReloadConfigurationContract | null;
     next: ReloadConfigurationContract | null;
-    actorType: SensitiveWriteActorType;
   },
-  context: ReloadConfigurationServiceContext = {}
+  context: ReloadConfigurationServiceContext
 ) {
-  // requestId fallback survives only until reload-config contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeTrustedAuditEventInTx(tx, {
+    invocation: context.invocation,
+    ...(context.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+    projectId: null,
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
-    projectId: null,
     targetType: "dts-reload-configuration",
     targetId: input.targetId,
     metadata: {
@@ -82,7 +75,7 @@ async function writeConfigurationAudit(
       previous: input.previous,
       next: input.next
     },
-    actorType: input.actorType
+    traceId: context.requestId
   });
 }
 
@@ -91,10 +84,9 @@ async function assertConfigurationHumanActor(
   auth: AuthContext,
   context: ReloadConfigurationServiceContext
 ) {
-  await assertDtsReloadHumanActor(db, auth, {
-    actorType: context.actorType,
+  await requireDtsReloadUserInvocation(db, auth, {
+    context,
     action: "configure",
-    requestId: context.requestId
   });
 }
 
@@ -113,11 +105,11 @@ export async function updateOrganisationReloadConfiguration(
   db: Database,
   auth: AuthContext,
   body: unknown,
-  context: ReloadConfigurationServiceContext = {}
+  context: ReloadConfigurationServiceContext
 ): Promise<OrganisationReloadConfigurationDto> {
+  const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDebugAdmin(auth);
-  await assertConfigurationHumanActor(db, auth, context);
-  const actorType = context.actorType ?? "user";
+  await assertConfigurationHumanActor(db, auth, trustedContext);
   const contract = parseReloadConfigurationContract(body);
 
   return db.transaction(async (tx) => {
@@ -137,9 +129,8 @@ export async function updateOrganisationReloadConfiguration(
         targetId: auth.organization.id,
         previous,
         next: rowToContract(saved),
-        actorType
       },
-      context
+      trustedContext
     );
     return organisationDto(saved);
   });

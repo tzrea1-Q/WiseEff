@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
+import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -16,7 +18,12 @@ vi.mock("../audit/repository", () => ({
 
 import { createAuditEvent } from "../audit/repository";
 import { insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
-import { getReloadRun, listReloadCandidates, startReloadRun } from "./service";
+import {
+  getReloadRun,
+  listReloadCandidates,
+  startReloadRun as startReloadRunService,
+  type DtsReloadServiceContext
+} from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -55,6 +62,32 @@ function makeObjectStore(files: Record<string, Buffer> = {}) {
     return found;
   });
   return { objectStore: { put, get } as ObjectStore, put, get, files };
+}
+
+function userContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+}
+
+function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+  return {
+    invocation: createAgentInvocation(principal, {
+      sessionId: "session-dts-reload",
+      toolCallId: "tool-dts-reload",
+      approval: { required: true, approvalId: "approval-dts-reload" }
+    }),
+    requestId,
+    refusalDb
+  };
+}
+
+function startReloadRun(
+  db: Parameters<typeof startReloadRunService>[0],
+  objectStore: Parameters<typeof startReloadRunService>[1],
+  principal: Parameters<typeof startReloadRunService>[2],
+  input: Parameters<typeof startReloadRunService>[3],
+  context: Parameters<typeof startReloadRunService>[4] = userContext(principal, "req-dts-user", db)
+) {
+  return startReloadRunService(db, objectStore, principal, input, context);
 }
 
 const BASE_DTS = `/dts-v1/;
@@ -1050,7 +1083,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             projectId: "project-1",
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
           },
-          { actorType: "agent" }
+          agentContext(auth(), "req-dts-agent", db)
         )
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -1092,7 +1125,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
             confirmationToken: "confirm-sensitive-reload"
           },
-          { actorType: "agent" }
+          agentContext(elevatedAuth(), "req-dts-agent", db)
         )
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -1152,7 +1185,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
             confirmationToken: "confirm-sensitive-reload"
           },
-          { actorType: "agent" }
+          agentContext(elevatedAuth(), "req-dts-agent", db)
         )
       ).rejects.toMatchObject({
         details: {

@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
+import type { Database } from "../../shared/database/client";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 vi.mock("../audit/repository", () => ({
@@ -45,7 +47,12 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
 import { insertReloadRun, insertReloadRunTarget } from "./repository";
-import { deployReloadRun, getReloadResidue, getReloadRun } from "./service";
+import {
+  deployReloadRun as deployReloadRunService,
+  getReloadResidue,
+  getReloadRun,
+  type DtsReloadServiceContext
+} from "./service";
 import { bridgeCanonicalDeviceId, computeReloadLeaseTtlMs } from "./deploy";
 import {
   DTS_RELOAD_CONFIRMATION_TOKEN,
@@ -61,6 +68,33 @@ const ARTIFACT = Buffer.from("dtbo");
 const ARTIFACT_SHA = createHash("sha256").update(ARTIFACT).digest("hex");
 const SOURCE_DTS = Buffer.from("/dts-v1/;\n/plugin/;\n");
 const CANONICAL_DEVICE_ID = "bridge:br-1";
+
+function userContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+}
+
+function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+  return {
+    invocation: createAgentInvocation(principal, {
+      sessionId: "session-dts-reload",
+      toolCallId: "tool-dts-reload",
+      approval: { required: true, approvalId: "approval-dts-reload" }
+    }),
+    requestId,
+    refusalDb
+  };
+}
+
+function deployReloadRun(
+  db: Parameters<typeof deployReloadRunService>[0],
+  objectStore: Parameters<typeof deployReloadRunService>[1],
+  principal: Parameters<typeof deployReloadRunService>[2],
+  input: Parameters<typeof deployReloadRunService>[3],
+  deps: Parameters<typeof deployReloadRunService>[4],
+  context: Parameters<typeof deployReloadRunService>[5] = userContext(principal, "req-deploy-user", db)
+) {
+  return deployReloadRunService(db, objectStore, principal, input, deps, context);
+}
 
 describe("reload deploy helpers", () => {
   it("derives the canonical device id from the bridge id", () => {
@@ -377,7 +411,7 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         deployReloadRun(db, makeObjectStore(), auth(), deployInput(), {
           bridgeRpcClient,
           bridgeConnectionPool: { isConnected: () => true }
-        }, { actorType: "agent" })
+        }, agentContext(auth(), "req-deploy-agent", db))
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
         details: {

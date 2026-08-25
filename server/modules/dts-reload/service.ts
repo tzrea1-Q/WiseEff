@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { asAuditTx, withAuditedWrite, writeAuditEventInTx, writeMilestoneAudit, type AuditSpec } from "../audit/auditedWrite";
-import type { AuditCorrelationContext } from "../audit/types";
+import {
+  asAuditTx,
+  writeTrustedAuditEventInTx,
+  writeTrustedMilestoneAudit
+} from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
@@ -24,7 +26,13 @@ import {
   groupDebugOverlayTargets,
   type DebugOverlayPropertyBinding
 } from "./debugOverlay";
-import { assertDtsReloadHumanActor, requireDtsReload, requireDtsReloadView } from "./policy";
+import {
+  assertDtsReloadInvocationContext,
+  requireDtsReload,
+  requireDtsReloadUserInvocation,
+  requireDtsReloadView,
+  type DtsReloadInvocationContext
+} from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
   clearReloadRunStorageKeys,
@@ -80,9 +88,7 @@ import {
 
 export { RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
 
-export type DtsReloadServiceContext = AuditCorrelationContext & {
-  actorType?: SensitiveWriteActorType;
-};
+export type DtsReloadServiceContext = DtsReloadInvocationContext;
 
 export type StartReloadRunTargetInput = {
   bindingId: string;
@@ -202,21 +208,26 @@ type ReloadAuditInput = {
   projectId: string;
   runId: string;
   severity?: "High" | "Medium" | "Low";
-  actorType?: SensitiveWriteActorType;
   metadata: Record<string, unknown>;
 };
 
-function reloadAuditSpec(input: ReloadAuditInput, context: DtsReloadServiceContext): AuditSpec {
+function reloadAuditInput(
+  input: ReloadAuditInput,
+  auth: AuthContext,
+  context: DtsReloadServiceContext
+) {
   return {
+    invocation: context.invocation,
+    ...(context.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+    projectId: input.projectId,
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
     severity: input.severity ?? "Medium",
-    projectId: input.projectId,
     targetType: "dts-reload-run",
     targetId: input.runId,
-    actorType: input.actorType ?? context.actorType ?? "user",
-    metadata: input.metadata
+    metadata: input.metadata,
+    traceId: context.requestId
   };
 }
 
@@ -231,9 +242,9 @@ async function writeReloadMilestoneAudit(
   db: Database,
   auth: AuthContext,
   input: ReloadAuditInput,
-  context: DtsReloadServiceContext = {}
+  context: DtsReloadServiceContext
 ) {
-  await writeMilestoneAudit(db, auth, { requestId: context.requestId ?? randomUUID() }, reloadAuditSpec(input, context));
+  await writeTrustedMilestoneAudit(db, reloadAuditInput(input, auth, context));
 }
 
 function auditKindsForPurpose(purpose: ReloadRunPurpose): {
@@ -345,12 +356,13 @@ async function assertDeploySensitiveReloadAllowed(
 
   await assertSensitiveReloadBatchAllowed(db, auth, {
     projectId: run.projectId,
-    actorType: context.actorType ?? "user",
+    invocation: context.invocation,
     confirmationToken: input.confirmationTokens.includes(SENSITIVE_RELOAD_CONFIRMATION_TOKEN)
       ? SENSITIVE_RELOAD_CONFIRMATION_TOKEN
       : undefined,
     targets: sensitiveTargets,
-    requestId: context.requestId
+    requestId: context.requestId,
+    refusalDb: context.refusalDb
   });
 }
 
@@ -671,16 +683,16 @@ export async function startReloadRun(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: StartReloadRunInput,
-  context: DtsReloadServiceContext = {}
+  context: DtsReloadServiceContext
 ): Promise<ReloadRunDto> {
+  const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
 
   const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
-  await assertDtsReloadHumanActor(db, auth, {
-    actorType: context.actorType,
+  await requireDtsReloadUserInvocation(db, auth, {
+    context: trustedContext,
     action: purpose === "restore-baseline" ? "restore" : "start",
     projectId: input.projectId,
-    requestId: context.requestId
   });
   const audits = auditKindsForPurpose(purpose);
 
@@ -704,7 +716,7 @@ export async function startReloadRun(
   const resolved = await resolveStartTargets(db, auth, input);
   const sensitiveHits = await assertSensitiveReloadBatchAllowed(db, auth, {
     projectId: input.projectId,
-    actorType: context.actorType ?? "user",
+    invocation: trustedContext.invocation,
     confirmationToken: input.confirmationToken,
     targets: resolved.map((item) => ({
       bindingId: item.candidate.bindingId,
@@ -712,7 +724,8 @@ export async function startReloadRun(
       nodePath: item.candidate.nodePath!,
       compatible: item.compatible
     })),
-    requestId: context.requestId
+    requestId: trustedContext.requestId,
+    refusalDb: trustedContext.refusalDb
   });
   const hasCriticalSensitive = sensitiveHits.some((hit) => hit.rule.riskTier === "critical");
   const sensitiveSummary = sensitiveAuditSummary(sensitiveHits);
@@ -758,7 +771,7 @@ export async function startReloadRun(
           : {})
       }
     },
-    context
+    trustedContext
   );
 
   let baseSource: string;
@@ -799,7 +812,7 @@ export async function startReloadRun(
           ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
         }
       }
-    }, context);
+    }, trustedContext);
     return persisted;
   }
 
@@ -847,7 +860,7 @@ export async function startReloadRun(
         ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
       }
     }
-  }, context);
+  }, trustedContext);
 
   return persisted;
 }
@@ -862,9 +875,15 @@ export async function startRestoreBaselineRun(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: RestoreBaselineInput,
-  context: DtsReloadServiceContext = {}
+  context: DtsReloadServiceContext
 ): Promise<ReloadRunDto> {
+  const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
+  await requireDtsReloadUserInvocation(db, auth, {
+    context: trustedContext,
+    action: "restore",
+    projectId: input.projectId,
+  });
 
   const residue = await getDeviceResidue(db, {
     organizationId: auth.organization.id,
@@ -949,7 +968,7 @@ export async function startRestoreBaselineRun(
       deviceId: input.deviceId,
       restoresSourceRunId: residue.sourceRunId
     },
-    context
+    trustedContext
   );
 }
 
@@ -987,7 +1006,7 @@ async function persistRunOutcome(
     /** Outcome audit (blocked/validated): commits with the run row (ADR-0027). */
     audit: ReloadAuditInput;
   },
-  context: DtsReloadServiceContext = {}
+  context: DtsReloadServiceContext
 ): Promise<ReloadRunDto> {
   const sourceBytes = Buffer.from(input.overlaySource, "utf8");
   const storedSource = await objectStore.put({
@@ -1051,20 +1070,14 @@ async function persistRunOutcome(
       });
     }
 
-    const auditSpec = reloadAuditSpec(input.audit, context);
-    await writeAuditEventInTx(
-      asAuditTx(tx),
-      auth,
-      { requestId: context.requestId ?? randomUUID() },
-      {
-        ...auditSpec,
-        metadata: {
-          ...auditSpec.metadata,
-          overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
-          artifactSha256: artifactSha
-        }
+    await writeTrustedAuditEventInTx(asAuditTx(tx), {
+      ...reloadAuditInput(input.audit, auth, context),
+      metadata: {
+        ...reloadAuditInput(input.audit, auth, context).metadata,
+        overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
+        artifactSha256: artifactSha
       }
-    );
+    });
 
     return run;
   });
@@ -1296,15 +1309,15 @@ export async function deployReloadRun(
   auth: AuthContext,
   input: DeployReloadRunInput,
   deps: DeployReloadDeps,
-  context: DtsReloadServiceContext = {}
+  context: DtsReloadServiceContext
 ): Promise<ReloadRunDto> {
+  const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
 
-  await assertDtsReloadHumanActor(db, auth, {
-    actorType: context.actorType,
+  await requireDtsReloadUserInvocation(db, auth, {
+    context: trustedContext,
     action: "deploy",
     runId: input.runId,
-    requestId: context.requestId
   });
 
   if (!input.confirmationTokens.includes(DTS_RELOAD_CONFIRMATION_TOKEN)) {
@@ -1359,7 +1372,7 @@ export async function deployReloadRun(
 
   // Re-run the sensitive-node gate against the deployer's capability + confirmation. The start-time
   // gate cannot vouch for a different subject who triggers the actual device write here.
-  await assertDeploySensitiveReloadAllowed(db, auth, run, input, context);
+  await assertDeploySensitiveReloadAllowed(db, auth, run, input, trustedContext);
 
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId: input.runId });
   if (!row?.overlay_artifact_storage_key) {
@@ -1394,7 +1407,7 @@ export async function deployReloadRun(
         artifactSha256: run.artifact.sha256
       }
     },
-    context
+    trustedContext
   );
 
   // Residue is applied inside the persistProgress callback so it runs while the device lease is
@@ -1454,7 +1467,7 @@ export async function deployReloadRun(
               : update.status === "unverifiable"
                 ? { kind: audits.unverifiable, action: "unverifiable" as const }
                 : { kind: audits.failed, action: "failed" as const };
-        return withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+        return db.transaction(async (tx) => {
           const updated = await updateReloadRunDeployState(tx, payload);
           if (update.deviceId) {
             residueAction = await applyResidueForDeployTerminal(tx, {
@@ -1470,9 +1483,8 @@ export async function deployReloadRun(
             });
           }
           const dto = toReloadRunDto(updated, run.targets, run.overlaySource);
-          return {
-            result: dto,
-            audit: reloadAuditSpec(
+          await writeTrustedAuditEventInTx(asAuditTx(tx), {
+            ...reloadAuditInput(
               {
                 kind: terminalAudit.kind,
                 action: terminalAudit.action,
@@ -1491,9 +1503,11 @@ export async function deployReloadRun(
                   residueAction
                 }
               },
-              context
+              auth,
+              trustedContext
             )
-          };
+          });
+          return dto;
         });
       }
     });
@@ -1520,7 +1534,7 @@ export async function deployReloadRun(
           message: error instanceof Error ? error.message : String(error)
         }
       },
-      context
+      trustedContext
     );
     throw error;
   }

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -262,6 +263,10 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
         startReloadRun(db, objectStore, auth(), {
           projectId: "project-1",
           targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+        }, {
+          invocation: createUserInvocation(auth()),
+          requestId: "req-history-authz",
+          refusalDb: db
         })
       ).rejects.toMatchObject({
         code: "FORBIDDEN",

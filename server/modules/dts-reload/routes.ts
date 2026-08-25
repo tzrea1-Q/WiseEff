@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import type { ObjectStore } from "../logs/objectStore";
@@ -110,7 +111,9 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(reloadConfigurationContractBodySchema, request.body);
     const item = await updateOrganisationReloadConfiguration(db, auth, body, {
-      requestId: request.requestId
+      invocation: createUserInvocation(auth),
+      requestId: request.requestId,
+      refusalDb: db
     });
     return { status: 200, body: { item } };
   });
@@ -157,7 +160,7 @@ export function registerDtsReloadRoutes(
         targets: body.targets,
         confirmationToken: body.confirmationToken
       },
-      { requestId: request.requestId }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
     );
     return { status: 201, body: { item } };
   });
@@ -177,7 +180,7 @@ export function registerDtsReloadRoutes(
         deviceId: body.deviceId,
         confirmationToken: body.confirmationToken
       },
-      { requestId: request.requestId }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
     );
     return { status: 201, body: { item } };
   });
@@ -220,7 +223,7 @@ export function registerDtsReloadRoutes(
         bridgeConnectionPool: options.bridgeConnectionPool,
         artifactRoot: options.bridgeArtifactRoot
       },
-      { requestId: request.requestId }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
     );
     return { status: 200, body: { item } };
   });
@@ -239,7 +242,7 @@ export function registerDtsReloadRoutes(
         bindingIds: body.bindingIds,
         unverifiableAcknowledged: body.unverifiableAcknowledged
       },
-      { requestId: request.requestId, objectStore }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db, objectStore }
     );
     return { status: 201, body: { item } };
   });

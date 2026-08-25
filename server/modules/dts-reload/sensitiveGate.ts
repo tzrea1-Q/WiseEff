@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-
-import { writeRefusalAudit } from "../audit/auditedWrite";
+import { writeTrustedRefusalAudit } from "../audit/auditedWrite";
+import { assertTrustedInvocationContext, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -9,8 +8,7 @@ import {
   listSensitiveNodeRules,
   matchSensitiveRules,
   type SensitiveNodeRule,
-  type SensitiveRiskTier,
-  type SensitiveWriteActorType
+  type SensitiveRiskTier
 } from "../parameter-kernel/sensitiveNode";
 
 /** Explicit confirmation required when a reload batch includes a critical-tier sensitive match. */
@@ -92,21 +90,21 @@ async function auditSensitiveReloadDenied(
   auth: AuthContext,
   input: {
     projectId: string;
-    actorType: SensitiveWriteActorType;
+    invocation: TrustedInvocationContext;
     hit: ReloadTargetSensitiveHit;
     reason: "missing-capability" | "missing-confirmation" | "agent-refused";
-    requestId?: string;
+    requestId: string;
   }
 ) {
-  await writeRefusalAudit(db, auth, { requestId: input.requestId ?? randomUUID() }, {
+  await writeTrustedRefusalAudit(db, {
+    invocation: input.invocation,
+    projectId: input.projectId,
     app: "dts-reload",
     kind: "dts-reload-sensitive-node-denied",
     action: "deny",
     severity: "High",
-    projectId: input.projectId,
     targetType: "sensitive-node",
     targetId: input.hit.rule.id,
-    actorType: input.actorType,
     metadata: {
       code: SENSITIVE_RELOAD_DENIED_CODE,
       reason: input.reason,
@@ -119,7 +117,8 @@ async function auditSensitiveReloadDenied(
       pattern: input.hit.rule.pattern,
       requiredCapability: input.hit.rule.requiredCapability,
       ruleId: input.hit.rule.id
-    }
+    },
+    traceId: input.requestId
   });
 }
 
@@ -156,7 +155,7 @@ export async function assertSensitiveReloadBatchAllowed(
   auth: AuthContext,
   input: {
     projectId: string;
-    actorType?: SensitiveWriteActorType;
+    invocation: TrustedInvocationContext;
     confirmationToken?: string | null;
     targets: Array<{
       bindingId: string;
@@ -164,10 +163,11 @@ export async function assertSensitiveReloadBatchAllowed(
       nodePath: string;
       compatible?: string | null;
     }>;
-    requestId?: string;
+    requestId: string;
+    refusalDb: Database;
   }
 ): Promise<ReloadTargetSensitiveHit[]> {
-  const actorType = input.actorType ?? "user";
+  const invocation = assertTrustedInvocationContext(input.invocation);
   const rules = await listSensitiveNodeRules(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId
@@ -192,11 +192,11 @@ export async function assertSensitiveReloadBatchAllowed(
   if (hits.length === 0) return [];
 
   // Agent actors are refused for any sensitive match on reload (stricter than library writes).
-  if (actorType === "agent") {
+  if (invocation.initiator === "agent") {
     const hit = hits[0]!;
-    await auditSensitiveReloadDenied(db, auth, {
+    await auditSensitiveReloadDenied(input.refusalDb, auth, {
       projectId: input.projectId,
-      actorType,
+      invocation,
       hit,
       reason: "agent-refused",
       requestId: input.requestId
@@ -210,9 +210,9 @@ export async function assertSensitiveReloadBatchAllowed(
 
   for (const hit of hits) {
     if (!callerHasRequiredCapability(auth, hit.rule)) {
-      await auditSensitiveReloadDenied(db, auth, {
+      await auditSensitiveReloadDenied(input.refusalDb, auth, {
         projectId: input.projectId,
-        actorType,
+        invocation,
         hit,
         reason: "missing-capability",
         requestId: input.requestId
@@ -228,9 +228,9 @@ export async function assertSensitiveReloadBatchAllowed(
   const criticalHits = hits.filter((hit) => hit.rule.riskTier === "critical");
   if (criticalHits.length > 0 && input.confirmationToken !== SENSITIVE_RELOAD_CONFIRMATION_TOKEN) {
     const hit = criticalHits[0]!;
-    await auditSensitiveReloadDenied(db, auth, {
+      await auditSensitiveReloadDenied(input.refusalDb, auth, {
       projectId: input.projectId,
-      actorType,
+      invocation,
       hit,
       reason: "missing-confirmation",
       requestId: input.requestId

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
+import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -18,7 +20,8 @@ import { createAuditEvent } from "../audit/repository";
 import { upsertOrganisationDefault } from "./configurationRepository";
 import {
   getReloadConfigurationAdminView,
-  updateOrganisationReloadConfiguration
+  updateOrganisationReloadConfiguration as updateOrganisationReloadConfigurationService,
+  type ReloadConfigurationServiceContext
 } from "./configurationService";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -38,6 +41,31 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
     permissions: ["debugging:admin"],
     ...overrides
   };
+}
+
+function userContext(principal: AuthContext, requestId: string, refusalDb: Database): ReloadConfigurationServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+}
+
+function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): ReloadConfigurationServiceContext {
+  return {
+    invocation: createAgentInvocation(principal, {
+      sessionId: "session-dts-reload",
+      toolCallId: "tool-dts-reload",
+      approval: { required: true, approvalId: "approval-dts-reload" }
+    }),
+    requestId,
+    refusalDb
+  };
+}
+
+function updateOrganisationReloadConfiguration(
+  db: Parameters<typeof updateOrganisationReloadConfigurationService>[0],
+  principal: Parameters<typeof updateOrganisationReloadConfigurationService>[1],
+  body: Parameters<typeof updateOrganisationReloadConfigurationService>[2],
+  context: Parameters<typeof updateOrganisationReloadConfigurationService>[3] = userContext(principal, "req-config-user", db)
+) {
+  return updateOrganisationReloadConfigurationService(db, principal, body, context);
 }
 
 describe.skipIf(!databaseAvailable)("reload configuration service", () => {
@@ -81,10 +109,12 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
 
   it("refuses an agent actor on configuration write and audits dts-reload-agent-refused", async () => {
     await expect(
-      updateOrganisationReloadConfiguration(db, auth(), SEEDED_RELOAD_CONFIGURATION, {
-        actorType: "agent",
-        requestId: "req-config-agent"
-      })
+      updateOrganisationReloadConfiguration(
+        db,
+        auth(),
+        SEEDED_RELOAD_CONFIGURATION,
+        agentContext(auth(), "req-config-agent", db)
+      )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       details: {
@@ -142,7 +172,7 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
         triggerPayload: "1",
         kernelLogCommand: "hilog"
       },
-      { requestId: "req-1" }
+      userContext(auth(), "req-1", db)
     );
 
     expect(next.source).toBe("organisation");
