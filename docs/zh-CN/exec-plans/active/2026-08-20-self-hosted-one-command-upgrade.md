@@ -38,6 +38,7 @@
 - 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - 仅构建期 insecure TLS 兼容使用 `fix/selfhost-insecure-build-tls-policy`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - PR #624 在 `main` 维护 advanced-resume worker/proxy 门禁；诊断凭据脱敏是随后进入 main-line 的维护变更。会话 owner 仅在所有适用的 required CI check 通过后合入。原始脏 `main` 工作区合入后不得为了同步而切换或改写。
+- Phase 14 的 final-verification 与 candidate-recovery 修复使用从当前 `main` 创建的 `codex/selfhost-final-verification-recovery-hotfix`；父代理/会话 owner 仅在独立评审和所有适用 required CI check 通过后开 PR 并合入。
 
 ## 前置条件
 

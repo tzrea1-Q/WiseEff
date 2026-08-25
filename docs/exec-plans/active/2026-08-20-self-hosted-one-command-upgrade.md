@@ -38,6 +38,7 @@
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - PR #624 maintains the advanced-resume worker/proxy gate on `main`; diagnostic redaction is a subsequent main-line maintenance change. The session owner merges only after every applicable required CI check passes. Do not switch or rewrite a dirty shared `main` worktree to synchronize it after merge.
+- Phase 14 final-verification and candidate-recovery repair uses `codex/selfhost-final-verification-recovery-hotfix` from current `main`; the parent/session owner opens and merges its PR only after independent review and every applicable required CI check pass.
 
 ## Preconditions
 

@@ -379,11 +379,14 @@ function runCandidateRecoveryFixture(options: {
   confirm?: string;
   failedPhase?: string;
   manifestValid?: boolean;
+  outcome?: string;
+  phase?: string;
   workerHealthy?: boolean;
+  workerStopSucceeds?: boolean;
 } = {}) {
   const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-candidate-recovery-"));
-  writeFileSync(join(runDir, "outcome"), "recovery-required\n");
-  writeFileSync(join(runDir, "phase"), "recovery-required\n");
+  writeFileSync(join(runDir, "outcome"), (options.outcome ?? "recovery-required") + "\n");
+  writeFileSync(join(runDir, "phase"), (options.phase ?? "recovery-required") + "\n");
   writeFileSync(join(runDir, "failed_phase"), (options.failedPhase ?? "validating-public") + "\n");
   writeFileSync(join(runDir, "migration_started"), "true\n");
   writeFileSync(join(runDir, "recovery_point_verified"), "true\n");
@@ -395,6 +398,7 @@ function runCandidateRecoveryFixture(options: {
     candidate_image_available="$2"
     manifest_valid="$3"
     worker_healthy="$4"
+    worker_stop_succeeds="$6"
     upgrade_run_dir="$run_dir"
     upgrade_backup_dir="$run_dir/backup"
     upgrade_run_id=candidate-recovery
@@ -439,6 +443,7 @@ function runCandidateRecoveryFixture(options: {
       if [ "$1" = "stop" ]; then
         service="\${!#}"
         trace "\${service}-stop"
+        if [ "\${service}" = "worker" ] && [ "$worker_stop_succeeds" != "true" ]; then return 93; fi
       else
         trace "compose $*"
       fi
@@ -462,7 +467,10 @@ function runCandidateRecoveryFixture(options: {
     }
     wiseeff_upgrade_probe_web() { trace web-probe; return 0; }
     wiseeff_upgrade_public_probe() { trace public-probe; return 0; }
-    wiseeff_upgrade_verify_final_state() { trace final-verification; return 0; }
+    wiseeff_upgrade_verify_final_state() {
+      trace "final-verification recovery-verified=$(wiseeff_upgrade_state_read recovery_verified) outcome=$(wiseeff_upgrade_state_read outcome)"
+      return 0
+    }
     wiseeff_upgrade_restore_postgres() { trace restore-postgres-must-not-run; return 1; }
     wiseeff_upgrade_restore_objects() { trace restore-minio-must-not-run; return 1; }
     wiseeff_upgrade_restore_redis() { trace restore-redis-must-not-run; return 1; }
@@ -476,6 +484,7 @@ function runCandidateRecoveryFixture(options: {
     String(options.manifestValid ?? true),
     String(options.workerHealthy ?? true),
     options.confirm ?? "recover-candidate-candidate-recovery",
+    String(options.workerStopSucceeds ?? true),
   ]);
   return { result, runDir };
 }
@@ -486,6 +495,7 @@ function runFinalVerificationFixture(options: {
   missingService?: string;
   reverseProxyMountOrder?: boolean;
   unchangedService?: string;
+  workerHealthy?: boolean;
   wrongComposeProject?: boolean;
   wrongImageService?: string;
   wrongVolumeService?: string;
@@ -518,7 +528,8 @@ function runFinalVerificationFixture(options: {
     wrong_image_service="$6"
     wrong_compose_project="$7"
     wrong_volume_service="$8"
-    wiseeff_upgrade_probe_worker() { return 0; }
+    worker_healthy="$9"
+    wiseeff_upgrade_probe_worker() { [ "$worker_healthy" = "true" ]; }
     wiseeff_upgrade_compose() {
       if [ "$1" = "ps" ] && [ "$2" = "-q" ]; then
         if [ "$3" = "$missing_service" ]; then return 0; fi
@@ -588,6 +599,7 @@ function runFinalVerificationFixture(options: {
     options.wrongImageService ?? "",
     String(options.wrongComposeProject ?? false),
     options.wrongVolumeService ?? "",
+    String(options.workerHealthy ?? true),
   ]);
 
   return { result, runDir };
@@ -1456,6 +1468,7 @@ describe("upgrade.sh public interface", () => {
   it.each([
     { label: "candidate image lookup", options: { candidateImageAvailable: false }, service: "image", code: "candidate-image-unavailable" },
     { label: "missing container", options: { missingService: "proxy" }, service: "proxy", code: "candidate-container-missing" },
+    { label: "missing worker container", options: { missingService: "worker", workerHealthy: false }, service: "worker", code: "candidate-container-missing" },
     { label: "container recreation", options: { unchangedService: "api" }, service: "api", code: "candidate-container-not-recreated" },
     { label: "application image identity", options: { wrongImageService: "web" }, service: "web", code: "candidate-image-identity" },
     { label: "Compose project identity", options: { wrongComposeProject: true }, service: "api", code: "candidate-compose-project" },
@@ -1799,7 +1812,7 @@ describe("upgrade.sh public interface", () => {
     expect(trace.indexOf("worker-up")).toBeLessThan(trace.indexOf("queue-resume"));
     expect(trace.indexOf("queue-resume")).toBeLessThan(trace.indexOf("proxy-up"));
     expect(trace.indexOf("proxy-up")).toBeLessThan(trace.indexOf("public-probe"));
-    expect(trace).toContain("final-verification");
+    expect(trace).toContain("final-verification recovery-verified=false outcome=recovery-required");
     expect(trace).not.toContain("restore-postgres-must-not-run");
     expect(trace).not.toContain("restore-minio-must-not-run");
     expect(trace).not.toContain("restore-redis-must-not-run");
@@ -1824,6 +1837,36 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(70);
     expect(result.stderr).toContain("not eligible for candidate recovery");
     expect(readFileSync(join(runDir, "trace.log"), "utf8")).toBe("");
+  });
+
+  it("rejects candidate recovery for an already completed run", () => {
+    const { result, runDir } = runCandidateRecoveryFixture({ outcome: "completed", phase: "completed" });
+
+    expect(result.status).toBe(70);
+    expect(result.stderr).toContain("not eligible for candidate recovery");
+    expect(readFileSync(join(runDir, "trace.log"), "utf8")).toBe("");
+  });
+
+  it("restarts isolation when an earlier candidate recovery was interrupted", () => {
+    const { result, runDir } = runCandidateRecoveryFixture({
+      outcome: "running",
+      phase: "candidate-recovery-resuming-queue",
+    });
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, result.stderr + "\n" + result.stdout).toBe(0);
+    expect(trace.indexOf("proxy-stop")).toBeLessThan(trace.indexOf("manifest-verify"));
+    expect(trace.indexOf("queue-pause")).toBeLessThan(trace.indexOf("manifest-verify"));
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("completed\n");
+  });
+
+  it("records worker isolation failure separately from a successful queue pause", () => {
+    const { result, runDir } = runCandidateRecoveryFixture({ workerStopSucceeds: false });
+
+    expect(result.status).toBe(70);
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("worker\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-recovery-worker-stop\n");
+    expect(readFileSync(join(runDir, "recovery_queue_paused"), "utf8")).toBe("false\n");
   });
 
   it.each([
