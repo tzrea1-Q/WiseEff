@@ -24,6 +24,7 @@ stock 拓扑只运行一个 API 副本。wrapper 对 `up --scale api=...`、`up 
 | 某个停止或缺失的服务需要在不构建的情况下对齐 | `./scripts/compose --env-file .env up -d --no-build` | 使用 Compose 当前解析到的镜像启动或创建；不可变 SHA 升级后应先核对镜像身份。 |
 | 部署最新代码并保留完整数据 | 先 `./scripts/upgrade.sh plan`，再 `./scripts/upgrade.sh apply` | 解析唯一 commit、创建并校验恢复点、迁移、全量重建并验收。 |
 | 重新创建相同的已部署 commit | `./scripts/upgrade.sh apply --restart --ref <sha>` | SHA 相同时仍执行完整受保护升级流程。 |
+| 完成符合条件且已隔离的 migration 后候选栈 | 执行 journal `next_action` 中的精确 `recover-candidate` 命令 | 重新验证恢复点与候选栈，不恢复数据，按序恢复 worker、queue、proxy 和公网流量。 |
 | 企业代理/npm 镜像源/CA/TLS 策略 | `./scripts/build-network.sh init`，编辑后执行 `status` | 创建并校验 setup/upgrade 共用的私有构建传输契约。 |
 | 监控生命周期 | `./scripts/observability <up|status|logs|restart|down>` | 只操作私有监控 profile。 |
 | setup/upgrade 锁冲突 | `./scripts/upgrade.sh lock-status`，仅当 stale 时执行 `unlock` | 查看或安全清理陈旧锁元数据，不结束真实运行中的操作。 |
@@ -37,7 +38,7 @@ stock 拓扑只运行一个 API 副本。wrapper 对 `up --scale api=...`、`up 
 | `./scripts/compose` | 服务生命周期、状态、日志、配置和 exec 的 Compose 兼容边界。 |
 | `./scripts/setup.sh` | 首次配置，以及按 access/admin/seed/LLM section 重新配置。 |
 | `./scripts/doctor.sh` | 静态配置诊断，可选探测在线服务。 |
-| `./scripts/upgrade.sh` | 数据保留升级、同 SHA 重建、宿主机准备、journal 状态、resume、rollback 和锁恢复。 |
+| `./scripts/upgrade.sh` | 数据保留升级、同 SHA 重建、宿主机准备、journal 状态、resume、受保护候选恢复、rollback 和锁恢复。 |
 | `./scripts/build-network.sh` | 初始化并安全展示受限网络代理、npm 源、组织批准 CA 和构建 TLS 契约。 |
 | `./scripts/observability` | 内置 Prometheus/Grafana/Alertmanager 生命周期。 |
 | `./scripts/seed-demo-data.sh` | 仅用于 demo/staging 的 ChargeLab 数据；禁止用于客户或生产数据。 |
@@ -95,7 +96,7 @@ sudo ./scripts/upgrade.sh prepare-host --yes --operator <deployment-user>
 
 如果用户组发生变化，需要退出并重新登录。Docker socket 组权限实质上等同宿主机 root 权限，只能授予专用且可信的部署账号。
 
-`plan`、`apply`、`status`、`resume`、`rollback`、普通 Compose 命令和监控命令都由部署用户无 `sudo` 执行。root 通常不会继承部署用户的 Git 代理配置，还会制造后续无法写入的 root-owned 状态。
+`plan`、`apply`、`status`、`resume`、`recover-candidate`、`rollback`、普通 Compose 命令和监控命令都由部署用户无 `sudo` 执行。root 通常不会继承部署用户的 Git 代理配置，还会制造后续无法写入的 root-owned 状态。
 
 验证权限：
 
@@ -254,6 +255,8 @@ chmod 600 .build-network.env
 
 对于 `queue-resumed`、`starting-proxy` 和 `validating-public`，advanced resume 会先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。readiness 失败或 worker 不健康时，候选 proxy 启动和公网探测都会被阻止。proxy 隔离失败会记录 `failure_service=proxy`、`failure_code=candidate-proxy-isolation`、`recovery_proxy_stopped=false`，并给出人工隔离的 `next_action`；只有整条顺序通过后才进入 proxy/public 验证，之后仍会执行最终 worker 复查。
 
+最终验证使用 Docker 支持的格式化镜像查询，并按无序集合比较 named-volume 映射，不依赖 Docker 枚举顺序。真实不一致会分别记录 image/container/project/volume/environment 的 service 和 code，不再只留下泛化的 `service=recovery code=recovery-required`。
+
 使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。两个 summary 都有长度限制并脱敏；任一恢复动作（包括 stop、pause 或 queue resume）失败时，其脱敏诊断会打印、写入 journal，并暴露为 `recovery_failure_summary`。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
 
 常用命令：
@@ -341,7 +344,14 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 `unlock` 可安全重复执行：真实操作仍持锁时会返回退出码 `75`，且不会结束该进程。禁止手工删除 `.operation.lock`、owner 元数据或 fallback 锁目录。
 
-migration 后出现 `recovery-required` 属于事故状态。先按 journal 完成隔离动作；rollback 会重试并验证隔离，proxy 或 queue/worker 仍未隔离时不会恢复数据。migration 后普通 `resume` 会被拒绝。整点恢复必须使用精确确认 token：
+migration 后出现 `recovery-required` 属于事故状态，只执行 journal 中唯一的 `next_action`；普通 `resume` 会被拒绝。仅收尾门禁失败时可能给出受保护的候选恢复：
+
+```bash
+./scripts/upgrade.sh recover-candidate --run-id <run-id> \
+  --confirm recover-candidate-<run-id>
+```
+
+该路径会先重新隔离 proxy 和 queue/worker，校验既有备份 manifest 与候选镜像，再按序恢复 worker、queue、proxy 和公网验证，不恢复任何数据。更早或不受支持的 migration 后阶段仍必须使用精确确认 token 做整点恢复：
 
 ```bash
 ./scripts/upgrade.sh rollback --run-id <run-id> \
@@ -424,7 +434,7 @@ npm run selfhost:release-gate -- \
 | `apply` 输出 `already running` | checkout、三个应用镜像引用和公网健康状态均已针对同一个目标 SHA 验证 | 目标版本已生效；只有确实要同版本全量重建时才加 `--restart` |
 | `/health/live` 通过但 `/health/ready` 失败 | API 存活，但必需依赖阻塞 | 保留 readiness JSON，按其中命名的依赖排查 |
 | `worker` 配置了 `restart: unless-stopped` 仍反复退出 | 属于启动、配置或依赖错误，而不是普通停止 | 先保留日志并检查依赖 readiness，禁止盲目重启循环 |
-| `recovery-required` | 候选或恢复门禁失败 | 查看 `failed_phase`、`failure_service`、`failure_code` 和隔离布尔值；迁移前执行记录的 `resume`，迁移后执行带 token 的整点回滚 |
+| `recovery-required` | 候选或恢复门禁失败 | 查看 `failed_phase`、`failure_service`、`failure_code` 和隔离布尔值；只执行记录的唯一 `next_action`：迁移前 `resume`、符合条件的收尾 `recover-candidate`，或带 token 的整点回滚 |
 
 ## 事故首轮处置
 

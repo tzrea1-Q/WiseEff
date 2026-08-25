@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) is also merged into `main` and provides the advanced-resume worker/proxy gate; the repository implementation additionally includes scheme-agnostic diagnostic credential redaction, covered by mock tests and applicable CI. Remaining repository-local coverage is the complete stable-exit/forbidden-command matrix in Phase 0 and the exhaustive signal-interruption matrix in Phase 5; non-customer target-host rehearsals remain open in later phases. Conditional target-synthetic and local-non-HDC jobs are skipped when prerequisites are absent, not passed.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, bundled Node base-image preparation, and the MinIO/readiness/recovery hotfixes through PR #621 (`59930c963e172d843ef8f6cb17a33247467a9ab5`) are maintained on `main`. PR #624 (`7749429778cf27bd40aab57fdc775b8084a7a7a5`) is also merged into `main` and provides the advanced-resume worker/proxy gate; the repository implementation additionally includes scheme-agnostic diagnostic credential redaction plus the Phase 14 final-verification and protected candidate-recovery repair, covered by mock tests and applicable CI. Target incident run `20260825T012411Z-3326268` remains target-host evidence awaiting execution of the merged recovery controller; repository tests do not mark that run recovered. Remaining repository-local coverage is the complete stable-exit/forbidden-command matrix in Phase 0 and the exhaustive signal-interruption matrix in Phase 5. Conditional target-synthetic and local-non-HDC jobs are skipped when prerequisites are absent, not passed.
 
 **Checklist interpretation:** Phases 0-5 distinguish delivered repository implementation from the remaining repository-local coverage gaps rather than preserving unchecked pre-implementation placeholders. All unchecked items after Phase 5 are target-host evidence unless their text explicitly identifies another repository-local coverage gap.
 
@@ -22,7 +22,7 @@
 - PostgreSQL, object storage, and durable Redis state form one verified pre-migration recovery point.
 - every long-running Compose service is recreated while all persistent volume identities stay unchanged.
 - API migrations complete before public traffic resumes.
-- an interrupted run has exactly one valid next action: safe exit, pre-migration `resume`, or post-migration token-gated `rollback`; failed proxy/queue isolation puts the required manual isolation step first.
+- an interrupted run has exactly one valid next action: safe exit; pre-migration `resume`; protected, data-preserving `recover-candidate` for eligible post-migration completion failures; or token-gated `rollback` for earlier/unsupported post-migration failures. Failed proxy/queue isolation puts the required manual isolation step first.
 - post-migration failures attempt to stop the proxy and surface `recovery-required`; failed isolation is recorded as a manual first step, and the controller never claims automatic rollback.
 - the data-plane gate requires PostgreSQL/Redis Docker `healthy`, MinIO process `running`, and successful `minio-init` exit `0`; MinIO is never considered ready from `running` alone.
 - `old-stack-restored` is written only after data plane, API, worker, web, previous-image, queue resume, and last-stage proxy/public recovery gates pass; otherwise the journal records `recovery-required` with a non-`none` next action.
@@ -38,6 +38,7 @@
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 - PR #624 maintains the advanced-resume worker/proxy gate on `main`; diagnostic redaction is a subsequent main-line maintenance change. The session owner merges only after every applicable required CI check passes. Do not switch or rewrite a dirty shared `main` worktree to synchronize it after merge.
+- Phase 14 final-verification and candidate-recovery repair uses `codex/selfhost-final-verification-recovery-hotfix` from current `main`; the parent/session owner opens and merges its PR only after independent review and every applicable required CI check pass.
 
 ## Preconditions
 
@@ -456,7 +457,7 @@ The incident run `20260824T021935Z-2079618` showed two controller-truth defects:
 - [x] Use `curl --noproxy '*'` for public probes and preserve the build-only `WISEEFF_BUILD_TLS_POLICY` security boundary without introducing a global TLS bypass.
 - [x] Recheck MinIO on every `minio-init` poll and once after exit `0`; classify exit, inspect, initializer failure, and timeout paths separately.
 - [x] Require candidate worker liveness plus Docker health before queue resume in both `apply` and `resume`, and retain the same gate during final verification.
-- [x] Make `recovery-required` next actions executable: pre-migration runs may retry old-stack restore, post-migration runs require token-gated whole-state rollback, and failed isolation requires manual traffic/queue isolation first.
+- [x] Make `recovery-required` next actions executable: pre-migration runs may retry old-stack restore; earlier/unsupported post-migration runs require token-gated whole-state rollback; eligible completion failures may use protected `recover-candidate`; and failed isolation requires manual traffic/queue isolation first.
 - [x] Enter `old-stack-restore` before any restore operation so recovery data-plane failures cannot retain a candidate phase while preserving earlier candidate failure evidence on successful recovery.
 - [x] Update the bilingual operator docs, reliability/runbook references, design notes, and this plan; keep the deployment-host acceptance boundary explicit.
 - [x] Implement the advanced-resume proxy isolation/readiness gate for `queue-resumed`, `starting-proxy`, and `validating-public`; keep proxy/public blocked until API/worker/web rechecks pass, and retain final worker drift verification.
@@ -464,6 +465,36 @@ The incident run `20260824T021935Z-2079618` showed two controller-truth defects:
 - [x] Restrict URI schemes to ASCII and stop authority userinfo scanning at `/`, `?`, or `#`; preserve query/fragment email diagnostics and verify context independently in every persisted output.
 - [x] Merge the MinIO/readiness/recovery hotfix into `main` through PR #621 and merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5`; merge the advanced-resume implementation through PR #624 and merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5`, with the diagnostic-redaction regression coverage recorded in this plan.
 - [ ] Deploy the merged controller on a non-customer target host and rehearse one clean forward upgrade plus one recovery path; local mock tests and CI do not close this target evidence.
+
+**Verification:**
+
+```bash
+bash -n ops/self-hosted/scripts/upgrade.sh
+bash -n ops/self-hosted/scripts/upgrade-lib.sh
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
+npm run test:scripts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+## Phase 14 — Final-Verification Truth And Data-Preserving Candidate Recovery
+
+Target run `20260825T012411Z-3326268` reached public validation with the candidate stack, then entered `recovery-required` while the controller emitted only `service=recovery code=recovery-required`. Read-only incident evidence isolated two deterministic false negatives: final verification called unsupported `docker image inspect <ref> -q`, so the expected image identity was always empty; and it compared Caddy's two named-volume mounts as an ordered string even though Docker returned the same mappings in reverse order. Both early returns lacked specific failure records. Because migration `0115_log_webhook_delivery_retention_order.sql` had started, ordinary `resume` correctly refused the run, but the only remaining action was destructive whole-state restore even though the candidate data plane, API, and web were already valid.
+
+This phase keeps ordinary `resume` fail-closed and adds a separate, run-token-gated `recover-candidate` transaction only for candidate completion phases. It never restores data. The target incident remains unresolved until the deployment operator installs the merged controller, executes the exact journal-bound recovery command, and supplies target-host evidence.
+
+**Tasks:**
+
+- [x] Add RED tests that execute the real final verifier and require Docker's supported formatted image-inspect interface.
+- [x] Canonicalize named-volume `name=destination` identities as unordered sets while preserving exact names and destinations.
+- [x] Persist stable service/code evidence for candidate image lookup, container missing/not-recreated, app image, Compose project, volume, worker, and environment fingerprint failures.
+- [x] Add `recover-candidate --run-id <id> --confirm recover-candidate-<id>` with post-migration outcome/phase/recovery-point eligibility and exact run-bound confirmation.
+- [x] Re-isolate proxy and queue/worker before verifying the backup manifest and local candidate image; then restore worker, verify API/worker/web, resume queue, recreate proxy, and run public/final verification.
+- [x] Keep every failed recovery gate in `recovery-required`, preserve bounded/redacted diagnostics, and make the next action retryable without exposing PostgreSQL/object-store/Redis restore functions.
+- [x] Update bilingual operator, reliability, quality, design, and plan documentation.
+- [ ] On the target host, install the merged controller and recover run `20260825T012411Z-3326268`; verify `phase=completed`, target image identity, API/worker/web/proxy health, unchanged volumes/`.env`, retained backup manifest, and immutable historical incident evidence.
 
 **Verification:**
 

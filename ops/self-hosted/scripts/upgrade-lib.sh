@@ -19,6 +19,7 @@ Actions:
   unlock                        Clear only a proven-stale host lock.
   status                        Show a persisted upgrade run.
   resume                        Continue a recoverable run.
+  recover-candidate             Complete an eligible isolated post-migration candidate.
   rollback                     Restore the previous application/recovery point.
 
 Options:
@@ -29,12 +30,12 @@ Options:
   --env-file PATH               Runtime env file; defaults to ops/self-hosted/.env.
   --state-dir PATH              Upgrade journal root.
   --backup-root PATH            Upgrade backup root.
-  --run-id ID                   Existing run for status/resume/rollback.
+  --run-id ID                   Existing run for status/resume/recover-candidate/rollback.
   --operator USER               Deployment user for prepare-host (defaults to SUDO_USER).
   --restart                     Recreate even when the target SHA is already running.
   --non-interactive --yes       Required together for unattended apply.
   --restore-data                Restore all stores during rollback (confirmation required).
-  --confirm TOKEN               Confirmation token printed for destructive restore.
+  --confirm TOKEN               Run-bound confirmation token for protected recovery.
   --json                        Emit machine-readable status/plan output where supported.
   -h, --help                   Show this help.
 
@@ -1867,9 +1868,14 @@ wiseeff_upgrade_record_build_transport_completion() {
 }
 
 wiseeff_upgrade_complete_candidate() {
-  local previous_phase
+  local previous_phase completion_action completion_outcome
   previous_phase="$(wiseeff_upgrade_state_read phase)"
-  wiseeff_upgrade_set_phase validating-public running
+  completion_action="${upgrade_action:-resume}"
+  completion_outcome=running
+  if [ "$completion_action" = "recover-candidate" ]; then
+    completion_outcome=recovery-required
+  fi
+  wiseeff_upgrade_set_phase validating-public "$completion_outcome"
   if ! wiseeff_upgrade_public_probe; then
     wiseeff_upgrade_mark_recovery_required proxy candidate-proxy-public "The candidate proxy/public health probe failed."
     return 70
@@ -1878,13 +1884,18 @@ wiseeff_upgrade_complete_candidate() {
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
+  if [ "$completion_action" = "recover-candidate" ]; then
+    wiseeff_upgrade_state_write recovery_verified true
+  fi
   wiseeff_upgrade_state_write outcome completed
   wiseeff_upgrade_record_build_transport_completion
   wiseeff_upgrade_state_write next_action none
   wiseeff_upgrade_set_phase completed completed
   wiseeff_upgrade_write_status "$upgrade_run_id"
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"resume","status":"completed","runId":"%s","targetSha":"%s"}\n' "$upgrade_run_id" "$upgrade_target_sha"
+    printf '{"action":"%s","status":"completed","runId":"%s","targetSha":"%s"}\n' "$completion_action" "$upgrade_run_id" "$upgrade_target_sha"
+  elif [ "$completion_action" = "recover-candidate" ]; then
+    printf 'Candidate recovery completed. run_id=%s target=%s (from %s)\n' "$upgrade_run_id" "$upgrade_target_sha" "$previous_phase"
   else
     printf 'Upgrade resumed and completed. run_id=%s target=%s (from %s)\n' "$upgrade_run_id" "$upgrade_target_sha" "$previous_phase"
   fi
@@ -1904,6 +1915,158 @@ wiseeff_upgrade_prepare_candidate_resume_traffic() {
     wiseeff_upgrade_mark_recovery_required
     return 1
   fi
+}
+
+wiseeff_upgrade_candidate_recovery_phase_supported() {
+  case "${1:-}" in
+    queue-resumed|starting-proxy|validating-public|candidate-recovery-isolating|candidate-recovery-verifying|candidate-recovery-starting-worker|candidate-recovery-validating-app|candidate-recovery-resuming-queue|candidate-recovery-starting-proxy)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+wiseeff_upgrade_candidate_recovery_inflight_phase_supported() {
+  case "${1:-}" in
+    candidate-recovery-isolating|candidate-recovery-verifying|candidate-recovery-starting-worker|candidate-recovery-validating-app|candidate-recovery-resuming-queue|candidate-recovery-starting-proxy)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+wiseeff_upgrade_run_recover_candidate() {
+  wiseeff_upgrade_reject_root_runtime || return $?
+  wiseeff_upgrade_load_run || return $?
+  wiseeff_upgrade_acquire_lock
+  trap wiseeff_upgrade_release_lock EXIT
+  wiseeff_upgrade_validate_env || return 10
+
+  local outcome phase migration_started failed_phase recovery_point_verified candidate_image expected_image
+  local proxy_stop_status=0 queue_pause_status=0 worker_stop_status=0
+  local isolation_service isolation_code isolation_summary
+  outcome="$(wiseeff_upgrade_state_read outcome)"
+  phase="$(wiseeff_upgrade_state_read phase)"
+  migration_started="$(wiseeff_upgrade_state_read migration_started)"
+  failed_phase="$(wiseeff_upgrade_state_read failed_phase)"
+  recovery_point_verified="$(wiseeff_upgrade_state_read recovery_point_verified)"
+  candidate_image="$upgrade_candidate_image_tag"
+
+  if [ "$migration_started" != "true" ] ||
+    ! { { [ "$outcome" = "recovery-required" ] && wiseeff_upgrade_candidate_recovery_phase_supported "$failed_phase"; } ||
+      { [ "$outcome" = "running" ] && wiseeff_upgrade_candidate_recovery_inflight_phase_supported "$phase"; }; }; then
+    wiseeff_upgrade_die 70 "Run ${upgrade_run_id} is not eligible for candidate recovery; keep traffic isolated and use the recorded next action."
+    return $?
+  fi
+  if [ "$recovery_point_verified" != "true" ]; then
+    wiseeff_upgrade_die 70 "Run ${upgrade_run_id} has no verified recovery point and is not eligible for candidate recovery."
+    return $?
+  fi
+  if [ -z "$candidate_image" ]; then
+    wiseeff_upgrade_die 70 "Run ${upgrade_run_id} has no recorded candidate image identity."
+    return $?
+  fi
+  if [ "$upgrade_confirm" != "recover-candidate-${upgrade_run_id}" ]; then
+    wiseeff_upgrade_die 2 "Candidate recovery requires --confirm recover-candidate-${upgrade_run_id}."
+    return $?
+  fi
+
+  upgrade_recovery_queue_image_tag="$candidate_image"
+  wiseeff_upgrade_state_write recovery_started true
+  wiseeff_upgrade_state_write recovery_verified false
+  wiseeff_upgrade_set_phase candidate-recovery-isolating recovery-required
+
+  if wiseeff_upgrade_run_recovery_action candidate-recovery-proxy-stop \
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
+    :
+  else
+    proxy_stop_status=$?
+  fi
+  if wiseeff_upgrade_run_recovery_action candidate-recovery-queue-pause \
+    wiseeff_upgrade_queue_command_for_image pause "$candidate_image"; then
+    :
+  else
+    queue_pause_status=$?
+  fi
+  if wiseeff_upgrade_run_recovery_action candidate-recovery-worker-stop \
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" worker; then
+    :
+  else
+    worker_stop_status=$?
+  fi
+  wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
+  wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && [ "$worker_stop_status" -eq 0 ] && printf true || printf false)"
+  if [ "$proxy_stop_status" -ne 0 ] || [ "$queue_pause_status" -ne 0 ] || [ "$worker_stop_status" -ne 0 ]; then
+    isolation_service=recovery
+    isolation_code=candidate-recovery-isolation
+    isolation_summary="Candidate recovery isolation did not complete; inspect recovery_failure_summary and isolate traffic before retrying."
+    if [ "$proxy_stop_status" -ne 0 ]; then
+      isolation_service=proxy
+      isolation_code=candidate-recovery-proxy-stop
+      isolation_summary="The proxy could not be stopped before candidate recovery."
+    elif [ "$queue_pause_status" -ne 0 ]; then
+      isolation_service=queue
+      isolation_code=candidate-recovery-queue-pause
+      isolation_summary="The durable queue could not be paused before candidate recovery."
+    elif [ "$worker_stop_status" -ne 0 ]; then
+      isolation_service=worker
+      isolation_code=candidate-recovery-worker-stop
+      isolation_summary="The worker could not be stopped before candidate recovery."
+    fi
+    wiseeff_upgrade_record_failure candidate-recovery-isolating "$isolation_service" "$isolation_code" "$isolation_summary"
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+
+  wiseeff_upgrade_set_phase candidate-recovery-verifying recovery-required
+  if ! wiseeff_upgrade_run_recovery_action candidate-recovery-manifest wiseeff_upgrade_verify_backup_manifest; then
+    wiseeff_upgrade_record_failure candidate-recovery-verifying recovery-point candidate-recovery-manifest "The recorded recovery-point manifest could not be verified before candidate recovery."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  expected_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' "$candidate_image" 2>/dev/null || true)"
+  if [ -z "$expected_image" ]; then
+    wiseeff_upgrade_record_failure candidate-recovery-verifying image candidate-image-unavailable "The recorded candidate application image is not available locally."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  if ! wiseeff_upgrade_git checkout --detach "$upgrade_target_sha"; then
+    wiseeff_upgrade_record_failure candidate-recovery-verifying checkout candidate-recovery-checkout "The recorded target checkout could not be selected for candidate recovery."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+
+  wiseeff_upgrade_set_phase candidate-recovery-starting-worker recovery-required
+  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps worker; then
+    wiseeff_upgrade_record_failure candidate-recovery-starting-worker worker candidate-worker-recreate "The candidate worker could not be recreated during candidate recovery."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  wiseeff_upgrade_set_phase candidate-recovery-validating-app recovery-required
+  if ! wiseeff_upgrade_prepare_candidate_resume_traffic; then
+    return 70
+  fi
+
+  wiseeff_upgrade_set_phase candidate-recovery-resuming-queue recovery-required
+  if ! wiseeff_upgrade_run_recovery_action candidate-recovery-queue-resume \
+    wiseeff_upgrade_queue_command_for_image resume "$candidate_image"; then
+    wiseeff_upgrade_record_failure candidate-recovery-resuming-queue queue candidate-queue-resume "The candidate durable queue could not be resumed during candidate recovery."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  wiseeff_upgrade_set_phase queue-resumed recovery-required
+
+  wiseeff_upgrade_set_phase candidate-recovery-starting-proxy recovery-required
+  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps proxy; then
+    wiseeff_upgrade_record_failure candidate-recovery-starting-proxy proxy candidate-proxy-recreate "The candidate proxy could not be recreated during candidate recovery."
+    wiseeff_upgrade_mark_recovery_required
+    return 70
+  fi
+  wiseeff_upgrade_complete_candidate
 }
 
 wiseeff_upgrade_run_resume() {
@@ -2172,8 +2335,9 @@ wiseeff_upgrade_run_rollback() {
 }
 
 wiseeff_upgrade_recovery_next_action() {
-  local migration_started proxy_stopped queue_paused action recovery_command
+  local migration_started failed_phase proxy_stopped queue_paused action recovery_command
   migration_started="$(wiseeff_upgrade_state_read migration_started)"
+  failed_phase="$(wiseeff_upgrade_state_read failed_phase)"
   proxy_stopped="$(wiseeff_upgrade_state_read recovery_proxy_stopped)"
   queue_paused="$(wiseeff_upgrade_state_read recovery_queue_paused)"
   action=""
@@ -2187,7 +2351,9 @@ wiseeff_upgrade_recovery_next_action() {
       action="Manually isolate queue/worker traffic"
     fi
   fi
-  if [ "$migration_started" = "true" ]; then
+  if [ "$migration_started" = "true" ] && wiseeff_upgrade_candidate_recovery_phase_supported "$failed_phase"; then
+    recovery_command="./scripts/upgrade.sh recover-candidate --run-id ${upgrade_run_id} --confirm recover-candidate-${upgrade_run_id}"
+  elif [ "$migration_started" = "true" ]; then
     recovery_command="./scripts/upgrade.sh rollback --run-id ${upgrade_run_id} --restore-data --confirm restore-${upgrade_run_id}"
   else
     recovery_command="./scripts/upgrade.sh resume --run-id ${upgrade_run_id}"
@@ -2293,30 +2459,65 @@ wiseeff_upgrade_mark_recovery_required() {
   wiseeff_upgrade_write_status "$upgrade_run_id"
 }
 
+wiseeff_upgrade_canonicalize_volume_identity() {
+  local identity="$1"
+  printf '%s' "$identity" | awk -v RS=';' 'NF { print }' | LC_ALL=C sort | awk '{ printf "%s;", $0 }'
+}
+
 wiseeff_upgrade_verify_final_state() {
-  local service before after expected_image
-  expected_image="$(wiseeff_upgrade_docker image inspect "$(wiseeff_upgrade_state_read candidate_image_tag)" -q 2>/dev/null || true)"
-  [ -n "$expected_image" ] || return 1
-  if ! wiseeff_upgrade_probe_worker; then
-    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" worker candidate-worker-health "The candidate worker liveness or Docker health probe failed during final verification."
+  local service before after expected_image candidate_image phase actual_image api_container
+  local actual_project expected_project current_mounts recorded_mounts actual_env expected_env
+  phase="$(wiseeff_upgrade_state_read phase)"
+  candidate_image="$(wiseeff_upgrade_state_read candidate_image_tag)"
+  expected_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' "$candidate_image" 2>/dev/null || true)"
+  if [ -z "$expected_image" ]; then
+    wiseeff_upgrade_record_failure "$phase" image candidate-image-unavailable "The candidate application image could not be resolved to a local Docker image identity."
     return 1
   fi
   for service in postgres redis minio api worker web proxy; do
     after="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
-    [ -n "$after" ] || return 1
+    if [ -z "$after" ]; then
+      wiseeff_upgrade_record_failure "$phase" "$service" candidate-container-missing "The candidate service has no running Compose container during final verification."
+      return 1
+    fi
     before="$(wiseeff_upgrade_state_read "container_${service}")"
-    [ "$after" != "$before" ] || return 1
+    if [ "$after" = "$before" ]; then
+      wiseeff_upgrade_record_failure "$phase" "$service" candidate-container-not-recreated "The candidate service still uses its pre-upgrade container identity."
+      return 1
+    fi
     if [ "$service" = "api" ] || [ "$service" = "worker" ] || [ "$service" = "web" ]; then
-      [ "$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$after" 2>/dev/null || true)" = "$expected_image" ] || return 1
+      actual_image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$after" 2>/dev/null || true)"
+      if [ "$actual_image" != "$expected_image" ]; then
+        wiseeff_upgrade_record_failure "$phase" "$service" candidate-image-identity "The candidate service image identity does not match the built candidate application image."
+        return 1
+      fi
     fi
   done
-  [ "$(wiseeff_upgrade_docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$(wiseeff_upgrade_compose ps -q api)" 2>/dev/null || true)" = "$(wiseeff_upgrade_state_read compose_project)" ] || return 1
+  if ! wiseeff_upgrade_probe_worker; then
+    wiseeff_upgrade_record_failure "$phase" worker candidate-worker-health "The candidate worker liveness or Docker health probe failed during final verification."
+    return 1
+  fi
+  api_container="$(wiseeff_upgrade_compose ps -q api 2>/dev/null || true)"
+  actual_project="$(wiseeff_upgrade_docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$api_container" 2>/dev/null || true)"
+  expected_project="$(wiseeff_upgrade_state_read compose_project)"
+  if [ "$actual_project" != "$expected_project" ]; then
+    wiseeff_upgrade_record_failure "$phase" api candidate-compose-project "The candidate API container does not belong to the recorded Compose project."
+    return 1
+  fi
   for service in postgres redis minio proxy; do
-    local current_mounts
     current_mounts="$(wiseeff_upgrade_docker inspect -f '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}={{.Destination}};{{end}}{{end}}' "$(wiseeff_upgrade_compose ps -q "$service")" 2>/dev/null || true)"
-    [ "$current_mounts" = "$(wiseeff_upgrade_state_read "volumes_${service}")" ] || return 1
+    recorded_mounts="$(wiseeff_upgrade_state_read "volumes_${service}")"
+    if [ "$(wiseeff_upgrade_canonicalize_volume_identity "$current_mounts")" != "$(wiseeff_upgrade_canonicalize_volume_identity "$recorded_mounts")" ]; then
+      wiseeff_upgrade_record_failure "$phase" "$service" candidate-volume-identity "The candidate service named-volume identity does not match the recorded pre-upgrade mapping."
+      return 1
+    fi
   done
-  [ "$(wiseeff_upgrade_fingerprint "$upgrade_env_file")" = "$(wiseeff_upgrade_state_read env_fingerprint)" ] || return 1
+  actual_env="$(wiseeff_upgrade_fingerprint "$upgrade_env_file")"
+  expected_env="$(wiseeff_upgrade_state_read env_fingerprint)"
+  if [ "$actual_env" != "$expected_env" ]; then
+    wiseeff_upgrade_record_failure "$phase" configuration candidate-env-fingerprint "The runtime environment file fingerprint changed during the upgrade."
+    return 1
+  fi
 }
 
 wiseeff_upgrade_public_probe() {
@@ -2616,7 +2817,7 @@ wiseeff_upgrade_main() {
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      apply|plan|prepare-host|lock-status|unlock|status|resume|rollback)
+      apply|plan|prepare-host|lock-status|unlock|status|resume|recover-candidate|rollback)
         if [ "$action_set" = "true" ]; then
           wiseeff_upgrade_die 2 "Only one upgrade action may be supplied."
           return $?
@@ -2712,7 +2913,7 @@ wiseeff_upgrade_main() {
     wiseeff_upgrade_die 2 "Non-interactive apply requires --yes."
     return $?
   fi
-  if { [ "$upgrade_action" = "resume" ] || [ "$upgrade_action" = "rollback" ]; } && [ -z "$upgrade_run_id" ]; then
+  if { [ "$upgrade_action" = "resume" ] || [ "$upgrade_action" = "recover-candidate" ] || [ "$upgrade_action" = "rollback" ]; } && [ -z "$upgrade_run_id" ]; then
     wiseeff_upgrade_die 2 "${upgrade_action} requires --run-id."
     return $?
   fi
@@ -2738,6 +2939,9 @@ wiseeff_upgrade_main() {
       ;;
     resume)
       wiseeff_upgrade_run_resume
+      ;;
+    recover-candidate)
+      wiseeff_upgrade_run_recover_candidate
       ;;
     rollback)
       wiseeff_upgrade_run_rollback

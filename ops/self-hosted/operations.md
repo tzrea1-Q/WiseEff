@@ -24,6 +24,7 @@ The stock topology runs exactly one API replica. The wrapper accepts only exact 
 | A stopped or missing service must be reconciled without building | `./scripts/compose --env-file .env up -d --no-build` | Starts or creates from the image reference currently resolved by Compose. Check image identity first after an immutable-SHA upgrade. |
 | Deploy the latest code while preserving complete data | `./scripts/upgrade.sh plan`, then `./scripts/upgrade.sh apply` | Resolves one commit, takes a verified recovery point, migrates, recreates, and validates. |
 | Recreate the same deployed commit | `./scripts/upgrade.sh apply --restart --ref <sha>` | Runs the full protected upgrade workflow even when the SHA is unchanged. |
+| Complete an eligible isolated post-migration candidate | run the exact `recover-candidate` command from journal `next_action` | Revalidates the recovery point and candidate, then restores worker, queue, proxy, and public traffic without restoring data. |
 | Enterprise proxy/npm mirror/CA/TLS policy | `./scripts/build-network.sh init`, edit, then `status` | Creates and validates the private build transport contract consumed by setup/upgrade. |
 | Monitoring lifecycle | `./scripts/observability <up|status|logs|restart|down>` | Operates only the private monitoring profile. |
 | Upgrade/setup lock conflict | `./scripts/upgrade.sh lock-status`, then `unlock` only if stale | Inspects or safely clears stale lock metadata without killing a live operation. |
@@ -37,7 +38,7 @@ Do not use `setup.sh --force` as an upgrade or restart command. It intentionally
 | `./scripts/compose` | Supported Compose compatibility boundary for service lifecycle, status, logs, config, and exec. |
 | `./scripts/setup.sh` | First setup and section-scoped access/admin/seed/LLM reconfiguration. |
 | `./scripts/doctor.sh` | Static configuration diagnosis, with optional live probes. |
-| `./scripts/upgrade.sh` | Data-preserving upgrade, same-SHA recreation, host preparation, journal status, resume, rollback, and lock recovery. |
+| `./scripts/upgrade.sh` | Data-preserving upgrade, same-SHA recreation, host preparation, journal status, resume, protected candidate recovery, rollback, and lock recovery. |
 | `./scripts/build-network.sh` | Initializes and safely reports the restricted-network proxy/npm-registry/approved-CA/build-TLS contract. |
 | `./scripts/observability` | Built-in Prometheus/Grafana/Alertmanager lifecycle. |
 | `./scripts/seed-demo-data.sh` | Demo/staging-only ChargeLab seed; never customer or production data. |
@@ -95,7 +96,7 @@ sudo ./scripts/upgrade.sh prepare-host --yes --operator <deployment-user>
 
 Log out and reconnect if group membership changed. Membership in the Docker socket group is effectively root-equivalent; grant it only to a dedicated trusted deployment account.
 
-Run `plan`, `apply`, `status`, `resume`, `rollback`, ordinary Compose commands, and monitoring commands as the deployment user without `sudo`. Root does not normally inherit that user's Git proxy configuration and can create root-owned state that later blocks normal operations.
+Run `plan`, `apply`, `status`, `resume`, `recover-candidate`, `rollback`, ordinary Compose commands, and monitoring commands as the deployment user without `sudo`. Root does not normally inherit that user's Git proxy configuration and can create root-owned state that later blocks normal operations.
 
 Verify access:
 
@@ -254,6 +255,8 @@ Before candidate queue resume, both `apply` and `resume` require API readiness, 
 
 For `queue-resumed`, `starting-proxy`, and `validating-public`, advanced resume first stops and isolates the candidate proxy, then rechecks API `/health/ready`, worker `127.0.0.1:8788/health/live` plus Docker health, and web direct access. A failed readiness or unhealthy worker blocks both candidate proxy-up and the public probe. Proxy isolation failure is recorded as `failure_service=proxy`, `failure_code=candidate-proxy-isolation`, `recovery_proxy_stopped=false`, with a manual isolation `next_action`; only a fully passing sequence can reach proxy/public validation, and final worker verification still runs afterward.
 
+Final verification uses Docker's supported formatted image inspection and compares named-volume mappings without depending on Docker's enumeration order. A real mismatch writes a specific image/container/project/volume/environment service and code, so a generic `service=recovery code=recovery-required` is no longer the only evidence.
+
 For an actionable diagnosis, read `failed_phase`, `failure_service`, `failure_code`, `failure_summary`, `recovery_started`, `recovery_verified`, `recovery_failure_summary`, and `next_action` from `./scripts/upgrade.sh status --run-id <run-id> --json`. Both summaries are bounded and redacted; a failed recovery action—including stop, pause, or queue resume—has its sanitized diagnostic printed, journaled, and exposed as `recovery_failure_summary`. Public probes explicitly use `curl --noproxy '*'`; a Vite 403 caused by `Host: web:5173` is a Host allowlist result, so use loopback or the configured allowed hostname when checking TCP reachability.
 
 Useful commands:
@@ -341,7 +344,14 @@ Inspect a setup/upgrade lock:
 
 `unlock` is safe and repeatable: it refuses with exit `75` when a live operation owns the lock and never kills that process. Do not delete `.operation.lock`, its owner metadata, or fallback lock directories manually.
 
-A post-migration `recovery-required` state is an incident. Follow the journal's isolation action first; rollback retries and verifies isolation and blocks before data restoration if proxy or queue/worker isolation is still incomplete. Ordinary `resume` is rejected after migration. Whole-state restore requires the exact confirmation token:
+A post-migration `recovery-required` state is an incident. Follow the journal's single `next_action`. Ordinary `resume` is rejected after migration. Completion-only failures may offer protected candidate recovery:
+
+```bash
+./scripts/upgrade.sh recover-candidate --run-id <run-id> \
+  --confirm recover-candidate-<run-id>
+```
+
+This path first re-isolates proxy and queue/worker traffic, verifies the existing backup manifest and candidate image, and restores worker, queue, proxy, and public validation in order. It does not restore any data. Unsupported or earlier post-migration phases continue to require whole-state restore with the exact confirmation token:
 
 ```bash
 ./scripts/upgrade.sh rollback --run-id <run-id> \
@@ -424,7 +434,7 @@ npm run selfhost:release-gate -- \
 | `already running` after `apply` | checkout, all three application image refs, and public health were verified against the same target SHA | the target is active; use `--restart` only for an intentional same-version full recreation |
 | `/health/live` passes but `/health/ready` fails | API is alive but a required dependency is blocked | preserve readiness JSON and route to the named dependency |
 | `worker` repeatedly exits despite `restart: unless-stopped` | startup/config/dependency failure, not a simple stopped service | preserve logs and dependency readiness before any restart loop |
-| `recovery-required` | a candidate or restore gate failed | inspect `failed_phase`, `failure_service`, `failure_code`, and isolation flags; use pre-migration `resume`, or post-migration token-gated whole-state rollback exactly as recorded |
+| `recovery-required` | a candidate or restore gate failed | inspect `failed_phase`, `failure_service`, `failure_code`, and isolation flags; execute the single recorded `next_action`: pre-migration `resume`, eligible completion-only `recover-candidate`, or token-gated whole-state rollback |
 
 ## Incident First Response
 

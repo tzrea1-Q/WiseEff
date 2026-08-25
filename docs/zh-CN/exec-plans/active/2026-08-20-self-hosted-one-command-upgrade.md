@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）也已合入 `main` 并提供 advanced-resume worker/proxy 门禁；仓库实现还包含与 scheme 无关的诊断凭据脱敏，并由 mock 测试与适用 CI 覆盖。剩余仓库内覆盖包括 Phase 0 的完整稳定退出码/禁用命令矩阵和 Phase 5 的完整信号中断矩阵；后续阶段列出的非客户目标主机演练也仍未完成。条件式 target-synthetic 与 local-non-HDC job 在缺少前置条件时是 skipped，不是通过。
+**状态：** PR #621（`59930c963e172d843ef8f6cb17a33247467a9ab5`）包含的核心实现、宿主机兼容加固、持久构建诊断、Node 基础镜像离线包准备，以及 MinIO/就绪/恢复 hotfix 已维护在 `main`。PR #624（`7749429778cf27bd40aab57fdc775b8084a7a7a5`）也已合入 `main` 并提供 advanced-resume worker/proxy 门禁；仓库实现还包含与 scheme 无关的诊断凭据脱敏，以及 Phase 14 的最终验证/受保护候选恢复修复，并由 mock 测试与适用 CI 覆盖。目标事故 run `20260825T012411Z-3326268` 仍等待部署已合入控制器后的实机执行；仓库测试不会把该 run 标记为已恢复。剩余仓库内覆盖包括 Phase 0 的完整稳定退出码/禁用命令矩阵和 Phase 5 的完整信号中断矩阵。条件式 target-synthetic 与 local-non-HDC job 在缺少前置条件时是 skipped，不是通过。
 
 **Checklist 解释：** Phase 0-5 现在区分已交付的仓库实现和仍缺的仓库内覆盖，不再保留未勾选的实现前占位项。Phase 5 之后未勾选的条目均为目标主机证据，除非条目文字明确指出其他仓库内覆盖缺口。
 
@@ -22,7 +22,7 @@
 - PostgreSQL、对象存储和 durable Redis 状态形成一个迁移前已验证恢复点。
 - 所有长期运行 Compose 服务完成重建，所有持久化 volume 身份保持不变。
 - API 迁移完成后才恢复公网流量。
-- 中断运行只有一个合法下一步：迁移前 `resume` 或迁移后的带 token `rollback`；proxy/queue 隔离失败时，下一步必须先要求人工隔离。
+- 中断运行只有一个合法下一步：安全退出；迁移前 `resume`；符合条件的 migration 后收尾使用受保护、保留数据的 `recover-candidate`；更早或不受支持的 migration 后失败使用带 token 的 `rollback`。proxy/queue 隔离失败时，下一步必须先要求人工隔离。
 - 迁移后失败会尝试停止 proxy 并暴露 `recovery-required`；隔离失败会记录为第一步人工动作，绝不宣称自动回滚。
 - 数据平面门禁要求 PostgreSQL/Redis 为 Docker `healthy`，MinIO 进程为 `running`，且 `minio-init` 成功退出 `0`；不能只凭 MinIO `running` 判定就绪。
 - 只有数据平面、API、worker、web、旧 image、queue resume 以及最后执行的 proxy/public 恢复门禁全部通过，才写入 `old-stack-restored`；否则写入带非 `none` 下一步的 `recovery-required`。
@@ -38,6 +38,7 @@
 - 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - 仅构建期 insecure TLS 兼容使用 `fix/selfhost-insecure-build-tls-policy`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 - PR #624 在 `main` 维护 advanced-resume worker/proxy 门禁；诊断凭据脱敏是随后进入 main-line 的维护变更。会话 owner 仅在所有适用的 required CI check 通过后合入。原始脏 `main` 工作区合入后不得为了同步而切换或改写。
+- Phase 14 的 final-verification 与 candidate-recovery 修复使用从当前 `main` 创建的 `codex/selfhost-final-verification-recovery-hotfix`；父代理/会话 owner 仅在独立评审和所有适用 required CI check 通过后开 PR 并合入。
 
 ## 前置条件
 
@@ -428,7 +429,7 @@ git diff --check
 - [x] 公网探测使用 `curl --noproxy '*'`，并保持 `WISEEFF_BUILD_TLS_POLICY` 的仅构建期安全边界，不引入全局 TLS 关闭。
 - [x] 在每轮 `minio-init` 轮询中复查 MinIO，并在退出 `0` 后再次复查；分别归类退出、inspect、initializer 失败和超时。
 - [x] 在 `apply` 和 `resume` 的 queue resume 前都要求候选 worker liveness 与 Docker health，并在最终验证中保留同一门禁。
-- [x] 使 `recovery-required` 下一步真实可执行：迁移前可重试旧栈恢复，迁移后只能使用带 token 的整点回滚，隔离失败时先要求人工隔离流量/队列。
+- [x] 使 `recovery-required` 下一步真实可执行：迁移前可重试旧栈恢复；更早或不受支持的迁移后阶段使用带 token 的整点回滚；符合条件的收尾失败可使用受保护的 `recover-candidate`；隔离失败时先要求人工隔离流量/队列。
 - [x] 在任何恢复操作前进入 `old-stack-restore`，避免恢复数据平面失败继续保留候选 phase；恢复成功时保留原候选失败证据以便追溯。
 - [x] 更新中英文操作员文档、可靠性/runbook、设计说明和本计划，明确部署机验收边界。
 - [x] 为 `queue-resumed`、`starting-proxy` 和 `validating-public` 实现 advanced-resume proxy 隔离/就绪门禁：API/worker/web 复查全部通过前不得启动 proxy 或公网探测，并保留最终 worker 漂移复查。
@@ -436,6 +437,36 @@ git diff --check
 - [x] 将 URI scheme 限定为 ASCII，并在 `/`、`?` 或 `#` 处停止 authority userinfo 扫描；保留 query/fragment 中的邮箱诊断，并分别验证每个持久化出口的 context。
 - [x] 通过 PR #621 及 merge commit `59930c963e172d843ef8f6cb17a33247467a9ab5` 将 MinIO/就绪/恢复 hotfix 合入 `main`；通过 PR #624 及 merge commit `7749429778cf27bd40aab57fdc775b8084a7a7a5` 将 advanced-resume 实现合入 `main`，并在本计划中记录诊断脱敏回归覆盖。
 - [ ] 在非客户目标主机部署已合入的控制器，演练一次干净前向升级和一次恢复路径；本地 mock 测试与 CI 不能关闭这项目标环境证据。
+
+**验证：**
+
+```bash
+bash -n ops/self-hosted/scripts/upgrade.sh
+bash -n ops/self-hosted/scripts/upgrade-lib.sh
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts
+npm run test:scripts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+## 阶段 14 —— 最终验证真实性与保留数据的候选恢复
+
+目标 run `20260825T012411Z-3326268` 的候选栈已经进入公网验证，随后却进入 `recovery-required`，控制器只输出 `service=recovery code=recovery-required`。只读事故证据定位出两个确定性假阴性：最终验证调用了 Docker 不支持的 `docker image inspect <ref> -q`，导致预期镜像身份永远为空；同时把 Caddy 的两个 named-volume mount 当作有序字符串比较，而 Docker 只是以相反顺序返回同一组映射。这些提前返回也没有写入具体失败记录。由于 migration `0115_log_webhook_delivery_retention_order.sql` 已启动，普通 `resume` 正确拒绝了该 run；但即使候选数据平面、API 与 web 已有效，剩余唯一动作仍是破坏性的整点恢复。
+
+本阶段保持普通 `resume` fail-closed，另行增加只对候选收尾阶段开放、与 run token 绑定的 `recover-candidate` 事务；该动作绝不恢复数据。在部署操作员安装已合入控制器、执行精确的 journal-bound 恢复命令并提供目标机证据之前，不能宣称事故 run 已恢复。
+
+**任务：**
+
+- [x] 增加会执行真实最终验证函数的 RED 测试，并要求使用 Docker 支持的格式化 image-inspect 接口。
+- [x] 把 named-volume `name=destination` 身份规范为无序集合，同时保持名称和目标路径精确匹配。
+- [x] 为候选镜像查询、容器缺失/未重建、应用镜像、Compose project、volume、worker 和环境指纹失败持久化稳定 service/code。
+- [x] 增加 `recover-candidate --run-id <id> --confirm recover-candidate-<id>`，并校验 migration 后 outcome/phase/恢复点资格与精确 run-bound token。
+- [x] 先重新隔离 proxy 与 queue/worker，再校验备份 manifest 和本地候选镜像；随后按 worker、API/worker/web 验证、queue、proxy、公网/最终验证的顺序恢复。
+- [x] 任一恢复门禁失败都保持 `recovery-required`，保留有界脱敏诊断，并允许重试下一步，但不暴露 PostgreSQL/对象存储/Redis 恢复函数。
+- [x] 更新中英文操作、可靠性、质量、设计和计划文档。
+- [ ] 在目标机安装已合入控制器并恢复 run `20260825T012411Z-3326268`；验证 `phase=completed`、目标镜像身份、API/worker/web/proxy 健康、volume/`.env` 未改变、备份 manifest 保留，以及历史事故证据不可修改。
 
 **验证：**
 

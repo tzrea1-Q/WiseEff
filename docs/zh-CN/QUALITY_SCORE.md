@@ -32,6 +32,8 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。浏览器 job 的权威入口是 `npm run acceptance:gate0`：visual 与 full browser 共用 fresh exact-owned runtime，60 分钟时限覆盖 provision/finalize，输出全部写入 runRoot，失败保留取证资源，只有成功才清理数据库/对象根。CI 上传前由 fresh finalizer 接管所有可由 process-start identity 证明的 writer，在私有 staging 内递归脱敏与扫描（含 ZIP trace），再原子发布 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`；upload action 只接受这个不可变 ZIP，绝不重新遍历 live runs root。直接 `acceptance:browser` 仅用于聚焦/人工候选，不替代 Gate0。完整评分与门禁表以英文版为准。
 自托管升级控制器的本地回归入口是 `npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts`：mock Docker/Compose 状态覆盖 PostgreSQL/Redis/MinIO 服务特定就绪、`minio-init` 前后重复复查、候选 worker liveness/Docker health 在 queue resume 前的门禁、`queue-resumed`/`starting-proxy`/`validating-public` 三个阶段的 proxy 隔离与 readiness 顺序、按阶段可执行的恢复动作、旧栈恢复真实性、稳定失败诊断、有边界的凭据脱敏 corpus 和公网探测代理绕过。该本地门禁与 CI 都不能替代目标部署机验收。
 
+同一门禁还会在不 mock 最终验证函数的情况下执行其完整逻辑：候选镜像必须通过 Docker 支持的格式化接口查询，named-volume 身份比较不依赖顺序但要求值完全一致，每个失败不变量都写入稳定 service/code。受保护的 `recover-candidate` 测试覆盖 run-bound token、阶段/恢复点资格、先隔离再验证、备份 manifest 与候选镜像门禁、worker → queue → proxy 顺序、失败后重新隔离，以及禁止数据恢复。
+
 小泽离线验收使用 `XIAOZE_DETERMINISTIC=true`；live LLM 质量证据必须在目标环境配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 后采集。
 
 ## 前端 UI 质量门禁

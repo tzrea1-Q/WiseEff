@@ -77,6 +77,8 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 
 `queue-resumed`、`starting-proxy` 和 `validating-public` 三个 advanced resume 阶段共用一条受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。因此 worker 不健康或任一 readiness 失败时，都不会启动候选 proxy，也不会执行公网探测。若 proxy 隔离失败，journal 会写入 `failure_service=proxy`、`failure_code=candidate-proxy-isolation`、`recovery_proxy_stopped=false`，且 `next_action` 以人工隔离 proxy 开头；只有这些检查通过后才重建 proxy 和探测公网，最后的 worker 复查仍用于发现健康漂移。
 
+最终验证使用 Docker 支持的 `image inspect --format '{{.Id}}'` 接口解析候选镜像，并把 named-volume 映射按无序 `name=destination` 集合比较；Docker 返回 mount 的先后顺序不属于身份。镜像查询、容器缺失/未重建、应用镜像身份、Compose project、named-volume 和 `.env` 指纹失败都会分别持久化稳定的 service/code，不再统一退化成泛化恢复错误。
+
 通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。任一恢复动作失败（包括 stop、pause 或 queue resume）时，`recovery_failure_summary` 保存有长度限制且脱敏的动作/错误码/输出摘要，同一摘要也会打印并写入 journal。公网探测使用 `curl --noproxy '*'`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
 
 ## 一次性宿主机准备
@@ -90,7 +92,7 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 
 `prepare-host` 不获取 Git、不构建镜像、不停止服务，也不改动业务数据。它识别发起 `sudo` 的 `SUDO_USER`，必要时把该操作员加入 Docker socket 对应组，创建并保护升级 journal/备份根，并把既有升级状态与恢复产物的所有权交给该操作员。Docker 组权限实质上等同宿主机 root 权限，因此必须使用专用且可信的部署账号。直接以 root 登录时必须传 `--operator <部署用户>`。若命令新增了 Docker 组成员关系，需要退出并重新登录。
 
-`plan`、`apply`、`resume`、`rollback` 必须由部署用户执行，不要加 `sudo`。只要有效用户是 root（包括直接登录 root），升级入口都会拒绝这些动作，因为 root 通常不会继承部署用户的代理环境和 Git 配置，还会再次制造 root 所有的状态文件。
+`plan`、`apply`、`resume`、`recover-candidate`、`rollback` 必须由部署用户执行，不要加 `sudo`。只要有效用户是 root（包括直接登录 root），升级入口都会拒绝这些动作，因为 root 通常不会继承部署用户的代理环境和 Git 配置，还会再次制造 root 所有的状态文件。
 
 兼容路径也接受 API、worker、web 容器镜像 ID 不同的历史部署。它会分别记录并标记三个服务的旧镜像；需要迁移前恢复或回滚时，再按服务使用对应的原镜像。操作员无需为了通过预检而先手工构建/重建这三个服务。
 
@@ -156,7 +158,7 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 基础镜像契约、tar 或平台失败会归类为 `base-image`。身份不匹配时，报错会打印固定的 manifest/config digest、平台和 Docker 实际身份；修改任何标签前先与 `status --json` 中的相同字段对照。其他故障会自动分类为 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
 
-在 migration 启动前，排空或备份失败会尝试完整恢复旧栈；只有全部恢复门禁通过才记录 `old-stack-restored`，否则保持 `recovery-required`。`failed-safe` 仅用于停机前发生的失败。如果迁移前旧栈恢复本身失败，`recovery-required` 可以给出可执行的 `resume --run-id <run-id>` 重试动作，不会恢复数据。migration 启动后失败会记录 `recovery-required`，不再提供普通 `resume`，下一步是带 token 的整点回滚。若 proxy 或 queue 隔离失败，journal 会把对应的人工隔离动作放在第一步；rollback 会再次检查隔离，未成功前不会恢复数据。随后 rollback 复用旧栈全部验证门禁，只有内部健康、queue resume、旧 image identity 和 proxy/public 全部通过才写入 `rolled-back`。不要手工修改 journal 或直接恢复流量。
+在 migration 启动前，排空或备份失败会尝试完整恢复旧栈；只有全部恢复门禁通过才记录 `old-stack-restored`，否则保持 `recovery-required`。`failed-safe` 仅用于停机前发生的失败。如果迁移前旧栈恢复本身失败，`recovery-required` 可以给出可执行的 `resume --run-id <run-id>` 重试动作，不会恢复数据。migration 后不再提供普通 `resume`。若失败只发生在 `queue-resumed`、`starting-proxy`、`validating-public` 或这些收尾门禁的重试阶段，journal 会给出下述 run-bound `recover-candidate`；更早或不受支持的 migration 后阶段仍要求带 token 的整点回滚。若 proxy 或 queue 隔离失败，journal 会把对应人工隔离动作放在第一步。不要手工修改 journal 或直接恢复流量。
 
 对于可幂等的候选健康/收尾阶段，执行 journal 给出的动作：
 
@@ -164,7 +166,16 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ./scripts/upgrade.sh resume --run-id <run-id>
 ```
 
-`resume` 不会重置 `migration_started`，也不会静默恢复数据。只有 `migration_started=false` 时，它才会重试旧栈恢复；migration 后的 `recovery-required` 执行普通 `resume` 会返回退出码 `70`，必须按 journal 执行带 token 的 rollback。
+`resume` 不会重置 `migration_started`，也不会静默恢复数据。只有 `migration_started=false` 时，它才会重试旧栈恢复；migration 后的 `recovery-required` 执行普通 `resume` 会返回退出码 `70`，必须执行 journal 给出的动作。
+
+若属于可恢复的候选收尾失败，复制 `next_action` 中的精确命令：
+
+```bash
+./scripts/upgrade.sh recover-candidate --run-id <run-id> \
+  --confirm recover-candidate-<run-id>
+```
+
+`recover-candidate` 比 `resume` 更窄：只接受 migration 后、结果为 `recovery-required`、失败阶段属于候选收尾门禁、且 migration 前恢复点已验证的 run。它要求与 run id 绑定的 token，重新隔离 proxy 和 queue/worker，校验备份 manifest 与本地候选镜像，切换到记录的目标 checkout，再严格按 worker、queue、proxy、公网探测、最终身份校验的顺序恢复。它不会恢复 PostgreSQL、对象存储或 Redis 数据，不会修改 `.env` 或 named volume。任一门禁失败都会返回 `70`、重新进入 `recovery-required` 并保持流量隔离。
 
 ### 宿主机锁状态与恢复
 
@@ -208,5 +219,5 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 - `ops/self-hosted/.state/` 必须排除在 Docker 构建上下文之外；它保存私有运维 journal，不是应用源码。
 - 构建诊断属于私有运维数据。脚本会自动脱敏，但对外分享前仍需再次检查。
 - 保持同一个 Compose project 与命名 volume identity，升级时不要增加新的 project name。
-- 把 `recovery-required` 当作维护事故处理，并且只执行 journal 给出的一个动作：迁移前旧栈 `resume`，或迁移后带本次 run token 的整点回滚。如果 `recovery_proxy_stopped=false` 或 `recovery_queue_paused=false`，先人工隔离对应流量。直到记录的恢复动作完成，都保持公网流量停止。
+- 把 `recovery-required` 当作维护事故处理，并且只执行 journal 给出的一个动作：迁移前旧栈 `resume`、符合条件的 migration 后收尾 `recover-candidate`，或迁移后带本次 run token 的整点回滚。如果 `recovery_proxy_stopped=false` 或 `recovery_queue_paused=false`，先人工隔离对应流量。直到记录的恢复动作完成，都保持公网流量停止。
 - 本地测试和 `selfhost:check` 只能验证入口与模板，不能替代目标环境、试点或生产就绪证据。
