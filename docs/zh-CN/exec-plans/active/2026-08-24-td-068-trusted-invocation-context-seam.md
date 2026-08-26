@@ -169,12 +169,14 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 ### #613 独立 repair 验证结果
 
-- `npx tsc -b --pretty false` 通过。exact focused 命令通过 8 个文件 / 76 个测试，覆盖 compatible PostgreSQL action 与 central 检查、submission provenance、structured submission、action unit/sensitive、parameter routes、sensitive-node policy 及 post-cutover workflow。
+- `npx tsc -b --pretty false` 通过。独立 review repair 后的 exact focused 命令通过 9 个文件 / 83 个测试，覆盖 compatible PostgreSQL action、binding-central 与 enablement-central 检查、submission provenance、structured submission、action unit/sensitive、Xiaoze assembly、parameter routes、sensitive-node policy 及 post-cutover workflow。
 - 第一次完整 server 运行发现 2 个 Xiaoze assembly fixture 失败，原因是其 module mock 未暴露新增的 exact-node loader/trusted guard。没有增加 production fallback；追加 test commit `3326d8eec` 按真实 production dependency shape 接线，该文件 5/5 通过，完整 server 复跑为 361 个文件 / 2768 个测试通过，1 个文件 / 4 个测试跳过。
-- `npm run test:all` 通过：frontend 418 个文件 / 3096 个测试；scripts 69 个文件 / 948 passed / 5 skipped；bridge 21 个文件 / 138 个测试；server 361 个文件 / 2768 passed / 4 skipped。测试输出保留继承的 jsdom navigation 与 `ps: process id too large` warning。
+- `npm run test:all` 在 review-repaired code tip 上通过：frontend 418 个文件 / 3096 个测试；scripts 69 个文件 / 948 passed / 5 skipped；bridge 21 个文件 / 138 个测试；server 361 个文件 / 2770 passed / 4 skipped。独立完整 server 复跑同样为 2770 passed / 4 skipped。测试输出保留继承的 jsdom navigation 与 `ps: process id too large` warning。
 - `npm run build`、`npm run contract:check`、pgvector-backed `npm run docs:check`、`npm run lint`（0 errors / 继承的 299 warnings）、`npm run selfhost:check` 与 `npm run acceptance:ci` 通过。build 保留继承的 browser-externalization 与 large-chunk warning。
-- owned-runtime Xiaoze acceptance 为 10 passed / 1 planned skip：action 的 6 个可执行 case 全部通过，perception 3/3，runtime warmup 通过。run `full-20260826t150404918z-3326d8eec622-0ded0301` 使用 API `18800`、frontend `5180`；两个进程均停止，精确 database/object root 均删除。既有 `8787`/`5173` 服务没有被使用或发送 signal。
+- owned-runtime Xiaoze acceptance 在 review-repaired code tip `6652a1286` 上再次通过 10 tests / 1 planned skip：action 的 6 个可执行 case 全部通过，perception 3/3，runtime warmup 通过。run `full-20260826t151950508z-6652a128651f-dbb0f41f` 使用 API `18800`、frontend `5180`；两个进程均停止，精确 database/object root 均删除。既有 `8787`/`5173` 端口没有被使用或发送 signal。
 - 此前一次 controller 调用在 Playwright 启动前失败，因为 wrapper 在缺少必需 process-start identity 时尝试把 browser phase 标记为 `running`。其 owned API/frontend 当时已停止；marker-bound orphan recovery 只删除 run `full-20260826t150116846z-3326d8eec622-b675ae8d` 的精确 database/object root，并验证两个端口未监听、数据库不存在。该 harness retry 不计作产品测试通过或失败。
+- 新 Standards review 发现一项 P1 不一致：enablement 返回持久化的带引号 compatible，而新 binding loader 会 canonicalize。commit `6652a1286` 统一两个 exact-revision loader 的 compatible token canonicalization，并增加 owned-PostgreSQL enablement Agent/System durable refusal、draft/candidate 状态不变、真实 audit 及 capable-user success 覆盖。
+- 新 Spec review 发现两项 P2 证据缺口。PostgreSQL central 测试现创建数值 revision 更高、compatible 不同且安全的 binding/logical-node revision，证明 persisted draft base 优先于 latest/head；独立 semantic compatible-only high rule 证明 approved capable Agent 仍成功且 Agent audit 真实。双语 workflow 记录现列出完整追加 repair chain。此文档记录后将以固定最终点再次复审 P1/P2。
 
 ## 文档影响矩阵
 
@@ -202,4 +204,4 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 ## Git & PR Workflow
 
-上文 #610-#612 的 branch/worktree 引用均为历史记录。当前实现与独立 repair 保持在 `/Users/tzrea1/Develop/WiseEff-td613` 的 `codex/td-068-parameter-submission-provenance`，基于 `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`；repair 前 HEAD 为 `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f`，追加 repair commit 为 `8bd4eb844`。本 session 不创建或合并 PR，也不关闭 Issue #613。TD-068 保持 active；#614 与 #615 未在此实现。最终 PR、合入、Issue 与 main 同步权限仍归 parent/session owner。
+上文 #610-#612 的 branch/worktree 引用均为历史记录。当前实现与独立 repair 保持在 `/Users/tzrea1/Develop/WiseEff-td613` 的 `codex/td-068-parameter-submission-provenance`，基于 `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`；repair 前 HEAD 为 `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f`。追加 repair chain 为 `8bd4eb844`（exact binding revision）、`de6efbca4`（双语 repair evidence）、`3326d8eec`（Xiaoze assembly fixture）、`54da2bd02`（verification record）、`6652a1286`（enablement、竞争 revision 与 compatible-high 的 review repair），以及随后包含本段的最终双语 verification record。本 session 不创建或合并 PR，也不关闭 Issue #613。TD-068 保持 active；#614 与 #615 未在此实现。最终 PR、合入、Issue 与 main 同步权限仍归 parent/session owner。
