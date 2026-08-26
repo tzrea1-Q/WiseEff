@@ -49,7 +49,7 @@ Open menu:
 
 1. Fixed-position panel (`.parameters-column-filter__menu--fixed`) so horizontal table scroll does not clip it.
 2. Head row: filter title + **清除** (disabled when nothing selected).
-3. Flat mode renders a checkbox list; tree mode renders a collapsed-by-default expandable tree with checked / mixed / unchecked parent state and optional counts. When the scoped tree has one structural root, that wrapper is omitted and its children are promoted to visible roots. Module paths are used for search and duplicate accessible names but are not rendered in the column-filter menu.
+3. Flat mode renders a checkbox list; tree mode renders a collapsed-by-default expandable tree with checked / mixed / unchecked parent state and optional counts. When the scoped tree has one structural root, that wrapper is omitted and its children are promoted to visible roots. Module paths are used for search and duplicate accessible names; consumers may enable `treeShowPaths` when the path should also be visible in the menu.
 4. Each option has an accessible name equal to the display label.
 5. Empty set copy: `暂无选项`.
 
@@ -101,7 +101,7 @@ Workbench example: `所属模块` is filter-only (`ColumnFilter`); `参数名` /
 
 - Unit: build/sort/orphan/cycle guards and canonical-selection behavior (`treeFilter.test.ts`); open menu, toggle, mixed state, search, clear, Escape, and focus (`ColumnFilter.test.tsx`, `TreeFilterOptions.test.tsx`).
 - Integration: table/page tests assert `getByRole("button", { name: "筛选…" })`, checkbox multi-select, and result counts.
-- Regression: `ModuleTreeSelect` single-select, multi-filter, portal, and selectable-id behavior; `/parameters` and `/dts-reload` use their own module registries while sharing the tree control.
+- Regression: `ModuleTreeSelect` single-select, multi-filter, portal, and selectable-id behavior; `/parameters`, `/dts-reload`, `/parameter-review`, `/parameter-admin/specs`, `/node-debugging`, and `/debugging-admin/nodes` use scoped registries while sharing the tree control.
 - Browser: desktop / tablet / mobile — menu stays usable under horizontal scroll; search, expand/collapse, selection, clear, Escape, focus return, and outside-click close work; no console errors.
 
 ## Change Control

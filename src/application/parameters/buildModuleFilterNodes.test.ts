@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
-import { buildParameterModuleFilterNodes } from "./buildModuleFilterNodes";
+import { buildParameterModuleFilterNodes, buildPathModuleFilterNodes } from "./buildModuleFilterNodes";
 
 function moduleNode(id: string, name: string, parentId: string | null, sortOrder: number): ParameterModule {
   return {
@@ -53,6 +53,21 @@ describe("buildParameterModuleFilterNodes", () => {
         parentId: null,
         count: 1
       })
+    ]);
+  });
+
+  it("builds hierarchy and subtree counts directly from root-to-leaf paths", () => {
+    const nodes = buildPathModuleFilterNodes([
+      { moduleName: "direct_charge_current", modulePath: ["Power", "Charging", "Direct Charging", "direct_charge_current"] },
+      { moduleName: "direct_charge_limit", modulePath: ["Power", "Charging", "Direct Charging", "direct_charge_limit"] }
+    ]);
+
+    expect(nodes.map((node) => [node.label, node.parentId, node.count])).toEqual([
+      ["Power", null, 2],
+      ["Charging", "path:Power", 2],
+      ["Direct Charging", "path:Power/Charging", 2],
+      ["direct_charge_current", "path:Power/Charging/Direct%20Charging", 1],
+      ["direct_charge_limit", "path:Power/Charging/Direct%20Charging", 1]
     ]);
   });
 });

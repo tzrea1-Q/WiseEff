@@ -17,6 +17,11 @@ export type ParameterModuleFilterRow = {
   modulePath?: readonly string[];
 };
 
+export type PathModuleFilterRow = {
+  moduleName: string;
+  modulePath?: readonly string[];
+};
+
 type ModuleFilterNodeInfo = {
   moduleId: string;
   moduleName: string;
@@ -116,4 +121,43 @@ export function buildParameterModuleFilterNodes(
     }))
   );
   return flattenTreeFilterTree(tree).map(({ children: _children, ...node }) => node);
+}
+
+function pathNodeId(path: readonly string[]): string {
+  return `path:${path.map((segment) => encodeURIComponent(segment)).join("/")}`;
+}
+
+/** Build a tree when the caller has root-to-leaf paths but no separate registry. */
+export function buildPathModuleFilterNodes(rows: readonly PathModuleFilterRow[]): TreeFilterNode[] {
+  const registry: ParameterModuleFilterRegistryNode[] = [];
+  const seenRegistryIds = new Set<string>();
+  const normalizedRows: ParameterModuleFilterRow[] = [];
+
+  for (const row of rows) {
+    const path = (row.modulePath ?? [])
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const normalizedPath = path.length > 0 ? path : [row.moduleName.trim() || "未归类"];
+
+    normalizedPath.forEach((segment, index) => {
+      const currentPath = normalizedPath.slice(0, index + 1);
+      const id = pathNodeId(currentPath);
+      if (seenRegistryIds.has(id)) return;
+      seenRegistryIds.add(id);
+      registry.push({
+        id,
+        name: segment,
+        parentId: index > 0 ? pathNodeId(currentPath.slice(0, -1)) : null,
+        sortOrder: registry.length
+      });
+    });
+
+    normalizedRows.push({
+      moduleId: pathNodeId(normalizedPath),
+      moduleName: normalizedPath.at(-1) ?? "未归类",
+      modulePath: normalizedPath
+    });
+  }
+
+  return buildParameterModuleFilterNodes(normalizedRows, registry);
 }

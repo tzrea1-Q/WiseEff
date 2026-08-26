@@ -16,6 +16,10 @@
 - 范围外：API/数据库/持久化变更、模块分类 CRUD、服务端选项分页、替换拓扑导航器、URL/保存筛选状态。
 - 已复核的既有验收覆盖：`PARAM-HAPPY-001`、`DTS-RELOAD-HANDOFF-001`、`MOD-TREE-PARAM-001`、`MOD-TREE-DEBUG-001`、`SHELL-DIAG-001`。由于共享筛选交互目前不是阻塞式浏览器 operation，本实现增加组件/集成覆盖和三种视口的手工证据。
 
+## 后续页面落地（2026-08-26）
+
+同一套共享树形筛选器现已落地到 `/parameter-review`、`/parameter-admin/specs`（定义库和内嵌审阅队列）、`/node-debugging` 与 `/debugging-admin/nodes`。两个既有调试选择器继续复用 `ModuleTreeSelect`；审阅/后台表格列使用 `ColumnFilter mode="tree"`。所有消费者保持受作用域约束的稳定 ID、祖先/子树 OR 语义、路径搜索、列表头筛选默认收起和单一结构根提升，不新增 API 或数据库合同变更。
+
 ## 实施任务
 
 - [x] 定义规范化节点模型、确定性树构建、异常节点保护、规范化选中根、子树展开、统计数和带路径搜索。

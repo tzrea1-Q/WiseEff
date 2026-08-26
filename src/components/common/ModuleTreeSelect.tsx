@@ -19,6 +19,12 @@ type ModuleTreeSelectProps = {
   portalMenu?: boolean;
   /** When set, only these node ids can be chosen (ancestors remain visible for tree context). */
   selectableIds?: ReadonlySet<string>;
+  /** Enable path-aware search for multi-select module filters. */
+  searchable?: boolean;
+  /** Hide a sole structural root while preserving subtree selection semantics. */
+  hideSingleRoot?: boolean;
+  /** Number of visible tree levels expanded when the menu first opens. */
+  initialExpandedDepth?: number;
 };
 
 type MenuPosition = {
@@ -36,7 +42,10 @@ export function ModuleTreeSelect({
   placeholder,
   disabled = false,
   portalMenu = false,
-  selectableIds
+  selectableIds,
+  searchable = mode === "multi-filter",
+  hideSingleRoot = mode === "multi-filter",
+  initialExpandedDepth = 1
 }: ModuleTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
@@ -172,6 +181,9 @@ export function ModuleTreeSelect({
         selectableIds={selectableIds}
         selectedIds={selectedIds}
         showPaths
+        searchable={searchable}
+        hideSingleRoot={hideSingleRoot}
+        initialExpandedDepth={initialExpandedDepth}
         treeRole={false}
         focusOnOpen="tree"
         onChange={(next: string | string[]) => {

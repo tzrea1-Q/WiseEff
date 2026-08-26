@@ -3,6 +3,7 @@ import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterU
 import { canPerform } from "@/app/permissions";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
+import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
@@ -26,6 +27,9 @@ import { canActOnReviewRequest, isReviewHistoryForRole, splitChangeRequestsForRe
 import { type ProjectParameterInitializationDraft, type ProjectParameterInitializationReview } from "@/domain/parameters/types";
 import { type ChangeRequest, type ParameterSubmissionRound } from "@/domain/prototype/types";
 import { migrateLegacyRoleId } from "@/domain/users/types";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
+import { collectTreeFilterSelectedDescendantIds, type TreeFilterNode } from "@/domain/tree-filter/treeFilter";
+import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
 import {
   StatusBadge,
   VerticalTimeline,
@@ -155,27 +159,6 @@ export function ParameterReviewPage({
     };
     return values[field];
   }, [state.configDraft.projects, state.parameters, state.users]);
-  const reviewRows = useMemo<ParameterReviewRow[]>(
-    () =>
-      unfilteredReviewRows.filter((row) => {
-        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "project"))) return false;
-        if (filterModules.length) {
-          if (row.kind === "initialization") {
-            if (!row.draft.parameterSnapshots.some((snapshot) => filterModules.includes(snapshot.module))) return false;
-          } else if (!filterModules.includes(getReviewRowField(row, "module"))) {
-            return false;
-          }
-        }
-        if (filterSubmitters.length && !filterSubmitters.includes(getReviewRowField(row, "submitter"))) return false;
-        if (filterStatuses.length && !filterStatuses.includes(getReviewRowField(row, "status"))) return false;
-        return true;
-      }),
-    [filterModules, filterProjects, filterStatuses, filterSubmitters, getReviewRowField, unfilteredReviewRows]
-  );
-  const selectedRow = reviewRows.find((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId) ?? reviewRows[0] ?? null;
-  const selected = selectedRow?.kind === "change" ? selectedRow.request : null;
-  const selectedInitialization = selectedRow?.kind === "initialization" ? selectedRow : null;
-
   const modules = useMemo(
     () =>
       Array.from(
@@ -186,6 +169,90 @@ export function ParameterReviewPage({
       ),
     [visibleInitializationRows, visibleRequests]
   );
+  const reviewModuleSources = useMemo(() => {
+    const sources = new Map<string, { moduleId?: string; modulePath?: string[] }>();
+    for (const parameter of state.parameters) {
+      const moduleName = parameter.module.trim();
+      if (moduleName && !sources.has(moduleName)) {
+        sources.set(moduleName, {
+          moduleId: parameter.moduleId,
+          modulePath: parameter.modulePath
+        });
+      }
+    }
+    return sources;
+  }, [state.parameters]);
+  const reviewModuleRegistry = useMemo(
+    () => buildPowerManagementModuleTree(state.configDraft.parameterModules, modules),
+    [modules, state.configDraft.parameterModules]
+  );
+  const reviewModuleIdsByName = useMemo(
+    () => new Map(reviewModuleRegistry.map((node) => [node.name, node.id])),
+    [reviewModuleRegistry]
+  );
+  const reviewModuleFilterNodes = useMemo<TreeFilterNode[]>(
+    () =>
+      buildParameterModuleFilterNodes(
+        modules.map((moduleName) => {
+          const source = reviewModuleSources.get(moduleName);
+          return {
+            moduleId: reviewModuleIdsByName.get(moduleName) ?? source?.moduleId ?? legacyModuleIdFromName(moduleName),
+            moduleName,
+            modulePath: source?.modulePath
+          };
+        }),
+        reviewModuleRegistry.map((node) => ({
+          id: node.id,
+          name: node.name,
+          parentId: node.parentId,
+          sortOrder: node.sortOrder
+        }))
+      ),
+    [modules, reviewModuleIdsByName, reviewModuleRegistry, reviewModuleSources]
+  );
+  const activeReviewModuleIds = useMemo(
+    () => collectTreeFilterSelectedDescendantIds(reviewModuleFilterNodes, filterModules),
+    [filterModules, reviewModuleFilterNodes]
+  );
+  const reviewRows = useMemo<ParameterReviewRow[]>(
+    () =>
+      unfilteredReviewRows.filter((row) => {
+        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "project"))) return false;
+        if (filterModules.length) {
+          if (row.kind === "initialization") {
+            if (
+              !row.draft.parameterSnapshots.some((snapshot) =>
+                activeReviewModuleIds.has(reviewModuleIdsByName.get(snapshot.module) ?? legacyModuleIdFromName(snapshot.module))
+              )
+            ) return false;
+          } else if (
+            !activeReviewModuleIds.has(
+              reviewModuleIdsByName.get(getReviewRowField(row, "module")) ??
+                legacyModuleIdFromName(getReviewRowField(row, "module"))
+            )
+          ) {
+            return false;
+          }
+        }
+        if (filterSubmitters.length && !filterSubmitters.includes(getReviewRowField(row, "submitter"))) return false;
+        if (filterStatuses.length && !filterStatuses.includes(getReviewRowField(row, "status"))) return false;
+        return true;
+      }),
+    [
+      activeReviewModuleIds,
+      filterModules,
+      filterProjects,
+      filterStatuses,
+      filterSubmitters,
+      getReviewRowField,
+      reviewModuleIdsByName,
+      unfilteredReviewRows
+    ]
+  );
+  const selectedRow = reviewRows.find((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId) ?? reviewRows[0] ?? null;
+  const selected = selectedRow?.kind === "change" ? selectedRow.request : null;
+  const selectedInitialization = selectedRow?.kind === "initialization" ? selectedRow : null;
+
   const submitters = useMemo(
     () =>
       Array.from(
@@ -658,9 +725,12 @@ export function ParameterReviewPage({
                     <ColumnFilter
                       label="模块"
                       groupLabel="模块筛选"
-                      values={modules}
-                      selectedValues={filterModules}
-                      onToggle={(module) => setFilterModules((current) => toggleFilterValue(current, module))}
+                      mode="tree"
+                      treeNodes={reviewModuleFilterNodes}
+                      selectedTreeIds={filterModules}
+                      treeSearchable
+                      treeShowPaths
+                      onTreeChange={setFilterModules}
                       onClear={() => setFilterModules([])}
                     />
                   </div>

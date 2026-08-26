@@ -224,10 +224,14 @@ New projects are created with `initialization_status = not_initialized`. Creator
 
 ## Hierarchical Module Trees
 
-Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, search, breadcrumb labels, single- and multi-select modes); shared tree filtering is provided by `TreeFilterOptions` and stable-ID selection utilities, so each domain still supplies its own registry and scope.
+Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, search, breadcrumb labels, single- and multi-select modes); shared tree filtering is provided by `TreeFilterOptions`, `ColumnFilter mode="tree"`, and stable-ID selection utilities, so each domain still supplies its own registry and scope.
 
 - `/parameters` — module filter and library grouping use `moduleId` with subtree include (parent selection returns descendant parameters). Deep links use `?module=<moduleId>`.
+- `/parameter-review` — change-review module filtering uses the review-row scope plus configured module ancestry; selecting a parent includes descendant requests and initialization rows.
+- `/parameter-admin/specs` — the parameter-definition library and embedded review queue use tree-mode module filters with path-aware search; the review queue falls back to its available task module labels when no taxonomy is present.
 - `/parameter-admin/modules` — `ModuleAttributionTree` governs business / driver-group / node-type attribution; **New module** uses `ModuleCreateDialog` with a kind picker (parent filter, required driver-group compatibles, optional `sourceKey` for node-type); edit uses `ModuleEditDialog` (name, controlled kind reclassify among `{business, node-type}`, importance for business categories, description, scope), with move/delete guards. Library filters and import preview use `ModuleTreeSelect`.
+- `/node-debugging` — the parameter table's module filter and the module navigator use the debugging module registry; the column filter is scoped to the visible parameter rows.
+- `/dts-reload` — the candidate table's module filter uses its own reload-candidate registry and preserves the existing handoff scope.
 - `/debugging-admin` — scope peers (same chrome as parameter-admin organization/projects): **Parameter debugging** at `/debugging-admin` hosts reload-configuration admin; **Node debugging** at `/debugging-admin/nodes` hosts the logical debug-node catalog. `DebugModuleManagementDialog` governs the debug node module tree; `DebugNodeLibraryTable`, `DebugParameterLibraryTable`, and `DebugNodeEditorDialog` pick modules via `ModuleTreeSelect`.
 
 API mode loads trees from `/api/v1/parameter-modules` and `/api/v1/debugging/admin/modules`. Mock mode derives trees from nested `parent`/`path` fields in `src/config/power-management.json` through `buildPowerManagementModuleTree()` in `src/powerManagementConfig.ts`.

@@ -49,7 +49,7 @@
 
 1. 固定定位面板（`.parameters-column-filter__menu--fixed`），避免横向滚动裁切。
 2. 标题行：筛选项名称 + **清除**（无选中时禁用）。
-3. 平铺模式显示勾选列表；树模式默认全部收起，父节点支持已选 / 半选 / 未选状态，并可显示数量。当前范围只有一个结构根节点时，隐藏该包装根节点，将其子节点提升为可见根节点。模块路径用于搜索和重复名称的可访问名称，但默认不在列表头筛选菜单中直接展示。
+3. 平铺模式显示勾选列表；树模式默认全部收起，父节点支持已选 / 半选 / 未选状态，并可显示数量。当前范围只有一个结构根节点时，隐藏该包装根节点，将其子节点提升为可见根节点。模块路径用于搜索和重复名称的可访问名称；需要在菜单中展示路径时由消费者启用 `treeShowPaths`。
 4. 每个选项的可访问名称等于展示文案。
 5. 无选项时显示 `暂无选项`。
 
@@ -101,7 +101,7 @@ selectedRoots.length === 0
 
 - 单测：树模型的排序、孤儿/循环保护、规范化选择（`treeFilter.test.ts`）；打开、勾选、半选、搜索、清除、Escape 与焦点（`ColumnFilter.test.tsx`、`TreeFilterOptions.test.tsx`）。
 - 集成：断言 `getByRole("button", { name: "筛选…" })`、多选与结果计数。
-- 回归：覆盖 `ModuleTreeSelect` 的单选、多选筛选、portal、可选 ID 行为；`/parameters` 与 `/dts-reload` 各自使用所属模块注册表，但复用同一树控件。
+- 回归：覆盖 `ModuleTreeSelect` 的单选、多选筛选、portal、可选 ID 行为；`/parameters`、`/dts-reload`、`/parameter-review`、`/parameter-admin/specs`、`/node-debugging` 与 `/debugging-admin/nodes` 各自使用受作用域约束的注册表，但复用同一树控件。
 - 浏览器：桌面 / 平板 / 手机下菜单在横向滚动时仍可用；搜索、展开/收起、选择、清除、Escape、焦点回收与点外部关闭正常；无 console error。
 
 ## 变更控制

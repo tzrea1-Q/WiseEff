@@ -16,6 +16,10 @@
 - Out of scope: API/database/persistence changes, taxonomy CRUD, server-side option loading, topology navigator replacement, and URL/saved-filter state.
 - Existing acceptance coverage reviewed: `PARAM-HAPPY-001`, `DTS-RELOAD-HANDOFF-001`, `MOD-TREE-PARAM-001`, `MOD-TREE-DEBUG-001`, and `SHELL-DIAG-001`. The implementation adds component/integration coverage and manual three-viewport evidence because the shared filter interaction is not currently a blocking browser acceptance operation.
 
+## Follow-up rollout (2026-08-26)
+
+The same shared tree filter is now rolled out to `/parameter-review`, `/parameter-admin/specs` (definition library and embedded review queue), `/node-debugging`, and `/debugging-admin/nodes`. The two existing debug selectors continue to reuse `ModuleTreeSelect`; review/admin table columns use `ColumnFilter mode="tree"`. All consumers keep scoped stable IDs, ancestor/subtree OR semantics, path-aware search, collapsed column-filter defaults, and sole-structural-root promotion. No API or database contract changes were introduced.
+
 ## Implementation Tasks
 
 - [x] Define the normalized node model, deterministic tree construction, malformed-node guards, canonical root selection, subtree expansion, counts, and path-aware search.

@@ -306,6 +306,7 @@ export function DtsParameterWorkbenchTable({
                 onTreeChange={(next) => onModuleFilterChange?.(next)}
                 onClear={clearModuleFilter}
                 treeSearchable
+                treeShowPaths
               />
             ) : (
               <ColumnFilter

@@ -7,6 +7,7 @@ import {
   filterParameterSpecLibrary,
   formatSpecPrimaryLabel,
   isSpecSelectableForReview,
+  specAttributionFilterPaths,
 } from "./ParameterSpecLibrary";
 import { SpecReviewQueue } from "./SpecReviewQueue";
 import type { SpecReviewTaskView } from "./SpecReviewQueue";
@@ -290,6 +291,28 @@ describe("ParameterSpecLibrary", () => {
     expect(dataRows[0]?.textContent).toContain("充电策略");
     expect(dataRows[0]?.textContent).not.toContain("mt5788");
     expect(dataRows[0]?.textContent).not.toContain("status");
+  });
+
+  it("builds the module tree from complete attribution paths and filters by ancestors", () => {
+    const nestedSpec: ParameterSpecLibraryRow = {
+      ...gpioIntSc8562,
+      id: "spec-nested-attribution",
+      attributionModules: [
+        { id: "mod-battery-health", name: "电池健康", kind: "business", path: ["Power", "Battery"] }
+      ]
+    };
+
+    expect(specAttributionFilterPaths(nestedSpec)).toEqual(["Power / Battery / 电池健康"]);
+    expect(
+      filterParameterSpecLibrary([nestedSpec], {
+        q: "",
+        driverModules: [],
+        compatibles: [],
+        schemaSources: [],
+        lifecycles: [],
+        moduleNames: ["Power"]
+      })
+    ).toEqual([nestedSpec]);
   });
 
   it("paginates dense pages of 50 specs", () => {
@@ -660,5 +683,42 @@ describe("SpecReviewQueue", () => {
 
     expect(await within(queue).findByText("status")).toBeInTheDocument();
     expect(within(queue).getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
+  it("uses a selected module ancestor to include the whole review-task subtree", async () => {
+    const user = userEvent.setup();
+    const tasks: SpecReviewTaskView[] = [
+      ambiguousTask,
+      { ...ambiguousTask, id: "task-2", driverModule: "电池健康", propertyKey: "battery_temp" },
+      { ...ambiguousTask, id: "task-3", driverModule: "未归类", propertyKey: "legacy" }
+    ];
+    const moduleFilterNodes = [
+      { id: "power", label: "Power", parentId: null, path: "Power" },
+      { id: "battery", label: "Battery", parentId: "power", path: "Power / Battery" },
+      { id: "battery-health", label: "电池健康", parentId: "battery", path: "Power / Battery / 电池健康" },
+      { id: "charging", label: "Charging", parentId: "power", path: "Power / Charging" },
+      { id: "unknown", label: "未归类", parentId: null, path: "未归类" }
+    ] as const;
+
+    render(
+      <SpecReviewQueue
+        tasks={tasks}
+        moduleFilterNodes={moduleFilterNodes}
+        onApprove={vi.fn()}
+        onDismiss={vi.fn()}
+      />
+    );
+
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
+    await user.click(within(queue).getByRole("button", { name: "筛选所属模块" }));
+    const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    await user.click(within(menu).getByRole("checkbox", { name: "Power" }));
+
+    const dataRows = within(queue)
+      .getAllByRole("row")
+      .filter((row) => row.querySelector("td"));
+    expect(dataRows).toHaveLength(1);
+    expect(dataRows[0]).toHaveTextContent("电池健康");
+    expect(dataRows[0]).not.toHaveTextContent("未归类");
   });
 });

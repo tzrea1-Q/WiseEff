@@ -923,7 +923,8 @@ export function ParametersPage({
                   selectedTreeIds: Array.from(moduleFilters),
                   onTreeChange: (next) => setModuleFilters(new Set(next)),
                   onClear: () => setModuleFilters(new Set()),
-                  treeSearchable: true
+                  treeSearchable: true,
+                  treeShowPaths: true
                 },
                 {
                   key: "risk",
