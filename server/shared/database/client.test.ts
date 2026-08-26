@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
-import { createDatabase, type Queryable } from "./client";
+import {
+  createDatabase,
+  createPostgresDatabase,
+  createSavepointDatabase,
+  isRootDatabase,
+  type Queryable
+} from "./client";
 
 describe("createDatabase", () => {
   it("delegates queries to the provided query function", async () => {
@@ -226,5 +232,22 @@ describe("createDatabase", () => {
     expect(JSON.stringify(spans)).not.toContain("parameter_values");
     expect(JSON.stringify(spans)).not.toContain("secret-value");
     expect(JSON.stringify(spans)).not.toContain("param-secret");
+  });
+
+  it("recognizes only the pool-backed root as a root database", async () => {
+    const queryable: Queryable = {
+      query: async <Row,>() => ({ rows: [] as Row[], rowCount: null })
+    };
+    const sessionDatabase = createDatabase(queryable);
+    const transactionDatabase = createSavepointDatabase(queryable);
+    const poolRoot = createPostgresDatabase("postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff");
+
+    try {
+      expect(isRootDatabase(poolRoot)).toBe(true);
+      expect(isRootDatabase(sessionDatabase)).toBe(false);
+      expect(isRootDatabase(transactionDatabase)).toBe(false);
+    } finally {
+      await poolRoot.close();
+    }
   });
 });

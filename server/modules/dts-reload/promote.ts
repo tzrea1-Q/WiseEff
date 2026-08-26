@@ -1,14 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import {
   evaluateDtsReloadPromotionEligibility,
   type DtsReloadPromotionRejection
 } from "../../../src/domain/dtsReload/promotionGuard";
-import { writeMilestoneAudit } from "../audit/auditedWrite";
-import type { AuditCorrelationContext } from "../audit/types";
+import { writeTrustedMilestoneAudit } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { canEditParameters } from "../parameter-kernel/policy";
-import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import { createBindingDraft as defaultCreateBindingDraft } from "../parameter-topology/service";
 import type { CreateBindingDraftBody } from "../parameter-topology/schemas";
 import type { CreateBindingDraftDeps } from "../parameter-topology/overlayWriteback";
@@ -16,7 +12,12 @@ import type { CreateBindingDraftServiceResult } from "../parameter-topology/serv
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
-import { assertDtsReloadHumanActor, requireDtsReloadPromote } from "./policy";
+import {
+  assertDtsReloadInvocationContext,
+  requireDtsReloadPromote,
+  requireDtsReloadUserInvocation,
+  type DtsReloadInvocationContext
+} from "./policy";
 import {
   getReloadCandidateRow,
   getReloadRunRow,
@@ -39,7 +40,7 @@ export type PromoteBindingDraftFn = (
     bindingId: string;
   } & CreateBindingDraftBody,
   deps?: CreateBindingDraftDeps,
-  context?: AuditCorrelationContext
+  context?: DtsReloadInvocationContext
 ) => Promise<CreateBindingDraftServiceResult>;
 
 export type PromoteReloadRunToDraftsInput = {
@@ -61,8 +62,7 @@ export type PromoteReloadRunToDraftsResult = {
   workbenchHref: string;
 };
 
-export type PromoteReloadRunToDraftsContext = AuditCorrelationContext & {
-  actorType?: SensitiveWriteActorType;
+export type PromoteReloadRunToDraftsContext = DtsReloadInvocationContext & {
   createBindingDraft?: PromoteBindingDraftFn;
   objectStore?: ObjectStore;
 };
@@ -181,8 +181,9 @@ export async function promoteReloadRunToDrafts(
   db: Database,
   auth: AuthContext,
   input: PromoteReloadRunToDraftsInput,
-  context: PromoteReloadRunToDraftsContext = {}
+  context: PromoteReloadRunToDraftsContext
 ): Promise<PromoteReloadRunToDraftsResult> {
+  const trustedContext = assertDtsReloadInvocationContext(auth, context);
   const bindingIds = uniqueBindingIds(input.bindingIds);
   if (bindingIds.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "bindingIds must contain at least one binding.", {
@@ -201,12 +202,11 @@ export async function promoteReloadRunToDrafts(
     throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
   }
 
-  await assertDtsReloadHumanActor(db, auth, {
-    actorType: context.actorType,
+  await requireDtsReloadUserInvocation(auth, {
+    context: trustedContext,
     action: "promote",
     projectId: row.project_id,
     runId: row.id,
-    requestId: context.requestId
   });
 
   const purpose = asReloadPurpose(row.purpose);
@@ -306,7 +306,7 @@ export async function promoteReloadRunToDrafts(
         reason
       },
       context.objectStore ? { objectStore: context.objectStore } : {},
-      { requestId: context.requestId }
+      trustedContext
     );
     drafts.push({
       bindingId,
@@ -317,28 +317,25 @@ export async function promoteReloadRunToDrafts(
 
   const createdBindingIds = drafts.filter((item) => item.outcome === "created").map((item) => item.bindingId);
   if (createdBindingIds.length > 0) {
-    await writeMilestoneAudit(
-      db,
-      auth,
-      { requestId: context.requestId ?? randomUUID() },
-      {
-        app: "dts-reload",
-        kind: "reload-value-promoted-to-draft",
-        action: "promote",
-        severity: "Medium",
-        projectId: row.project_id,
-        targetType: "dts-reload-run",
-        targetId: row.id,
-        actorType: context.actorType ?? "user",
-        metadata: {
-          runId: row.id,
-          status: row.status,
-          purpose,
-          bindingIds: createdBindingIds,
-          draftIds: drafts.filter((item) => item.outcome === "created").map((item) => item.draftId)
-        }
-      }
-    );
+    await writeTrustedMilestoneAudit(db, {
+      invocation: trustedContext.invocation,
+      ...(trustedContext.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      projectId: row.project_id,
+      app: "dts-reload",
+      kind: "reload-value-promoted-to-draft",
+      action: "promote",
+      severity: "Medium",
+      targetType: "dts-reload-run",
+      targetId: row.id,
+      metadata: {
+        runId: row.id,
+        status: row.status,
+        purpose,
+        bindingIds: createdBindingIds,
+        draftIds: drafts.filter((item) => item.outcome === "created").map((item) => item.draftId)
+      },
+      traceId: trustedContext.requestId
+    });
   }
 
   return {

@@ -142,6 +142,11 @@ export async function writeTrustedRefusalAudit(db: Database, input: TrustedAudit
   await writeTrustedAuditEvent(db, input);
 }
 
+/** Write trusted milestone evidence immediately on the pool handle. */
+export async function writeTrustedMilestoneAudit(db: Database, input: TrustedAuditEventInput): Promise<void> {
+  await writeTrustedAuditEvent(db, input);
+}
+
 /**
  * Write milestone evidence for a long-running, stepwise flow (a reload deploy, an
  * agent tool run): "this step was reached", recorded immediately on the pool handle

@@ -1,6 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import {
+  createAgentInvocation,
+  createUserInvocation,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -9,8 +14,14 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
-import { promoteReloadRunToDrafts, type PromoteBindingDraftFn } from "./promote";
+import {
+  promoteReloadRunToDrafts as promoteReloadRunToDraftsService,
+  type PromoteBindingDraftFn,
+  type PromoteReloadRunToDraftsContext,
+  type PromoteReloadRunToDraftsInput
+} from "./promote";
 import type { ReloadRunPurpose, ReloadRunStatus } from "./types";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn(async () => undefined)
@@ -34,6 +45,39 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
     roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
     permissions: ["debugging:dts-reload", "debugging:view", "parameter:edit"],
     ...overrides
+  };
+}
+
+type TestPromotionContext = Pick<PromoteReloadRunToDraftsContext, "createBindingDraft" | "objectStore"> & {
+  invocation?: TrustedInvocationContext;
+  requestId?: string;
+  refusalSink?: typeof testRefusalAuditSink;
+};
+
+function promoteReloadRunToDrafts(
+  db: Parameters<typeof promoteReloadRunToDraftsService>[0],
+  principal: Parameters<typeof promoteReloadRunToDraftsService>[1],
+  input: PromoteReloadRunToDraftsInput,
+  context: TestPromotionContext = {}
+) {
+  const trustedContext: PromoteReloadRunToDraftsContext = {
+    ...context,
+    invocation: context.invocation ?? createUserInvocation(principal),
+    requestId: context.requestId ?? "req-promote-user",
+    refusalSink: context.refusalSink ?? testRefusalAuditSink
+  };
+  return promoteReloadRunToDraftsService(db, principal, input, trustedContext);
+}
+
+function agentContext(requestId: string): TestPromotionContext {
+  return {
+    invocation: createAgentInvocation(auth(), {
+      sessionId: "session-dts-reload",
+      toolCallId: "tool-dts-reload",
+      approval: { required: true, approvalId: "approval-dts-reload" }
+    }),
+    requestId,
+    refusalSink: testRefusalAuditSink
   };
 }
 
@@ -404,7 +448,7 @@ describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
         db,
         auth(),
         { runId: "run-verified", bindingIds: ["binding-1"] },
-        { createBindingDraft: recorder.createBindingDraft, actorType: "agent" }
+        { createBindingDraft: recorder.createBindingDraft, ...agentContext("req-promote-agent") }
       )
     ).rejects.toMatchObject({
       details: { code: "dts-reload-agent-refused", requireHuman: true }
@@ -502,3 +546,5 @@ describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
     expect(recorder.calls).toHaveLength(0);
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

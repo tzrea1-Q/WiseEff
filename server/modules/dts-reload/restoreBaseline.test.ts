@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -34,7 +35,12 @@ vi.mock("./sensitiveGate", () => ({
 }));
 
 import { createAuditEvent } from "../audit/repository";
-import { getReloadResidue, startRestoreBaselineRun } from "./service";
+import {
+  getReloadResidue,
+  startRestoreBaselineRun as startRestoreBaselineRunService,
+  type DtsReloadServiceContext
+} from "./service";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 type QueryCall = { text: string; values: unknown[] };
 
@@ -53,6 +59,32 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
     permissions: ["debugging:dts-reload"],
     ...overrides
   };
+}
+
+function userContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalSink: testRefusalAuditSink };
+}
+
+function agentContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
+  return {
+    invocation: createAgentInvocation(principal, {
+      sessionId: "session-dts-reload",
+      toolCallId: "tool-dts-reload",
+      approval: { required: true, approvalId: "approval-dts-reload" }
+    }),
+    requestId,
+    refusalSink: testRefusalAuditSink
+  };
+}
+
+function startRestoreBaselineRun(
+  db: Parameters<typeof startRestoreBaselineRunService>[0],
+  objectStore: Parameters<typeof startRestoreBaselineRunService>[1],
+  principal: Parameters<typeof startRestoreBaselineRunService>[2],
+  input: Parameters<typeof startRestoreBaselineRunService>[3],
+  context: Parameters<typeof startRestoreBaselineRunService>[4] = userContext(principal, "req-restore-user")
+) {
+  return startRestoreBaselineRunService(db, objectStore, principal, input, context);
 }
 
 function candidateRow() {
@@ -359,7 +391,7 @@ describe("startRestoreBaselineRun", () => {
         objectStore(),
         auth(),
         { projectId: "project-1", deviceId: "bridge:lab-1" },
-        { actorType: "agent", requestId: "req-restore-agent" }
+        agentContext(auth(), "req-restore-agent")
       )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -406,3 +438,5 @@ describe("getReloadResidue authz", () => {
     ).resolves.toBeNull();
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

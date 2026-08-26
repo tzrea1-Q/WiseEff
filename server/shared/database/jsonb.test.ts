@@ -40,6 +40,10 @@ describe("postgres jsonb serialization", () => {
     const databaseUrl = process.env.DATABASE_URL ?? "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
     const db = createPostgresDatabase(databaseUrl);
     const payload = serializePostgresJsonb([{ snippet: "\uD800" }], "array");
-    await expect(db.query("select $1::jsonb as value", [payload])).resolves.toBeDefined();
+    try {
+      await expect(db.query("select $1::jsonb as value", [payload])).resolves.toBeDefined();
+    } finally {
+      await db.close();
+    }
   });
 });

@@ -100,16 +100,56 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - 已运行 `npm run acceptance:evidence`，但因本次 focused Xiaoze run 不包含全量 P0/P1 operation records，该命令未通过。只有 operation-evidence coverage 发生变化时才要求该命令；#611 未修改 operation matrix 或 evidence helper，因此如实记录该 focused-corpus 失败，不将其宣称为通过，也不把它用作 #611 合入门禁。
 - GitHub Actions 因月度额度耗尽仍不可用。Owner 已授权以精确树完整本地矩阵作为合入依据。最终 review、PR 创建、合入、Issue 关闭与本地 `main` 同步仍由 parent/session owner 负责。
 
+## #612 实现检查点
+
+- 范围：将 DTS 重载五个领域 mutation 入口——start-run、restore-baseline、deploy、configuration update、promote-to-drafts——及其五个 HTTP mutation route 全部迁移到 branded `TrustedInvocationContext` seam。
+- HTTP route 在服务端内部创建 `createUserInvocation(auth)`，并传入由服务端拥有的 PostgreSQL pool root 支撑的 `TrustedRefusalAuditSink`。request body、query、header、DTO 字段及任意 `actorType` 字符串都不能选择 provenance；route 回归测试在五个 route 上覆盖 body/header spoof。
+- 每个领域入口在任何 mutation 前校验 brand 与认证主体匹配。User 保留既有 permission、敏感操作 token、lease、snapshot、bridge capability、transaction 与审计行为；Agent/System 在领域或设备写入前 fail closed。
+- mutation context 要求带品牌的服务端 refusal sink；sink 缺失或 malformed 时按内部不变量失败，拒绝写入器绝不回退到调用者事务。
+- Agent 拒绝继续使用 `dts-reload-agent-refused`。System 拒绝固定为 `dts-reload-system-refused`；System 拒绝审计使用 platform path，`actorUserId: null`、`organizationId: null`，并记录构造出的 service/job identity。Agent 拒绝保留 principal、session、tool-call、approval、action、target、request、`requireHuman` correlation。
+- 拒绝证据复用现有 trusted audit writer，并通过带品牌的 sink 写入。真实 PostgreSQL 矩阵把 25 个 operation/context cell 分别放入外层事务，随后回滚该事务，再验证拒绝审计仍持久、领域表无变化、没有 lease/snapshot/device side effect，也没有 success audit。
+
+### #612 TDD 与验证证据
+
+- Red：`npm run test:server -- server/modules/dts-reload/routes.test.ts --run` 在迁移前实现上 1 个测试失败，原因是 configuration route 只传 `{ requestId: "test-request" }`；测试要求正式构造的服务端 user invocation，且客户端 `actorType: "agent"` 不得影响它。
+- 聚焦 Green：`npm run test:server -- --run server/modules/dts-reload` 通过 18 个文件 / 219 个测试，包含 service、deploy、restore-baseline、configuration、promote、routes 及真实 PostgreSQL provenance matrix。
+- provenance matrix 为五个操作 × user/agent/system/missing/malformed。User case 进入原有业务校验路径；Agent/System 返回稳定 403 并留下真实 durable refusal audit；missing/malformed 抛出 `INVALID_TRUSTED_INVOCATION_CONTEXT`；所有拒绝 cell 均无 mutation、success audit、lease、snapshot 或 device call。
+- 硬件/HDC 验证明确不在本 Issue 范围内。deploy 矩阵用 adapter spy 证明拒绝发生在 bridge/device seam 之前；该证据不等同硬件验证。
+- #613–#615 仍是开放的后续迁移。本共享计划保持 active，#612 不把它移入 `completed/`。
+
+### #612 repair 前验证边界（历史记录）
+
+- 在独立审查 repair 之前，`npm run test:server` 曾在 4 个未修改的 parameter/parameter-topology PostgreSQL 集成测试上超时，其余为 353 个文件通过 / 2 个跳过、2750 个测试通过 / 8 个跳过。repair 前 DTS 聚焦命令为 18 个文件 / 217 个测试通过。这里保留该历史结果用于追溯，不把它当作下方 repair 结果。
+- 在独立审查 repair 之前，`npm run test:all` 曾在 frontend 阶段 5 个既有 UI 测试上失败；同一命令在干净 `origin/main` worktree 上复现出另外 3 个既有 frontend 失败。#612 未混入任何无关 frontend 修复。
+- 之前 focused corpus 的 `npm run acceptance:evidence` 结果不作为 #612 门禁。#612 没有改变 operation-evidence coverage，因此本 repair 仍有意不运行该命令；没有要求或宣称 HDC/硬件验收。
+
+## #612 独立审查 repair 检查点
+
+- repair worktree 是 `/Users/tzrea1/Develop/WiseEff-td612`，分支为 `codex/td-068-dts-reload-user-provenance`；已无冲突地从 `49ddd3925` rebase 到 `origin/main@537e932ce101a76606347ce8ab0f67303ace1068`。下文 #611 分支/worktree 引用均为历史记录，不是当前 #612 分支。
+- P1 Red：`npm run test:server -- --run server/modules/dts-reload/provenance.integration.test.ts` 在调用者 transaction 被当作旧 `refusalDb: tx` 时失败：旧路径返回 Agent 403，但 rollback 后拒绝审计消失（期望 1 行，实际 0 行）。repair 把裸数据库字段替换为私有品牌 `TrustedRefusalAuditSink`；只有 `createPostgresDatabase` root 能创建它，root-owned closure 通过独立 pool 写入。
+- P2 Red：精确 configuration audit 断言发现旧实现得到 `targetId: "org-1"`，而既有公开 contract 要求稳定的 `"dts-reload"`。repair 恢复该 target，同时保留 Agent kind/code、`reason`、`requireHuman`、action、principal、session、tool-call、approval 和 trace correlation。
+- P2 假绿 Red：在旧 fixture 仍遗漏 refusal handle 时加入精确 reason/message 断言，malformed 与 principal-mismatch 都先在 refusal-database guard 失败。现在两个 fixture 都携带正式合法 sink，因此 malformed 实际命中 `context must come from a server-owned constructor`，mismatch 实际命中 `DTS reload invocation principal does not match the authenticated principal`；两者都不写 refusal 或 success audit。
+- P2 HTTP 覆盖：真实 PostgreSQL matrix 现在经由公开 HTTP router 和五个真实 DTS domain，五条 route 都覆盖 body/header `actorType` spoof，configuration 另覆盖 query spoof。它比较无 spoof 与 spoof 的业务结果，验证 user success audit projection、状态行为、无 Agent/System refusal 以及 deploy bridge 调用为 0。只在 device 前 seam 使用隔离 object-store fake；这不是 HDC 证据。
+- 共享 root/sink runtime 测试证明 session wrapper、savepoint/transaction handle 或普通 `{ write() }` 对象都不是可信 sink，并以 `INVALID_TRUSTED_INVOCATION_CONTEXT` 失败。DTS 测试 helper 使用正式 root/sink 构造器，不把测试 transaction 包装成 sink。
+
+### #612 repair 验证结果
+
+- 在基于 `origin/main@537e932ce101a76606347ce8ab0f67303ace1068` 的最终 repair 代码树上，`npx tsc -b --pretty false` 通过；`npm run test:server` 通过 358 个文件 / 2759 个测试，另有 2 个文件 / 8 个测试跳过；第二次 exact `npm run test:all` 通过 frontend 418 个文件 / 3096 个测试、scripts 69 个文件 / 948 个测试（5 个跳过）、bridge 21 个文件 / 138 个测试、server 358 个文件 / 2759 个测试（2 个文件 / 8 个测试跳过）。
+- 聚焦证据通过：provenance 1 个文件 / 4 个测试、routes 1 个文件 / 5 个测试、全部 DTS reload 18 个文件 / 219 个测试、audit 6 个文件 / 26 个测试、shared database 4 个文件 / 47 个测试，以及 promote cleanup 1 个文件 / 9 个测试。
+- 第一次 exact `npm run test:all` 仅在 scripts 阶段的 `scripts/finalize-gate0-upload.test.ts` 失败（1 failed / 947 passed / 5 skipped），原因是读取不完整的 `ready.json` 时 JSON 解析失败。repair 分支上的直接单文件命令连续 5 次 23/23 通过，干净 `origin/main` worktree 上连续 3 次通过；没有为此无关失败修改源码。重复运行的完整命令通过。既有 warning 包括 `Not implemented: navigation to another Document` 与 `ps: process id too large: 999999999`。
+- `npm run build`、`npm run contract:check`、`TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`、`npm run selfhost:check` 和 `git diff --check origin/main...HEAD` 通过。build 保留既有 Vite externalized-module 与 large-chunk warnings；lint 通过，0 errors、299 个既有 warnings。因 operation-evidence coverage 未改变，`npm run acceptance:evidence` 仍未运行；GitHub Actions 因本月额度耗尽不可用。
+- 不宣称 HDC 或硬件验证。deploy adapter spy 仅证明拒绝/validation seam 先于 device invocation；#613–#615 仍开放，因此英中文共享计划保持 active。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |
 | --- | --- | --- |
 | 仓库地图与 Agent 指引 | Review | `AGENTS.md`；已将安全/auth/审计工作路由到相关文档。 |
 | 计划与技术债台账 | Review | `docs/PLANS.md`、`docs/exec-plans/tech-debt-tracker.md`；已保留 TD-068 Open 及迁移边界。 |
-| 产品与 API 契约 | No change | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；未修改 route、request DTO、`/me`、header、body 或 OpenAPI 表面。 |
+| 产品与 API 契约 | Review | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；route path 与 request contract 不变，服务端 provenance 与 actor 字段剥离由 route 测试覆盖。 |
 | 架构与领域模型 | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`、`docs/design-docs/full-stack-architecture.md`、`docs/design-docs/domain-model.md`。 |
 | 安全与审计指引 | Review | `docs/SECURITY.md`、`server/modules/audit/auditedWrite.ts`；可信上下文及禁止 default-user 仍是部分迁移。 |
-| 质量与验证文档 | No change | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；使用现有 server、contract、docs、build、diff 门禁。 |
+| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#612 增加真实 PostgreSQL 五操作 provenance matrix，并明确 HDC 不在本证据边界内。 |
 | 中文开发文档 | Review | `docs/zh-CN/SECURITY.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/zh-CN/PLANS.md`。 |
 | 生成物、runbook、前端/设计、references | No change | `docs/generated/`、`docs/runbooks/`、`src/`、`docs/references/`；没有生成 schema、operation、运行时、UI 或运维流程变化。 |
 
@@ -117,11 +157,13 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 - [x] 已按实现 seam 复核 ADR-0038 及英中文安全/架构/领域/API/计划引用。
 - [x] 没有公开契约或前端文档因此变陈旧。
-- [x] 已如实记录第一次全量失败与同树完整重跑通过，没有把失败运行宣称为绿色。
+- [x] 已在本文件及同步的英文计划中记录 #612 范围、Red、25-cell PostgreSQL matrix、拒绝 code、rollback audit 边界及 HDC 证据边界。
+- [x] #612 没有吸收或修改原脏工作树中的 compact-footer 文档改动。
+- [x] repair 前的 frontend/完整 server 失败及干净 `origin/main` 复现仍与当前 repair 结果分开记录；当前 exact-tree server 与 `test:all` 重跑结果连同 warning 和 skip 已记录。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
 - [x] #610 在自身合入前取得 Standards 与 Spec 最终复审零 finding；#611 在本合入记录后由 parent 独立进行最终复审。
 - [ ] 只有完整 TD-068 迁移和收口证据落地后，才能将本计划移入 `completed/`。
 
 ## Git & PR Workflow
 
-#610 的历史实现与 review 修复和其文档记录在 `codex/td-068-trusted-invocation-context` 上保持独立提交。当前 #611 最终分支为 `codex/td-068-durable-agent-provenance-final`；PR、owner-approved 完整本地 CI 例外、合入、Issue 关闭与 main 同步由 parent/session owner 负责。
+#610 的历史实现与 review 修复和其文档记录在 `codex/td-068-trusted-invocation-context` 上保持独立提交。本计划中的 #611 分支/worktree 引用均为历史记录。当前 #612 feature/repair 分支为 `codex/td-068-dts-reload-user-provenance`，worktree 为 `/Users/tzrea1/Develop/WiseEff-td612`，基于 `origin/main@537e932ce101a76606347ce8ab0f67303ace1068`。review、PR 创建、合入、Issue 关闭与 main 同步由 parent/session owner 负责。

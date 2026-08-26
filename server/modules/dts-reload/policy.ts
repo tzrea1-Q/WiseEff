@@ -1,14 +1,19 @@
-import { randomUUID } from "node:crypto";
-
-import { writeRefusalAudit } from "../audit/auditedWrite";
+import { assertTrustedInvocationContext, TrustedInvocationContextError, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { AuthContext, BackendPermission } from "../auth/types";
-import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
-import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
+export const DTS_RELOAD_SYSTEM_REFUSED_CODE = "dts-reload-system-refused";
 
 export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configure" | "promote";
+
+export type DtsReloadInvocationContext = {
+  invocation: TrustedInvocationContext;
+  requestId: string;
+  /** Server-owned refusal writer whose pool connection is independent of caller transactions. */
+  refusalSink: TrustedRefusalAuditSink;
+};
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
   if (!auth.user.isActive || !auth.permissions.includes(permission)) {
@@ -59,57 +64,110 @@ export function requireDtsReloadPromote(auth: AuthContext) {
 }
 
 /**
- * Refuse Agent actors from DTS reload mutating paths (start / deploy / restore / configure / promote).
- * Sensitive-node Agent refusal remains as defence in depth for matched batches.
- *
- * Trust boundary: `actorType` is a caller-supplied in-process label (same pattern as
- * `SensitiveWriteActorType` in parameters). It binds Agent tool / service callers that
- * pass `actorType: "agent"`; an agent presenting a user HTTP token is indistinguishable
- * from a human. See TD-068 / docs/SECURITY.md.
+ * Validate the server-owned invocation seam before a mutation is authorized or queried.
+ * A user/Agent context must describe the same authenticated principal supplied to the
+ * domain service; a system context deliberately has no principal to compare.
  */
-export async function assertDtsReloadHumanActor(
-  // Pool handle on purpose: the deny audit below must survive the caller's
-  // rollback, so this guard must run outside any transaction (ADR-0027 refusal audits).
-  db: Database,
+export function assertDtsReloadInvocationContext(
+  auth: AuthContext,
+  context: DtsReloadInvocationContext | undefined
+): DtsReloadInvocationContext {
+  if (
+    !context ||
+    typeof context.requestId !== "string" ||
+    context.requestId.trim().length === 0 ||
+    !context.refusalSink
+  ) {
+    throw new TrustedInvocationContextError(
+      "DTS reload mutation requires a requestId, server-owned refusal audit sink, and trusted invocation context"
+    );
+  }
+
+  assertTrustedRefusalAuditSink(context.refusalSink);
+  const invocation = assertTrustedInvocationContext(context.invocation);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError("DTS reload invocation principal does not match the authenticated principal");
+  }
+
+  return { invocation, requestId: context.requestId, refusalSink: context.refusalSink };
+}
+
+/**
+ * Refuse non-user invocations from every DTS reload mutation. Refusal evidence is written
+ * through the server-owned refusal sink so it survives the caller transaction's rollback.
+ */
+export async function requireDtsReloadUserInvocation(
   auth: AuthContext,
   input: {
-    actorType?: SensitiveWriteActorType;
+    context: DtsReloadInvocationContext;
     action: DtsReloadMutatingAction;
     projectId?: string | null;
     runId?: string | null;
-    requestId?: string;
   }
-): Promise<void> {
-  const actorType = input.actorType ?? "user";
-  if (actorType !== "agent") {
-    return;
+): Promise<TrustedInvocationContext> {
+  const context = assertDtsReloadInvocationContext(auth, input.context);
+  const invocation = context.invocation;
+  if (invocation.initiator === "user") {
+    return invocation;
   }
 
-  await writeRefusalAudit(db, auth, { requestId: input.requestId ?? randomUUID() }, {
+  const isAgent = invocation.initiator === "agent";
+  const code = isAgent ? DTS_RELOAD_AGENT_REFUSED_CODE : DTS_RELOAD_SYSTEM_REFUSED_CODE;
+  const reason = isAgent ? "agent-refused" : "system-refused";
+  const kind = isAgent ? "dts-reload-agent-refused" : "dts-reload-system-refused";
+  const targetType = input.runId
+    ? "dts-reload-run"
+    : input.action === "configure"
+      ? "dts-reload-configuration"
+      : "dts-reload";
+  const targetId = input.runId ?? input.projectId ?? "dts-reload";
+
+  await context.refusalSink.write({
+    invocation,
+    projectId: input.projectId ?? null,
     app: "dts-reload",
-    kind: "dts-reload-agent-refused",
+    kind,
     action: "deny",
     severity: "High",
-    projectId: input.projectId ?? null,
-    targetType: input.runId ? "dts-reload-run" : input.action === "configure" ? "dts-reload-configuration" : "dts-reload",
-    targetId: input.runId ?? input.projectId ?? "dts-reload",
-    actorType: "agent",
+    targetType,
+    targetId,
     metadata: {
-      code: DTS_RELOAD_AGENT_REFUSED_CODE,
-      reason: "agent-refused",
+      code,
+      reason,
       requireHuman: true,
       action: input.action
-    }
+    },
+    traceId: context.requestId
   });
+
+  if (isAgent) {
+    throw new ApiError(
+      "FORBIDDEN",
+      "Agent actors cannot start, deploy, restore, configure, or promote DTS reload; a human operator is required.",
+      {
+        code,
+        reason,
+        requireHuman: true,
+        action: input.action,
+        initiator: invocation.initiator
+      }
+    );
+  }
 
   throw new ApiError(
     "FORBIDDEN",
-    "Agent actors cannot start, deploy, restore, configure, or promote DTS reload; a human operator is required.",
+    "System invocations cannot start, deploy, restore, configure, or promote DTS reload; a human operator is required.",
     {
-      code: DTS_RELOAD_AGENT_REFUSED_CODE,
-      reason: "agent-refused",
+      code,
+      reason,
       requireHuman: true,
-      action: input.action
+      action: input.action,
+      initiator: invocation.initiator
     }
   );
 }

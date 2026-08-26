@@ -14,6 +14,26 @@ export type Database = Queryable & {
   transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T>;
 };
 
+const rootDatabaseBrand = Symbol("wiseeff.root-database");
+
+/** A pool-backed database root that can own work which must outlive caller transactions. */
+export type RootDatabase = Database & {
+  readonly [rootDatabaseBrand]: true;
+  readonly close: () => Promise<void>;
+};
+
+const rootDatabases = new WeakSet<object>();
+
+/** Runtime identity check for the server-owned pool root; wrappers and transactions are not roots. */
+export function isRootDatabase(value: unknown): value is RootDatabase {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    rootDatabases.has(value) &&
+    Reflect.get(value, rootDatabaseBrand) === true
+  );
+}
+
 type DatabaseOptions = {
   tracing?: Pick<TracingBoundary, "withSpan">;
 };
@@ -110,15 +130,17 @@ function statementType(text: string) {
   return text.trim().split(/\s+/, 1)[0]?.toLowerCase() || "unknown";
 }
 
-export function createPostgresDatabase(connectionString: string, options: DatabaseOptions = {}): Database {
+export function createPostgresDatabase(connectionString: string, options: DatabaseOptions = {}): RootDatabase {
   const pool = new pg.Pool({ connectionString });
+  let closed = false;
   const query = <Row,>(text: string, values: unknown[] = []) =>
     traceQuery(options.tracing, text, values, async () => {
       const result = await pool.query(text, values);
       return { rows: result.rows as Row[], rowCount: result.rowCount };
     });
 
-  return {
+  const rootDatabase: RootDatabase = {
+    [rootDatabaseBrand]: true,
     query,
     transaction: async (fn) => {
       const client = await pool.connect();
@@ -141,6 +163,14 @@ export function createPostgresDatabase(connectionString: string, options: Databa
       } finally {
         client.release();
       }
+    },
+    close: async () => {
+      if (closed) return;
+      closed = true;
+      await pool.end();
     }
   };
+  Object.freeze(rootDatabase);
+  rootDatabases.add(rootDatabase);
+  return rootDatabase;
 }
