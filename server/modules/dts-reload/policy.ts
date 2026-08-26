@@ -1,7 +1,6 @@
-import { writeTrustedRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedInvocationContext, TrustedInvocationContextError, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { AuthContext, BackendPermission } from "../auth/types";
-import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
@@ -12,8 +11,8 @@ export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configur
 export type DtsReloadInvocationContext = {
   invocation: TrustedInvocationContext;
   requestId: string;
-  /** Server-owned pool handle for refusal evidence that must outlive caller rollback. */
-  refusalDb: Database;
+  /** Server-owned refusal writer whose pool connection is independent of caller transactions. */
+  refusalSink: TrustedRefusalAuditSink;
 };
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
@@ -77,15 +76,14 @@ export function assertDtsReloadInvocationContext(
     !context ||
     typeof context.requestId !== "string" ||
     context.requestId.trim().length === 0 ||
-    !context.refusalDb ||
-    typeof context.refusalDb.query !== "function" ||
-    typeof context.refusalDb.transaction !== "function"
+    !context.refusalSink
   ) {
     throw new TrustedInvocationContextError(
-      "DTS reload mutation requires a requestId, refusal database, and trusted invocation context"
+      "DTS reload mutation requires a requestId, server-owned refusal audit sink, and trusted invocation context"
     );
   }
 
+  assertTrustedRefusalAuditSink(context.refusalSink);
   const invocation = assertTrustedInvocationContext(context.invocation);
   if (
     invocation.initiator !== "system" &&
@@ -96,15 +94,14 @@ export function assertDtsReloadInvocationContext(
     throw new TrustedInvocationContextError("DTS reload invocation principal does not match the authenticated principal");
   }
 
-  return { invocation, requestId: context.requestId, refusalDb: context.refusalDb };
+  return { invocation, requestId: context.requestId, refusalSink: context.refusalSink };
 }
 
 /**
  * Refuse non-user invocations from every DTS reload mutation. Refusal evidence is written
- * through the trusted pool writer so it survives the caller transaction's rollback.
+ * through the server-owned refusal sink so it survives the caller transaction's rollback.
  */
 export async function requireDtsReloadUserInvocation(
-  db: Database,
   auth: AuthContext,
   input: {
     context: DtsReloadInvocationContext;
@@ -128,9 +125,9 @@ export async function requireDtsReloadUserInvocation(
     : input.action === "configure"
       ? "dts-reload-configuration"
       : "dts-reload";
-  const targetId = input.runId ?? input.projectId ?? (input.action === "configure" ? auth.organization.id : "dts-reload");
+  const targetId = input.runId ?? input.projectId ?? "dts-reload";
 
-  await writeTrustedRefusalAudit(context.refusalDb, {
+  await context.refusalSink.write({
     invocation,
     projectId: input.projectId ?? null,
     app: "dts-reload",

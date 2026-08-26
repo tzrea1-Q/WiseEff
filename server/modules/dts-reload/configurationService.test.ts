@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
-import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -11,6 +10,7 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { SEEDED_RELOAD_CONFIGURATION } from "./configurationTypes";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn(async () => undefined)
@@ -43,11 +43,11 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   };
 }
 
-function userContext(principal: AuthContext, requestId: string, refusalDb: Database): ReloadConfigurationServiceContext {
-  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+function userContext(principal: AuthContext, requestId: string): ReloadConfigurationServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalSink: testRefusalAuditSink };
 }
 
-function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): ReloadConfigurationServiceContext {
+function agentContext(principal: AuthContext, requestId: string): ReloadConfigurationServiceContext {
   return {
     invocation: createAgentInvocation(principal, {
       sessionId: "session-dts-reload",
@@ -55,7 +55,7 @@ function agentContext(principal: AuthContext, requestId: string, refusalDb: Data
       approval: { required: true, approvalId: "approval-dts-reload" }
     }),
     requestId,
-    refusalDb
+    refusalSink: testRefusalAuditSink
   };
 }
 
@@ -63,7 +63,7 @@ function updateOrganisationReloadConfiguration(
   db: Parameters<typeof updateOrganisationReloadConfigurationService>[0],
   principal: Parameters<typeof updateOrganisationReloadConfigurationService>[1],
   body: Parameters<typeof updateOrganisationReloadConfigurationService>[2],
-  context: Parameters<typeof updateOrganisationReloadConfigurationService>[3] = userContext(principal, "req-config-user", db)
+  context: Parameters<typeof updateOrganisationReloadConfigurationService>[3] = userContext(principal, "req-config-user")
 ) {
   return updateOrganisationReloadConfigurationService(db, principal, body, context);
 }
@@ -113,7 +113,7 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
         db,
         auth(),
         SEEDED_RELOAD_CONFIGURATION,
-        agentContext(auth(), "req-config-agent", db)
+        agentContext(auth(), "req-config-agent")
       )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -138,6 +138,25 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
         })
       })
     );
+    const refusalAuditCall = vi.mocked(createAuditEvent).mock.calls.find(
+      ([, audit]) => audit.kind === "dts-reload-agent-refused"
+    );
+    expect(refusalAuditCall?.[1]).toMatchObject({
+      kind: "dts-reload-agent-refused",
+      action: "deny",
+      targetType: "dts-reload-configuration",
+      targetId: "dts-reload",
+      actorType: "agent",
+      actorUserId: "user-1",
+      organizationId: "org-1",
+      traceId: "req-config-agent",
+      metadata: {
+        code: "dts-reload-agent-refused",
+        reason: "agent-refused",
+        requireHuman: true,
+        action: "configure"
+      }
+    });
     expect(createAuditEvent).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ kind: "dts-reload-configuration-update" })
@@ -172,7 +191,7 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
         triggerPayload: "1",
         kernelLogCommand: "hilog"
       },
-      userContext(auth(), "req-1", db)
+      userContext(auth(), "req-1")
     );
 
     expect(next.source).toBe("organisation");
@@ -215,3 +234,5 @@ describe.skipIf(!databaseAvailable)("reload configuration service", () => {
     expect(await storedRowCount()).toBe(0);
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

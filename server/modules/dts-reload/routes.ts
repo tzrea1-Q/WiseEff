@@ -5,7 +5,8 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database } from "../../shared/database/client";
+import { createTrustedRefusalAuditSink, assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -47,6 +48,30 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
     throw new ApiError("INTERNAL_ERROR", "Object store is required for dts-reload routes.");
   }
   return objectStore;
+}
+
+function requireRefusalAuditSink(sink: TrustedRefusalAuditSink | undefined): TrustedRefusalAuditSink {
+  if (!sink) {
+    throw new ApiError(
+      "INTERNAL_ERROR",
+      "Server-owned DTS reload refusal audit sink is required for mutation routes."
+    );
+  }
+  assertTrustedRefusalAuditSink(sink);
+  return sink;
+}
+
+function resolveRefusalAuditSink(options: {
+  db?: Database;
+  refusalAuditSink?: TrustedRefusalAuditSink;
+}): TrustedRefusalAuditSink | undefined {
+  if (options.refusalAuditSink) {
+    assertTrustedRefusalAuditSink(options.refusalAuditSink);
+    return options.refusalAuditSink;
+  }
+  return options.db && isRootDatabase(options.db)
+    ? createTrustedRefusalAuditSink(options.db)
+    : undefined;
 }
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid dts-reload route input.") {
@@ -96,9 +121,12 @@ export function registerDtsReloadRoutes(
     bridgeRpcClient?: Pick<BridgeRpcClient, "call">;
     bridgeConnectionPool?: Pick<BridgeConnectionPool, "isConnected">;
     bridgeArtifactRoot?: string;
+    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  const refusalAuditSink = resolveRefusalAuditSink(options);
+
   router.get("/api/v1/dts-reload/configuration", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -110,10 +138,11 @@ export function registerDtsReloadRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(reloadConfigurationContractBodySchema, request.body);
+    const refusalSink = requireRefusalAuditSink(refusalAuditSink);
     const item = await updateOrganisationReloadConfiguration(db, auth, body, {
       invocation: createUserInvocation(auth),
       requestId: request.requestId,
-      refusalDb: db
+      refusalSink
     });
     return { status: 200, body: { item } };
   });
@@ -151,6 +180,7 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectIdParamsSchema, request.params);
     const body = parseWithSchema(startReloadRunBodySchema, request.body);
+    const refusalSink = requireRefusalAuditSink(refusalAuditSink);
     const item = await startReloadRun(
       db,
       objectStore,
@@ -160,7 +190,7 @@ export function registerDtsReloadRoutes(
         targets: body.targets,
         confirmationToken: body.confirmationToken
       },
-      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink }
     );
     return { status: 201, body: { item } };
   });
@@ -171,6 +201,7 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectIdParamsSchema, request.params);
     const body = parseWithSchema(restoreBaselineBodySchema, request.body);
+    const refusalSink = requireRefusalAuditSink(refusalAuditSink);
     const item = await startRestoreBaselineRun(
       db,
       objectStore,
@@ -180,7 +211,7 @@ export function registerDtsReloadRoutes(
         deviceId: body.deviceId,
         confirmationToken: body.confirmationToken
       },
-      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink }
     );
     return { status: 201, body: { item } };
   });
@@ -206,6 +237,7 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(runIdParamsSchema, request.params);
     const body = parseWithSchema(deployReloadRunBodySchema, request.body);
+    const refusalSink = requireRefusalAuditSink(refusalAuditSink);
     const item = await deployReloadRun(
       db,
       objectStore,
@@ -223,7 +255,7 @@ export function registerDtsReloadRoutes(
         bridgeConnectionPool: options.bridgeConnectionPool,
         artifactRoot: options.bridgeArtifactRoot
       },
-      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink }
     );
     return { status: 200, body: { item } };
   });
@@ -234,6 +266,7 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(runIdParamsSchema, request.params);
     const body = parseWithSchema(promoteReloadRunToDraftsBodySchema, request.body);
+    const refusalSink = requireRefusalAuditSink(refusalAuditSink);
     const item = await promoteReloadRunToDrafts(
       db,
       auth,
@@ -242,7 +275,7 @@ export function registerDtsReloadRoutes(
         bindingIds: body.bindingIds,
         unverifiableAcknowledged: body.unverifiableAcknowledged
       },
-      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalDb: db, objectStore }
+      { invocation: createUserInvocation(auth), requestId: request.requestId, refusalSink, objectStore }
     );
     return { status: 201, body: { item } };
   });

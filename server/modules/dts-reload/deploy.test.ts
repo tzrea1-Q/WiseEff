@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database } from "../../shared/database/client";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 vi.mock("../audit/repository", () => ({
@@ -45,6 +44,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
 import { insertReloadRun, insertReloadRunTarget } from "./repository";
 import {
@@ -69,11 +69,11 @@ const ARTIFACT_SHA = createHash("sha256").update(ARTIFACT).digest("hex");
 const SOURCE_DTS = Buffer.from("/dts-v1/;\n/plugin/;\n");
 const CANONICAL_DEVICE_ID = "bridge:br-1";
 
-function userContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
-  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+function userContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalSink: testRefusalAuditSink };
 }
 
-function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+function agentContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
   return {
     invocation: createAgentInvocation(principal, {
       sessionId: "session-dts-reload",
@@ -81,7 +81,7 @@ function agentContext(principal: AuthContext, requestId: string, refusalDb: Data
       approval: { required: true, approvalId: "approval-dts-reload" }
     }),
     requestId,
-    refusalDb
+    refusalSink: testRefusalAuditSink
   };
 }
 
@@ -91,7 +91,7 @@ function deployReloadRun(
   principal: Parameters<typeof deployReloadRunService>[2],
   input: Parameters<typeof deployReloadRunService>[3],
   deps: Parameters<typeof deployReloadRunService>[4],
-  context: Parameters<typeof deployReloadRunService>[5] = userContext(principal, "req-deploy-user", db)
+  context: Parameters<typeof deployReloadRunService>[5] = userContext(principal, "req-deploy-user")
 ) {
   return deployReloadRunService(db, objectStore, principal, input, deps, context);
 }
@@ -411,7 +411,7 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
         deployReloadRun(db, makeObjectStore(), auth(), deployInput(), {
           bridgeRpcClient,
           bridgeConnectionPool: { isConnected: () => true }
-        }, agentContext(auth(), "req-deploy-agent", db))
+        }, agentContext(auth(), "req-deploy-agent"))
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
         details: {
@@ -995,3 +995,5 @@ describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
     });
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

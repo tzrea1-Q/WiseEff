@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationContext } from "../auth/trustedInvocation";
@@ -8,6 +8,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerDtsReloadRoutes } from "./routes";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 import * as configurationService from "./configurationService";
 import * as promoteService from "./promote";
 import * as reloadService from "./service";
@@ -62,6 +63,7 @@ function makeServer(db: Database, objectStore: ObjectStore, auth: AuthContext) {
     objectStore,
     bridgeRpcClient: { call: vi.fn() },
     bridgeConnectionPool: { isConnected: vi.fn() },
+    refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => auth
   });
   return createHttpServer(router);
@@ -123,7 +125,7 @@ describe("DTS reload routes trusted provenance", () => {
     const context = call[3];
     expect(() => assertTrustedInvocationContext(context.invocation)).not.toThrow();
     expect(context.invocation.initiator).toBe("user");
-    expect(context.refusalDb).toBe(db);
+    expect(context.refusalSink).toBe(testRefusalAuditSink);
   });
 
   it("constructs user provenance for start-run and strips the client actor field", async () => {
@@ -152,7 +154,7 @@ describe("DTS reload routes trusted provenance", () => {
     });
     expect(call?.[4].invocation.initiator).toBe("user");
     expect(() => assertTrustedInvocationContext(call?.[4].invocation)).not.toThrow();
-    expect(call?.[4].refusalDb).toBe(db);
+    expect(call?.[4].refusalSink).toBe(testRefusalAuditSink);
   });
 
   it("constructs user provenance for restore-baseline", async () => {
@@ -175,7 +177,7 @@ describe("DTS reload routes trusted provenance", () => {
     expect(call?.[3]).toEqual({ projectId: "project-1", deviceId: "bridge:lab-1" });
     expect(call?.[4].invocation.initiator).toBe("user");
     expect(() => assertTrustedInvocationContext(call?.[4].invocation)).not.toThrow();
-    expect(call?.[4].refusalDb).toBe(db);
+    expect(call?.[4].refusalSink).toBe(testRefusalAuditSink);
   });
 
   it("constructs user provenance for deploy before any device dependency is used", async () => {
@@ -211,7 +213,7 @@ describe("DTS reload routes trusted provenance", () => {
     });
     expect(call?.[5].invocation.initiator).toBe("user");
     expect(() => assertTrustedInvocationContext(call?.[5].invocation)).not.toThrow();
-    expect(call?.[5].refusalDb).toBe(db);
+    expect(call?.[5].refusalSink).toBe(testRefusalAuditSink);
   });
 
   it("constructs user provenance for promote-to-drafts", async () => {
@@ -234,6 +236,8 @@ describe("DTS reload routes trusted provenance", () => {
     expect(call?.[2]).toEqual({ runId: "run-1", bindingIds: ["binding-1"] });
     expect(call?.[3].invocation.initiator).toBe("user");
     expect(() => assertTrustedInvocationContext(call?.[3].invocation)).not.toThrow();
-    expect(call?.[3].refusalDb).toBe(db);
+    expect(call?.[3].refusalSink).toBe(testRefusalAuditSink);
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

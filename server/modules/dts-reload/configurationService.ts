@@ -80,11 +80,10 @@ async function writeConfigurationAudit(
 }
 
 async function assertConfigurationHumanActor(
-  db: Database,
   auth: AuthContext,
   context: ReloadConfigurationServiceContext
 ) {
-  await requireDtsReloadUserInvocation(db, auth, {
+  await requireDtsReloadUserInvocation(auth, {
     context,
     action: "configure",
   });
@@ -109,7 +108,7 @@ export async function updateOrganisationReloadConfiguration(
 ): Promise<OrganisationReloadConfigurationDto> {
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDebugAdmin(auth);
-  await assertConfigurationHumanActor(db, auth, trustedContext);
+  await assertConfigurationHumanActor(auth, trustedContext);
   const contract = parseReloadConfigurationContract(body);
 
   return db.transaction(async (tx) => {

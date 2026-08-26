@@ -202,7 +202,7 @@ export async function promoteReloadRunToDrafts(
     throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
   }
 
-  await requireDtsReloadUserInvocation(db, auth, {
+  await requireDtsReloadUserInvocation(auth, {
     context: trustedContext,
     action: "promote",
     projectId: row.project_id,

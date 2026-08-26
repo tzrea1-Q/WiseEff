@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
@@ -40,6 +40,7 @@ import {
   startRestoreBaselineRun as startRestoreBaselineRunService,
   type DtsReloadServiceContext
 } from "./service";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 type QueryCall = { text: string; values: unknown[] };
 
@@ -60,11 +61,11 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   };
 }
 
-function userContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
-  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+function userContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalSink: testRefusalAuditSink };
 }
 
-function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+function agentContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
   return {
     invocation: createAgentInvocation(principal, {
       sessionId: "session-dts-reload",
@@ -72,7 +73,7 @@ function agentContext(principal: AuthContext, requestId: string, refusalDb: Data
       approval: { required: true, approvalId: "approval-dts-reload" }
     }),
     requestId,
-    refusalDb
+    refusalSink: testRefusalAuditSink
   };
 }
 
@@ -81,7 +82,7 @@ function startRestoreBaselineRun(
   objectStore: Parameters<typeof startRestoreBaselineRunService>[1],
   principal: Parameters<typeof startRestoreBaselineRunService>[2],
   input: Parameters<typeof startRestoreBaselineRunService>[3],
-  context: Parameters<typeof startRestoreBaselineRunService>[4] = userContext(principal, "req-restore-user", db)
+  context: Parameters<typeof startRestoreBaselineRunService>[4] = userContext(principal, "req-restore-user")
 ) {
   return startRestoreBaselineRunService(db, objectStore, principal, input, context);
 }
@@ -390,7 +391,7 @@ describe("startRestoreBaselineRun", () => {
         objectStore(),
         auth(),
         { projectId: "project-1", deviceId: "bridge:lab-1" },
-        agentContext(auth(), "req-restore-agent", db)
+        agentContext(auth(), "req-restore-agent")
       )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
@@ -437,3 +438,5 @@ describe("getReloadResidue authz", () => {
     ).resolves.toBeNull();
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

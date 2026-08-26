@@ -1,4 +1,4 @@
-import { writeTrustedRefusalAudit } from "../audit/auditedWrite";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { assertTrustedInvocationContext, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -84,10 +84,7 @@ function callerHasRequiredCapability(auth: AuthContext, rule: SensitiveNodeRule)
 }
 
 async function auditSensitiveReloadDenied(
-  // Pool handle on purpose: refusal evidence must survive the caller's rollback
-  // (ADR-0027 refusal audits), so this gate must run outside any transaction.
-  db: Database,
-  auth: AuthContext,
+  refusalSink: TrustedRefusalAuditSink,
   input: {
     projectId: string;
     invocation: TrustedInvocationContext;
@@ -96,7 +93,7 @@ async function auditSensitiveReloadDenied(
     requestId: string;
   }
 ) {
-  await writeTrustedRefusalAudit(db, {
+  await refusalSink.write({
     invocation: input.invocation,
     projectId: input.projectId,
     app: "dts-reload",
@@ -150,7 +147,7 @@ function hitLabel(hit: ReloadTargetSensitiveHit) {
  * Call after targets are resolved and before overlay generation / persist.
  */
 export async function assertSensitiveReloadBatchAllowed(
-  // Pool handle on purpose: deny audits must survive rollback (refusal audits).
+  // This database reads the current rules; the refusal sink below is the independent write seam.
   db: Database,
   auth: AuthContext,
   input: {
@@ -164,9 +161,10 @@ export async function assertSensitiveReloadBatchAllowed(
       compatible?: string | null;
     }>;
     requestId: string;
-    refusalDb: Database;
+    refusalSink: TrustedRefusalAuditSink;
   }
 ): Promise<ReloadTargetSensitiveHit[]> {
+  assertTrustedRefusalAuditSink(input.refusalSink);
   const invocation = assertTrustedInvocationContext(input.invocation);
   const rules = await listSensitiveNodeRules(db, {
     organizationId: auth.organization.id,
@@ -194,7 +192,7 @@ export async function assertSensitiveReloadBatchAllowed(
   // Agent actors are refused for any sensitive match on reload (stricter than library writes).
   if (invocation.initiator === "agent") {
     const hit = hits[0]!;
-    await auditSensitiveReloadDenied(input.refusalDb, auth, {
+    await auditSensitiveReloadDenied(input.refusalSink, {
       projectId: input.projectId,
       invocation,
       hit,
@@ -210,7 +208,7 @@ export async function assertSensitiveReloadBatchAllowed(
 
   for (const hit of hits) {
     if (!callerHasRequiredCapability(auth, hit.rule)) {
-      await auditSensitiveReloadDenied(input.refusalDb, auth, {
+      await auditSensitiveReloadDenied(input.refusalSink, {
         projectId: input.projectId,
         invocation,
         hit,
@@ -228,7 +226,7 @@ export async function assertSensitiveReloadBatchAllowed(
   const criticalHits = hits.filter((hit) => hit.rule.riskTier === "critical");
   if (criticalHits.length > 0 && input.confirmationToken !== SENSITIVE_RELOAD_CONFIRMATION_TOKEN) {
     const hit = criticalHits[0]!;
-      await auditSensitiveReloadDenied(input.refusalDb, auth, {
+      await auditSensitiveReloadDenied(input.refusalSink, {
       projectId: input.projectId,
       invocation,
       hit,

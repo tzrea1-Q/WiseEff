@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
-import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -11,6 +10,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn(async () => undefined)
@@ -64,11 +64,11 @@ function makeObjectStore(files: Record<string, Buffer> = {}) {
   return { objectStore: { put, get } as ObjectStore, put, get, files };
 }
 
-function userContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
-  return { invocation: createUserInvocation(principal), requestId, refusalDb };
+function userContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
+  return { invocation: createUserInvocation(principal), requestId, refusalSink: testRefusalAuditSink };
 }
 
-function agentContext(principal: AuthContext, requestId: string, refusalDb: Database): DtsReloadServiceContext {
+function agentContext(principal: AuthContext, requestId: string): DtsReloadServiceContext {
   return {
     invocation: createAgentInvocation(principal, {
       sessionId: "session-dts-reload",
@@ -76,7 +76,7 @@ function agentContext(principal: AuthContext, requestId: string, refusalDb: Data
       approval: { required: true, approvalId: "approval-dts-reload" }
     }),
     requestId,
-    refusalDb
+    refusalSink: testRefusalAuditSink
   };
 }
 
@@ -85,7 +85,7 @@ function startReloadRun(
   objectStore: Parameters<typeof startReloadRunService>[1],
   principal: Parameters<typeof startReloadRunService>[2],
   input: Parameters<typeof startReloadRunService>[3],
-  context: Parameters<typeof startReloadRunService>[4] = userContext(principal, "req-dts-user", db)
+  context: Parameters<typeof startReloadRunService>[4] = userContext(principal, "req-dts-user")
 ) {
   return startReloadRunService(db, objectStore, principal, input, context);
 }
@@ -1083,7 +1083,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             projectId: "project-1",
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
           },
-          agentContext(auth(), "req-dts-agent", db)
+          agentContext(auth(), "req-dts-agent")
         )
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -1125,7 +1125,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
             confirmationToken: "confirm-sensitive-reload"
           },
-          agentContext(elevatedAuth(), "req-dts-agent", db)
+          agentContext(elevatedAuth(), "req-dts-agent")
         )
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -1185,7 +1185,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
             targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
             confirmationToken: "confirm-sensitive-reload"
           },
-          agentContext(elevatedAuth(), "req-dts-agent", db)
+          agentContext(elevatedAuth(), "req-dts-agent")
         )
       ).rejects.toMatchObject({
         details: {
@@ -1263,3 +1263,5 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
     });
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());

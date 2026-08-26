@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import {
@@ -9,11 +9,18 @@ import {
 } from "../auth/trustedInvocation";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
-import { openDatabaseConnection, withTempDatabase } from "../../testing/tempDatabase";
+import { createPostgresDatabase } from "../../shared/database/client";
+import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { withTempDatabase } from "../../testing/tempDatabase";
+import { createHttpServer } from "../../shared/http/server";
+import { createRouter } from "../../shared/http/router";
+import { requestJson } from "../../test/testClient";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { insertReloadRun, insertReloadRunTarget } from "./repository";
 import { updateOrganisationReloadConfiguration } from "./configurationService";
+import { SEEDED_RELOAD_CONFIGURATION } from "./configurationTypes";
+import { registerDtsReloadRoutes } from "./routes";
 import {
   deployReloadRun,
   startReloadRun,
@@ -60,6 +67,15 @@ type AuditRow = {
   target_id: string | null;
   metadata: Record<string, unknown>;
   trace_id: string;
+};
+
+type HttpBody = {
+  item?: Record<string, unknown>;
+  error?: {
+    code: string;
+    message: string;
+    details: Record<string, unknown>;
+  };
 };
 
 function auth(): AuthContext {
@@ -233,13 +249,14 @@ function trustedContext(
   name: MatrixContextName,
   authContext: AuthContext,
   requestId: string,
-  refusalDb: Database
+  refusalSink: TrustedRefusalAuditSink
 ): unknown {
   if (name === "missing") return undefined;
   if (name === "malformed") {
     return {
       invocation: { initiator: "user", principal: authContext },
-      requestId
+      requestId,
+      refusalSink
     };
   }
   const invocation =
@@ -252,7 +269,7 @@ function trustedContext(
             approval: { required: true, approvalId: "approval-612" }
           })
         : createSystemInvocation({ kind: "job", name: "dts-reload-612-matrix" });
-  return { invocation, requestId, refusalDb } satisfies DtsReloadInvocationContext;
+  return { invocation, requestId, refusalSink } satisfies DtsReloadInvocationContext;
 }
 
 const operations: MatrixOperation[] = [
@@ -321,7 +338,7 @@ const operations: MatrixOperation[] = [
     expectedUserCode: "VALIDATION_FAILED",
     expectedAction: "configure",
     expectedTargetType: "dts-reload-configuration",
-    expectedTargetId: "org-1",
+    expectedTargetId: "dts-reload",
     invoke: (db, _store, authContext, context) =>
       Reflect.apply(updateOrganisationReloadConfiguration, undefined, [db, authContext, {}, context]),
   },
@@ -341,11 +358,67 @@ const operations: MatrixOperation[] = [
 ];
 
 describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL matrix", () => {
+  it("rejects caller transactions and raw objects as refusal sinks before any side effect", async () => {
+    await withTempDatabase({ prefix: "dts_reload_provenance_612_tx_sink" }, async ({ db }) => {
+      await seedMatrixGraph(db);
+      const requestId = "req-612-transaction-refusal-sink";
+      const invocation = createAgentInvocation(auth(), {
+        sessionId: "session-612-agent",
+        toolCallId: "tool-612-reload",
+        approval: { required: true, approvalId: "approval-612" }
+      });
+
+      const before = await readDomainState(db);
+      await expect(
+        db.transaction(async (tx) => {
+          await expect(
+            Reflect.apply(startReloadRun, undefined, [
+              tx,
+              objectStore(),
+              auth(),
+              { projectId: "project-1", targets: [] },
+              { invocation, requestId, refusalSink: tx }
+            ])
+          ).rejects.toMatchObject({
+            code: "INVALID_TRUSTED_INVOCATION_CONTEXT",
+            reason: "refusal audit sink must come from the server-owned PostgreSQL pool assembly",
+            message:
+              "Invalid trusted invocation context: refusal audit sink must come from the server-owned PostgreSQL pool assembly"
+          });
+          throw new Error(`rollback-${requestId}`);
+        })
+      ).rejects.toMatchObject({ message: `rollback-${requestId}` });
+
+      const audits = await readTraceAudits(db, requestId);
+      expect(audits).toEqual([]);
+      expect(await readDomainState(db)).toEqual(before);
+
+      const rawRequestId = "req-612-raw-refusal-sink";
+      const rawSink = { write: async () => undefined };
+      await expect(
+        Reflect.apply(startReloadRun, undefined, [
+          db,
+          objectStore(),
+          auth(),
+          { projectId: "project-1", targets: [] },
+          { invocation, requestId: rawRequestId, refusalSink: rawSink }
+        ])
+      ).rejects.toMatchObject({
+        code: "INVALID_TRUSTED_INVOCATION_CONTEXT",
+        reason: "refusal audit sink must come from the server-owned PostgreSQL pool assembly",
+        message:
+          "Invalid trusted invocation context: refusal audit sink must come from the server-owned PostgreSQL pool assembly"
+      });
+      expect(await readTraceAudits(db, rawRequestId)).toEqual([]);
+      expect(await readDomainState(db)).toEqual(before);
+    });
+  }, 120_000);
+
   it("covers every public mutation entry across user, agent, system, missing, and malformed contexts", async () => {
     await withTempDatabase({ prefix: "dts_reload_provenance_612" }, async ({ db, connectionString }) => {
       await seedMatrixGraph(db);
-      const refusalConnection = openDatabaseConnection(connectionString);
-      const refusalDb = refusalConnection.db;
+      const refusalRoot = createPostgresDatabase(connectionString);
+      const refusalSink = createTrustedRefusalAuditSink(refusalRoot);
       const store = objectStore();
       let deviceCalls = 0;
 
@@ -353,9 +426,9 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
         for (const operation of operations) {
           for (const contextName of ["user", "agent", "system", "missing", "malformed"] as const) {
             const requestId = `req-612-${operation.name}-${contextName}`;
-            const invocationContext = trustedContext(contextName, auth(), requestId, refusalDb);
+            const invocationContext = trustedContext(contextName, auth(), requestId, refusalSink);
             const before = await readDomainState(db);
-            const beforeAudits = await readTraceAudits(refusalDb, requestId);
+            const beforeAudits = await readTraceAudits(refusalRoot, requestId);
             const deviceCallsBefore = deviceCalls;
             let thrown: unknown;
 
@@ -381,13 +454,24 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
             if (contextName === "user") {
               expect(thrown).toMatchObject({ code: operation.expectedUserCode });
               expect(thrown).not.toBeInstanceOf(TrustedInvocationContextError);
-              expect(await readTraceAudits(refusalDb, requestId)).toEqual(beforeAudits);
+              expect(await readTraceAudits(refusalRoot, requestId)).toEqual(beforeAudits);
               continue;
             }
 
             if (contextName === "missing" || contextName === "malformed") {
               expect(thrown).toBeInstanceOf(TrustedInvocationContextError);
-              expect(await readTraceAudits(refusalDb, requestId)).toEqual(beforeAudits);
+              expect(thrown).toMatchObject({
+                code: "INVALID_TRUSTED_INVOCATION_CONTEXT",
+                reason:
+                  contextName === "malformed"
+                    ? "context must come from a server-owned constructor"
+                    : "DTS reload mutation requires a requestId, server-owned refusal audit sink, and trusted invocation context",
+                message:
+                  contextName === "malformed"
+                    ? "Invalid trusted invocation context: context must come from a server-owned constructor"
+                    : "Invalid trusted invocation context: DTS reload mutation requires a requestId, server-owned refusal audit sink, and trusted invocation context"
+              });
+              expect(await readTraceAudits(refusalRoot, requestId)).toEqual(beforeAudits);
               continue;
             }
 
@@ -403,7 +487,7 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
               }
             });
 
-            const audits = await readTraceAudits(refusalDb, requestId);
+            const audits = await readTraceAudits(refusalRoot, requestId);
             expect(audits, `${operation.name}/${contextName} refusal audit`).toHaveLength(1);
             const refusal = audits[0]!;
             expect(refusal).toMatchObject({
@@ -444,14 +528,16 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
           }
         }
       } finally {
-        await refusalConnection.close();
+        await refusalRoot.close();
       }
     });
   }, 120_000);
 
   it("rejects a branded context whose authenticated principal does not match the request auth", async () => {
-    await withTempDatabase({ prefix: "dts_reload_provenance_612_mismatch" }, async ({ db }) => {
+    await withTempDatabase({ prefix: "dts_reload_provenance_612_mismatch" }, async ({ db, connectionString }) => {
       await seedMatrixGraph(db);
+      const refusalRoot = createPostgresDatabase(connectionString);
+      const refusalSink = createTrustedRefusalAuditSink(refusalRoot);
       const requestId = "req-612-mismatched-principal";
       const authenticated = auth();
       const mismatchedPrincipal: AuthContext = {
@@ -461,28 +547,219 @@ describe.skipIf(!databaseAvailable)("DTS reload trusted provenance PostgreSQL ma
       const before = await readDomainState(db);
       let thrown: unknown;
 
-      await db
-        .transaction(async (tx) => {
-          try {
-            await startReloadRun(
-              tx,
-              objectStore(),
-              authenticated,
-              { projectId: "project-1", targets: [] },
-              { invocation: createUserInvocation(mismatchedPrincipal), requestId }
-            );
-          } catch (error) {
-            thrown = error;
-          }
-          throw new Error(`rollback-${requestId}`);
-        })
-        .catch((error: unknown) => {
-          expect(error).toMatchObject({ message: `rollback-${requestId}` });
-        });
+      try {
+        await db
+          .transaction(async (tx) => {
+            try {
+              await startReloadRun(
+                tx,
+                objectStore(),
+                authenticated,
+                { projectId: "project-1", targets: [] },
+                {
+                  invocation: createUserInvocation(mismatchedPrincipal),
+                  requestId,
+                  refusalSink
+                }
+              );
+            } catch (error) {
+              thrown = error;
+            }
+            throw new Error(`rollback-${requestId}`);
+          })
+          .catch((error: unknown) => {
+            expect(error).toMatchObject({ message: `rollback-${requestId}` });
+          });
 
-      expect(thrown).toBeInstanceOf(TrustedInvocationContextError);
-      expect(await readTraceAudits(db, requestId)).toEqual([]);
-      expect(await readDomainState(db)).toEqual(before);
+        expect(thrown).toBeInstanceOf(TrustedInvocationContextError);
+        expect(thrown).toMatchObject({
+          code: "INVALID_TRUSTED_INVOCATION_CONTEXT",
+          reason: "DTS reload invocation principal does not match the authenticated principal",
+          message:
+            "Invalid trusted invocation context: DTS reload invocation principal does not match the authenticated principal"
+        });
+        expect(await readTraceAudits(refusalRoot, requestId)).toEqual([]);
+        expect(await readDomainState(db)).toEqual(before);
+      } finally {
+        await refusalRoot.close();
+      }
     });
   });
+
+  it("ignores body, header, and query actorType spoofing across every HTTP mutation", async () => {
+    const spoofOperations = [
+      {
+        name: "start-run",
+        plainPath: "/api/v1/dts-reload/projects/project-1/runs",
+        spoofPath: "/api/v1/dts-reload/projects/project-1/runs",
+        plainBody: { targets: [{ bindingId: "missing-binding", debugValue: "<7000>" }] },
+        spoofBody: {
+          targets: [{ bindingId: "missing-binding", debugValue: "<7000>" }],
+          actorType: "system"
+        },
+        expectedStatus: 404,
+        expectedApiCode: "NOT_FOUND",
+        expectedDetailCode: undefined
+      },
+      {
+        name: "restore-baseline",
+        plainPath: "/api/v1/dts-reload/projects/project-1/restore-baseline",
+        spoofPath: "/api/v1/dts-reload/projects/project-1/restore-baseline",
+        plainBody: { deviceId: "bridge:matrix-612" },
+        spoofBody: { deviceId: "bridge:matrix-612", actorType: "agent" },
+        expectedStatus: 409,
+        expectedApiCode: "CONFLICT",
+        expectedDetailCode: "reload-residue-missing"
+      },
+      {
+        name: "deploy",
+        plainPath: "/api/v1/dts-reload/runs/run-612/deploy",
+        spoofPath: "/api/v1/dts-reload/runs/run-612/deploy",
+        plainBody: {
+          deviceId: "bridge:matrix-612",
+          bridgeId: "matrix-bridge",
+          targetRef: "matrix-target",
+          confirmationTokens: ["not-confirmed"]
+        },
+        spoofBody: {
+          deviceId: "bridge:matrix-612",
+          bridgeId: "matrix-bridge",
+          targetRef: "matrix-target",
+          confirmationTokens: ["not-confirmed"],
+          actorType: "user"
+        },
+        expectedStatus: 400,
+        expectedApiCode: "VALIDATION_FAILED",
+        expectedDetailCode: "missing-dts-reload-confirmation"
+      },
+      {
+        name: "configuration-update",
+        plainPath: "/api/v1/dts-reload/configuration",
+        spoofPath: "/api/v1/dts-reload/configuration?actorType=system",
+        plainBody: { ...SEEDED_RELOAD_CONFIGURATION },
+        spoofBody: { ...SEEDED_RELOAD_CONFIGURATION, actorType: "agent" },
+        expectedStatus: 200,
+        expectedApiCode: undefined,
+        expectedDetailCode: undefined
+      },
+      {
+        name: "promote-to-drafts",
+        plainPath: "/api/v1/dts-reload/runs/run-612/promote-to-drafts",
+        spoofPath: "/api/v1/dts-reload/runs/run-612/promote-to-drafts",
+        plainBody: { bindingIds: ["binding-612"] },
+        spoofBody: { bindingIds: ["binding-612"], actorType: "system" },
+        expectedStatus: 409,
+        expectedApiCode: "CONFLICT",
+        expectedDetailCode: "reload-promote-ineligible"
+      }
+    ] as const;
+
+    await withTempDatabase({ prefix: "dts_reload_provenance_612_http_spoof" }, async ({ db, connectionString }) => {
+      await seedMatrixGraph(db);
+      const refusalRoot = createPostgresDatabase(connectionString);
+      const refusalSink = createTrustedRefusalAuditSink(refusalRoot);
+      const bridgeCall = vi.fn(async () => ({ ok: true }));
+      const router = createRouter();
+      registerDtsReloadRoutes(router, {
+        db,
+        objectStore: objectStore(),
+        bridgeRpcClient: { call: bridgeCall },
+        bridgeConnectionPool: { isConnected: () => true },
+        refusalAuditSink: refusalSink,
+        getCurrentAuthContext: () => auth()
+      });
+      const server = createHttpServer(router);
+
+      try {
+        for (const operation of spoofOperations) {
+          const plainRequestId = `req-612-http-${operation.name}-plain`;
+          const spoofRequestId = `req-612-http-${operation.name}-spoof`;
+          const before = await readDomainState(db);
+
+          const plain = await requestJson<HttpBody>(server, operation.plainPath, {
+            method: operation.name === "configuration-update" ? "PUT" : "POST",
+            body: JSON.stringify(operation.plainBody),
+            headers: { "X-Request-Id": plainRequestId }
+          });
+          const spoof = await requestJson<HttpBody>(server, operation.spoofPath, {
+            method: operation.name === "configuration-update" ? "PUT" : "POST",
+            body: JSON.stringify(operation.spoofBody),
+            headers: { "X-Request-Id": spoofRequestId, actorType: "agent" }
+          });
+
+          expect(spoof.status, `${operation.name} spoof status`).toBe(plain.status);
+          expect(spoof.status, `${operation.name} expected status`).toBe(operation.expectedStatus);
+          const plainError = plain.body.error;
+          const spoofError = spoof.body.error;
+
+          if (operation.expectedApiCode) {
+            expect(plainError).toMatchObject({ code: operation.expectedApiCode });
+            expect(spoofError).toMatchObject({
+              code: operation.expectedApiCode,
+              message: plainError?.message
+            });
+            expect(spoofError?.details).toEqual(plainError?.details);
+            if (operation.expectedDetailCode) {
+              expect(plainError?.details).toMatchObject({ code: operation.expectedDetailCode });
+              expect(spoofError?.details).toMatchObject({ code: operation.expectedDetailCode });
+            }
+          } else {
+            expect(plain.body.item).toMatchObject({
+              scope: "organisation",
+              source: "organisation",
+              ...SEEDED_RELOAD_CONFIGURATION,
+              updatedByUserId: "user-1"
+            });
+            expect(spoof.body.item).toMatchObject({
+              scope: "organisation",
+              source: "organisation",
+              ...SEEDED_RELOAD_CONFIGURATION,
+              updatedByUserId: "user-1"
+            });
+          }
+
+          for (const response of [plain, spoof]) {
+            expect(JSON.stringify(response.body)).not.toContain("dts-reload-agent-refused");
+            expect(JSON.stringify(response.body)).not.toContain("dts-reload-system-refused");
+            expect(JSON.stringify(response.body)).not.toContain("INVALID_TRUSTED_INVOCATION_CONTEXT");
+          }
+
+          const plainAudits = await readTraceAudits(refusalRoot, plainRequestId);
+          const spoofAudits = await readTraceAudits(refusalRoot, spoofRequestId);
+          expect(plainAudits.some((audit) => audit.kind === "dts-reload-agent-refused")).toBe(false);
+          expect(plainAudits.some((audit) => audit.kind === "dts-reload-system-refused")).toBe(false);
+          expect(spoofAudits.some((audit) => audit.kind === "dts-reload-agent-refused")).toBe(false);
+          expect(spoofAudits.some((audit) => audit.kind === "dts-reload-system-refused")).toBe(false);
+
+          if (operation.expectedApiCode) {
+            expect(plainAudits).toEqual([]);
+            expect(spoofAudits).toEqual([]);
+            expect(await readDomainState(db)).toEqual(before);
+          } else {
+            for (const [audits, traceId] of [
+              [plainAudits, plainRequestId],
+              [spoofAudits, spoofRequestId]
+            ] as const) {
+              const successAudit = audits.find((audit) => audit.kind === "dts-reload-configuration-update");
+              expect(successAudit).toMatchObject({
+                organization_id: "org-1",
+                actor_user_id: "user-1",
+                actor_type: "user",
+                kind: "dts-reload-configuration-update",
+                action: "update",
+                target_type: "dts-reload-configuration",
+                target_id: "org-1",
+                trace_id: traceId,
+                metadata: expect.objectContaining({ initiator: "user" })
+              });
+            }
+          }
+        }
+
+        expect(bridgeCall).not.toHaveBeenCalled();
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 120_000);
 });

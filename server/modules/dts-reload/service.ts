@@ -362,7 +362,7 @@ async function assertDeploySensitiveReloadAllowed(
       : undefined,
     targets: sensitiveTargets,
     requestId: context.requestId,
-    refusalDb: context.refusalDb
+    refusalSink: context.refusalSink
   });
 }
 
@@ -689,7 +689,7 @@ export async function startReloadRun(
   requireDtsReload(auth);
 
   const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
-  await requireDtsReloadUserInvocation(db, auth, {
+  await requireDtsReloadUserInvocation(auth, {
     context: trustedContext,
     action: purpose === "restore-baseline" ? "restore" : "start",
     projectId: input.projectId,
@@ -725,7 +725,7 @@ export async function startReloadRun(
       compatible: item.compatible
     })),
     requestId: trustedContext.requestId,
-    refusalDb: trustedContext.refusalDb
+    refusalSink: trustedContext.refusalSink
   });
   const hasCriticalSensitive = sensitiveHits.some((hit) => hit.rule.riskTier === "critical");
   const sensitiveSummary = sensitiveAuditSummary(sensitiveHits);
@@ -879,7 +879,7 @@ export async function startRestoreBaselineRun(
 ): Promise<ReloadRunDto> {
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
-  await requireDtsReloadUserInvocation(db, auth, {
+  await requireDtsReloadUserInvocation(auth, {
     context: trustedContext,
     action: "restore",
     projectId: input.projectId,
@@ -1314,7 +1314,7 @@ export async function deployReloadRun(
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   requireDtsReload(auth);
 
-  await requireDtsReloadUserInvocation(db, auth, {
+  await requireDtsReloadUserInvocation(auth, {
     context: trustedContext,
     action: "deploy",
     runId: input.runId,

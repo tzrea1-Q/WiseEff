@@ -39,6 +39,7 @@ import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
+import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
@@ -79,6 +80,8 @@ type DeviceBridgeEnv = Pick<
 
 export type WiseEffServerOptions = {
   db?: Database;
+  /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
+  dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
   objectStore?: ObjectStore;
   objectStoreHealth?: ObjectStoreHealthCheck;
   logAnalysisQueue?: LogAnalysisQueue;
@@ -201,6 +204,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerDtsReloadRoutes(router, {
     db: options.db,
+    refusalAuditSink: options.dtsReloadRefusalAuditSink,
     objectStore: options.objectStore,
     ...(options.deviceBridge?.rpcClient ? { bridgeRpcClient: options.deviceBridge.rpcClient } : {}),
     ...(options.deviceBridge?.connectionPool ? { bridgeConnectionPool: options.deviceBridge.connectionPool } : {}),

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
@@ -22,6 +22,7 @@ import {
   sweepExpiredReloadArtifacts
 } from "./service";
 import type { ReloadRunPurpose, ReloadRunStatus } from "./types";
+import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn(async () => undefined)
@@ -266,7 +267,7 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
         }, {
           invocation: createUserInvocation(auth()),
           requestId: "req-history-authz",
-          refusalDb: db
+          refusalSink: testRefusalAuditSink
         })
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -538,3 +539,5 @@ describe.skipIf(!databaseAvailable)("dts-reload history", () => {
     });
   });
 });
+
+afterAll(async () => closeTestRefusalAuditSink());
