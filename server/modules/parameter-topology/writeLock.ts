@@ -90,6 +90,11 @@ type EffectRow = {
   file_checksum: string | null;
 };
 
+function canonicalizeLogicalNodeCompatible(value: string | null): string | null {
+  const quotedCompatible = value?.match(/"((?:\\.|[^"\\])*)"/);
+  return quotedCompatible ? quotedCompatible[1]! : (value?.trim() || null);
+}
+
 export async function loadBindingContext(
   db: Queryable,
   auth: AuthContext,
@@ -443,7 +448,7 @@ export async function loadLogicalNodeEnablementContext(
 
   return {
     nodeLocator: row.node_locator,
-    compatible: row.compatible,
+    compatible: canonicalizeLogicalNodeCompatible(row.compatible),
     currentRaw,
   };
 }
@@ -483,10 +488,9 @@ export async function loadLogicalNodeSubmissionContext(
       configRevisionId: input.configRevisionId,
     });
   }
-  const quotedCompatible = row.compatible?.match(/"((?:\\.|[^"\\])*)"/);
   return {
     nodeLocator: row.node_locator,
-    compatible: quotedCompatible ? quotedCompatible[1]! : (row.compatible?.trim() || null),
+    compatible: canonicalizeLogicalNodeCompatible(row.compatible),
   };
 }
 
