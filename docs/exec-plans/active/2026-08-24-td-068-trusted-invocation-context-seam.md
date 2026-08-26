@@ -158,6 +158,15 @@ The preceding #611 repair evidence retains its original host boundary, where the
 - Owned-runtime perception acceptance passed 4/4 at frontend `5174` and an allocated API port, without touching the existing 5173/8787 listeners. Action acceptance completed 3 passed / 1 planned skip / 4 failed: approved-write cases selected a seeded semantic binding with no source text and stopped before `submitParameterChanges` (`Config set source text unavailable for typed edit`). A clean detached `origin/main@b676a1e32` run reproduced the same focused approval failure and exact error, so no unrelated fixture repair was absorbed. Every generated database, object root, API/frontend process, and browser run was independently owned and cleaned; one recovery from the repository helper's undefined `stopRuntime` failure moved its exact object root to Trash after deleting the marker-proven database.
 - No PR was created or merged and no Issue was closed. Parent/session owner retains final acceptance, PR, merge, and Issue updates.
 
+## #613 independent review repair checkpoint
+
+- The repair stays on `codex/td-068-parameter-submission-provenance` in `/Users/tzrea1/Develop/WiseEff-td613`. It started from feature HEAD `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f` on `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`; production and PostgreSQL repair commit `8bd4eb844` was appended without amending history.
+- P1 root cause: the semantic Xiaoze early guard used `loadBindingContext.node_locator`, whose subquery selected a latest logical-node revision by string id ordering, while the central binding-draft guard used the flat parameter source projection. Neither guard supplied the exact revision's `compatible`, so a compatible-only critical rule could be bypassed.
+- Both binding guards now use `loadLogicalNodeSubmissionContext`, which accepts organization, project, stable logical-node id, and an exact server-owned config revision. It has no latest or client fallback and canonicalizes the first persisted DTS compatible token using the same single-compatible match input consumed by the sensitive-rule matcher.
+- Xiaoze resolves the newest binding revision by numeric `dts_config_revisions.revision_number`, restricted to a revision that also carries the binding's stable logical node, then performs the guard before value parsing, draft creation, or candidate creation. The central seam resolves from the locked draft's persisted `base_config_revision_id` and binding logical-node id; it never substitutes the candidate, current head, request data, or flat source projection.
+- PostgreSQL Red on the pre-repair behavior: the new compatible-only critical action test expected Agent 403 but the promise resolved successfully with a change request. Green proves early Agent refusal before draft/candidate/round/change-request/item/success-audit creation, durable correlation after outer rollback, and central refusal of a pre-existing valid draft/candidate without consuming or promoting either. The same central draft also proves System refusal with null actor user, incapable direct-user 403 with unchanged state, and capable direct-user success.
+- Existing path-critical, high-tier Agent, non-sensitive Agent, missing/malformed trusted context, route-owned user context, structured submission, and success/refusal atomicity matrices remain regression gates. This repair changes no frontend, route, DTO, public API, migration, schema, #614/#615 behavior, or HDC/device readiness claim.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Evidence |
@@ -167,7 +176,7 @@ The preceding #611 repair evidence retains its original host boundary, where the
 | Product and API contracts | Review | `docs/design-docs/api-contract.md`, `server/modules/contracts/`; route paths and request contracts remain unchanged, while server-owned provenance and actor-field stripping are covered by route tests. |
 | Architecture and domain model | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md`. |
 | Security and audit guidance | Review | `docs/SECURITY.md`, `server/modules/audit/auditedWrite.ts`; trusted-context and no-default-user rules remain a partial migration. |
-| Quality and verification docs | Review | `docs/QUALITY_SCORE.md`, `docs/developer/verification-matrix.md`; #612 adds a real PostgreSQL five-operation provenance matrix and keeps HDC outside its evidence boundary. |
+| Quality and verification docs | Review | `docs/QUALITY_SCORE.md`, `docs/developer/verification-matrix.md`; #613 adds exact-revision compatible-only PostgreSQL refusal coverage and keeps HDC outside its evidence boundary. |
 | Chinese developer docs | Review | `docs/zh-CN/SECURITY.md`, `docs/zh-CN/design-docs/full-stack-architecture.md`, `docs/zh-CN/design-docs/domain-model.md`, `docs/zh-CN/PLANS.md`. |
 | Generated artifacts, runbooks, frontend/design, references | No change | `docs/generated/`, `docs/runbooks/`, `src/`, `docs/references/`; no generated schema, operation, runtime, UI, or operator-procedure change. |
 
@@ -175,8 +184,8 @@ The preceding #611 repair evidence retains its original host boundary, where the
 
 - [x] ADR-0038 and the bilingual security/architecture/domain/API planning references were reviewed against the implemented seam.
 - [x] No public contract or frontend documentation became stale.
-- [x] #612 scope, Red evidence, the 25-cell PostgreSQL matrix, refusal codes, rollback-audit boundary, and HDC evidence boundary are recorded here and in the synchronized Chinese plan.
-- [x] #612 did not absorb or modify the compact-footer documentation work in the original dirty worktree.
+- [x] #613 repair scope, compatible-only Red, exact binding/draft revision provenance, rollback-audit boundary, zero-residue assertions, and HDC evidence boundary are recorded here and in the synchronized Chinese plan.
+- [x] #613 did not absorb or modify the original worktree's unrelated `src/App.tsx` and `src/App.test.tsx` changes.
 - [x] Historical pre-repair frontend/full-server failures and clean-`origin/main` reproductions remain recorded separately from the current repair result; the current exact-tree server and `test:all` reruns are recorded with their warnings and skips.
 - [x] Resolved the inherited acceptance-quality failures through #617 / PR #619 and reran the complete required local CI on the rebased final tree.
 - [x] #610 obtained zero-finding final Standards and Spec reviews before its merge; #611 receives its own final parent review after this landing record.
@@ -184,4 +193,4 @@ The preceding #611 repair evidence retains its original host boundary, where the
 
 ## Git & PR Workflow
 
-The historical #610 implementation and review fixes were committed separately from its documentation record on `codex/td-068-trusted-invocation-context`. The #611 branch/worktree references in this plan are historical. The current #612 feature/repair branch is `codex/td-068-dts-reload-user-provenance` at `/Users/tzrea1/Develop/WiseEff-td612`, based on `origin/main@537e932ce101a76606347ce8ab0f67303ace1068`. The parent/session owner retains responsibility for review, PR creation, merge, issue closure, and main synchronization.
+The #610-#612 branch/worktree references above are historical. The current implementation and independent repair remain on `codex/td-068-parameter-submission-provenance` at `/Users/tzrea1/Develop/WiseEff-td613`, based on `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`; the pre-repair HEAD was `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f` and repair commit `8bd4eb844` is appended. This session does not create or merge a PR and does not close Issue #613. TD-068 remains active; #614 and #615 are not implemented here. The parent/session owner retains final PR, merge, Issue, and main-synchronization authority.

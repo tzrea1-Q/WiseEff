@@ -158,6 +158,15 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - owned-runtime perception acceptance 在前端 `5174` 和自动分配 API 端口上 4/4 通过，没有触碰既有 5173/8787 listener。action acceptance 为 3 passed / 1 planned skip / 4 failed：approved-write case 选择到没有 source text 的 seeded semantic binding，在 `submitParameterChanges` 前以 `Config set source text unavailable for typed edit` 停止。干净 detached `origin/main@b676a1e32` 复现了同一聚焦 approval 失败与相同错误，因此未吸收无关 fixture 修复。所有生成的 database、object root、API/frontend process 与 browser run 都独占且已清理；仓库 helper 的 undefined `stopRuntime` 失败有一次需要恢复处理，在删除 marker-proven database 后，将精确 object root 移入 Trash。
 - 未创建或合并 PR，也未关闭任何 Issue。最终验收、PR、合入与 Issue 更新仍由 parent/session owner 负责。
 
+## #613 独立 review repair 检查点
+
+- repair 保持在 `/Users/tzrea1/Develop/WiseEff-td613` 的 `codex/td-068-parameter-submission-provenance` 上。起点为基于 `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14` 的 feature HEAD `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f`；production 与 PostgreSQL repair commit `8bd4eb844` 以追加方式提交，没有 amend 历史。
+- P1 根因：semantic Xiaoze early guard 使用 `loadBindingContext.node_locator`，其子查询按字符串 id 排序选取 latest logical-node revision；central binding-draft guard 则使用 flat parameter source projection。两者都没有传入 exact revision 的 `compatible`，因此 compatible-only critical rule 可被绕过。
+- 两个 binding guard 现共用 `loadLogicalNodeSubmissionContext`。输入是 organization、project、stable logical-node id 与 exact server-owned config revision；没有 latest 或 client fallback，并把持久化 DTS compatible 的第一个 token 规范化为 sensitive-rule matcher 使用的同一单 compatible 匹配输入。
+- Xiaoze 按数值 `dts_config_revisions.revision_number` 解析最新 binding revision，并要求该 revision 同时携带 binding 的 stable logical node；guard 发生在 value parse、draft 和 candidate 创建之前。central seam 只使用已锁定 draft 持久化的 `base_config_revision_id` 与 binding logical-node id；不会替换成 candidate、current head、请求数据或 flat source projection。
+- 修复前 PostgreSQL Red：新增 compatible-only critical action 测试期望 Agent 403，但旧行为实际成功 resolve 并创建 change request。Green 证明 early Agent refusal 发生在 draft/candidate/round/change-request/item/success-audit 之前，refusal correlation 可跨外层 rollback 持久化；central 对预先存在的有效 draft/candidate 拒绝后不消费 draft、不 promote candidate。相同 central draft 还证明 System refusal 的 actor user 为 null、无 capability 的直接 user 403 且状态不变，以及有 capability 的直接 user 成功。
+- 既有 path-critical、high-tier Agent、non-sensitive Agent、missing/malformed trusted context、route-owned user context、structured submission 及 success/refusal 原子性 matrix 继续作为回归门禁。本 repair 不改 frontend、route、DTO、公共 API、migration、schema、#614/#615 行为，也不声称 HDC/device readiness。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |
@@ -167,7 +176,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 | 产品与 API 契约 | Review | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；route path 与 request contract 不变，服务端 provenance 与 actor 字段剥离由 route 测试覆盖。 |
 | 架构与领域模型 | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`、`docs/design-docs/full-stack-architecture.md`、`docs/design-docs/domain-model.md`。 |
 | 安全与审计指引 | Review | `docs/SECURITY.md`、`server/modules/audit/auditedWrite.ts`；可信上下文及禁止 default-user 仍是部分迁移。 |
-| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#612 增加真实 PostgreSQL 五操作 provenance matrix，并明确 HDC 不在本证据边界内。 |
+| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#613 增加 exact-revision compatible-only PostgreSQL refusal 覆盖，并明确 HDC 不在本证据边界内。 |
 | 中文开发文档 | Review | `docs/zh-CN/SECURITY.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/zh-CN/PLANS.md`。 |
 | 生成物、runbook、前端/设计、references | No change | `docs/generated/`、`docs/runbooks/`、`src/`、`docs/references/`；没有生成 schema、operation、运行时、UI 或运维流程变化。 |
 
@@ -175,8 +184,8 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 - [x] 已按实现 seam 复核 ADR-0038 及英中文安全/架构/领域/API/计划引用。
 - [x] 没有公开契约或前端文档因此变陈旧。
-- [x] 已在本文件及同步的英文计划中记录 #612 范围、Red、25-cell PostgreSQL matrix、拒绝 code、rollback audit 边界及 HDC 证据边界。
-- [x] #612 没有吸收或修改原脏工作树中的 compact-footer 文档改动。
+- [x] 已在本文件及同步的英文计划中记录 #613 repair 范围、compatible-only Red、exact binding/draft revision provenance、rollback audit 边界、零残留断言及 HDC 证据边界。
+- [x] #613 没有吸收或修改原工作树中无关的 `src/App.tsx` 与 `src/App.test.tsx` 改动。
 - [x] repair 前的 frontend/完整 server 失败及干净 `origin/main` 复现仍与当前 repair 结果分开记录；当前 exact-tree server 与 `test:all` 重跑结果连同 warning 和 skip 已记录。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
 - [x] #610 在自身合入前取得 Standards 与 Spec 最终复审零 finding；#611 在本合入记录后由 parent 独立进行最终复审。
@@ -184,4 +193,4 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 ## Git & PR Workflow
 
-#610 的历史实现与 review 修复和其文档记录在 `codex/td-068-trusted-invocation-context` 上保持独立提交。本计划中的 #611 分支/worktree 引用均为历史记录。当前 #612 feature/repair 分支为 `codex/td-068-dts-reload-user-provenance`，worktree 为 `/Users/tzrea1/Develop/WiseEff-td612`，基于 `origin/main@537e932ce101a76606347ce8ab0f67303ace1068`。review、PR 创建、合入、Issue 关闭与 main 同步由 parent/session owner 负责。
+上文 #610-#612 的 branch/worktree 引用均为历史记录。当前实现与独立 repair 保持在 `/Users/tzrea1/Develop/WiseEff-td613` 的 `codex/td-068-parameter-submission-provenance`，基于 `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`；repair 前 HEAD 为 `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f`，追加 repair commit 为 `8bd4eb844`。本 session 不创建或合并 PR，也不关闭 Issue #613。TD-068 保持 active；#614 与 #615 未在此实现。最终 PR、合入、Issue 与 main 同步权限仍归 parent/session owner。
