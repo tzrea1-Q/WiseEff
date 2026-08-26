@@ -376,7 +376,7 @@ describe("ParametersTable", () => {
     expect(screen.getByRole("button", { name: "按 更新时间 排序" })).toBeInTheDocument();
   });
 
-  it("renders a reusable tree filter without letting the table reinterpret subtree ids", () => {
+  it("preserves caller ids when the reusable tree filter hides a structural root", () => {
     const onTreeChange = vi.fn();
     setup({
       columnFilters: [
@@ -398,9 +398,10 @@ describe("ParametersTable", () => {
 
     const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
     fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
-    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "电源" }));
+    expect(within(moduleHeader).queryByRole("checkbox", { name: "电源" })).not.toBeInTheDocument();
+    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "充电" }));
 
-    expect(onTreeChange).toHaveBeenCalledWith(["power"]);
+    expect(onTreeChange).toHaveBeenCalledWith(["charging"]);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
   });
 
