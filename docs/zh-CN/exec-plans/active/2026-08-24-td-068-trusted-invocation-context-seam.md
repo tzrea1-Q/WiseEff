@@ -167,6 +167,15 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - 修复前 PostgreSQL Red：新增 compatible-only critical action 测试期望 Agent 403，但旧行为实际成功 resolve 并创建 change request。Green 证明 early Agent refusal 发生在 draft/candidate/round/change-request/item/success-audit 之前，refusal correlation 可跨外层 rollback 持久化；central 对预先存在的有效 draft/candidate 拒绝后不消费 draft、不 promote candidate。相同 central draft 还证明 System refusal 的 actor user 为 null、无 capability 的直接 user 403 且状态不变，以及有 capability 的直接 user 成功。
 - 既有 path-critical、high-tier Agent、non-sensitive Agent、missing/malformed trusted context、route-owned user context、structured submission 及 success/refusal 原子性 matrix 继续作为回归门禁。本 repair 不改 frontend、route、DTO、公共 API、migration、schema、#614/#615 行为，也不声称 HDC/device readiness。
 
+### #613 独立 repair 验证结果
+
+- `npx tsc -b --pretty false` 通过。exact focused 命令通过 8 个文件 / 76 个测试，覆盖 compatible PostgreSQL action 与 central 检查、submission provenance、structured submission、action unit/sensitive、parameter routes、sensitive-node policy 及 post-cutover workflow。
+- 第一次完整 server 运行发现 2 个 Xiaoze assembly fixture 失败，原因是其 module mock 未暴露新增的 exact-node loader/trusted guard。没有增加 production fallback；追加 test commit `3326d8eec` 按真实 production dependency shape 接线，该文件 5/5 通过，完整 server 复跑为 361 个文件 / 2768 个测试通过，1 个文件 / 4 个测试跳过。
+- `npm run test:all` 通过：frontend 418 个文件 / 3096 个测试；scripts 69 个文件 / 948 passed / 5 skipped；bridge 21 个文件 / 138 个测试；server 361 个文件 / 2768 passed / 4 skipped。测试输出保留继承的 jsdom navigation 与 `ps: process id too large` warning。
+- `npm run build`、`npm run contract:check`、pgvector-backed `npm run docs:check`、`npm run lint`（0 errors / 继承的 299 warnings）、`npm run selfhost:check` 与 `npm run acceptance:ci` 通过。build 保留继承的 browser-externalization 与 large-chunk warning。
+- owned-runtime Xiaoze acceptance 为 10 passed / 1 planned skip：action 的 6 个可执行 case 全部通过，perception 3/3，runtime warmup 通过。run `full-20260826t150404918z-3326d8eec622-0ded0301` 使用 API `18800`、frontend `5180`；两个进程均停止，精确 database/object root 均删除。既有 `8787`/`5173` 服务没有被使用或发送 signal。
+- 此前一次 controller 调用在 Playwright 启动前失败，因为 wrapper 在缺少必需 process-start identity 时尝试把 browser phase 标记为 `running`。其 owned API/frontend 当时已停止；marker-bound orphan recovery 只删除 run `full-20260826t150116846z-3326d8eec622-b675ae8d` 的精确 database/object root，并验证两个端口未监听、数据库不存在。该 harness retry 不计作产品测试通过或失败。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |

@@ -167,6 +167,15 @@ The preceding #611 repair evidence retains its original host boundary, where the
 - PostgreSQL Red on the pre-repair behavior: the new compatible-only critical action test expected Agent 403 but the promise resolved successfully with a change request. Green proves early Agent refusal before draft/candidate/round/change-request/item/success-audit creation, durable correlation after outer rollback, and central refusal of a pre-existing valid draft/candidate without consuming or promoting either. The same central draft also proves System refusal with null actor user, incapable direct-user 403 with unchanged state, and capable direct-user success.
 - Existing path-critical, high-tier Agent, non-sensitive Agent, missing/malformed trusted context, route-owned user context, structured submission, and success/refusal atomicity matrices remain regression gates. This repair changes no frontend, route, DTO, public API, migration, schema, #614/#615 behavior, or HDC/device readiness claim.
 
+### #613 independent repair verification result
+
+- `npx tsc -b --pretty false` passed. The exact focused command passed 8 files / 76 tests: compatible PostgreSQL action and central checks, submission provenance, structured submission, action unit/sensitive tests, parameter routes, sensitive-node policy, and post-cutover workflow.
+- The first complete server run found two Xiaoze assembly fixture failures because its module mock did not expose the new exact-node loader/trusted guard. No production fallback was added: append-only test commit `3326d8eec` wires the real production dependency shape, its file passed 5/5, and the complete server rerun passed 361 files / 2768 tests with 1 file / 4 tests skipped.
+- `npm run test:all` passed: frontend 418 files / 3096 tests; scripts 69 files / 948 passed / 5 skipped; bridge 21 files / 138 tests; server 361 files / 2768 passed / 4 skipped. Test output retained inherited jsdom navigation and `ps: process id too large` warnings.
+- `npm run build`, `npm run contract:check`, pgvector-backed `npm run docs:check`, `npm run lint` (0 errors / inherited 299 warnings), `npm run selfhost:check`, and `npm run acceptance:ci` passed. Build retained inherited browser-externalization and large-chunk warnings.
+- Owned-runtime Xiaoze acceptance passed 10 tests with 1 planned skip: action passed all 6 executable cases, perception passed 3/3, and runtime warmup passed. Run `full-20260826t150404918z-3326d8eec622-0ded0301` used API `18800` and frontend `5180`; both processes stopped and the exact database/object root were removed. Existing `8787`/`5173` services were not used or signalled.
+- A preceding controller invocation failed before Playwright because the wrapper attempted to mark the browser phase `running` without the required process-start identity. Its owned API/frontend had already stopped; marker-bound orphan recovery removed only run `full-20260826t150116846z-3326d8eec622-b675ae8d`'s exact database/object root and verified both ports unused and the database absent. This harness retry is not reported as a product-test pass or failure.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Evidence |
