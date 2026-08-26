@@ -99,7 +99,6 @@ export function DtsReloadCandidateTable({
           onTreeChange={onChangeModuleFilter}
           onClear={onClearModuleFilter}
           treeSearchable
-          treeShowPaths
         />
       ) : (
         <ColumnFilter

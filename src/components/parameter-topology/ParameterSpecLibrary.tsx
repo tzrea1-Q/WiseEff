@@ -518,7 +518,6 @@ export function ParameterSpecLibrary({
                       treeNodes={moduleFilterNodes}
                       selectedTreeIds={selectedModuleTreeIds}
                       treeSearchable
-                      treeShowPaths
                       onTreeChange={updateModuleTreeFilter}
                       onClear={() => setFilters((current) => ({ ...current, moduleNames: [] }))}
                     />

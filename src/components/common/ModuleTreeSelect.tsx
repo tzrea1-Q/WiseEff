@@ -180,7 +180,7 @@ export function ModuleTreeSelect({
         nodes={treeNodes}
         selectableIds={selectableIds}
         selectedIds={selectedIds}
-        showPaths
+        showPaths={mode === "single"}
         searchable={searchable}
         hideSingleRoot={hideSingleRoot}
         initialExpandedDepth={initialExpandedDepth}

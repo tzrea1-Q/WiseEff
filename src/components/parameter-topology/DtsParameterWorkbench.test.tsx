@@ -540,6 +540,9 @@ describe("DtsParameterWorkbench", () => {
 
     await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
     const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    const powerModule = within(menu).getByRole("treeitem", { name: "电源" });
+    await user.click(within(powerModule).getByRole("button", { name: "展开" }));
+    expect(within(menu).queryByText("电源 / sc8562")).not.toBeInTheDocument();
     await user.click(within(menu).getByRole("checkbox", { name: "电源" }));
 
     expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([

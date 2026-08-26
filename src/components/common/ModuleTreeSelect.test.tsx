@@ -13,6 +13,7 @@ describe("ModuleTreeSelect", () => {
     render(<ModuleTreeSelect mode="multi-filter" label="模块" nodes={[...nodes]} value={[]} onChange={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));
     expect(screen.getByText("电池")).toBeInTheDocument();
+    expect(screen.queryByText("电源 / 电池")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "折叠" }));
     expect(screen.queryByText("电池")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开" }));

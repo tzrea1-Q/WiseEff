@@ -284,7 +284,6 @@ export function SpecReviewQueue({
                       treeNodes={moduleFilterNodes}
                       selectedTreeIds={selectedModuleTreeIds}
                       treeSearchable
-                      treeShowPaths
                       onTreeChange={(next) =>
                         patchFilters((current) => ({
                           ...current,

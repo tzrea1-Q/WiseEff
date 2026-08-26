@@ -49,7 +49,7 @@ Open menu:
 
 1. Fixed-position panel (`.parameters-column-filter__menu--fixed`) so horizontal table scroll does not clip it.
 2. Head row: filter title + **清除** (disabled when nothing selected).
-3. Flat mode renders a checkbox list; tree mode renders a collapsed-by-default expandable tree with checked / mixed / unchecked parent state and optional counts. When the scoped tree has one structural root, that wrapper is omitted and its children are promoted to visible roots. Module paths are used for search and duplicate accessible names; consumers may enable `treeShowPaths` when the path should also be visible in the menu.
+3. Flat mode renders a checkbox list; tree mode renders a collapsed-by-default expandable tree with checked / mixed / unchecked parent state and optional counts. When the scoped tree has one structural root, that wrapper is omitted and its children are promoted to visible roots. Module paths are used for search and duplicate accessible names but are not rendered in filter menus; hierarchy is conveyed by indentation and expand/collapse controls.
 4. Each option has an accessible name equal to the display label.
 5. Empty set copy: `暂无选项`.
 

@@ -729,7 +729,6 @@ export function ParameterReviewPage({
                       treeNodes={reviewModuleFilterNodes}
                       selectedTreeIds={filterModules}
                       treeSearchable
-                      treeShowPaths
                       onTreeChange={setFilterModules}
                       onClear={() => setFilterModules([])}
                     />

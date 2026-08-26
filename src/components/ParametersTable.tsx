@@ -35,7 +35,6 @@ export type ParametersColumnFilter = ParametersColumnFilterCommon &
         selectedTreeIds: readonly string[];
         onTreeChange: (next: string[]) => void;
         treeSearchable?: boolean;
-        treeShowPaths?: boolean;
       }
   );
 
