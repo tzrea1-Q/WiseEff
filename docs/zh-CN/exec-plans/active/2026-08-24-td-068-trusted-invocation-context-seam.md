@@ -140,6 +140,23 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - `npm run build`、`npm run contract:check`、`TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run docs:check`、`npm run selfhost:check` 和 `git diff --check origin/main...HEAD` 通过。build 保留既有 Vite externalized-module 与 large-chunk warnings；lint 通过，0 errors、299 个既有 warnings。因 operation-evidence coverage 未改变，`npm run acceptance:evidence` 仍未运行；GitHub Actions 因本月额度耗尽不可用。
 - 不宣称 HDC 或硬件验证。deploy adapter spy 仅证明拒绝/validation seam 先于 device invocation；#613–#615 仍开放，因此英中文共享计划保持 active。
 
+## #613 实现检查点
+
+- 范围：parameter submission 在 binding draft、node-enablement draft、structured DTS edit，以及 semantic / 保留的 legacy Xiaoze action 路径上，都必须携带同一个 branded `TrustedInvocationContext` 与 root-owned branded refusal sink。直接 HTTP route 在认证后构造 `createUserInvocation(auth)`；request `actorType`、`initiator`、header 与 query 都不属于 provenance contract。
+- Domain 在 permission、query、transaction、draft consumption、candidate 变化、submission row 或 success audit 之前，校验 context、refusal sink、request correlation 以及 User/Agent principal 一致性。structured nested submission 传播同一个 context。missing、malformed 或 principal substitution 均 fail closed，不再默认成 user。
+- Xiaoze action 要求 orchestrator-owned Agent invocation 与持久化 session、tool-call、approval id 精确一致。approval 只是 correlation evidence，绝不把 `initiator: agent` 转成 user。semantic 与 retained-legacy identity 两条路径都把同一 invocation 传入 domain。
+- critical sensitive-node submission 继续允许具备原 capability 的直接 user，但对 Agent 与 System 返回稳定 `403`。high-tier 与 non-sensitive Agent 保持既有 capability/approval 行为。Agent refusal audit 记录 accountable user、organization、session、tool-call、approval 与 trace；System refusal 记录 service/job identity，且 actor user 为 null。拒绝通过独立 root sink 写入，可跨 caller transaction rollback 持久化；成功 submission 与 trusted success audit 保持同一事务原子性。
+- #614 topology/writeback governance、#615 全局 legacy actor-label 清理、TD-123 device-write audit、公共 API/DTO 变化、前端工作以及 HDC/硬件/live-provider readiness 都不在范围内。TD-068 与父 Issue #609 仍为 Open，本计划继续保持 active。
+
+### #613 TDD 与验证证据
+
+- 迁移前 Red：`actionTools.test.ts` 有 2 个失败，semantic 与 legacy submission 只收到手写 `{ actorType: "agent" }`；`routes.test.ts` 有 1 个失败，HTTP route 未提供 branded user invocation；`submissionProvenance.test.ts` 有 2 个失败，missing/malformed context 在 transaction 前未被拒绝。
+- 最终聚焦树：14 个文件 / 185 个测试通过，覆盖 route、binding/enablement/structured submission、semantic/legacy Xiaoze、orchestrator、registry、critical policy 与 PostgreSQL provenance。owned PostgreSQL matrix 覆盖 user/Agent/System/missing/malformed 和 critical/high/non-sensitive；断言拒绝后领域残留与 success audit 均为零、refusal 跨外层 rollback 持久、correlation 真实、organization substitution 被拒绝，以及成功领域行与 success audit 共同 rollback。
+- `npx tsc -b` 通过。`npm run test:all` 通过：frontend 418 个文件 / 3096 个测试；scripts 69 个文件 / 948 passed / 5 skipped；bridge 21 个文件 / 138 个测试；server 361 个文件 / 2766 passed / 4 skipped。第一次独立全量 server 仅有一个已迁移测试 fixture 失败（`parameter-files/integration.test.ts`，期望 201、实际 500）；注入正式 test refusal sink 后该文件 3/3 通过，随后 `test:all` 的完整 server phase 通过。
+- `npm run build`、`npm run contract:check`、pgvector-backed `npm run docs:check`、`npm run lint`（0 errors；继承的 299 warnings）、`npm run selfhost:check` 与 `npm run acceptance:ci` 通过。build 保留既有 browser externalization 与 large-chunk warning；测试保留 jsdom navigation、`ps: process id too large` 与 planned skip 输出。
+- owned-runtime perception acceptance 在前端 `5174` 和自动分配 API 端口上 4/4 通过，没有触碰既有 5173/8787 listener。action acceptance 为 3 passed / 1 planned skip / 4 failed：approved-write case 选择到没有 source text 的 seeded semantic binding，在 `submitParameterChanges` 前以 `Config set source text unavailable for typed edit` 停止。干净 detached `origin/main@b676a1e32` 复现了同一聚焦 approval 失败与相同错误，因此未吸收无关 fixture 修复。所有生成的 database、object root、API/frontend process 与 browser run 都独占且已清理；仓库 helper 的 undefined `stopRuntime` 失败有一次需要恢复处理，在删除 marker-proven database 后，将精确 object root 移入 Trash。
+- 未创建或合并 PR，也未关闭任何 Issue。最终验收、PR、合入与 Issue 更新仍由 parent/session owner 负责。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |
