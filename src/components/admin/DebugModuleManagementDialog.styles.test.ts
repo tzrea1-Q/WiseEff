@@ -15,7 +15,7 @@ describe("debug module management more-menu portal styling", () => {
 
     const portaledMenu = declarationsFor(styles, ".param-admin-module-more-menu-list");
     expect(portaledMenu.position).toBe("fixed");
-    expect(portaledMenu["z-index"]).toBe("var(--z-sticky)");
+    expect(portaledMenu["z-index"]).toBe("var(--z-modal-backdrop-nested)");
     expect(portaledMenu.overflow).toBe("visible");
 
     const portaledItem = declarationsFor(styles, ".param-admin-module-more-menu-list .dropdown-item");

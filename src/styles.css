@@ -16224,7 +16224,7 @@ body.xiaoze-popup-resize-active {
    horizontal scrollport or the dialog's overflow boundary. */
 .param-admin-module-more-menu-list {
   position: fixed;
-  z-index: var(--z-sticky);
+  z-index: var(--z-modal-backdrop-nested);
   display: grid;
   gap: var(--space-1);
   max-height: none;
