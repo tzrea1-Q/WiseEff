@@ -38,18 +38,30 @@ import {
   buildReloadModuleTree,
   collectSubtreeBindingIds
 } from "@/application/parameters/buildReloadModuleTree";
+import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
+import {
+  canonicalizeTreeFilterSelection,
+  collectTreeFilterSelectedDescendantIds
+} from "@/domain/tree-filter/treeFilter";
 import type {
   DeviceBridgePairingCode,
   LocalBridgeHealthState
 } from "@/infrastructure/http/deviceBridgeClient";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { cn } from "@/lib/utils";
+
+function dtsReloadModuleFilterId(candidate: Pick<DtsReloadCandidate, "bindingId" | "moduleId">): string {
+  const moduleId = candidate.moduleId?.trim();
+  // Legacy candidate payloads may not have a module id. Keep those rows
+  // independently addressable rather than turning a display name into identity.
+  return moduleId || `legacy-binding:${candidate.bindingId}`;
+}
 
 export type DtsReloadBridgeOption = {
   id: string;
@@ -275,24 +287,33 @@ export function DtsReloadPage({
     });
   }, [handoffFilteredCandidates, nameQuery, selectedModuleBindingIds]);
 
-  const moduleFilterOptions = useMemo(
+  const moduleFilterNodes = useMemo(
     () =>
-      Array.from(new Set(scopedCandidates.map((candidate) => candidateModuleLabel(candidate)))).sort((left, right) =>
-        left.localeCompare(right, "zh-Hans-CN")
+      buildParameterModuleFilterNodes(
+        scopedCandidates.map((candidate) => ({
+          moduleId: dtsReloadModuleFilterId(candidate),
+          moduleName: candidateModuleLabel(candidate)
+        })),
+        moduleRegistry.modules
       ),
-    [scopedCandidates]
+    [moduleRegistry.modules, scopedCandidates]
   );
 
   const activeModuleColumnFilter = useMemo(
-    () => moduleColumnFilter.filter((name) => moduleFilterOptions.includes(name)),
-    [moduleColumnFilter, moduleFilterOptions]
+    () => {
+      const nodeIds = new Set(moduleFilterNodes.map((node) => node.id));
+      return canonicalizeTreeFilterSelection(moduleFilterNodes, moduleColumnFilter).filter((id) => nodeIds.has(id));
+    },
+    [moduleColumnFilter, moduleFilterNodes]
   );
 
   const filtered = useMemo(() => {
     if (activeModuleColumnFilter.length === 0) return scopedCandidates;
-    const selected = new Set(activeModuleColumnFilter);
-    return scopedCandidates.filter((candidate) => selected.has(candidateModuleLabel(candidate)));
-  }, [activeModuleColumnFilter, scopedCandidates]);
+    const selected = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, activeModuleColumnFilter);
+    return scopedCandidates.filter((candidate) =>
+      selected.has(dtsReloadModuleFilterId(candidate))
+    );
+  }, [activeModuleColumnFilter, moduleFilterNodes, scopedCandidates]);
 
   const handoffSummary = useMemo(() => {
     if (!handoffBindingIds || handoffBindingIds.length === 0) return null;
@@ -966,8 +987,9 @@ export function DtsReloadPage({
                 onNameQueryChange={setNameQuery}
                 listedCount={filtered.length}
                 totalCount={handoffFilteredCandidates.length}
-                moduleFilterOptions={moduleFilterOptions}
-                selectedModuleFilters={activeModuleColumnFilter}
+                moduleFilterNodes={moduleFilterNodes}
+                selectedModuleFilterIds={activeModuleColumnFilter}
+                onChangeModuleFilter={setModuleColumnFilter}
                 onToggleModuleFilter={(value) =>
                   setModuleColumnFilter((current) =>
                     current.includes(value)

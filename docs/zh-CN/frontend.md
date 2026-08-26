@@ -169,7 +169,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ## 多层级模块树
 
-参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`。
+参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`（展开/折叠、搜索、路径标签、单选与多选）；共享树筛选由 `TreeFilterOptions` 和稳定 ID 选择工具提供，各业务域仍传入自己的注册表和范围。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。
 - `/parameter-admin/modules`：`ModuleAttributionTree` 管理业务分类 / 驱动组 / 节点类型单元归属；「新建模块」走带类型选择的 `ModuleCreateDialog`（父级过滤、驱动组 compatible、节点类型可选 sourceKey），修改走 `ModuleEditDialog`（名称、在 `{business, node-type}` 间受控改类型、业务分类重要性、描述、适用范围），并保留移动与受控删除；库筛选与导入预览使用树形选择。
@@ -283,7 +283,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 ## 表格列多选筛选 UX
 
-支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
+支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。层级模块列使用 `ColumnFilter` 树模式，底层复用数据无关的 `src/domain/tree-filter/treeFilter.ts` 与 `src/components/common/TreeFilterOptions.tsx`；`ModuleTreeSelect` 也复用同一套树构造和选择语义。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
 
 管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）；列表需要常显横向滚动条时，也由这个公共接缝按需提供。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格，以及 `/parameter-admin/projects` 管理端项目清单。项目清单在 390px 使用卡片，在 768px 使用 1080px 宽表格加 16px 常显横向滚动条，在 1440px 完整显示且页面不横向溢出。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 在管理端列表边界闭环：规范项目配置工作台本身没有表格；日常工作的 `DtsParameterWorkbenchTable` 与仅 mock 使用的旧 `ParametersTable` 产品语义不同，不属于这条列表合同。
 
@@ -292,6 +292,8 @@ Xiaoze（小泽，唯一 Agent）：
 `DtsTopologyNavigator` 是参数修改、参数调试及 `/parameter-admin/specs` 共用的模块优先树。定义管理适配器按实测归属路径构树、对定义数去重汇总；选中节点会筛选完整子树并写入 `?moduleNode=`，再次点击当前节点清除范围。
 
 模块名保持单行。桌面端导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；低于双栏断点时占满可用宽度，页面本身不得产生横向溢出。
+
+层级列表头筛选统一使用共享 `ColumnFilter mode="tree"`：`/parameter-review` 的变更审阅、`/parameter-admin/specs` 的参数定义库与内嵌审阅队列、`/node-debugging` 的节点调试参数表、`/dts-reload` 的参数调试候选表，以及 `/debugging-admin/nodes` 的节点目录都使用受页面作用域约束的模块树。若审阅任务接口只提供模块名称而没有归属路径，筛选器只展示可证实的模块层级，不推测不存在的祖先关系。
 
 ## 测试建议
 

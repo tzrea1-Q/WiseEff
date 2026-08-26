@@ -1,16 +1,8 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  buildExpandedTreeIdsForDropdown,
-  modulePathSegments
-} from "@/components/admin/moduleManagementTreeUtils";
-import {
-  buildModuleTree,
-  collectSubtreeModuleIds,
-  type FlatModuleNode,
-  type ModuleTreeNode
-} from "@/domain/modules/moduleTree";
+import { modulePathSegments } from "@/components/admin/moduleManagementTreeUtils";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
+import { TreeFilterOptions } from "./TreeFilterOptions";
 
 export type ModuleTreeSelectMode = "single" | "multi-filter";
 
@@ -27,131 +19,18 @@ type ModuleTreeSelectProps = {
   portalMenu?: boolean;
   /** When set, only these node ids can be chosen (ancestors remain visible for tree context). */
   selectableIds?: ReadonlySet<string>;
+  /** Enable path-aware search for multi-select module filters. */
+  searchable?: boolean;
+  /** Hide a sole structural root while preserving subtree selection semantics. */
+  hideSingleRoot?: boolean;
+  /** Number of visible tree levels expanded when the menu first opens. */
+  initialExpandedDepth?: number;
 };
 
 type MenuPosition = {
   top: number;
   left: number;
 };
-
-function treeHasBranches(nodes: readonly ModuleTreeNode[]): boolean {
-  return nodes.some((node) => node.children.length > 0 || treeHasBranches(node.children));
-}
-
-function TreeOption({
-  node,
-  depth,
-  mode,
-  expanded,
-  selectedIds,
-  selectableIds,
-  showExpandColumn,
-  onToggleExpand,
-  onSelect
-}: {
-  node: ModuleTreeNode;
-  depth: number;
-  mode: ModuleTreeSelectMode;
-  expanded: Set<string>;
-  selectedIds: Set<string>;
-  selectableIds?: ReadonlySet<string>;
-  showExpandColumn: boolean;
-  onToggleExpand: (id: string) => void;
-  onSelect: (id: string) => void;
-}) {
-  const hasChildren = node.children.length > 0;
-  const isExpanded = expanded.has(node.id);
-  const isSelected = selectedIds.has(node.id);
-  const isSelectable = selectableIds == null || selectableIds.has(node.id);
-
-  return (
-    <div className="module-tree-option" data-depth={depth}>
-      <div
-        className={[
-          "module-tree-option-row",
-          depth > 0 ? "is-child" : "",
-          isSelected ? "is-selected" : "",
-          !isSelectable ? "is-structural" : ""
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={{ paddingLeft: depth > 0 ? `${8 + depth * 20}px` : undefined }}
-      >
-        {showExpandColumn ? (
-          hasChildren ? (
-            <button
-              aria-label={isExpanded ? "折叠" : "展开"}
-              className="module-tree-expand"
-              type="button"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleExpand(node.id);
-              }}
-            >
-              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-          ) : (
-            <span className="module-tree-expand module-tree-expand--spacer" aria-hidden="true" />
-          )
-        ) : null}
-        {mode === "multi-filter" ? (
-          <label className={`module-tree-label${!isSelectable ? " is-disabled" : ""}`}>
-            <input
-              aria-label={node.name}
-              checked={isSelected}
-              disabled={!isSelectable}
-              type="checkbox"
-              onChange={() => {
-                if (!isSelectable) return;
-                onSelect(node.id);
-              }}
-            />
-            <span className="module-tree-label-stack">
-              <span className="module-tree-label-text" title={node.name}>
-                {node.name}
-              </span>
-            </span>
-          </label>
-        ) : isSelectable ? (
-          <button
-            aria-current={isSelected ? "true" : undefined}
-            aria-pressed={isSelected}
-            className={`module-tree-label module-tree-label--single${isSelected ? " is-selected" : ""}`}
-            title={node.name}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(node.id);
-            }}
-          >
-            <span className={depth > 0 ? "module-tree-label-text is-child-name" : "module-tree-label-text"}>{node.name}</span>
-          </button>
-        ) : (
-          <span className="module-tree-label module-tree-label--structural" title={node.name}>
-            <span className={depth > 0 ? "module-tree-label-text is-child-name" : "module-tree-label-text"}>{node.name}</span>
-          </span>
-        )}
-      </div>
-      {hasChildren && isExpanded
-        ? node.children.map((child) => (
-            <TreeOption
-              key={child.id}
-              depth={depth + 1}
-              expanded={expanded}
-              mode={mode}
-              node={child}
-              selectedIds={selectedIds}
-              selectableIds={selectableIds}
-              showExpandColumn={showExpandColumn}
-              onToggleExpand={onToggleExpand}
-              onSelect={onSelect}
-            />
-          ))
-        : null}
-    </div>
-  );
-}
 
 export function ModuleTreeSelect({
   mode,
@@ -163,17 +42,28 @@ export function ModuleTreeSelect({
   placeholder,
   disabled = false,
   portalMenu = false,
-  selectableIds
+  selectableIds,
+  searchable = mode === "multi-filter",
+  hideSingleRoot = mode === "multi-filter",
+  initialExpandedDepth = 1
 }: ModuleTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const tree = useMemo(() => buildModuleTree(nodes), [nodes]);
-  const showExpandColumn = useMemo(() => treeHasBranches(tree), [tree]);
-  const selectedIds = useMemo(() => new Set(Array.isArray(value) ? value : value ? [value] : []), [value]);
+  const treeNodes = useMemo(
+    () =>
+      nodes.map((node) => ({
+        id: node.id,
+        label: node.name,
+        parentId: node.parentId,
+        path: modulePathSegments(node, nodes),
+        sortOrder: node.sortOrder
+      })),
+    [nodes]
+  );
+  const selectedIds = useMemo(() => (Array.isArray(value) ? value : value ? [value] : []), [value]);
   const selectedId = typeof value === "string" ? value : undefined;
 
   const selectedNode = useMemo(
@@ -228,13 +118,21 @@ export function ModuleTreeSelect({
     const handleScroll = () => {
       if (portalMenu) setOpen(false);
     };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
     window.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleEscape);
     if (portalMenu) {
       window.addEventListener("resize", handleReposition);
       window.addEventListener("scroll", handleScroll, true);
     }
     return () => {
       window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleEscape);
       if (portalMenu) {
         window.removeEventListener("resize", handleReposition);
         window.removeEventListener("scroll", handleScroll, true);
@@ -253,50 +151,15 @@ export function ModuleTreeSelect({
     return count > 0 ? `${label} (${count})` : label;
   }, [label, mode, placeholder, selectedNode, selectedPath, value]);
 
-  const toggleExpand = (id: string) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
   const handleSelect = (id: string) => {
-    if (selectableIds && !selectableIds.has(id)) {
-      return;
-    }
     if (mode === "single") {
       onChange(id);
       setOpen(false);
-      return;
     }
-
-    const current = Array.isArray(value) ? value : [];
-    const subtreeIds = collectSubtreeModuleIds(nodes, [id]);
-    const selecting = !current.includes(id);
-    if (selecting) {
-      const nextIds =
-        selectableIds == null
-          ? Array.from(subtreeIds)
-          : Array.from(subtreeIds).filter((item) => selectableIds.has(item));
-      onChange(Array.from(new Set([...current, ...nextIds])));
-      return;
-    }
-    onChange(current.filter((item) => !subtreeIds.has(item)));
   };
 
   const handleToggleOpen = () => {
-    setOpen((current) => {
-      const nextOpen = !current;
-      if (nextOpen) {
-        setExpanded(buildExpandedTreeIdsForDropdown(tree, nodes, selectedId));
-      }
-      return nextOpen;
-    });
+    setOpen((current) => !current);
   };
 
   const menuContent = open ? (
@@ -304,24 +167,33 @@ export function ModuleTreeSelect({
       ref={menuRef}
       className={`dropdown-menu module-tree-menu${portalMenu ? " module-tree-menu--portal" : ""}`}
       role="tree"
+      tabIndex={-1}
+      aria-label={`${label}树形选项`}
       style={portalMenu && menuPosition ? { top: menuPosition.top, left: menuPosition.left } : undefined}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {tree.length === 0 ? <div className="module-tree-empty">{placeholder ?? "暂无模块"}</div> : null}
-      {tree.map((node) => (
-        <TreeOption
-          key={node.id}
-          depth={0}
-          expanded={expanded}
-          mode={mode}
-          node={node}
-          selectedIds={selectedIds}
-          selectableIds={selectableIds}
-          showExpandColumn={showExpandColumn}
-          onToggleExpand={toggleExpand}
-          onSelect={handleSelect}
-        />
-      ))}
+      <TreeFilterOptions
+        ariaLabel={`${label}树形选项`}
+        classNamePrefix="module-tree"
+        emptyMessage={placeholder ?? "暂无模块"}
+        mode={mode === "multi-filter" ? "multi" : "single"}
+        nodes={treeNodes}
+        selectableIds={selectableIds}
+        selectedIds={selectedIds}
+        showPaths={mode === "single"}
+        searchable={searchable}
+        hideSingleRoot={hideSingleRoot}
+        initialExpandedDepth={initialExpandedDepth}
+        treeRole={false}
+        focusOnOpen="tree"
+        onChange={(next: string | string[]) => {
+          if (mode === "single" && typeof next === "string") {
+            handleSelect(next);
+          } else if (mode === "multi-filter" && Array.isArray(next)) {
+            onChange(next);
+          }
+        }}
+      />
     </div>
   ) : null;
 
@@ -337,6 +209,12 @@ export function ModuleTreeSelect({
         title={disabled ? "暂无可用模块。" : undefined}
         type="button"
         onClick={handleToggleOpen}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
         <span className="module-tree-trigger-content">
           <span className="module-tree-trigger-label">{triggerLabel}</span>

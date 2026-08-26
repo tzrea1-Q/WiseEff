@@ -23,7 +23,7 @@ import {
   readStylesheet,
   rulesFor
 } from "./test/cssAssertions";
-import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
+import { expandModuleTreeNode, selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import {
   createTestAuthClient,
   createTestConfigSetList,
@@ -2040,8 +2040,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("button", { name: "筛选重要性" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+    selectModuleTreeFilter("Charging Policy", ["Power", "Charging"]);
 
     expect(within(screen.getByRole("table")).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("battery_health_guard_enable")).not.toBeInTheDocument();
@@ -2828,6 +2827,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     for (const [headerName, buttonName, optionName] of checks) {
       const header = within(table).getByRole("columnheader", { name: new RegExp(headerName) });
       fireEvent.click(within(header).getByRole("button", { name: buttonName }));
+      if (buttonName === "筛选模块") {
+        expandModuleTreeNode("Power");
+        expandModuleTreeNode("Charging");
+      }
       expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
       fireEvent.click(within(header).getByRole("button", { name: buttonName }));
     }

@@ -2,6 +2,7 @@ import { Check, ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
+import { buildPathModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import {
   formatParameterSpecLifecycle,
   PARAMETER_ADMIN_UI
@@ -9,6 +10,7 @@ import {
 import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
 import { isStructuralPropertyKey } from "@/domain/parameter-topology/parameterSurface";
 import type { SpecAttributionModule } from "@/domain/parameter-topology/types";
+import { treeFilterNodePath, type TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 import type { SpecEditorSavePayload } from "./ParameterSpecDetail";
 import { ParameterSpecDetailDialog } from "./ParameterSpecDetailDialog";
@@ -108,6 +110,30 @@ export function specAttributionFilterValues(spec: ParameterSpecLibraryRow): stri
   return ["未归类"];
 }
 
+export function specAttributionFilterPaths(spec: ParameterSpecLibraryRow): string[] {
+  if (spec.attributionModules.length > 0) {
+    return spec.attributionModules.map((module) => {
+      const path = (module.path ?? []).map((segment) => segment.trim()).filter(Boolean);
+      const name = module.name.trim();
+      if (path.length === 0) return name;
+      if (name && path.at(-1) !== name) path.push(name);
+      return path.join(" / ");
+    });
+  }
+  return [spec.driverModule?.trim() || "未归类"];
+}
+
+function modulePathMatchesSelection(path: string, selected: string): boolean {
+  const normalizedPath = path.trim();
+  const normalizedSelected = selected.trim();
+  if (!normalizedPath || !normalizedSelected) return false;
+  return (
+    normalizedPath === normalizedSelected ||
+    normalizedPath.startsWith(`${normalizedSelected} / `) ||
+    normalizedPath.split(" / ").at(-1) === normalizedSelected
+  );
+}
+
 /** User-facing attribution cell / detail text (full tree path when available). */
 export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): string {
   if (spec.attributionModules.length > 0) {
@@ -195,12 +221,6 @@ const EMPTY_FILTERS: ParameterSpecLibraryFilters = {
 
 const LIFECYCLE_VALUES = ["draft", "active", "deprecated"] as const;
 
-function uniqueValues(values: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim())))).sort((left, right) =>
-    left.localeCompare(right, "zh-Hans-CN")
-  );
-}
-
 function matchesSelected(selected: readonly string[], value: string | null | undefined): boolean {
   if (selected.length === 0) return true;
   return value != null && selected.includes(value);
@@ -244,7 +264,9 @@ export function filterParameterSpecLibrary(
     }
     if (
       filters.moduleNames.length > 0 &&
-      !specAttributionFilterValues(spec).some((value) => filters.moduleNames.includes(value))
+      !specAttributionFilterPaths(spec).some((path) =>
+        filters.moduleNames.some((selected) => modulePathMatchesSelection(path, selected))
+      )
     ) {
       return false;
     }
@@ -361,10 +383,29 @@ export function ParameterSpecLibrary({
     setPage(1);
   };
 
-  const moduleValues = useMemo(
-    () => uniqueValues(scopedSpecs.flatMap((spec) => specAttributionFilterValues(spec))),
+  const moduleFilterNodes = useMemo<TreeFilterNode[]>(
+    () =>
+      buildPathModuleFilterNodes(
+        scopedSpecs.flatMap((spec) =>
+          specAttributionFilterPaths(spec).map((modulePath) => ({
+            moduleName: modulePath.split(" / ").at(-1) ?? modulePath,
+            modulePath: modulePath.split(" / ")
+          }))
+        )
+      ),
     [scopedSpecs]
   );
+  const selectedModuleTreeIds = useMemo(() => {
+    const selectedIds = new Set<string>();
+    for (const selected of filters.moduleNames) {
+      for (const node of moduleFilterNodes) {
+        if (node.id === selected || treeFilterNodePath(node) === selected || node.label === selected) {
+          selectedIds.add(node.id);
+        }
+      }
+    }
+    return [...selectedIds];
+  }, [filters.moduleNames, moduleFilterNodes]);
   const lifecycleValues = useMemo(() => {
     const present = new Set(scopedSpecs.map((spec) => spec.reviewState));
     for (const selected of filters.lifecycles) present.add(selected);
@@ -392,6 +433,14 @@ export function ParameterSpecLibrary({
       ...current,
       [key]: toggleSelected(current[key], value)
     }));
+  };
+
+  const updateModuleTreeFilter = (nextIds: string[]) => {
+    const selectedPaths = nextIds
+      .map((id) => moduleFilterNodes.find((node) => node.id === id))
+      .filter((node): node is TreeFilterNode => Boolean(node))
+      .map((node) => treeFilterNodePath(node));
+    setFilters((current) => ({ ...current, moduleNames: selectedPaths }));
   };
 
   return (
@@ -465,9 +514,11 @@ export function ParameterSpecLibrary({
                     <ColumnFilter
                       label={PARAMETER_ADMIN_UI.specAttributionModule}
                       groupLabel="所属模块筛选"
-                      values={moduleValues}
-                      selectedValues={filters.moduleNames}
-                      onToggle={(value) => patchFilterList("moduleNames", value)}
+                      mode="tree"
+                      treeNodes={moduleFilterNodes}
+                      selectedTreeIds={selectedModuleTreeIds}
+                      treeSearchable
+                      onTreeChange={updateModuleTreeFilter}
                       onClear={() => setFilters((current) => ({ ...current, moduleNames: [] }))}
                     />
                   </span>

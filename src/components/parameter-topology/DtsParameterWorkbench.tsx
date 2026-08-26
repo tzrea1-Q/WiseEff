@@ -10,6 +10,7 @@ import {
 import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import { presentError } from "@/infrastructure/http/presentError";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
+import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import {
   clearUnsavedParameterWork,
   reportUnsavedParameterWork
@@ -22,6 +23,10 @@ import type {
   SourceTopologyNode
 } from "@/domain/parameter-topology/types";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
+import {
+  canonicalizeTreeFilterSelection,
+  collectTreeFilterSelectedDescendantIds
+} from "@/domain/tree-filter/treeFilter";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import {
@@ -324,22 +329,30 @@ export function DtsParameterWorkbench({
     }),
     [currentRows, normalizedQuery, subtreeBindingIds]
   );
-  const moduleFilterOptions = useMemo(
+  const moduleFilterNodes = useMemo(
     () =>
-      Array.from(new Set(scopedRows.map((row) => row.moduleName.trim()).filter(Boolean))).sort((left, right) =>
-        left.localeCompare(right, "zh-Hans-CN")
+      buildParameterModuleFilterNodes(
+        scopedRows.map((row) => ({
+          moduleId: row.moduleId,
+          moduleName: row.moduleName,
+          modulePath: row.modulePath
+        })),
+        moduleRegistry?.modules
       ),
-    [scopedRows]
+    [moduleRegistry, scopedRows]
   );
   const activeModuleFilter = useMemo(
-    () => moduleFilter.filter((name) => moduleFilterOptions.includes(name)),
-    [moduleFilter, moduleFilterOptions]
+    () => {
+      const nodeIds = new Set(moduleFilterNodes.map((node) => node.id));
+      return canonicalizeTreeFilterSelection(moduleFilterNodes, moduleFilter).filter((id) => nodeIds.has(id));
+    },
+    [moduleFilter, moduleFilterNodes]
   );
   const visibleRows = useMemo(() => {
     if (activeModuleFilter.length === 0) return scopedRows;
-    const selected = new Set(activeModuleFilter);
-    return scopedRows.filter((row) => selected.has(row.moduleName));
-  }, [activeModuleFilter, scopedRows]);
+    const selected = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, activeModuleFilter);
+    return scopedRows.filter((row) => selected.has(row.moduleId));
+  }, [activeModuleFilter, moduleFilterNodes, scopedRows]);
 
   const reloadHandoff = useMemo(
     () =>
@@ -351,12 +364,6 @@ export function DtsParameterWorkbench({
       }),
     [currentRows.length, projectId, selectedBindingIds, visibleRows]
   );
-
-  const toggleModuleFilter = (value: string) => {
-    setModuleFilter((current) =>
-      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
-    );
-  };
 
   useEffect(() => {
     const scroller = listScrollXRef.current;
@@ -771,9 +778,9 @@ export function DtsParameterWorkbench({
                 <div className="dts-workbench-list__scroll-y">
                   <DtsParameterWorkbenchTable
                     rows={visibleRows}
-                    moduleFilterOptions={moduleFilterOptions}
                     moduleFilterSelected={activeModuleFilter}
-                    onModuleFilterToggle={toggleModuleFilter}
+                    moduleFilterNodes={moduleFilterNodes}
+                    onModuleFilterChange={setModuleFilter}
                     onModuleFilterClear={() => setModuleFilter([])}
                     selectedBindingId={selectedBindingId}
                     draftBindingIds={draftBindingIds}

@@ -11,6 +11,7 @@ import {
 
 import { ColumnFilter } from "@/components/ColumnFilter";
 import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
+import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 
@@ -23,12 +24,15 @@ export type DtsWorkbenchSort = {
 
 export type DtsParameterWorkbenchTableProps = {
   rows: DtsParameterWorkbenchRow[];
-  /** Distinct module names for the column filter; defaults to names from `rows`. */
+  /** Legacy flat filter options for callers that have not migrated to tree mode. */
   moduleFilterOptions?: readonly string[];
-  /** Selected module names; empty means no column filter (show all). */
+  /** Legacy selected module names; empty means no column filter. */
   moduleFilterSelected?: readonly string[];
   onModuleFilterToggle?: (moduleName: string) => void;
   onModuleFilterClear?: () => void;
+  /** Hierarchical module options and canonical selected root ids. */
+  moduleFilterNodes?: readonly TreeFilterNode[];
+  onModuleFilterChange?: (next: string[]) => void;
   selectedBindingId: string | null;
   draftBindingIds: ReadonlySet<string>;
   selectedBindingIds?: ReadonlySet<string>;
@@ -159,6 +163,8 @@ export function DtsParameterWorkbenchTable({
   moduleFilterSelected: controlledModuleFilterSelected,
   onModuleFilterToggle,
   onModuleFilterClear,
+  moduleFilterNodes,
+  onModuleFilterChange,
   selectedBindingId,
   draftBindingIds,
   selectedBindingIds,
@@ -176,9 +182,16 @@ export function DtsParameterWorkbenchTable({
     controlledModuleFilterSelected != null &&
     onModuleFilterToggle != null &&
     onModuleFilterClear != null;
-  const moduleFilterSelected = moduleFilterControlled
-    ? [...controlledModuleFilterSelected]
-    : uncontrolledModuleFilter;
+  const treeModuleFilterControlled =
+    moduleFilterNodes != null &&
+    controlledModuleFilterSelected != null &&
+    onModuleFilterChange != null;
+  const moduleFilterSelected = useMemo(
+    () => (treeModuleFilterControlled || moduleFilterControlled
+      ? [...(controlledModuleFilterSelected ?? [])]
+      : uncontrolledModuleFilter),
+    [controlledModuleFilterSelected, moduleFilterControlled, treeModuleFilterControlled, uncontrolledModuleFilter]
+  );
   const selectionEnabled = Boolean(onSelectedBindingIdsChange && selectedBindingIds);
   const draftRows = useMemo(
     () => rows.filter((row) => draftBindingIds.has(row.bindingId)),
@@ -191,16 +204,16 @@ export function DtsParameterWorkbenchTable({
     );
   }, [moduleFilterOptions, rows]);
   const activeModuleFilter = useMemo(
-    () => moduleFilterSelected.filter((name) => moduleValues.includes(name)),
-    [moduleFilterSelected, moduleValues]
+    () => (treeModuleFilterControlled ? [] : moduleFilterSelected.filter((name) => moduleValues.includes(name))),
+    [moduleFilterSelected, moduleValues, treeModuleFilterControlled]
   );
   const filteredRows = useMemo(() => {
     // When the parent controls the filter, `rows` are already filtered.
-    if (moduleFilterControlled) return rows;
+    if (moduleFilterControlled || treeModuleFilterControlled) return rows;
     if (activeModuleFilter.length === 0) return rows;
     const selected = new Set(activeModuleFilter);
     return rows.filter((row) => selected.has(row.moduleName));
-  }, [activeModuleFilter, moduleFilterControlled, rows]);
+  }, [activeModuleFilter, moduleFilterControlled, rows, treeModuleFilterControlled]);
   const sortedRows = useMemo(() => {
     if (!sort) return filteredRows;
     return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
@@ -227,6 +240,10 @@ export function DtsParameterWorkbenchTable({
   };
 
   const clearModuleFilter = () => {
+    if (treeModuleFilterControlled) {
+      onModuleFilterChange?.([]);
+      return;
+    }
     if (moduleFilterControlled) {
       onModuleFilterClear();
       return;
@@ -279,6 +296,18 @@ export function DtsParameterWorkbenchTable({
           <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
             <span className="dts-parameter-workbench-table__head-cell">
               <span>所属模块</span>
+            {treeModuleFilterControlled ? (
+              <ColumnFilter
+                label="所属模块"
+                groupLabel="所属模块筛选"
+                mode="tree"
+                treeNodes={moduleFilterNodes ?? []}
+                selectedTreeIds={moduleFilterSelected}
+                onTreeChange={(next) => onModuleFilterChange?.(next)}
+                onClear={clearModuleFilter}
+                treeSearchable
+              />
+            ) : (
               <ColumnFilter
                 label="所属模块"
                 groupLabel="所属模块筛选"
@@ -287,6 +316,7 @@ export function DtsParameterWorkbenchTable({
                 onToggle={toggleModuleFilter}
                 onClear={clearModuleFilter}
               />
+            )}
             </span>
           </span>
           <span role="columnheader" className="dts-parameter-workbench-table__driver-col">

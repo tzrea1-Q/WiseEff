@@ -62,4 +62,20 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     fireEvent.keyDown(window, { key: "Enter" });
     expect(screen.getByRole("dialog", { name: "提交详情" })).toBeInTheDocument();
   });
+
+  it("exposes the module filter as a collapsed hierarchy with ancestor selection", () => {
+    renderReview();
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
+    const menu = screen.getByRole("group", { name: "模块筛选" });
+    const tree = within(menu).getByRole("tree");
+    expect(within(tree).getByRole("treeitem", { name: "Power" })).toBeInTheDocument();
+    expect(within(tree).queryByRole("treeitem", { name: "Charging" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "Power" }));
+    const selectedPower = within(menu).getByRole("treeitem", { name: "Power" });
+    expect(selectedPower).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(selectedPower).getByRole("button", { name: "展开" }));
+    expect(within(menu).getByRole("treeitem", { name: "Charging" })).toHaveAttribute("aria-checked", "true");
+  });
 });

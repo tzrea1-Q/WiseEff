@@ -29,6 +29,7 @@ import {
   type RuntimeRow
 } from "./application/debugging/nodeDebuggingSession";
 import { useNodeDebuggingSession } from "./application/debugging/useNodeDebuggingSession";
+import { buildParameterModuleFilterNodes } from "./application/parameters/buildModuleFilterNodes";
 import type { DebugConnectionProtocol } from "./domain/debugging/types";
 import {
   debugValueEditorRows,
@@ -41,6 +42,7 @@ import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debu
 import { nodeRowSubtitle } from "@/domain/debugging/nodeRowSubtitle";
 import {
   buildRuntimeDebugModuleTree,
+  debugNodeModuleId,
   filterDebugNodesByModuleTree,
   modulePathLabelForDebugNode
 } from "@/debugAdminModules";
@@ -322,6 +324,23 @@ export function NodeDebuggingPage({
   }, [protocol, runtimeReady]);
 
   const moduleNodes = useMemo(() => buildRuntimeDebugModuleTree(rows), [rows]);
+  const moduleFilterNodes = useMemo(
+    () =>
+      buildParameterModuleFilterNodes(
+        rows.map((row) => ({
+          moduleId: debugNodeModuleId(row),
+          moduleName: row.module,
+          modulePath: row.modulePath
+        })),
+        moduleNodes.map((node) => ({
+          id: node.id,
+          name: node.name,
+          parentId: node.parentId,
+          sortOrder: node.sortOrder
+        }))
+      ),
+    [moduleNodes, rows]
+  );
   const activeModuleFilters = useMemo(() => {
     const availableModuleIds = new Set(moduleNodes.map((node) => node.id));
     return moduleFilters.filter((moduleId) => availableModuleIds.has(moduleId));
@@ -494,7 +513,17 @@ export function NodeDebuggingPage({
                     </th>
                     <th scope="col">
                       <div className="parameters-table-head-cell">
-                        {renderModuleFilter("模块")}
+                        <span>模块</span>
+                        <ColumnFilter
+                          label="模块"
+                          groupLabel="所属模块筛选"
+                          mode="tree"
+                          treeNodes={moduleFilterNodes}
+                          selectedTreeIds={activeModuleFilters}
+                          onTreeChange={setModuleFilters}
+                          treeSearchable
+                          onClear={() => setModuleFilters([])}
+                        />
                       </div>
                     </th>
                     <th scope="col">

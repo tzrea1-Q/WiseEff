@@ -2,6 +2,7 @@ import { Eye, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "@/domain/parameters/types";
+import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./ColumnFilter";
@@ -11,17 +12,31 @@ type SortKey = "name" | "module" | "source" | "valueDiff" | "range" | "risk" | "
 type SortState = { key: SortKey; dir: "asc" | "desc" };
 type FilterableColumnKey = Extract<SortKey, "module" | "risk">;
 
-export type ParametersColumnFilter = {
+type ParametersColumnFilterCommon = {
   key: string;
   label: string;
   groupLabel: string;
-  values: string[];
-  selectedValues: string[];
-  renderLabel?: (value: string) => string;
-  onToggle: (value: string) => void;
   onClear: () => void;
   align?: "left" | "right";
 };
+
+export type ParametersColumnFilter = ParametersColumnFilterCommon &
+  (
+    | {
+        mode?: "flat";
+        values: string[];
+        selectedValues: string[];
+        renderLabel?: (value: string) => string;
+        onToggle: (value: string) => void;
+      }
+    | {
+        mode: "tree";
+        treeNodes: readonly TreeFilterNode[];
+        selectedTreeIds: readonly string[];
+        onTreeChange: (next: string[]) => void;
+        treeSearchable?: boolean;
+      }
+  );
 
 export type ParametersTableProps = {
   rows: ParameterRecord[];
@@ -229,7 +244,12 @@ export function ParametersTable({
       filteredRows.filter((row) =>
         filterableHeaders.every((header) => {
           const providedFilter = columnFilterByKey.get(header.key);
-          const selectedValues = providedFilter?.selectedValues ?? internalColumnFilters[header.key] ?? [];
+          // Tree-mode consumers own subtree filtering at the page/workbench
+          // seam; the table only renders their controlled option surface.
+          const selectedValues =
+            providedFilter?.mode === "tree"
+              ? []
+              : providedFilter?.selectedValues ?? internalColumnFilters[header.key] ?? [];
           return selectedValues.length === 0 || selectedValues.includes(getColumnFilterValue(row, header.key));
         })
       ),

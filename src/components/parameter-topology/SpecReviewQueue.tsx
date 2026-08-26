@@ -3,6 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
+import { buildPathModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
+import {
+  collectTreeFilterSelectedDescendantIds,
+  treeFilterNodePath,
+  type TreeFilterNode
+} from "@/domain/tree-filter/treeFilter";
 import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
 
 import { SpecReviewTaskDialog } from "./SpecReviewTaskDialog";
@@ -57,6 +63,8 @@ export type SpecReviewQueueProps = {
   /** Fetch the next server cursor page; used by 「下一页」 when local pages are exhausted. */
   onLoadMore?: () => void | Promise<void>;
   loadingMore?: boolean;
+  /** Optional shared module taxonomy; absent tasks still render a path-aware tree of their modules. */
+  moduleFilterNodes?: readonly TreeFilterNode[];
 };
 
 type QueueFilters = {
@@ -71,28 +79,40 @@ const EMPTY_FILTERS: QueueFilters = {
   matchStatuses: []
 };
 
-function uniqueValues(values: Array<string | null | undefined>): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    const trimmed = value?.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    result.push(trimmed);
-  }
-  return result.sort((a, b) => a.localeCompare(b, "zh-CN"));
-}
-
 function toggleSelected(selected: readonly string[], value: string): string[] {
   return selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
 }
 
-function filterTasks(tasks: readonly SpecReviewTaskView[], filters: QueueFilters): SpecReviewTaskView[] {
+function moduleFilterIdsForValues(nodes: readonly TreeFilterNode[], values: readonly string[]): string[] {
+  const selectedIds = new Set<string>();
+  for (const value of values) {
+    for (const node of nodes) {
+      if (node.id === value || node.label === value || treeFilterNodePath(node) === value) {
+        selectedIds.add(node.id);
+      }
+    }
+  }
+  return [...selectedIds];
+}
+
+function filterTasks(
+  tasks: readonly SpecReviewTaskView[],
+  filters: QueueFilters,
+  moduleFilterNodes: readonly TreeFilterNode[]
+): SpecReviewTaskView[] {
   const query = filters.q.trim().toLowerCase();
+  const selectedModuleIds = moduleFilterIdsForValues(moduleFilterNodes, filters.driverModules);
+  const allowedModuleIds = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, selectedModuleIds);
   return tasks.filter((task) => {
     if (filters.driverModules.length > 0) {
       const driver = task.driverModule?.trim() || "";
-      if (!filters.driverModules.includes(driver)) return false;
+      const matchingNodeIds = moduleFilterNodes
+        .filter((node) => node.label === driver || treeFilterNodePath(node) === driver)
+        .map((node) => node.id);
+      if (
+        !filters.driverModules.includes(driver) &&
+        !matchingNodeIds.some((nodeId) => allowedModuleIds.has(nodeId))
+      ) return false;
     }
     if (filters.matchStatuses.length > 0) {
       if (!filters.matchStatuses.includes(matchStatusLabel(task))) return false;
@@ -122,7 +142,8 @@ export function SpecReviewQueue({
   actionError = null,
   nextCursor = null,
   onLoadMore,
-  loadingMore = false
+  loadingMore = false,
+  moduleFilterNodes: providedModuleFilterNodes
 }: SpecReviewQueueProps) {
   const [filters, setFilters] = useState<QueueFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -130,10 +151,26 @@ export function SpecReviewQueue({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [advanceAfterLoad, setAdvanceAfterLoad] = useState(false);
 
-  const filtered = useMemo(() => filterTasks(tasks, filters), [tasks, filters]);
+  const moduleFilterNodes = useMemo(
+    () =>
+      providedModuleFilterNodes ??
+      buildPathModuleFilterNodes(
+        tasks.map((task) => ({
+          moduleName: task.driverModule?.trim() || "未归类"
+        }))
+      ),
+    [providedModuleFilterNodes, tasks]
+  );
+  const selectedModuleTreeIds = useMemo(
+    () => moduleFilterIdsForValues(moduleFilterNodes, filters.driverModules),
+    [filters.driverModules, moduleFilterNodes]
+  );
+  const filtered = useMemo(
+    () => filterTasks(tasks, filters, moduleFilterNodes),
+    [moduleFilterNodes, tasks, filters]
+  );
   const pagination = useMemo(() => paginateItems(filtered, page, pageSize), [filtered, page, pageSize]);
 
-  const driverValues = useMemo(() => uniqueValues(tasks.map((task) => task.driverModule)), [tasks]);
   const matchStatusValues = useMemo(() => {
     const present = new Set(tasks.map((task) => matchStatusLabel(task)));
     for (const selected of filters.matchStatuses) present.add(selected);
@@ -243,12 +280,17 @@ export function SpecReviewQueue({
                     <ColumnFilter
                       label="所属模块"
                       groupLabel="所属模块筛选"
-                      values={driverValues}
-                      selectedValues={filters.driverModules}
-                      onToggle={(value) =>
+                      mode="tree"
+                      treeNodes={moduleFilterNodes}
+                      selectedTreeIds={selectedModuleTreeIds}
+                      treeSearchable
+                      onTreeChange={(next) =>
                         patchFilters((current) => ({
                           ...current,
-                          driverModules: toggleSelected(current.driverModules, value)
+                          driverModules: next
+                            .map((id) => moduleFilterNodes.find((node) => node.id === id))
+                            .filter((node): node is TreeFilterNode => Boolean(node))
+                            .map((node) => treeFilterNodePath(node))
                         }))
                       }
                       onClear={() => patchFilters((current) => ({ ...current, driverModules: [] }))}

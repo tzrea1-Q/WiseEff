@@ -27,14 +27,18 @@ import {
   buildParameterModuleTree
 } from "./parameterAdminLibrary";
 import {
-  collectSubtreeModuleIds,
   parameterModuleId
 } from "@/domain/modules/moduleTree";
+import {
+  collectTreeFilterSelectedDescendantIds,
+  type TreeFilterNode
+} from "@/domain/tree-filter/treeFilter";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/ApiProjectTopologyWorkspace";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -162,9 +166,36 @@ export function ParametersPage({
     () => buildParameterModuleTree(projectParameters, state.configDraft?.parameterModules ?? []),
     [projectParameters, state.configDraft?.parameterModules]
   );
+  const moduleFilterNodes = useMemo<TreeFilterNode[]>(
+    () => {
+      const searchScope = searchQuery.trim().toLocaleLowerCase();
+      const scopedRows = projectParameters
+        .filter((parameter) => {
+          const matchesSearch = !searchScope || [parameter.name, parameter.description, parameter.module]
+            .some((value) => value.toLocaleLowerCase().includes(searchScope));
+          const matchesRisk = riskFilters.size === 0 || riskFilters.has(parameter.risk);
+          return matchesSearch && matchesRisk;
+        })
+        .map((parameter) => ({
+          moduleId: parameterModuleId(parameter),
+          moduleName: parameter.module,
+          modulePath: parameter.modulePath
+        }));
+      return buildParameterModuleFilterNodes(
+        scopedRows,
+        moduleNodes.map((node) => ({
+          id: node.id,
+          name: node.name,
+          parentId: node.parentId,
+          sortOrder: node.sortOrder
+        }))
+      );
+    },
+    [moduleNodes, projectParameters, riskFilters, searchQuery]
+  );
   const allowedModuleIds = useMemo(
-    () => collectSubtreeModuleIds(moduleNodes, Array.from(moduleFilters)),
-    [moduleFilters, moduleNodes]
+    () => collectTreeFilterSelectedDescendantIds(moduleFilterNodes, Array.from(moduleFilters)),
+    [moduleFilterNodes, moduleFilters]
   );
   const parameterById = useMemo(
     () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
@@ -883,6 +914,17 @@ export function ParametersPage({
                 />
               }
               columnFilters={[
+                {
+                  key: "module",
+                  label: "模块",
+                  groupLabel: "模块筛选",
+                  mode: "tree",
+                  treeNodes: moduleFilterNodes,
+                  selectedTreeIds: Array.from(moduleFilters),
+                  onTreeChange: (next) => setModuleFilters(new Set(next)),
+                  onClear: () => setModuleFilters(new Set()),
+                  treeSearchable: true
+                },
                 {
                   key: "risk",
                   label: "重要性",
