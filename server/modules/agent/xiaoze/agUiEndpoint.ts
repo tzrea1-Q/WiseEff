@@ -5,6 +5,7 @@ import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared
 import type { Database } from "../../../shared/database/client";
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../../logs/objectStore";
+import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ServerEnv } from "../../../config/env";
 import { resolveXiaozeLlmConfig } from "../../../config/xiaozeLlmConfig";
 import { getAgentSession } from "../repository";
@@ -548,6 +549,7 @@ export function registerXiaozeRoutes(
     toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
     objectStore?: ObjectStore;
     knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
+    refusalAuditSink?: TrustedRefusalAuditSink;
   }
 ) {
   if (!options.db) {
@@ -574,7 +576,8 @@ export function registerXiaozeRoutes(
     createAgentToolRegistry({
       db: options.db,
       objectStore: options.objectStore,
-      knowledgeEmbeddingClient: options.knowledgeEmbeddingClient
+      knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
+      refusalAuditSink: options.refusalAuditSink
     });
   const orchestrator = options.orchestrator ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =

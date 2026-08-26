@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { asAuditTx, withAuditedWrite, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import { createAgentInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createAgentToolRegistry } from "./toolRegistry";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import {
@@ -129,7 +130,9 @@ export function createAgentOrchestrator(options: {
   const db = options.db;
   const metrics = options.metrics;
   const tracing = options.tracing;
-  const registryFor = (database: Database) => options.toolRegistry ?? createAgentToolRegistry({ db: database });
+  const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+  const registryFor = (database: Database) =>
+    options.toolRegistry ?? createAgentToolRegistry({ db: database, refusalAuditSink });
   const toolRegistry = registryFor(db);
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
@@ -248,6 +251,7 @@ export function createAgentOrchestrator(options: {
       invocation,
       requestId: input.requestId,
       sessionId: toolCall.sessionId,
+      toolCallId: toolCall.id,
       projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : toolCall.projectId,
       approvalId: invocation.initiator === "agent" ? invocation.approvalId ?? undefined : undefined
     };

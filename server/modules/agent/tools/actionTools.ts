@@ -1,5 +1,11 @@
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import {
+  assertTrustedInvocationContext,
+  TrustedInvocationContextError,
+  type AgentInvocationContext
+} from "../../auth/trustedInvocation";
 import { createAgentKnowledgeDraft } from "../../knowledge/service";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
@@ -7,7 +13,7 @@ import { parseDtsValue } from "../../dts/valueAst";
 import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
-import { assertSensitiveNodeWriteAllowed } from "../../parameter-kernel/sensitiveNode";
+import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
@@ -20,6 +26,7 @@ type ToolOptions = {
   objectStore?: ObjectStore;
   /** Injected by tests; production uses the real toolchain runner. */
   toolchain?: DtsToolchainRunner;
+  refusalAuditSink?: TrustedRefusalAuditSink;
 };
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
@@ -36,6 +43,27 @@ function submissionCitation(changeRequestId: string, projectId: string, targetVa
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];
+}
+
+function requireDurableAgentInvocation(context: AgentToolExecutionContext): AgentInvocationContext {
+  const invocation = assertTrustedInvocationContext(context.invocation);
+  if (
+    invocation.initiator !== "agent" ||
+    invocation.sessionId !== context.sessionId ||
+    invocation.toolCallId !== context.toolCallId ||
+    !invocation.approvalRequired ||
+    invocation.approvalId !== context.approvalId
+  ) {
+    throw new TrustedInvocationContextError(
+      "parameter submission requires the durable Agent session, tool-call, and approval invocation"
+    );
+  }
+  return invocation;
+}
+
+function requireParameterSubmissionRefusalSink(options: ToolOptions): TrustedRefusalAuditSink {
+  assertTrustedRefusalAuditSink(options.refusalAuditSink);
+  return options.refusalAuditSink;
 }
 
 const MAX_DRAFT_TITLE_CHARS = 200;
@@ -62,6 +90,8 @@ function readDraftTags(payload: Record<string, unknown>): string[] {
 async function submitLegacyParameterChange(
   db: Database,
   context: AgentToolExecutionContext,
+  invocation: AgentInvocationContext,
+  refusalSink: TrustedRefusalAuditSink,
   input: { projectId: string; parameterId: string; targetValue: string; reason: string }
 ) {
   const parameter = await getProjectParameterForUpdate(db, {
@@ -70,13 +100,14 @@ async function submitLegacyParameterChange(
     parameterId: input.parameterId
   });
   if (parameter?.sourceNodePath) {
-    await assertSensitiveNodeWriteAllowed(db, context.auth, {
+    await assertTrustedSensitiveNodeSubmissionAllowed(db, context.auth, {
       organizationId: context.auth.organization.id,
       projectId: input.projectId,
       nodePath: parameter.sourceNodePath,
       sourceFileName: parameter.sourceFileName,
-      actorType: "agent",
-      requestId: context.requestId
+      invocation,
+      requestId: context.requestId,
+      refusalSink
     });
   }
 
@@ -87,7 +118,7 @@ async function submitLegacyParameterChange(
       projectId: input.projectId,
       items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: input.reason }]
     },
-    { requestId: context.requestId, actorType: "agent" }
+    { requestId: context.requestId, invocation, refusalSink }
   );
   const changeRequestId = submission.items[0]?.requestId ?? submission.id;
   return {
@@ -107,6 +138,8 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
     {
       ...requireAgentToolMetadata("action.submitParameterChange"),
       run: async (context, payload) => {
+        const invocation = requireDurableAgentInvocation(context);
+        const refusalSink = requireParameterSubmissionRefusalSink(options);
         const projectId = readProjectId(context.projectId, payload);
         const parameterId = typeof payload.parameterId === "string" ? payload.parameterId : undefined;
         const targetValue = typeof payload.targetValue === "string" ? payload.targetValue : undefined;
@@ -122,7 +155,12 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         const db = options.db;
 
         if ((await resolveParameterIdentityMode(db)) === "legacy") {
-          return submitLegacyParameterChange(db, context, { projectId, parameterId, targetValue, reason });
+          return submitLegacyParameterChange(db, context, invocation, refusalSink, {
+            projectId,
+            parameterId,
+            targetValue,
+            reason
+          });
         }
 
         // Post-cutover: semantic identity is the only accepted submission
@@ -137,13 +175,14 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         // Early sensitive-node guard: refuse critical writes before any draft or
         // candidate revision is created. submitParameterChanges re-checks later.
         if (binding.node_locator) {
-          await assertSensitiveNodeWriteAllowed(db, context.auth, {
+          await assertTrustedSensitiveNodeSubmissionAllowed(db, context.auth, {
             organizationId: context.auth.organization.id,
             projectId,
             nodePath: binding.node_locator,
             sourceFileName: undefined,
-            actorType: "agent",
-            requestId: context.requestId
+            invocation,
+            requestId: context.requestId,
+            refusalSink
           });
         }
 
@@ -206,7 +245,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
                 }
               ]
             },
-            { requestId: context.requestId, actorType: "agent" }
+            { requestId: context.requestId, invocation, refusalSink }
           );
           const changeRequestId = submission.items[0]?.requestId ?? submission.id;
           return {

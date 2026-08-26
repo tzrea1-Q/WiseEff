@@ -7,15 +7,21 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { createHttpServer } from "../../shared/http/server";
+import { createPostgresDatabase } from "../../shared/database/client";
+import { withTempDatabase } from "../../testing/tempDatabase";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
+import { testRefusalAuditSink } from "../audit/testRefusalSink";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerParameterFileRoutes } from "../parameter-files/routes";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { classifyDtsValue } from "../dts";
 import { registerParameterRoutes } from "./routes";
 import { submitStructuredEdits } from "./service";
+import { createTestParameterSubmissionContext } from "./testSubmissionContext";
 
 const ORG = "org-p31-edit";
 const USER = "user-p31-edit";
@@ -47,6 +53,7 @@ function makeServer(db: InMemoryTestDatabase, objectStore: ObjectStore, auth: Au
   const routeOptions = {
     db,
     objectStore,
+    refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => auth
   };
   registerParameterFileRoutes(router, routeOptions);
@@ -184,7 +191,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
         }
       ],
       reason: "P3.1 structured edit submit"
-    }, { requestId: "req-it-structured-1" });
+    }, createTestParameterSubmissionContext(auth, "req-it-structured-1"));
 
     expect(round.items).toHaveLength(1);
     expect(round.items[0]?.parameterId).toBe(PPV);
@@ -262,7 +269,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
           reason: "create-mapped structured edit"
         }
       ]
-    }, { requestId: "req-it-structured-2" });
+    }, createTestParameterSubmissionContext(auth, "req-it-structured-2"));
 
     expect(round.items).toHaveLength(1);
     const parameterId = round.items[0]!.parameterId;
@@ -464,7 +471,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             reason: "rbac deny"
           }
         ]
-      }, { requestId: "req-it-structured-3" })
+      }, createTestParameterSubmissionContext(auth, "req-it-structured-3"))
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       status: 403
@@ -472,56 +479,94 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
   });
 
   it("rejects agent actor on critical sensitive nodes", async () => {
-    const objectStore = createMemoryObjectStore();
-    const auth = makeAuth();
-    const fileName = `p31-agent-${randomUUID()}.dts`;
-    const dts = `&amba {
+    await withTempDatabase({ prefix: "structuredprov" }, async ({ db: ownedDb, connectionString }) => {
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const objectStore = createMemoryObjectStore();
+        const auth = makeAuth();
+        await seedBaseline(ownedDb);
+        const fileName = `p31-agent-${randomUUID()}.dts`;
+        const dts = `&amba {
 	i2c@XXXX0000 {
 		mixed_case_reg = /bits/ 8 <0xab 0xcd 0xef 0x12>;
 	};
 };
 `;
-    const uploaded = await uploadProjectParameterFile(db!, objectStore, auth, {
-      projectId: PROJECT,
-      fileName,
-      bytes: Buffer.from(dts, "utf8")
-    });
-    await db!.query(
-      `update project_parameter_values set source_file_name = $1, source_node_path = $2 where id = $3`,
-      [fileName, "amba/i2c@XXXX0000/mixed_case_reg", PPV]
-    );
-    await db!.query(
-      `
-      insert into dts_sensitive_node_rules (
-        id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
-      ) values (
-        $1, $2, $3, 'path', 'amba/*', 'critical', 'parameter:edit-critical', true
-      )
-      `,
-      [randomUUID(), ORG, PROJECT]
-    );
-
-    await expect(
-      submitStructuredEdits(
-        db!,
-        auth,
-        {
+        const uploaded = await uploadProjectParameterFile(ownedDb, objectStore, auth, {
           projectId: PROJECT,
-          edits: [
+          fileName,
+          bytes: Buffer.from(dts, "utf8")
+        });
+        await ownedDb.query(
+          `update project_parameter_values set source_file_name = $1, source_node_path = $2 where id = $3`,
+          [fileName, "amba/i2c@XXXX0000/mixed_case_reg", PPV]
+        );
+        await ownedDb.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values ($1, $2, $3, 'path', 'amba/*', 'critical', 'parameter:edit-critical', true)`,
+          [randomUUID(), ORG, PROJECT]
+        );
+        const refusalSink = createTrustedRefusalAuditSink(refusalRoot);
+        const input = {
+          projectId: PROJECT,
+          edits: [{
+            fileId: uploaded.file.id,
+            nodePath: "amba/i2c@XXXX0000",
+            propertyName: "mixed_case_reg",
+            rawText: RAW_HEX,
+            reason: "critical structured edit"
+          }]
+        };
+        await expect(
+          submitStructuredEdits(
+            ownedDb,
+            auth,
+            input,
             {
-              fileId: uploaded.file.id,
-              nodePath: "amba/i2c@XXXX0000",
-              propertyName: "mixed_case_reg",
-              rawText: RAW_HEX,
-              reason: "agent critical deny"
+              invocation: createAgentInvocation(auth, {
+                sessionId: "session-structured-4",
+                toolCallId: "tool-call-structured-4",
+                approval: { required: true, approvalId: "approval-structured-4" }
+              }),
+              requestId: "req-it-structured-4",
+              refusalSink
             }
-          ]
-        },
-        { actorType: "agent", requestId: "req-it-structured-4" }
-      )
-    ).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      status: 403
+          )
+        ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+        const residue = await ownedDb.query<{ drafts: string; rounds: string; requests: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where organization_id = $1) as drafts,
+             (select count(*)::text from parameter_submission_rounds where organization_id = $1) as rounds,
+             (select count(*)::text from parameter_change_requests where organization_id = $1) as requests`,
+          [ORG]
+        );
+        expect(residue.rows[0]).toEqual({ drafts: "0", rounds: "0", requests: "0" });
+        const refusal = await ownedDb.query<{ actor_type: string; metadata: Record<string, unknown> }>(
+          `select actor_type, metadata from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'`,
+          [ORG]
+        );
+        expect(refusal.rows[0]).toMatchObject({
+          actor_type: "agent",
+          metadata: {
+            initiator: "agent",
+            sessionId: "session-structured-4",
+            toolCallId: "tool-call-structured-4",
+            approvalId: "approval-structured-4"
+          }
+        });
+
+        const userRound = await submitStructuredEdits(ownedDb, auth, input, {
+          invocation: createUserInvocation(auth),
+          requestId: "req-it-structured-user",
+          refusalSink
+        });
+        expect(userRound.items).toHaveLength(1);
+      } finally {
+        await refusalRoot.close();
+      }
     });
   });
 });

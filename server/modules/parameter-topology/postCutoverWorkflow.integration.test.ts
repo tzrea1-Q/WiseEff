@@ -37,6 +37,7 @@ import {
   updateChangeRequestStatus
 } from "../parameters/reviewWorkflowRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
+import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { resolveBindingWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
@@ -92,7 +93,7 @@ function makeAuth(): AuthContext {
     name: "PCW User",
     email: "pcw@example.com",
     organizationName: "PCW Org",
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "parameter:merge", "admin:access"]
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   });
 }
 
@@ -427,7 +428,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "legacy submit must be rejected after cutover"
               }
             ]
-          })
+          }, createTestParameterSubmissionContext(makeAuth(), "request-retired-legacy"))
         ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
@@ -485,7 +486,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 ...overrides
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), `request-binding-${draftId}`));
 
         await expect(submit()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
         await db.query(
@@ -648,7 +649,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "Delete gpio_int through formal review"
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), `request-delete-${draftId}`));
 
         await expect(submitDelete()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 
@@ -823,7 +824,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "submit snapshot"
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), "request-concurrent-draft"));
           await draftRead;
 
           const editorPid = await editClient.query<{ pid: number }>("select pg_backend_pid() as pid");
@@ -973,7 +974,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               targetValue,
               reason: "candidate lock race"
             }]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), "request-candidate-race"));
           await candidateRead;
           const mutatorPid = await mutateClient.query<{ pid: number }>("select pg_backend_pid() as pid");
           const mutation = mutateClient.query(

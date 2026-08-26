@@ -34,6 +34,7 @@ import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
 import { submitParameterChanges } from "../../parameters/service";
 import { createBindingDraft } from "../../parameter-topology/service";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
@@ -112,6 +113,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       env: {
         XIAOZE_PROACTIVE_ENABLED: false,
         XIAOZE_CHECKPOINTER: "memory",
@@ -141,6 +143,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -217,7 +220,15 @@ describe("registerXiaozeRoutes approval assembly", () => {
           })
         ]
       }),
-      expect.objectContaining({ actorType: "agent" })
+      expect.objectContaining({
+        invocation: expect.objectContaining({
+          initiator: "agent",
+          sessionId: threadId,
+          toolCallId: expect.any(String),
+          approvalId: interrupt.approvalId
+        }),
+        refusalSink: testRefusalAuditSink
+      })
     );
     expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "<3600>" });
     expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
@@ -243,6 +254,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -293,6 +305,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -370,6 +383,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => currentAuth
     });
 

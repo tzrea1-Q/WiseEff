@@ -1,5 +1,9 @@
 import { ApiError } from "../../shared/http/errors";
-import type { Database } from "../../shared/database/client";
+import { isRootDatabase, type Database } from "../../shared/database/client";
+import {
+  createTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
 import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../logs/objectStore";
 import type { AuthContext } from "../auth/types";
@@ -19,6 +23,8 @@ export type AgentToolExecutionContext = {
   invocation?: TrustedInvocationContext;
   requestId: string;
   sessionId: string;
+  /** Durable server-owned tool-call id for provenance correlation. */
+  toolCallId?: string;
   projectId?: string;
   /** Set when executing after an `agent_approvals` decision so device writes can reuse the same row. */
   approvalId?: string;
@@ -65,11 +71,14 @@ export function createAgentToolRegistry(options: {
   db: Database;
   objectStore?: ObjectStore;
   knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
+  refusalAuditSink?: TrustedRefusalAuditSink;
 }) {
+  const refusalAuditSink =
+    options.refusalAuditSink ?? (isRootDatabase(options.db) ? createTrustedRefusalAuditSink(options.db) : undefined);
   const tools = [
     ...createPerceptionTools(options),
     ...createKnowledgeTools({ db: options.db, knowledgeEmbeddingClient: options.knowledgeEmbeddingClient }),
-    ...createActionTools(options)
+    ...createActionTools({ ...options, refusalAuditSink })
   ];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 

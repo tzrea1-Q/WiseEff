@@ -29,6 +29,7 @@ import {
   submitParameterChanges
 } from "./service";
 import { createImportBatchBodySchema } from "./schemas";
+import { createTestParameterSubmissionContext } from "./testSubmissionContext";
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
@@ -1010,7 +1011,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
             projectId: "project-2",
             items: [{ parameterId: "param-1", targetValue: "3100", reason: "cross-project" }]
           },
-          { requestId: "req-cross" }
+          createTestParameterSubmissionContext(makeAuth(), "req-cross")
         )
       ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project."));
 
@@ -1221,7 +1222,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
               reason: "b"
             }
           ]
-        })
+        }, createTestParameterSubmissionContext(makeAuth(), "request-mixed-tips"))
       ).rejects.toMatchObject(
         new ApiError(
           "CONFLICT",
@@ -1392,7 +1393,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
             reason: "Disable node"
           }
         ]
-      });
+      }, createTestParameterSubmissionContext(makeAuth(), "request-enablement"));
 
       expect(round).toMatchObject({
         projectId: "project-1",
