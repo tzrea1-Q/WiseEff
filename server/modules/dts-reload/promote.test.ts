@@ -548,5 +548,3 @@ describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
 });
 
 afterAll(async () => closeTestRefusalAuditSink());
-
-afterAll(async () => closeTestRefusalAuditSink());
