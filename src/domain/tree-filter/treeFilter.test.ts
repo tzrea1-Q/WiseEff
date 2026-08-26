@@ -6,6 +6,7 @@ import {
   collectTreeFilterSelectedDescendantIds,
   filterTreeFilterTree,
   getTreeFilterSelectionState,
+  hideSingleTreeFilterRoot,
   toggleTreeFilterSelection,
   type TreeFilterNode
 } from "./treeFilter";
@@ -42,6 +43,19 @@ describe("tree filter model", () => {
     expect(tree.map((node) => node.id)).toEqual(["power"]);
     expect(tree[0]?.children.map((node) => node.id)).toEqual(["battery"]);
     expect(tree[0]?.children[0]?.children.map((node) => node.id)).toEqual(["health"]);
+  });
+
+  it("hides one structural root without changing child selection identity", () => {
+    const tree = buildTreeFilterTree(nodes);
+    const visibleTree = hideSingleTreeFilterRoot(tree);
+
+    expect(visibleTree.map((node) => node.id)).toEqual(["power", "orphan"]);
+
+    const singleRootTree = buildTreeFilterTree(nodes.filter((node) => node.id !== "orphan"));
+    const flattenedRoot = hideSingleTreeFilterRoot(singleRootTree);
+    expect(flattenedRoot.map((node) => node.id)).toEqual(["battery", "charging"]);
+    expect(flattenedRoot[0]?.parentId).toBeNull();
+    expect(flattenedRoot[0]?.children.map((node) => node.id)).toEqual(["health"]);
   });
 
   it("canonicalizes selected values to logical roots", () => {

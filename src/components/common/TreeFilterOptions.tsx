@@ -10,6 +10,7 @@ import {
   flattenTreeFilterTree,
   filterTreeFilterTree,
   getTreeFilterSelectionState,
+  hideSingleTreeFilterRoot,
   toggleTreeFilterSelection,
   treeFilterNodePath,
   type TreeFilterNode,
@@ -27,6 +28,9 @@ type SharedTreeFilterOptionsProps = {
   classNamePrefix?: string;
   ariaLabel?: string;
   showPaths?: boolean;
+  hideSingleRoot?: boolean;
+  /** Number of visible tree levels expanded when the menu first opens. */
+  initialExpandedDepth?: number;
   /** When false, the caller supplies the surrounding role=tree container. */
   treeRole?: boolean;
   /** Focus the search field or the first visible tree item when the menu opens. */
@@ -53,12 +57,11 @@ function ariaChecked(state: TreeFilterSelectionState): boolean | "mixed" {
 
 function accessibleTreeFilterLabel(
   node: TreeFilterNode,
-  allNodes: readonly TreeFilterNode[],
-  showPaths: boolean
+  allNodes: readonly TreeFilterNode[]
 ): string {
   const hasDuplicateLabel = allNodes.some((candidate) => candidate.id !== node.id && candidate.label === node.label);
   const path = treeFilterNodePath(node);
-  return showPaths && hasDuplicateLabel && path !== node.label
+  return hasDuplicateLabel && path !== node.label
     ? `${node.label}，路径：${path}`
     : node.label;
 }
@@ -127,7 +130,7 @@ function TreeFilterOption({
         ? "checked"
         : "unchecked";
   const path = treeFilterNodePath(node);
-  const accessibleLabel = accessibleTreeFilterLabel(node, allNodes, showPaths);
+  const accessibleLabel = accessibleTreeFilterLabel(node, allNodes);
   const rowClassName = [
     `${classNamePrefix}-option-row`,
     "tree-filter-option-row",
@@ -310,19 +313,27 @@ export function TreeFilterOptions({
   classNamePrefix = "tree-filter",
   ariaLabel = "树形筛选",
   showPaths = false,
+  hideSingleRoot = false,
+  initialExpandedDepth = 1,
   treeRole = true,
   focusOnOpen,
   mode,
   onChange
 }: TreeFilterOptionsProps) {
   const tree = useMemo(() => buildTreeFilterTree(nodes), [nodes]);
+  const displayTree = useMemo(
+    () => (hideSingleRoot ? hideSingleTreeFilterRoot(tree) : tree),
+    [hideSingleRoot, tree]
+  );
   const canonicalSelectedIds = useMemo(
     () => canonicalizeTreeFilterSelection(nodes, selectedIds),
     [nodes, selectedIds]
   );
   const [query, setQuery] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => collectTreeFilterExpandedIds(tree));
-  const filteredTree = useMemo(() => filterTreeFilterTree(tree, query), [query, tree]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
+    collectTreeFilterExpandedIds(displayTree, initialExpandedDepth)
+  );
+  const filteredTree = useMemo(() => filterTreeFilterTree(displayTree, query), [displayTree, query]);
   const effectiveExpandedIds = query.trim()
     ? collectTreeFilterExpandedIdsForSearch(filteredTree)
     : expandedIds;
@@ -332,8 +343,8 @@ export function TreeFilterOptions({
   );
   const visibleIds = useMemo(() => visibleTree.map((node) => node.id), [visibleTree]);
   const parentById = useMemo(
-    () => new Map<string, string | null>(flattenTreeFilterTree(tree).map((node) => [node.id, node.parentId])),
-    [tree]
+    () => new Map<string, string | null>(flattenTreeFilterTree(displayTree).map((node) => [node.id, node.parentId])),
+    [displayTree]
   );
   const [activeId, setActiveId] = useState<string | null>(visibleIds[0] ?? null);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());

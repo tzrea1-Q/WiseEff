@@ -32,6 +32,10 @@ export type ColumnFilterTreeProps = ColumnFilterCommonProps & {
   onTreeChange: (next: string[]) => void;
   treeSearchable?: boolean;
   treeShowPaths?: boolean;
+  /** Hide a structural root when the current option tree has exactly one root. */
+  treeHideSingleRoot?: boolean;
+  /** Initial visible expansion depth; -1 keeps every branch collapsed. */
+  treeInitialExpandedDepth?: number;
 };
 
 export type ColumnFilterProps = ColumnFilterFlatProps | ColumnFilterTreeProps;
@@ -171,7 +175,9 @@ export function ColumnFilter(props: ColumnFilterProps) {
                 nodes={props.treeNodes}
                 searchable={props.treeSearchable}
                 selectedIds={props.selectedTreeIds}
-                showPaths={props.treeShowPaths ?? true}
+                showPaths={props.treeShowPaths ?? false}
+                hideSingleRoot={props.treeHideSingleRoot ?? true}
+                initialExpandedDepth={props.treeInitialExpandedDepth ?? -1}
                 onChange={props.onTreeChange}
                 focusOnOpen={props.treeSearchable ? "search" : "tree"}
               />

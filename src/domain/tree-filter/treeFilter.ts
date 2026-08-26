@@ -82,6 +82,21 @@ export function flattenTreeFilterTree(tree: readonly TreeFilterTreeNode[]): Tree
   return result;
 }
 
+/**
+ * Hide a sole structural root while keeping its children as the visible tree roots.
+ * The source tree remains unchanged so selection semantics can still cover the root.
+ */
+export function hideSingleTreeFilterRoot(
+  tree: readonly TreeFilterTreeNode[]
+): TreeFilterTreeNode[] {
+  if (tree.length !== 1 || tree[0]?.children.length === 0) return [...tree];
+
+  return tree[0]!.children.map((node) => ({
+    ...node,
+    parentId: null
+  }));
+}
+
 export function treeFilterNodePath(node: TreeFilterNode): string {
   return pathLabel(node.path) || node.label;
 }

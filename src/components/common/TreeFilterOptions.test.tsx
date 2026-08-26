@@ -52,6 +52,26 @@ describe("TreeFilterOptions", () => {
     expect(within(tree).queryByRole("treeitem", { name: "充电" })).not.toBeInTheDocument();
   });
 
+  it("collapses branches by default, hides one structural root, and keeps paths visual-only", () => {
+    const singleRootNodes = nodes.filter((node) => node.id !== "thermal");
+    render(
+      <TreeFilterOptions
+        mode="multi"
+        nodes={singleRootNodes}
+        selectedIds={[]}
+        hideSingleRoot
+        initialExpandedDepth={-1}
+        onChange={() => undefined}
+      />
+    );
+
+    const tree = screen.getByRole("tree");
+    expect(within(tree).queryByRole("treeitem", { name: "电源" })).not.toBeInTheDocument();
+    expect(within(tree).getByRole("treeitem", { name: "电池" })).toHaveAttribute("aria-level", "1");
+    expect(within(tree).queryByRole("treeitem", { name: "电池健康" })).not.toBeInTheDocument();
+    expect(screen.queryByText("电源 / 电池")).not.toBeInTheDocument();
+  });
+
   it("supports roving tree keyboard navigation and selection", () => {
     const onChange = vi.fn();
     render(<TreeFilterOptions mode="multi" nodes={nodes} selectedIds={[]} onChange={onChange} />);

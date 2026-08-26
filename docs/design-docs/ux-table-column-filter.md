@@ -49,7 +49,7 @@ Open menu:
 
 1. Fixed-position panel (`.parameters-column-filter__menu--fixed`) so horizontal table scroll does not clip it.
 2. Head row: filter title + **清除** (disabled when nothing selected).
-3. Flat mode renders a checkbox list; tree mode renders an expandable tree with checked / mixed / unchecked parent state, optional counts, and optional search by label/path.
+3. Flat mode renders a checkbox list; tree mode renders a collapsed-by-default expandable tree with checked / mixed / unchecked parent state and optional counts. When the scoped tree has one structural root, that wrapper is omitted and its children are promoted to visible roots. Module paths are used for search and duplicate accessible names but are not rendered in the column-filter menu.
 4. Each option has an accessible name equal to the display label.
 5. Empty set copy: `暂无选项`.
 
@@ -76,7 +76,7 @@ selectedRoots.length === 0
 
 Parent pages own the selected-value state (`string[]`). Flat mode stores values; tree mode stores stable module IDs, canonicalized so selecting a parent removes redundant selected descendants. Multiple roots use OR semantics. Derive option lists from the **pre-column-filter** row scope (search / tree / other filters), include connected ancestors, and count only rows in that scope. A scope change must not reinterpret an out-of-scope ID as a same-named module.
 
-Tree search only changes the visible option tree: it retains matching ancestors, auto-expands matching branches, and does not clear the selected roots. Parent state is computed from selectable descendants; a partially covered branch exposes the mixed state.
+Tree search only changes the visible option tree: it retains matching ancestors, auto-expands matching branches, and does not clear the selected roots. Parent state is computed from selectable descendants; a partially covered branch exposes the mixed state. The default closed state does not expand any branch; callers may opt into an initial expansion depth where a denser tree requires it.
 
 Tree mode uses a roving focus model: only the active visible `treeitem` is in the tab order, while its `aria-level`, `aria-expanded`, `aria-checked`, and mixed state remain exposed to assistive technology. Disabled structural ancestors stay visible for context but cannot be selected.
 

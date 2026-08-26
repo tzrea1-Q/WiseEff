@@ -6,7 +6,10 @@ function getModuleTree() {
 
 export function expandModuleTreeNode(moduleName: string) {
   const tree = getModuleTree();
-  const checkbox = within(tree).getByRole("checkbox", { name: moduleName });
+  const checkbox = within(tree).queryByRole("checkbox", { name: moduleName });
+  // ColumnFilter hides a sole structural root; its children are already visible
+  // at the tree's top level and do not need the hidden root expanded first.
+  if (!checkbox) return;
   const option = checkbox.closest(".module-tree-option");
   const expandButton = option?.querySelector("button.module-tree-expand");
 
