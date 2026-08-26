@@ -75,6 +75,7 @@ export type BindingDraftForSubmission = {
   id: string;
   projectId: string;
   bindingId: string;
+  logicalNodeId: string | null;
   parameterSpecId: string;
   candidateConfigRevisionId: string | null;
   candidateStatus: string | null;
@@ -103,6 +104,7 @@ export async function getBindingDraftForSubmission(
       id: string;
       project_id: string;
       project_parameter_binding_id: string;
+      binding_logical_node_id: string | null;
       parameter_spec_id: string;
       candidate_config_revision_id: string | null;
       candidate_status: string | null;
@@ -176,6 +178,7 @@ export async function getBindingDraftForSubmission(
       d.id,
       d.project_id,
       d.project_parameter_binding_id,
+      d.binding_logical_node_id,
       d.parameter_spec_id,
       d.candidate_config_revision_id,
       candidate.status as candidate_status,
@@ -228,6 +231,7 @@ export async function getBindingDraftForSubmission(
     id: row.id,
     projectId: row.project_id,
     bindingId: row.project_parameter_binding_id,
+    logicalNodeId: row.binding_logical_node_id,
     parameterSpecId: row.parameter_spec_id,
     candidateConfigRevisionId: row.candidate_config_revision_id,
     candidateStatus: row.candidate_status,

@@ -29,6 +29,7 @@ vi.mock("../../parameter-topology/service", () => ({
 
 vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
+  loadLogicalNodeSubmissionContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -38,13 +39,18 @@ import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedDeleteDraft = vi.mocked(deleteDraft);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
 const mockedIdentityMode = vi.mocked(resolveParameterIdentityMode);
 const mockedGetLegacyParameter = vi.mocked(getProjectParameterForUpdate);
 
@@ -116,6 +122,7 @@ beforeEach(() => {
   mockedIdentityMode.mockResolvedValue("semantic");
   mockedLoadBinding.mockResolvedValue(bindingContext as never);
   mockedResolveHead.mockResolvedValue("rev-base");
+  mockedLoadNode.mockResolvedValue({ nodeLocator: "charging_core", compatible: "wiseeff,charging_core" });
   mockedCreateDraft.mockResolvedValue(draftResult as never);
   mockedSubmit.mockResolvedValue({ id: "round-1", items: [{ requestId: "cr-9" }] } as never);
 });

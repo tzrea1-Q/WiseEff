@@ -35,6 +35,7 @@ import { writebackMergedEnablementValue, writebackMergedParameterValue, type Wri
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import {
   loadLogicalNodeEnablementContext,
+  loadLogicalNodeSubmissionContext,
   verifyBindingWriteLock,
   verifyEnablementWriteLock
 } from "../parameter-topology/writeLock";
@@ -1450,7 +1451,23 @@ export async function submitParameterChanges(
         });
       }
 
-      if (parameter.sourceNodePath) {
+      if (exactDraft?.writeLock && exactDraft.logicalNodeId) {
+        const node = await loadLogicalNodeSubmissionContext(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          configRevisionId: exactDraft.writeLock.baseConfigRevisionId,
+          logicalNodeId: exactDraft.logicalNodeId
+        });
+        await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          nodePath: node.nodeLocator,
+          compatible: node.compatible,
+          invocation: submissionContext.invocation,
+          requestId: submissionContext.requestId,
+          refusalSink: submissionContext.refusalSink
+        });
+      } else if (!exactDraft && parameter.sourceNodePath) {
         await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
           organizationId: auth.organization.id,
           projectId: input.projectId,

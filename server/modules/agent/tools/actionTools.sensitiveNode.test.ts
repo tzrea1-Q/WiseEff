@@ -24,6 +24,7 @@ vi.mock("../../parameter-topology/service", () => ({
 
 vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
+  loadLogicalNodeSubmissionContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -36,12 +37,18 @@ import { createAgentInvocation } from "../../auth/trustedInvocation";
 import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 import { submitParameterChanges } from "../../parameters/service";
 import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
-import { loadBindingContext } from "../../parameter-topology/writeLock";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedAssert = vi.mocked(assertTrustedSensitiveNodeSubmissionAllowed);
 const mockedLoadBinding = vi.mocked(loadBindingContext);
+const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
+const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 
 describe("action.submitParameterChange sensitive node guard", () => {
@@ -49,6 +56,8 @@ describe("action.submitParameterChange sensitive node guard", () => {
     mockedSubmit.mockReset();
     mockedAssert.mockReset();
     mockedLoadBinding.mockReset();
+    mockedLoadNode.mockReset();
+    mockedResolveHead.mockReset();
   });
 
   it("denies agent writes to critical nodes early and does not submit", async () => {
@@ -69,6 +78,11 @@ describe("action.submitParameterChange sensitive node guard", () => {
       example_value: null,
       policy_target: null
     } as never);
+    mockedResolveHead.mockResolvedValue("rev-1");
+    mockedLoadNode.mockResolvedValue({
+      nodeLocator: "safety/cutover/status",
+      compatible: "vendor,safety-cutover"
+    });
 
     mockedAssert.mockRejectedValue(
       new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", {

@@ -15,7 +15,11 @@ import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 import { knowledgeEntryHref } from "./knowledgeTools";
 import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
@@ -172,14 +176,33 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             parameterId
           });
         }
-        // Early sensitive-node guard: refuse critical writes before any draft or
-        // candidate revision is created. submitParameterChanges re-checks later.
-        if (binding.node_locator) {
+        const baseRevisionId = await resolveBindingHeadRevisionId(db, {
+          organizationId: context.auth.organization.id,
+          projectId,
+          bindingId: parameterId
+        });
+        if (!baseRevisionId) {
+          throw new ApiError(
+            "CONFLICT",
+            "No config revision is available for this parameter binding yet.",
+            { projectId, parameterId }
+          );
+        }
+
+        // Early guard uses the exact server-resolved binding head. Never use
+        // loadBindingContext's display-oriented latest locator as provenance.
+        if (binding.logical_node_id) {
+          const node = await loadLogicalNodeSubmissionContext(db, {
+            organizationId: context.auth.organization.id,
+            projectId,
+            configRevisionId: baseRevisionId,
+            logicalNodeId: binding.logical_node_id
+          });
           await assertTrustedSensitiveNodeSubmissionAllowed(db, context.auth, {
             organizationId: context.auth.organization.id,
             projectId,
-            nodePath: binding.node_locator,
-            sourceFileName: undefined,
+            nodePath: node.nodeLocator,
+            compatible: node.compatible,
             invocation,
             requestId: context.requestId,
             refusalSink
@@ -196,19 +219,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
               error instanceof Error ? error.message : "unrecognized value"
             }`,
             { parameterId, targetValue }
-          );
-        }
-
-        const baseRevisionId = await resolveBindingHeadRevisionId(db, {
-          organizationId: context.auth.organization.id,
-          projectId,
-          bindingId: parameterId
-        });
-        if (!baseRevisionId) {
-          throw new ApiError(
-            "CONFLICT",
-            "No config revision is available for this parameter binding yet.",
-            { projectId, parameterId }
           );
         }
 
