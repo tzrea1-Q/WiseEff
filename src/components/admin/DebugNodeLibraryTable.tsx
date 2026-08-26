@@ -1,11 +1,13 @@
 import { Search } from "lucide-react";
+import { useMemo } from "react";
+import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
-import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import { ColumnFilter } from "@/components/ColumnFilter";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugConnectionProtocol, DebugNodeRegistryEntry } from "@/domain/debugging/types";
 import { nodeBindingStatus } from "@/debugAdminDraft";
-import { filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
+import { debugNodeModuleId, filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
 import "./debug-admin-library-table.css";
 
 export type DebugNodeLibrarySearch = {
@@ -93,6 +95,22 @@ export function DebugNodeLibraryTable({
   loading = false
 }: DebugNodeLibraryTableProps) {
   const filtered = filterNodes(nodes, search, moduleNodes);
+  const moduleFilterNodes = useMemo(() => {
+    const preModuleRows = filterNodes(nodes, { ...search, modules: [] }, moduleNodes);
+    return buildParameterModuleFilterNodes(
+      preModuleRows.map((node) => ({
+        moduleId: debugNodeModuleId(node),
+        moduleName: node.module,
+        modulePath: node.modulePath
+      })),
+      moduleNodes.map((node) => ({
+        id: node.id,
+        name: node.name,
+        parentId: node.parentId,
+        sortOrder: node.sortOrder
+      }))
+    );
+  }, [moduleNodes, nodes, search]);
   const filtersActive = search.q.trim().length > 0 || search.protocol !== "all" || search.modules.length > 0;
   const tableSort = parseLibrarySort(search.sort);
 
@@ -194,14 +212,6 @@ export function DebugNodeLibraryTable({
                 value={search.protocol}
                 onChange={(protocol) => onUpdateSearch({ protocol })}
               />
-              <ModuleTreeSelect
-                label="模块"
-                mode="multi-filter"
-                nodes={moduleNodes}
-                value={search.modules}
-                onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
-                disabled={loading}
-              />
               {filtersActive ? (
                 <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
                   清除筛选
@@ -228,6 +238,18 @@ export function DebugNodeLibraryTable({
           {
             key: "module",
             header: "模块",
+            headerFilter: (
+              <ColumnFilter
+                label="模块"
+                groupLabel="所属模块筛选"
+                mode="tree"
+                treeNodes={moduleFilterNodes}
+                selectedTreeIds={search.modules}
+                onTreeChange={(modules) => onUpdateSearch({ modules })}
+                treeSearchable
+                onClear={() => onUpdateSearch({ modules: [] })}
+              />
+            ),
             sortAccessor: (node) => modulePathLabelForDebugNode(node, moduleNodes),
             render: (node) => modulePathLabelForDebugNode(node, moduleNodes) || "—"
           },

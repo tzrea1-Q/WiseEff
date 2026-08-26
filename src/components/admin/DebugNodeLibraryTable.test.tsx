@@ -61,7 +61,9 @@ describe("DebugNodeLibraryTable", () => {
 
     expect(screen.getByText("Fast charge current")).toBeInTheDocument();
     expect(screen.getByText("Cycle count")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "模块", expanded: false })).toBeInTheDocument();
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    expect(within(moduleHeader).getByRole("button", { name: "筛选模块", expanded: false })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "模块", expanded: false })).not.toBeInTheDocument();
   });
 
   it("filters table rows when module selection is active", () => {
@@ -77,7 +79,8 @@ describe("DebugNodeLibraryTable", () => {
   it("calls onUpdateSearch when a module is toggled", () => {
     const { onUpdateSearch } = renderTable();
 
-    fireEvent.click(screen.getByRole("button", { name: "模块", expanded: false }));
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块", expanded: false }));
     fireEvent.click(screen.getByLabelText("Battery Charging"));
 
     expect(onUpdateSearch).toHaveBeenCalledWith({ modules: [chargingModuleId] });
