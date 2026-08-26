@@ -394,6 +394,9 @@ export async function submitStructuredEdits(
 
     await writeTrustedAuditEventInTx(asAuditTx(tx), {
       invocation: submissionContext.invocation,
+      ...(submissionContext.invocation.initiator === "system"
+        ? { organizationId: auth.organization.id }
+        : {}),
       traceId: submissionContext.requestId,
       projectId: input.projectId,
       app: "parameter-management",
@@ -1691,6 +1694,9 @@ export async function submitParameterChanges(
 
     await writeTrustedAuditEventInTx(asAuditTx(tx), {
       invocation: submissionContext.invocation,
+      ...(submissionContext.invocation.initiator === "system"
+        ? { organizationId: auth.organization.id }
+        : {}),
       traceId: submissionContext.requestId,
       app: "parameter-management",
       kind: "parameter-submit",

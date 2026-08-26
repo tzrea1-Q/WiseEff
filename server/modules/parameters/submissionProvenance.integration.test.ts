@@ -25,6 +25,7 @@ const CRITICAL = "ppv-provenance-critical";
 const HIGH = "ppv-provenance-high";
 const PLAIN = "ppv-provenance-plain";
 const ATOMIC = "ppv-provenance-atomic";
+const SYSTEM_PLAIN = "ppv-provenance-system-plain";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function auth(): AuthContext {
@@ -80,6 +81,11 @@ async function seed(db: Queryable) {
   await seedParameter(db, {
     id: PLAIN,
     definitionId: "definition-provenance-plain",
+    nodePath: null
+  });
+  await seedParameter(db, {
+    id: SYSTEM_PLAIN,
+    definitionId: "definition-provenance-system-plain",
     nodePath: null
   });
   await db.query(
@@ -230,6 +236,34 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
             systemKind: "job",
             systemName: "parameter-provenance-test"
           }
+        });
+
+        await submitParameterChanges(
+          root,
+          principal,
+          {
+            projectId: PROJECT,
+            items: [{ parameterId: SYSTEM_PLAIN, targetValue: "<10>", reason: "system non-sensitive allowed" }]
+          },
+          {
+            invocation: systemInvocation,
+            requestId: "request-provenance-system-success",
+            refusalSink
+          }
+        );
+        const systemSuccess = await db.query<{
+          organization_id: string;
+          actor_type: string;
+          actor_user_id: string | null;
+        }>(
+          `select organization_id, actor_type, actor_user_id from audit_events
+           where organization_id = $1 and kind = 'parameter-submit' and trace_id = $2`,
+          [ORG, "request-provenance-system-success"]
+        );
+        expect(systemSuccess.rows[0]).toEqual({
+          organization_id: ORG,
+          actor_type: "system",
+          actor_user_id: null
         });
 
         const highResult = await actionTool.run(agent, {
