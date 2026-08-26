@@ -40,7 +40,7 @@ export type ColumnFilterTreeProps = ColumnFilterCommonProps & {
 
 export type ColumnFilterProps = ColumnFilterFlatProps | ColumnFilterTreeProps;
 
-const MENU_WIDTH = 240;
+const MENU_WIDTH = 360;
 const MENU_GAP = 7;
 const VIEWPORT_MARGIN = 16;
 const MENU_HEIGHT_ESTIMATE = 320;

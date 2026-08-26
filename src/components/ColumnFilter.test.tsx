@@ -88,6 +88,40 @@ describe("ColumnFilter", () => {
     expect(within(menu).queryByText("电源 / 电池")).not.toBeInTheDocument();
   });
 
+  it("keeps long expanded module names available without ellipsis", async () => {
+    const user = userEvent.setup();
+    const longModuleName = "direct_charge_combination_current_limit_configuration";
+
+    render(
+      <ColumnFilter
+        label="所属模块"
+        groupLabel="所属模块筛选"
+        mode="tree"
+        treeNodes={[
+          { id: "power", label: "电源", parentId: null },
+          { id: "direct", label: "直充", parentId: "power" },
+          { id: "long", label: longModuleName, parentId: "direct" }
+        ]}
+        selectedTreeIds={[]}
+        onTreeChange={() => undefined}
+        onClear={() => undefined}
+        treeHideSingleRoot={false}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
+    const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    const tree = within(menu).getByRole("tree");
+    const power = within(tree).getByRole("treeitem", { name: "电源" });
+    await user.click(within(power).getByRole("button", { name: "展开" }));
+    const direct = within(tree).getByRole("treeitem", { name: "直充" });
+    await user.click(within(direct).getByRole("button", { name: "展开" }));
+
+    const label = within(menu).getByText(longModuleName, { selector: ".parameters-column-filter-label-text" });
+    expect(label).toHaveAttribute("title", longModuleName);
+    expect(label).toHaveTextContent(longModuleName);
+  });
+
   it("closes on Escape and restores focus to the funnel trigger", async () => {
     const user = userEvent.setup();
     render(
