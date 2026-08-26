@@ -19,12 +19,12 @@ describe("ModuleTreeSelect", () => {
     expect(screen.getByText("电池")).toBeInTheDocument();
   });
 
-  it("selecting a parent in multi-filter mode includes subtree ids", () => {
+  it("selecting a parent in multi-filter mode stores one canonical root id", () => {
     const onChange = vi.fn();
     render(<ModuleTreeSelect mode="multi-filter" label="模块" nodes={[...nodes]} value={[]} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: "电源" }));
-    expect(onChange).toHaveBeenCalledWith(["pm-a", "pm-b"]);
+    expect(onChange).toHaveBeenCalledWith(["pm-a"]);
   });
 
   it("single-select mode chooses one module and closes", () => {

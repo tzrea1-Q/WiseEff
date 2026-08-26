@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/components/admin/DataTable";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
+import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { candidateModuleLabel } from "@/features/dts-reload/dtsReloadPresentation";
 import { cn } from "@/lib/utils";
 
@@ -19,10 +20,13 @@ export type DtsReloadCandidateTableProps = {
   onNameQueryChange: (value: string) => void;
   listedCount: number;
   totalCount: number;
-  moduleFilterOptions: readonly string[];
-  selectedModuleFilters: readonly string[];
-  onToggleModuleFilter: (value: string) => void;
+  moduleFilterOptions?: readonly string[];
+  selectedModuleFilters?: readonly string[];
+  onToggleModuleFilter?: (value: string) => void;
   onClearModuleFilter: () => void;
+  moduleFilterNodes?: readonly TreeFilterNode[];
+  selectedModuleFilterIds?: readonly string[];
+  onChangeModuleFilter?: (next: string[]) => void;
   onToggle: (bindingId: string) => void;
   onEdit: (candidate: DtsReloadCandidate) => void;
   pageSize?: number;
@@ -40,10 +44,13 @@ export function DtsReloadCandidateTable({
   onNameQueryChange,
   listedCount,
   totalCount,
-  moduleFilterOptions,
-  selectedModuleFilters,
-  onToggleModuleFilter,
+  moduleFilterOptions = [],
+  selectedModuleFilters = [],
+  onToggleModuleFilter = () => undefined,
   onClearModuleFilter,
+  moduleFilterNodes,
+  selectedModuleFilterIds,
+  onChangeModuleFilter,
   onToggle,
   onEdit,
   pageSize = DTS_RELOAD_CANDIDATE_PAGE_SIZE
@@ -82,7 +89,19 @@ export function DtsReloadCandidateTable({
       header: "模块",
       sortAccessor: (candidate) => candidateModuleLabel(candidate),
       className: "dts-reload-candidate-table__module",
-      headerFilter: (
+      headerFilter: moduleFilterNodes && selectedModuleFilterIds && onChangeModuleFilter ? (
+        <ColumnFilter
+          label="模块"
+          groupLabel="模块筛选"
+          mode="tree"
+          treeNodes={moduleFilterNodes}
+          selectedTreeIds={selectedModuleFilterIds}
+          onTreeChange={onChangeModuleFilter}
+          onClear={onClearModuleFilter}
+          treeSearchable
+          treeShowPaths
+        />
+      ) : (
         <ColumnFilter
           label="模块"
           groupLabel="模块筛选"

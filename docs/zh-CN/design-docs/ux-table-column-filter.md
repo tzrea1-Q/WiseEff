@@ -14,10 +14,12 @@
 | --- | --- |
 | 组件 | `src/components/ColumnFilter.tsx` |
 | 样式 | `src/styles.css` 中的 `.parameters-column-filter*` |
-| 单测 | `src/components/ColumnFilter.test.tsx` |
+| 共享树模型 | `src/domain/tree-filter/treeFilter.ts` |
+| 共享树选项 | `src/components/common/TreeFilterOptions.tsx` |
+| 单测 | `src/components/ColumnFilter.test.tsx`、`src/components/common/TreeFilterOptions.test.tsx`、`src/domain/tree-filter/treeFilter.test.ts` |
 | 参考接入 | `ParametersTable`、`DtsParameterWorkbenchTable`（所属模块）、`ParameterSpecLibrary` / `ProjectAdminTable`（参数后台）、日志/管理/调试表、审核表头 |
 
-禁止再复制第二套漏斗菜单组件。若有公共缺口（菜单内搜索、虚拟列表等），在 `ColumnFilter` 上扩展。
+禁止再复制第二套漏斗菜单组件。若有公共缺口（菜单内搜索、虚拟列表等），在 `ColumnFilter` 上扩展。层级列表头筛选统一使用 `ColumnFilter mode="tree"`；树模型和 `TreeFilterOptions` 同时供 `ModuleTreeSelect` 复用。
 
 ## 适用场景
 
@@ -31,7 +33,7 @@
 **不要**用 `ColumnFilter` 处理：
 
 - 全局搜索（用页面搜索框）。
-- 层级模块树导航（用 `ModuleTreeSelect` / 工作台模块导航）。
+- 非列表头的层级模块导航（用 `ModuleTreeSelect` / 工作台模块导航）。列表头的层级筛选应使用 `ColumnFilter` 树模式。
 - 与列筛选无关的互斥表单选项（普通 `<select>` 或单选组）。
 - 仅排序的表头（用既有排序按钮；若同一列既要排序又要筛选，将 `ColumnFilter` 放在排序旁）。
 
@@ -41,14 +43,15 @@
 
 1. 列标题文本（普通文案，不是伪下拉）。
 2. 小号漏斗触发器（`Funnel`，约 13px），`aria-label={`筛选${label}`}`。
-3. 当 `selectedValues.length > 0` 时显示数量徽章，并带 `.active` 高亮。
+3. 有选中值时显示逻辑根节点数量徽章，并带 `.active` 高亮。树模式统计根节点，不统计根节点展开后的每一行。
 
 打开菜单后：
 
 1. 固定定位面板（`.parameters-column-filter__menu--fixed`），避免横向滚动裁切。
 2. 标题行：筛选项名称 + **清除**（无选中时禁用）。
-3. 勾选列表；每个选项的可访问名称等于展示文案。
-4. 无选项时显示 `暂无选项`。
+3. 平铺模式显示勾选列表；树模式显示可展开树，父节点支持已选 / 半选 / 未选状态，并可显示数量及按名称/路径搜索。
+4. 每个选项的可访问名称等于展示文案。
+5. 无选项时显示 `暂无选项`。
 
 默认 `align="left"`；仅当列靠近右缘、菜单会溢出视口时用 `align="right"`。
 
@@ -57,18 +60,25 @@
 | 动作 | 结果 |
 | --- | --- |
 | 未选任何值 | 本列筛选未生效，不按该列收窄行。 |
-| 勾选/取消 | 增删该值（多选）。 |
+| 勾选/取消 | 增删该值（多选）；树模式保存规范化的根节点 ID，并作用于完整子树。 |
 | 清除 | 重置为 `[]`（未生效）。 |
 | 点外部关闭 | 关闭菜单，保留已选。 |
+| Escape | 关闭菜单，并将焦点还给触发按钮。 |
+| 方向键 / Home / End | 在当前可见树节点间移动；右键展开或进入分支，左键收起或返回父节点。 |
+| Space / Enter | 对当前聚焦树节点执行与鼠标点击一致的选择语义。 |
 
 列筛选规则：
 
 ```text
-selectedValues.length === 0
-  || selectedValues.includes(rowValue)
+selectedRoots.length === 0
+  || rowModuleId 被某个 selectedRoot 覆盖
 ```
 
-由页面持有 `string[]` 选中态。选项列表应从**应用本列筛选之前**的行范围推导（搜索 / 树 / 其他筛选），再叠加列筛选，使计数与导出与可见列表一致。
+由页面持有 `string[]` 选中态。平铺模式保存值；树模式保存稳定模块 ID，并规范化为逻辑根节点（选择父节点会移除冗余子节点）。多个根节点为 OR 关系。选项列表应从**应用本列筛选之前**的行范围推导（搜索 / 树 / 其他筛选），补齐关联祖先，数量只统计该范围内的行。范围变化时不得把范围外的 ID 错配到同名模块。
+
+树搜索只改变选项树的可见范围：保留匹配节点的祖先、自动展开匹配分支，并且不清除已选根节点。父节点状态由可选后代计算，部分覆盖时显示半选。
+
+树模式使用 roving focus：只有当前可见的 `treeitem` 进入 Tab 顺序，同时向辅助技术暴露 `aria-level`、`aria-expanded`、`aria-checked` 及半选状态。禁用的结构祖先保留用于展示层级，但不可被选中。
 
 ## 与排序的组合
 
@@ -89,9 +99,10 @@ selectedValues.length === 0
 
 ## 验证
 
-- 单测：打开、勾选、清除（`ColumnFilter.test.tsx`）。
+- 单测：树模型的排序、孤儿/循环保护、规范化选择（`treeFilter.test.ts`）；打开、勾选、半选、搜索、清除、Escape 与焦点（`ColumnFilter.test.tsx`、`TreeFilterOptions.test.tsx`）。
 - 集成：断言 `getByRole("button", { name: "筛选…" })`、多选与结果计数。
-- 浏览器：桌面 / 平板 / 手机下菜单在横向滚动时仍可用；焦点与点外部关闭正常；无 console error。
+- 回归：覆盖 `ModuleTreeSelect` 的单选、多选筛选、portal、可选 ID 行为；`/parameters` 与 `/dts-reload` 各自使用所属模块注册表，但复用同一树控件。
+- 浏览器：桌面 / 平板 / 手机下菜单在横向滚动时仍可用；搜索、展开/收起、选择、清除、Escape、焦点回收与点外部关闭正常；无 console error。
 
 ## 变更控制
 

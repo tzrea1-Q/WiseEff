@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ColumnFilter } from "./ColumnFilter";
@@ -30,5 +30,54 @@ describe("ColumnFilter", () => {
 
     expect(onToggle).toHaveBeenCalledWith("Charging Policy");
     expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders hierarchical options and returns canonical selected roots", async () => {
+    const user = userEvent.setup();
+    const onTreeChange = vi.fn();
+
+    render(
+      <ColumnFilter
+        label="所属模块"
+        groupLabel="所属模块筛选"
+        mode="tree"
+        treeNodes={[
+          { id: "power", label: "电源", parentId: null, path: "电源" },
+          { id: "charging", label: "充电", parentId: "power", path: "电源 / 充电" }
+        ]}
+        selectedTreeIds={[]}
+        onTreeChange={onTreeChange}
+        onClear={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
+    const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    await user.click(within(menu).getByRole("checkbox", { name: "电源" }));
+
+    expect(onTreeChange).toHaveBeenCalledWith(["power"]);
+    expect(within(menu).getByRole("tree")).toBeInTheDocument();
+  });
+
+  it("closes on Escape and restores focus to the funnel trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <ColumnFilter
+        label="模块"
+        groupLabel="模块筛选"
+        mode="tree"
+        treeNodes={[{ id: "power", label: "电源", parentId: null }]}
+        selectedTreeIds={[]}
+        onTreeChange={() => undefined}
+        onClear={() => undefined}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "筛选模块" });
+    await user.click(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("group", { name: "模块筛选" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });

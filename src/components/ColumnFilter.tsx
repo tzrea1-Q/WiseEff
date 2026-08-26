@@ -2,33 +2,57 @@ import { Funnel } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
+import { TreeFilterOptions } from "@/components/common/TreeFilterOptions";
+import { canonicalizeTreeFilterSelection, type TreeFilterNode } from "@/domain/tree-filter/treeFilter";
+
 /**
  * Standard table-header multi-select filter (quiet funnel + checkbox menu).
  * UX contract: `docs/design-docs/ux-table-column-filter.md`
  * (zh: `docs/zh-CN/design-docs/ux-table-column-filter.md`).
  */
-export type ColumnFilterProps = {
+type ColumnFilterCommonProps = {
   label: string;
   groupLabel: string;
-  values: string[];
-  selectedValues: string[];
-  renderLabel?: (value: string) => string;
-  onToggle: (value: string) => void;
   onClear: () => void;
   align?: "left" | "right";
 };
 
+export type ColumnFilterFlatProps = ColumnFilterCommonProps & {
+  mode?: "flat";
+  values: string[];
+  selectedValues: string[];
+  renderLabel?: (value: string) => string;
+  onToggle: (value: string) => void;
+};
+
+export type ColumnFilterTreeProps = ColumnFilterCommonProps & {
+  mode: "tree";
+  treeNodes: readonly TreeFilterNode[];
+  selectedTreeIds: readonly string[];
+  onTreeChange: (next: string[]) => void;
+  treeSearchable?: boolean;
+  treeShowPaths?: boolean;
+};
+
+export type ColumnFilterProps = ColumnFilterFlatProps | ColumnFilterTreeProps;
+
 const MENU_WIDTH = 240;
 const MENU_GAP = 7;
 const VIEWPORT_MARGIN = 16;
+const MENU_HEIGHT_ESTIMATE = 320;
 
 function getMenuPosition(trigger: HTMLButtonElement, align: "left" | "right"): CSSProperties {
   const rect = trigger.getBoundingClientRect();
+  const below = rect.bottom + MENU_GAP;
+  const top =
+    below + MENU_HEIGHT_ESTIMATE <= window.innerHeight - VIEWPORT_MARGIN
+      ? below
+      : Math.max(VIEWPORT_MARGIN, rect.top - MENU_GAP - MENU_HEIGHT_ESTIMATE);
 
   if (align === "right") {
     return {
       position: "fixed",
-      top: rect.bottom + MENU_GAP,
+      top,
       right: Math.max(VIEWPORT_MARGIN, window.innerWidth - rect.right),
       left: "auto",
       zIndex: "var(--z-dropdown)"
@@ -38,28 +62,23 @@ function getMenuPosition(trigger: HTMLButtonElement, align: "left" | "right"): C
   const maxLeft = window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN;
   return {
     position: "fixed",
-    top: rect.bottom + MENU_GAP,
+    top,
     left: Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)),
     right: "auto",
     zIndex: "var(--z-dropdown)"
   };
 }
 
-export function ColumnFilter({
-  label,
-  groupLabel,
-  values,
-  selectedValues,
-  renderLabel,
-  onToggle,
-  onClear,
-  align = "left"
-}: ColumnFilterProps) {
+export function ColumnFilter(props: ColumnFilterProps) {
+  const { label, groupLabel, onClear, align = "left" } = props;
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const selectedCount = selectedValues.length;
+  const isTreeMode = props.mode === "tree";
+  const selectedCount = isTreeMode
+    ? canonicalizeTreeFilterSelection(props.treeNodes, props.selectedTreeIds).length
+    : props.selectedValues.length;
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) {
@@ -95,7 +114,17 @@ export function ColumnFilter({
     };
 
     window.addEventListener("mousedown", closeOnOutsideClick);
-    return () => window.removeEventListener("mousedown", closeOnOutsideClick);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
   }, [open]);
 
   return (
@@ -109,6 +138,12 @@ export function ColumnFilter({
         onClick={(event) => {
           event.stopPropagation();
           setOpen((current) => !current);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
         }}
       >
         <Funnel size={13} aria-hidden="true" />
@@ -127,17 +162,29 @@ export function ColumnFilter({
               清除
             </button>
           </div>
-          <div className="parameters-column-filter__options">
-            {values.length > 0 ? (
-              values.map((value) => {
-                const optionLabel = renderLabel?.(value) ?? value;
+          <div className={`parameters-column-filter__options${isTreeMode ? " parameters-column-filter__options--tree" : ""}`}>
+            {isTreeMode ? (
+              <TreeFilterOptions
+                ariaLabel={groupLabel}
+                classNamePrefix="parameters-column-filter"
+                mode="multi"
+                nodes={props.treeNodes}
+                searchable={props.treeSearchable}
+                selectedIds={props.selectedTreeIds}
+                showPaths={props.treeShowPaths ?? true}
+                onChange={props.onTreeChange}
+                focusOnOpen={props.treeSearchable ? "search" : "tree"}
+              />
+            ) : props.values.length > 0 ? (
+              props.values.map((value) => {
+                const optionLabel = props.renderLabel?.(value) ?? value;
                 return (
                   <label key={value}>
                     <input
                       type="checkbox"
                       aria-label={optionLabel}
-                      checked={selectedValues.includes(value)}
-                      onChange={() => onToggle(value)}
+                      checked={props.selectedValues.includes(value)}
+                      onChange={() => props.onToggle(value)}
                     />
                     <span>{optionLabel}</span>
                   </label>

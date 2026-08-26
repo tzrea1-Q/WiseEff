@@ -468,6 +468,88 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
   });
 
+  it("selects a registered business module and includes its descendant rows", async () => {
+    const user = userEvent.setup();
+    renderWorkbench({
+      moduleRegistry: {
+        modules: [
+          {
+            id: "business-power",
+            name: "电源",
+            parentId: null,
+            sortOrder: 1,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "business",
+            origin: "curated",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 3,
+            definitionCount: 3
+          },
+          {
+            id: "driver:sc8562",
+            name: "sc8562",
+            parentId: "business-power",
+            sortOrder: 2,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "driver-group",
+            origin: "auto",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 2,
+            definitionCount: 2
+          },
+          {
+            id: "driver:sensor",
+            name: "sensor",
+            parentId: "business-power",
+            sortOrder: 3,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "node-type",
+            origin: "auto",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 1,
+            definitionCount: 1
+          },
+          {
+            id: "driver:mt5788",
+            name: "mt5788",
+            parentId: null,
+            sortOrder: 4,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "driver-group",
+            origin: "auto",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 1,
+            definitionCount: 1
+          }
+        ],
+        mappings: []
+      }
+    });
+
+    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
+    const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    await user.click(within(menu).getByRole("checkbox", { name: "电源" }));
+
+    expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
+      "binding-gpio-int",
+      "binding-watchdog",
+      "binding-sensor-limit"
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
+  });
+
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
     renderWorkbench();
 

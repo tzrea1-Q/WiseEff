@@ -376,6 +376,34 @@ describe("ParametersTable", () => {
     expect(screen.getByRole("button", { name: "按 更新时间 排序" })).toBeInTheDocument();
   });
 
+  it("renders a reusable tree filter without letting the table reinterpret subtree ids", () => {
+    const onTreeChange = vi.fn();
+    setup({
+      columnFilters: [
+        {
+          key: "module",
+          label: "模块",
+          groupLabel: "模块筛选",
+          mode: "tree",
+          treeNodes: [
+            { id: "power", label: "电源", parentId: null },
+            { id: "charging", label: "充电", parentId: "power" }
+          ],
+          selectedTreeIds: [],
+          onTreeChange,
+          onClear: vi.fn()
+        }
+      ]
+    });
+
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
+    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "电源" }));
+
+    expect(onTreeChange).toHaveBeenCalledWith(["power"]);
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+  });
+
   it("keeps sticky columns anchored and gives the search wrapper a focus ring", () => {
     const styles = readStylesheet("src/styles.css");
     const firstColumn = declarationsFor(styles, ".parameters-table-grid th:first-child");

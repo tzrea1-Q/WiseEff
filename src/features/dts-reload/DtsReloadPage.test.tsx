@@ -724,6 +724,29 @@ describe("DtsReloadPage", () => {
     expect(screen.getByText("显示 2 / 2 项")).toBeInTheDocument();
   });
 
+  it("keeps legacy candidates with the same module label independently selectable", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({ bindingId: "binding-legacy-a", module: "legacy" }),
+          candidate({ bindingId: "binding-legacy-b", module: "legacy", displayName: "Second legacy" })
+        ]
+      }))
+    });
+    renderPage(repository);
+
+    const trigger = await screen.findByRole("button", { name: "筛选模块" });
+    await user.click(trigger);
+    const menu = screen.getByRole("group", { name: "模块筛选" });
+    const legacyOptions = within(menu).getAllByRole("checkbox", { name: "legacy" });
+    expect(legacyOptions).toHaveLength(2);
+    await user.click(legacyOptions[0]!);
+
+    expect(screen.getByText("显示 1 / 2 项")).toBeInTheDocument();
+    expect(trigger).toHaveTextContent("1");
+  });
+
   it("sorts the candidate DataTable and exposes aria-sort", async () => {
     const user = userEvent.setup();
     const repository = createRepository({
