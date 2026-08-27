@@ -227,7 +227,7 @@ function toBindingRevision(row: BindingRevisionRow): ProjectParameterBindingRevi
     schemaState: row.schema_state ?? undefined,
     policyState: row.policy_state ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

@@ -460,7 +460,7 @@ function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
     id: row.id,
     requestId: row.request_id,
     reviewerUserId: row.reviewer_user_id,
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

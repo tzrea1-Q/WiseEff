@@ -72,7 +72,7 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     overlayOrder: parseStringArray(row.overlay_order),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

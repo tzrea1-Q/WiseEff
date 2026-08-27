@@ -1169,13 +1169,31 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
 
         await applyMigrations(db, migrationsDir);
 
-        const legacy = await db.query<{ changed_by_user_id: string | null }>(
-          `select changed_by_user_id
+        const legacy = await db.query<{
+          changed_by_user_id: string | null;
+          initiator_type: string;
+        }>(
+          `select changed_by_user_id, initiator_type
            from parameter_history_entries
            where id = $1`,
           [seeded.historyId]
         );
         expect(legacy.rows[0]?.changed_by_user_id).toBeNull();
+        expect(legacy.rows[0]?.initiator_type).toBe("legacy");
+
+        const attributed = await db.query<{
+          created_by_user_id: string | null;
+          initiator_type: string;
+        }>(
+          `select created_by_user_id, initiator_type
+           from project_parameter_file_versions
+           where id = $1`,
+          ["fv-mig-14"]
+        );
+        expect(attributed.rows[0]).toMatchObject({
+          created_by_user_id: USER,
+          initiator_type: "user"
+        });
 
         await expect(
           db.query(

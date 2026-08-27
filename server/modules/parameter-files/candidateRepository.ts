@@ -67,7 +67,7 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
     createdAt: dateTimeToIso(row.created_at),
     updatedAt: dateTimeToIso(row.updated_at),
     createdByUserId: row.created_by_user_id ?? undefined,
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

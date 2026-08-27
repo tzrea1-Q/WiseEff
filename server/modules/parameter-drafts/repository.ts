@@ -718,7 +718,7 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     ...(name ? { name } : {}),
     ...(module ? { module } : {}),
     ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {}),
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,
@@ -747,7 +747,7 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
     origin: row.origin ?? "manual",
     originFileVersionId: row.origin_file_version_id ?? undefined,
     updatedAt: dateTimeToIso(row.updated_at),
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

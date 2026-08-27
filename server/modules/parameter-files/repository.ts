@@ -80,7 +80,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     createdAt: dateTimeToIso(row.created_at),
     createdByUserId: row.created_by_user_id ?? undefined,
     createdByDisplayName: row.created_by_display_name ?? executionDisplayName,
-    ...(row.initiator_type && row.initiator_type !== "user"
+    ...((row.initiator_type === "agent" || row.initiator_type === "system")
       ? {
           initiatorType: row.initiator_type,
           initiatorSystemKind: row.initiator_system_kind ?? undefined,

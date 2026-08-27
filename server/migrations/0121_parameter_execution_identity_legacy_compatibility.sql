@@ -4,7 +4,8 @@
 -- user column as an unknown legacy value does not invent a System principal.
 -- 0120 installs the strict checks as NOT VALID so upgrades can retain those
 -- rows without opening a write-time legacy-null escape hatch. Reassert the
--- same predicate here; new and updated rows remain strictly bidirectional.
+-- same predicate here; new and updated trusted rows remain bidirectionally
+-- checked, while the explicit `legacy` marker remains for non-migrated paths.
 
 do $$
 declare
@@ -41,9 +42,19 @@ begin
           and initiator_system_kind is null
           and initiator_system_name is null
         )
+        or (
+          initiator_type = ''legacy''
+          and %I is null
+          and initiator_system_kind is null
+          and initiator_system_name is null
+          and initiator_session_id is null
+          and initiator_tool_call_id is null
+          and initiator_approval_id is null
+        )
       ) not valid',
       spec.table_name,
       spec.table_name || '_execution_identity_check',
+      spec.user_column,
       spec.user_column,
       spec.user_column
     );

@@ -6,15 +6,31 @@
 --
 -- The constraints are deliberately NOT VALID. Existing rows created before
 -- #614 can have no historical user attribution (the 0116 `user` default), but
--- PostgreSQL still enforces this predicate for every new row and every update.
--- A later, explicitly-owned backfill can validate the constraints after those
--- rows have been resolved; this migration must not fail an otherwise safe
--- upgrade before that work is complete.
+-- PostgreSQL still enforces the trusted User/Agent/System predicates for every
+-- new row and every update. The explicit `legacy` marker preserves unrelated
+-- pre-TD-068 writers until their own migration (#615); trusted #614 writers
+-- always provide one of the three branded initiator types.
 
 do $$
 declare
   spec record;
 begin
+  create or replace function parameter_execution_identity_default_user()
+  returns trigger
+  language plpgsql
+  as $fn$
+  begin
+    -- Existing non-#614 writers commonly provide a nullable creator but omit
+    -- the new initiator columns. Keep a creator-bearing row's historical User
+    -- meaning while reserving `legacy` for genuinely unprojected rows.
+    if new.initiator_type = 'legacy'
+       and (to_jsonb(new)->>tg_argv[0]) is not null then
+      new.initiator_type := 'user';
+    end if;
+    return new;
+  end;
+  $fn$;
+
   for spec in
     select * from (values
       ('parameter_drafts'::text, 'user_id'::text),
@@ -26,6 +42,47 @@ begin
       ('dts_config_revisions'::text, 'created_by_user_id'::text)
     ) as t(table_name, user_column)
   loop
+    execute format(
+      'alter table %I alter column initiator_type set default ''legacy''',
+      spec.table_name
+    );
+    execute format(
+      'drop trigger if exists %I on %I',
+      spec.table_name || '_execution_identity_default_user',
+      spec.table_name
+    );
+    execute format(
+      'create trigger %I
+       before insert or update of initiator_type, %I on %I
+       for each row execute function parameter_execution_identity_default_user(%L)',
+      spec.table_name || '_execution_identity_default_user',
+      spec.user_column,
+      spec.table_name,
+      spec.user_column
+    );
+    execute format(
+      'alter table %I drop constraint if exists %I',
+      spec.table_name,
+      spec.table_name || '_initiator_type_check'
+    );
+    execute format(
+      'alter table %I add constraint %I check (initiator_type in (''user'', ''agent'', ''system'', ''legacy''))',
+      spec.table_name,
+      spec.table_name || '_initiator_type_check'
+    );
+    execute format(
+      'update %I
+       set initiator_type = ''legacy''
+       where initiator_type = ''user''
+         and %I is null
+         and initiator_system_kind is null
+         and initiator_system_name is null
+         and initiator_session_id is null
+         and initiator_tool_call_id is null
+         and initiator_approval_id is null',
+      spec.table_name,
+      spec.user_column
+    );
     execute format(
       'alter table %I drop constraint if exists %I',
       spec.table_name,
@@ -46,9 +103,19 @@ begin
           and initiator_system_kind is null
           and initiator_system_name is null
         )
+        or (
+          initiator_type = ''legacy''
+          and %I is null
+          and initiator_system_kind is null
+          and initiator_system_name is null
+          and initiator_session_id is null
+          and initiator_tool_call_id is null
+          and initiator_approval_id is null
+        )
       ) not valid',
       spec.table_name,
       spec.table_name || '_execution_identity_check',
+      spec.user_column,
       spec.user_column,
       spec.user_column
     );
@@ -77,4 +144,31 @@ alter table project_parameter_binding_revisions
       and initiator_system_kind is null
       and initiator_system_name is null
     )
+    or (
+      initiator_type = 'legacy'
+      and initiator_system_kind is null
+      and initiator_system_name is null
+      and initiator_session_id is null
+      and initiator_tool_call_id is null
+      and initiator_approval_id is null
+    )
   ) not valid;
+
+alter table project_parameter_binding_revisions
+  alter column initiator_type set default 'legacy';
+
+update project_parameter_binding_revisions
+set initiator_type = 'legacy'
+where initiator_type = 'user'
+  and initiator_system_kind is null
+  and initiator_system_name is null
+  and initiator_session_id is null
+  and initiator_tool_call_id is null
+  and initiator_approval_id is null;
+
+alter table project_parameter_binding_revisions
+  drop constraint if exists project_parameter_binding_revisions_initiator_type_check;
+
+alter table project_parameter_binding_revisions
+  add constraint project_parameter_binding_revisions_initiator_type_check
+  check (initiator_type in ('user', 'agent', 'system', 'legacy'));
