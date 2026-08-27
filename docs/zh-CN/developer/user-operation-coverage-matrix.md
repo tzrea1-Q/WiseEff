@@ -19,7 +19,7 @@
 
 ## 当前覆盖重点
 
-- `DEBUG-SIM-001`：模拟器调试读写验收会记录复杂 JSON 的 `valueKind`、digest 与 preview 元数据。
+- `DEBUG-SIM-001`：模拟器调试验收先覆盖模块子树导航，再执行读写，并记录复杂 JSON 的 `valueKind`、digest 与 preview 元数据。
 - `DEBUG-ADMIN-001`：调试管理后台验收覆盖复杂值类型与格式元数据的创建和编辑。
 - `DTS-RELOAD-DEPLOY-001` / `KERNEL-001` / `VERIFY-001` / `RESIDUE-001`：假桥自动化验收（见英文操作矩阵）；浏览器证据 `work/ui-checks/285-*`–`288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 条件覆盖（非阻塞）。

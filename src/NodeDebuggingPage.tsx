@@ -14,6 +14,7 @@ import { NodeOperationHistoryPanel } from "./components/NodeOperationHistoryPane
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
+import { DtsTopologyNavigator } from "./components/parameter-topology/DtsTopologyNavigator";
 import {
   probeLocalBridgeHealthDetailed,
   type LocalBridgeProbeResult
@@ -30,7 +31,9 @@ import {
 } from "./application/debugging/nodeDebuggingSession";
 import { useNodeDebuggingSession } from "./application/debugging/useNodeDebuggingSession";
 import { buildParameterModuleFilterNodes } from "./application/parameters/buildModuleFilterNodes";
+import type { DtsWorkbenchTreeNode } from "./application/parameters/buildDtsTopologyTree";
 import type { DebugConnectionProtocol } from "./domain/debugging/types";
+import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "./domain/modules/moduleTree";
 import {
   debugValueEditorRows,
   debugValuePreview,
@@ -72,6 +75,36 @@ function statusClass(status: RuntimeRow["runtimeStatus"]) {
     "不可用": "node-status-unavailable"
   };
   return `node-status-badge ${classMap[status]}`;
+}
+
+function buildDebugModuleNavigationTree(
+  rows: readonly RuntimeRow[],
+  moduleNodes: readonly FlatModuleNode[]
+): DtsWorkbenchTreeNode[] {
+  const rowIdsByModule = new Map<string, string[]>();
+  for (const row of rows) {
+    const moduleId = debugNodeModuleId(row, moduleNodes);
+    rowIdsByModule.set(moduleId, [...(rowIdsByModule.get(moduleId) ?? []), row.id]);
+  }
+
+  const toNavigationNode = (module: ModuleTreeNode): DtsWorkbenchTreeNode => {
+    const children = module.children.map(toNavigationNode);
+    const bindingIds = rowIdsByModule.get(module.id) ?? [];
+    return {
+      id: module.id,
+      parentId: module.parentId,
+      label: module.name,
+      name: module.name,
+      unitAddress: null,
+      compatible: null,
+      bindingIds,
+      bindingCount: bindingIds.length + children.reduce((count, child) => count + child.bindingCount, 0),
+      attentionCount: 0,
+      children
+    };
+  };
+
+  return buildModuleTree(moduleNodes).map(toNavigationNode);
 }
 
 function displayCurrentValue(row: RuntimeRow, context: "table" | "detail" = "detail"): string {
@@ -302,6 +335,7 @@ export function NodeDebuggingPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -341,13 +375,30 @@ export function NodeDebuggingPage({
       ),
     [moduleNodes, rows]
   );
+  const moduleNavigationTree = useMemo(
+    () => buildDebugModuleNavigationTree(rows, moduleNodes),
+    [moduleNodes, rows]
+  );
+  const activeSelectedModuleNodeId = useMemo(
+    () => selectedModuleNodeId && moduleNodes.some((node) => node.id === selectedModuleNodeId)
+      ? selectedModuleNodeId
+      : null,
+    [moduleNodes, selectedModuleNodeId]
+  );
   const activeModuleFilters = useMemo(() => {
     const availableModuleIds = new Set(moduleNodes.map((node) => node.id));
     return moduleFilters.filter((moduleId) => availableModuleIds.has(moduleId));
   }, [moduleFilters, moduleNodes]);
+  const navigatedRows = useMemo(() => {
+    return filterDebugNodesByModuleTree(
+      rows,
+      moduleNodes,
+      activeSelectedModuleNodeId ? [activeSelectedModuleNodeId] : []
+    );
+  }, [activeSelectedModuleNodeId, moduleNodes, rows]);
   const moduleScopedRows = useMemo(() => {
-    return filterDebugNodesByModuleTree(rows, moduleNodes, activeModuleFilters);
-  }, [activeModuleFilters, moduleNodes, rows]);
+    return filterDebugNodesByModuleTree(navigatedRows, moduleNodes, activeModuleFilters);
+  }, [activeModuleFilters, moduleNodes, navigatedRows]);
   const visibleRows = useMemo(() => {
     return moduleScopedRows.filter((row) => {
       const matchesSearch =
@@ -474,6 +525,31 @@ export function NodeDebuggingPage({
             />
           ) : (
             <>
+          <div className="dts-parameter-workbench node-debugging-module-workbench">
+            <div className="dts-parameter-workbench__body">
+              <div
+                className="dts-parameter-workbench__navigator dts-workbench-topology"
+                role="region"
+                aria-label="模块导航"
+              >
+                <div className="dts-parameter-workbench__navigator-header">
+                  <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
+                </div>
+                <DtsTopologyNavigator
+                  view="effective"
+                  nodes={moduleNavigationTree}
+                  selectedNodeId={activeSelectedModuleNodeId}
+                  defaultExpandDepth={2}
+                  labelKind="text"
+                  countUnit="节点"
+                  emptyMessage="暂无模块分组"
+                  ariaLabel="调试节点模块树"
+                  onSelectNode={(nodeId) =>
+                    setSelectedModuleNodeId((current) => (current === nodeId ? null : nodeId))
+                  }
+                />
+              </div>
+              <div className="node-debugging-module-results">
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
               <label className="parameters-table-search">
@@ -486,7 +562,7 @@ export function NodeDebuggingPage({
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </label>
-              <span className="parameters-table-count">显示 {visibleRows.length} / {rows.length} 个参数</span>
+              <span className="parameters-table-count">显示 {visibleRows.length} / {navigatedRows.length} 个参数</span>
               <div className="node-debugging-mobile-filters">
                 {renderModuleFilter("模块筛选")}
               </div>
@@ -633,6 +709,7 @@ export function NodeDebuggingPage({
                       setSearchQuery("");
                       setStatusFilters([]);
                       setModuleFilters([]);
+                      setSelectedModuleNodeId(null);
                     }}
                   >
                     清除筛选条件
@@ -641,6 +718,9 @@ export function NodeDebuggingPage({
               </div>
             ) : null}
           </section>
+              </div>
+            </div>
+          </div>
 
           <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="节点批量下发操作栏">
             <div>

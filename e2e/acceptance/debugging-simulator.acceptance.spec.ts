@@ -512,6 +512,14 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await prepareInteractionSurface(page);
     await expectSimulatorOnline(page);
 
+    const moduleNavigator = page.getByRole("region", { name: "模块导航" });
+    const batteryChargingModule = moduleNavigator.getByRole("treeitem", { name: /Battery Charging.*\d+ 个节点/ });
+    await batteryChargingModule.click();
+    await expect(parameterRow(page, "Fast charge current")).toBeVisible();
+    await expect(parameterRow(page, "Cycle count")).toBeHidden();
+    await batteryChargingModule.click();
+    await expect(parameterRow(page, "Cycle count")).toBeVisible();
+
     const fastChargeRow = parameterRow(page, "Fast charge current");
     // The simulator gateway is process-local state, while the fixture reset above is PostgreSQL-only.
     // Establish the safety baseline through the same UI write boundary exercised by the workflow so
