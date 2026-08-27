@@ -33,6 +33,12 @@ type ProjectParameterFileVersionRow = {
   parsed_index: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   created_by_user_id: string | null;
+  initiator_type: "user" | "agent" | "system";
+  initiator_system_kind: "service" | "job" | null;
+  initiator_system_name: string | null;
+  initiator_session_id: string | null;
+  initiator_tool_call_id: string | null;
+  initiator_approval_id: string | null;
   created_at: string | Date;
   created_by_display_name?: string | null;
 };
@@ -57,6 +63,11 @@ function toFileDto(row: ProjectParameterFileRow): ProjectParameterFileDto {
 }
 
 function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFileVersionDto {
+  const executionDisplayName = row.initiator_type === "system"
+    ? `System ${row.initiator_system_kind ?? "service"}:${row.initiator_system_name ?? "unknown"}`
+    : row.initiator_type === "agent"
+      ? `Agent tool:${row.initiator_tool_call_id ?? "unknown"} (session:${row.initiator_session_id ?? "unknown"})`
+      : undefined;
   return {
     id: row.id,
     fileId: row.file_id,
@@ -67,8 +78,18 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     parsedIndex: row.parsed_index ?? {},
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
-    createdByUserId: row.created_by_user_id,
-    createdByDisplayName: row.created_by_display_name ?? null
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdByDisplayName: row.created_by_display_name ?? executionDisplayName,
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {})
   };
 }
 
@@ -182,7 +203,9 @@ export async function insertFileVersion(
   const result = await db.query<ProjectParameterFileVersionRow>(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1,
@@ -196,7 +219,8 @@ export async function insertFileVersion(
       $5,
       $6::jsonb,
       $7,
-      $8
+      $8,
+      $9, $10, $11, $12, $13, $14
     )
     returning *
     `,
@@ -208,7 +232,13 @@ export async function insertFileVersion(
       input.sizeBytes,
       JSON.stringify(input.parsedIndex ?? {}),
       input.origin,
-      input.createdByUserId ?? null
+      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null
     ]
   );
 

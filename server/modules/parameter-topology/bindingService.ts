@@ -15,6 +15,7 @@ import {
   type LogicalNodeSnapshot,
 } from "../dts/identity";
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
 import { updateConfigRevisionStatus } from "./repository";
 import type { ConfigRevisionStatus } from "./types";
@@ -60,6 +61,12 @@ export type ProjectParameterBindingRevision = {
   schemaState?: string;
   policyState?: string;
   createdAt: string;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
 };
 
 export type IdentityMappingTask = {
@@ -167,6 +174,12 @@ type BindingRevisionRow = {
   raw_value: string | null;
   schema_state: string | null;
   policy_state: string | null;
+  initiator_type?: "user" | "agent" | "system";
+  initiator_system_kind?: "service" | "job" | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
   created_at: string | Date;
 };
 
@@ -214,6 +227,16 @@ function toBindingRevision(row: BindingRevisionRow): ProjectParameterBindingRevi
     schemaState: row.schema_state ?? undefined,
     policyState: row.policy_state ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {}),
   };
 }
 
@@ -331,6 +354,7 @@ export async function upsertBindingRevisionValues(
       projectId: string;
       configRevisionId: string;
     };
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<ProjectParameterBindingRevision> {
   if (input.tenant) {
@@ -369,7 +393,9 @@ export async function upsertBindingRevisionValues(
     insert into project_parameter_binding_revisions (
       id, binding_id, config_revision_id, parameter_spec_version_id,
       typed_value, canonical_value, raw_value, schema_state, policy_state
-    ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+      , initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
+    ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     on conflict (binding_id, config_revision_id) do update set
       parameter_spec_version_id = excluded.parameter_spec_version_id,
       typed_value = excluded.typed_value,
@@ -377,6 +403,12 @@ export async function upsertBindingRevisionValues(
       raw_value = excluded.raw_value,
       schema_state = excluded.schema_state,
       policy_state = excluded.policy_state
+      , initiator_type = excluded.initiator_type
+      , initiator_system_kind = excluded.initiator_system_kind
+      , initiator_system_name = excluded.initiator_system_name
+      , initiator_session_id = excluded.initiator_session_id
+      , initiator_tool_call_id = excluded.initiator_tool_call_id
+      , initiator_approval_id = excluded.initiator_approval_id
     returning *
     `,
     [
@@ -391,6 +423,12 @@ export async function upsertBindingRevisionValues(
       input.values.rawValue ?? null,
       input.values.schemaState ?? null,
       input.values.policyState ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
     ],
   );
   return toBindingRevision(result.rows[0]);

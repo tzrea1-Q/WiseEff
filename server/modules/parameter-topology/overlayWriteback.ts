@@ -16,6 +16,7 @@ import {
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import { parseDtsValue } from "../dts/valueAst";
 import type { AuthContext } from "../auth/types";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -64,6 +65,8 @@ export type CreateBindingDraftDeps = {
   skipSemanticGates?: boolean;
   /** Trusted accountable principal for nullable creator columns; null for System. */
   createdByUserId?: string | null;
+  /** Full trusted execution projection for every #614 domain write. */
+  attribution?: TrustedInvocationDomainAttribution;
 };
 
 export function throwIfManifestNeedsReview(revision: {
@@ -704,8 +707,10 @@ export async function applyLockedOverlayWriteback(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8)
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
+    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8, $9, $10, $11, $12, $13, $14)
     `,
     [
       candidateOverlayVersionId,
@@ -715,7 +720,13 @@ export async function applyLockedOverlayWriteback(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
+      deps.attribution ? deps.attribution.userId : deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
+      deps.attribution?.initiatorType ?? "user",
+      deps.attribution?.systemKind ?? null,
+      deps.attribution?.systemName ?? null,
+      deps.attribution?.sessionId ?? null,
+      deps.attribution?.toolCallId ?? null,
+      deps.attribution?.approvalId ?? null,
     ],
   );
 
@@ -788,7 +799,12 @@ export async function applyLockedOverlayWriteback(
     db,
     manifest,
     auth,
-    Object.hasOwn(deps, "createdByUserId") ? { createdByUserId: deps.createdByUserId ?? undefined } : undefined,
+    Object.hasOwn(deps, "createdByUserId") || deps.attribution
+      ? {
+          createdByUserId: deps.attribution ? deps.attribution.userId : deps.createdByUserId ?? undefined,
+          domain: deps.attribution,
+        }
+      : undefined,
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
@@ -868,6 +884,7 @@ export async function applyLockedOverlayWriteback(
         schemaState: "valid",
         policyState: "not_applicable",
       },
+      attribution: deps.attribution,
     });
     bindingRevisionId = bindingRevision.id;
   }
@@ -993,8 +1010,10 @@ export async function applyLockedEnablementWriteback(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8)
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
+    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8, $9, $10, $11, $12, $13, $14)
     `,
     [
       candidateOverlayVersionId,
@@ -1004,7 +1023,13 @@ export async function applyLockedEnablementWriteback(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
+      deps.attribution ? deps.attribution.userId : deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
+      deps.attribution?.initiatorType ?? "user",
+      deps.attribution?.systemKind ?? null,
+      deps.attribution?.systemName ?? null,
+      deps.attribution?.sessionId ?? null,
+      deps.attribution?.toolCallId ?? null,
+      deps.attribution?.approvalId ?? null,
     ],
   );
 
@@ -1077,7 +1102,12 @@ export async function applyLockedEnablementWriteback(
     db,
     manifest,
     auth,
-    Object.hasOwn(deps, "createdByUserId") ? { createdByUserId: deps.createdByUserId ?? undefined } : undefined,
+    Object.hasOwn(deps, "createdByUserId") || deps.attribution
+      ? {
+          createdByUserId: deps.attribution ? deps.attribution.userId : deps.createdByUserId ?? undefined,
+          domain: deps.attribution,
+        }
+      : undefined,
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(

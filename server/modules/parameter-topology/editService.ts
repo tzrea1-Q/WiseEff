@@ -15,6 +15,7 @@ import {
   type StatusSpelling,
 } from "../../../src/domain/parameter-topology/enablementEdit";
 import type { AuthContext } from "../auth/types";
+import { trustedDomainAttribution } from "../auth/trustedInvocation";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
@@ -26,7 +27,6 @@ import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacy
 import {
   assertTrustedSensitiveNodeWriteAllowed,
   assertTrustedSensitiveNodeWriteContext,
-  requireTrustedAccountableUser,
   type TrustedSensitiveNodeWriteContext
 } from "../parameter-kernel/sensitiveNode";
 import {
@@ -1016,20 +1016,14 @@ async function createNodeEnablementDraftInTransaction(
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath: nodeContext.nodeLocator,
+    sourcePath: { kind: "node-locator", value: nodeContext.nodeLocator },
     compatible: nodeContext.compatible,
     invocation: context.invocation,
     requestId: context.requestId,
     refusalSink: context.refusalSink,
   });
 
-  const accountableUser = await requireTrustedAccountableUser(auth, {
-    ...context,
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    operation: "topology enablement draft",
-    targetType: "dts-logical-node",
-    targetId: input.logicalNodeId,
-  });
+  const attribution = trustedDomainAttribution(context.invocation);
 
   const projectSpelling =
     input.spellingOverride ??
@@ -1125,9 +1119,12 @@ async function createNodeEnablementDraftInTransaction(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7
+    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7,
+           $8, $9, $10, $11, $12, $13
     from project_parameter_file_versions
     where file_id = $2
     `,
@@ -1138,7 +1135,13 @@ async function createNodeEnablementDraftInTransaction(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      accountableUser.id,
+      attribution.userId,
+      attribution.initiatorType,
+      attribution.systemKind,
+      attribution.systemName,
+      attribution.sessionId,
+      attribution.toolCallId,
+      attribution.approvalId,
     ],
   );
 
@@ -1202,7 +1205,8 @@ async function createNodeEnablementDraftInTransaction(
   };
 
   const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    createdByUserId: accountableUser.id,
+    createdByUserId: attribution.userId ?? undefined,
+    domain: attribution,
   });
   const candidateRevisionId = ingested.id;
 
@@ -1319,7 +1323,8 @@ async function createNodeEnablementDraftInTransaction(
         organizationId: auth.organization.id,
         projectId: input.projectId,
         logicalNodeId: input.logicalNodeId,
-        userId: accountableUser.id,
+        userId: attribution.userId,
+        attribution,
         targetValue: rawText,
         reason: input.reason,
         origin: "manual",
@@ -1334,13 +1339,15 @@ async function createNodeEnablementDraftInTransaction(
         },
       });
 
-      const rebased = await rebaseOpenBindingDraftCandidates(tx, {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
-        userId: accountableUser.id,
-        candidateConfigRevisionId: candidateRevisionId,
-        excludeDraftId: persistedDraft.id,
-      });
+      const rebased = attribution.userId
+        ? await rebaseOpenBindingDraftCandidates(tx, {
+            organizationId: auth.organization.id,
+            projectId: input.projectId,
+            userId: attribution.userId,
+            candidateConfigRevisionId: candidateRevisionId,
+            excludeDraftId: persistedDraft.id,
+          })
+        : [];
 
       await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, {
         action: "enablement-changed",

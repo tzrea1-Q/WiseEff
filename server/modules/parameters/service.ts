@@ -19,6 +19,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationContext,
+  trustedDomainAttribution,
   trustedExecutionLabel,
   TrustedInvocationContextError,
   type TrustedInvocationContext
@@ -51,8 +52,7 @@ import { canAdminParameters, canEditParameters, canMergeParameters, canReviewPar
 import { isValidMergeLink } from "./mergeLink";
 import {
   assertTrustedSensitiveNodeWriteContext,
-  assertTrustedSensitiveNodeSubmissionAllowed,
-  requireTrustedAccountableUser
+  assertTrustedSensitiveNodeSubmissionAllowed
 } from "../parameter-kernel/sensitiveNode";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
@@ -831,11 +831,16 @@ async function buildReviewParticipants(
   ];
 
   for (const decision of decisions) {
+    const executionName = decision.reviewerUserId
+      ? names.get(decision.reviewerUserId) ?? decision.reviewerUserId
+      : decision.initiatorType === "system"
+        ? `System ${decision.initiatorSystemKind ?? "service"}:${decision.initiatorSystemName ?? "unknown"}`
+        : decision.initiatorType === "agent"
+          ? `Agent tool:${decision.initiatorToolCallId ?? "unknown"}`
+          : "未指派";
     participants.push({
       role: parameterStatusLabels[decision.fromStatus as ParameterChangeRequestStatus],
-      name: decision.reviewerUserId
-        ? names.get(decision.reviewerUserId) ?? "已注销用户"
-        : "已注销用户",
+      name: executionName,
       action: decision.decision === "advance" ? "推进流程" : "打回变更",
       note: decision.note ?? undefined,
       time: decision.createdAt
@@ -843,6 +848,57 @@ async function buildReviewParticipants(
   }
 
   return participants;
+}
+
+const workflowTrailTransitions = {
+  hardware_review: { fromStatus: "hardware_review", toStatus: "software_review" },
+  software_review: { fromStatus: "software_review", toStatus: "software_merge" },
+  software_merge: { fromStatus: "software_merge", toStatus: "merged" },
+} as const;
+
+function reviewDecisionExecutionLabel(
+  decision: Awaited<ReturnType<typeof listReviewDecisions>>[number],
+  userNames: Map<string, string>,
+): string {
+  if (decision.reviewerUserId) {
+    return userNames.get(decision.reviewerUserId) ?? decision.reviewerUserId;
+  }
+  if (decision.initiatorType === "system") {
+    return `System ${decision.initiatorSystemKind ?? "service"}:${decision.initiatorSystemName ?? "unknown"}`;
+  }
+  if (decision.initiatorType === "agent") {
+    return `Agent tool:${decision.initiatorToolCallId ?? "unknown"} (session:${decision.initiatorSessionId ?? "unknown"})`;
+  }
+  return "未指派";
+}
+
+function preserveTrustedWorkflowExecutors(
+  trail: Awaited<ReturnType<typeof buildSubmissionWorkflowTrail>>,
+  decisions: Awaited<ReturnType<typeof listReviewDecisions>>,
+  userNames: Map<string, string>,
+) {
+  return trail.map((stage) => {
+    const transition = workflowTrailTransitions[stage.key];
+    const uniqueLabels = [
+      ...new Set(
+        decisions
+          .filter(
+            (decision) =>
+              decision.decision === "advance" &&
+              decision.fromStatus === transition.fromStatus &&
+              decision.toStatus === transition.toStatus,
+          )
+          .map((decision) => reviewDecisionExecutionLabel(decision, userNames))
+          .filter(Boolean),
+      ),
+    ];
+    if (uniqueLabels.length === 0) return stage;
+    return {
+      ...stage,
+      executorName: uniqueLabels.length === 1 ? uniqueLabels[0] : `${uniqueLabels[0]} 等 ${uniqueLabels.length} 人`,
+      executorLabel: "执行人" as const,
+    };
+  });
 }
 
 function buildChangeRequestAuditMetadata(
@@ -1859,7 +1915,10 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
       reviewDecisions: roundDecisions.map((decision) => ({
         id: decision.id,
         requestId: decision.requestId,
-        reviewerUserId: decision.reviewerUserId,
+        // Keep the durable nullable System decision in the timeline input.
+        // This placeholder is internal to the existing trail helper; the
+        // trusted executor label is restored by preserveTrustedWorkflowExecutors.
+        reviewerUserId: decision.reviewerUserId ?? "",
         decision: decision.decision,
         fromStatus: decision.fromStatus,
         toStatus: decision.toStatus,
@@ -1870,7 +1929,7 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
 
     return {
       ...round,
-      workflowTrail
+      workflowTrail: preserveTrustedWorkflowExecutors(workflowTrail, roundDecisions, userNames)
     };
   });
 }
@@ -2261,21 +2320,15 @@ export async function reviewChange(
       }, { ...context, ...trustedMergeContext });
     }
 
-    const accountableUser = await requireTrustedAccountableUser(auth, {
-      ...trustedMergeContext,
-      organizationId: auth.organization.id,
-      projectId: request.projectId,
-      operation: "parameter review software merge",
-      targetType: "parameter-change-request",
-      targetId: input.requestId
-    });
+    const attribution = trustedDomainAttribution(trustedMergeContext.invocation);
 
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
       organizationId: auth.organization.id,
       requestId: input.requestId,
       expectedVersion: input.expectedVersion,
-      actorUserId: accountableUser.id
+      actorUserId: attribution.userId,
+      attribution
     });
 
     if (!merged) {
@@ -2336,7 +2389,8 @@ export async function reviewChange(
       id: randomUUID(),
       organizationId: auth.organization.id,
       requestId: input.requestId,
-      reviewerUserId: accountableUser.id,
+      reviewerUserId: attribution.userId,
+      attribution,
       decision: "advance",
       fromStatus,
       toStatus: "merged",
@@ -2396,7 +2450,10 @@ export async function reviewChange(
         parameterName: request.title,
         submitterUserId: request.submitterUserId,
         mergerName: trustedExecutionLabel(trustedMergeContext.invocation),
-        reviewerUserIds: reviewDecisions.map((decision) => decision.reviewerUserId)
+        execution: attribution,
+        reviewerUserIds: reviewDecisions
+          .map((decision) => decision.reviewerUserId)
+          .filter((userId): userId is string => Boolean(userId))
       });
     }
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import {
   withEffectiveEnablement,
   withSourceEnablement,
@@ -30,6 +31,12 @@ type RevisionRow = {
   overlay_order: unknown;
   manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
+  initiator_type: "user" | "agent" | "system";
+  initiator_system_kind: "service" | "job" | null;
+  initiator_system_name: string | null;
+  initiator_session_id: string | null;
+  initiator_tool_call_id: string | null;
+  initiator_approval_id: string | null;
   created_at: string | Date;
   resolved_at: string | Date | null;
 };
@@ -65,6 +72,16 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     overlayOrder: parseStringArray(row.overlay_order),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {}),
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
   };
@@ -91,18 +108,21 @@ export async function insertConfigRevision(
     configSetId: string;
     revisionNumber: number;
     status: ConfigRevisionStatus;
-    createdByUserId?: string;
+    createdByUserId?: string | null;
     entryFile?: string;
     includeSearchPaths?: string[];
     overlayOrder?: string[];
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<DtsConfigRevisionDto> {
   const result = await db.query<RevisionRow>(
     `
     insert into dts_config_revisions (
       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id,
       entry_file, include_search_paths, overlay_order, manifest_state
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'complete')
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, 'complete')
     returning *
     `,
     [
@@ -112,7 +132,13 @@ export async function insertConfigRevision(
       input.configSetId,
       input.revisionNumber,
       input.status,
-      input.createdByUserId ?? null,
+      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
       input.entryFile ?? null,
       JSON.stringify(input.includeSearchPaths ?? []),
       JSON.stringify(input.overlayOrder ?? []),

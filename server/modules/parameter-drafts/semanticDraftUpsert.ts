@@ -3,6 +3,7 @@
  * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 
 export async function upsertSemanticDraft(
   db: Queryable,
@@ -11,7 +12,8 @@ export async function upsertSemanticDraft(
     organizationId: string;
     projectId: string;
     bindingId: string;
-    userId: string;
+    userId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     targetValue: string;
     action?: "set" | "delete";
     reason: string;
@@ -26,6 +28,7 @@ export async function upsertSemanticDraft(
     candidateConfigRevisionId?: string;
   }
 ) {
+  const userId = input.attribution ? input.attribution.userId : input.userId;
   const result = await db.query<{
     id: string;
     project_id: string;
@@ -44,11 +47,20 @@ export async function upsertSemanticDraft(
       project_parameter_binding_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
       source_file_version_id, expected_checksum, occurrence_span,
-      candidate_config_revision_id
+      candidate_config_revision_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'binding', $10, $11, $12, $13, $14, $15, $16::jsonb, $17)
-    on conflict (project_id, project_parameter_binding_id, user_id)
-      where edit_subject_kind = 'binding' and project_parameter_binding_id is not null
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'binding', $10, $11, $12, $13, $14, $15, $16::jsonb, $17,
+            $18, $19, $20, $21, $22, $23)
+    on conflict (
+      project_id,
+      project_parameter_binding_id,
+      initiator_type,
+      coalesce(user_id, ''),
+      coalesce(initiator_system_kind, ''),
+      coalesce(initiator_system_name, '')
+    ) where edit_subject_kind = 'binding' and project_parameter_binding_id is not null
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
@@ -65,6 +77,12 @@ export async function upsertSemanticDraft(
         excluded.candidate_config_revision_id,
         parameter_drafts.candidate_config_revision_id
       ),
+      initiator_type = excluded.initiator_type,
+      initiator_system_kind = excluded.initiator_system_kind,
+      initiator_system_name = excluded.initiator_system_name,
+      initiator_session_id = excluded.initiator_session_id,
+      initiator_tool_call_id = excluded.initiator_tool_call_id,
+      initiator_approval_id = excluded.initiator_approval_id,
       updated_at = now()
     returning id, project_id, project_parameter_binding_id, target_value, action, reason, updated_at
     `,
@@ -72,7 +90,7 @@ export async function upsertSemanticDraft(
       input.id,
       input.organizationId,
       input.projectId,
-      input.userId,
+      userId,
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
@@ -86,6 +104,12 @@ export async function upsertSemanticDraft(
       input.expectedChecksum ?? null,
       input.occurrenceSpan ? JSON.stringify(input.occurrenceSpan) : null,
       input.candidateConfigRevisionId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
     ]
   );
   return result.rows[0] ?? null;

@@ -20,6 +20,13 @@ export type ParameterDraftDto = {
   action: ParameterChangeAction;
   reason: string;
   updatedAt: string;
+  /** Trusted execution identity for Agent/System drafts; omitted for legacy User rows. */
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
   /** Semantic binding identity for topology-aware drafts. */
   projectParameterBindingId?: string;
   /** Working candidate revision tip for binding draft rounds. */

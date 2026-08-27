@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { AuthContext } from "../auth/types";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import {
   parseDts,
   resolveDtsConfigSet,
@@ -603,6 +604,7 @@ async function matchBindAndQueueReviews(
     stableLogicalIdByLocator: Map<string, string>;
     propertyOccurrenceByKey: Map<string, string>;
     registry: SchemaRegistry;
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<SpecReviewTaskDraft[]> {
   const overrides = await listMatcherOverridesForProject(tx, {
@@ -695,6 +697,7 @@ async function matchBindAndQueueReviews(
             rawValue: property.rawText,
             schemaState: "valid",
           },
+          attribution: input.attribution,
         });
         if (propertyOccurrenceId) {
           await upsertOccurrenceSpecDecision(tx, {
@@ -770,6 +773,7 @@ async function matchBindAndQueueReviews(
             rawValue: property.rawText,
             schemaState: "valid",
           },
+          attribution: input.attribution,
         });
         if (propertyOccurrenceId) {
           await upsertOccurrenceSpecDecision(tx, {
@@ -822,7 +826,7 @@ export async function ingestConfigRevisionInTransaction(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
-  attribution?: { createdByUserId: string | undefined },
+  attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
 ): Promise<DtsConfigRevisionDto> {
   return ingestConfigRevisionTx(tx, manifest, auth, attribution);
 }
@@ -831,7 +835,7 @@ async function ingestConfigRevisionTx(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
-  attribution?: { createdByUserId: string | undefined },
+  attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
 ): Promise<DtsConfigRevisionDto> {
   const normalized = normalizePersistedManifest({
     entryFile: manifest.entryFile,
@@ -857,6 +861,7 @@ async function ingestConfigRevisionTx(
     revisionNumber,
     status: "resolving",
     createdByUserId: attribution ? attribution.createdByUserId : auth.user.id,
+    attribution: attribution?.domain,
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,
@@ -1041,6 +1046,7 @@ async function ingestConfigRevisionTx(
     stableLogicalIdByLocator: continuity.stableLogicalIdByLocator,
     propertyOccurrenceByKey,
     registry,
+    attribution: attribution?.domain,
   });
   await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 

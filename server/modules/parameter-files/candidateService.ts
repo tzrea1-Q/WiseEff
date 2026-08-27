@@ -6,6 +6,7 @@ import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationMatchesAuth,
   trustedAccountableUser,
+  trustedDomainAttribution,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -401,7 +402,10 @@ export async function createCandidate(
       sizeBytes: stored.fileSizeBytes,
       createdByUserId: trustedContext.invocation
         ? trustedAccountableUser(trustedContext.invocation)?.id
-        : auth.user.id
+        : auth.user.id,
+      attribution: trustedContext.invocation
+        ? trustedDomainAttribution(trustedContext.invocation)
+        : undefined
     });
 
     await updateParameterFileCandidateParseResult(tx, {

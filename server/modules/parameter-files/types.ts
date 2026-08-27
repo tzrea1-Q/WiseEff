@@ -1,3 +1,5 @@
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+
 export type ParameterFileFormat = "dts" | "json";
 export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
@@ -30,8 +32,14 @@ export type ProjectParameterFileVersionDto = {
   parsedIndex: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdAt: string;
-  createdByUserId?: string | null;
-  createdByDisplayName?: string | null;
+  createdByUserId?: string;
+  createdByDisplayName?: string;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
 };
 
 export type InsertProjectParameterFileInput = {
@@ -54,6 +62,7 @@ export type InsertFileVersionInput = {
   parsedIndex?: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdByUserId?: string;
+  attribution?: TrustedInvocationDomainAttribution;
 };
 
 /** Staged candidate lifecycle states (ADR-0018 / #232). */
@@ -135,6 +144,12 @@ export type ProjectParameterFileCandidateDto = {
   createdAt: string;
   updatedAt: string;
   createdByUserId?: string;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
   abandonedAt?: string;
   abandonedByUserId?: string;
   activatedAt?: string;
@@ -159,6 +174,7 @@ export type InsertParameterFileCandidateInput = {
   impact?: CandidateImpact;
   blockers?: CandidateBlocker[];
   createdByUserId?: string;
+  attribution?: TrustedInvocationDomainAttribution;
 };
 
 export type UpdateParameterFileCandidateParseResultInput = {

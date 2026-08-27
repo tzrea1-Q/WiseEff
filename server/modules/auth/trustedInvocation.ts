@@ -42,6 +42,21 @@ export type SystemInvocationContext = {
 
 export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext;
 
+/**
+ * Projection used by #614 domain rows.  `userId` is the accountable principal
+ * (null for System), while initiator metadata identifies the actual executor.
+ * It is intentionally derived only after the trusted brand has been checked.
+ */
+export type TrustedInvocationDomainAttribution = Readonly<{
+  userId: string | null;
+  initiatorType: TrustedInvocationContext["initiator"];
+  systemKind: SystemInvocationInput["kind"] | null;
+  systemName: string | null;
+  sessionId: string | null;
+  toolCallId: string | null;
+  approvalId: string | null;
+}>;
+
 const backendRoleIds = new Set<string>(BACKEND_ROLE_IDS);
 const backendPermissions = new Set<string>(BACKEND_PERMISSIONS);
 
@@ -263,6 +278,42 @@ export function assertTrustedInvocationMatchesAuth(
 export function trustedAccountableUser(value: TrustedInvocationContext): AuthContext["user"] | null {
   const invocation = assertTrustedInvocationContext(value);
   return invocation.initiator === "system" ? null : invocation.principal.user;
+}
+
+/** Return the truthful domain attribution for a trusted invocation. */
+export function trustedDomainAttribution(value: TrustedInvocationContext): TrustedInvocationDomainAttribution {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "system") {
+    return {
+      userId: null,
+      initiatorType: "system",
+      systemKind: invocation.identity.kind,
+      systemName: invocation.identity.name,
+      sessionId: null,
+      toolCallId: null,
+      approvalId: null
+    };
+  }
+  if (invocation.initiator === "agent") {
+    return {
+      userId: invocation.principal.user.id,
+      initiatorType: "agent",
+      systemKind: null,
+      systemName: null,
+      sessionId: invocation.sessionId,
+      toolCallId: invocation.toolCallId,
+      approvalId: invocation.approvalId
+    };
+  }
+  return {
+    userId: invocation.principal.user.id,
+    initiatorType: "user",
+    systemKind: null,
+    systemName: null,
+    sessionId: null,
+    toolCallId: null,
+    approvalId: null
+  };
 }
 
 /** Truthful, user-visible executor label derived from the same trusted invocation. */

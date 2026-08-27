@@ -28,6 +28,12 @@ type CandidateRow = {
   impact: CandidateImpact | null;
   blockers: CandidateBlocker[] | null;
   created_by_user_id: string | null;
+  initiator_type: "user" | "agent" | "system";
+  initiator_system_kind: "service" | "job" | null;
+  initiator_system_name: string | null;
+  initiator_session_id: string | null;
+  initiator_tool_call_id: string | null;
+  initiator_approval_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
   abandoned_at: string | Date | null;
@@ -61,6 +67,16 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
     createdAt: dateTimeToIso(row.created_at),
     updatedAt: dateTimeToIso(row.updated_at),
     createdByUserId: row.created_by_user_id ?? undefined,
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {}),
     abandonedAt: row.abandoned_at ? dateTimeToIso(row.abandoned_at) : undefined,
     abandonedByUserId: row.abandoned_by_user_id ?? undefined,
     activatedAt: row.activated_at ? dateTimeToIso(row.activated_at) : undefined,
@@ -72,7 +88,10 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
 const candidateSelect = `
   id, organization_id, project_id, file_id, file_name, format, status,
   base_version_id, storage_key, checksum, size_bytes, parsed_index,
-  diagnostics, impact, blockers, created_by_user_id, created_at, updated_at,
+  diagnostics, impact, blockers, created_by_user_id,
+  initiator_type, initiator_system_kind, initiator_system_name,
+  initiator_session_id, initiator_tool_call_id, initiator_approval_id,
+  created_at, updated_at,
   abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id
 `;
 
@@ -85,12 +104,15 @@ export async function insertParameterFileCandidate(
     insert into project_parameter_file_candidates (
       id, organization_id, project_id, file_id, file_name, format, status,
       base_version_id, storage_key, checksum, size_bytes, parsed_index,
-      diagnostics, impact, blockers, created_by_user_id
+      diagnostics, impact, blockers, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7,
       $8, $9, $10, $11, $12::jsonb,
-      $13::jsonb, $14::jsonb, $15::jsonb, $16
+      $13::jsonb, $14::jsonb, $15::jsonb, $16,
+      $17, $18, $19, $20, $21, $22
     )
     returning ${candidateSelect}
     `,
@@ -110,7 +132,13 @@ export async function insertParameterFileCandidate(
       JSON.stringify(input.diagnostics ?? []),
       JSON.stringify(input.impact ?? {}),
       JSON.stringify(input.blockers ?? []),
-      input.createdByUserId ?? null
+      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null
     ]
   );
 

@@ -103,6 +103,12 @@ type ParameterHistoryRow = {
   changed_at: string | Date;
   changed_by: string | null;
   request_id: string | null;
+  initiator_type?: "user" | "agent" | "system" | null;
+  initiator_system_kind?: "service" | "job" | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
 };
 
 export type ListParametersQuery = {
@@ -161,11 +167,16 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
 }
 
 function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
+  const changedBy = row.initiator_type === "system"
+    ? `System ${row.initiator_system_kind ?? "service"}:${row.initiator_system_name ?? "unknown"}`
+    : row.initiator_type === "agent"
+      ? `Agent ${row.changed_by ?? "principal"} (tool:${row.initiator_tool_call_id ?? "unknown"}, session:${row.initiator_session_id ?? "unknown"})`
+      : row.changed_by ?? "";
   return {
     version: String(row.version),
     value: row.value,
     changedAt: dateTimeToIso(row.changed_at),
-    changedBy: row.changed_by,
+    changedBy,
     requestId: row.request_id ?? undefined
   };
 }
@@ -387,7 +398,13 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
         phe.value,
         phe.changed_at,
         users.name as changed_by,
-        phe.request_id
+        phe.request_id,
+        phe.initiator_type,
+        phe.initiator_system_kind,
+        phe.initiator_system_name,
+        phe.initiator_session_id,
+        phe.initiator_tool_call_id,
+        phe.initiator_approval_id
       from parameter_history_entries phe
       left join users on users.id = phe.changed_by_user_id
       where phe.organization_id = $1
@@ -404,9 +421,15 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
     select
       phe.version,
       phe.value,
-      phe.changed_at,
-      users.name as changed_by,
-      phe.request_id
+        phe.changed_at,
+        users.name as changed_by,
+        phe.request_id,
+        phe.initiator_type,
+        phe.initiator_system_kind,
+        phe.initiator_system_name,
+        phe.initiator_session_id,
+        phe.initiator_tool_call_id,
+        phe.initiator_approval_id
     from parameter_history_entries phe
     inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = phe.project_parameter_value_id
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = phe.parameter_definition_id

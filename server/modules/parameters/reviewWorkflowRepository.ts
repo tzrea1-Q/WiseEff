@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import type {
   ChangeRequestDto,
   ParameterSubmissionItemDto,
@@ -201,7 +202,13 @@ type WorkflowAssigneesRow = {
 export type ReviewDecisionDto = {
   id: string;
   requestId: string;
-  reviewerUserId?: string;
+  reviewerUserId: string | null;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
   decision: ParameterReviewDecision;
   fromStatus: ParameterChangeRequestStatus;
   toStatus: ParameterChangeRequestStatus;
@@ -213,6 +220,12 @@ type ReviewDecisionRow = {
   id: string;
   request_id: string;
   reviewer_user_id: string | null;
+  initiator_type?: "user" | "agent" | "system";
+  initiator_system_kind?: "service" | "job" | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
   decision: ParameterReviewDecision;
   from_status: ParameterChangeRequestStatus;
   to_status: ParameterChangeRequestStatus;
@@ -421,7 +434,17 @@ function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
   return {
     id: row.id,
     requestId: row.request_id,
-    reviewerUserId: row.reviewer_user_id ?? undefined,
+    reviewerUserId: row.reviewer_user_id,
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {}),
     decision: row.decision,
     fromStatus: row.from_status,
     toStatus: row.to_status,
@@ -1499,7 +1522,9 @@ export async function listReviewDecisions(
 ) {
   const result = await db.query<ReviewDecisionRow>(
     `
-    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
+           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
       and request_id = $2
@@ -1521,7 +1546,9 @@ export async function listReviewDecisionsForRequestIds(
 
   const result = await db.query<ReviewDecisionRow>(
     `
-    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
+           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
       and request_id = any($2::text[])
@@ -1589,7 +1616,8 @@ export async function insertReviewDecision(
     id: string;
     organizationId: string;
     requestId: string;
-    reviewerUserId: string;
+    reviewerUserId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     decision: ParameterReviewDecision;
     fromStatus: ParameterChangeRequestStatus;
     toStatus: ParameterChangeRequestStatus;
@@ -1599,10 +1627,14 @@ export async function insertReviewDecision(
   const result = await db.query<ReviewDecisionRow>(
     `
     insert into parameter_review_decisions (
-      id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status, note
+      id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status, note,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8)
-    returning id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    returning id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     `,
     [
       input.id,
@@ -1612,7 +1644,13 @@ export async function insertReviewDecision(
       input.decision,
       input.fromStatus,
       input.toStatus,
-      input.note ?? null
+      input.note ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
     ]
   );
 
@@ -1747,7 +1785,8 @@ async function mergeEnablementChangeRequest(
     organizationId: string;
     requestId: string;
     expectedVersion?: number;
-    actorUserId: string;
+    actorUserId?: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
   }
 ) {
   const result = await db.query<ChangeRequestMergeRow>(
@@ -1872,7 +1911,8 @@ async function mergeEnablementChangeRequest(
       insert into parameter_history_entries (
         id, organization_id, project_id,
         version, value, changed_by_user_id, request_id,
-        logical_node_id
+        logical_node_id, initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
       )
       select
         $3,
@@ -1882,7 +1922,8 @@ async function mergeEnablementChangeRequest(
         occurrence_lock.target_value,
         $5,
         occurrence_lock.id,
-        occurrence_lock.logical_node_id
+        occurrence_lock.logical_node_id,
+        $6, $7, $8, $9, $10, $11
       from occurrence_lock
       returning id
     )
@@ -1907,7 +1948,13 @@ async function mergeEnablementChangeRequest(
       input.requestId,
       input.historyId,
       input.expectedVersion ?? null,
-      input.actorUserId
+      input.attribution ? input.attribution.userId : input.actorUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null
     ]
   );
   const merged = result.rows[0];
@@ -1922,7 +1969,8 @@ export async function mergeChangeRequest(
     organizationId: string;
     requestId: string;
     expectedVersion?: number;
-    actorUserId: string;
+    actorUserId?: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
   }
 ) {
   if (parameterIdentityMode() === "semantic") {
@@ -2072,7 +2120,9 @@ export async function mergeChangeRequest(
         insert into parameter_history_entries (
           id, organization_id, project_id,
           version, value, changed_by_user_id, request_id,
-          parameter_spec_id, project_parameter_binding_id
+          parameter_spec_id, project_parameter_binding_id,
+          initiator_type, initiator_system_kind, initiator_system_name,
+          initiator_session_id, initiator_tool_call_id, initiator_approval_id
         )
         select
           $3,
@@ -2083,7 +2133,8 @@ export async function mergeChangeRequest(
           $5,
           occurrence_lock.id,
           occurrence_lock.parameter_spec_id,
-          occurrence_lock.project_parameter_binding_id
+          occurrence_lock.project_parameter_binding_id,
+          $6, $7, $8, $9, $10, $11
         from occurrence_lock
         returning id
       )
@@ -2107,7 +2158,13 @@ export async function mergeChangeRequest(
         input.requestId,
         input.historyId,
         input.expectedVersion ?? null,
-        input.actorUserId
+        input.attribution ? input.attribution.userId : input.actorUserId ?? null,
+        input.attribution?.initiatorType ?? "user",
+        input.attribution?.systemKind ?? null,
+        input.attribution?.systemName ?? null,
+        input.attribution?.sessionId ?? null,
+        input.attribution?.toolCallId ?? null,
+        input.attribution?.approvalId ?? null
       ]
     );
     const merged = result.rows[0];
@@ -2140,6 +2197,12 @@ export async function mergeChangeRequest(
       set current_value = request_to_merge.target_value,
         value_version = ppv.value_version + 1,
         updated_by_user_id = $4,
+        initiator_type = $6,
+        initiator_system_kind = $7,
+        initiator_system_name = $8,
+        initiator_session_id = $9,
+        initiator_tool_call_id = $10,
+        initiator_approval_id = $11,
         updated_at = now()
       from request_to_merge
       where ppv.organization_id = $1
@@ -2161,7 +2224,9 @@ export async function mergeChangeRequest(
       insert into parameter_history_entries (
         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
         version, value, changed_by_user_id, request_id,
-        parameter_spec_id, project_parameter_binding_id
+        parameter_spec_id, project_parameter_binding_id,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
       )
       select
         $5,
@@ -2174,7 +2239,8 @@ export async function mergeChangeRequest(
         $4,
         id,
         parameter_spec_id,
-        project_parameter_binding_id
+        project_parameter_binding_id,
+        $6, $7, $8, $9, $10, $11
       from updated_value
       returning id
     )
@@ -2182,7 +2248,19 @@ export async function mergeChangeRequest(
     from updated_value
     inner join inserted_history on true
     `,
-    [input.organizationId, input.requestId, input.expectedVersion ?? null, input.actorUserId, input.historyId]
+    [
+      input.organizationId,
+      input.requestId,
+      input.expectedVersion ?? null,
+      input.attribution ? input.attribution.userId : input.actorUserId ?? null,
+      input.historyId,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
+    ]
   );
 
   const merged = result.rows[0];

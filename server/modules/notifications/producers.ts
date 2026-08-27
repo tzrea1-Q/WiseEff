@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import { notifyUsers } from "./service";
 
 function reviewQueueUrl(projectId: string) {
@@ -175,6 +176,8 @@ export async function notifyParameterMergeCompleted(
     submitterUserId: string;
     mergerName: string;
     reviewerUserIds: string[];
+    /** Derived once from the trusted merge invocation; never reconstructed from AuthContext. */
+    execution?: TrustedInvocationDomainAttribution;
   }
 ) {
   const projectLabel = input.projectName?.trim() || input.projectId;
@@ -192,7 +195,17 @@ export async function notifyParameterMergeCompleted(
     metadata: {
       projectId: input.projectId,
       parameterName: input.parameterName,
-      mergerName: input.mergerName
+      mergerName: input.mergerName,
+      ...(input.execution
+        ? {
+            initiatorType: input.execution.initiatorType,
+            initiatorSystemKind: input.execution.systemKind,
+            initiatorSystemName: input.execution.systemName,
+            initiatorSessionId: input.execution.sessionId,
+            initiatorToolCallId: input.execution.toolCallId,
+            initiatorApprovalId: input.execution.approvalId,
+          }
+        : {})
     }
   });
 }

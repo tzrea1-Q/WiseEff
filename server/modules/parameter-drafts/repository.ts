@@ -5,12 +5,14 @@
  */
 
 import type { Queryable } from "../../shared/database/client";
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction, ParameterDraftDto } from "./types";
 import { upsertSemanticDraft } from "./semanticDraftUpsert";
 // Identity mode lives in the parameter kernel (ADR-0029); this is the
 // module's only import outside shared/.
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
+import { ApiError } from "../../shared/http/errors";
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;
@@ -528,8 +530,8 @@ export async function getChangeRequestEnablementWriteLock(
 type DraftRow = {
   id: string;
   project_id: string;
-  project_parameter_value_id: string;
-  user_id?: string;
+  project_parameter_value_id: string | null;
+  user_id?: string | null;
   target_value: string;
   action?: ParameterChangeAction;
   reason: string;
@@ -542,11 +544,18 @@ type DraftRow = {
   base_raw_value?: string | null;
   property_name?: string | null;
   driver_module?: string | null;
+  initiator_type?: "user" | "agent" | "system";
+  initiator_system_kind?: "service" | "job" | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
 };
 
 export type ParameterDraftWithOrigin = {
   id: string;
-  userId: string;
+  /** Accountable user principal; System drafts deliberately have no user. */
+  userId: string | null;
   projectId: string;
   projectParameterValueId: string;
   targetValue: string;
@@ -554,12 +563,23 @@ export type ParameterDraftWithOrigin = {
   origin: "manual" | "file_sync";
   originFileVersionId?: string;
   updatedAt: string;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
 };
 
 function toDraftDto(row: DraftRow): ParameterDraftDto {
   const bindingId = row.project_parameter_binding_id ?? undefined;
   // Post-cutover: parameterId DTO field carries the semantic binding id.
   const parameterId = bindingId ?? row.project_parameter_value_id;
+  if (!parameterId) {
+    throw new ApiError("CONFLICT", "Parameter draft has no persisted parameter identity.", {
+      draftId: row.id,
+    });
+  }
   const currentValue = row.base_raw_value ?? undefined;
   const name = row.property_name?.trim() || undefined;
   const module = row.driver_module?.trim() || undefined;
@@ -578,21 +598,46 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     ...(parameterSpecId ? { parameterSpecId } : {}),
     ...(name ? { name } : {}),
     ...(module ? { module } : {}),
-    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {})
+    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {}),
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {})
   };
 }
 
 function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
+  if (!row.project_parameter_value_id) {
+    throw new ApiError("CONFLICT", "Parameter draft has no persisted parameter identity.", {
+      draftId: row.id,
+    });
+  }
   return {
     id: row.id,
-    userId: row.user_id ?? "",
+    userId: row.user_id ?? null,
     projectId: row.project_id,
     projectParameterValueId: row.project_parameter_value_id,
     targetValue: row.target_value,
     action: row.action ?? "set",
     origin: row.origin ?? "manual",
     originFileVersionId: row.origin_file_version_id ?? undefined,
-    updatedAt: dateTimeToIso(row.updated_at)
+    updatedAt: dateTimeToIso(row.updated_at),
+    ...(row.initiator_type && row.initiator_type !== "user"
+      ? {
+          initiatorType: row.initiator_type,
+          initiatorSystemKind: row.initiator_system_kind ?? undefined,
+          initiatorSystemName: row.initiator_system_name ?? undefined,
+          initiatorSessionId: row.initiator_session_id ?? undefined,
+          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
+          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+        }
+      : {})
   };
 }
 
@@ -614,6 +659,7 @@ export async function listDraftsForUser(
     select
       d.id,
       d.project_id,
+      d.user_id,
       coalesce(d.project_parameter_binding_id, '') as project_parameter_value_id,
       d.target_value,
       d.action,
@@ -621,6 +667,12 @@ export async function listDraftsForUser(
       d.updated_at,
       d.project_parameter_binding_id,
       d.candidate_config_revision_id,
+      d.initiator_type,
+      d.initiator_system_kind,
+      d.initiator_system_name,
+      d.initiator_session_id,
+      d.initiator_tool_call_id,
+      d.initiator_approval_id,
       b.parameter_spec_id,
       locked_bpr.raw_value as base_raw_value,
       coalesce(
@@ -647,6 +699,7 @@ export async function listDraftsForUser(
     select
       d.id,
       d.project_id,
+      d.user_id,
       d.project_parameter_value_id,
       d.target_value,
       d.action,
@@ -654,6 +707,12 @@ export async function listDraftsForUser(
       d.updated_at,
       d.project_parameter_binding_id,
       d.candidate_config_revision_id,
+      d.initiator_type,
+      d.initiator_system_kind,
+      d.initiator_system_name,
+      d.initiator_session_id,
+      d.initiator_tool_call_id,
+      d.initiator_approval_id,
       coalesce(b.parameter_spec_id, null) as parameter_spec_id,
       coalesce(locked_bpr.raw_value, ppv.current_value) as base_raw_value,
       coalesce(
@@ -709,13 +768,21 @@ export async function listDraftsForParameterValue(
       origin,
       origin_file_version_id,
       updated_at,
+      initiator_type,
+      initiator_system_kind,
+      initiator_system_name,
+      initiator_session_id,
+      initiator_tool_call_id,
+      initiator_approval_id,
       project_parameter_binding_id
     from parameter_drafts
     where project_parameter_binding_id = $1
     order by updated_at desc, id asc
     `
       : `
-    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at, project_parameter_binding_id
+    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at,
+           project_parameter_binding_id, initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_drafts
     where project_parameter_value_id = $1
     order by updated_at desc, id asc
@@ -813,7 +880,8 @@ export async function upsertEnablementDraft(
     organizationId: string;
     projectId: string;
     logicalNodeId: string;
-    userId: string;
+    userId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     targetValue: string;
     action?: ParameterChangeAction;
     reason: string;
@@ -829,17 +897,25 @@ export async function upsertEnablementDraft(
     candidateConfigRevisionId?: string;
   },
 ): Promise<{ id: string; projectId: string; targetValue: string; action: ParameterChangeAction; reason: string; updatedAt: string }> {
+  const attribution = input.attribution;
+  const userId = attribution ? attribution.userId : input.userId;
+  const initiatorType = attribution?.initiatorType ?? "user";
+  const systemKind = attribution?.systemKind ?? null;
+  const systemName = attribution?.systemName ?? null;
   const existing = await db.query<{ id: string }>(
     `
     select id
     from parameter_drafts
     where project_id = $1
-      and user_id = $2
+      and user_id is not distinct from $2
       and logical_node_id = $3
       and edit_subject_kind = 'node-enablement'
+      and initiator_type = $4
+      and initiator_system_kind is not distinct from $5
+      and initiator_system_name is not distinct from $6
     limit 1
     `,
-    [input.projectId, input.userId, input.logicalNodeId],
+    [input.projectId, userId, input.logicalNodeId, initiatorType, systemKind, systemName],
   );
 
   const draftId = existing.rows[0]?.id ?? input.id;
@@ -871,6 +947,13 @@ export async function upsertEnablementDraft(
           expected_checksum = coalesce($10, expected_checksum),
           occurrence_span = coalesce($11::jsonb, occurrence_span),
           candidate_config_revision_id = coalesce($12, candidate_config_revision_id),
+          user_id = $13,
+          initiator_type = $14,
+          initiator_system_kind = $15,
+          initiator_system_name = $16,
+          initiator_session_id = $17,
+          initiator_tool_call_id = $18,
+          initiator_approval_id = $19,
           updated_at = now()
       where id = $1
       returning id, project_id, target_value, action, reason, updated_at
@@ -888,6 +971,13 @@ export async function upsertEnablementDraft(
         input.writeLock?.expectedChecksum ?? null,
         occurrenceSpanJson,
         input.candidateConfigRevisionId ?? null,
+        userId,
+        initiatorType,
+        systemKind,
+        systemName,
+        attribution?.sessionId ?? null,
+        attribution?.toolCallId ?? null,
+        attribution?.approvalId ?? null,
       ],
     );
     const row = updated.rows[0]!;
@@ -916,11 +1006,14 @@ export async function upsertEnablementDraft(
       action, edit_subject_kind, logical_node_id, project_parameter_binding_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
       source_file_version_id, expected_checksum, occurrence_span,
-      candidate_config_revision_id
+      candidate_config_revision_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, 'node-enablement', $10, null,
-      $11, null, $12, $13, $14, $15::jsonb, $16
+      $11, null, $12, $13, $14, $15::jsonb, $16,
+      $17, $18, $19, $20, $21, $22
     )
     returning id, project_id, target_value, action, reason, updated_at
     `,
@@ -928,7 +1021,7 @@ export async function upsertEnablementDraft(
       draftId,
       input.organizationId,
       input.projectId,
-      input.userId,
+      userId,
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
@@ -941,6 +1034,12 @@ export async function upsertEnablementDraft(
       input.writeLock?.expectedChecksum ?? null,
       occurrenceSpanJson,
       input.candidateConfigRevisionId ?? null,
+      initiatorType,
+      systemKind,
+      systemName,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null,
     ],
   );
   const row = inserted.rows[0]!;
@@ -961,7 +1060,8 @@ export async function upsertDraft(
     organizationId: string;
     projectId: string;
     parameterId: string;
-    userId: string;
+    userId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     targetValue: string;
     action?: ParameterChangeAction;
     reason: string;
@@ -974,6 +1074,7 @@ export async function upsertDraft(
     candidateConfigRevisionId?: string;
   }
 ) {
+  const attribution = input.attribution;
   if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const row = await upsertSemanticDraft(db, {
@@ -981,7 +1082,7 @@ export async function upsertDraft(
       organizationId: input.organizationId,
       projectId: input.projectId,
       bindingId,
-      userId: input.userId,
+      userId: attribution ? attribution.userId : input.userId,
       targetValue: input.targetValue,
       action: input.action,
       reason: input.reason,
@@ -994,6 +1095,7 @@ export async function upsertDraft(
       expectedChecksum: input.writeLock?.expectedChecksum,
       occurrenceSpan: input.writeLock?.occurrenceSpan,
       candidateConfigRevisionId: input.candidateConfigRevisionId,
+      attribution,
     });
     void input.parameterSpecId;
     if (!row) {
@@ -1007,7 +1109,13 @@ export async function upsertDraft(
       action: row.action,
       reason: row.reason,
       updated_at: row.updated_at,
-      project_parameter_binding_id: row.project_parameter_binding_id
+      project_parameter_binding_id: row.project_parameter_binding_id,
+      initiator_type: attribution?.initiatorType ?? "user",
+      initiator_system_kind: attribution?.systemKind ?? null,
+      initiator_system_name: attribution?.systemName ?? null,
+      initiator_session_id: attribution?.sessionId ?? null,
+      initiator_tool_call_id: attribution?.toolCallId ?? null,
+      initiator_approval_id: attribution?.approvalId ?? null
     });
   }
 
@@ -1018,11 +1126,13 @@ export async function upsertDraft(
       target_value, reason, origin, origin_file_version_id,
       action, project_parameter_binding_id, candidate_config_revision_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
-      source_file_version_id, expected_checksum, occurrence_span
+      source_file_version_id, expected_checksum, occurrence_span,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-      $13, $14, $15, $16, $17, $18::jsonb
+      $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, $24
     )
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
@@ -1063,6 +1173,12 @@ export async function upsertDraft(
         excluded.occurrence_span,
         parameter_drafts.occurrence_span
       ),
+      initiator_type = excluded.initiator_type,
+      initiator_system_kind = excluded.initiator_system_kind,
+      initiator_system_name = excluded.initiator_system_name,
+      initiator_session_id = excluded.initiator_session_id,
+      initiator_tool_call_id = excluded.initiator_tool_call_id,
+      initiator_approval_id = excluded.initiator_approval_id,
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, action, reason, updated_at
     `,
@@ -1071,7 +1187,7 @@ export async function upsertDraft(
       input.organizationId,
       input.projectId,
       input.parameterId,
-      input.userId,
+      attribution ? attribution.userId : input.userId,
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
@@ -1084,7 +1200,13 @@ export async function upsertDraft(
       input.writeLock?.propertyOccurrenceId ?? null,
       input.writeLock?.sourceFileVersionId ?? null,
       input.writeLock?.expectedChecksum ?? null,
-      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
+      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
+      attribution?.initiatorType ?? "user",
+      attribution?.systemKind ?? null,
+      attribution?.systemName ?? null,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null
     ]
   );
 

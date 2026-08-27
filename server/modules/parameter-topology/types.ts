@@ -51,6 +51,12 @@ export type DtsConfigRevisionDto = {
   overlayOrder?: string[];
   manifestState?: ConfigRevisionManifestState;
   createdByUserId?: string;
+  initiatorType?: "user" | "agent" | "system";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
   createdAt: string;
   resolvedAt?: string;
 };
