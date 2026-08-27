@@ -32,6 +32,24 @@ function renderChromeHarness() {
   };
 }
 
+function renderLauncherHarness() {
+  const anchor = document.createElement("div");
+  anchor.dataset.xiaozeLauncherAnchor = "";
+
+  const handle = document.createElement("button");
+  handle.dataset.xiaozeLauncherDragHandle = "";
+  anchor.appendChild(handle);
+  document.body.appendChild(anchor);
+
+  const view = render(<XiaozePopupChrome />);
+  return {
+    ...view,
+    anchor,
+    handle,
+    cleanupHarness: () => anchor.remove()
+  };
+}
+
 describe("XiaozePopupChrome", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -132,6 +150,25 @@ describe("XiaozePopupChrome", () => {
     expect(popup.style.getPropertyValue("--xiaoze-popup-left")).toBe("996px");
     expect(localStorage.getItem(XIAOZE_POPUP_LAYOUT_STORAGE_KEY)).toBeNull();
     expect(document.body).not.toHaveClass("xiaoze-popup-drag-active");
+
+    unmount();
+    cleanupHarness();
+  });
+
+  it("keeps the launcher's last dragged position when pointer capture is cancelled", async () => {
+    const { anchor, handle, unmount, cleanupHarness } = renderLauncherHarness();
+    await waitFor(() => expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("1360px"));
+
+    fireEvent.pointerDown(handle, { pointerId: 5, button: 0, isPrimary: true, clientX: 1388, clientY: 848 });
+    fireEvent.pointerMove(handle, { pointerId: 5, clientX: 400, clientY: 300 });
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("372px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("272px");
+
+    fireEvent.pointerCancel(handle, { pointerId: 5 });
+
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("372px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("272px");
+    expect(document.body).not.toHaveClass("xiaoze-launcher-drag-active");
 
     unmount();
     cleanupHarness();

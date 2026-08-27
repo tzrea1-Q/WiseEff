@@ -400,7 +400,11 @@ function bindXiaozeLauncherLayout(
         return;
       }
       clearGesture();
-      renderLayout(startPosition);
+      if (changed) {
+        commitLayout(nextPosition);
+      } else {
+        renderLayout(startPosition);
+      }
     };
 
     handle.addEventListener("pointermove", onPointerMove);
