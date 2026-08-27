@@ -1,13 +1,13 @@
 # 小泽可拖动非模态浮窗
 
-> English: [English](../../../exec-plans/active/2026-08-27-xiaoze-draggable-modeless-popup.md)
+> English: [English](../../../exec-plans/completed/2026-08-27-xiaoze-draggable-modeless-popup.md)
 
-状态：**Active — 方案已确认，尚未开始实现**  
+状态：**Completed — 已实现并完成本地验证**
 日期：2026-08-27  
 Owner 与最终合入批准人：Tzrea1 / `@tzrea1-Q`  
 功能分支：`codex/frontend-ui-optimization-20260827`  
 工作区：`/Users/tzrea1/Develop/WiseEff-worktrees/frontend-ui-optimization-20260827`  
-基线：`origin/main@8b6a2ad2d80e6bdd24af150863ef1c7293039dbe`
+已集成基线：`80d70f0058c953879598630c09565b57cc47f143`
 
 ## 目标
 
@@ -301,14 +301,14 @@ git diff --check origin/main...HEAD
 
 ## 文档更新门禁
 
-- [ ] 所有 `Update` 行已按需同步中英文。
-- [ ] 所有 `Review` 行记录准确 review 结果；任何 deferred correction 都进入技术债 tracker。
-- [ ] 完成前，requirement 与 operation truth source 中均存在 `XIAOZE-POPUP-MOVE-001`。
-- [ ] 手工验收文档说明桌面/平板 modeless 行为与手机全屏行为。
-- [ ] Frontend/design 文档说明布局持久化、键盘/复位、跨路由、业务 modal 与小泽 approval 层级。
-- [ ] 完成记录链接真实浏览器及 operation evidence。
-- [ ] 最终 exact tree 上 `npm run docs:check` 通过。
-- [ ] 只有实现、验证、review 和上述门禁全部通过后，才能把中英文计划一起移到 `completed/`。
+- [x] 所有 `Update` 行已按需同步中英文。
+- [x] 所有 `Review` 行已记录准确结果；没有接受残留需要新增技术债行。
+- [x] requirement 与 operation truth source 中均已存在 `XIAOZE-POPUP-MOVE-001`。
+- [x] 手工验收文档已说明桌面/平板 modeless 行为与手机全屏行为。
+- [x] Frontend/design 文档已说明布局持久化、键盘/复位、跨路由、业务 modal 与小泽 approval 层级。
+- [x] 真实浏览器及 operation evidence 已记录在下方完成记录。
+- [x] 实现树上的 `npm run docs:check` 已通过。
+- [x] 实现、聚焦验证、独立 Standards/Spec review 与中英文文档门禁均已完成。
 
 ## Git 与 PR 工作流
 
@@ -318,4 +318,18 @@ git diff --check origin/main...HEAD
 
 ## 完成记录
 
-尚未实现。本轮规划没有修改产品代码、验收 registry 或运行时行为。本地计划校验不等于浏览器、Hosted CI、目标设备或 release evidence。
+已在隔离 feature branch 上实现已确认的小泽可拖动/modeless 合同。桌面/平板由同一个 pointer + keyboard layout controller 管理拖动、右下缩放、复位、v1→v2 本地持久化、视口夹取、跨路由连续性和页面共存。手机继续使用背景 inert、焦点陷阱的全屏 dialog，不展示也不持久化桌面控制。业务 modal 位于小泽之上，小泽审批与 toast 继续位于更高的语义层级。
+
+文档 review 结果：仓库地图、产品规格、架构/领域、安全/治理、环境/部署和技术债 tracker 仍准确，无需修改；中英文 frontend/design、手工验收、browser/operation coverage、requirement/operation registry、quality spec 与本计划已同步。没有后端/API/schema 或目标设备行为变化。
+
+在精确实现树上观测到的本地验证：
+
+- 小泽 popup chrome/view 最终聚焦测试 `22/22`，此前较宽聚焦组合 `30/30`；
+- TypeScript（`npx tsc -b --pretty false`）、`npm run build`、`npm run ui:check -- --update-baseline`、12 项覆盖矩阵和 `npm run docs:check` 均通过；
+- 自有 API-mode acceptance `e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts` 为 `2/2`（含 warmup）；小泽 responsive 为 `4/4`；聚焦 a11y 为 `2/2`；聚焦 visual 与已存 baseline 通过；
+- 完整 `npm test`：`416` 个文件通过，`2` 个文件出现 3 个无关的五秒超时（`3114/3117` 测试通过）；精确重跑这 3 项时 `3/3` 通过；
+- 独立 Spec review 无残留 actionable finding。独立 Standards review 提出的手机断点焦点/inert、键盘缩放和 Playwright 可访问名称定位器问题均已修复并复验。
+
+真实浏览器使用 API-mode `http://127.0.0.1:5191/` 与 API `http://127.0.0.1:8791`，覆盖 `1440x900`、`768x1024`、`390x844`。已验证鼠标/触屏等价拖动、右下缩放、Arrow/Shift/Home、复位、刷新恢复、页面输入、跨路由、业务 modal 层级、手机焦点/全屏，以及手机不覆盖桌面布局。截图位于 `work/ui-checks/xiaoze-popup-move/`，最终手机截图为 `mobile-fullscreen-final.png`；自有 operation artifact 位于 `test-results/acceptance/xiaoze-popup-layout.accept-8f7d2-reserves-mobile-full-screen-Desktop-Chrome/attachments/`。所测安全路由的浏览器 console error 为 0；手机观察到 2 条非 error warning。
+
+证据边界：以上均为本地 macOS/浏览器证据，不代表 Hosted CI、目标设备、staging、release、push、PR 或 merge 已完成。

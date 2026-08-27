@@ -752,6 +752,8 @@ test.describe("Xiaoze P1 action", () => {
   test("approval card is clickable in the browser while the chat stays open", async ({ page }, testInfo) => {
     // @acceptance XIAOZE-APPROVAL-CARD-001
     // @operation XIAOZE-APPROVAL-CARD-001
+    // Regression linkage: XIAOZE-POPUP-MOVE-001 requires this approval surface
+    // to remain above the modeless popup without dismissing the conversation.
     test.setTimeout(180_000);
     const openBefore = await countOpenChangeRequests();
 

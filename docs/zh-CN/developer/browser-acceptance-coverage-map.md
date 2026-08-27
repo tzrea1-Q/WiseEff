@@ -89,6 +89,7 @@
 - `PARAM-HAPPY-001`：在融合后的成熟 `/parameters` 工作台中检索语义 binding、查看本轮修改区、创建 typed draft、选择可见处理人并 submit，按真实角色 review 后执行 semantic merge/writeback、reload、持久化和审计闭环（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-001`：小泽 P0 感知验收——基于页面上下文与只读感知工具回答有权限范围内的项目问题。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：越权项目问题返回安全、不泄露数据的回答。
+- `XIAOZE-POPUP-MOVE-001`：桌面/平板用户可移动、缩放、复位、刷新并在小泽非模态浮窗保持打开时操作和切换业务页面；手机继续全屏（`e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts`）。
 - `XIAOZE-ACTION-APPROVE-001`：共享 CI 验收库由 `e2e/acceptance/xiaoze-action.acceptance.spec.ts` 覆盖（binding id + DTS cell；无 `project_parameter_value_id` 回退）。额外隔离在 `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` 的可丢弃 cutover 库上。
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`：批准后工具执行失败时，聊天应出现中文 assistant 失败回合（`操作未能完成` + 原因），线程仍可用，「新对话」不被 pending interrupt 卡住。本切片以图与 AG-UI 装配测试为阻断门禁；浏览器路径需要陈旧工作版本 / overlay 夹具，登记为诚实的 `@acceptance-planned` 桩（`e2e/acceptance/xiaoze-action.acceptance.spec.ts`）。
 - `XIAOZE-PLAN-MULTISTEP-001`：多步计划在批准后 checkpoint resume，并报告观察到的执行结果（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。

@@ -1,6 +1,7 @@
 import {
   type ComponentProps,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,7 +15,7 @@ import {
   useCopilotChatConfiguration
 } from "@copilotkit/react-core/v2";
 import { XiaozeChatToggleButton } from "./XiaozeChatToggleButton";
-import { useXiaozePageContextValue } from "./xiaozePageContext";
+import { isXiaozePopupDesktop } from "./xiaozePopupLayout";
 import {
   dimensionToCss,
   readXiaozePopupMotionDurations,
@@ -24,6 +25,48 @@ import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 
 const DEFAULT_POPUP_WIDTH = 420;
 const DEFAULT_POPUP_HEIGHT = 680;
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "area[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "summary",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function isVisibleFocusable(node: HTMLElement) {
+  if (node.hasAttribute("hidden") || node.closest("[hidden],[inert]")) {
+    return false;
+  }
+  const style = window.getComputedStyle(node);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
+function focusableWithin(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isVisibleFocusable);
+}
+
+function acquireMobileBackgroundInert(layer: HTMLElement) {
+  const acquired: HTMLElement[] = [];
+  let current: HTMLElement = layer;
+  while (current.parentElement && current.parentElement !== document.body) {
+    const parent = current.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling instanceof HTMLElement && sibling !== current && !sibling.hasAttribute("inert")) {
+        sibling.setAttribute("inert", "");
+        acquired.push(sibling);
+      }
+    }
+    current = parent;
+  }
+  return () => {
+    for (const element of acquired) {
+      element.removeAttribute("inert");
+    }
+  };
+}
 
 /**
  * The Xiaoze approval card (Radix AlertDialog) portals to <body>, outside the
@@ -86,6 +129,7 @@ export function XiaozePopupView({
   const wasOpenRef = useRef(false);
   const [isMounted, setIsMounted] = useState(isPopupOpen);
   const [motion, setMotion] = useState<XiaozePopupMotionPhase>(isPopupOpen ? "visible" : "leaving");
+  const [isDesktop, setIsDesktop] = useState(() => isXiaozePopupDesktop());
   const { openMs, closeMs } = readXiaozePopupMotionDurations();
 
   const requestClose = useCallback(() => {
@@ -93,26 +137,11 @@ export function XiaozePopupView({
     setModalOpen?.(false);
   }, [setModalOpen]);
 
-  const pageContext = useXiaozePageContextValue();
-  const previousPathRef = useRef<string | undefined>(undefined);
-
   useEffect(() => {
-    const path = pageContext?.path;
-    if (!path) {
-      return;
-    }
-
-    if (previousPathRef.current === undefined) {
-      previousPathRef.current = path;
-      requestClose();
-      return;
-    }
-
-    if (path !== previousPathRef.current) {
-      previousPathRef.current = path;
-      requestClose();
-    }
-  }, [pageContext?.path, requestClose]);
+    const handleResize = () => setIsDesktop(isXiaozePopupDesktop());
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const wasOpen = wasOpenRef.current;
@@ -151,6 +180,15 @@ export function XiaozePopupView({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        const activeElement = document.activeElement;
+        if (
+          isDesktop &&
+          activeElement instanceof Node &&
+          !containerRef.current?.contains(activeElement) &&
+          !isWithinApprovalCard(activeElement)
+        ) {
+          return;
+        }
         event.preventDefault();
         requestClose();
       }
@@ -158,7 +196,46 @@ export function XiaozePopupView({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPopupOpen, requestClose]);
+  }, [isDesktop, isPopupOpen, requestClose]);
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current;
+    if (!isPopupOpen || isDesktop || !layer) {
+      return;
+    }
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && !layer.contains(activeElement)) {
+      restoreFocusRef.current = activeElement;
+    }
+    const releaseBackgroundInert = acquireMobileBackgroundInert(layer);
+    containerRef.current?.focus({ preventScroll: true });
+    return releaseBackgroundInert;
+  }, [isDesktop, isMounted, isPopupOpen]);
+
+  const trapMobileTab = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (isDesktop || event.key !== "Tab") {
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    const focusables = focusableWithin(container);
+    if (focusables.length === 0) {
+      event.preventDefault();
+      container.focus();
+      return;
+    }
+    const first = focusables[0]!;
+    const last = focusables[focusables.length - 1]!;
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === container)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }, [isDesktop]);
 
   useLayoutEffect(() => {
     const layer = layerRef.current;
@@ -202,7 +279,7 @@ export function XiaozePopupView({
   }, [isPopupOpen, openMs]);
 
   useEffect(() => {
-    if (!isPopupOpen || !clickOutsideToClose) {
+    if (!isPopupOpen || !clickOutsideToClose || isDesktop) {
       return;
     }
 
@@ -229,7 +306,7 @@ export function XiaozePopupView({
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [clickOutsideToClose, isPopupOpen, requestClose]);
+  }, [clickOutsideToClose, isDesktop, isPopupOpen, requestClose]);
 
   const popupStyle = useMemo(
     () =>
@@ -255,26 +332,29 @@ export function XiaozePopupView({
           ref={layerRef}
           className="xiaoze-popup-layer"
           data-motion={motion}
+          data-presentation={isDesktop ? "modeless" : "modal"}
           data-testid="xiaoze-popup-layer"
           style={popupStyle}
         >
-          <button
-            type="button"
-            className="xiaoze-popup-scrim"
-            aria-hidden="true"
-            tabIndex={-1}
-            onClick={(event) => {
-              if (clickOutsideToClose && !isWithinApprovalCard(event.target as Node)) {
-                requestClose();
-              }
-            }}
-          />
+          {!isDesktop ? (
+            <button
+              type="button"
+              className="xiaoze-popup-scrim"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={(event) => {
+                if (clickOutsideToClose && !isWithinApprovalCard(event.target as Node)) {
+                  requestClose();
+                }
+              }}
+            />
+          ) : null}
           <div
             ref={containerRef}
             tabIndex={-1}
             role={isPopupOpen ? "dialog" : undefined}
             aria-label={isPopupOpen ? modalTitle : undefined}
-            aria-modal={isPopupOpen ? "true" : undefined}
+            aria-modal={isPopupOpen && !isDesktop ? "true" : undefined}
             aria-hidden={isPopupOpen ? undefined : "true"}
             inert={isPopupOpen ? undefined : true}
             data-testid="copilot-popup"
@@ -282,11 +362,21 @@ export function XiaozePopupView({
             data-motion={motion}
             className="copilotKitPopup copilotKitWindow xiaoze-popup-window"
             style={popupStyle}
+            onKeyDown={trapMobileTab}
           >
             {headerElement}
             <div className="xiaoze-popup-window__body" data-popup-chat="">
               <CopilotChatView {...chatProps} className={["xiaoze-popup-chat", className].filter(Boolean).join(" ")} />
             </div>
+            {isDesktop ? (
+              <button
+                type="button"
+                className="xiaoze-popup-resize-handle"
+                data-xiaoze-resize-handle=""
+                aria-label="调整小泽窗口大小"
+                title="拖动调整窗口大小；方向键微调，Shift 加速，Home 复位"
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

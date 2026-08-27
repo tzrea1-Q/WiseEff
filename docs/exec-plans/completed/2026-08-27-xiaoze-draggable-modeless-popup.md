@@ -1,13 +1,13 @@
 # Xiaoze Draggable Modeless Popup
 
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-27-xiaoze-draggable-modeless-popup.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-27-xiaoze-draggable-modeless-popup.md)
 
-Status: **Active — design approved, implementation not started**  
+Status: **Completed — implemented and locally verified**
 Date: 2026-08-27  
 Owner and final merge approver: Tzrea1 / `@tzrea1-Q`  
 Feature branch: `codex/frontend-ui-optimization-20260827`  
 Worktree: `/Users/tzrea1/Develop/WiseEff-worktrees/frontend-ui-optimization-20260827`  
-Baseline: `origin/main@8b6a2ad2d80e6bdd24af150863ef1c7293039dbe`
+Integrated baseline: `80d70f0058c953879598630c09565b57cc47f143`
 
 ## Goal
 
@@ -301,14 +301,14 @@ For each relevant page and viewport, capture `snapshot`, `screenshot`, and `cons
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row is changed in English and Chinese where a companion exists.
-- [ ] Every `Review` row records the exact review result; any deferred corrective work is added to the technical-debt tracker.
-- [ ] `XIAOZE-POPUP-MOVE-001` exists in requirement and operation sources of truth before completion.
-- [ ] Manual acceptance documents explain desktop/tablet modeless behavior and mobile full-screen behavior.
-- [ ] Frontend/design docs describe layout persistence, keyboard/reset behavior, route continuity, business-modal ordering, and Xiaoze approval ordering.
-- [ ] Real-browser and operation evidence are linked from the completion record.
-- [ ] `npm run docs:check` passes on the final exact tree.
-- [ ] Only after implementation, verification, reviews, and the gate above pass may this plan move to `completed/` in both language trees.
+- [x] Every `Update` row is changed in English and Chinese where a companion exists.
+- [x] Every `Review` row records the exact review result; no accepted residual required a technical-debt row.
+- [x] `XIAOZE-POPUP-MOVE-001` exists in requirement and operation sources of truth.
+- [x] Manual acceptance documents explain desktop/tablet modeless behavior and mobile full-screen behavior.
+- [x] Frontend/design docs describe layout persistence, keyboard/reset behavior, route continuity, business-modal ordering, and Xiaoze approval ordering.
+- [x] Real-browser and operation evidence are recorded below.
+- [x] `npm run docs:check` passed on the implementation tree.
+- [x] Implementation, focused verification, independent Standards/Spec reviews, and this documentation gate are complete in both language trees.
 
 ## Git & PR Workflow
 
@@ -318,4 +318,18 @@ An implementation subagent may edit, test, and commit only on this feature branc
 
 ## Completion Record
 
-Not yet implemented. No product code, acceptance registry, or runtime behavior has changed as part of this planning pass. Local plan validation does not constitute browser, Hosted CI, target-device, or release evidence.
+Implemented the approved draggable/modeless Xiaoze contract on the isolated feature branch. Desktop/tablet now use one pointer-and-keyboard layout controller for drag, lower-right resize, reset, v1-to-v2 local persistence, viewport clamping, route continuity, and page coexistence. Mobile remains a focus-trapped, background-inert full-screen dialog and does not expose or persist desktop controls. Business modals are above Xiaoze; Xiaoze approval and toast layers retain their higher semantic tiers.
+
+Documentation review results: repository maps, product specs, architecture/domain, security/governance, environment/deployment, and the technical-debt tracker remain accurate and required no change. Bilingual frontend/design, manual acceptance, browser/operation coverage, requirement/operation registries, quality specs, and this plan were updated. No backend/API/schema or target-device behavior changed.
+
+Observed local verification on the exact implementation tree:
+
+- focused Xiaoze unit/component suites: final `22/22` for popup chrome/view, with the broader focused run previously `30/30`;
+- TypeScript (`npx tsc -b --pretty false`), `npm run build`, `npm run ui:check -- --update-baseline`, the 12-entry coverage matrix, and `npm run docs:check`: passed;
+- owning API-mode acceptance `e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts`: `2/2` including warmup; responsive Xiaoze gate: `4/4`; focused accessibility gate: `2/2`; focused visual gate and stored baselines: passed;
+- full `npm test`: `416` files passed and `2` files had three unrelated five-second timeouts (`3114/3117` tests passed); the exact three timed-out tests passed `3/3` when rerun;
+- independent Spec review: no residual actionable findings. Independent Standards review findings for mobile breakpoint focus/inert handling, keyboard resize, and stale Playwright accessible-name locators were fixed and reverified.
+
+Real-browser evidence used API-mode `http://127.0.0.1:5191/` with API `http://127.0.0.1:8791` at `1440x900`, `768x1024`, and `390x844`. Verified mouse/touch-equivalent drag, lower-right resize, Arrow/Shift/Home keyboard behavior, reset, reload persistence, background input, route continuity, business-modal ordering, mobile focus/full-screen behavior, and no mobile layout overwrite. Screenshots are under `work/ui-checks/xiaoze-popup-move/`; the final mobile capture is `mobile-fullscreen-final.png`. The owning operation artifact is under `test-results/acceptance/xiaoze-popup-layout.accept-8f7d2-reserves-mobile-full-screen-Desktop-Chrome/attachments/`. Browser console checks found zero errors on the exercised safe routes; two non-error warnings were observed on mobile.
+
+Evidence boundary: all results above are local macOS/browser evidence. No Hosted CI, target-device, staging, release, push, PR, or merge claim is made by this completion record.

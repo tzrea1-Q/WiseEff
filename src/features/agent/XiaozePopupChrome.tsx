@@ -1,6 +1,6 @@
-import { useXiaozePopupResize } from "./useXiaozePopupResize";
+import { useXiaozePopupLayout } from "./useXiaozePopupLayout";
 
 export function XiaozePopupChrome() {
-  useXiaozePopupResize(true);
+  useXiaozePopupLayout(true);
   return null;
 }

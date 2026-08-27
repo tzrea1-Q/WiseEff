@@ -107,6 +107,18 @@ test.describe("M5.11 visual quality gate", () => {
     await settleAppToasts(page);
 
     await expect(popup).toHaveScreenshot("xiaoze-popup-open.png");
+
+    const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
+    const handleBox = await dragHandle.boundingBox();
+    if (!handleBox) {
+      throw new Error("Xiaoze drag handle has no visual bounding box.");
+    }
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handleBox.x - 180, handleBox.y + 100, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("button", { name: "恢复小泽默认位置和大小" })).toBeVisible();
+    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png");
   });
 });
 

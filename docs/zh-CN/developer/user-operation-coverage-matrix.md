@@ -91,6 +91,7 @@
 - `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护和受历史保护的永久删除，断言覆盖 UI、API、DB 和 audit。
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：Guest 用户询问无权限项目时，小泽返回安全非数据回答，不泄露越权内容。
+- `XIAOZE-POPUP-MOVE-001`：Admin 在 `/parameters` 移动、缩放、复位和恢复小泽非模态浮窗，同时操作并切换业务页面；手机继续全屏，自动化归属 `e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts`。
 - `XIAOZE-ACTION-APPROVE-001`：Admin 批准小泽参数变更。共享 CI 验收库走 `e2e/acceptance/xiaoze-action.acceptance.spec.ts`（binding id + DTS cell）；额外隔离由 `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` 在可丢弃 cutover 库上证明。
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`：批准后工具执行失败时，用户应看到中文失败气泡、线程仍可继续，且「新对话」清掉 CopilotKit pending interrupt。浏览器自动化待补（`coverage: future`）；阻断证明是图与 AG-UI 装配测试。
 - `XIAOZE-PLAN-MULTISTEP-001`：Admin 在 `/parameters` 完成多步计划并经批准 resume，验收 checkpoint 恢复与执行结果报告（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。

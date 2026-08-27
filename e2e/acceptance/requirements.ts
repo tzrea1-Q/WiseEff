@@ -546,6 +546,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-POPUP-MOVE-001",
+    workflow: "G",
+    title: "Desktop and tablet users can move, resize, reset, restore, and keep the modeless Xiaoze popup open while operating and navigating the page; mobile remains full screen.",
+    required: true
+  },
+  {
     id: "XIAOZE-ACTION-APPROVE-001",
     workflow: "G",
     title: "Xiaoze parameter change approval executes through the agent audit chain.",
