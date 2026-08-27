@@ -73,6 +73,7 @@ async function cleanupAcceptanceCatalogRows(client: Client) {
     nodeIds,
     nodeIds.map((id) => `${id}:%`)
   ]);
+  await client.query("delete from node_operations where node_id = any($1::text[])", [nodeIds]);
   await client.query("delete from debug_node_bindings where node_id = any($1::text[])", [nodeIds]);
   await client.query("delete from debug_nodes where id = any($1::text[])", [nodeIds]);
 }
@@ -355,11 +356,165 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       ])
     );
 
+    const restoredDbSummary = await debuggingAdminDbSummary(editedName);
+    const protectedNodeName = `${acceptanceNodeNamePrefix} protected ${suffix}`;
+    const protectedCreateResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/nodes"), {
+      headers: smokeHeaders(),
+      data: { name: protectedNodeName, module: "Battery", enabled: true }
+    });
+    expect(protectedCreateResponse.status()).toBe(201);
+    const protectedCreateBody = (await protectedCreateResponse.json()) as { item: AdminNodeDto };
+    const protectedNode = protectedCreateBody.item;
+
+    const operationId = `acceptance-delete-protection-${suffix}`;
+    await withPgClient(async (client) => {
+      await client.query(
+        `insert into debug_node_bindings (
+           id, organization_id, node_id, protocol, node_path, access_mode, enabled
+         ) values ($1, 'org-chargelab', $2, 'hdc', '/sys/acceptance/delete-protection', 'RO', true)`,
+        [`${protectedNode.id}:hdc`, protectedNode.id]
+      );
+      const session = await client.query<{ id: string; actor_user_id: string }>(
+        `select id, actor_user_id
+         from debugging_sessions
+         where organization_id = 'org-chargelab'
+         order by started_at desc
+         limit 1`
+      );
+      expect(session.rowCount).toBe(1);
+      await client.query(
+        `insert into node_operations (
+           id, organization_id, session_id, node_id, protocol, node_path, operation_type, status, actor_user_id
+         ) values ($1, 'org-chargelab', $2, $3, 'hdc', '/sys/acceptance/delete-protection', 'read', 'failed', $4)`,
+        [operationId, session.rows[0].id, protectedNode.id, session.rows[0].actor_user_id]
+      );
+    });
+
+    const protectedDeleteResponse = await page.request.delete(
+      apiRoute(`/api/v1/debugging/admin/nodes/${encodeURIComponent(protectedNode.id)}`),
+      { headers: smokeHeaders() }
+    );
+    expect(protectedDeleteResponse.status()).toBe(409);
+    expect(await protectedDeleteResponse.json()).toMatchObject({
+      error: {
+        code: "CONFLICT",
+        details: { nodeId: protectedNode.id, reason: "node-history-protection", operationCount: 1 }
+      }
+    });
+
+    const protectedNodeDbSummary = await withPgClient(async (client) => {
+      const result = await client.query<{
+        node_count: string;
+        binding_count: string;
+        operation_count: string;
+        delete_audit_count: string;
+      }>(
+        `
+        select
+          (select count(*)::text from debug_nodes where id = $1) as node_count,
+          (select count(*)::text from debug_node_bindings where node_id = $1) as binding_count,
+          (select count(*)::text from node_operations where id = $2) as operation_count,
+          (select count(*)::text from audit_events where target_id = $1 and kind = 'debug-node-admin-delete') as delete_audit_count
+        `,
+        [protectedNode.id, operationId]
+      );
+      expect(result.rows[0]).toEqual({
+        node_count: "1",
+        binding_count: "1",
+        operation_count: "1",
+        delete_audit_count: "0"
+      });
+      return {
+        table: "debug_nodes/debug_node_bindings/node_operations/audit_events",
+        predicate: `node_id=${protectedNode.id}`,
+        observed: "protected node, binding, and operation remain; no delete audit was written",
+        rowCount: result.rowCount ?? result.rows.length
+      };
+    });
+
+    const deleteResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "DELETE" && response.url().includes(`/api/v1/debugging/admin/nodes/${encodeURIComponent(created!.id)}`)
+    );
+    await page.reload();
+    await expect(nodeRow(page, editedName)).toBeVisible({ timeout: 30_000 });
+    const nodeKpi = page.locator(".kpi-item").filter({ hasText: "可调节点" });
+    const nodeCountBeforeDelete = Number(await nodeKpi.locator(".kpi-value").innerText());
+    await nodeRow(page, editedName).getByRole("button", { name: `删除 ${editedName}` }).click();
+    const deleteDialog = page.getByRole("dialog", { name: /永久删除节点/ });
+    await expect(deleteDialog.getByText(/不可恢复/)).toBeVisible();
+    await deleteDialog.getByRole("button", { name: "删除节点" }).click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status()).toBe(204);
+    await expect(nodeRow(page, editedName)).toHaveCount(0);
+    await expect(nodeKpi.locator(".kpi-value")).toHaveText(String(nodeCountBeforeDelete - 1));
+
+    const postDeleteListResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
+      headers: smokeHeaders()
+    });
+    expect(postDeleteListResponse.ok()).toBe(true);
+    const postDeleteListBody = (await postDeleteListResponse.json()) as { items: AdminNodeDto[] };
+    expect(postDeleteListBody.items).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: created!.id, name: editedName })])
+    );
+
+    const postDeleteRuntimeResponse = await page.request.get(apiRoute("/api/v1/debugging/nodes?protocol=hdc"), {
+      headers: smokeHeaders()
+    });
+    expect(postDeleteRuntimeResponse.ok()).toBe(true);
+    const postDeleteRuntimeBody = (await postDeleteRuntimeResponse.json()) as { items: Array<{ id: string }> };
+    expect(postDeleteRuntimeBody.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: created!.id })]));
+
+    const postDeleteExportResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/catalog/export?includeArchived=true"), {
+      headers: smokeHeaders()
+    });
+    expect(postDeleteExportResponse.ok()).toBe(true);
+    const postDeleteExportBody = (await postDeleteExportResponse.json()) as {
+      item: { nodes: Array<{ id?: string; name: string }> };
+    };
+    expect(postDeleteExportBody.item.nodes).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: created!.id, name: editedName })])
+    );
+
+    const deletedNodeDbSummary = await withPgClient(async (client) => {
+      const result = await client.query<{ binding_count: string }>(
+        "select count(*)::text as binding_count from debug_node_bindings where node_id = $1",
+        [created!.id]
+      );
+      expect(result.rows[0]?.binding_count).toBe("0");
+      return {
+        table: "debug_node_bindings",
+        predicate: `node_id=${created!.id}`,
+        observed: `bindingCount=${result.rows[0]?.binding_count ?? "unknown"}`,
+        rowCount: result.rowCount ?? result.rows.length
+      };
+    });
+
+    await withPgClient(async (client) => {
+      await client.query("delete from node_operations where id = $1", [operationId]);
+    });
+    const protectedDeleteAfterHistoryResponse = await page.request.delete(
+      apiRoute(`/api/v1/debugging/admin/nodes/${encodeURIComponent(protectedNode.id)}`),
+      { headers: smokeHeaders() }
+    );
+    expect(protectedDeleteAfterHistoryResponse.status()).toBe(204);
+
     const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events?app=debugging&limit=100"), {
       headers: smokeHeaders()
     });
     expect(auditResponse.ok()).toBe(true);
     const auditBody = (await auditResponse.json()) as { items: AuditEventDto[] };
+    const deleteRequestId = deleteResponse.headers()["x-request-id"];
+    const deleteAuditEvents = auditBody.items.filter(
+      (item) => item.kind === "debug-node-admin-delete" && item.targetId === created!.id
+    );
+    expect(deleteAuditEvents).toHaveLength(1);
+    expect(deleteAuditEvents[0]).toMatchObject({
+      traceId: deleteRequestId,
+      metadata: { nodeId: created!.id, name: editedName, bindingCount: 2 }
+    });
+    const serializedDeleteMetadata = JSON.stringify(deleteAuditEvents[0]?.metadata ?? {});
+    expect(serializedDeleteMetadata).not.toContain(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
+    expect(serializedDeleteMetadata).not.toContain(`/tmp/wiseeff/acceptance/${suffix}/adb`);
     const exportedBindingPaths = exportedCatalog.nodes.flatMap((node) => node.bindings.map((binding) => binding.nodePath));
     const exportAuditMetadata = {
       moduleCount: exportedCatalog.modules.length,
@@ -386,6 +541,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       expect.arrayContaining([
         expect.objectContaining({ kind: "debug-node-admin-create", targetId: created!.id }),
         expect.objectContaining({ kind: "debug-node-admin-update", targetId: created!.id }),
+        expect.objectContaining({ kind: "debug-node-admin-delete", targetId: created!.id }),
         expect.objectContaining({ kind: "debug-node-binding-admin-upsert", targetId: `${created!.id}:hdc` }),
         expect.objectContaining({ kind: "debug-node-binding-admin-upsert", targetId: `${created!.id}:adb` }),
         expect.objectContaining({ kind: "debug-node-binding-admin-archive", targetId: `${created!.id}:adb` }),
@@ -439,21 +595,47 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
           path: "/api/v1/debugging/admin/nodes?includeArchived=true",
           responseSummary: "restored item remained in admin catalog"
         }),
+        summarizeApiResponse(deleteResponse, {
+          method: "DELETE",
+          path: `/api/v1/debugging/admin/nodes/${created!.id}`,
+          responseSummary: "unreferenced node was permanently deleted with HTTP 204"
+        }),
+        summarizeApiResponse(postDeleteListResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/admin/nodes?includeArchived=true",
+          responseSummary: "deleted node is absent from the subsequent admin catalog"
+        }),
+        summarizeApiResponse(postDeleteRuntimeResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/nodes?protocol=hdc",
+          responseSummary: "deleted node is absent from the runtime HDC list"
+        }),
+        summarizeApiResponse(postDeleteExportResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/admin/catalog/export?includeArchived=true",
+          responseSummary: "deleted node is absent from a future catalog export"
+        }),
+        summarizeApiResponse(protectedDeleteResponse, {
+          method: "DELETE",
+          path: `/api/v1/debugging/admin/nodes/${protectedNode.id}`,
+          responseSummary: "node with operation history was rejected with HTTP 409"
+        }),
         summarizeApiResponse(auditResponse, {
           method: "GET",
           path: "/api/v1/audit-events?app=debugging",
           responseSummary: `debugging admin audit events=${auditBody.items.length}`
         })
       ],
-      db: [await debuggingAdminDbSummary(editedName)],
+      db: [restoredDbSummary, protectedNodeDbSummary, deletedNodeDbSummary],
       audit: [
         auditSummaryFor(auditBody.items, "debug-node-admin-create", created!.id),
         auditSummaryFor(auditBody.items, "debug-node-admin-update", created!.id),
+        auditSummaryFor(auditBody.items, "debug-node-admin-delete", created!.id, deleteRequestId),
         auditSummaryFor(auditBody.items, "debug-node-binding-admin-archive", `${created!.id}:adb`),
         exportAuditSummary,
         importAuditSummary
       ],
-      notes: "Admin UI created and edited a logical debug node, exported the real node catalog, imported a derived one-node document, verified exact count metadata and absence of raw node paths for both catalog audit events, configured HDC/ADB paths, archived the ADB binding, disabled the node, and re-enabled it through the node Admin API. No HDC device claim is made."
+      notes: "Admin UI created and edited a logical debug node, exported the real node catalog, imported a derived one-node document, verified exact count metadata and absence of raw node paths for catalog and node-delete audit events, configured HDC/ADB paths, archived the ADB binding, disabled and re-enabled the node, verified history-protected 409 deletion, and permanently deleted unreferenced nodes. No HDC device claim is made."
     });
   });
 });

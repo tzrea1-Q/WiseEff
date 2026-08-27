@@ -123,8 +123,8 @@ export function renderOperationMatrixMarkdown(operations: AcceptanceOperation[])
     "",
     "This file is generated from `e2e/acceptance/operationMatrix.ts`.",
     "",
-    "| Operation ID | Priority | Area | Coverage | Route | Roles | Assertions | Specs |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| Operation ID | Priority | Area | Coverage | Route | Roles | Action | Assertions | Specs |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...operations.map((operation) =>
       [
         `| \`${operation.id}\``,
@@ -133,6 +133,7 @@ export function renderOperationMatrixMarkdown(operations: AcceptanceOperation[])
         operation.coverage,
         `\`${operation.route}\``,
         escapeMarkdownTableCell(operation.roles.join(", ")),
+        escapeMarkdownTableCell(operation.action),
         operation.assertions.join(", "),
         `${operation.specFiles.map((file) => `\`${file}\``).join("<br>")} |`
       ].join(" | ")

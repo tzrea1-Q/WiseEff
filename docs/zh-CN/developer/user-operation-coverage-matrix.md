@@ -88,7 +88,7 @@
 - `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-XREF-001`：Hardware User 在 `/knowledge` 管理条目的参数定义引用并在定义详情看到已发布的引用条目（草稿永不出现；废弃后 chip 存续带「已废弃」徽章），断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `PARAM-HOME-001`：Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
-- `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试参数新增、编辑、归档、恢复和 HDC/ADB binding 维护，断言覆盖 UI、API、DB 和 audit。
+- `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护和受历史保护的永久删除，断言覆盖 UI、API、DB 和 audit。
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：Guest 用户询问无权限项目时，小泽返回安全非数据回答，不泄露越权内容。
 - `XIAOZE-ACTION-APPROVE-001`：Admin 批准小泽参数变更。共享 CI 验收库走 `e2e/acceptance/xiaoze-action.acceptance.spec.ts`（binding id + DTS cell）；额外隔离由 `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` 在可丢弃 cutover 库上证明。

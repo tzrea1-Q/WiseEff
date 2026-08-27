@@ -148,6 +148,9 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.patch<ItemEnvelope<DebugAdminNodeDto>>(adminNodePath(nodeId), patch);
       return debugAdminNodeFromDto(response.item);
     },
+    async deleteNode(nodeId: string): Promise<void> {
+      await apiClient.delete(adminNodePath(nodeId));
+    },
     async upsertNodeBinding(nodeId: string, protocol: DebugConnectionProtocol, binding: DebugAdminBindingInput): Promise<DebugNodeProtocolBinding> {
       const response = await apiClient.put<ItemEnvelope<DebugAdminBindingDto>>(
         adminNodeBindingPath(nodeId, protocol),

@@ -71,6 +71,7 @@ export type DebugNodeLibraryTableProps = {
   onEdit: (nodeId: string) => void;
   onEditBindings: (nodeId: string) => void;
   onDisable: (nodeId: string) => void;
+  onDelete: (nodeId: string) => void;
   onCreate?: () => void;
   onManageModules?: () => void;
   onExport?: () => void;
@@ -87,6 +88,7 @@ export function DebugNodeLibraryTable({
   onEdit,
   onEditBindings,
   onDisable,
+  onDelete,
   onCreate,
   onManageModules,
   onExport,
@@ -292,6 +294,16 @@ export function DebugNodeLibraryTable({
                 onClick={() => onDisable(node.id)}
               >
                 禁用
+              </button>
+              <button
+                type="button"
+                className="button danger param-admin-row-action"
+                disabled={!canEdit || loading}
+                aria-label={`删除 ${node.name}`}
+                title={canEdit ? undefined : "缺少调试管理权限"}
+                onClick={() => onDelete(node.id)}
+              >
+                删除
               </button>
             </div>
           );

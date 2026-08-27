@@ -50,7 +50,7 @@
 - `KB-REC-001`：已完成的日志分析记录展示由存储的结论/影响文本推导的「相关知识」区块：相关已发布条目带 `/knowledge?entryId=…` 引用深链出现，草稿与归档条目永不出现，区块诚实标注实际运行的检索模式，无相关条目时展示诚实空态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-XREF-001`：编辑者在知识条目上管理参数定义的结构化引用（添加/移除有审计，绑定 `parameter_specs.id` 代理键）；定义详情的「相关知识」列表显示已发布的引用条目而草稿条目对任何调用者都不出现，废弃该定义后知识侧 chip 存续并带如实「已废弃」徽章（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
-- `DEBUG-ADMIN-001`：API mode 下，Admin 新增、编辑、禁用/恢复逻辑调试节点，维护 HDC/ADB binding，经生产接口导出节点目录并导入由其派生的单节点文档，同时核对数据库与 `debug-node-catalog-export` / `debug-node-catalog-import` 两类审计。这是确定性目录治理证据，不是 HDC 真机证据。
+- `DEBUG-ADMIN-001`：API mode 下，Admin 新增、编辑、禁用/恢复、维护 HDC/ADB binding，并永久删除无历史引用的逻辑调试节点；同时验证有历史引用时的 `409` 保护路径，经生产接口导出节点目录并导入由其派生的单节点文档，核对数据库与节点/目录审计。这是确定性目录治理证据，不是 HDC 真机证据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。
 - `DTS-RELOAD-KERNEL-001`：触发后内核日志采集保持为未判定证据；浏览器证据 `work/ui-checks/286-*`。
 - `DTS-RELOAD-VERIFY-001`：触发成功后经 `debug.readNode` 核对绑定参数，升级为 verified/contradicted 或保持 unverifiable。验收 spec 仅断言无绑定路径（不调用 `debug.readNode`、保持 unverifiable）；升级判定由服务端测试断言。人工浏览器证据 `work/ui-checks/287-*`。

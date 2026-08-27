@@ -30,7 +30,13 @@ import {
   createDebugSnapshot,
   upsertDebugParameterNodeBinding
 } from "./repository";
-import { createDebugNode, upsertDebugNodeBinding } from "./catalogSplitRepository";
+import {
+  createDebugNode,
+  getDebugNodeBinding,
+  listDebugNodeBindings,
+  listDebugNodes,
+  upsertDebugNodeBinding
+} from "./catalogSplitRepository";
 import { createDebuggingService } from "./service";
 import type { DebugParameterRecord, DebugSessionRecord } from "./types";
 
@@ -369,6 +375,95 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
   }
 
   describe("admin parameter catalog", () => {
+    it("deletes an unused node, cascades bindings, and records a summary audit", async () => {
+      const node = await createDebugNode(db, {
+        organizationId: "org-1",
+        name: "Unused node",
+        description: "Safe to remove"
+      });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "hdc",
+        nodePath: "/sys/unused",
+        accessMode: "RW",
+        enabled: true
+      });
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+      await service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-delete" });
+
+      await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: node.id })])
+      );
+      await expect(listDebugNodeBindings(db, { organizationId: "org-1", nodeId: node.id })).resolves.toEqual([]);
+      expect(audit.events[0]).toMatchObject({
+        traceId: "request-delete",
+        app: "debugging",
+        kind: "debug-node-admin-delete",
+        action: "delete",
+        targetType: "debug-node-registry",
+        targetId: node.id,
+        metadata: { nodeId: node.id, name: "Unused node", bindingCount: 1 }
+      });
+      expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/unused");
+    });
+
+    it("rejects deletion when a node has operation history and leaves the node and bindings intact", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const node = await createDebugNode(db, { organizationId: "org-1", name: "Historical node" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "adb",
+        nodePath: "/sys/historical",
+        accessMode: "RO",
+        enabled: true
+      });
+      await db.query(
+        `insert into node_operations (
+           id, organization_id, session_id, node_id, node_path, operation_type, status, actor_user_id
+         ) values ('operation-delete-protection', 'org-1', $1, $2, '/sys/historical', 'read', 'failed', 'user-1')`,
+        [session.id, node.id]
+      );
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+      await expect(service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-protected" })).rejects.toMatchObject({
+        code: "CONFLICT",
+        details: { nodeId: node.id, reason: "node-history-protection", operationCount: 1 }
+      });
+      await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: node.id })])
+      );
+      await expect(
+        getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "adb", includeDisabled: true })
+      ).resolves.toEqual(expect.objectContaining({ nodeId: node.id }));
+      expect(audit.events).toHaveLength(0);
+    });
+
+    it("deletes an unused disabled node and hides foreign or unknown nodes as not found", async () => {
+      const disabledNode = await createDebugNode(db, { organizationId: "org-1", name: "Disabled unused node" });
+      await db.query(`update debug_nodes set enabled = false where id = $1`, [disabledNode.id]);
+      const foreignNode = await createDebugNode(db, { organizationId: "org-2", name: "Foreign node" });
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+      await expect(service.deleteAdminDebugNode(readAuth, disabledNode.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(service.deleteAdminDebugNode(adminAuth, foreignNode.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(service.deleteAdminDebugNode(adminAuth, "unknown-node")).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+      await expect(service.deleteAdminDebugNode(adminAuth, disabledNode.id)).resolves.toBeUndefined();
+      await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: disabledNode.id })])
+      );
+      await expect(listDebugNodes(db, { organizationId: "org-2", includeArchived: true })).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: foreignNode.id })])
+      );
+    });
+
     it("listAdminParameters requires debugging:admin, includes archived rows, and returns bindings", async () => {
       const parameter = await seedParameter({ enabled: false });
       await db.query(`update debugging_parameters set archived_at = now(), archived_by = 'user-1' where id = $1`, [
