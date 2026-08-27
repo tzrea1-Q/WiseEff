@@ -41,6 +41,16 @@ test.describe("Xiaoze modeless popup layout", () => {
     expect(closedLauncherMoved).not.toBeNull();
     expect(closedLauncherMoved!.x).toBeLessThanOrEqual(24);
     expect(closedLauncherMoved!.y).toBeLessThanOrEqual(24);
+    const closedCenter = {
+      x: closedLauncherMoved!.x + closedLauncherMoved!.width / 2,
+      y: closedLauncherMoved!.y + closedLauncherMoved!.height / 2
+    };
+    await page.waitForTimeout(750);
+    const closedLauncherSettled = await launcher.boundingBox();
+    expect(closedLauncherSettled).not.toBeNull();
+    expect(closedLauncherSettled!.x + closedLauncherSettled!.width / 2).toBeCloseTo(closedCenter.x, 0);
+    expect(closedLauncherSettled!.y + closedLauncherSettled!.height / 2).toBeCloseTo(closedCenter.y, 0);
+    expect(await page.evaluate(() => localStorage.getItem("wiseeff.xiaoze.launcher.position.v1"))).toBeNull();
 
     await toggle.click();
 
@@ -114,6 +124,10 @@ test.describe("Xiaoze modeless popup layout", () => {
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(toggle).toHaveAttribute("data-state", "closed");
+    const launcherAfterReload = await launcher.boundingBox();
+    expect(launcherAfterReload).not.toBeNull();
+    expect(launcherAfterReload!.x).toBeGreaterThanOrEqual(1350);
+    expect(launcherAfterReload!.y).toBeGreaterThanOrEqual(810);
     await toggle.click();
     await expect(layer).toBeVisible();
     await page.waitForFunction(() =>

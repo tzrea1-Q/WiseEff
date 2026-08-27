@@ -20,7 +20,7 @@ Let desktop and tablet users drag the Xiaoze launcher across the full safe viewp
 
 ## Architecture
 
-`xiaozePopupLayout.ts` remains the sole layout boundary. Launcher position is independent from popup geometry and persisted under `wiseeff.xiaoze.launcher.position.v1`; popup geometry remains under layout v2. On open launcher drag, the module selects a fitting top, bottom, left, or right attachment and clamps both surfaces independently. `useXiaozePopupLayout.ts` owns gesture cleanup and commit timing. A post-drag click is suppressed, while sub-threshold pointer input remains a normal toggle click.
+`xiaozePopupLayout.ts` remains the sole geometry boundary. Launcher position is independent from popup geometry and owned by the current `useXiaozePopupLayout` page lifetime; it is intentionally not persisted, so release/open/close/SPA navigation retain it while browser refresh resets it. The obsolete `wiseeff.xiaoze.launcher.position.v1` record is removed on mount. Popup geometry remains under layout v2. On open launcher drag, the module selects a fitting top, bottom, left, or right attachment and clamps both surfaces independently. `useXiaozePopupLayout.ts` owns gesture cleanup and commit timing. A post-drag click is suppressed, while sub-threshold pointer input remains a normal toggle click.
 
 ## Git & PR Workflow
 
@@ -71,5 +71,6 @@ Completed: frontend and coverage truth sources were updated in both languages; r
 - `XIAOZE-POPUP-MOVE-001`: runtime warmup plus acceptance spec passed, 2/2.
 - `playwright-cli` snapshots and screenshots passed at `1440x900`, `768x1024`, and `390x844`; console errors: 0.
 - Follow-up defect evidence: the original top-left repro produced `(381,713)` because the launcher was derived from a clamped popup at `(16,16)`. After separating launcher position, the same command reaches the top-left safe inset; acceptance also covers the opposite bottom-right corner and smart popup reattachment.
+- Follow-up state-lifetime defect: launcher coordinates were initially written to `localStorage`, which contradicted the required “hold until refresh” behavior. The regression now checks a stable center after the release animation, no launcher-position storage write, and lower-right reset after reload; the launcher controller remains shared across popup mount/unmount and SPA navigation within one page lifetime.
 - Follow-up screenshots: `work/ui-checks/xiaoze-launcher-full-coverage/desktop-smart-attachment.png`, `tablet-smart-attachment.png`, and `mobile-fullscreen.png`.
 - Screenshots: `work/ui-checks/xiaoze-launcher-coupled/desktop-closed-drag.png`, `desktop-open-coupled-drag.png`, `tablet-open.png`, and `mobile-fullscreen.png`.

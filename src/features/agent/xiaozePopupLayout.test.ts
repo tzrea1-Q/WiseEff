@@ -2,18 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyXiaozeLauncherLayout,
   applyXiaozePopupLayout,
+  clearLegacyStoredXiaozeLauncherPosition,
   clampXiaozePopupLayout,
   getDefaultXiaozePopupLayout,
   getDefaultXiaozeLauncherPosition,
   getXiaozeLauncherPosition,
   placeXiaozePopupByLauncher,
   clampXiaozeLauncherPosition,
-  readStoredXiaozeLauncherPosition,
   readStoredXiaozePopupLayout,
-  writeStoredXiaozeLauncherPosition,
   writeStoredXiaozePopupLayout,
   XIAOZE_POPUP_LAYOUT_STORAGE_KEY,
-  XIAOZE_LAUNCHER_POSITION_STORAGE_KEY,
+  XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY,
   XIAOZE_POPUP_DEFAULT_SIZE,
   XIAOZE_POPUP_MIN_SIZE,
   XIAOZE_POPUP_SAFE_INSET,
@@ -151,12 +150,13 @@ describe("xiaozePopupLayout", () => {
     expect(clampXiaozeLauncherPosition({ x: 5000, y: 5000 })).toEqual({ x: 1368, y: 828 });
   });
 
-  it("persists launcher position independently from popup geometry", () => {
+  it("clears the legacy persisted launcher position without changing popup geometry", () => {
     writeStoredXiaozePopupLayout({ version: 2, x: 600, y: 100, width: 420, height: 680 });
-    writeStoredXiaozeLauncherPosition({ x: 16, y: 16 });
+    window.localStorage.setItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY, '{"x":16,"y":16}');
 
-    expect(readStoredXiaozeLauncherPosition()).toEqual({ x: 16, y: 16 });
-    expect(window.localStorage.getItem(XIAOZE_LAUNCHER_POSITION_STORAGE_KEY)).toBe('{"x":16,"y":16}');
+    clearLegacyStoredXiaozeLauncherPosition();
+
+    expect(window.localStorage.getItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY)).toBeNull();
     expect(readStoredXiaozePopupLayout()).toMatchObject({ x: 600, y: 100 });
   });
 

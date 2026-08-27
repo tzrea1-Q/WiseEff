@@ -2,19 +2,19 @@ import { useEffect } from "react";
 import {
   applyXiaozeLauncherLayout,
   applyXiaozePopupLayout,
+  clearLegacyStoredXiaozeLauncherPosition,
   clampXiaozeLauncherPosition,
   clampXiaozePopupLayout,
   getDefaultXiaozeLauncherPosition,
   getDefaultXiaozePopupLayout,
   isXiaozePopupDesktop,
   placeXiaozePopupByLauncher,
-  readStoredXiaozeLauncherPosition,
   readStoredXiaozePopupLayout,
   resetStoredXiaozePopupLayout,
-  writeStoredXiaozeLauncherPosition,
   writeStoredXiaozePopupLayout,
   XIAOZE_POPUP_MIN_SIZE,
   XIAOZE_POPUP_SAFE_INSET,
+  type XiaozeLauncherPosition,
   type XiaozePopupLayout
 } from "./xiaozePopupLayout";
 
@@ -27,6 +27,12 @@ const RESIZE_HANDLE_SELECTOR = "[data-xiaoze-resize-handle]";
 const DRAG_THRESHOLD = 6;
 
 type GestureKind = "drag" | "resize";
+
+type XiaozeLauncherPositionController = {
+  get: () => XiaozeLauncherPosition;
+  set: (position: XiaozeLauncherPosition) => XiaozeLauncherPosition;
+  reset: () => XiaozeLauncherPosition;
+};
 
 function sameLayout(left: XiaozePopupLayout, right: XiaozePopupLayout) {
   return (
@@ -47,7 +53,10 @@ function resizeKeepingOrigin(layout: XiaozePopupLayout, width: number, height: n
   };
 }
 
-function bindXiaozePopupLayout(popup: HTMLElement) {
+function bindXiaozePopupLayout(
+  popup: HTMLElement,
+  launcherPositionController: XiaozeLauncherPositionController
+) {
   const dragHandle = popup.querySelector<HTMLButtonElement>(DRAG_HANDLE_SELECTOR);
   const resetButton = popup.querySelector<HTMLButtonElement>(RESET_SELECTOR);
   const resizeHandle = popup.querySelector<HTMLButtonElement>(RESIZE_HANDLE_SELECTOR);
@@ -68,7 +77,7 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
   dragHandle.disabled = false;
   resizeHandle.disabled = false;
   const storedLayout = readStoredXiaozePopupLayout();
-  let layout = placeXiaozePopupByLauncher(readStoredXiaozeLauncherPosition(), storedLayout);
+  let layout = placeXiaozePopupByLauncher(launcherPositionController.get(), storedLayout);
   let defaultLayout = getDefaultXiaozePopupLayout();
   let frame = 0;
   let gestureCleanup: (() => void) | undefined;
@@ -229,12 +238,11 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
   };
   const onReset = () => {
     defaultLayout = getDefaultXiaozePopupLayout();
-    const launcherPosition = getDefaultXiaozeLauncherPosition();
+    const launcherPosition = launcherPositionController.reset();
     const launcherAnchor = document.querySelector<HTMLElement>(LAUNCHER_ANCHOR_SELECTOR);
     if (launcherAnchor) {
       applyXiaozeLauncherLayout(launcherAnchor, launcherPosition);
     }
-    writeStoredXiaozeLauncherPosition(launcherPosition);
     commitLayout(resetStoredXiaozePopupLayout());
   };
   const onWindowResize = () => {
@@ -265,42 +273,46 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
   };
 }
 
-function bindXiaozeLauncherLayout(anchor: HTMLElement) {
+function bindXiaozeLauncherLayout(
+  anchor: HTMLElement,
+  launcherPositionController: XiaozeLauncherPositionController
+) {
   const handle = anchor.querySelector<HTMLButtonElement>(LAUNCHER_HANDLE_SELECTOR);
   if (!handle || !isXiaozePopupDesktop()) {
     return;
   }
 
-  let launcherPosition = readStoredXiaozeLauncherPosition();
+  let launcherPosition = launcherPositionController.get();
   let frame = 0;
   let gestureCleanup: (() => void) | undefined;
   let suppressClick = false;
   let suppressClickTimer = 0;
 
-  const renderLayout = (next: ReturnType<typeof readStoredXiaozeLauncherPosition>) => {
-    launcherPosition = next;
-    applyXiaozeLauncherLayout(anchor, next);
+  const renderLayout = (next: XiaozeLauncherPosition) => {
+    launcherPosition = launcherPositionController.set(next);
+    applyXiaozeLauncherLayout(anchor, launcherPosition);
     const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
     if (popup) {
       const storedPopup = readStoredXiaozePopupLayout();
-      const attachedPopup = placeXiaozePopupByLauncher(next, storedPopup);
+      const attachedPopup = placeXiaozePopupByLauncher(launcherPosition, storedPopup);
       applyXiaozePopupLayout(popup, attachedPopup);
       const resetButton = popup.querySelector<HTMLButtonElement>(RESET_SELECTOR);
       if (resetButton) {
         resetButton.hidden =
           sameLayout(attachedPopup, getDefaultXiaozePopupLayout()) &&
-          next.x === getDefaultXiaozeLauncherPosition().x &&
-          next.y === getDefaultXiaozeLauncherPosition().y;
+          launcherPosition.x === getDefaultXiaozeLauncherPosition().x &&
+          launcherPosition.y === getDefaultXiaozeLauncherPosition().y;
       }
     }
   };
 
-  const commitLayout = (next: ReturnType<typeof readStoredXiaozeLauncherPosition>) => {
+  const commitLayout = (next: XiaozeLauncherPosition) => {
     renderLayout(next);
-    writeStoredXiaozeLauncherPosition(next);
     const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
     if (popup) {
-      writeStoredXiaozePopupLayout(placeXiaozePopupByLauncher(next, readStoredXiaozePopupLayout()));
+      writeStoredXiaozePopupLayout(
+        placeXiaozePopupByLauncher(launcherPosition, readStoredXiaozePopupLayout())
+      );
     }
   };
 
@@ -316,7 +328,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
-    const startPosition = readStoredXiaozeLauncherPosition();
+    const startPosition = launcherPositionController.get();
     let changed = false;
     let nextPosition = startPosition;
     handle.setPointerCapture(pointerId);
@@ -414,7 +426,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Home") {
       event.preventDefault();
-      const next = getDefaultXiaozeLauncherPosition();
+      const next = launcherPositionController.reset();
       writeStoredXiaozePopupLayout(getDefaultXiaozePopupLayout());
       commitLayout(next);
       return;
@@ -431,7 +443,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
       return;
     }
     event.preventDefault();
-    const currentPosition = readStoredXiaozeLauncherPosition();
+    const currentPosition = launcherPositionController.get();
     commitLayout(
       clampXiaozeLauncherPosition({
         x: currentPosition.x + offset[0],
@@ -465,12 +477,27 @@ export function useXiaozePopupLayout(enabled = true) {
     let cleanup: (() => void) | undefined;
     let launcherCleanup: (() => void) | undefined;
     let desktop = isXiaozePopupDesktop();
+    let launcherPosition = getDefaultXiaozeLauncherPosition();
+    clearLegacyStoredXiaozeLauncherPosition();
+    const launcherPositionController: XiaozeLauncherPositionController = {
+      get: () => launcherPosition,
+      set: (position) => {
+        launcherPosition = clampXiaozeLauncherPosition(position);
+        return launcherPosition;
+      },
+      reset: () => {
+        launcherPosition = getDefaultXiaozeLauncherPosition();
+        return launcherPosition;
+      }
+    };
     const bindCurrentPopup = () => {
       const launcher = document.querySelector<HTMLElement>(LAUNCHER_ANCHOR_SELECTOR);
       if (launcher !== boundLauncher) {
         launcherCleanup?.();
         boundLauncher = launcher;
-        launcherCleanup = launcher ? bindXiaozeLauncherLayout(launcher) : undefined;
+        launcherCleanup = launcher
+          ? bindXiaozeLauncherLayout(launcher, launcherPositionController)
+          : undefined;
       }
       const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
       if (!popup) {
@@ -486,7 +513,7 @@ export function useXiaozePopupLayout(enabled = true) {
         cleanup?.();
       }
       boundPopup = popup;
-      cleanup = bindXiaozePopupLayout(popup);
+      cleanup = bindXiaozePopupLayout(popup, launcherPositionController);
     };
 
     bindCurrentPopup();

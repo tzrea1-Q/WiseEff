@@ -1,6 +1,6 @@
 export const XIAOZE_POPUP_SIZE_STORAGE_KEY = "wiseeff.xiaoze.popup.size.v1";
 export const XIAOZE_POPUP_LAYOUT_STORAGE_KEY = "wiseeff.xiaoze.popup.layout.v2";
-export const XIAOZE_LAUNCHER_POSITION_STORAGE_KEY = "wiseeff.xiaoze.launcher.position.v1";
+export const XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY = "wiseeff.xiaoze.launcher.position.v1";
 export const XIAOZE_POPUP_LAYOUT_VERSION = 2 as const;
 export const XIAOZE_POPUP_DESKTOP_MIN_WIDTH = 768;
 export const XIAOZE_POPUP_SAFE_INSET = 16;
@@ -72,14 +72,6 @@ function isSize(value: unknown): value is XiaozePopupSize {
   return isFiniteNumber(candidate.width) && isFiniteNumber(candidate.height);
 }
 
-function isLauncherPosition(value: unknown): value is XiaozeLauncherPosition {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Partial<XiaozeLauncherPosition>;
-  return isFiniteNumber(candidate.x) && isFiniteNumber(candidate.y);
-}
-
 export function isXiaozePopupDesktop(viewport: XiaozePopupViewport = currentViewport()) {
   return viewport.width >= XIAOZE_POPUP_DESKTOP_MIN_WIDTH;
 }
@@ -145,39 +137,14 @@ export function getDefaultXiaozeLauncherPosition(
   );
 }
 
-export function readStoredXiaozeLauncherPosition(
-  viewport: XiaozePopupViewport = currentViewport()
-): XiaozeLauncherPosition {
-  const fallback = getDefaultXiaozeLauncherPosition(viewport);
+export function clearLegacyStoredXiaozeLauncherPosition() {
   if (typeof window === "undefined") {
-    return fallback;
-  }
-  try {
-    const stored = window.localStorage.getItem(XIAOZE_LAUNCHER_POSITION_STORAGE_KEY);
-    if (!stored) {
-      return fallback;
-    }
-    const parsed: unknown = JSON.parse(stored);
-    return isLauncherPosition(parsed) ? clampXiaozeLauncherPosition(parsed, viewport) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export function writeStoredXiaozeLauncherPosition(
-  position: XiaozeLauncherPosition,
-  viewport: XiaozePopupViewport = currentViewport()
-) {
-  if (typeof window === "undefined" || !isXiaozePopupDesktop(viewport)) {
     return;
   }
   try {
-    window.localStorage.setItem(
-      XIAOZE_LAUNCHER_POSITION_STORAGE_KEY,
-      JSON.stringify(clampXiaozeLauncherPosition(position, viewport))
-    );
+    window.localStorage.removeItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY);
   } catch {
-    // Launcher persistence is progressive enhancement.
+    // Cleanup is best effort when browser storage is unavailable.
   }
 }
 
