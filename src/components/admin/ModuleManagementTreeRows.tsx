@@ -13,6 +13,7 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   detailListLabel: (moduleName: string) => string;
   detailCountLabel: (count: number) => string;
   editItemLabel: string;
+  deleteItemLabel?: string;
   deleteDisabledReason: string;
   getItemCount: (moduleId: string) => number;
   getItems: (moduleId: string) => readonly TItem[];
@@ -23,6 +24,7 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   onMove: (moduleId: string) => void;
   onDelete: (moduleId: string) => void;
   onEditItem: (itemId: string) => void;
+  onDeleteItem?: (itemId: string) => void;
   renderItemMeta: (item: TItem) => ReactNode;
   getItemId: (item: TItem) => string;
 };
@@ -37,6 +39,7 @@ export function ModuleManagementTreeRows<TItem>({
   detailListLabel,
   detailCountLabel,
   editItemLabel,
+  deleteItemLabel,
   deleteDisabledReason,
   getItemCount,
   getItems,
@@ -47,6 +50,7 @@ export function ModuleManagementTreeRows<TItem>({
   onMove,
   onDelete,
   onEditItem,
+  onDeleteItem,
   renderItemMeta,
   getItemId
 }: ModuleManagementTreeRowsProps<TItem>) {
@@ -122,9 +126,16 @@ export function ModuleManagementTreeRows<TItem>({
                 {items.map((item) => (
                   <li key={getItemId(item)}>
                     {renderItemMeta(item)}
-                    <button className="button subtle" type="button" onClick={() => onEditItem(getItemId(item))}>
-                      {editItemLabel}
-                    </button>
+                    <div className="param-admin-module-item-actions">
+                      <button className="button subtle" type="button" onClick={() => onEditItem(getItemId(item))}>
+                        {editItemLabel}
+                      </button>
+                      {onDeleteItem && deleteItemLabel ? (
+                        <button className="button danger" type="button" onClick={() => onDeleteItem(getItemId(item))}>
+                          {deleteItemLabel}
+                        </button>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -140,6 +151,7 @@ export function ModuleManagementTreeRows<TItem>({
               deleteDisabledReason={deleteDisabledReason}
               detailCountLabel={detailCountLabel}
               detailListLabel={detailListLabel}
+              deleteItemLabel={deleteItemLabel}
               editItemLabel={editItemLabel}
               expandedDetailId={expandedDetailId}
               expandedTreeIds={expandedTreeIds}
@@ -152,6 +164,7 @@ export function ModuleManagementTreeRows<TItem>({
               viewItemsLabel={viewItemsLabel}
               onAddChild={onAddChild}
               onDelete={onDelete}
+              onDeleteItem={onDeleteItem}
               onEdit={onEdit}
               onEditItem={onEditItem}
               onMove={onMove}

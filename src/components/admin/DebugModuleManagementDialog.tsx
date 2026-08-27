@@ -28,6 +28,7 @@ export type DebugModuleManagementDialogProps = {
   onMoveModule?: (moduleId: string, parentId: string | null) => void;
   onDeleteModule: (moduleId: string) => void;
   onEditNode: (nodeId: string) => void;
+  onDeleteNode: (nodeId: string) => void;
 };
 
 export function DebugModuleManagementDialog({
@@ -39,7 +40,8 @@ export function DebugModuleManagementDialog({
   onUpdateModule,
   onMoveModule,
   onDeleteModule,
-  onEditNode
+  onEditNode,
+  onDeleteNode
 }: DebugModuleManagementDialogProps) {
   const [moduleQuery, setModuleQuery] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -218,6 +220,7 @@ export function DebugModuleManagementDialog({
                       deleteDisabledReason="仍有子模块或节点引用，无法删除"
                       detailCountLabel={(count) => `${count} 个节点`}
                       detailListLabel={(moduleName) => `${moduleName} 节点列表`}
+                      deleteItemLabel="删除节点"
                       editItemLabel="编辑节点"
                       expandedDetailId={expandedDetailId}
                       expandedTreeIds={expandedTreeIds}
@@ -235,6 +238,7 @@ export function DebugModuleManagementDialog({
                       viewItemsLabel="查看节点"
                       onAddChild={startAddChild}
                       onDelete={onDeleteModule}
+                      onDeleteItem={onDeleteNode}
                       onEdit={setEditingModuleId}
                       onEditItem={onEditNode}
                       onMove={setMoveModuleId}

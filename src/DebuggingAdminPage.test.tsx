@@ -161,6 +161,27 @@ describe("/debugging-admin API mode", () => {
     expect(within(dialog).getByRole("button", { name: "1" })).toBeInTheDocument();
   });
 
+  it("opens node deletion confirmation from a module detail entry", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(moduleDialog).getByRole("button", { name: "1" }));
+
+    const nodeEntry = within(moduleDialog).getByText("Fast charge current").closest("li");
+    if (!nodeEntry) {
+      throw new Error("找不到模块详情中的节点条目");
+    }
+    fireEvent.click(within(nodeEntry).getByRole("button", { name: "删除节点" }));
+
+    const confirmation = screen.getByRole("dialog", { name: "永久删除节点 Fast charge current" });
+    expect(confirmation).toBeInTheDocument();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "删除节点" }));
+
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1"));
+  });
+
   it("upserts node bindings through the bindings dialog", async () => {
     const apiClient = renderDebuggingAdminPage();
 

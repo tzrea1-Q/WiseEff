@@ -587,6 +587,13 @@ export function DebuggingAdminPage({
     setEditorNodeId(nodeId);
   };
 
+  const openNodeDeleteFromModule = (nodeId: string) => {
+    setModuleDialogOpen(false);
+    setAdminError("");
+    setDeleteError("");
+    setDeleteNodeId(nodeId);
+  };
+
   const exportCatalog = async () => {
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) {
@@ -864,6 +871,7 @@ export function DebuggingAdminPage({
             onMoveModule={moveDebugModule}
             onDeleteModule={(moduleId) => void deleteDebugModule(moduleId)}
             onEditNode={openNodeEditorFromModule}
+            onDeleteNode={openNodeDeleteFromModule}
           />
         </>
       )}
