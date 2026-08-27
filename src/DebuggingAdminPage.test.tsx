@@ -53,7 +53,7 @@ function createDebuggingAdminApiMock() {
   };
 }
 
-function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
+function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"]) {
   render(
     <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
       <DebuggingAdminPage
@@ -64,7 +64,7 @@ function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
         area="nodes"
         runtimeMode="api"
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
-        apiAuthPermissions={["debugging:admin"]}
+        apiAuthPermissions={apiAuthPermissions}
       />
     </TopBarActionsContext.Provider>
   );
@@ -180,6 +180,23 @@ describe("/debugging-admin API mode", () => {
     fireEvent.click(within(confirmation).getByRole("button", { name: "删除节点" }));
 
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1"));
+  });
+
+  it("disables module detail deletion for read-only API users", async () => {
+    renderDebuggingAdminPage(createDebuggingAdminApiMock(), []);
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(moduleDialog).getByRole("button", { name: "1" }));
+
+    const nodeEntry = within(moduleDialog).getByText("Fast charge current").closest("li");
+    if (!nodeEntry) {
+      throw new Error("找不到模块详情中的节点条目");
+    }
+    const deleteButton = within(nodeEntry).getByRole("button", { name: "删除节点" });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("title", "缺少 debugging:admin 权限");
   });
 
   it("upserts node bindings through the bindings dialog", async () => {

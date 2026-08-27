@@ -14,6 +14,7 @@ export type ModuleManagementTreeRowsProps<TItem> = {
   detailCountLabel: (count: number) => string;
   editItemLabel: string;
   deleteItemLabel?: string;
+  deleteItemDisabledReason?: string;
   deleteDisabledReason: string;
   getItemCount: (moduleId: string) => number;
   getItems: (moduleId: string) => readonly TItem[];
@@ -40,6 +41,7 @@ export function ModuleManagementTreeRows<TItem>({
   detailCountLabel,
   editItemLabel,
   deleteItemLabel,
+  deleteItemDisabledReason,
   deleteDisabledReason,
   getItemCount,
   getItems,
@@ -131,7 +133,13 @@ export function ModuleManagementTreeRows<TItem>({
                         {editItemLabel}
                       </button>
                       {onDeleteItem && deleteItemLabel ? (
-                        <button className="button danger" type="button" onClick={() => onDeleteItem(getItemId(item))}>
+                        <button
+                          className="button danger"
+                          type="button"
+                          disabled={Boolean(deleteItemDisabledReason)}
+                          title={deleteItemDisabledReason}
+                          onClick={() => onDeleteItem(getItemId(item))}
+                        >
                           {deleteItemLabel}
                         </button>
                       ) : null}
@@ -152,6 +160,7 @@ export function ModuleManagementTreeRows<TItem>({
               detailCountLabel={detailCountLabel}
               detailListLabel={detailListLabel}
               deleteItemLabel={deleteItemLabel}
+              deleteItemDisabledReason={deleteItemDisabledReason}
               editItemLabel={editItemLabel}
               expandedDetailId={expandedDetailId}
               expandedTreeIds={expandedTreeIds}

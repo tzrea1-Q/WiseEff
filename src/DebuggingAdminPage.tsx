@@ -865,6 +865,7 @@ export function DebuggingAdminPage({
             open={moduleDialogOpen}
             moduleNodes={moduleNodes}
             nodes={library}
+            canEdit={canEditAdminCatalog}
             onClose={() => setModuleDialogOpen(false)}
             onAddModule={addDebugModule}
             onUpdateModule={(moduleId, patch) => void updateDebugModule(moduleId, patch)}
