@@ -959,7 +959,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/node-debugging",
     roles: ["Hardware Committer", "Admin"],
-    action: "Read, write, detect mismatch, rollback, and audit simulator node changes, including complex JSON value metadata.",
+    action: "Browse a module subtree, then read, write, detect mismatch, rollback, and audit simulator node changes, including complex JSON value metadata.",
     coverage: "automated",
     acceptanceIds: ["DEBUG-SIM-001"],
     specFiles: ["e2e/acceptance/debugging-simulator.acceptance.spec.ts"],

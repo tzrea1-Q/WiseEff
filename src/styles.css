@@ -2488,6 +2488,23 @@ body {
   display: none;
 }
 
+.node-debugging-module-workbench {
+  gap: 0;
+}
+
+.node-debugging-module-workbench .dts-parameter-workbench__body {
+  align-items: stretch;
+}
+
+.node-debugging-module-workbench .dts-workbench-topology {
+  align-self: stretch;
+  max-height: min(670px, calc(100vh - 230px));
+}
+
+.node-debugging-module-results {
+  min-width: 0;
+}
+
 .debugging-action-buttons {
   display: flex;
   gap: 9px;
