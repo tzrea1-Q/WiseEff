@@ -65,6 +65,32 @@ describe("matchSensitiveRules", () => {
     });
   });
 
+  it("does not inherit a parent path rule for a complete node locator", () => {
+    const matched = matchSensitiveRules(
+      [rule({ pattern: "soc/safety@100", riskTier: "critical" })],
+      {
+        nodePath: "soc/safety@100/status",
+        projectId: "project-1",
+        sourcePathKind: "node-locator"
+      }
+    );
+
+    expect(matched).toBeNull();
+  });
+
+  it("allows an explicit property path to match its owning node", () => {
+    const matched = matchSensitiveRules(
+      [rule({ pattern: "soc/safety@*", riskTier: "critical" })],
+      {
+        nodePath: "soc/safety@100/status",
+        projectId: "project-1",
+        sourcePathKind: "property-path"
+      }
+    );
+
+    expect(matched?.riskTier).toBe("critical");
+  });
+
   it("matches compatible patterns", () => {
     const matched = matchSensitiveRules(
       [rule({ id: "rule-compat", matchType: "compatible", pattern: "vendor,watchdog*", riskTier: "high" })],
@@ -409,6 +435,43 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
     })).resolves.toBe("vendor,locked");
     expect(call).toBe(2);
+  });
+
+  it("does not fall back to the mutable current version for a trusted file write", async () => {
+    await withTempDatabase({ prefix: "senswriteexact" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+        const db: Queryable = { query };
+        const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+        const refusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+
+        await expect(assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+          organizationId: "org-1",
+          projectId: "project-1",
+          nodePath: "amba/wdt@0/status",
+          sourceFileName: "board.dts",
+          invocation: createUserInvocation(principal),
+          requestId: "trusted-write-missing-version",
+          refusalSink,
+        })).rejects.toMatchObject({
+          name: "ApiError",
+          code: "CONFLICT",
+          details: { code: "parameter-sensitive-source-version-mismatch" },
+        });
+        expect(query).not.toHaveBeenCalled();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
   });
 
   it("allows a capable direct User invocation through the shared trusted write guard", async () => {

@@ -1179,7 +1179,7 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(active.rows).toHaveLength(0);
 
-      const draftsNotNull = await tempDb.query<{ is_nullable: string }>(
+      const draftsBindingNullable = await tempDb.query<{ is_nullable: string }>(
         `
         select is_nullable
         from information_schema.columns
@@ -1188,7 +1188,18 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
           and column_name = 'project_parameter_binding_id'
         `
       );
-      expect(draftsNotNull.rows[0]?.is_nullable).toBe("NO");
+      // Enablement drafts have a logical-node identity and intentionally no
+      // binding id; binding rows remain protected by the cutover invariant.
+      expect(draftsBindingNullable.rows[0]?.is_nullable).toBe("YES");
+      const bindingDraftsWithoutBinding = await tempDb.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from parameter_drafts
+        where edit_subject_kind = 'binding'
+          and project_parameter_binding_id is null
+        `
+      );
+      expect(Number(bindingDraftsWithoutBinding.rows[0]?.c ?? 0)).toBe(0);
 
       const conflictsNotNull = await tempDb.query<{ is_nullable: string }>(
         `

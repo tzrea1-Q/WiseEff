@@ -13,7 +13,7 @@ import type { Queryable } from "../../shared/database/client";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
-import { createSystemInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createPostgresDatabase } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
@@ -1073,6 +1073,82 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
 });
 
 describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", () => {
+  it("keeps the Agent execution label in the workflow trail for a high-risk merge", async () => {
+    await withTempDatabase({ prefix: "srwagenttrail" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "Agent workflow trail provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "agent-merge-trail-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail hardware gate" },
+        createTestParameterSubmissionContext(hardwareAuth(), "agent-merge-trail-hardware"),
+      );
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail hardware approval" },
+        createTestParameterSubmissionContext(hardwareAuth(), "agent-merge-trail-hardware-approval"),
+      );
+      await reviewChangeService(
+        db,
+        softwareCommitterAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail software approval" },
+        createTestParameterSubmissionContext(softwareCommitterAuth(), "agent-merge-trail-software"),
+      );
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: HIGH_BASE_VERSION,
+            note: MERGE_LINK,
+          },
+          {
+            invocation: createAgentInvocation(auth, {
+              sessionId: "session-merge-trail-agent",
+              toolCallId: "tool-merge-trail-agent",
+              approval: { required: true, approvalId: "approval-merge-trail-agent" },
+            }),
+            requestId: "agent-merge-trail",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+
+        const roundView = await listSubmissionRounds(db, auth, { projectId: PROJECT });
+        expect(roundView).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            workflowTrail: expect.arrayContaining([
+              expect.objectContaining({
+                key: "software_merge",
+                executorName: "Agent tool:tool-merge-trail-agent (session:session-merge-trail-agent)",
+                executorLabel: "执行人",
+              }),
+            ]),
+          }),
+        ]));
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
+
   it("keeps the existing high-risk merge workflow successful for a System initiator", async () => {
     await withTempDatabase({ prefix: "srwsystem" }, async ({ db, connectionString }) => {
       await seedBaseline(db);

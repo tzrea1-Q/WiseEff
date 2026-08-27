@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
 import * as service from "./service";
+import { createSystemInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
 import {
   notifyDebugNodeReadbackFailed,
   notifyDebugSnapshotRollback,
@@ -37,6 +38,39 @@ describe("notification producers", () => {
         category: "parameter.merge.completed",
         recipientUserIds: ["u-submitter", "u-reviewer-1"]
       })
+    );
+  });
+
+  it("keeps a System merge notification free of user attribution", async () => {
+    const notifyUsers = vi.spyOn(service, "notifyUsers").mockResolvedValue(undefined);
+    const db = {} as Queryable;
+    const execution = trustedDomainAttribution(
+      createSystemInvocation({ kind: "job", name: "parameter-merge-job" }),
+    );
+
+    await notifyParameterMergeCompleted(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      requestId: "req-system-1",
+      parameterName: "cpu.freq",
+      submitterUserId: null,
+      mergerName: "System job:parameter-merge-job",
+      reviewerUserIds: ["u-reviewer-1"],
+      execution,
+    });
+
+    expect(notifyUsers).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        recipientUserIds: ["u-reviewer-1"],
+        body: "System job:parameter-merge-job 已将 aurora 的参数变更合入基线。",
+        metadata: expect.objectContaining({
+          mergerName: "System job:parameter-merge-job",
+          initiatorType: "system",
+          initiatorSystemKind: "job",
+          initiatorSystemName: "parameter-merge-job",
+        }),
+      }),
     );
   });
 
