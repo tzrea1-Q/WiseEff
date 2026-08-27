@@ -1,9 +1,9 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { createPostgresDatabase, type Queryable } from "../../shared/database/client";
-import { resolveTestDatabaseUrl } from "../../testing/tempDatabase";
+import { withTempDatabase } from "../../testing/tempDatabase";
 import { ApiError } from "../../shared/http/errors";
 import {
   assertSensitiveNodeWriteAllowed,
@@ -19,13 +19,6 @@ vi.mock("../audit/repository", () => ({
 import { createAuditEvent } from "../audit/repository";
 
 const mockedCreateAuditEvent = vi.mocked(createAuditEvent);
-const trustedRefusalRoot = createPostgresDatabase(resolveTestDatabaseUrl());
-const trustedRefusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
-
-afterAll(async () => {
-  await trustedRefusalRoot.close();
-});
-
 function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
     user: {
@@ -307,36 +300,52 @@ describe("assertSensitiveNodeWriteAllowed", () => {
 
 describe("assertTrustedSensitiveNodeWriteAllowed", () => {
   it("allows a capable direct User invocation through the shared trusted write guard", async () => {
-    const principal = auth({
-      permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"]
-    });
-    const db: Queryable = {
-      query: vi.fn(async () => ({
-        rows: [
-          {
-            id: "rule-1",
-            organization_id: "org-1",
-            project_id: null,
-            match_type: "path",
-            pattern: "safety/*",
-            risk_tier: "critical",
-            required_capability: "parameter:edit-critical",
-            enabled: true
-          }
-        ],
-        rowCount: 1
-      }))
-    };
+    await withTempDatabase({ prefix: "senswriteunit" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const trustedRefusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+        const principal = auth({
+          permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"]
+        });
+        const db: Queryable = {
+          query: vi.fn(async () => ({
+            rows: [
+              {
+                id: "rule-1",
+                organization_id: "org-1",
+                project_id: null,
+                match_type: "path",
+                pattern: "safety/*",
+                risk_tier: "critical",
+                required_capability: "parameter:edit-critical",
+                enabled: true
+              }
+            ],
+            rowCount: 1
+          }))
+        };
 
-    await expect(
-      assertTrustedSensitiveNodeWriteAllowed(db, principal, {
-        organizationId: "org-1",
-        projectId: "project-1",
-        nodePath: "safety/cutover/status",
-        invocation: createUserInvocation(principal),
-        requestId: "request-trusted-write-user",
-        refusalSink: trustedRefusalSink
-      })
-    ).resolves.toBeUndefined();
+        await expect(
+          assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+            organizationId: "org-1",
+            projectId: "project-1",
+            nodePath: "safety/cutover/status",
+            invocation: createUserInvocation(principal),
+            requestId: "request-trusted-write-user",
+            refusalSink: trustedRefusalSink
+          })
+        ).resolves.toBeUndefined();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
   });
 });

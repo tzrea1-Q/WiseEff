@@ -3,7 +3,7 @@ import { createAuditEvent } from "../audit/repository";
 import { writeRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import {
-  assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -223,17 +223,7 @@ export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiv
     );
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
-  const invocation = assertTrustedInvocationContext(context.invocation);
-  if (
-    invocation.initiator !== "system" &&
-    (invocation.principal.user.id !== auth.user.id ||
-      invocation.principal.organization.id !== auth.organization.id ||
-      invocation.principal.user.organizationId !== auth.organization.id)
-  ) {
-    throw new TrustedInvocationContextError(
-      `${operation} invocation principal does not match the authenticated principal`
-    );
-  }
+  const invocation = assertTrustedInvocationMatchesAuth(auth, context.invocation, operation);
   return { ...context, invocation, requestId: context.requestId.trim() };
 }
 
@@ -257,6 +247,14 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
   const resolved = await resolveTrustedSensitiveNodeMatch(db, input);
   if (!resolved) return;
   const { matched, nodePath } = resolved;
+
+  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
+    throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
+      riskTier: matched.riskTier,
+      nodePath,
+      requiredCapability: matched.requiredCapability
+    });
+  }
 
   if (matched.riskTier === "critical" && invocation.initiator !== "user") {
     await input.refusalSink.write({
@@ -290,13 +288,6 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     });
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
-    throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
-      riskTier: matched.riskTier,
-      nodePath,
-      requiredCapability: matched.requiredCapability
-    });
-  }
 }
 
 /** #613 compatibility name; #615 owns final legacy API cleanup. */

@@ -2276,18 +2276,27 @@ export async function reviewChange(
       note: mergeLink
     });
     await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-    await createParameterReviewAudit(asAuditTx(tx), auth, {
-      projectId: request.projectId,
-      requestId: input.requestId,
+    await writeTrustedAuditEventInTx(asAuditTx(tx), {
+      invocation: trustedMergeContext.invocation,
+      ...(trustedMergeContext.invocation.initiator === "system"
+        ? { organizationId: auth.organization.id }
+        : {}),
+      traceId: trustedMergeContext.requestId,
+      app: "parameter-management",
       kind: "parameter-merge",
       action: "merge",
-      fromStatus,
-      toStatus: "merged",
-      note: mergeLink,
-      expectedVersion: input.expectedVersion,
-      changeRequest: request,
-      participants
-    }, context);
+      severity: "High",
+      projectId: request.projectId ?? null,
+      targetType: "parameter-change-request",
+      targetId: input.requestId,
+      metadata: buildChangeRequestAuditMetadata(request, {
+        fromStatus,
+        toStatus: "merged",
+        note: mergeLink,
+        expectedVersion: input.expectedVersion,
+        participants
+      })
+    });
 
     if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(

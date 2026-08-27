@@ -13,6 +13,7 @@ import {
   writebackMergedEnablementValue,
   writebackMergedParameterValue
 } from "../parameter-files/writebackService";
+import { createCandidate } from "../parameter-files/candidateService";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { createAgentInvocation, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
@@ -66,12 +67,13 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
   it("fails all five operation categories before database or object-store mutation", async () => {
     await withTempDatabase({ prefix: "govwriteprov" }, async ({ db, connectionString }) => {
       const root = createPostgresDatabase(connectionString);
-      const refusalSink = createTrustedRefusalAuditSink(root);
       const objectStore = {
         get: vi.fn(async () => Buffer.from("", "utf8")),
         put: vi.fn()
       };
+      let primaryError: unknown;
       try {
+        const refusalSink = createTrustedRefusalAuditSink(root);
         await seedScope(db);
         const before = await stateCounts(db);
         const malformed = {
@@ -181,8 +183,29 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
             expect(objectStore.put).not.toHaveBeenCalled();
           }
         }
+        for (const [name, invocation] of [
+          ["cross-user", crossUser],
+          ["cross-organization", crossOrganization]
+        ] as const) {
+          await expect(
+            createCandidate(root, objectStore as never, auth, {
+              projectId: PROJECT,
+              fileName: `${name}.dts`,
+              bytes: Buffer.from("/dts-v1/;", "utf8")
+            }, { invocation, requestId: `candidate-${name}` })
+          ).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+          expect(await stateCounts(db)).toEqual(before);
+          expect(objectStore.put).not.toHaveBeenCalled();
+        }
+      } catch (error) {
+        primaryError = error;
+        throw error;
       } finally {
-        await root.close().catch(() => undefined);
+        try {
+          await root.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
       }
     });
   });
@@ -190,7 +213,6 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
   it("preserves retained legacy User/Agent/System provenance across critical, high, and no-match writes", async () => {
     await withTempDatabase({ prefix: "legacywriteprov" }, async ({ db, connectionString }) => {
       const root = createPostgresDatabase(connectionString);
-      const refusalSink = createTrustedRefusalAuditSink(root);
       const objects = new Map<string, Buffer>([["legacy/current.json", Buffer.from('{"battery":{"temp":{"max":80}}}', "utf8")]]);
       let nextObject = 0;
       const put = vi.fn(async (input: { bytes: Buffer; fileName: string; contentType: string }) => {
@@ -213,7 +235,9 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
         }),
         put
       };
+      let primaryError: unknown;
       try {
+        const refusalSink = createTrustedRefusalAuditSink(root);
         setParameterIdentityMode("legacy");
         await seedScope(db);
         await db.query(
@@ -298,6 +322,42 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
           expect(await state()).toEqual(before);
           expect(put).not.toHaveBeenCalled();
         }
+
+        const incapableAuth = { ...auth, permissions: auth.permissions.filter((item) => item !== "parameter:edit-critical") };
+        const refusalCountBeforeIncapable = (
+          await db.query<{ count: string }>(
+            `select count(*)::text as count from audit_events where kind = 'parameter-sensitive-node-denied'`
+          )
+        ).rows[0]?.count;
+        const incapableAgent = createAgentInvocation(incapableAuth, {
+          sessionId: "session-legacy-incapable",
+          toolCallId: "tool-legacy-incapable",
+          approval: { required: true, approvalId: "approval-legacy-incapable" }
+        });
+        for (const [requestId, invocation] of [
+          ["legacy-incapable-agent", incapableAgent],
+          ["legacy-incapable-system", system]
+        ] as const) {
+          await expect(
+            writebackMergedParameterValue(asAuditTx(root), objectStore as never, incapableAuth, {
+              projectId: PROJECT,
+              parameterDefinitionId: "definition-legacy-provenance",
+              mergedValue: "85"
+            }, { invocation, requestId, refusalSink })
+          ).rejects.toMatchObject({
+            code: "FORBIDDEN",
+            message: "Missing permission: parameter:edit-critical."
+          });
+          expect(await state()).toEqual(before);
+          expect(put).not.toHaveBeenCalled();
+        }
+        expect(
+          (
+            await db.query<{ count: string }>(
+              `select count(*)::text as count from audit_events where kind = 'parameter-sensitive-node-denied'`
+            )
+          ).rows[0]?.count
+        ).toBe(refusalCountBeforeIncapable);
 
         await root.transaction((tx) =>
           writebackMergedParameterValue(asAuditTx(tx), objectStore as never, auth, {
@@ -412,8 +472,15 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
             trace_id: "legacy-no-match-system"
           })
         ]);
+      } catch (error) {
+        primaryError = error;
+        throw error;
       } finally {
-        await root.close().catch(() => undefined);
+        try {
+          await root.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
       }
     });
   });

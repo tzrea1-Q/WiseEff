@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { TrustedInvocationContextError, type TrustedInvocationContext } from "../auth/trustedInvocation";
+import {
+  assertTrustedInvocationMatchesAuth,
+  TrustedInvocationContextError,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
@@ -280,6 +284,12 @@ export async function createCandidate(
   input: CreateCandidateInput,
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
+  if (context.invocation) {
+    if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+      throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
+    }
+    assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter file candidate creation");
+  }
   requireCandidateAdmin(auth);
 
   const fileName = input.fileName.trim();

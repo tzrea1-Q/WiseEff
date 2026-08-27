@@ -745,6 +745,7 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
   it("preflights a critical second location before any candidate, item, source, or success audit staging", async () => {
     await withTempDatabase({ prefix: "pkprov" }, async ({ db, connectionString }) => {
       const refusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
       try {
         await db.query(`insert into organizations (id, name) values ($1, 'PK Cutover Org')`, [ORG_ID]);
         await db.query(
@@ -864,6 +865,9 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
                (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
                (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
                (select count(*)::text from project_parameter_file_candidates) as candidates,
+               (select current_version_id from project_parameter_files where id = '${FILE_ID}') as current_version,
+               (select storage_key from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_storage_key,
+               (select checksum from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_checksum,
                (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
                  and action = 'spec-property-key-cutover-prepared') as success_audits`,
             [SPEC_ID]
@@ -901,6 +905,9 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
                  (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
                  (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
                  (select count(*)::text from project_parameter_file_candidates) as candidates,
+                 (select current_version_id from project_parameter_files where id = '${FILE_ID}') as current_version,
+                 (select storage_key from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_storage_key,
+                 (select checksum from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_checksum,
                  (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
                    and action = 'spec-property-key-cutover-prepared') as success_audits`,
               [SPEC_ID]
@@ -909,6 +916,41 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
           expect(after).toEqual(before);
           expect(putSpy).not.toHaveBeenCalled();
         }
+        const refusalAudits = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events
+           where kind = 'parameter-sensitive-node-denied'
+             and trace_id in ('cutover-agent-refusal', 'cutover-system-refusal')
+           order by trace_id`
+        );
+        expect(refusalAudits.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "agent",
+            actor_user_id: USER_ID,
+            trace_id: "cutover-agent-refusal",
+            metadata: expect.objectContaining({
+              initiator: "agent",
+              sessionId: "session-cutover",
+              toolCallId: "tool-cutover",
+              approvalId: "approval-cutover"
+            })
+          }),
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "cutover-system-refusal",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "service",
+              systemName: "property-key-cutover-service"
+            })
+          })
+        ]);
         await db.query(
           `create or replace function fail_cutover_prepare_audit() returns trigger as $$
            begin
@@ -944,6 +986,9 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
                (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
                (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
                (select count(*)::text from project_parameter_file_candidates) as candidates,
+               (select current_version_id from project_parameter_files where id = '${FILE_ID}') as current_version,
+               (select storage_key from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_storage_key,
+               (select checksum from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_checksum,
                (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
                  and action = 'spec-property-key-cutover-prepared') as success_audits`,
             [SPEC_ID]
@@ -991,8 +1036,15 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
           })])
         );
         expect(systemSuccessAudit.rows.every((row) => row.actor_type === "system" && row.actor_user_id === null)).toBe(true);
+      } catch (error) {
+        primaryError = error;
+        throw error;
       } finally {
-        await refusalRoot.close().catch(() => undefined);
+        try {
+          await refusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
       }
     });
   });

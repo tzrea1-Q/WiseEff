@@ -238,3 +238,23 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
 export function assertTrustedInvocationContext(value: unknown): TrustedInvocationContext {
   return validateBrandedContext(value);
 }
+
+/** Validate both server ownership and the authenticated principal boundary. */
+export function assertTrustedInvocationMatchesAuth(
+  auth: AuthContext,
+  value: unknown,
+  operation: string
+): TrustedInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError(
+      `${operation} invocation principal does not match the authenticated principal`
+    );
+  }
+  return invocation;
+}

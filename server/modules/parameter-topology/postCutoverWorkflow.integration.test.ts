@@ -135,10 +135,18 @@ async function withRefusalSink<T>(
   fn: (sink: TrustedRefusalAuditSink) => Promise<T>
 ): Promise<T> {
   const root = createPostgresDatabase(connectionString);
+  let primaryError: unknown;
   try {
     return await fn(createTrustedRefusalAuditSink(root));
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await root.close().catch(() => undefined);
+    try {
+      await root.close();
+    } catch (cleanupError) {
+      if (primaryError === undefined) throw cleanupError;
+    }
   }
 }
 
@@ -2711,7 +2719,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     it(
       `completes semantic merge when toolchain ${caseDef.name} fails`,
       async () => {
-        await withTempDatabase(async (db) => {
+        await withTempDatabase(async (db, connectionString) => {
           const seeded = await seedPreCutoverGraph(db);
           const report = await migrateParameterIdentities(db, {
             mode: "apply",
@@ -2772,23 +2780,89 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
           };
 
-          const merged = await reviewChange(
-            db,
-            auth,
-            {
-              requestId: request.id,
-              decision: "advance",
-              note: `https://example.com/toolchain-fail-${caseDef.name}`,
-              expectedVersion: 1
-            },
-            {
-              objectStore: objectStore as never,
-              toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
-            }
-          );
+          const trustedInvocation =
+            caseDef.name === "dtc"
+              ? createAgentInvocation(auth, {
+                  sessionId: "session-merge-high-agent",
+                  toolCallId: "tool-merge-high-agent",
+                  approval: { required: true, approvalId: "approval-merge-high-agent" }
+                })
+              : caseDef.name === "fdtoverlay"
+                ? createSystemInvocation({ kind: "job", name: "parameter-merge-high-job" })
+                : undefined;
+          const trustedTrace = trustedInvocation ? `trusted-merge-${caseDef.name}` : undefined;
+          const reviewInput = {
+            requestId: request.id,
+            decision: "advance" as const,
+            note: `https://example.com/toolchain-fail-${caseDef.name}`,
+            expectedVersion: 1
+          };
+          const reviewContext = {
+            objectStore: objectStore as never,
+            toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
+          };
+          const merged = trustedInvocation && trustedTrace
+            ? await withRefusalSink(connectionString, (refusalSink) =>
+                reviewChangeService(db, auth, reviewInput, {
+                  ...reviewContext,
+                  invocation: trustedInvocation,
+                  requestId: trustedTrace,
+                  refusalSink
+                })
+              )
+            : await reviewChange(db, auth, reviewInput, reviewContext);
 
           expect(merged.status).toBe("merged");
           await assertMergeSucceeded(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId, "<9>");
+          if (trustedInvocation && trustedTrace) {
+            const audits = await db.query<{
+              actor_type: string;
+              actor_user_id: string | null;
+              trace_id: string;
+              metadata: Record<string, unknown>;
+            }>(
+              `select actor_type, actor_user_id, trace_id, metadata
+               from audit_events
+               where trace_id = $1 and kind in ('parameter-merge', 'parameter-writeback-to-file')
+               order by kind`,
+              [trustedTrace]
+            );
+            expect(audits.rows).toHaveLength(2);
+            if (trustedInvocation.initiator === "agent") {
+              expect(audits.rows).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    actor_type: "agent",
+                    actor_user_id: USER,
+                    trace_id: trustedTrace,
+                    metadata: expect.objectContaining({
+                      initiator: "agent",
+                      sessionId: "session-merge-high-agent",
+                      toolCallId: "tool-merge-high-agent",
+                      approvalId: "approval-merge-high-agent"
+                    })
+                  })
+                ])
+              );
+              expect(audits.rows.every((row) => row.actor_type === "agent" && row.actor_user_id === USER)).toBe(true);
+            } else {
+              expect(audits.rows).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    actor_type: "system",
+                    actor_user_id: null,
+                    trace_id: trustedTrace,
+                    metadata: expect.objectContaining({
+                      initiator: "system",
+                      systemKind: "job",
+                      systemName: "parameter-merge-high-job"
+                    })
+                  })
+                ])
+              );
+              expect(audits.rows.every((row) => row.actor_type === "system" && row.actor_user_id === null)).toBe(true);
+            }
+          }
         });
       },
       120_000
