@@ -324,7 +324,7 @@ export function evaluateAcceptanceCiConfiguration(
   const forbiddenAcceptanceDotenvImports = findForbiddenAcceptanceDotenvImports(acceptanceEnvironmentSources);
   const acceptanceEnvironmentHelperCount = findAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources).length;
   const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
-    || (forbiddenAcceptanceDotenvImports.length === 0 && acceptanceEnvironmentHelperCount === 29);
+    || (forbiddenAcceptanceDotenvImports.length === 0 && acceptanceEnvironmentHelperCount === 30);
   const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
   const immutableUploadContract = evaluateImmutableAcceptanceUpload(input.workflowText);
 
