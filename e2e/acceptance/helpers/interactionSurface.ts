@@ -14,7 +14,10 @@ export async function closeXiaozePopupIfOpen(page: Page) {
     return;
   }
 
-  await page.keyboard.press("Escape");
+  // Desktop Xiaoze is modeless and intentionally ignores Escape while page
+  // focus is outside the popup. Use the authoritative toggle so acceptance
+  // setup can always clear an open popup before exercising page controls.
+  await page.getByTestId("copilot-chat-toggle").click();
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
