@@ -1220,11 +1220,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "debugging.admin.deleteNode": {
-    summary: "Delete an unused debug node registry entry",
+    summary: "Delete a debug node with its bindings and operation history",
     tags: ["debugging"],
     responseBody: "DeleteResponse",
     successStatus: 204,
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "debugging.admin.upsertNodeBinding": {
     summary: "Upsert debug node protocol binding",

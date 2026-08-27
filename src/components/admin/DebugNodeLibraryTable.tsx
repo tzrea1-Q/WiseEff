@@ -101,7 +101,7 @@ export function DebugNodeLibraryTable({
     const preModuleRows = filterNodes(nodes, { ...search, modules: [] }, moduleNodes);
     return buildParameterModuleFilterNodes(
       preModuleRows.map((node) => ({
-        moduleId: debugNodeModuleId(node),
+        moduleId: debugNodeModuleId(node, moduleNodes),
         moduleName: node.module,
         modulePath: node.modulePath
       })),

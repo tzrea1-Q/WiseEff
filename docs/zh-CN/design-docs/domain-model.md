@@ -351,7 +351,9 @@ Node-only 架构决策如下：
 
 Admin IA 提供单一**节点目录**：逻辑节点 CRUD、按协议 binding upsert/archive、模块治理和带审计的目录导入/导出。
 
-永久删除是区别于禁用的受保护目录治理操作。启用或禁用状态均可删除，但只有在没有任何 `node_operations.node_id` 历史引用时才允许。删除事务会锁定节点并检查历史数量，然后删除节点；`node_operations` 上保持 restrictive 外键作为并发写入的最终保护，竞态统一转换为相同的 `409` 保护响应。成功删除时 `debug_node_bindings` 级联删除。审计仅记录节点身份/状态和 binding 数量，不记录路径、值或备注。
+永久删除是区别于禁用的显式危险目录治理操作。Admin 确认后，启用或禁用节点均可删除。同一事务先锁定组织范围内的节点，删除所有引用该节点的 `node_operations`、对应 operation event 与不再共享的 snapshot，再删除节点；`debug_node_bindings` 随节点级联删除。仍被其它 operation 引用的 snapshot 会保留，并解除对已删 operation 的引用。行锁与 operation restrictive 外键共同阻止并发 operation 引用跨越删除提交。共享调试 session、共享 snapshot、无关 operation 与审计证据保留。High 严重度审计仅记录节点身份/状态以及 binding、operation 数量，不记录路径、值、描述或备注。
+
+调试模块仍只允许删除空叶子。引用计数同时覆盖精确 `debug_node_module_id` 赋值，以及 module id 为空但裁剪后模块名称与注册模块相同的旧节点。该保守兼容保护避免模块注册行删除后，旧节点又在运行时筛选器中重建同名分类。
 
 ### DTS 重载调试（#280）
 

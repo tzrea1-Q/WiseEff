@@ -282,13 +282,14 @@ describe("M5 OpenAPI contract", () => {
     expect(schemaRegistry["debugging.admin.deleteNode"]).toMatchObject({
       responseBody: "DeleteResponse",
       successStatus: 204,
-      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
     });
 
     const document = buildOpenApiDocument();
     expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}"]?.delete?.responses).toEqual(
-      expect.objectContaining({ "204": expect.anything(), "409": expect.anything() })
+      expect.objectContaining({ "204": expect.anything(), "404": expect.anything() })
     );
+    expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}"]?.delete?.responses?.["409"]).toBeUndefined();
     expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}"]?.put?.parameters).toEqual([
       { name: "nodeId", in: "path", required: true, schema: { type: "string" } },
       { name: "protocol", in: "path", required: true, schema: { type: "string" } }

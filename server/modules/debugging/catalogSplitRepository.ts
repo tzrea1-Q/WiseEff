@@ -434,34 +434,13 @@ export async function updateDebugNode(
   return result.rows[0] ? toDebugNodeRecord(result.rows[0]) : null;
 }
 
-export type DeleteDebugNodeResult =
-  | { status: "deleted"; bindingCount: number }
-  | { status: "protected"; operationCount: number };
+export type DeleteDebugNodeResult = {
+  status: "deleted";
+  bindingCount: number;
+  operationCount: number;
+};
 
-export async function countDebugNodeOperations(
-  db: Queryable,
-  input: { nodeId: string }
-) {
-  const result = await db.query<{ count: string }>(
-    `
-    select count(*)::text as count
-    from node_operations
-    where node_id = $1
-    `,
-    [input.nodeId]
-  );
-
-  return Number(result.rows[0]?.count ?? 0);
-}
-
-/**
- * Permanently removes an org-scoped logical node only when its operation
- * history is empty. Node IDs are primary keys, so the history guard counts
- * every node_operations reference after the organization-scoped node lock;
- * the row lock and restrictive node_operations FK work
- * together: the count is the normal guard, while the FK remains the final
- * race guard if a runtime operation is linked concurrently.
- */
+/** Permanently removes an org-scoped logical node, its operations, and bindings. */
 export async function deleteDebugNode(
   db: Queryable,
   input: { organizationId: string; nodeId: string }
@@ -480,11 +459,6 @@ export async function deleteDebugNode(
     return null;
   }
 
-  const operationCount = await countDebugNodeOperations(db, { nodeId: input.nodeId });
-  if (operationCount > 0) {
-    return { status: "protected", operationCount };
-  }
-
   const bindingCountResult = await db.query<{ count: string }>(
     `
     select count(*)::text as count
@@ -495,6 +469,54 @@ export async function deleteDebugNode(
     [input.organizationId, input.nodeId]
   );
   const bindingCount = Number(bindingCountResult.rows[0]?.count ?? 0);
+
+  // The locked debug_nodes row prevents a concurrent FK reference from being
+  // committed while this transaction removes all existing operation history.
+  const targetOperations = await db.query<{ id: string; snapshot_id: string | null }>(
+    `
+    select id, snapshot_id
+    from node_operations
+    where node_id = $1
+    `,
+    [input.nodeId]
+  );
+  const operationIds = targetOperations.rows.map((operation) => operation.id);
+  const snapshotIds = targetOperations.rows.flatMap((operation) => operation.snapshot_id ? [operation.snapshot_id] : []);
+  const operationCount = operationIds.length;
+
+  if (operationIds.length > 0) {
+    await db.query(
+      `delete from debugging_events where operation_id = any($1::text[])`,
+      [operationIds]
+    );
+    await db.query(
+      `update node_operations set snapshot_id = null where id = any($1::text[])`,
+      [operationIds]
+    );
+    await db.query(
+      `
+      delete from debugging_snapshots s
+      where (
+          s.operation_id = any($1::text[])
+          or s.id = any($2::text[])
+        )
+        and not exists (
+          select 1
+          from node_operations other
+          where other.snapshot_id = s.id
+        )
+      `,
+      [operationIds, snapshotIds]
+    );
+    await db.query(
+      `update debugging_snapshots set operation_id = null where operation_id = any($1::text[])`,
+      [operationIds]
+    );
+    await db.query(
+      `delete from node_operations where id = any($1::text[])`,
+      [operationIds]
+    );
+  }
 
   const deleted = await db.query<{ id: string }>(
     `
@@ -509,7 +531,7 @@ export async function deleteDebugNode(
     return null;
   }
 
-  return { status: "deleted", bindingCount };
+  return { status: "deleted", bindingCount, operationCount };
 }
 
 export async function listDebugNodeBindings(

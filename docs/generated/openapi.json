@@ -8213,7 +8213,7 @@
       },
       "delete": {
         "operationId": "debugging.admin.deleteNode",
-        "summary": "Delete an unused debug node registry entry",
+        "summary": "Delete a debug node with its bindings and operation history",
         "tags": [
           "debugging"
         ],
@@ -8238,9 +8238,6 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {

@@ -154,6 +154,23 @@ describe.skipIf(!databaseAvailable)("debugNodeModuleRepository", () => {
     ).resolves.toBe(true);
     expect(await getDebugNodeModuleById(db, { organizationId: "org-1", moduleId: leaf.id })).toBeNull();
   });
+
+  it("deleteDebugNodeModuleById treats legacy name-only nodes as module references", async () => {
+    const leaf = await createDebugNodeModule(db, { organizationId: "org-1", name: "Battery Charging" });
+    await db.query(
+      `insert into debug_nodes (id, organization_id, name, module, debug_node_module_id)
+       values ('node-legacy-module', 'org-1', 'legacy_charge_current', $1, null)`,
+      [leaf.name]
+    );
+
+    await expect(
+      deleteDebugNodeModuleById(db, { organizationId: "org-1", moduleId: leaf.id })
+    ).rejects.toThrow(/referenced by debug nodes/);
+    expect(await getDebugNodeModuleById(db, { organizationId: "org-1", moduleId: leaf.id })).toMatchObject({
+      id: leaf.id,
+      name: leaf.name
+    });
+  });
 });
 
 describe.skipIf(!databaseAvailable)("listDebugNodes module tree filter", () => {

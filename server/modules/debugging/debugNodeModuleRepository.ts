@@ -127,9 +127,21 @@ export async function countDebugNodesForModuleId(
   const result = await db.query<{ count: string }>(
     `
     select count(*)::text as count
-    from debug_nodes
-    where organization_id = $1
-      and debug_node_module_id = $2
+    from debug_nodes n
+    where n.organization_id = $1
+      and (
+        n.debug_node_module_id = $2
+        or (
+          n.debug_node_module_id is null
+          and exists (
+            select 1
+            from debug_node_modules dm
+            where dm.organization_id = $1
+              and dm.id = $2
+              and trim(n.module) = trim(dm.name)
+          )
+        )
+      )
     `,
     [query.organizationId, query.moduleId]
   );

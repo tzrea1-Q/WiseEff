@@ -983,7 +983,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/debugging-admin/nodes",
     roles: ["Admin"],
-    action: "Create, edit, disable/re-enable, protocol-bind, guarded-delete, export, and import the logical-node catalog through production APIs, with database and audit evidence.",
+    action: "Create, edit, disable/re-enable, protocol-bind, cascade-delete node history, export, and import the logical-node catalog through production APIs, with database and audit evidence.",
     coverage: "automated",
     acceptanceIds: ["DEBUG-ADMIN-001"],
     specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],

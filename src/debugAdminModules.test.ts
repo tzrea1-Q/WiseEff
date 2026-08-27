@@ -65,6 +65,15 @@ describe("debugAdminModules", () => {
     expect(debugNodesInModuleId(nodes, legacyModuleIdFromName("Battery Health")).map((node) => node.id)).toEqual(["node-2"]);
   });
 
+  it("counts legacy name-only nodes against the matching API module id", () => {
+    const apiModules = [
+      { id: "dm-battery", name: "Battery Charging", parentId: null, path: "dm-battery", depth: 0 }
+    ];
+
+    expect(countDebugNodesByModuleId(nodes, "dm-battery", apiModules)).toBe(1);
+    expect(debugNodesInModuleId(nodes, "dm-battery", apiModules).map((node) => node.id)).toEqual(["node-1"]);
+  });
+
   it("filters nodes by subtree module ids", () => {
     const moduleNodes = buildDebugModuleTree(nodes);
     const chargingId = legacyModuleIdFromName("Battery Charging");

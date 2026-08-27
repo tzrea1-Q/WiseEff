@@ -410,7 +410,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/unused");
     });
 
-    it("rejects deletion when a node has operation history and leaves the node and bindings intact", async () => {
+    it("deletes a node with its operation history and bindings in one audited transaction", async () => {
       await seedDevice();
       await seedTarget();
       const session = await seedSession();
@@ -432,17 +432,24 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const audit = createAuditSpy();
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
 
-      await expect(service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-protected" })).rejects.toMatchObject({
-        code: "CONFLICT",
-        details: { nodeId: node.id, reason: "node-history-protection", operationCount: 1 }
-      });
-      await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.toEqual(
+      await expect(service.deleteAdminDebugNode(adminAuth, node.id, { requestId: "request-cascade" })).resolves.toBeUndefined();
+      await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
         expect.arrayContaining([expect.objectContaining({ id: node.id })])
       );
       await expect(
         getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "adb", includeDisabled: true })
-      ).resolves.toEqual(expect.objectContaining({ nodeId: node.id }));
-      expect(audit.events).toHaveLength(0);
+      ).resolves.toBeNull();
+      await expect(
+        db.query<{ count: string }>("select count(*)::text as count from node_operations where node_id = $1", [node.id])
+      ).resolves.toMatchObject({ rows: [{ count: "0" }] });
+      expect(audit.events).toHaveLength(1);
+      expect(audit.events[0]).toMatchObject({
+        traceId: "request-cascade",
+        kind: "debug-node-admin-delete",
+        severity: "High",
+        metadata: { nodeId: node.id, name: "Historical node", bindingCount: 1, operationCount: 1 }
+      });
+      expect(JSON.stringify(audit.events[0]?.metadata)).not.toContain("/sys/historical");
     });
 
     it("deletes an unused disabled node and hides foreign or unknown nodes as not found", async () => {
