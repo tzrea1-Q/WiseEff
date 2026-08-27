@@ -1412,3 +1412,196 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
     });
   });
 });
+
+describe.skipIf(!databaseAvailable)("property-key exact-node provenance repair", () => {
+  it(
+    "fails closed when the second location's exact node is missing even though its parent exists",
+    async () => {
+      await withTempDatabase({ prefix: "pkmissingnode" }, async ({ db, connectionString }) => {
+        const refusalRoot = createPostgresDatabase(connectionString);
+        let primaryError: unknown;
+        try {
+          await db.query(`insert into organizations (id, name) values ($1, 'PK Cutover Org')`, [ORG_ID]);
+          await db.query(
+            `insert into users (id, organization_id, name, email, title, is_active)
+             values ($1, $2, 'PK Cutover Admin', 'pk-cutover@example.com', 'Admin', true)`,
+            [USER_ID, ORG_ID],
+          );
+          await seedSubject(db, SUBJECT_A, "subject-a");
+          await seedSubject(db, SUBJECT_B, "subject-b");
+          await seedSpec(db, { specId: SPEC_ID, subjectId: SUBJECT_A, propertyKey: FROM_KEY });
+          const objectStore = createMemoryObjectStore();
+          const putSpy = vi.spyOn(objectStore, "put");
+          await seedRewritableBindingOnly(db, objectStore);
+          const twoLocationSource = `${BOARD_DTS.slice(0, -3)}\tsoc {\n\t\ti2c@1 {\n\t\t\tcritical@7f {\n\t\t\t\t${FROM_KEY} = <2>;\n\t\t\t};\n\t\t};\n\t};\n};\n`;
+          const stored = await objectStore.put({
+            organizationId: ORG_ID,
+            fileName: "board.dts",
+            contentType: "text/plain",
+            bytes: Buffer.from(twoLocationSource, "utf8"),
+          });
+          await db.query(
+            `update project_parameter_file_versions
+             set storage_key = $2, checksum = $3, size_bytes = $4
+             where id = $1`,
+            [FILE_VERSION_ID, stored.storageKey, stored.checksumSha256, stored.fileSizeBytes],
+          );
+          putSpy.mockClear();
+
+          await db.query(
+            `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+             values ('ln-pk-cutover-missing-child', $1, $2, $3)`,
+            [ORG_ID, PROJECT_ID, CONFIG_SET_ID],
+          );
+          await db.query(
+            `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name)
+             values ('lnr-pk-cutover-missing-child', 'ln-pk-cutover-missing-child', $1, '/critical@7f', 'critical')`,
+            [CONFIG_REVISION_ID],
+          );
+          await db.query(
+            `insert into dts_node_occurrences (
+               id, config_revision_id, file_version_id, name, labels, node_path,
+               start_offset, end_offset, start_line, start_column, end_line, end_column,
+               raw_text, ast_json, source_order
+             ) values (
+               'no-pk-cutover-missing-child', $1, $2, 'critical', '[]'::jsonb,
+               '/soc/i2c@1/critical@7f', 81, 140, 5, 1, 8, 2, 'node', '{}'::jsonb, 2
+             )`,
+            [CONFIG_REVISION_ID, FILE_VERSION_ID],
+          );
+          await db.query(
+            `insert into dts_property_occurrences (
+               id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+               start_offset, end_offset, start_line, start_column, end_line, end_column,
+               raw_text, ast_json, source_order
+             ) values (
+               'po-pk-cutover-missing-child', $1, 'no-pk-cutover-missing-child', $2, $3,
+               90, 108, 6, 5, 6, 22, '<2>', '{}'::jsonb, 2
+             )`,
+            [CONFIG_REVISION_ID, FILE_VERSION_ID, FROM_KEY],
+          );
+          await db.query(
+            `insert into dts_occurrence_effects (
+               id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+               node_occurrence_id, property_name, effect_kind, source_order
+             ) values (
+               'oe-pk-cutover-missing-child', $1, 'lnr-pk-cutover-missing-child',
+               'po-pk-cutover-missing-child', 'no-pk-cutover-missing-child', $2, 'set', 2
+             )`,
+            [CONFIG_REVISION_ID, FROM_KEY],
+          );
+          await db.query(
+            `insert into project_parameter_bindings (
+               id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id
+             ) values ('zz-binding-pk-cutover-missing-child', $1, $2, $3, $4, 'ln-pk-cutover-missing-child')`,
+            [ORG_ID, PROJECT_ID, SPEC_ID, MODULE_ID],
+          );
+          await db.query(
+            `insert into project_parameter_binding_revisions (
+               id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value
+             ) values (
+               'rev-pk-cutover-missing-child', 'zz-binding-pk-cutover-missing-child', $1, $2, '{}'::jsonb, '<2>')`,
+            [CONFIG_REVISION_ID, `${SPEC_ID}:v1`],
+          );
+          // The parent exists and is safe; the exact child row is intentionally absent.
+          await db.query(
+            `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+             values ('dts-node-pk-cutover-missing-parent', $1, 'i2c', '/soc/i2c@1', 'wiseeff,safe')`,
+            [FILE_VERSION_ID],
+          );
+          await db.query(
+            `insert into dts_sensitive_node_rules (
+               id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+             ) values (
+               'rule-pk-cutover-missing-child', $1, $2, 'compatible', 'wiseeff,child-critical',
+               'critical', 'parameter:edit-critical', true
+             )`,
+            [ORG_ID, PROJECT_ID],
+          );
+
+          const principal = makeTestAuthContext({
+            userId: USER_ID,
+            organizationId: ORG_ID,
+            name: "PK Cutover Admin",
+            email: "pk-cutover@example.com",
+            organizationName: "PK Cutover Org",
+            permissions: [...makeAuth().permissions, "parameter:edit-critical"],
+          });
+          await startPropertyKeySourceCutover(db, principal, {
+            specId: SPEC_ID,
+            propertyKey: TO_KEY,
+            reason: "missing exact child",
+          });
+          const before = (
+            await db.query<Record<string, string>>(
+              `select
+                 (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
+                 (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
+                 (select count(*)::text from project_parameter_file_candidates) as candidates,
+                 (select current_version_id from project_parameter_files where id = $2) as current_version,
+                 (select storage_key from project_parameter_file_versions where id = $3) as source_storage_key,
+                 (select checksum from project_parameter_file_versions where id = $3) as source_checksum,
+                 (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
+                   and action = 'spec-property-key-cutover-prepared') as success_audits`,
+              [SPEC_ID, FILE_ID, FILE_VERSION_ID],
+            )
+          ).rows[0];
+          expect(before).toMatchObject({ status: "preparing", items: "2", candidates: "0", success_audits: "0" });
+
+          const invocation = createAgentInvocation(principal, {
+            sessionId: "session-missing-child",
+            toolCallId: "tool-missing-child",
+            approval: { required: true, approvalId: "approval-missing-child" },
+          });
+          await expect(
+            preparePropertyKeySourceCutover(
+              db,
+              principal,
+              { specId: SPEC_ID, reason: "missing exact child must fail closed" },
+              {
+                invocation,
+                requestId: "cutover-missing-child",
+                refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+              },
+              { objectStore },
+            ),
+          ).rejects.toMatchObject({
+            code: "CONFLICT",
+            status: 409,
+            details: { code: "parameter-sensitive-node-identity-mismatch" },
+          });
+
+          const after = (
+            await db.query<Record<string, string>>(
+              `select
+                 (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
+                 (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
+                 (select count(*)::text from project_parameter_file_candidates) as candidates,
+                 (select current_version_id from project_parameter_files where id = $2) as current_version,
+                 (select storage_key from project_parameter_file_versions where id = $3) as source_storage_key,
+                 (select checksum from project_parameter_file_versions where id = $3) as source_checksum,
+                 (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
+                   and action = 'spec-property-key-cutover-prepared') as success_audits`,
+              [SPEC_ID, FILE_ID, FILE_VERSION_ID],
+            )
+          ).rows[0];
+          expect(after).toEqual(before);
+          expect(putSpy).not.toHaveBeenCalled();
+          expect(
+            (await db.query(`select 1 from audit_events where trace_id = 'cutover-missing-child'`)).rows,
+          ).toEqual([]);
+        } catch (error) {
+          primaryError = error;
+          throw error;
+        } finally {
+          try {
+            await refusalRoot.close();
+          } catch (cleanupError) {
+            if (primaryError === undefined) throw cleanupError;
+          }
+        }
+      });
+    },
+    90_000,
+  );
+});

@@ -301,20 +301,21 @@ describe("assertSensitiveNodeWriteAllowed", () => {
 
 describe("assertTrustedSensitiveNodeWriteAllowed", () => {
   it("resolves compatible only from the exact server-owned file version when provided", async () => {
+    let call = 0;
     const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
-      expect(text).toContain("v.id = $4");
+      call += 1;
       expect(text).not.toContain("f.current_version_id");
       expect(text).toContain("f.organization_id = $1");
-      expect(text).toContain("case when node.node_path = $6 then 0 else 1 end");
-      expect(values).toEqual([
-        "org-1",
-        "project-1",
-        "board.dts",
-        "version-locked",
-        "/amba/wdt@0",
-        "/amba/wdt@0/status"
-      ]);
-      return { rows: [{ compatible: "vendor,locked-critical" }], rowCount: 1 };
+      expect(text).toContain("v.id = $4");
+      if (call === 1) {
+        expect(text).not.toContain("dts_nodes n");
+        expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 };
+      }
+      expect(text).toContain("n.node_path = $5");
+      expect(text).not.toContain("or n.node_path");
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", "amba/wdt@0"]);
+      return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
     });
 
     await expect(resolveDtsNodeCompatible({ query }, {
@@ -322,9 +323,9 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       projectId: "project-1",
       sourceFileName: "board.dts",
       sourceFileVersionId: "version-locked",
-      sourceNodePath: "/amba/wdt@0/status"
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
     })).resolves.toBe("vendor,locked-critical");
-    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when the exact file version has no matching file and node identity", async () => {
@@ -336,11 +337,56 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       projectId: "project-1",
       sourceFileName: "board.dts",
       sourceFileVersionId: "version-substituted",
-      sourceNodePath: "/amba/wdt@0/status"
+      sourcePath: { kind: "property-path", value: "/amba/wdt@0/status" }
     })).rejects.toMatchObject({
       code: "CONFLICT",
       details: expect.objectContaining({ code: "parameter-sensitive-source-version-mismatch" })
     });
+  });
+
+  it("fails closed when an exact node locator is absent instead of inheriting its parent", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async () => {
+        call += 1;
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0/missing" }
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ code: "parameter-sensitive-node-identity-mismatch" })
+    });
+    expect(call).toBe(2);
+  });
+
+  it("preserves a persisted exact node with compatible NULL as a no-compatible result", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async () => {
+        call += 1;
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 }
+          : { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
+    })).resolves.toBeNull();
+    expect(call).toBe(2);
   });
 
   it("allows a capable direct User invocation through the shared trusted write guard", async () => {

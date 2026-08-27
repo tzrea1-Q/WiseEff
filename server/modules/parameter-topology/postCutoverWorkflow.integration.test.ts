@@ -782,7 +782,6 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            where id = 'rule-pcw-quoted-compatible'`
         );
         await db.query(`delete from parameter_drafts where id = $1`, [created.draftId]);
-        const beforeSystemHigh = await snapshot();
         const systemOwnedState = async () => (await db.query<Record<string, string>>(
           `select
              (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
@@ -792,7 +791,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               where kind = 'parameter-topology-governance' and action = 'enablement-changed') as success_audits`
         )).rows[0];
         const beforeSystemOwnedState = await systemOwnedState();
-        await expect(withRefusalSink(connectionString, (refusalSink) => createNodeEnablementDraft(
+        const systemHighDraft = await withRefusalSink(connectionString, (refusalSink) => createNodeEnablementDraft(
           db,
           capableAuth,
           {
@@ -800,7 +799,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             logicalNodeId: exactNode.rows[0]!.logical_node_id,
             baseRevisionId: seeded.configRevisionId,
             target: "force-enabled",
-            reason: "System cannot own a non-null user draft"
+            reason: "System high-risk enablement preserves its service identity"
           },
           { toolchain: passToolchain },
           {
@@ -808,13 +807,34 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             requestId: "enablement-high-system",
             refusalSink
           }
-        ))).rejects.toMatchObject({
-          code: "FORBIDDEN",
-          status: 403,
-          details: { code: "parameter-accountable-user-required" }
+        ));
+        expect(systemHighDraft.draftId).toBeTruthy();
+        expect(await snapshot()).toEqual({ drafts: "0", candidates: "1" });
+        expect(await systemOwnedState()).toEqual({
+          versions: "1",
+          candidates: "1",
+          drafts: "1",
+          success_audits: "1"
         });
-        expect(await snapshot()).toEqual(beforeSystemHigh);
-        expect(await systemOwnedState()).toEqual(beforeSystemOwnedState);
+        expect(beforeSystemOwnedState).toEqual({
+          versions: "0",
+          candidates: "0",
+          drafts: "0",
+          success_audits: "0"
+        });
+        const systemHighAttribution = await db.query<{
+          user_id: string | null;
+          created_by_user_id: string | null;
+        }>(
+          `select d.user_id, fv.created_by_user_id
+           from parameter_drafts d
+           inner join project_parameter_file_versions fv on fv.origin = 'writeback'
+           where d.id = $1`,
+          [systemHighDraft.draftId]
+        );
+        expect(systemHighAttribution.rows).toEqual([
+          { user_id: null, created_by_user_id: null }
+        ]);
         const systemHighAudit = await db.query<{
           actor_type: string;
           actor_user_id: string | null;
@@ -823,7 +843,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         }>(
           `select actor_type, actor_user_id, trace_id, metadata
            from audit_events where trace_id = 'enablement-high-system'
-             and kind = 'parameter-accountable-user-denied'`
+             and kind = 'parameter-topology-governance'`
         );
         expect(systemHighAudit.rows).toEqual([
           expect.objectContaining({

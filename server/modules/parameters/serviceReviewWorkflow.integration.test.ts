@@ -13,6 +13,9 @@ import type { Queryable } from "../../shared/database/client";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
+import { createSystemInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createPostgresDatabase } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
@@ -28,6 +31,7 @@ import {
 } from "./service";
 import { createTestParameterSubmissionContext } from "./testSubmissionContext";
 import type { ParameterReviewContext } from "./service";
+import { withTempDatabase } from "../../testing/tempDatabase";
 
 const ORG = "org-srw";
 const PROJECT = "project-srw";
@@ -1065,4 +1069,65 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       }
     });
   });
+});
+
+describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", () => {
+  it("keeps the existing high-risk merge workflow successful for a System initiator", async () => {
+    await withTempDatabase({ prefix: "srwsystem" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "System merge provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "system-merge-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge hardware stage" },
+        createTestParameterSubmissionContext(hardwareAuth(), "system-merge-hardware"),
+      );
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge hardware approval" },
+        createTestParameterSubmissionContext(hardwareAuth(), "system-merge-hardware-approval"),
+      );
+      await reviewChangeService(
+        db,
+        softwareCommitterAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge software stage" },
+        createTestParameterSubmissionContext(softwareCommitterAuth(), "system-merge-software"),
+      );
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const invocation = createSystemInvocation({ kind: "job", name: "system-merge-job" });
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: HIGH_BASE_VERSION,
+            note: MERGE_LINK,
+          },
+          {
+            invocation,
+            requestId: "system-merge-high",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
 });
