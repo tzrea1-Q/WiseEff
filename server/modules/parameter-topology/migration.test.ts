@@ -1155,6 +1155,26 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         });
         const seeded = await seedLegacyGraph(db);
         await db.query(
+          `insert into parameter_modules (
+             id, organization_id, name, path, depth, description, scope
+           ) values ($1, $2, 'mig-upgrade', 'mig-upgrade', 1, '', '')`,
+          ["module-mig14-upgrade", ORG]
+        );
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, $4, $5, $6)`,
+          [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig14-upgrade"]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                     '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid', 'not_applicable')`,
+          ["bpr-mig14-upgrade", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+        );
+        await db.query(
           `update parameter_history_entries
            set changed_by_user_id = null,
                initiator_type = 'user',
@@ -1180,6 +1200,22 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         );
         expect(legacy.rows[0]?.changed_by_user_id).toBeNull();
         expect(legacy.rows[0]?.initiator_type).toBe("legacy");
+
+        const legacyBinding = await db.query<{
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select initiator_type, initiator_system_kind, initiator_system_name
+           from project_parameter_binding_revisions
+           where id = $1`,
+          ["bpr-mig14-upgrade"]
+        );
+        expect(legacyBinding.rows[0]).toEqual({
+          initiator_type: "legacy",
+          initiator_system_kind: null,
+          initiator_system_name: null,
+        });
 
         const attributed = await db.query<{
           created_by_user_id: string | null;

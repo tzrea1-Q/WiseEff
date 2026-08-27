@@ -155,6 +155,13 @@ alter table project_parameter_binding_revisions
   ) not valid;
 
 alter table project_parameter_binding_revisions
+  drop constraint if exists project_parameter_binding_revisions_initiator_type_check;
+
+alter table project_parameter_binding_revisions
+  add constraint project_parameter_binding_revisions_initiator_type_check
+  check (initiator_type in ('user', 'agent', 'system', 'legacy'));
+
+alter table project_parameter_binding_revisions
   alter column initiator_type set default 'legacy';
 
 update project_parameter_binding_revisions
@@ -165,10 +172,3 @@ where initiator_type = 'user'
   and initiator_session_id is null
   and initiator_tool_call_id is null
   and initiator_approval_id is null;
-
-alter table project_parameter_binding_revisions
-  drop constraint if exists project_parameter_binding_revisions_initiator_type_check;
-
-alter table project_parameter_binding_revisions
-  add constraint project_parameter_binding_revisions_initiator_type_check
-  check (initiator_type in ('user', 'agent', 'system', 'legacy'));
