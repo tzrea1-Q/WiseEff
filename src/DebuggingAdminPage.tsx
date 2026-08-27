@@ -540,7 +540,31 @@ export function DebuggingAdminPage({
   };
 
   const moveDebugModule = async (moduleId: string, parentId: string | null) => {
-    if (!isApiMode || !debuggingAdminClient || !canEditAdminCatalog) {
+    if (!isApiMode) {
+      const module = moduleNodes.find((node) => node.id === moduleId);
+      const parentName = parentId ? moduleNodes.find((node) => node.id === parentId)?.name : undefined;
+      const isRegisteredModule = module
+        ? state.configDraft.parameterModules.some((candidate) => candidate.name === module.name)
+        : false;
+      if (!module || (parentId && !parentName) || !isRegisteredModule) {
+        throw new Error("当前模块无法在演示模式下移动。");
+      }
+
+      dispatch({
+        type: "UPDATE_PARAMETER_MODULE",
+        moduleName: module.name,
+        patch: {
+          name: module.name,
+          description: module.description ?? "",
+          scope: module.scope ?? "",
+          parent: parentName ?? ""
+        }
+      });
+      flashSaved("模块已移动");
+      return;
+    }
+
+    if (!debuggingAdminClient || !canEditAdminCatalog) {
       return;
     }
     setAdminLoading(true);
@@ -550,7 +574,9 @@ export function DebuggingAdminPage({
       await reloadAdminModules();
       flashSaved("模块已移动");
     } catch {
-      setAdminError("移动模块失败。");
+      const error = new Error("移动模块失败，请重试。");
+      setAdminError(error.message);
+      throw error;
     } finally {
       setAdminLoading(false);
     }

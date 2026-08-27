@@ -7,7 +7,7 @@ import { countDebugNodesByModuleId, debugNodesInModuleId } from "@/debugAdminMod
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
-import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import { DebugModuleMoveDialog } from "./DebugModuleMoveDialog";
 import { ModuleCreateDialog } from "./ModuleCreateDialog";
 import { ModuleEditDialog } from "./ModuleEditDialog";
 import { ModuleManagementTreeRows } from "./ModuleManagementTreeRows";
@@ -26,7 +26,7 @@ export type DebugModuleManagementDialogProps = {
   onClose: () => void;
   onAddModule: (module: ParameterModuleDraft, parentId?: string | null) => void;
   onUpdateModule: (moduleId: string, patch: ParameterModuleDraft) => void;
-  onMoveModule?: (moduleId: string, parentId: string | null) => void;
+  onMoveModule?: (moduleId: string, parentId: string | null) => void | Promise<void>;
   onDeleteModule: (moduleId: string) => void;
   onEditNode: (nodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
@@ -52,7 +52,6 @@ export function DebugModuleManagementDialog({
   const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null);
   const [expandedTreeIds, setExpandedTreeIds] = useState<Set<string>>(() => new Set());
   const [moveModuleId, setMoveModuleId] = useState<string | null>(null);
-  const [moveParentId, setMoveParentId] = useState<string>("");
 
   const moduleTree = useMemo(() => buildModuleTree(moduleNodes), [moduleNodes]);
   const filteredTree = useMemo(() => filterTreeNodes(moduleTree, moduleQuery), [moduleQuery, moduleTree]);
@@ -70,7 +69,6 @@ export function DebugModuleManagementDialog({
     setEditingModuleId(null);
     setExpandedDetailId(null);
     setMoveModuleId(null);
-    setMoveParentId("");
     setExpandedTreeIds(buildDefaultExpandedTreeIds(moduleTree));
   }, [open, moduleTree]);
 
@@ -122,15 +120,11 @@ export function DebugModuleManagementDialog({
     setAddParentId(null);
   };
 
-  // Nested create/edit dialogs stack via the shared dialog contract; the inline move
-  // panel is not a dialog, so dismissal stays blocked while it is open.
-  const dismissBlocked = Boolean(moveModuleId);
-
   return (
     <>
     <ModalDialog
       open={open}
-      onDismiss={dismissBlocked ? undefined : onClose}
+      onDismiss={onClose}
       className="submission-dialog param-admin-module-dialog"
     >
       {({ titleId }) => (
@@ -163,37 +157,6 @@ export function DebugModuleManagementDialog({
               新增根模块
             </button>
           </div>
-
-          {moveTarget && onMoveModule ? (
-            <div className="param-admin-module-move">
-              <p>移动模块「{moveTarget.name}」到：</p>
-              <ModuleTreeSelect
-                label="目标父模块"
-                mode="single"
-                nodes={moduleNodes.filter((node) => node.id !== moveTarget.id && !node.path.startsWith(`${moveTarget.path}/`))}
-                placeholder="根级（无父模块）"
-                value={moveParentId}
-                onChange={(next) => setMoveParentId(typeof next === "string" ? next : next[0] ?? "")}
-                portalMenu
-              />
-              <div className="param-admin-module-add-actions">
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => {
-                    onMoveModule(moveTarget.id, moveParentId || null);
-                    setMoveModuleId(null);
-                    setMoveParentId("");
-                  }}
-                >
-                  确认移动
-                </button>
-                <button className="button ghost" type="button" onClick={() => setMoveModuleId(null)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           <HorizontalDragScroll className="param-admin-module-table-wrap" aria-label="模块列表">
             {filteredTree.length === 0 ? (
@@ -286,6 +249,15 @@ export function DebugModuleManagementDialog({
           onUpdateModule(editingModule.id, patch);
           setEditingModuleId(null);
         }}
+      />
+    ) : null}
+
+    {moveTarget && onMoveModule ? (
+      <DebugModuleMoveDialog
+        module={moveTarget}
+        modules={moduleNodes}
+        onCancel={() => setMoveModuleId(null)}
+        onConfirm={(parentId) => onMoveModule(moveTarget.id, parentId)}
       />
     ) : null}
     </>
