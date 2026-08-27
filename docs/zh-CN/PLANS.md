@@ -57,6 +57,7 @@
 
 ### 最近完成
 
+- `exec-plans/completed/2026-08-27-debug-node-cascade-delete-module-consistency.md`：已用带审计的事务清理取代调试节点历史保护，删除节点 operation、event、snapshot、binding 和节点本身；同时阻止仅按旧模块名称引用的模块被误判为空后删除或再次以筛选幽灵项出现。
 - `exec-plans/completed/2026-08-27-xiaoze-draggable-modeless-popup.md`：已完成桌面/平板小泽可拖动、可缩放非模态陪伴浮窗，包含浏览器本地布局持久化、键盘拖动/缩放/复位、跨路由连续性、业务 modal 层级、手机焦点陷阱全屏保留及本地 API-mode 验收/质量证据。
 
 ## 同类中文文档

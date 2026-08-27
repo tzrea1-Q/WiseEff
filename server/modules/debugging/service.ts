@@ -59,7 +59,6 @@ import {
 } from "./repository";
 import {
   archiveDebugNodeBinding,
-  countDebugNodeOperations,
   countDebugNodesForModule,
   createDebugNode,
   deleteDebugNode,
@@ -772,14 +771,6 @@ function notFound(message = "Debug parameter was not found.") {
   return new ApiError("NOT_FOUND", message);
 }
 
-function isDebugNodeOperationForeignKeyViolation(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return false;
-  }
-  const databaseError = error as { code?: unknown; constraint?: unknown };
-  return databaseError.code === "23503" && databaseError.constraint === "node_operations_node_id_fkey";
-}
-
 function hasOwn<T extends object, K extends PropertyKey>(value: T, key: K): value is T & Record<K, unknown> {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
@@ -1456,57 +1447,38 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
 
-      try {
-        await db.transaction(async (tx) => {
-          const current = await getDebugNode(tx, { organizationId, nodeId, includeArchived: true });
-          if (!current) {
-            throw notFound("Debug node was not found.");
-          }
-
-          const result = await deleteDebugNode(tx, { organizationId, nodeId });
-          if (!result) {
-            throw notFound("Debug node was not found.");
-          }
-          if (result.status === "protected") {
-            throw new ApiError("CONFLICT", "Debug node has historical operations and cannot be deleted; disable it instead.", {
-              nodeId,
-              reason: "node-history-protection",
-              operationCount: result.operationCount
-            });
-          }
-
-          await writeAudit(
-            tx,
-            auditInput(
-              auth,
-              {
-                projectId: null,
-                kind: "debug-node-admin-delete",
-                action: "delete",
-                severity: "High",
-                targetType: "debug-node-registry",
-                targetId: current.id,
-                metadata: nodeAuditMetadata(current, {
-                  name: current.name,
-                  moduleId: current.moduleId ?? null,
-                  bindingCount: result.bindingCount
-                })
-              },
-              context
-            )
-          );
-        });
-      } catch (error) {
-        if (isDebugNodeOperationForeignKeyViolation(error)) {
-          const operationCount = await countDebugNodeOperations(db, { nodeId });
-          throw new ApiError("CONFLICT", "Debug node has historical operations and cannot be deleted; disable it instead.", {
-            nodeId,
-            reason: "node-history-protection",
-            operationCount
-          });
+      await db.transaction(async (tx) => {
+        const current = await getDebugNode(tx, { organizationId, nodeId, includeArchived: true });
+        if (!current) {
+          throw notFound("Debug node was not found.");
         }
-        throw error;
-      }
+
+        const result = await deleteDebugNode(tx, { organizationId, nodeId });
+        if (!result) {
+          throw notFound("Debug node was not found.");
+        }
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: null,
+              kind: "debug-node-admin-delete",
+              action: "delete",
+              severity: "High",
+              targetType: "debug-node-registry",
+              targetId: current.id,
+              metadata: nodeAuditMetadata(current, {
+                name: current.name,
+                moduleId: current.moduleId ?? null,
+                bindingCount: result.bindingCount,
+                operationCount: result.operationCount
+              })
+            },
+            context
+          )
+        );
+      });
     },
 
     async listAdminDebugModules(auth: AuthContext): Promise<DebugNodeModuleRecord[]> {

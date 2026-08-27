@@ -24,7 +24,7 @@ export function DeleteDebugNodeDialog({
       description={
         <>
           <p>
-            此操作不可恢复，并会同时删除该节点的 HDC / ADB 路径绑定。已有调试历史记录的节点无法删除，请改用禁用。
+            此操作不可恢复，并会同时删除该节点的 HDC / ADB 路径绑定及全部调试历史记录。共享调试会话和其它节点记录不会受影响。
           </p>
           {error ? (
             <p className="governance-confirm-dialog__error" role="alert">

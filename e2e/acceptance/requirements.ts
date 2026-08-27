@@ -464,7 +464,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DEBUG-ADMIN-001",
     workflow: "E",
-    title: "Debugging admin governs the logical-node catalog in API mode: create, edit, disable/re-enable, protocol-bind, guarded-delete, export, and import through production APIs with database and audit evidence.",
+    title: "Debugging admin governs the logical-node catalog in API mode: create, edit, disable/re-enable, protocol-bind, cascade-delete node history, export, and import through production APIs with database and audit evidence.",
     required: true
   },
   {

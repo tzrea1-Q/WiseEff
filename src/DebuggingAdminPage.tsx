@@ -207,7 +207,7 @@ export function DebuggingAdminPage({
   }, [adminNodes, isApiMode, mockDeletedNodeIds, mockDisabledNodeIds, state.configDraft.debugParameters]);
 
   const moduleNodes = useMemo(() => {
-    if (isApiMode && adminModuleNodes.length > 0) {
+    if (isApiMode) {
       return adminModuleNodes;
     }
     return buildDebugModuleTree(library, state.configDraft.parameterModules);
@@ -583,7 +583,7 @@ export function DebuggingAdminPage({
   };
 
   const deleteDebugModule = async (moduleId: string) => {
-    if (countDebugNodesByModuleId(library, moduleId) > 0) {
+    if (countDebugNodesByModuleId(library, moduleId, moduleNodes) > 0) {
       return;
     }
     if (isApiMode) {
@@ -720,16 +720,9 @@ export function DebuggingAdminPage({
           }
           return;
         }
-        const operationCount = error instanceof WiseEffApiError && typeof error.details.operationCount === "number"
-          ? error.details.operationCount
-          : null;
-        const message = operationCount !== null
-          ? `节点存在 ${operationCount} 条调试历史记录，无法永久删除，请改用禁用。`
-          : "永久删除调试节点失败，请稍后重试。";
+        const message = "永久删除调试节点失败，请稍后重试。";
         setDeleteError(message);
-        if (operationCount === null) {
-          setAdminError(message);
-        }
+        setAdminError(message);
       } finally {
         deleteInFlightRef.current = false;
         setAdminLoading(false);

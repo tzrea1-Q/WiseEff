@@ -86,7 +86,7 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 | `GET` | `/api/v1/debugging/admin/nodes` | List logical debug nodes, including disabled or archived rows when `includeArchived=true`. Optional `moduleId` + `includeDescendants` subtree filter. |
 | `POST` | `/api/v1/debugging/admin/nodes` | Create a logical debug node and optional initial bindings. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | Update logical node metadata. |
-| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | Permanently delete an enabled or disabled node only when no `node_operations` row references it. Success is `204` and cascades its HDC/ADB bindings; historical references return `409` with `reason=node-history-protection` and `operationCount`. |
+| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | Permanently delete an enabled or disabled node, all of its `node_operations`, their operation events and unshared snapshots, and its HDC/ADB bindings in one transaction. Shared sessions/snapshots, unrelated operations, and audit evidence remain. Success is `204`. |
 | `PUT` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert the HDC or ADB binding for a logical node. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Update the HDC or ADB binding for a logical node. |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | Disable one protocol binding without affecting the logical node or other protocols. |
@@ -94,7 +94,7 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 | `POST` | `/api/v1/debugging/admin/modules` | Create a debug module (`name`, optional `parentId`). |
 | `PATCH` | `/api/v1/debugging/admin/modules/:moduleId` | Update debug module metadata. |
 | `POST` | `/api/v1/debugging/admin/modules/:moduleId/move` | Reparent a debug module (cycle → `409`). |
-| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | Delete when no child modules or assigned nodes remain (`409` otherwise). |
+| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | Delete when no child modules or assigned nodes remain (`409` otherwise). Legacy name-only node assignments also count as references. |
 | `GET` | `/api/v1/debugging/admin/catalog/export` | Export the org debug-node catalog (modules, nodes, bindings) as `wiseeff.debug-node-catalog.v1`. Requires `debugging:admin`. Writes `debug-node-catalog-export` audit without raw node paths. |
 | `POST` | `/api/v1/debugging/admin/catalog/import` | Merge-import a v1 catalog document: upsert modules by parent+name and nodes by id or name+module path. Requires `debugging:admin`. Writes `debug-node-catalog-import` audit without raw node paths. |
 

@@ -176,6 +176,37 @@ describe("/debugging-admin API mode", () => {
     expect(screen.queryByText("移动模块「Battery Charging」到：")).not.toBeInTheDocument();
   });
 
+  it("prevents deleting an API module referenced by a legacy name-only node", async () => {
+    const apiClient = createDebuggingAdminApiMock();
+    let moduleListCallCount = 0;
+    apiClient.get.mockImplementation((path: string) => {
+      if (path === "/api/v1/debugging/admin/modules") {
+        moduleListCallCount += 1;
+        return Promise.resolve({
+          items: [{ id: "dm-battery", name: "Battery Charging", description: "", scope: "", parentId: null, path: "dm-battery", depth: 0 }]
+        });
+      }
+      return Promise.resolve({ items: [apiClient.seedNode] });
+    });
+
+    renderDebuggingAdminPage(apiClient);
+    await waitFor(() => expect(moduleListCallCount).toBe(1));
+
+    const moduleHeader = await screen.findByRole("columnheader", { name: /模块/ });
+    const filterButton = within(moduleHeader).getByRole("button", { name: "筛选模块", expanded: false });
+    fireEvent.click(filterButton);
+    expect(screen.getByRole("checkbox", { name: "Battery Charging" })).toBeInTheDocument();
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块", expanded: true }));
+
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const dialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Battery Charging 更多操作" }));
+    const deleteModule = screen.getByRole("menuitem", { name: "删除" });
+    expect(deleteModule).toBeDisabled();
+    expect(deleteModule).toHaveAttribute("title", "仍有子模块或节点引用，无法删除");
+    expect(apiClient.delete).not.toHaveBeenCalled();
+  });
+
   it("opens node deletion confirmation from a module detail entry", async () => {
     const apiClient = renderDebuggingAdminPage();
 
@@ -300,6 +331,7 @@ describe("/debugging-admin API mode", () => {
 
     expect(screen.getByRole("dialog", { name: /永久删除节点/ })).toBeInTheDocument();
     expect(screen.getByText(/同时删除该节点的 HDC \/ ADB 路径绑定/)).toBeInTheDocument();
+    expect(screen.getByText(/全部调试历史记录/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
 
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1"));
@@ -347,13 +379,13 @@ describe("/debugging-admin API mode", () => {
     expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?includeArchived=true");
   });
 
-  it("keeps the node and confirmation dialog open when operation history protects deletion", async () => {
+  it("keeps the node and confirmation dialog open when deletion fails", async () => {
     const apiClient = renderDebuggingAdminPage();
     apiClient.delete.mockRejectedValueOnce(
       new WiseEffApiError(
-        "CONFLICT",
-        "Debug node has historical operations and cannot be deleted; disable it instead.",
-        { nodeId: "node-1", reason: "node-history-protection", operationCount: 2 },
+        "INTERNAL_ERROR",
+        "Debug node deletion failed.",
+        { nodeId: "node-1" },
         "request-delete"
       )
     );
@@ -362,11 +394,11 @@ describe("/debugging-admin API mode", () => {
     fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
     fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
 
-    expect(await screen.findByText("节点存在 2 条调试历史记录，无法永久删除，请改用禁用。")).toBeInTheDocument();
     const dialog = screen.getByRole("dialog", { name: /永久删除节点/ });
+    expect(await within(dialog).findByText("永久删除调试节点失败，请稍后重试。")).toBeInTheDocument();
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveAccessibleName("永久删除节点 Fast charge current");
-    expect(dialog).toHaveAccessibleDescription(/无法永久删除，请改用禁用/);
+    expect(dialog).toHaveAccessibleDescription(/全部调试历史记录/);
   });
 
   it("converges mock deletion with the shared debug-parameter state", async () => {

@@ -85,9 +85,15 @@ export function DebugModuleManagementDialog({
     setExpandedTreeIds(new Set([...defaults, ...searchExpanded]));
   }, [filteredTree, moduleQuery, moduleTree, open]);
 
-  const getItemCount = useCallback((moduleId: string) => countDebugNodesByModuleId(nodes, moduleId), [nodes]);
+  const getItemCount = useCallback(
+    (moduleId: string) => countDebugNodesByModuleId(nodes, moduleId, moduleNodes),
+    [moduleNodes, nodes]
+  );
 
-  const getItems = useCallback((moduleId: string) => debugNodesInModuleId(nodes, moduleId), [nodes]);
+  const getItems = useCallback(
+    (moduleId: string) => debugNodesInModuleId(nodes, moduleId, moduleNodes),
+    [moduleNodes, nodes]
+  );
 
   const toggleTree = useCallback((moduleId: string) => {
     setExpandedTreeIds((current) => {

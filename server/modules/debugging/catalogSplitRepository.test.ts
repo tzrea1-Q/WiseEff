@@ -74,7 +74,7 @@ describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
     expect(listed.map((node) => node.id)).toEqual([created.id]);
   });
 
-  it("deletes an unreferenced node with its bindings and protects nodes with operation history", async () => {
+  it("deletes a node with its bindings and operation history", async () => {
     const removable = await createDebugNode(db, { organizationId: "org-1", name: "Removable node" });
     await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
@@ -87,7 +87,8 @@ describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
 
     await expect(deleteDebugNode(db, { organizationId: "org-1", nodeId: removable.id })).resolves.toEqual({
       status: "deleted",
-      bindingCount: 1
+      bindingCount: 1,
+      operationCount: 0
     });
     await expect(getDebugNodeBinding(db, { organizationId: "org-1", nodeId: removable.id, protocol: "hdc", includeDisabled: true })).resolves.toBeNull();
     await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
@@ -125,17 +126,44 @@ describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
        ) values ('operation-history', 'org-2', 'session-history', $1, '/sys/protected', 'read', 'succeeded', 'user-1')`,
       [protectedNode.id]
     );
+    await db.query(
+      `insert into debugging_snapshots (
+         id, organization_id, session_id, operation_id, status, risk, entries, created_by_user_id
+       ) values (
+         'snapshot-history', 'org-1', 'session-history', 'operation-history', 'valid', 'Medium', '[]'::jsonb, 'user-1'
+       )`
+    );
+    await db.query(`update node_operations set snapshot_id = 'snapshot-history' where id = 'operation-history'`);
+    await db.query(
+      `insert into debugging_events (
+         id, organization_id, session_id, operation_id, kind, severity, message, metadata
+       ) values (
+         'event-history', 'org-1', 'session-history', 'operation-history', 'write', 'Info', 'history event', '{}'::jsonb
+       )`
+    );
 
     await expect(deleteDebugNode(db, { organizationId: "org-1", nodeId: protectedNode.id })).resolves.toEqual({
-      status: "protected",
+      status: "deleted",
+      bindingCount: 1,
       operationCount: 1
     });
-    await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.toEqual(
+    await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: protectedNode.id })])
     );
     await expect(
       getDebugNodeBinding(db, { organizationId: "org-1", nodeId: protectedNode.id, protocol: "adb", includeDisabled: true })
-    ).resolves.toEqual(expect.objectContaining({ nodeId: protectedNode.id }));
+    ).resolves.toBeNull();
+    await expect(
+      db.query<{ operation_count: string; snapshot_count: string; event_count: string }>(
+        `
+        select
+          (select count(*)::text from node_operations where node_id = $1) as operation_count,
+          (select count(*)::text from debugging_snapshots where id = 'snapshot-history') as snapshot_count,
+          (select count(*)::text from debugging_events where id = 'event-history') as event_count
+        `,
+        [protectedNode.id]
+      )
+    ).resolves.toMatchObject({ rows: [{ operation_count: "0", snapshot_count: "0", event_count: "0" }] });
   });
 
   it("upserts and archives debug node bindings scoped to the logical node", async () => {

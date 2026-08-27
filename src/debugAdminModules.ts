@@ -9,8 +9,14 @@ type DebugModuleSource = {
 };
 
 /** Resolve the module id used for tree filters from a debug node row. */
-export function debugNodeModuleId(entry: DebugModuleSource) {
-  return entry.moduleId?.trim() || legacyModuleIdFromName(entry.module);
+export function debugNodeModuleId(entry: DebugModuleSource, moduleNodes: readonly FlatModuleNode[] = []) {
+  const explicitId = entry.moduleId?.trim();
+  if (explicitId) {
+    return explicitId;
+  }
+  const moduleName = entry.module.trim();
+  const matchingModules = moduleNodes.filter((module) => module.name.trim() === moduleName);
+  return matchingModules.length === 1 ? matchingModules[0]!.id : legacyModuleIdFromName(entry.module);
 }
 
 export function modulePathLabelForDebugNode(
@@ -98,13 +104,34 @@ export function buildDebugModuleTree(
   );
 }
 
-export function countDebugNodesByModuleId(nodes: readonly DebugNodeRegistryEntry[], moduleId: string) {
-  return nodes.filter((node) => debugNodeModuleId(node) === moduleId).length;
+function debugNodeMatchesModuleId(
+  node: DebugModuleSource,
+  moduleId: string,
+  moduleNodes: readonly FlatModuleNode[]
+) {
+  const explicitId = node.moduleId?.trim();
+  if (explicitId) {
+    return explicitId === moduleId;
+  }
+  const target = moduleNodes.find((module) => module.id === moduleId);
+  return target ? node.module.trim() === target.name.trim() : debugNodeModuleId(node) === moduleId;
 }
 
-export function debugNodesInModuleId(nodes: readonly DebugNodeRegistryEntry[], moduleId: string) {
+export function countDebugNodesByModuleId(
+  nodes: readonly DebugNodeRegistryEntry[],
+  moduleId: string,
+  moduleNodes: readonly FlatModuleNode[] = []
+) {
+  return nodes.filter((node) => debugNodeMatchesModuleId(node, moduleId, moduleNodes)).length;
+}
+
+export function debugNodesInModuleId(
+  nodes: readonly DebugNodeRegistryEntry[],
+  moduleId: string,
+  moduleNodes: readonly FlatModuleNode[] = []
+) {
   return nodes
-    .filter((node) => debugNodeModuleId(node) === moduleId)
+    .filter((node) => debugNodeMatchesModuleId(node, moduleId, moduleNodes))
     .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
 }
 
@@ -117,7 +144,7 @@ export function filterDebugNodesByModuleTree<T extends DebugModuleSource>(
     return [...nodes];
   }
   const allowed = collectSubtreeModuleIds(moduleNodes, selectedModuleIds);
-  return nodes.filter((node) => allowed.has(debugNodeModuleId(node)));
+  return nodes.filter((node) => Array.from(allowed).some((moduleId) => debugNodeMatchesModuleId(node, moduleId, moduleNodes)));
 }
 
 /** @deprecated Use countDebugNodesByModuleId. */

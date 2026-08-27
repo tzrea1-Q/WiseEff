@@ -109,7 +109,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | `GET` | `/api/v1/debugging/admin/nodes` | 查询逻辑调试节点；`includeArchived=true` 时包含 disabled 或 archived 行，可按 `moduleId` 子树筛选。 |
 | `POST` | `/api/v1/debugging/admin/nodes` | 创建逻辑调试节点和可选 HDC/ADB bindings。 |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | 更新逻辑节点 metadata。 |
-| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | 永久删除启用或禁用的节点；仅当没有 `node_operations` 引用时允许。成功返回 `204` 并级联删除 HDC/ADB binding；存在历史引用时返回带 `reason=node-history-protection` 和 `operationCount` 的 `409`。 |
+| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | 在同一事务永久删除启用或禁用节点、其全部 `node_operations`、对应 operation event、不再共享的 snapshot 与 HDC/ADB binding；共享 session/snapshot、无关 operation 和审计证据保留。成功返回 `204`。 |
 | `PUT` / `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert 或更新 HDC/ADB 节点 binding。 |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | 禁用单个 protocol binding，不影响节点及另一协议。 |
 | `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织调试节点目录（模块、节点、bindings）为 `wiseeff.debug-node-catalog.v1`。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计，不包含原始 node path。 |
@@ -152,7 +152,7 @@ Legacy 运行时调试参数 DTO 包含可选值元数据：
 | `POST` | `/api/v1/debugging/admin/modules` | 创建调试模块。 |
 | `PATCH` | `/api/v1/debugging/admin/modules/:moduleId` | 更新调试模块。 |
 | `POST` | `/api/v1/debugging/admin/modules/:moduleId/move` | 移动调试模块（循环 → `409`）。 |
-| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | 删除空模块（否则 `409`）。 |
+| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | 删除空模块（否则 `409`）；仅按旧模块名称赋值的节点也计为引用。 |
 
 `GET /api/v1/debugging/admin/nodes` 支持 `moduleId` 与 `includeDescendants` 子树筛选。
 
