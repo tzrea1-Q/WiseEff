@@ -904,6 +904,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           ...auth,
           permissions: [...auth.permissions, "parameter:edit-critical"]
         };
+        const refusalSink = createTrustedRefusalAuditSink(root);
         const draft = await createNodeEnablementDraft(
           ownedDb,
           capableAuth,
@@ -915,7 +916,11 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             reason: "Exact compatible enablement guard"
           },
           { toolchain: passToolchain },
-          { requestId: "req-enablement-draft" }
+          {
+            invocation: createUserInvocation(capableAuth),
+            requestId: "req-enablement-draft",
+            refusalSink
+          }
         );
         const item = {
           draftId: draft.draftId,
@@ -963,7 +968,6 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
 
         const agentContext = contextFor(auth);
         await seedAgentAuditLineage(ownedDb, agentContext);
-        const refusalSink = createTrustedRefusalAuditSink(root);
         await expect(
           root.transaction((tx) =>
             submitParameterChanges(
