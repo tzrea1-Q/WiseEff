@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import {
+  assertTrustedRefusalAuditSink,
+  createTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database, Queryable } from "../../shared/database/client";
+import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -118,6 +124,14 @@ function requireDb(db: Database | undefined) {
   return db;
 }
 
+function requireSubmissionRefusalSink(sink: TrustedRefusalAuditSink | undefined) {
+  if (!sink) {
+    throw new ApiError("INTERNAL_ERROR", "Server-owned parameter submission refusal audit sink is required.");
+  }
+  assertTrustedRefusalAuditSink(sink);
+  return sink;
+}
+
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid parameter route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -200,9 +214,15 @@ export function registerParameterRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  const refusalAuditSink = options.refusalAuditSink
+    ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
+    : options.db && isRootDatabase(options.db)
+      ? createTrustedRefusalAuditSink(options.db)
+      : undefined;
   router.get("/api/v1/projects", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -447,7 +467,12 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(submitRoundBodySchema, request.body);
-    const item = await submitParameterChanges(db, auth, body, { requestId: request.requestId });
+    const refusalSink = requireSubmissionRefusalSink(refusalAuditSink);
+    const item = await submitParameterChanges(db, auth, body, {
+      invocation: createUserInvocation(auth),
+      requestId: request.requestId,
+      refusalSink
+    });
 
     return { status: 201, body: { item } };
   });

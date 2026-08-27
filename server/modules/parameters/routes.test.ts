@@ -3,6 +3,8 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { assertTrustedInvocationContext } from "../auth/trustedInvocation";
+import { testRefusalAuditSink } from "../audit/testRefusalSink";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -82,6 +84,7 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
   const router = createRouter();
   registerParameterRoutes(router, {
     db: options.db,
+    refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
   return createHttpServer(router);
@@ -267,6 +270,7 @@ describe("parameter routes", () => {
       method: "POST",
       body: JSON.stringify({
         projectId: "aurora",
+        actorType: "system",
         items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
         assignees: {
           hardwareCommitterId: "u-hardware",
@@ -289,8 +293,14 @@ describe("parameter routes", () => {
           softwareUserId: "u-software-user"
         }
       },
-      { requestId: "test-request" }
+      expect.objectContaining({ requestId: "test-request", invocation: expect.any(Object) })
     );
+    const context = vi.mocked(service.submitParameterChanges).mock.calls[0]?.[3];
+    const invocation = assertTrustedInvocationContext(context?.invocation);
+    expect(invocation).toMatchObject({
+      initiator: "user",
+      principal: { user: { id: "user-1" }, organization: { id: "org-1" } }
+    });
   });
 
   it("submit route preserves explicit binding draft identity", async () => {
@@ -345,7 +355,7 @@ describe("parameter routes", () => {
           }
         ]
       }),
-      { requestId: "test-request" }
+      expect.objectContaining({ requestId: "test-request", invocation: expect.any(Object) })
     );
   });
 
@@ -395,7 +405,7 @@ describe("parameter routes", () => {
           }
         ]
       }),
-      { requestId: "test-request" }
+      expect.objectContaining({ requestId: "test-request", invocation: expect.any(Object) })
     );
   });
 

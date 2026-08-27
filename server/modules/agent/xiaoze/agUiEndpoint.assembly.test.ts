@@ -6,7 +6,8 @@ vi.mock("../../parameters/service", () => ({
 }));
 
 vi.mock("../../parameter-kernel/sensitiveNode", () => ({
-  assertSensitiveNodeWriteAllowed: vi.fn()
+  assertSensitiveNodeWriteAllowed: vi.fn(),
+  assertTrustedSensitiveNodeSubmissionAllowed: vi.fn()
 }));
 
 vi.mock("../../parameters/repository", () => ({
@@ -24,6 +25,7 @@ vi.mock("../../parameter-topology/service", () => ({
 
 vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
+  loadLogicalNodeSubmissionContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -34,12 +36,18 @@ import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
 import { submitParameterChanges } from "../../parameters/service";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
 
 function primeParameterMocks(editedRawText: string) {
   mockedLoadBinding.mockResolvedValue({
@@ -56,6 +64,10 @@ function primeParameterMocks(editedRawText: string) {
     policy_target: null
   } as never);
   mockedResolveHead.mockResolvedValue("rev-base" as never);
+  mockedLoadNode.mockResolvedValue({
+    nodeLocator: "charging_core",
+    compatible: "wiseeff,charging_core"
+  });
   mockedCreateDraft.mockResolvedValue({
     draftId: "draft-1",
     parameterId: "pd-1",
@@ -112,6 +124,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       env: {
         XIAOZE_PROACTIVE_ENABLED: false,
         XIAOZE_CHECKPOINTER: "memory",
@@ -141,6 +154,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -217,7 +231,15 @@ describe("registerXiaozeRoutes approval assembly", () => {
           })
         ]
       }),
-      expect.objectContaining({ actorType: "agent" })
+      expect.objectContaining({
+        invocation: expect.objectContaining({
+          initiator: "agent",
+          sessionId: threadId,
+          toolCallId: expect.any(String),
+          approvalId: interrupt.approvalId
+        }),
+        refusalSink: testRefusalAuditSink
+      })
     );
     expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "<3600>" });
     expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
@@ -243,6 +265,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -293,6 +316,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => developmentAuthContext
     });
 
@@ -370,6 +394,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const router = createRouter();
     registerXiaozeRoutes(router, {
       db,
+      refusalAuditSink: testRefusalAuditSink,
       getCurrentAuthContext: () => currentAuth
     });
 

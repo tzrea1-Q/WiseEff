@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../shared/http/errors";
+import { createAgentInvocation, TRUSTED_INVOCATION_CONTEXT_ERROR_CODE } from "../../auth/trustedInvocation";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 
 vi.mock("../../parameters/service", () => ({
   submitParameterChanges: vi.fn()
 }));
 
 vi.mock("../../parameter-kernel/sensitiveNode", () => ({
-  assertSensitiveNodeWriteAllowed: vi.fn()
+  assertTrustedSensitiveNodeSubmissionAllowed: vi.fn()
 }));
 
 vi.mock("../../parameter-drafts/repository", () => ({
@@ -27,6 +29,7 @@ vi.mock("../../parameter-topology/service", () => ({
 
 vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
+  loadLogicalNodeSubmissionContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -36,13 +39,18 @@ import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedDeleteDraft = vi.mocked(deleteDraft);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
 const mockedIdentityMode = vi.mocked(resolveParameterIdentityMode);
 const mockedGetLegacyParameter = vi.mocked(getProjectParameterForUpdate);
 
@@ -65,16 +73,27 @@ const db = {
   transaction: vi.fn()
 } as never;
 
-const adminContext = {
-  auth: {
-    organization: { id: "org1" },
+const agentAuth = {
+    organization: { id: "org1", name: "Test Organization" },
     user: { id: "u1", organizationId: "org1", name: "Admin", title: "Admin", isActive: true },
     roles: [{ roleId: "admin", projectId: null }],
     permissions: ["parameter:edit"]
-  },
+} as const;
+
+const durableAgentInvocation = createAgentInvocation(agentAuth, {
+  sessionId: "s1",
+  toolCallId: "tool-call-1",
+  approval: { required: true, approvalId: "approval-1" }
+});
+
+const adminContext = {
+  auth: agentAuth,
+  invocation: durableAgentInvocation,
   requestId: "r1",
   sessionId: "s1",
-  projectId: "p1"
+  toolCallId: "tool-call-1",
+  projectId: "p1",
+  approvalId: "approval-1"
 } as never;
 
 const draftResult = {
@@ -93,7 +112,9 @@ const draftResult = {
 };
 
 function tool() {
-  return createActionTools({ db }).find((t) => t.name === "action.submitParameterChange")!;
+  return createActionTools({ db, refusalAuditSink: testRefusalAuditSink }).find(
+    (t) => t.name === "action.submitParameterChange"
+  )!;
 }
 
 beforeEach(() => {
@@ -101,6 +122,7 @@ beforeEach(() => {
   mockedIdentityMode.mockResolvedValue("semantic");
   mockedLoadBinding.mockResolvedValue(bindingContext as never);
   mockedResolveHead.mockResolvedValue("rev-base");
+  mockedLoadNode.mockResolvedValue({ nodeLocator: "charging_core", compatible: "wiseeff,charging_core" });
   mockedCreateDraft.mockResolvedValue(draftResult as never);
   mockedSubmit.mockResolvedValue({ id: "round-1", items: [{ requestId: "cr-9" }] } as never);
 });
@@ -109,6 +131,21 @@ describe("action.submitParameterChange", () => {
   it("is mutating and approval-gated", () => {
     expect(tool().kind).toBe("mutating");
     expect(tool().requiresApproval).toBe(true);
+  });
+
+  it("rejects a durable invocation correlated to a different tool call before domain work", async () => {
+    await expect(
+      tool().run({ ...adminContext, toolCallId: "tool-call-spoofed" } as never, {
+        projectId: "p1",
+        parameterId: "binding-1",
+        targetValue: "<3600>",
+        reason: "spoof"
+      })
+    ).rejects.toMatchObject({ code: TRUSTED_INVOCATION_CONTEXT_ERROR_CODE });
+
+    expect(mockedIdentityMode).not.toHaveBeenCalled();
+    expect(mockedCreateDraft).not.toHaveBeenCalled();
+    expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it("creates a typed binding draft and submits it with the draft identity", async () => {
@@ -154,7 +191,7 @@ describe("action.submitParameterChange", () => {
           })
         ]
       }),
-      expect.objectContaining({ requestId: "r1", actorType: "agent" })
+      expect.objectContaining({ requestId: "r1", invocation: durableAgentInvocation })
     );
     expect(result.data).toMatchObject({ changeRequestId: "cr-9", targetValue: "<3600>", draftId: "draft-1" });
     expect(result.citations[0]?.id).toBe("cr-9");
@@ -208,7 +245,7 @@ describe("action.submitParameterChange", () => {
         projectId: "p1",
         items: [{ parameterId: "legacy-param-1", targetValue: "18A", reason: "tune" }]
       }),
-      expect.objectContaining({ actorType: "agent" })
+      expect.objectContaining({ requestId: "r1", invocation: durableAgentInvocation })
     );
     expect(mockedLoadBinding).not.toHaveBeenCalled();
     expect(mockedCreateDraft).not.toHaveBeenCalled();

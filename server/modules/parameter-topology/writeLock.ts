@@ -90,6 +90,11 @@ type EffectRow = {
   file_checksum: string | null;
 };
 
+function canonicalizeLogicalNodeCompatible(value: string | null): string | null {
+  const quotedCompatible = value?.match(/"((?:\\.|[^"\\])*)"/);
+  return quotedCompatible ? quotedCompatible[1]! : (value?.trim() || null);
+}
+
 export async function loadBindingContext(
   db: Queryable,
   auth: AuthContext,
@@ -443,8 +448,49 @@ export async function loadLogicalNodeEnablementContext(
 
   return {
     nodeLocator: row.node_locator,
-    compatible: row.compatible,
+    compatible: canonicalizeLogicalNodeCompatible(row.compatible),
     currentRaw,
+  };
+}
+
+/**
+ * Resolve sensitive-rule match inputs from one exact logical-node revision.
+ * Callers must supply the server-owned config revision carried by the binding
+ * head or persisted draft; this deliberately has no "latest" fallback.
+ */
+export async function loadLogicalNodeSubmissionContext(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    logicalNodeId: string;
+  },
+): Promise<{ nodeLocator: string; compatible: string | null }> {
+  const result = await db.query<{ node_locator: string; compatible: string | null }>(
+    `
+    select lnr.node_locator, lnr.compatible
+    from dts_logical_node_revisions lnr
+    inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+    inner join dts_config_set cs on cs.id = cr.config_set_id
+    where lnr.config_revision_id = $1
+      and lnr.logical_node_id = $2
+      and cs.organization_id = $3
+      and cs.project_id = $4
+    limit 1
+    `,
+    [input.configRevisionId, input.logicalNodeId, input.organizationId, input.projectId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new ApiError("NOT_FOUND", "Logical node was not found in this config revision.", {
+      logicalNodeId: input.logicalNodeId,
+      configRevisionId: input.configRevisionId,
+    });
+  }
+  return {
+    nodeLocator: row.node_locator,
+    compatible: canonicalizeLogicalNodeCompatible(row.compatible),
   };
 }
 
@@ -461,7 +507,11 @@ export async function resolveBindingHeadRevisionId(
     `
     select bpr.config_revision_id
     from project_parameter_binding_revisions bpr
+    inner join project_parameter_bindings b on b.id = bpr.binding_id
     inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.config_revision_id = bpr.config_revision_id
+     and lnr.logical_node_id = b.logical_node_id
     where bpr.binding_id = $1
       and cr.organization_id = $2
       and cr.project_id = $3

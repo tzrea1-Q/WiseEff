@@ -9,6 +9,7 @@ import { seedCoreGraph } from "../../testing/fixtures";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
+import { testRefusalAuditSink } from "../audit/testRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerParameterFileRoutes } from "./routes";
 import { registerParameterRoutes } from "../parameters/routes";
@@ -19,6 +20,7 @@ function makeServer(db: InMemoryTestDatabase, objectStore: ObjectStore) {
   const routeOptions = {
     db,
     objectStore,
+    refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => auth
   };
   registerParameterFileRoutes(router, routeOptions);

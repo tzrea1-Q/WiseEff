@@ -17,6 +17,7 @@ import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDa
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { insertNodeOperation } from "../debugging/repository";
+import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
@@ -37,12 +38,14 @@ import {
   updateChangeRequestStatus
 } from "../parameters/reviewWorkflowRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
+import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { resolveBindingWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
   stableSemanticId
 } from "./migration";
+import { createNodeEnablementDraft } from "./editService";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -65,6 +68,25 @@ const applyGates = {
   maintenanceToken: MAINTENANCE_TOKEN,
   expectedMaintenanceToken: MAINTENANCE_TOKEN,
   writeLockConfirmed: true as const
+};
+
+const passToolchain: DtsToolchainRunner = {
+  async validate() {
+    return {
+      ok: true,
+      mode: "release",
+      compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+      diagnostics: [],
+      artifacts: {}
+    };
+  },
+  async probe() {
+    return {
+      dtc: { path: "/usr/bin/dtc", version: "1.8.1" },
+      fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "1.8.1" },
+      dtschema: { path: "/usr/bin/dt-validate", version: "2026.6" }
+    };
+  }
 };
 
 function expectedSpecId() {
@@ -92,7 +114,7 @@ function makeAuth(): AuthContext {
     name: "PCW User",
     email: "pcw@example.com",
     organizationName: "PCW Org",
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "parameter:merge", "admin:access"]
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   });
 }
 
@@ -394,6 +416,157 @@ async function seedPendingDeleteCandidate(
 
 describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", () => {
   it(
+    "matches quoted exact-revision compatible before topology enablement capability checks",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        await db.query(
+          `delete from parameter_drafts
+           where organization_id = $1 and project_id = $2 and user_id = $3`,
+          [ORG, PROJECT, USER]
+        );
+        await db.query(
+          `update dts_logical_node_revisions lnr
+           set compatible = $1
+           from dts_config_revisions cr
+           inner join dts_config_set cs on cs.id = cr.config_set_id
+           where lnr.config_revision_id = cr.id
+             and cr.id = $2
+             and lnr.logical_node_id = $3
+             and cs.organization_id = $4
+             and cs.project_id = $5`,
+          ['"wiseeff,charging_core"', seeded.configRevisionId, expectedLogicalNodeId(), ORG, PROJECT]
+        );
+        await db.query(
+          `update dts_node_occurrences
+           set labels = '["sc8562"]'::jsonb
+           where config_revision_id = $1 and node_path = $2`,
+          [seeded.configRevisionId, "amba/i2c@FDF5E000/sc8562@6E"]
+        );
+        await db.query(
+          `insert into dts_occurrence_effects (
+             id, config_revision_id, logical_node_revision_id, node_occurrence_id,
+             property_name, effect_kind, source_order
+           ) values ($1, $2, $3, $4, 'status', 'delete', 2)`,
+          [
+            "oe-pcw-status-absent",
+            seeded.configRevisionId,
+            `lnr-${expectedLogicalNodeId()}`,
+            "no-pcw-1"
+          ]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values ($1, $2, $3, 'compatible', $4, 'critical', 'parameter:edit-critical', true)`,
+          ["rule-pcw-quoted-compatible", ORG, PROJECT, "wiseeff,charging_core"]
+        );
+
+        const exactNode = await db.query<{
+          logical_node_id: string;
+          compatible: string | null;
+        }>(
+          `select lnr.logical_node_id, lnr.compatible
+           from dts_logical_node_revisions lnr
+           inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+           inner join dts_config_set cs on cs.id = cr.config_set_id
+           where cs.organization_id = $1
+             and cs.project_id = $2
+             and cr.id = $3
+             and lnr.logical_node_id = $4`,
+          [ORG, PROJECT, seeded.configRevisionId, expectedLogicalNodeId()]
+        );
+        expect(exactNode.rows).toEqual([
+          {
+            logical_node_id: expectedLogicalNodeId(),
+            compatible: '"wiseeff,charging_core"'
+          }
+        ]);
+
+        const snapshot = async () =>
+          (
+            await db.query<{ drafts: string; candidates: string }>(
+              `select
+                 (select count(*)::text from parameter_drafts
+                  where organization_id = $1 and project_id = $2 and user_id = $3) as drafts,
+                 (select count(*)::text from dts_config_revisions
+                  where organization_id = $1 and project_id = $2
+                    and config_set_id = $4 and status = 'draft') as candidates`,
+              [ORG, PROJECT, USER, CONFIG_SET]
+            )
+          ).rows[0]!;
+        const before = await snapshot();
+        expect(before).toEqual({ drafts: "0", candidates: "0" });
+
+        const incapableAuth = makeAuth();
+        await expect(
+          createNodeEnablementDraft(
+            db,
+            incapableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "Verify quoted compatible capability gate"
+            },
+            { toolchain: passToolchain }
+          )
+        ).rejects.toMatchObject({
+          code: "FORBIDDEN",
+          status: 403,
+          details: {
+            riskTier: "critical",
+            requiredCapability: "parameter:edit-critical"
+          }
+        });
+        expect(await snapshot()).toEqual(before);
+
+        const capableAuth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...incapableAuth.permissions, "parameter:edit-critical"]
+        });
+        const created = await createNodeEnablementDraft(
+          db,
+          capableAuth,
+          {
+            projectId: PROJECT,
+            logicalNodeId: exactNode.rows[0]!.logical_node_id,
+            baseRevisionId: seeded.configRevisionId,
+            target: "force-disabled",
+            reason: "Allow capable direct user on quoted compatible"
+          },
+          { toolchain: passToolchain }
+        );
+        expect(created).toMatchObject({
+          logicalNodeId: exactNode.rows[0]!.logical_node_id,
+          target: "force-disabled",
+          action: "set"
+        });
+        expect(await snapshot()).toEqual({ drafts: "1", candidates: "1" });
+      });
+    },
+    90_000
+  );
+
+  it(
     "submits an exact binding draft identity and rejects project/spec/candidate/write-lock mismatches",
     async () => {
       await withTempDatabase(async (db) => {
@@ -427,7 +600,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "legacy submit must be rejected after cutover"
               }
             ]
-          })
+          }, createTestParameterSubmissionContext(makeAuth(), "request-retired-legacy"))
         ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
@@ -485,7 +658,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 ...overrides
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), `request-binding-${draftId}`));
 
         await expect(submit()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
         await db.query(
@@ -648,7 +821,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "Delete gpio_int through formal review"
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), `request-delete-${draftId}`));
 
         await expect(submitDelete()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 
@@ -823,7 +996,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 reason: "submit snapshot"
               }
             ]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), "request-concurrent-draft"));
           await draftRead;
 
           const editorPid = await editClient.query<{ pid: number }>("select pg_backend_pid() as pid");
@@ -973,7 +1146,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               targetValue,
               reason: "candidate lock race"
             }]
-          });
+          }, createTestParameterSubmissionContext(makeAuth(), "request-candidate-race"));
           await candidateRead;
           const mutatorPid = await mutateClient.query<{ pid: number }>("select pg_backend_pid() as pid");
           const mutation = mutateClient.query(

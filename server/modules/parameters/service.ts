@@ -4,6 +4,7 @@ import {
   asAuditTx,
   withAuditedWrite,
   writeAuditEventInTx,
+  writeTrustedAuditEventInTx,
   type AuditTx,
   type AuditedWriteContext
 } from "../audit/auditedWrite";
@@ -16,6 +17,15 @@ import {
 } from "../notifications/producers";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import {
+  assertTrustedInvocationContext,
+  TrustedInvocationContextError,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
+import {
+  assertTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -25,13 +35,17 @@ import { writebackMergedEnablementValue, writebackMergedParameterValue, type Wri
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import {
   loadLogicalNodeEnablementContext,
+  loadLogicalNodeSubmissionContext,
   verifyBindingWriteLock,
   verifyEnablementWriteLock
 } from "../parameter-topology/writeLock";
 import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
 import { isValidMergeLink } from "./mergeLink";
-import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
+import {
+  assertSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeSubmissionAllowed
+} from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {
@@ -120,7 +134,6 @@ import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeli
 
 type ServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
-  actorType?: "user" | "agent" | "system";
   /**
    * Test-only: inject a fake DTC toolchain runner for semantic merge writeback.
    * Production routes must omit this so writeback uses the pinned host runner.
@@ -130,6 +143,36 @@ type ServiceContext = AuditCorrelationContext & {
   /** Test-only: skip semantic promotion gates after resolve/toolchain. */
   skipSemanticGates?: boolean;
 };
+
+export type ParameterSubmissionContext = ServiceContext & {
+  invocation: TrustedInvocationContext;
+  requestId: string;
+  refusalSink: TrustedRefusalAuditSink;
+};
+
+function assertParameterSubmissionContext(
+  auth: AuthContext,
+  context: ParameterSubmissionContext | undefined
+): ParameterSubmissionContext {
+  if (!context || typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+    throw new TrustedInvocationContextError(
+      "parameter submission requires a requestId, server-owned refusal audit sink, and trusted invocation context"
+    );
+  }
+  assertTrustedRefusalAuditSink(context.refusalSink);
+  const invocation = assertTrustedInvocationContext(context.invocation);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError(
+      "parameter submission invocation principal does not match the authenticated principal"
+    );
+  }
+  return { ...context, invocation, requestId: context.requestId.trim() };
+}
 
 export type SaveDraftInput = {
   projectId: string;
@@ -297,15 +340,16 @@ export async function submitStructuredEdits(
   db: Database,
   auth: AuthContext,
   input: SubmitStructuredEditsInput,
-  context: ServiceContext & AuditedWriteContext
+  context: ParameterSubmissionContext
 ) {
+  const submissionContext = assertParameterSubmissionContext(auth, context);
   requireCanEdit(auth, input.projectId);
 
   if (input.edits.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.");
   }
 
-  return withAuditedWrite(db, auth, context, async (tx) => {
+  return db.transaction(async (tx) => {
     const seenKeys = new Set<string>();
     const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
 
@@ -347,25 +391,27 @@ export async function submitStructuredEdits(
       });
     }
 
-    const result = await submitStructuredEditItems(tx, auth, input, items, context);
+    const result = await submitStructuredEditItems(tx, auth, input, items, submissionContext);
 
-    return {
-      result,
-      audit: {
-        app: "parameter-management",
-        kind: "parameter-structured-edit-submit",
-        action: "submit",
-        severity: "Medium",
-        projectId: input.projectId,
-        targetType: "parameter-submission-round",
-        targetId: input.projectId,
-        metadata: {
-          editCount: input.edits.length,
-          parameterIds: items.map((item) => item.parameterId)
-        },
-        actorType: context.actorType ?? "user"
+    await writeTrustedAuditEventInTx(asAuditTx(tx), {
+      invocation: submissionContext.invocation,
+      ...(submissionContext.invocation.initiator === "system"
+        ? { organizationId: auth.organization.id }
+        : {}),
+      traceId: submissionContext.requestId,
+      projectId: input.projectId,
+      app: "parameter-management",
+      kind: "parameter-structured-edit-submit",
+      action: "submit",
+      severity: "Medium",
+      targetType: "parameter-submission-round",
+      targetId: input.projectId,
+      metadata: {
+        editCount: input.edits.length,
+        parameterIds: items.map((item) => item.parameterId)
       }
-    };
+    });
+    return result;
   });
 }
 
@@ -374,7 +420,7 @@ function submitStructuredEditItems(
   auth: AuthContext,
   input: SubmitStructuredEditsInput,
   items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>>,
-  context: ServiceContext
+  context: ParameterSubmissionContext
 ) {
   return submitParameterChanges(
     tx,
@@ -1184,7 +1230,13 @@ export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, pr
   });
 }
 
-export async function submitParameterChanges(db: Database, auth: AuthContext, input: SubmitParameterChangesInput, context: ServiceContext = {}) {
+export async function submitParameterChanges(
+  db: Database,
+  auth: AuthContext,
+  input: SubmitParameterChangesInput,
+  context: ParameterSubmissionContext
+) {
+  const submissionContext = assertParameterSubmissionContext(auth, context);
   requireCanEdit(auth, input.projectId);
 
   if (input.items.length === 0) {
@@ -1292,14 +1344,15 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           configRevisionId: loadedDraft.writeLock.baseConfigRevisionId,
           logicalNodeId: item.logicalNodeId
         });
-        await assertSensitiveNodeWriteAllowed(tx, auth, {
+        await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
           organizationId: auth.organization.id,
           projectId: input.projectId,
           nodePath: nodeContext.nodeLocator,
           compatible: nodeContext.compatible,
-          actorType: context.actorType ?? "user",
-          requestId: context.requestId
-        }, { refusalDb: db });
+          invocation: submissionContext.invocation,
+          requestId: submissionContext.requestId,
+          refusalSink: submissionContext.refusalSink
+        });
 
         enablementEntries.push({
           item,
@@ -1398,15 +1451,32 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         });
       }
 
-      if (parameter.sourceNodePath) {
-        await assertSensitiveNodeWriteAllowed(tx, auth, {
+      if (exactDraft?.writeLock && exactDraft.logicalNodeId) {
+        const node = await loadLogicalNodeSubmissionContext(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          configRevisionId: exactDraft.writeLock.baseConfigRevisionId,
+          logicalNodeId: exactDraft.logicalNodeId
+        });
+        await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          nodePath: node.nodeLocator,
+          compatible: node.compatible,
+          invocation: submissionContext.invocation,
+          requestId: submissionContext.requestId,
+          refusalSink: submissionContext.refusalSink
+        });
+      } else if (!exactDraft && parameter.sourceNodePath) {
+        await assertTrustedSensitiveNodeSubmissionAllowed(tx, auth, {
           organizationId: auth.organization.id,
           projectId: input.projectId,
           nodePath: parameter.sourceNodePath,
           sourceFileName: parameter.sourceFileName,
-          actorType: context.actorType ?? "user",
-          requestId: context.requestId
-        }, { refusalDb: db });
+          invocation: submissionContext.invocation,
+          requestId: submissionContext.requestId,
+          refusalSink: submissionContext.refusalSink
+        });
       }
 
       if ("draftId" in item) {
@@ -1639,9 +1709,12 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       items.push(submissionItem);
     }
 
-    // requestId fallback survives only until this function's context becomes mandatory
-    // (audited-write migration batches, ADR-0027).
-    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+    await writeTrustedAuditEventInTx(asAuditTx(tx), {
+      invocation: submissionContext.invocation,
+      ...(submissionContext.invocation.initiator === "system"
+        ? { organizationId: auth.organization.id }
+        : {}),
+      traceId: submissionContext.requestId,
       app: "parameter-management",
       kind: "parameter-submit",
       action: "submit",

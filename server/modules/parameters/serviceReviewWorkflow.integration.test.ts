@@ -26,6 +26,7 @@ import {
   saveDraft,
   submitParameterChanges
 } from "./service";
+import { createTestParameterSubmissionContext } from "./testSubmissionContext";
 
 const ORG = "org-srw";
 const PROJECT = "project-srw";
@@ -275,7 +276,7 @@ async function submitOne(
       items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: "SRW change" }],
       assignees: input.assignees
     },
-    input.context
+    createTestParameterSubmissionContext(editorAuth(), input.context?.requestId ?? "request-submit-one")
   );
   const requestId = round.items[0]?.requestId;
   expect(requestId).toBeTruthy();
@@ -414,7 +415,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
             { parameterId: PPV_MEDIUM, targetValue: "68", reason: "Match new cell pack." }
           ]
         },
-        { requestId: "request-parameter-submit-1" }
+        createTestParameterSubmissionContext(editorAuth(), "request-parameter-submit-1")
       );
 
       expect(round).toMatchObject({
@@ -482,7 +483,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }],
           assignees: { hardwareCommitterId: SWU, softwareCommitterId: SWC, softwareUserId: SWU }
-        })
+        }, createTestParameterSubmissionContext(editorAuth(), "request-ineligible-assignee"))
       ).rejects.toMatchObject({
         code: "VALIDATION_FAILED",
         status: 400,
@@ -498,7 +499,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }],
           assignees: { hardwareCommitterId: HW }
-        })
+        }, createTestParameterSubmissionContext(editorAuth(), "request-partial-assignee"))
       ).rejects.toMatchObject({
         code: "VALIDATION_FAILED",
         status: 400,
@@ -515,7 +516,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         submitParameterChanges(db!, editorAuth(), {
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3050", reason: "SRW retry" }]
-        })
+        }, createTestParameterSubmissionContext(editorAuth(), "request-open-change"))
       ).rejects.toMatchObject({
         code: "CONFLICT",
         status: 409,
@@ -566,7 +567,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         submitParameterChanges(db!, editorAuth(), {
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }]
-        })
+        }, createTestParameterSubmissionContext(editorAuth(), "request-open-conflict"))
       ).rejects.toMatchObject({
         code: "CONFLICT",
         status: 409,
@@ -584,7 +585,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
             { parameterId: PPV_HIGH, targetValue: "3100", reason: "Reduce thermal risk." },
             { parameterId: PPV_HIGH, targetValue: "3050", reason: "Duplicate edit." }
           ]
-        })
+        }, createTestParameterSubmissionContext(editorAuth(), "request-duplicate"))
       ).rejects.toMatchObject({
         code: "VALIDATION_FAILED",
         status: 400,

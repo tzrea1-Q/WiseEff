@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import { writeRefusalAudit } from "../audit/auditedWrite";
+import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import {
+  assertTrustedInvocationContext,
+  TrustedInvocationContextError,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
 import type { Database } from "../../shared/database/client";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
@@ -11,6 +17,7 @@ import { nodePathFromSourceNodePath } from "./nodePath";
 export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
 export type SensitiveWriteActorType = "user" | "agent" | "system";
+export const PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE = "parameter-sensitive-node-human-required" as const;
 
 export type SensitiveNodeRule = {
   id: string;
@@ -168,6 +175,107 @@ function hasRequiredCapability(auth: AuthContext, capability: BackendPermission)
     return canEditCriticalParameters(auth);
   }
   return auth.user.isActive && auth.permissions.includes(capability);
+}
+
+async function resolveTrustedSensitiveNodeMatch(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    nodePath: string;
+    sourceFileName?: string | null;
+    compatible?: string | null;
+  }
+) {
+  const nodePath = input.nodePath.trim();
+  if (!nodePath) return null;
+  let compatible = input.compatible?.trim() || null;
+  const sourceFileName = input.sourceFileName?.trim() || null;
+  if (!compatible && sourceFileName) {
+    compatible = await resolveDtsNodeCompatible(db, {
+      projectId: input.projectId,
+      sourceFileName,
+      sourceNodePath: nodePath
+    });
+  }
+  const rules = await listSensitiveNodeRules(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId
+  });
+  const matched = matchSensitiveRules(rules, { nodePath, compatible, projectId: input.projectId });
+  return matched ? { matched, nodePath } : null;
+}
+
+/** #613 submission-only guard. Other sensitive write callers migrate under #614. */
+export async function assertTrustedSensitiveNodeSubmissionAllowed(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    organizationId: string;
+    projectId: string;
+    nodePath: string;
+    sourceFileName?: string | null;
+    compatible?: string | null;
+    invocation: TrustedInvocationContext;
+    requestId: string;
+    refusalSink: TrustedRefusalAuditSink;
+  }
+) {
+  assertTrustedRefusalAuditSink(input.refusalSink);
+  const invocation = assertTrustedInvocationContext(input.invocation);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError(
+      "parameter sensitive-node invocation principal does not match the authenticated principal"
+    );
+  }
+  const resolved = await resolveTrustedSensitiveNodeMatch(db, input);
+  if (!resolved) return;
+  const { matched, nodePath } = resolved;
+
+  if (matched.riskTier === "critical" && invocation.initiator !== "user") {
+    await input.refusalSink.write({
+      invocation,
+      ...(invocation.initiator === "system" ? { organizationId: input.organizationId } : {}),
+      projectId: input.projectId,
+      app: "parameter-management",
+      kind: "parameter-sensitive-node-denied",
+      action: "deny",
+      severity: "High",
+      targetType: "sensitive-node",
+      targetId: matched.id,
+      metadata: {
+        code: PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE,
+        riskTier: matched.riskTier,
+        requireHuman: true,
+        nodePath,
+        matchType: matched.matchType,
+        pattern: matched.pattern,
+        requiredCapability: matched.requiredCapability
+      },
+      traceId: input.requestId
+    });
+    throw new ApiError("FORBIDDEN", "Critical sensitive-node submissions require a user-initiated invocation.", {
+      code: PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE,
+      initiator: invocation.initiator,
+      riskTier: matched.riskTier,
+      requireHuman: true,
+      nodePath,
+      requiredCapability: matched.requiredCapability
+    });
+  }
+
+  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
+    throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
+      riskTier: matched.riskTier,
+      nodePath,
+      requiredCapability: matched.requiredCapability
+    });
+  }
 }
 
 export async function assertSensitiveNodeWriteAllowed(

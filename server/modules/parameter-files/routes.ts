@@ -2,11 +2,17 @@ import { z } from "zod";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import {
+  assertTrustedRefusalAuditSink,
+  createTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { submitStructuredEdits } from "../parameters/service";
-import type { Database } from "../../shared/database/client";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { resolveConflictsBulk, previewBulkConflictResolution, resolveParameterFileConflict } from "./conflictService";
@@ -229,9 +235,23 @@ export function registerParameterFileRoutes(
     db?: Database;
     objectStore?: ObjectStore;
     validator?: DtcValidator;
+    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  const refusalAuditSink = options.refusalAuditSink
+    ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
+    : options.db && isRootDatabase(options.db)
+      ? createTrustedRefusalAuditSink(options.db)
+      : undefined;
+
+  function requireSubmissionRefusalSink() {
+    if (!refusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Server-owned parameter submission refusal audit sink is required.");
+    }
+    assertTrustedRefusalAuditSink(refusalAuditSink);
+    return refusalAuditSink;
+  }
   function validationDeps() {
     return {
       objectStore: requireObjectStore(options.objectStore),
@@ -439,7 +459,11 @@ export function registerParameterFileRoutes(
         reason: body.reason,
         assignees: body.assignees
       },
-      { requestId: request.requestId }
+      {
+        invocation: createUserInvocation(auth),
+        requestId: request.requestId,
+        refusalSink: requireSubmissionRefusalSink()
+      }
     );
 
     return { status: 201, body: { item } };

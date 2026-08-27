@@ -8,6 +8,7 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import {
   createBindingDraft,
@@ -2299,7 +2300,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
           reason: "Tune after disable",
         },
       ],
-    });
+    }, createTestParameterSubmissionContext(auth, "req-edit-service-submit"));
     expect(round.items.length).toBeGreaterThanOrEqual(2);
     expect(
       (

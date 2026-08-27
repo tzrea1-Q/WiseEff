@@ -1,14 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createPostgresDatabase, type Database } from "../../../shared/database/client";
+import { withTempDatabase } from "../../../testing/tempDatabase";
 import type { AuthContext } from "../../auth/types";
+import {
+  createAgentInvocation,
+  createSystemInvocation,
+  createUserInvocation
+} from "../../auth/trustedInvocation";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
+import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
-import { probeCutoverComplete } from "../../parameter-kernel/parameterIdentityMode";
+import { resolveParameterIdentityMode, setParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { resolveModuleIdForBinding } from "../../parameter-modules/resolveModuleForBinding";
+import { submitParameterChanges } from "../../parameters/service";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "../../parameter-topology/bindingService";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
+import { createBindingDraft, createNodeEnablementDraft } from "../../parameter-topology/service";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import { createActionTools } from "./actionTools";
@@ -54,17 +65,6 @@ const databaseAvailable = await isTestDatabaseAvailable();
  * migration suites (TD-079), so this file self-skips there and runs against
  * post-cutover databases (local dev, and CI once TD-079 lands).
  */
-const semanticMode = databaseAvailable
-  ? await (async () => {
-      const probe = await createInMemoryTestDatabase();
-      try {
-        return await probeCutoverComplete(probe);
-      } finally {
-        await probe.rollback();
-      }
-    })()
-  : false;
-
 function makeAuth(): AuthContext {
   return {
     user: {
@@ -98,7 +98,18 @@ const OVERLAY_OVERRIDE = `/dts-v1/;
 };
 `;
 
-async function seedGraph(db: InMemoryTestDatabase) {
+async function seedGraph(db: Database) {
+  await db.query(
+    `insert into parameter_identity_migration_runs (
+       id, mode, status, report, db_snapshot_id, object_snapshot_id, write_lock_confirmed, completed_at
+     ) values ('migration-agent-action', 'apply', 'completed', '{}'::jsonb, 'db-snapshot', 'object-snapshot', true, now())
+     on conflict (id) do nothing`
+  );
+  await db.query(
+    `insert into parameter_identity_cutovers (id, migration_run_id)
+     values ('cutover-agent-action', 'migration-agent-action')
+     on conflict do nothing`
+  );
   await db.query(
     `insert into organizations (id, name) values ($1, 'Agent Action Org')
      on conflict (id) do update set name = excluded.name`,
@@ -148,10 +159,27 @@ async function seedGraph(db: InMemoryTestDatabase) {
      on conflict (id) do nothing`,
     ["dps-agent-iin-max", SPEC_ID]
   );
+
+  // Mirror the workflow-column portion of the production identity cutover. This
+  // fixture starts with no legacy workflow rows, so no backfill is required.
+  await db.query(`
+    alter table parameter_change_requests
+      drop constraint if exists parameter_change_requests_parameter_definition_id_fkey,
+      drop constraint if exists parameter_change_requests_project_parameter_value_id_fkey,
+      drop column if exists parameter_definition_id,
+      drop column if exists project_parameter_value_id;
+    alter table parameter_submission_items
+      drop constraint if exists parameter_submission_items_project_parameter_value_id_fkey,
+      drop column if exists project_parameter_value_id;
+    alter table parameter_drafts
+      drop constraint if exists parameter_drafts_project_parameter_value_id_fkey,
+      drop constraint if exists parameter_drafts_project_id_project_parameter_value_id_user_id_key,
+      drop column if exists project_parameter_value_id;
+  `);
 }
 
 async function insertPinnedMember(
-  db: InMemoryTestDatabase,
+  db: Database,
   input: {
     fileId: string;
     fileName: string;
@@ -189,7 +217,7 @@ async function insertPinnedMember(
   ]);
 }
 
-async function seedConfigAndBinding(db: InMemoryTestDatabase, auth: AuthContext) {
+async function seedConfigAndBinding(db: Database, auth: AuthContext) {
   const baseFileId = `file-base-${randomUUID().slice(0, 8)}`;
   const overlayFileId = `file-overlay-${randomUUID().slice(0, 8)}`;
   const baseVersionId = `fv-base-${randomUUID().slice(0, 8)}`;
@@ -283,18 +311,38 @@ async function seedConfigAndBinding(db: InMemoryTestDatabase, auth: AuthContext)
     }
   });
 
-  return { revision, binding, nodeLocator: logical.rows[0]?.node_locator };
+  return {
+    revision,
+    binding,
+    logicalNodeId: logicalNodeId!,
+    nodeLocator: logical.rows[0]?.node_locator
+  };
 }
 
 function contextFor(auth: AuthContext): AgentToolExecutionContext {
-  return { auth, requestId: `req-${randomUUID().slice(0, 8)}`, sessionId: "agent-session", projectId: PROJECT_ID };
+  const toolCallId = `tool-call-${randomUUID().slice(0, 8)}`;
+  const approvalId = `approval-${randomUUID().slice(0, 8)}`;
+  return {
+    auth,
+    invocation: createAgentInvocation(auth, {
+      sessionId: "agent-session",
+      toolCallId,
+      approval: { required: true, approvalId }
+    }),
+    requestId: `req-${randomUUID().slice(0, 8)}`,
+    sessionId: "agent-session",
+    toolCallId,
+    projectId: PROJECT_ID,
+    approvalId
+  };
 }
 
-describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChange integration (TD-078)", () => {
+describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (TD-078)", () => {
   let db: InMemoryTestDatabase | undefined;
   const auth = makeAuth();
 
   beforeEach(async () => {
+    setParameterIdentityMode("semantic");
     db = await createInMemoryTestDatabase();
     await seedGraph(db);
   });
@@ -302,12 +350,36 @@ describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChan
   afterEach(async () => {
     await db?.rollback();
     db = undefined;
+    setParameterIdentityMode(null);
   });
 
   function actionTool() {
-    return createActionTools({ db: db!, toolchain: passToolchain }).find(
+    return createActionTools({ db: db!, toolchain: passToolchain, refusalAuditSink: testRefusalAuditSink }).find(
       (tool) => tool.name === "action.submitParameterChange"
     )!;
+  }
+
+  async function seedAgentAuditLineage(targetDb: Database, context: AgentToolExecutionContext) {
+    await targetDb.query(
+      `insert into agent_sessions (
+         id, organization_id, project_id, actor_user_id, page_key, context, status, title
+       ) values ($1, $2, $3, $4, 'parameters', '{}'::jsonb, 'active', 'Compatible refusal')`,
+      [context.sessionId, ORG_ID, PROJECT_ID, USER_ID]
+    );
+    await targetDb.query(
+      `insert into agent_tool_calls (
+         id, session_id, organization_id, project_id, name, label, payload, requires_approval, status
+       ) values ($1, $2, $3, $4, 'action.submitParameterChange', 'Submit parameter change',
+                 '{}'::jsonb, true, 'approved')`,
+      [context.toolCallId, context.sessionId, ORG_ID, PROJECT_ID]
+    );
+    await targetDb.query(
+      `insert into agent_approvals (
+         id, session_id, tool_call_id, organization_id, project_id, status, title, message,
+         requested_by_user_id, decided_by_user_id, decided_at
+       ) values ($1, $2, $3, $4, $5, 'approved', 'Approve', 'Approve', $6, $6, now())`,
+      [context.approvalId, context.sessionId, context.toolCallId, ORG_ID, PROJECT_ID, USER_ID]
+    );
   }
 
   it("submits a real post-cutover change request through a typed binding draft", async () => {
@@ -345,6 +417,544 @@ describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChan
 
     const drafts = await db!.query(`select id from parameter_drafts where organization_id = $1`, [ORG_ID]);
     expect(drafts.rows).toHaveLength(0);
+  });
+
+  it("refuses an approved Agent when only the exact binding revision compatible is critical", async () => {
+    await withTempDatabase({ prefix: "agentcompat" }, async ({ db: ownedDb, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        await seedGraph(ownedDb);
+        await resolveParameterIdentityMode(ownedDb);
+        const fixture = await seedConfigAndBinding(ownedDb, auth);
+        const context = contextFor(auth);
+        await seedAgentAuditLineage(ownedDb, context);
+        await ownedDb.query(
+      `insert into dts_sensitive_node_rules (
+         id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+       ) values (
+         'rule-agent-compatible-critical', $1, $2, 'compatible',
+         'wiseeff,charging_core', 'critical', 'parameter:edit-critical', true
+       )`,
+      [ORG_ID, PROJECT_ID]
+    );
+
+        const refusalSink = createTrustedRefusalAuditSink(root);
+        await expect(
+          root.transaction(async (tx) => {
+            const tool = createActionTools({ db: tx, toolchain: passToolchain, refusalAuditSink: refusalSink }).find(
+              (candidate) => candidate.name === "action.submitParameterChange"
+            )!;
+            return tool.run(context, {
+              projectId: PROJECT_ID,
+              parameterId: fixture.binding.id,
+              targetValue: "<3600>",
+              reason: "Compatible-only critical rule must require a human"
+            });
+          })
+        ).rejects.toMatchObject({
+          code: "FORBIDDEN",
+          status: 403,
+          details: { initiator: "agent", requireHuman: true }
+        });
+
+        const residue = await ownedDb.query<{
+      drafts: string;
+      candidates: string;
+      rounds: string;
+      requests: string;
+      items: string;
+      successAudits: string;
+    }>(
+      `select
+         (select count(*)::text from parameter_drafts where organization_id = $1) as drafts,
+         (select count(*)::text from dts_config_revisions
+            where organization_id = $1 and status = 'draft') as candidates,
+         (select count(*)::text from parameter_submission_rounds where organization_id = $1) as rounds,
+         (select count(*)::text from parameter_change_requests where organization_id = $1) as requests,
+         (select count(*)::text from parameter_submission_items where organization_id = $1) as items,
+         (select count(*)::text from audit_events where organization_id = $1
+            and kind in ('parameter-submit', 'parameter-structured-edit-submit')) as "successAudits"`,
+      [ORG_ID]
+    );
+        expect(residue.rows[0]).toEqual({
+          drafts: "0",
+          candidates: "0",
+          rounds: "0",
+          requests: "0",
+          items: "0",
+          successAudits: "0"
+        });
+        const refusal = await ownedDb.query<{ actor_type: string; trace_id: string; metadata: Record<string, unknown> }>(
+          `select actor_type, trace_id, metadata from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'`,
+          [ORG_ID]
+        );
+        expect(refusal.rows[0]).toMatchObject({
+          actor_type: "agent",
+          trace_id: context.requestId,
+          metadata: {
+            matchType: "compatible",
+            pattern: "wiseeff,charging_core",
+            initiator: "agent",
+            sessionId: context.sessionId,
+            toolCallId: context.toolCallId,
+            approvalId: context.approvalId,
+            requireHuman: true
+          }
+        });
+      } finally {
+        await root.close();
+      }
+    });
+  });
+
+  it("allows an approved capable Agent through a semantic compatible-only high rule", async () => {
+    await withTempDatabase({ prefix: "agentcompathigh" }, async ({ db: ownedDb, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        await seedGraph(ownedDb);
+        await resolveParameterIdentityMode(ownedDb);
+        const fixture = await seedConfigAndBinding(ownedDb, auth);
+        const context = contextFor(auth);
+        await seedAgentAuditLineage(ownedDb, context);
+        await ownedDb.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-agent-compatible-high', $1, $2, 'compatible',
+             'wiseeff,charging_core', 'high', 'parameter:edit', true
+           )`,
+          [ORG_ID, PROJECT_ID]
+        );
+
+        const tool = createActionTools({
+          db: root,
+          toolchain: passToolchain,
+          refusalAuditSink: createTrustedRefusalAuditSink(root)
+        }).find((candidate) => candidate.name === "action.submitParameterChange")!;
+        const result = await tool.run(context, {
+          projectId: PROJECT_ID,
+          parameterId: fixture.binding.id,
+          targetValue: "<3600>",
+          reason: "Compatible-only high remains Agent-capable"
+        });
+        expect(result.summary).toContain("Submitted parameter change request");
+
+        const evidence = await ownedDb.query<{
+          requests: string;
+          refusals: string;
+          actor_type: string;
+          actor_user_id: string | null;
+        }>(
+          `select
+             (select count(*)::text from parameter_change_requests where organization_id = $1) as requests,
+             (select count(*)::text from audit_events where organization_id = $1
+                and kind = 'parameter-sensitive-node-denied') as refusals,
+             actor_type, actor_user_id
+           from audit_events
+           where organization_id = $1 and kind = 'parameter-submit'
+           order by created_at desc limit 1`,
+          [ORG_ID]
+        );
+        expect(evidence.rows[0]).toMatchObject({
+          requests: "1",
+          refusals: "0",
+          actor_type: "agent",
+          actor_user_id: USER_ID
+        });
+      } finally {
+        await root.close();
+      }
+    });
+  });
+
+  it("rechecks a pre-existing binding draft against its exact base revision without consuming it", async () => {
+    await withTempDatabase({ prefix: "centralcompat" }, async ({ db: ownedDb, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        await seedGraph(ownedDb);
+        await resolveParameterIdentityMode(ownedDb);
+        const fixture = await seedConfigAndBinding(ownedDb, auth);
+        await ownedDb.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-central-compatible-critical', $1, $2, 'compatible',
+             'wiseeff,charging_core', 'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG_ID, PROJECT_ID]
+        );
+        const draft = await createBindingDraft(
+          ownedDb,
+          auth,
+          {
+            projectId: PROJECT_ID,
+            bindingId: fixture.binding.id,
+            baseRevisionId: fixture.revision.id,
+            targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3600", value: "3600" }]] },
+            action: "set",
+            reason: "Central compatible guard"
+          },
+          { toolchain: passToolchain },
+          { requestId: "req-central-draft" }
+        );
+        await ownedDb.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           )
+           select 'zzzz-central-safe-revision', organization_id, project_id, config_set_id,
+                  revision_number + 100, 'validated', created_by_user_id, entry_file,
+                  include_search_paths, overlay_order, manifest_state
+           from dts_config_revisions where id = $1`,
+          [fixture.revision.id]
+        );
+        await ownedDb.query(
+          `insert into dts_logical_node_revisions (
+             id, logical_node_id, config_revision_id, node_locator, name, unit_address,
+             compatible, driver_schema_version_id, parent_logical_node_id
+           )
+           select 'lnr-central-safe-latest', logical_node_id, 'zzzz-central-safe-revision',
+                  node_locator, name, unit_address, 'vendor,safe-node', driver_schema_version_id,
+                  parent_logical_node_id
+           from dts_logical_node_revisions
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [fixture.revision.id, fixture.logicalNodeId]
+        );
+        await ownedDb.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id, typed_value,
+             canonical_value, raw_value, schema_state, policy_state
+           )
+           select 'bpr-central-safe-latest', binding_id, 'zzzz-central-safe-revision',
+                  parameter_spec_version_id, typed_value, canonical_value, raw_value,
+                  schema_state, policy_state
+           from project_parameter_binding_revisions
+           where binding_id = $1 and config_revision_id = $2`,
+          [fixture.binding.id, fixture.revision.id]
+        );
+        const item = {
+          draftId: draft.draftId,
+          editSubjectKind: "binding" as const,
+          projectParameterBindingId: draft.projectParameterBindingId,
+          parameterSpecId: draft.parameterSpecId,
+          action: draft.action,
+          targetValue: draft.rawText,
+          reason: "Central compatible guard"
+        };
+        const snapshot = async () => {
+          const result = await ownedDb.query<{
+            drafts: string;
+            draftCandidates: string;
+            pendingCandidates: string;
+            rounds: string;
+            requests: string;
+            items: string;
+            successAudits: string;
+          }>(
+            `select
+               (select count(*)::text from parameter_drafts where organization_id = $1) as drafts,
+               (select count(*)::text from dts_config_revisions
+                  where organization_id = $1 and status = 'draft') as "draftCandidates",
+               (select count(*)::text from dts_config_revisions
+                  where organization_id = $1 and status = 'pending_approval') as "pendingCandidates",
+               (select count(*)::text from parameter_submission_rounds where organization_id = $1) as rounds,
+               (select count(*)::text from parameter_change_requests where organization_id = $1) as requests,
+               (select count(*)::text from parameter_submission_items where organization_id = $1) as items,
+               (select count(*)::text from audit_events where organization_id = $1
+                  and kind in ('parameter-submit', 'parameter-structured-edit-submit')) as "successAudits"`,
+            [ORG_ID]
+          );
+          return result.rows[0]!;
+        };
+        const before = await snapshot();
+        expect(before).toMatchObject({
+          drafts: "1",
+          draftCandidates: "1",
+          pendingCandidates: "0",
+          rounds: "0",
+          requests: "0",
+          items: "0",
+          successAudits: "0"
+        });
+
+        const agentContext = contextFor(auth);
+        await seedAgentAuditLineage(ownedDb, agentContext);
+        const refusalSink = createTrustedRefusalAuditSink(root);
+        await expect(
+          root.transaction((tx) =>
+            submitParameterChanges(
+              tx,
+              auth,
+              { projectId: PROJECT_ID, items: [item] },
+              {
+                invocation: agentContext.invocation,
+                requestId: "req-central-agent",
+                refusalSink
+              }
+            )
+          )
+        ).rejects.toMatchObject({
+          code: "FORBIDDEN",
+          status: 403,
+          details: { initiator: "agent", requireHuman: true }
+        });
+        expect(await snapshot()).toEqual(before);
+
+        await expect(
+          root.transaction((tx) =>
+            submitParameterChanges(
+              tx,
+              auth,
+              { projectId: PROJECT_ID, items: [item] },
+              {
+                invocation: createSystemInvocation({ kind: "job", name: "central-compatible-test" }),
+                requestId: "req-central-system",
+                refusalSink
+              }
+            )
+          )
+        ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403, details: { initiator: "system" } });
+        expect(await snapshot()).toEqual(before);
+
+        await expect(
+          submitParameterChanges(
+            root,
+            auth,
+            { projectId: PROJECT_ID, items: [item] },
+            {
+              invocation: createUserInvocation(auth),
+              requestId: "req-central-incapable-user",
+              refusalSink
+            }
+          )
+        ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+        expect(await snapshot()).toEqual(before);
+
+        const capableAuth: AuthContext = {
+          ...auth,
+          permissions: [...auth.permissions, "parameter:edit-critical"]
+        };
+        const submitted = await submitParameterChanges(
+          root,
+          capableAuth,
+          { projectId: PROJECT_ID, items: [item] },
+          {
+            invocation: createUserInvocation(capableAuth),
+            requestId: "req-central-capable-user",
+            refusalSink
+          }
+        );
+        expect(submitted.items).toHaveLength(1);
+        expect(await snapshot()).toMatchObject({
+          drafts: "0",
+          draftCandidates: "0",
+          pendingCandidates: "1",
+          rounds: "1",
+          requests: "1",
+          items: "1",
+          successAudits: "1"
+        });
+
+        const refusals = await ownedDb.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'
+           order by trace_id`,
+          [ORG_ID]
+        );
+        expect(refusals.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              actor_type: "agent",
+              actor_user_id: USER_ID,
+              trace_id: "req-central-agent",
+              metadata: expect.objectContaining({ matchType: "compatible", initiator: "agent" })
+            }),
+            expect.objectContaining({
+              actor_type: "system",
+              actor_user_id: null,
+              trace_id: "req-central-system",
+              metadata: expect.objectContaining({ matchType: "compatible", initiator: "system" })
+            })
+          ])
+        );
+      } finally {
+        await root.close();
+      }
+    });
+  });
+
+  it("canonicalizes exact-revision compatible for node-enablement Agent/System refusal and user success", async () => {
+    await withTempDatabase({ prefix: "enablecompat" }, async ({ db: ownedDb, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        await seedGraph(ownedDb);
+        await resolveParameterIdentityMode(ownedDb);
+        const fixture = await seedConfigAndBinding(ownedDb, auth);
+        await ownedDb.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-enablement-compatible-critical', $1, $2, 'compatible',
+             'wiseeff,charging_core', 'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG_ID, PROJECT_ID]
+        );
+        const capableAuth: AuthContext = {
+          ...auth,
+          permissions: [...auth.permissions, "parameter:edit-critical"]
+        };
+        const draft = await createNodeEnablementDraft(
+          ownedDb,
+          capableAuth,
+          {
+            projectId: PROJECT_ID,
+            logicalNodeId: fixture.logicalNodeId,
+            baseRevisionId: fixture.revision.id,
+            target: "force-disabled",
+            reason: "Exact compatible enablement guard"
+          },
+          { toolchain: passToolchain },
+          { requestId: "req-enablement-draft" }
+        );
+        const item = {
+          draftId: draft.draftId,
+          editSubjectKind: "node-enablement" as const,
+          logicalNodeId: fixture.logicalNodeId,
+          action: draft.action,
+          targetValue: draft.rawText,
+          reason: "Exact compatible enablement guard"
+        };
+        const snapshot = async () => {
+          const result = await ownedDb.query<{
+            drafts: string;
+            draftCandidates: string;
+            pendingCandidates: string;
+            rounds: string;
+            requests: string;
+            items: string;
+            successAudits: string;
+          }>(
+            `select
+               (select count(*)::text from parameter_drafts where organization_id = $1) as drafts,
+               (select count(*)::text from dts_config_revisions
+                  where organization_id = $1 and status = 'draft') as "draftCandidates",
+               (select count(*)::text from dts_config_revisions
+                  where organization_id = $1 and status = 'pending_approval') as "pendingCandidates",
+               (select count(*)::text from parameter_submission_rounds where organization_id = $1) as rounds,
+               (select count(*)::text from parameter_change_requests where organization_id = $1) as requests,
+               (select count(*)::text from parameter_submission_items where organization_id = $1) as items,
+               (select count(*)::text from audit_events where organization_id = $1
+                  and kind in ('parameter-submit', 'parameter-structured-edit-submit')) as "successAudits"`,
+            [ORG_ID]
+          );
+          return result.rows[0]!;
+        };
+        const before = await snapshot();
+        expect(before).toMatchObject({
+          drafts: "1",
+          draftCandidates: "1",
+          pendingCandidates: "0",
+          rounds: "0",
+          requests: "0",
+          items: "0",
+          successAudits: "0"
+        });
+
+        const agentContext = contextFor(auth);
+        await seedAgentAuditLineage(ownedDb, agentContext);
+        const refusalSink = createTrustedRefusalAuditSink(root);
+        await expect(
+          root.transaction((tx) =>
+            submitParameterChanges(
+              tx,
+              auth,
+              { projectId: PROJECT_ID, items: [item] },
+              { invocation: agentContext.invocation, requestId: "req-enablement-agent", refusalSink }
+            )
+          )
+        ).rejects.toMatchObject({
+          code: "FORBIDDEN",
+          status: 403,
+          details: { initiator: "agent", requireHuman: true }
+        });
+        expect(await snapshot()).toEqual(before);
+
+        await expect(
+          root.transaction((tx) =>
+            submitParameterChanges(
+              tx,
+              auth,
+              { projectId: PROJECT_ID, items: [item] },
+              {
+                invocation: createSystemInvocation({ kind: "job", name: "enablement-compatible-test" }),
+                requestId: "req-enablement-system",
+                refusalSink
+              }
+            )
+          )
+        ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403, details: { initiator: "system" } });
+        expect(await snapshot()).toEqual(before);
+
+        const submitted = await submitParameterChanges(
+          root,
+          capableAuth,
+          { projectId: PROJECT_ID, items: [item] },
+          {
+            invocation: createUserInvocation(capableAuth),
+            requestId: "req-enablement-user",
+            refusalSink
+          }
+        );
+        expect(submitted.items).toHaveLength(1);
+        expect(await snapshot()).toMatchObject({
+          drafts: "0",
+          draftCandidates: "0",
+          pendingCandidates: "1",
+          rounds: "1",
+          requests: "1",
+          items: "1",
+          successAudits: "1"
+        });
+
+        const refusals = await ownedDb.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'
+           order by trace_id`,
+          [ORG_ID]
+        );
+        expect(refusals.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              actor_type: "agent",
+              actor_user_id: USER_ID,
+              trace_id: "req-enablement-agent",
+              metadata: expect.objectContaining({ matchType: "compatible", initiator: "agent" })
+            }),
+            expect.objectContaining({
+              actor_type: "system",
+              actor_user_id: null,
+              trace_id: "req-enablement-system",
+              metadata: expect.objectContaining({ matchType: "compatible", initiator: "system" })
+            })
+          ])
+        );
+      } finally {
+        await root.close();
+      }
+    });
   });
 
   it("submits a second change after the first open request is rejected", async () => {
@@ -387,35 +997,12 @@ describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChan
       [ORG_ID, fixture.binding.id]
     );
     expect(changeRequests.rows).toHaveLength(2);
-    expect(changeRequests.rows[0]).toMatchObject({ target_value: "<3700>" });
-    expect(changeRequests.rows[1]).toMatchObject({ target_value: "<3600>", status: "rejected" });
-  });
-
-  it("refuses agent writes to critical sensitive nodes before creating any draft", async () => {
-    const fixture = await seedConfigAndBinding(db!, auth);
-    await db!.query(
-      `insert into dts_sensitive_node_rules (
-         id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
-       ) values ($1, $2, $3, 'path', $4, 'critical', 'parameter:edit-critical', true)`,
-      [`snr-${randomUUID().slice(0, 8)}`, ORG_ID, PROJECT_ID, "*charging_core*"]
+    expect(changeRequests.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ target_value: "<3700>" }),
+        expect.objectContaining({ target_value: "<3600>", status: "rejected" })
+      ])
     );
-
-    await expect(
-      actionTool().run(contextFor(auth), {
-        projectId: PROJECT_ID,
-        parameterId: fixture.binding.id,
-        targetValue: "<9999>",
-        reason: "Agent tuning"
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-
-    const drafts = await db!.query(`select id from parameter_drafts where organization_id = $1`, [ORG_ID]);
-    expect(drafts.rows).toHaveLength(0);
-    const changeRequests = await db!.query(
-      `select id from parameter_change_requests where organization_id = $1`,
-      [ORG_ID]
-    );
-    expect(changeRequests.rows).toHaveLength(0);
   });
 
   it("returns 404 without residue when the binding does not exist", async () => {

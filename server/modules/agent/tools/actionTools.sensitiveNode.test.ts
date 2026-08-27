@@ -6,7 +6,7 @@ vi.mock("../../parameters/service", () => ({
 }));
 
 vi.mock("../../parameter-kernel/sensitiveNode", () => ({
-  assertSensitiveNodeWriteAllowed: vi.fn()
+  assertTrustedSensitiveNodeSubmissionAllowed: vi.fn()
 }));
 
 vi.mock("../../parameters/repository", () => ({
@@ -24,6 +24,7 @@ vi.mock("../../parameter-topology/service", () => ({
 
 vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
+  loadLogicalNodeSubmissionContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -32,14 +33,22 @@ vi.mock("../../audit/repository", () => ({
 }));
 
 import { createActionTools } from "./actionTools";
+import { createAgentInvocation } from "../../auth/trustedInvocation";
+import { testRefusalAuditSink } from "../../audit/testRefusalSink";
 import { submitParameterChanges } from "../../parameters/service";
-import { assertSensitiveNodeWriteAllowed } from "../../parameter-kernel/sensitiveNode";
-import { loadBindingContext } from "../../parameter-topology/writeLock";
+import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
+import {
+  loadBindingContext,
+  loadLogicalNodeSubmissionContext,
+  resolveBindingHeadRevisionId
+} from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
-const mockedAssert = vi.mocked(assertSensitiveNodeWriteAllowed);
+const mockedAssert = vi.mocked(assertTrustedSensitiveNodeSubmissionAllowed);
 const mockedLoadBinding = vi.mocked(loadBindingContext);
+const mockedLoadNode = vi.mocked(loadLogicalNodeSubmissionContext);
+const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 
 describe("action.submitParameterChange sensitive node guard", () => {
@@ -47,6 +56,8 @@ describe("action.submitParameterChange sensitive node guard", () => {
     mockedSubmit.mockReset();
     mockedAssert.mockReset();
     mockedLoadBinding.mockReset();
+    mockedLoadNode.mockReset();
+    mockedResolveHead.mockReset();
   });
 
   it("denies agent writes to critical nodes early and does not submit", async () => {
@@ -67,6 +78,11 @@ describe("action.submitParameterChange sensitive node guard", () => {
       example_value: null,
       policy_target: null
     } as never);
+    mockedResolveHead.mockResolvedValue("rev-1");
+    mockedLoadNode.mockResolvedValue({
+      nodeLocator: "safety/cutover/status",
+      compatible: "vendor,safety-cutover"
+    });
 
     mockedAssert.mockRejectedValue(
       new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", {
@@ -75,19 +91,30 @@ describe("action.submitParameterChange sensitive node guard", () => {
       })
     );
 
-    const tool = createActionTools({ db }).find((item) => item.name === "action.submitParameterChange")!;
+    const auth = {
+      organization: { id: "org1", name: "Test Organization" },
+      user: { id: "u1", organizationId: "org1", name: "Agent", title: "Bot", isActive: true },
+      roles: [{ roleId: "admin" as const, projectId: null }],
+      permissions: ["parameter:edit" as const, "parameter:edit-critical" as const]
+    };
+    const invocation = createAgentInvocation(auth, {
+      sessionId: "s1",
+      toolCallId: "tool-call-1",
+      approval: { required: true, approvalId: "approval-1" }
+    });
+    const tool = createActionTools({ db, refusalAuditSink: testRefusalAuditSink }).find(
+      (item) => item.name === "action.submitParameterChange"
+    )!;
     await expect(
       tool.run(
         {
-          auth: {
-            organization: { id: "org1" },
-            user: { id: "u1", organizationId: "org1", name: "Agent", title: "Bot", isActive: true },
-            roles: [{ roleId: "admin", projectId: null }],
-            permissions: ["parameter:edit", "parameter:edit-critical"]
-          },
+          auth,
+          invocation,
           requestId: "r1",
           sessionId: "s1",
-          projectId: "p1"
+          toolCallId: "tool-call-1",
+          projectId: "p1",
+          approvalId: "approval-1"
         } as never,
         {
           projectId: "p1",
@@ -102,9 +129,10 @@ describe("action.submitParameterChange sensitive node guard", () => {
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
-        actorType: "agent",
+        invocation,
         nodePath: "safety/cutover/status",
-        projectId: "p1"
+        projectId: "p1",
+        refusalSink: testRefusalAuditSink
       })
     );
     expect(mockedCreateDraft).not.toHaveBeenCalled();
