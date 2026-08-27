@@ -310,7 +310,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       if (call === 1) {
         expect(text).not.toContain("dts_nodes n");
         expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
-        return { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 };
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
       }
       expect(text).toContain("n.node_path = $5");
       expect(text).not.toContain("or n.node_path");
@@ -350,7 +350,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       query: vi.fn(async () => {
         call += 1;
         return call === 1
-          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 }
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
           : { rows: [], rowCount: 0 };
       })
     };
@@ -374,7 +374,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       query: vi.fn(async () => {
         call += 1;
         return call === 1
-          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked" }], rowCount: 1 }
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
           : { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
       })
     };
@@ -386,6 +386,28 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       sourceFileVersionId: "version-locked",
       sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
     })).resolves.toBeNull();
+    expect(call).toBe(2);
+  });
+
+  it("ignores a caller compatible value when an exact source version is supplied", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async (text: string) => {
+        call += 1;
+        expect(text).not.toContain("f.current_version_id");
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
+          : { rows: [{ node_id: "node-1", compatible: "vendor,locked" }], rowCount: 1 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
+    })).resolves.toBe("vendor,locked");
     expect(call).toBe(2);
   });
 
@@ -437,5 +459,21 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         }
       }
     });
+  });
+
+  it("rejects a mismatched organization scope before sensitive rule lookup", async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+    const db: Queryable = { query };
+    const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+
+    await expect(assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+      organizationId: "other-org",
+      projectId: "project-1",
+      nodePath: "amba/wdt@0/status",
+      invocation: createUserInvocation(principal),
+      requestId: "request-cross-org",
+      refusalSink: { write: vi.fn() } as never
+    })).rejects.toMatchObject({ name: "TrustedInvocationContextError" });
+    expect(query).not.toHaveBeenCalled();
   });
 });

@@ -195,6 +195,11 @@ async function seedReferencedBindings(
     `,
     [FILE_VERSION_ID, FILE_ID, storageKey, checksum, sizeBytes],
   );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'charger', '/charger@6e', 'wiseeff,cutover')`,
+    [`dts-node-pk-cutover-${FILE_VERSION_ID}`, FILE_VERSION_ID],
+  );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     FILE_VERSION_ID,
     FILE_ID,
@@ -917,7 +922,7 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
           ["cutover-agent-refusal", agent],
           ["cutover-system-refusal", system]
         ] as const) {
-          await expect(
+        await expect(
             preparePropertyKeySourceCutover(
               db,
               principal,
@@ -992,13 +997,14 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
            where file_version_id = $1`,
           [FILE_VERSION_ID]
         );
-        await expect(
+          await expect(
           assertTrustedSensitiveNodeWriteAllowed(db, principal, {
             organizationId: ORG_ID,
             projectId: PROJECT_ID,
             nodePath: "/soc/i2c@1/critical@7f",
             sourceFileName: "board.dts",
             sourceFileVersionId: FILE_VERSION_ID,
+            sourcePath: { kind: "node-locator", value: "/soc/i2c@1/critical@7f" },
             invocation: createSystemInvocation({ kind: "job", name: "nested-cutover-reverse" }),
             requestId: "cutover-nested-reverse-system",
             refusalSink
@@ -1019,6 +1025,29 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
                and action = 'spec-property-key-cutover-prepared') as success_audits`,
           [SPEC_ID]
         )).toMatchObject({ rows: [before] });
+        expect(putSpy).not.toHaveBeenCalled();
+        await db.query(
+          `update dts_nodes
+           set compatible = null
+           where file_version_id = $1 and node_path = '/soc/i2c@1/critical@7f'`,
+          [FILE_VERSION_ID],
+        );
+        await expect(
+          assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+            organizationId: ORG_ID,
+            projectId: PROJECT_ID,
+            nodePath: "/soc/i2c@1/critical@7f",
+            sourceFileName: "board.dts",
+            sourceFileVersionId: FILE_VERSION_ID,
+            sourcePath: { kind: "node-locator", value: "/soc/i2c@1/critical@7f" },
+            invocation: createSystemInvocation({ kind: "service", name: "nested-cutover-null-compatible" }),
+            requestId: "cutover-null-compatible",
+            refusalSink,
+          }),
+        ).resolves.toBeUndefined();
+        expect(
+          (await db.query(`select 1 from audit_events where trace_id = 'cutover-null-compatible'`)).rows,
+        ).toEqual([]);
         expect(putSpy).not.toHaveBeenCalled();
         await db.query(
           `update dts_nodes

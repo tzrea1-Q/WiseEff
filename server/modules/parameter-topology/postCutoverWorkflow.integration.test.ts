@@ -306,6 +306,11 @@ async function seedPreCutoverGraph(db: Database) {
     ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)`,
     [fileVersionId, fileId, `${ORG}/${checksum}-pcw-base.dts`, checksum, Buffer.byteLength(content), USER]
   );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'sc8562', $3, 'vendor,sc8562')`,
+    [`node-${fileVersionId}-sc8562`, fileVersionId, NODE_LOCATOR]
+  );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     fileVersionId,
     fileId
@@ -330,6 +335,11 @@ async function seedPreCutoverGraph(db: Database) {
       JSON.stringify({ sourceText: overlayContent }),
       USER
     ]
+  );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'sc8562', $3, 'vendor,sc8562')`,
+    [`node-${overlayVersionId}-sc8562`, overlayVersionId, NODE_LOCATOR]
   );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     overlayVersionId,
@@ -809,18 +819,18 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           }
         ));
         expect(systemHighDraft.draftId).toBeTruthy();
-        expect(await snapshot()).toEqual({ drafts: "0", candidates: "1" });
+        expect(await snapshot()).toEqual({ drafts: "0", candidates: "2" });
         expect(await systemOwnedState()).toEqual({
-          versions: "1",
-          candidates: "1",
+          versions: "2",
+          candidates: "2",
           drafts: "1",
-          success_audits: "1"
+          success_audits: "2"
         });
         expect(beforeSystemOwnedState).toEqual({
-          versions: "0",
-          candidates: "0",
+          versions: "1",
+          candidates: "1",
           drafts: "0",
-          success_audits: "0"
+          success_audits: "1"
         });
         const systemHighAttribution = await db.query<{
           user_id: string | null;
@@ -828,7 +838,9 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         }>(
           `select d.user_id, fv.created_by_user_id
            from parameter_drafts d
-           inner join project_parameter_file_versions fv on fv.origin = 'writeback'
+           inner join dts_config_revision_members crm on crm.config_revision_id = d.candidate_config_revision_id
+             and crm.role = 'overlay'
+           inner join project_parameter_file_versions fv on fv.id = crm.file_version_id
            where d.id = $1`,
           [systemHighDraft.draftId]
         );
@@ -905,6 +917,19 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            set compatible = 'wiseeff,enablement-locked-critical'
            where config_revision_id = $1 and logical_node_id = $2`,
           [seeded.configRevisionId, exactNode.rows[0]!.logical_node_id]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,enablement-locked-critical'
+           where file_version_id = $1 and node_path = $2`,
+          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           select 'node-enablement-locked-critical', $1, 'sc8562', $2, 'wiseeff,enablement-locked-critical'
+           where not exists (
+             select 1 from dts_nodes where file_version_id = $1 and node_path = $2
+           )`,
+          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
         );
         await db.query(
           `insert into project_parameter_file_versions (
@@ -1047,6 +1072,78 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         );
         expect(enablementAudit.rows).toEqual([
           { actor_type: "user", actor_user_id: USER, trace_id: "enablement-writeback-user" }
+        ]);
+
+        await db.query(
+          `delete from dts_sensitive_node_rules
+           where id in ('rule-pcw-quoted-compatible', 'rule-pcw-enablement-writeback-path')`,
+        );
+        const beforeSystemNoMatch = await systemOwnedState();
+        const systemNoMatchDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-enabled",
+              reason: "System no-match preserves the existing operation",
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "topology-no-match-job" }),
+              requestId: "enablement-no-match-system",
+              refusalSink,
+            },
+          ),
+        );
+        expect(systemNoMatchDraft.draftId).toBeTruthy();
+        expect(await systemOwnedState()).toEqual({
+          versions: String(Number(beforeSystemNoMatch.versions) + 1),
+          candidates: String(Number(beforeSystemNoMatch.candidates) + 1),
+          drafts: String(Number(beforeSystemNoMatch.drafts) + 1),
+          success_audits: String(Number(beforeSystemNoMatch.success_audits) + 1),
+        });
+        const systemNoMatchAttribution = await db.query<{
+          user_id: string | null;
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select user_id, initiator_type, initiator_system_kind, initiator_system_name
+           from parameter_drafts where id = $1`,
+          [systemNoMatchDraft.draftId],
+        );
+        expect(systemNoMatchAttribution.rows).toEqual([
+          {
+            user_id: null,
+            initiator_type: "system",
+            initiator_system_kind: "job",
+            initiator_system_name: "topology-no-match-job",
+          },
+        ]);
+        const systemNoMatchAudit = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events where trace_id = 'enablement-no-match-system'
+             and kind = 'parameter-topology-governance'`,
+        );
+        expect(systemNoMatchAudit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-no-match-system",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "topology-no-match-job",
+            }),
+          }),
         ]);
       });
     },
@@ -2195,6 +2292,19 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
         );
         await db.query(
+          `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'
+           where file_version_id = $1 and node_path = $2`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           select 'node-semantic-locked-critical', $1, 'sc8562', $2, 'wiseeff,semantic-locked-critical'
+           where not exists (
+             select 1 from dts_nodes where file_version_id = $1 and node_path = $2
+           )`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+        );
+        await db.query(
           `insert into project_parameter_file_versions (
              id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
            )
@@ -2269,6 +2379,11 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            set compatible = 'wiseeff,safe'
            where config_revision_id = $1 and logical_node_id = $2`,
           [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,safe'
+           where file_version_id = $1 and node_path = $2`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
         );
         await db.query(
           `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'
@@ -3058,37 +3173,6 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 })
               )
             : reviewChange(db, auth, reviewInput, reviewContext);
-
-          if (trustedInvocation?.initiator === "system") {
-            await expect(runReview()).rejects.toMatchObject({
-              code: "FORBIDDEN",
-              status: 403,
-              details: { code: "parameter-accountable-user-required" }
-            });
-            await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
-            const refusal = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
-              `select actor_type, actor_user_id, metadata from audit_events
-               where trace_id = $1 and kind = 'parameter-accountable-user-denied'`,
-              [trustedTrace]
-            );
-            expect(refusal.rows).toEqual([
-              expect.objectContaining({
-                actor_type: "system",
-                actor_user_id: null,
-                metadata: expect.objectContaining({
-                  initiator: "system",
-                  systemKind: "job",
-                  systemName: "parameter-merge-high-job"
-                })
-              })
-            ]);
-            const notifications = await db.query<{ count: string }>(
-              `select count(*)::text as count from user_notifications where source_id = $1`,
-              [request.id]
-            );
-            expect(notifications.rows[0]?.count).toBe("0");
-            return;
-          }
 
           const merged = await runReview();
 

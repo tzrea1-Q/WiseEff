@@ -19,6 +19,7 @@ import { createPostgresDatabase } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
+import { listParameterHistory } from "./repository";
 import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
   listChangeRequests,
@@ -1125,6 +1126,186 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
           },
         );
         expect(merged.status).toBe("merged");
+        const domainRows = await db.query<{
+          updated_by_user_id: string | null;
+          value_initiator_type: string;
+          value_system_kind: string | null;
+          value_system_name: string | null;
+          changed_by_user_id: string | null;
+          history_initiator_type: string;
+          reviewer_user_id: string | null;
+          decision_initiator_type: string;
+          decision_system_kind: string | null;
+          decision_system_name: string | null;
+        }>(
+          `select
+             (select updated_by_user_id from project_parameter_values where id = $1) as updated_by_user_id,
+             (select initiator_type from project_parameter_values where id = $1) as value_initiator_type,
+             (select initiator_system_kind from project_parameter_values where id = $1) as value_system_kind,
+             (select initiator_system_name from project_parameter_values where id = $1) as value_system_name,
+             (select changed_by_user_id from parameter_history_entries where request_id = $2 order by changed_at desc limit 1) as changed_by_user_id,
+             (select initiator_type from parameter_history_entries where request_id = $2 order by changed_at desc limit 1) as history_initiator_type,
+             (select reviewer_user_id from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as reviewer_user_id,
+             (select initiator_type from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_initiator_type,
+             (select initiator_system_kind from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_system_kind,
+             (select initiator_system_name from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_system_name`,
+          [PPV_HIGH, requestId]
+        );
+        expect(domainRows.rows).toEqual([{
+          updated_by_user_id: null,
+          value_initiator_type: "system",
+          value_system_kind: "job",
+          value_system_name: "system-merge-job",
+          changed_by_user_id: null,
+          history_initiator_type: "system",
+          reviewer_user_id: null,
+          decision_initiator_type: "system",
+          decision_system_kind: "job",
+          decision_system_name: "system-merge-job"
+        }]);
+        await expect(listParameterHistory(db, { organizationId: ORG, parameterId: PPV_HIGH })).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ changedBy: "System job:system-merge-job" })
+          ])
+        );
+        const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
+          `select body, metadata from user_notifications
+           where source_id = $1 and category = 'parameter.merge.completed'`,
+          [requestId]
+        );
+        expect(notifications.rows.length).toBeGreaterThan(0);
+        expect(notifications.rows.every((row) =>
+          row.body.includes("System job:system-merge-job") &&
+          !row.body.includes(auth.user.name) &&
+          row.metadata.mergerName === "System job:system-merge-job" &&
+          row.metadata.initiatorType === "system" &&
+          row.metadata.initiatorSystemKind === "job" &&
+          row.metadata.initiatorSystemName === "system-merge-job"
+        )).toBe(true);
+        const roundView = await listSubmissionRounds(db, auth, { projectId: PROJECT });
+        expect(roundView).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            workflowTrail: expect.arrayContaining([
+              expect.objectContaining({
+                key: "software_merge",
+                executorName: "System job:system-merge-job",
+                executorLabel: "执行人",
+                state: "active"
+              })
+            ])
+          })
+        ]));
+        const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+          `select actor_type, actor_user_id, metadata from audit_events where trace_id = 'system-merge-high' and kind = 'parameter-merge'`
+        );
+        expect(audit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "system-merge-job"
+            })
+          })
+        ]);
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
+
+  it("keeps the existing no-match merge workflow successful for a System initiator", async () => {
+    await withTempDatabase({ prefix: "srwsystemnomatch" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_MEDIUM, targetValue: "72", reason: "System no-match merge provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "system-merge-no-match-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+      await advanceMediumToSoftwareMerge(db, requestId!);
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: MEDIUM_BASE_VERSION,
+            note: "https://example.com/mr/srw-system-no-match",
+          },
+          {
+            invocation: createSystemInvocation({ kind: "service", name: "system-no-match-service" }),
+            requestId: "system-merge-no-match",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+
+        const domainRows = await db.query<{
+          updated_by_user_id: string | null;
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+          reviewer_user_id: string | null;
+        }>(
+          `select
+             (select updated_by_user_id from project_parameter_values where id = $1) as updated_by_user_id,
+             (select initiator_type from project_parameter_values where id = $1) as initiator_type,
+             (select initiator_system_kind from project_parameter_values where id = $1) as initiator_system_kind,
+             (select initiator_system_name from project_parameter_values where id = $1) as initiator_system_name,
+             (select reviewer_user_id from parameter_review_decisions
+              where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as reviewer_user_id`,
+          [PPV_MEDIUM, requestId],
+        );
+        expect(domainRows.rows).toEqual([
+          {
+            updated_by_user_id: null,
+            initiator_type: "system",
+            initiator_system_kind: "service",
+            initiator_system_name: "system-no-match-service",
+            reviewer_user_id: null,
+          },
+        ]);
+
+        const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
+          `select body, metadata from user_notifications
+           where source_id = $1 and category = 'parameter.merge.completed'`,
+          [requestId],
+        );
+        expect(notifications.rows.length).toBeGreaterThan(0);
+        expect(notifications.rows.every((row) =>
+          row.body.includes("System service:system-no-match-service") &&
+          !row.body.includes(auth.user.name) &&
+          row.metadata.mergerName === "System service:system-no-match-service" &&
+          row.metadata.initiatorType === "system" &&
+          row.metadata.initiatorSystemName === "system-no-match-service",
+        )).toBe(true);
+
+        const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+          `select actor_type, actor_user_id, metadata from audit_events
+           where trace_id = 'system-merge-no-match' and kind = 'parameter-merge'`,
+        );
+        expect(audit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "service",
+              systemName: "system-no-match-service",
+            }),
+          }),
+        ]);
       } finally {
         await refusalRoot.close();
       }
