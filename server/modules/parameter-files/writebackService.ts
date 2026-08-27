@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import { trustedAccountableUser } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -77,6 +78,71 @@ export type WritebackServiceContext = TrustedSensitiveNodeWriteContext & {
   /** Test-only: skip semantic promotion gates after resolve/toolchain. */
   skipSemanticGates?: boolean;
 };
+
+/** Sensitive-policy-only preflight used before a user-owned merge record is written. */
+export async function preflightMergedEnablementWriteback(
+  db: Queryable,
+  auth: AuthContext,
+  input: WritebackMergedEnablementValueInput,
+  context: WritebackServiceContext,
+): Promise<void> {
+  const trusted = assertTrustedSensitiveNodeWriteContext(auth, context, "enablement writeback preflight");
+  const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: `${lock.sourceNodePath}/status`,
+    sourceFileName: lock.overlayFileName,
+    sourceFileVersionId: lock.sourceFileVersionId,
+    invocation: trusted.invocation,
+    requestId: trusted.requestId,
+    refusalSink: trusted.refusalSink,
+  });
+}
+
+/** Sensitive-policy-only parameter preflight; performs no object or domain write. */
+export async function preflightMergedParameterWriteback(
+  db: Queryable,
+  auth: AuthContext,
+  input: WritebackMergedParameterValueInput,
+  context: WritebackServiceContext,
+): Promise<void> {
+  const trusted = assertTrustedSensitiveNodeWriteContext(auth, context, "parameter writeback preflight");
+  if (parameterIdentityMode() === "semantic") {
+    const { lock } = await resolveLockedWritebackContext(db, auth, input);
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      nodePath: `${lock.sourceNodePath}/${lock.propertyKey}`,
+      sourceFileName: lock.overlayFileName,
+      sourceFileVersionId: lock.sourceFileVersionId,
+      invocation: trusted.invocation,
+      requestId: trusted.requestId,
+      refusalSink: trusted.refusalSink,
+    });
+    return;
+  }
+  const source = await loadWritebackSource(db, auth, input);
+  if (!source?.sourceFileName || !source.sourceNodePath) return;
+  const file = await getProjectParameterFileByName(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    fileName: source.sourceFileName,
+  });
+  if (!file?.currentVersionId) {
+    throw new ApiError("CONFLICT", "Project parameter file has no exact current version for writeback preflight.");
+  }
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: source.sourceNodePath,
+    sourceFileName: source.sourceFileName,
+    sourceFileVersionId: file.currentVersionId,
+    invocation: trusted.invocation,
+    requestId: trusted.requestId,
+    refusalSink: trusted.refusalSink,
+  });
+}
 
 function splitNodePath(nodePath: string) {
   return nodePath.split("/").map((segment) => segment.trim()).filter(Boolean);
@@ -267,6 +333,7 @@ async function resolveLockedWritebackContext(
       ...persistedLock,
       propertyKey: resolved.propertyKey,
       targetRef: resolved.targetRef,
+      sourceNodePath: resolved.sourceNodePath,
       expectedRawText: resolved.expectedRawText,
       nodeSpan: resolved.nodeSpan,
       overlayFileId: resolved.overlayFileId,
@@ -318,6 +385,7 @@ async function resolveLockedEnablementWritebackContext(
       ...persistedLock,
       propertyKey: "status",
       targetRef: resolved.targetRef,
+      sourceNodePath: resolved.sourceNodePath,
       expectedRawText: resolved.expectedRawText,
       nodeSpan: resolved.nodeSpan,
       overlayFileId: resolved.overlayFileId,
@@ -457,13 +525,14 @@ export async function writebackMergedEnablementValue(
 > {
   const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "enablement writeback");
   const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
-  const nodePath = `${lock.targetRef}/status`;
+  const nodePath = `${lock.sourceNodePath}/status`;
 
   await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath,
     sourceFileName: lock.overlayFileName,
+    sourceFileVersionId: lock.sourceFileVersionId,
     invocation: trustedContext.invocation,
     requestId: trustedContext.requestId,
     refusalSink: trustedContext.refusalSink,
@@ -481,6 +550,7 @@ export async function writebackMergedEnablementValue(
       objectStore,
       skipSemanticGates: trustedContext.skipSemanticGates,
       toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
+      createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? null,
     },
   );
 
@@ -536,13 +606,14 @@ export async function writebackMergedParameterValue(
     }
 
     const { lock, parameterSpecVersionId } = await resolveLockedWritebackContext(db, auth, input);
-    const nodePath = `${lock.targetRef}/${lock.propertyKey}`;
+    const nodePath = `${lock.sourceNodePath}/${lock.propertyKey}`;
 
     await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
       nodePath,
       sourceFileName: lock.overlayFileName,
+      sourceFileVersionId: lock.sourceFileVersionId,
       invocation: trustedContext.invocation,
       requestId: trustedContext.requestId,
       refusalSink: trustedContext.refusalSink,
@@ -563,6 +634,7 @@ export async function writebackMergedParameterValue(
         objectStore,
         skipSemanticGates: trustedContext.skipSemanticGates,
         toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
+        createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? null,
       },
     );
 
@@ -605,16 +677,6 @@ export async function writebackMergedParameterValue(
     return { skipped: true };
   }
 
-  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    nodePath: source.sourceNodePath,
-    sourceFileName: source.sourceFileName,
-    invocation: trustedContext.invocation,
-    requestId: trustedContext.requestId,
-    refusalSink: trustedContext.refusalSink
-  });
-
   const file = await getProjectParameterFileByName(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
@@ -638,6 +700,17 @@ export async function writebackMergedParameterValue(
     });
   }
 
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: source.sourceNodePath,
+    sourceFileName: source.sourceFileName,
+    sourceFileVersionId: currentVersion.id,
+    invocation: trustedContext.invocation,
+    requestId: trustedContext.requestId,
+    refusalSink: trustedContext.refusalSink
+  });
+
   const currentBytes = await objectStore.get(currentVersion.storageKey);
   const patchedBytes = patchByFormat(currentBytes.toString("utf8"), file.format, source.sourceNodePath, input.mergedValue);
   const parsedIndex =
@@ -660,7 +733,7 @@ export async function writebackMergedParameterValue(
     sizeBytes: stored.fileSizeBytes,
     parsedIndex,
     origin: "writeback",
-    createdByUserId: auth.user.id
+    createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? undefined
   });
 
   await setCurrentVersion(db, { fileId: file.id, versionId: version.id });

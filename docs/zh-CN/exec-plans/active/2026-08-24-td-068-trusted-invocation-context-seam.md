@@ -204,6 +204,15 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - 最终固定 rebase HEAD 上的独立 Standards 与 Spec 复审均为 0 findings（P0-P3）。stable patch ID 与 `git range-diff` 证明最终无关 main rebase 前后 8 个实现/repair commit 保持 patch-equivalent。
 - 明确排除：#615 legacy API/type ratchet 与 TD-068 关闭、TD-123 device-write audit、前端/public DTO/schema/migration、cutover preview/start/finalize 迁移、Xiaoze #611、DTS reload #612、HDC、硬件、live provider 与 Hosted CI。GitHub Actions 月度额度仍已耗尽，不宣称 Hosted 通过。本计划保持 active，等待 #615 完成 TD-068。
 
+## #614 parent review repair 检查点
+
+- Parent review 在 feature HEAD `43549fd0976e40f0c73eb6a527d4310c1016d417` 发现两个 P1：compatible-only 策略通过文件可变的 `current_version_id` 读取 compatible，而不是使用 cutover location/write lock 固定的版本；Agent/System 成功操作仍把 `auth.user` 复制到领域 creator/reviewer/history 字段和合入通知。
+- exact-version Red 使用 owned PostgreSQL：第二个 cutover location 的 pinned version 命中 critical compatible，而 current head 为 safe。修复前 promise 错误 resolve 并进入 staging，没有返回 403。Green 增加 server-owned `sourceFileVersionId` seam，resolver 同时约束 Organization、project、file name、file version 与 node locator。版本不属于该 scope 时 fail closed；结构模型中没有该 node 时仍保持 compatible no-match。semantic/enablement write lock 现传递 pinned version 与 logical-node locator；retained legacy writeback 显式传递它实际 patch 的 current version。反向 locked-safe/current-critical System 用例成功，证明不会因可变 head 产生错误拒绝。
+- domain-attribution Red 要求成功的 System semantic writeback 持久化 `created_by_user_id = null`；修复前 PostgreSQL 实际写入无关的 authenticated user id。Green 只从 trusted invocation 投影 accountable user：User/Agent 使用 `invocation.principal.user`，System 对 nullable candidate、file-version、config-revision、history/value creator/changer 字段写 null。Agent 通知使用 `Agent tool:<toolCallId> (session:<sessionId>)`，不会把 principal 描述成 direct executor。
+- `parameter_drafts.user_id` 与 `parameter_review_decisions.reviewer_user_id` 是非空 user-owned accountability record。本 repair 没有增加 schema 或 synthetic user。critical System 仍先经过 sensitive preflight，保持 `parameter-sensitive-node-human-required`；high/no-match System topology draft 和 software merge 随后在第一次 object/domain/notification write 前以稳定的 `parameter-accountable-user-required` 拒绝。独立 root sink 写入 `parameter-accountable-user-denied`，保留真实 service/job identity 且 actor user 为 null。Agent 使用已校验 principal 写这些非空字段，同时 audit 和 notification 保持 Agent execution identity。
+- PostgreSQL 回归覆盖 cutover/semantic/enablement 分叉版本、critical Agent/System 零 staging、反向版本 System 成功、System nullable creator、Agent principal-owned draft/review/history row、真实 notification body/metadata、cross-principal 拒绝、durable domain-model refusal，以及 audit-failure rollback 后无 merge notification。若 immutable object put 先于注入的数据库 audit failure，物理对象仍不可事务化，但没有已提交数据库状态可达它。
+- 当前 focused repair Green 为 6 个文件 / 77 个测试，包含 owned PostgreSQL cutover 与五路径 provenance workflow；`npx tsc -b --pretty false` 也已通过。固定 final HEAD 后再补充完整门禁计数、warning、skip、最终 rebase SHA 与重新执行的 Standards/Spec review finding。Hosted CI 仍不可用；#615、TD-123、schema、frontend、HDC、硬件与 live-provider 均排除。本计划保持 active。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |

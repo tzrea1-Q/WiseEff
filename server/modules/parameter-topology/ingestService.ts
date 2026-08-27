@@ -822,14 +822,16 @@ export async function ingestConfigRevisionInTransaction(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
+  attribution?: { createdByUserId: string | undefined },
 ): Promise<DtsConfigRevisionDto> {
-  return ingestConfigRevisionTx(tx, manifest, auth);
+  return ingestConfigRevisionTx(tx, manifest, auth, attribution);
 }
 
 async function ingestConfigRevisionTx(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
+  attribution?: { createdByUserId: string | undefined },
 ): Promise<DtsConfigRevisionDto> {
   const normalized = normalizePersistedManifest({
     entryFile: manifest.entryFile,
@@ -854,7 +856,7 @@ async function ingestConfigRevisionTx(
     configSetId: manifest.configSetId,
     revisionNumber,
     status: "resolving",
-    createdByUserId: auth.user.id,
+    createdByUserId: attribution ? attribution.createdByUserId : auth.user.id,
     entryFile: normalized.manifest.entryFile,
     includeSearchPaths: normalized.manifest.includeSearchPaths,
     overlayOrder: normalized.manifest.overlayOrder,

@@ -1041,11 +1041,20 @@ async function preparePropertyKeySourceCutoverInTransaction(
     const nodePath = location.nodePath?.trim();
     const fileName = location.fileName?.trim();
     if (location.status !== "would-rewrite" || !nodePath || !fileName) continue;
+    if (!location.fileVersionId) {
+      throw new ApiError("CONFLICT", "Property-key cutover location has no exact source file version.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        bindingId: location.bindingId,
+        projectId: location.projectId,
+        fileName
+      });
+    }
     await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
       organizationId: auth.organization.id,
       projectId: location.projectId,
       nodePath,
       sourceFileName: fileName,
+      sourceFileVersionId: location.fileVersionId,
       invocation: context.invocation,
       requestId: context.requestId,
       refusalSink: context.refusalSink

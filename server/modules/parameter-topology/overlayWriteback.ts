@@ -62,6 +62,8 @@ export type CreateBindingDraftDeps = {
   objectStore?: ObjectStore;
   /** Test-only: skip semantic promotion gates after resolve/toolchain. */
   skipSemanticGates?: boolean;
+  /** Trusted accountable principal for nullable creator columns; null for System. */
+  createdByUserId?: string | null;
 };
 
 export function throwIfManifestNeedsReview(revision: {
@@ -713,7 +715,7 @@ export async function applyLockedOverlayWriteback(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
     ],
   );
 
@@ -782,7 +784,12 @@ export async function applyLockedOverlayWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(
+    db,
+    manifest,
+    auth,
+    Object.hasOwn(deps, "createdByUserId") ? { createdByUserId: deps.createdByUserId ?? undefined } : undefined,
+  );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
@@ -997,7 +1004,7 @@ export async function applyLockedEnablementWriteback(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      deps.createdByUserId === undefined ? auth.user.id : deps.createdByUserId,
     ],
   );
 
@@ -1066,7 +1073,12 @@ export async function applyLockedEnablementWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(
+    db,
+    manifest,
+    auth,
+    Object.hasOwn(deps, "createdByUserId") ? { createdByUserId: deps.createdByUserId ?? undefined } : undefined,
+  );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",

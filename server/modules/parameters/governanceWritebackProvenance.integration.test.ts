@@ -472,6 +472,19 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
             trace_id: "legacy-no-match-system"
           })
         ]);
+        const legacyDomainAttribution = await db.query<{
+          created_by_user_id: string | null;
+        }>(
+          `select created_by_user_id from project_parameter_file_versions
+           where file_id = 'file-legacy-provenance' and origin = 'writeback'
+           order by version_number`
+        );
+        expect(legacyDomainAttribution.rows).toEqual([
+          { created_by_user_id: USER },
+          { created_by_user_id: USER },
+          { created_by_user_id: null },
+          { created_by_user_id: null }
+        ]);
       } catch (error) {
         primaryError = error;
         throw error;

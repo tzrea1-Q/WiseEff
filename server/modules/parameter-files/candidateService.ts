@@ -5,6 +5,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationMatchesAuth,
+  trustedAccountableUser,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -381,7 +382,9 @@ export async function createCandidate(
       storageKey: stored.storageKey,
       checksum: stored.checksumSha256,
       sizeBytes: stored.fileSizeBytes,
-      createdByUserId: auth.user.id
+      createdByUserId: trustedContext.invocation
+        ? trustedAccountableUser(trustedContext.invocation)?.id
+        : auth.user.id
     });
 
     await updateParameterFileCandidateParseResult(tx, {

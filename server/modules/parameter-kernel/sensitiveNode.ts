@@ -18,6 +18,7 @@ export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
 export type SensitiveWriteActorType = "user" | "agent" | "system";
 export const PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE = "parameter-sensitive-node-human-required" as const;
+export const PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE = "parameter-accountable-user-required" as const;
 
 export type TrustedSensitiveNodeWriteContext = {
   invocation: TrustedInvocationContext;
@@ -156,22 +157,72 @@ export async function resolveSensitiveNodeMatch(
 /** Resolve dts_nodes.compatible for a parameter source when structural model is available. */
 export async function resolveDtsNodeCompatible(
   db: Queryable,
-  input: { projectId: string; sourceFileName: string; sourceNodePath: string }
+  input: {
+    organizationId: string;
+    projectId: string;
+    sourceFileName: string;
+    sourceNodePath: string;
+    sourceFileVersionId?: string | null;
+  }
 ): Promise<string | null> {
   const nodePath = nodePathFromSourceNodePath(input.sourceNodePath.trim());
+  const sourceFileVersionId = input.sourceFileVersionId?.trim() || null;
+  if (sourceFileVersionId) {
+    const exact = await db.query<{ compatible: string | null }>(
+      `
+      select n.compatible
+      from project_parameter_files f
+      inner join project_parameter_file_versions v
+        on v.file_id = f.id
+       and v.id = $4
+      left join lateral (
+        select node.compatible
+        from dts_nodes node
+        where node.file_version_id = v.id
+          and (node.node_path = $5 or node.node_path = $6)
+        order by case when node.node_path = $5 then 0 else 1 end
+        limit 1
+      ) n on true
+      where f.organization_id = $1
+        and f.project_id = $2
+        and f.file_name = $3
+      limit 1
+      `,
+      [
+        input.organizationId,
+        input.projectId,
+        input.sourceFileName,
+        sourceFileVersionId,
+        nodePath,
+        input.sourceNodePath.trim()
+      ]
+    );
+    if (!exact.rows[0]) {
+      throw new ApiError("CONFLICT", "Exact source file version does not belong to the requested file scope.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: input.projectId,
+        sourceFileName: input.sourceFileName,
+        sourceFileVersionId,
+        nodePath
+      });
+    }
+    return exact.rows[0].compatible;
+  }
+
   const result = await db.query<{ compatible: string | null }>(
     `
     select n.compatible
     from project_parameter_files f
     inner join project_parameter_file_versions v on v.id = f.current_version_id
     inner join dts_nodes n on n.file_version_id = v.id
-    where f.project_id = $1
-      and f.file_name = $2
-      and (n.node_path = $3 or n.node_path = $4)
-    order by case when n.node_path = $3 then 0 else 1 end
+    where f.organization_id = $1
+      and f.project_id = $2
+      and f.file_name = $3
+      and (n.node_path = $4 or n.node_path = $5)
+    order by case when n.node_path = $4 then 0 else 1 end
     limit 1
     `,
-    [input.projectId, input.sourceFileName, nodePath, input.sourceNodePath.trim()]
+    [input.organizationId, input.projectId, input.sourceFileName, nodePath, input.sourceNodePath.trim()]
   );
   return result.rows[0]?.compatible ?? null;
 }
@@ -190,6 +241,7 @@ async function resolveTrustedSensitiveNodeMatch(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
     compatible?: string | null;
   }
 ) {
@@ -199,9 +251,11 @@ async function resolveTrustedSensitiveNodeMatch(
   const sourceFileName = input.sourceFileName?.trim() || null;
   if (!compatible && sourceFileName) {
     compatible = await resolveDtsNodeCompatible(db, {
+      organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
-      sourceNodePath: nodePath
+      sourceNodePath: nodePath,
+      sourceFileVersionId: input.sourceFileVersionId
     });
   }
   const rules = await listSensitiveNodeRules(db, {
@@ -236,6 +290,7 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
     compatible?: string | null;
     invocation: TrustedInvocationContext;
     requestId: string;
@@ -290,6 +345,45 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
 
 }
 
+/** Fail closed when a legacy user-owned domain row cannot truthfully represent System. */
+export async function requireTrustedAccountableUser(
+  auth: AuthContext,
+  input: TrustedSensitiveNodeWriteContext & {
+    organizationId: string;
+    projectId: string;
+    operation: string;
+    targetType: string;
+    targetId: string;
+  }
+): Promise<AuthContext["user"]> {
+  const trusted = assertTrustedSensitiveNodeWriteContext(auth, input, input.operation);
+  if (trusted.invocation.initiator !== "system") {
+    return trusted.invocation.principal.user;
+  }
+  await trusted.refusalSink.write({
+    invocation: trusted.invocation,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    app: "parameter-management",
+    kind: "parameter-accountable-user-denied",
+    action: "deny",
+    severity: "High",
+    targetType: input.targetType,
+    targetId: input.targetId,
+    metadata: {
+      code: PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE,
+      operation: input.operation,
+      reason: "user-owned-domain-record"
+    },
+    traceId: trusted.requestId
+  });
+  throw new ApiError("FORBIDDEN", "This workflow requires an accountable user principal.", {
+    code: PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE,
+    initiator: "system",
+    operation: input.operation
+  });
+}
+
 /** #613 compatibility name; #615 owns final legacy API cleanup. */
 export const assertTrustedSensitiveNodeSubmissionAllowed = assertTrustedSensitiveNodeWriteAllowed;
 
@@ -301,6 +395,7 @@ export async function assertSensitiveNodeWriteAllowed(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
     compatible?: string | null;
     actorType: SensitiveWriteActorType;
     requestId?: string;
@@ -324,9 +419,11 @@ export async function assertSensitiveNodeWriteAllowed(
   const sourceFileName = input.sourceFileName?.trim() || null;
   if (!compatible && sourceFileName) {
     compatible = await resolveDtsNodeCompatible(db, {
+      organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
-      sourceNodePath: nodePath
+      sourceNodePath: nodePath,
+      sourceFileVersionId: input.sourceFileVersionId
     });
   }
 

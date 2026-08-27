@@ -9,6 +9,7 @@ import {
   assertSensitiveNodeWriteAllowed,
   assertTrustedSensitiveNodeWriteAllowed,
   matchSensitiveRules,
+  resolveDtsNodeCompatible,
   type SensitiveNodeRule
 } from "./sensitiveNode";
 
@@ -299,6 +300,48 @@ describe("assertSensitiveNodeWriteAllowed", () => {
 });
 
 describe("assertTrustedSensitiveNodeWriteAllowed", () => {
+  it("resolves compatible only from the exact server-owned file version when provided", async () => {
+    const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
+      expect(text).toContain("v.id = $4");
+      expect(text).not.toContain("f.current_version_id");
+      expect(text).toContain("f.organization_id = $1");
+      expect(values).toEqual([
+        "org-1",
+        "project-1",
+        "board.dts",
+        "version-locked",
+        "/amba/wdt@0",
+        "/amba/wdt@0/status"
+      ]);
+      return { rows: [{ compatible: "vendor,locked-critical" }], rowCount: 1 };
+    });
+
+    await expect(resolveDtsNodeCompatible({ query }, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourceNodePath: "/amba/wdt@0/status"
+    })).resolves.toBe("vendor,locked-critical");
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the exact file version has no matching file and node identity", async () => {
+    const db: Queryable = {
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 }))
+    };
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-substituted",
+      sourceNodePath: "/amba/wdt@0/status"
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ code: "parameter-sensitive-source-version-mismatch" })
+    });
+  });
+
   it("allows a capable direct User invocation through the shared trusted write guard", async () => {
     await withTempDatabase({ prefix: "senswriteunit" }, async ({ connectionString }) => {
       const trustedRefusalRoot = createPostgresDatabase(connectionString);

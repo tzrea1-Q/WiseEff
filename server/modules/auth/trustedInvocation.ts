@@ -258,3 +258,17 @@ export function assertTrustedInvocationMatchesAuth(
   }
   return invocation;
 }
+
+/** Accountable authorization principal for domain rows; System has no user principal. */
+export function trustedAccountableUser(value: TrustedInvocationContext): AuthContext["user"] | null {
+  const invocation = assertTrustedInvocationContext(value);
+  return invocation.initiator === "system" ? null : invocation.principal.user;
+}
+
+/** Truthful, user-visible executor label derived from the same trusted invocation. */
+export function trustedExecutionLabel(value: TrustedInvocationContext): string {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "user") return invocation.principal.user.name;
+  if (invocation.initiator === "agent") return `Agent tool:${invocation.toolCallId} (session:${invocation.sessionId})`;
+  return `System ${invocation.identity.kind}:${invocation.identity.name}`;
+}

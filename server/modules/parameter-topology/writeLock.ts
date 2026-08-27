@@ -30,6 +30,8 @@ export type BindingDraftWriteTarget = {
 export type BindingWriteLockContext = BindingWriteLockFields & {
   propertyKey: string;
   targetRef: string;
+  /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
+  sourceNodePath: string;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -40,6 +42,8 @@ export type BindingWriteLockContext = BindingWriteLockFields & {
 export type EnablementWriteLockContext = EnablementWriteLockFields & {
   propertyKey: "status";
   targetRef: string;
+  /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
+  sourceNodePath: string;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -531,6 +535,12 @@ export async function resolveBindingWriteLock(
   input: { bindingId: string; baseRevisionId?: string },
 ): Promise<BindingWriteLockContext> {
   const binding = await loadBindingContext(db, auth, input.bindingId);
+  if (!binding.node_locator) {
+    throw new ApiError("CONFLICT", "Binding has no exact logical node locator for write lock.", {
+      reason: "missing-node-locator",
+      bindingId: input.bindingId,
+    });
+  }
 
   const baseRevisionId =
     input.baseRevisionId ??
@@ -605,6 +615,7 @@ export async function resolveBindingWriteLock(
     occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
     propertyKey: binding.property_key,
     targetRef,
+    sourceNodePath: binding.node_locator,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,
@@ -854,6 +865,7 @@ export async function resolveEnablementWriteLock(
     occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
     propertyKey: "status",
     targetRef,
+    sourceNodePath: nodeContext.nodeLocator,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,

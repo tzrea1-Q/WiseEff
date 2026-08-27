@@ -26,6 +26,7 @@ import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacy
 import {
   assertTrustedSensitiveNodeWriteAllowed,
   assertTrustedSensitiveNodeWriteContext,
+  requireTrustedAccountableUser,
   type TrustedSensitiveNodeWriteContext
 } from "../parameter-kernel/sensitiveNode";
 import {
@@ -922,11 +923,13 @@ async function createNodeEnablementDraftInTransaction(
 ): Promise<NodeEnablementDraftResult> {
   requireCanEdit(auth);
 
-  const openDrafts = await listOpenBindingDraftsForUser(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    userId: auth.user.id,
-  });
+  const openDrafts = context.invocation.initiator === "system"
+    ? []
+    : await listOpenBindingDraftsForUser(db, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        userId: context.invocation.principal.user.id,
+      });
   const openWorkingTips = [
     ...new Set(
       openDrafts
@@ -1017,6 +1020,15 @@ async function createNodeEnablementDraftInTransaction(
     invocation: context.invocation,
     requestId: context.requestId,
     refusalSink: context.refusalSink,
+  });
+
+  const accountableUser = await requireTrustedAccountableUser(auth, {
+    ...context,
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    operation: "topology enablement draft",
+    targetType: "dts-logical-node",
+    targetId: input.logicalNodeId,
   });
 
   const projectSpelling =
@@ -1126,7 +1138,7 @@ async function createNodeEnablementDraftInTransaction(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      accountableUser.id,
     ],
   );
 
@@ -1189,7 +1201,9 @@ async function createNodeEnablementDraftInTransaction(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
+    createdByUserId: accountableUser.id,
+  });
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
@@ -1305,7 +1319,7 @@ async function createNodeEnablementDraftInTransaction(
         organizationId: auth.organization.id,
         projectId: input.projectId,
         logicalNodeId: input.logicalNodeId,
-        userId: auth.user.id,
+        userId: accountableUser.id,
         targetValue: rawText,
         reason: input.reason,
         origin: "manual",
@@ -1323,7 +1337,7 @@ async function createNodeEnablementDraftInTransaction(
       const rebased = await rebaseOpenBindingDraftCandidates(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,
-        userId: auth.user.id,
+        userId: accountableUser.id,
         candidateConfigRevisionId: candidateRevisionId,
         excludeDraftId: persistedDraft.id,
       });

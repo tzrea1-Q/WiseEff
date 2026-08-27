@@ -19,6 +19,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationContext,
+  trustedExecutionLabel,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -31,7 +32,13 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
+import {
+  preflightMergedEnablementWriteback,
+  preflightMergedParameterWriteback,
+  writebackMergedEnablementValue,
+  writebackMergedParameterValue,
+  type WritebackServiceContext
+} from "../parameter-files/writebackService";
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import {
   loadLogicalNodeEnablementContext,
@@ -44,7 +51,8 @@ import { canAdminParameters, canEditParameters, canMergeParameters, canReviewPar
 import { isValidMergeLink } from "./mergeLink";
 import {
   assertTrustedSensitiveNodeWriteContext,
-  assertTrustedSensitiveNodeSubmissionAllowed
+  assertTrustedSensitiveNodeSubmissionAllowed,
+  requireTrustedAccountableUser
 } from "../parameter-kernel/sensitiveNode";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
@@ -2137,7 +2145,11 @@ export async function reviewChange(
       suppliedMergeContext,
       "parameter review software merge"
     );
-
+    if (!request.projectId) {
+      throw new ApiError("CONFLICT", "Parameter merge requires an exact project identity.", {
+        requestId: input.requestId
+      });
+    }
     let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisions>> = [];
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
       reviewDecisions = await listReviewDecisions(tx, {
@@ -2220,12 +2232,50 @@ export async function reviewChange(
       };
     }
 
+    if (semanticMerge) {
+      if (semanticMerge.subject.kind === "node-enablement") {
+        await preflightMergedEnablementWriteback(tx, auth, {
+          projectId: semanticMerge.subject.projectId,
+          logicalNodeId: semanticMerge.subject.logicalNodeId,
+          mergedValue: request.targetValue,
+          action: request.action,
+          changeRequestId: input.requestId,
+        }, { ...context, ...trustedMergeContext });
+      } else {
+        await preflightMergedParameterWriteback(tx, auth, {
+          projectId: semanticMerge.subject.projectId,
+          parameterDefinitionId: semanticMerge.subject.parameterId,
+          mergedValue: request.targetValue,
+          action: request.action,
+          projectParameterBindingId: semanticMerge.subject.parameterId,
+          changeRequestId: input.requestId,
+        }, { ...context, ...trustedMergeContext });
+      }
+    } else if (context.objectStore) {
+      await preflightMergedParameterWriteback(tx, auth, {
+        projectId: request.projectId,
+        parameterDefinitionId: request.parameterId,
+        mergedValue: request.targetValue,
+        action: request.action,
+        changeRequestId: input.requestId,
+      }, { ...context, ...trustedMergeContext });
+    }
+
+    const accountableUser = await requireTrustedAccountableUser(auth, {
+      ...trustedMergeContext,
+      organizationId: auth.organization.id,
+      projectId: request.projectId,
+      operation: "parameter review software merge",
+      targetType: "parameter-change-request",
+      targetId: input.requestId
+    });
+
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
       organizationId: auth.organization.id,
       requestId: input.requestId,
       expectedVersion: input.expectedVersion,
-      actorUserId: auth.user.id
+      actorUserId: accountableUser.id
     });
 
     if (!merged) {
@@ -2286,7 +2336,7 @@ export async function reviewChange(
       id: randomUUID(),
       organizationId: auth.organization.id,
       requestId: input.requestId,
-      reviewerUserId: auth.user.id,
+      reviewerUserId: accountableUser.id,
       decision: "advance",
       fromStatus,
       toStatus: "merged",
@@ -2345,10 +2395,8 @@ export async function reviewChange(
         requestId: input.requestId,
         parameterName: request.title,
         submitterUserId: request.submitterUserId,
-        mergerName: auth.user.name,
-        reviewerUserIds: reviewDecisions.flatMap((decision) =>
-          decision.reviewerUserId ? [decision.reviewerUserId] : []
-        )
+        mergerName: trustedExecutionLabel(trustedMergeContext.invocation),
+        reviewerUserIds: reviewDecisions.map((decision) => decision.reviewerUserId)
       });
     }
 

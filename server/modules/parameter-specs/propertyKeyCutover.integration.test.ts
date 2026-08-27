@@ -835,12 +835,41 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
             twoLocationStored.fileSizeBytes
           ]
         );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           values
+             ('dts-node-pk-cutover-locked-safe', $1, 'charger', '/charger@6e', 'wiseeff,safe'),
+             ('dts-node-pk-cutover-locked-critical', $1, 'critical', '/critical@7f', 'wiseeff,locked-critical')`,
+          [FILE_VERSION_ID]
+        );
+        const safeHeadStored = await objectStore.put({
+          organizationId: ORG_ID,
+          fileName: "board.dts",
+          contentType: "text/plain",
+          bytes: Buffer.from(twoLocationSource, "utf8")
+        });
+        await db.query(
+          `insert into project_parameter_file_versions (
+             id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
+           ) values (
+             'fv-pk-cutover-safe-head', $1, 2, $2, $3, $4, '{}'::jsonb, 'upload'
+           )`,
+          [FILE_ID, safeHeadStored.storageKey, safeHeadStored.checksumSha256, safeHeadStored.fileSizeBytes]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           values ('dts-node-pk-cutover-safe-head', 'fv-pk-cutover-safe-head', 'critical', '/critical@7f', 'wiseeff,safe')`
+        );
+        await db.query(
+          `update project_parameter_files set current_version_id = 'fv-pk-cutover-safe-head' where id = $1`,
+          [FILE_ID]
+        );
         putSpy.mockClear();
         await db.query(
           `insert into dts_sensitive_node_rules (
              id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
            ) values (
-             'rule-pk-cutover-critical', $1, $2, 'path', '/critical@7f',
+             'rule-pk-cutover-critical', $1, $2, 'compatible', 'wiseeff,locked-critical',
              'critical', 'parameter:edit-critical', true
            )`,
           [ORG_ID, PROJECT_ID]
@@ -1013,6 +1042,10 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
         );
         expect(systemPrepared.item.status).toBe("ready");
         expect(putSpy).toHaveBeenCalledTimes(1);
+        const systemCandidateAttribution = await db.query<{ created_by_user_id: string | null }>(
+          `select created_by_user_id from project_parameter_file_candidates`
+        );
+        expect(systemCandidateAttribution.rows).toEqual([{ created_by_user_id: null }]);
         const systemSuccessAudit = await db.query<{
           actor_type: string;
           actor_user_id: string | null;
