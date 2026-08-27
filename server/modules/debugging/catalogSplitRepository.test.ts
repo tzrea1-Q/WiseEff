@@ -18,6 +18,7 @@ import {
   countDebugNodesForModule,
   createDebugNode,
   createDebugNodeModule,
+  deleteDebugNode,
   deleteDebugNodeModule,
   getDebugNodeBinding,
   getDebugNodeModuleById,
@@ -71,6 +72,70 @@ describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
     await expect(listRuntimeDebugNodes(db, { organizationId: "org-1", protocol: "hdc" })).resolves.toEqual([]);
     const listed = await listDebugNodes(db, { organizationId: "org-1" });
     expect(listed.map((node) => node.id)).toEqual([created.id]);
+  });
+
+  it("deletes an unreferenced node with its bindings and protects nodes with operation history", async () => {
+    const removable = await createDebugNode(db, { organizationId: "org-1", name: "Removable node" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: removable.id,
+      protocol: "hdc",
+      nodePath: "/sys/removable",
+      accessMode: "RW",
+      enabled: true
+    });
+
+    await expect(deleteDebugNode(db, { organizationId: "org-1", nodeId: removable.id })).resolves.toEqual({
+      status: "deleted",
+      bindingCount: 1
+    });
+    await expect(getDebugNodeBinding(db, { organizationId: "org-1", nodeId: removable.id, protocol: "hdc", includeDisabled: true })).resolves.toBeNull();
+    await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: removable.id })])
+    );
+
+    await seedCoreGraph(db, {
+      organization: { id: "org-1" },
+      users: [{ id: "user-1" }]
+    });
+    await db.query(
+      `insert into debugging_devices (id, organization_id, name, transport, status, firmware)
+       values ('device-history', 'org-1', 'History device', 'simulator', 'online', 'test')`
+    );
+    await db.query(
+      `insert into debugging_targets (id, organization_id, device_id, target_ref, label, status)
+       values ('target-history', 'org-1', 'device-history', 'simulator://history', 'History target', 'detected')`
+    );
+    await db.query(
+      `insert into debugging_sessions (id, organization_id, device_id, target_id, actor_user_id, status)
+       values ('session-history', 'org-1', 'device-history', 'target-history', 'user-1', 'active')`
+    );
+    const protectedNode = await createDebugNode(db, { organizationId: "org-1", name: "Protected node" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: protectedNode.id,
+      protocol: "adb",
+      nodePath: "/sys/protected",
+      accessMode: "RO",
+      enabled: true
+    });
+    await db.query(
+      `insert into node_operations (
+         id, organization_id, session_id, node_id, node_path, operation_type, status, actor_user_id
+       ) values ('operation-history', 'org-2', 'session-history', $1, '/sys/protected', 'read', 'succeeded', 'user-1')`,
+      [protectedNode.id]
+    );
+
+    await expect(deleteDebugNode(db, { organizationId: "org-1", nodeId: protectedNode.id })).resolves.toEqual({
+      status: "protected",
+      operationCount: 1
+    });
+    await expect(listDebugNodes(db, { organizationId: "org-1", includeArchived: true })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: protectedNode.id })])
+    );
+    await expect(
+      getDebugNodeBinding(db, { organizationId: "org-1", nodeId: protectedNode.id, protocol: "adb", includeDisabled: true })
+    ).resolves.toEqual(expect.objectContaining({ nodeId: protectedNode.id }));
   });
 
   it("upserts and archives debug node bindings scoped to the logical node", async () => {

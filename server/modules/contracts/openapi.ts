@@ -151,11 +151,14 @@ export function buildOpenApiDocument(): OpenApiDocument {
           }
         : {}),
       responses: {
-        [schema.successStatus ?? 200]: {
-          description:
-            schema.successStatus === 410 ? "Gone — retired endpoint." : "Successful response.",
-          content: responseContent(schema)
-        },
+        [schema.successStatus ?? 200]:
+          schema.successStatus === 204
+            ? { description: "Successful response." }
+            : {
+                description:
+                  schema.successStatus === 410 ? "Gone — retired endpoint." : "Successful response.",
+                content: responseContent(schema)
+              },
         ...(schema.additionalSuccessResponses
           ? Object.fromEntries(
               Object.entries(schema.additionalSuccessResponses).map(([status, schemaName]) => [

@@ -86,6 +86,7 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 | `GET` | `/api/v1/debugging/admin/nodes` | List logical debug nodes, including disabled or archived rows when `includeArchived=true`. Optional `moduleId` + `includeDescendants` subtree filter. |
 | `POST` | `/api/v1/debugging/admin/nodes` | Create a logical debug node and optional initial bindings. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | Update logical node metadata. |
+| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | Permanently delete an enabled or disabled node only when no `node_operations` row references it. Success is `204` and cascades its HDC/ADB bindings; historical references return `409` with `reason=node-history-protection` and `operationCount`. |
 | `PUT` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert the HDC or ADB binding for a logical node. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Update the HDC or ADB binding for a logical node. |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | Disable one protocol binding without affecting the logical node or other protocols. |

@@ -91,7 +91,7 @@ describe("acceptance operation matrix", () => {
     expect(markdown).toContain("# User Operation Coverage Matrix");
     expect(markdown).toContain("> Chinese: [Chinese](../zh-CN/developer/user-operation-coverage-matrix.md)");
     expect(markdown).toContain("`PARAM-DRAFT-EDIT-001`");
-    expect(markdown).toContain("| Operation ID | Priority | Area | Coverage | Route | Roles | Assertions | Specs |");
+    expect(markdown).toContain("| Operation ID | Priority | Area | Coverage | Route | Roles | Action | Assertions | Specs |");
   });
 
   it("marks the M5.8 deterministic browser gaps as automated operations", () => {

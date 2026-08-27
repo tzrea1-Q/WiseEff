@@ -829,6 +829,13 @@ export const routeManifest = [
     module: "debugging",
     stability: "mvp"
   },
+  {
+    id: "debugging.admin.deleteNode",
+    method: "DELETE",
+    path: "/api/v1/debugging/admin/nodes/:nodeId",
+    module: "debugging",
+    stability: "mvp"
+  },
   { id: "debugging.admin.listModules", method: "GET", path: "/api/v1/debugging/admin/modules", module: "debugging", stability: "mvp" },
   { id: "debugging.admin.createModule", method: "POST", path: "/api/v1/debugging/admin/modules", module: "debugging", stability: "mvp" },
   {

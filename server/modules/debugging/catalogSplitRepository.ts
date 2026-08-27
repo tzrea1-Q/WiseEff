@@ -434,6 +434,84 @@ export async function updateDebugNode(
   return result.rows[0] ? toDebugNodeRecord(result.rows[0]) : null;
 }
 
+export type DeleteDebugNodeResult =
+  | { status: "deleted"; bindingCount: number }
+  | { status: "protected"; operationCount: number };
+
+export async function countDebugNodeOperations(
+  db: Queryable,
+  input: { nodeId: string }
+) {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from node_operations
+    where node_id = $1
+    `,
+    [input.nodeId]
+  );
+
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * Permanently removes an org-scoped logical node only when its operation
+ * history is empty. Node IDs are primary keys, so the history guard counts
+ * every node_operations reference after the organization-scoped node lock;
+ * the row lock and restrictive node_operations FK work
+ * together: the count is the normal guard, while the FK remains the final
+ * race guard if a runtime operation is linked concurrently.
+ */
+export async function deleteDebugNode(
+  db: Queryable,
+  input: { organizationId: string; nodeId: string }
+): Promise<DeleteDebugNodeResult | null> {
+  const locked = await db.query<{ id: string }>(
+    `
+    select id
+    from debug_nodes
+    where organization_id = $1
+      and id = $2
+    for update
+    `,
+    [input.organizationId, input.nodeId]
+  );
+  if (!locked.rows[0]) {
+    return null;
+  }
+
+  const operationCount = await countDebugNodeOperations(db, { nodeId: input.nodeId });
+  if (operationCount > 0) {
+    return { status: "protected", operationCount };
+  }
+
+  const bindingCountResult = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from debug_node_bindings
+    where organization_id = $1
+      and node_id = $2
+    `,
+    [input.organizationId, input.nodeId]
+  );
+  const bindingCount = Number(bindingCountResult.rows[0]?.count ?? 0);
+
+  const deleted = await db.query<{ id: string }>(
+    `
+    delete from debug_nodes
+    where organization_id = $1
+      and id = $2
+    returning id
+    `,
+    [input.organizationId, input.nodeId]
+  );
+  if (!deleted.rows[0]) {
+    return null;
+  }
+
+  return { status: "deleted", bindingCount };
+}
+
 export async function listDebugNodeBindings(
   db: Queryable,
   input: { organizationId: string; nodeId: string }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
 import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
+import { DeleteDebugNodeDialog } from "@/components/admin/DeleteDebugNodeDialog";
 import { DebugModuleManagementDialog } from "@/components/admin/DebugModuleManagementDialog";
 import { DebugNodeBindingsDialog } from "@/components/admin/DebugNodeBindingsDialog";
 import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/DebugNodeEditorDialog";
@@ -24,6 +25,7 @@ import {
   DEBUG_CATALOG_FORMAT_V1,
   type DebugCatalogDocument
 } from "@/infrastructure/http/debuggingAdminClient";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 
@@ -169,6 +171,7 @@ export function DebuggingAdminPage({
   const [adminNodes, setAdminNodes] = useState<DebugNodeRegistryEntry[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [saveFlash, setSaveFlash] = useState(false);
   const [nodeSearch, setNodeSearch] = useState<DebugNodeLibrarySearch>({
@@ -179,26 +182,29 @@ export function DebuggingAdminPage({
   });
 
   const [mockDisabledNodeIds, setMockDisabledNodeIds] = useState<Set<string>>(() => new Set());
+  const [mockDeletedNodeIds, setMockDeletedNodeIds] = useState<Set<string>>(() => new Set());
   const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
   const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
   const [bindingsNodeId, setBindingsNodeId] = useState<string | null>(null);
   const [bindingsDraft, setBindingsDraft] = useState<DebugNodeProtocolBinding[]>([]);
   const [disableNodeId, setDisableNodeId] = useState<string | null>(null);
+  const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const editorNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
   const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteInFlightRef = useRef(false);
 
   const isApiMode = runtimeMode === "api";
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
   const library = useMemo(() => {
-    const nodes = isApiMode ? adminNodes : mockNodesFromParameters(state.configDraft.debugParameters);
     if (isApiMode) {
-      return nodes;
+      return adminNodes;
     }
+    const nodes = mockNodesFromParameters(state.configDraft.debugParameters).filter((node) => !mockDeletedNodeIds.has(node.id));
     return nodes.map((node) => (mockDisabledNodeIds.has(node.id) ? { ...node, enabled: false } : node));
-  }, [adminNodes, isApiMode, mockDisabledNodeIds, state.configDraft.debugParameters]);
+  }, [adminNodes, isApiMode, mockDeletedNodeIds, mockDisabledNodeIds, state.configDraft.debugParameters]);
 
   const moduleNodes = useMemo(() => {
     if (isApiMode && adminModuleNodes.length > 0) {
@@ -651,6 +657,60 @@ export function DebuggingAdminPage({
     flashSaved("已禁用");
   };
 
+  const deleteNode = async (node: DebugNodeRegistryEntry) => {
+    if (isApiMode) {
+      if (!debuggingAdminClient || !canEditAdminCatalog) return;
+      if (deleteInFlightRef.current) return;
+      deleteInFlightRef.current = true;
+      setAdminLoading(true);
+      setAdminError("");
+      setDeleteError("");
+      setSaveStatus("");
+      try {
+        await debuggingAdminClient.deleteNode(node.id);
+        setAdminNodes((nodes) => nodes.filter((item) => item.id !== node.id));
+        setDeleteNodeId(null);
+        flashSaved("节点已删除");
+      } catch (error) {
+        if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
+          try {
+            const [nodes, loadedModules] = await Promise.all([
+              debuggingAdminClient.listNodes({ includeArchived: true }),
+              debuggingAdminClient.listModules()
+            ]);
+            setAdminNodes(nodes);
+            setAdminModuleNodes(loadedModules);
+            setDeleteNodeId(null);
+            flashSaved("节点已不存在，列表已刷新");
+          } catch {
+            setDeleteError("节点已不存在，但列表刷新失败，请稍后重试。");
+          }
+          return;
+        }
+        const operationCount = error instanceof WiseEffApiError && typeof error.details.operationCount === "number"
+          ? error.details.operationCount
+          : null;
+        const message = operationCount !== null
+          ? `节点存在 ${operationCount} 条调试历史记录，无法永久删除，请改用禁用。`
+          : "永久删除调试节点失败，请稍后重试。";
+        setDeleteError(message);
+        if (operationCount === null) {
+          setAdminError(message);
+        }
+      } finally {
+        deleteInFlightRef.current = false;
+        setAdminLoading(false);
+      }
+      return;
+    }
+
+    setMockDeletedNodeIds((current) => new Set(current).add(node.id));
+    dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: node.id });
+    setDeleteNodeId(null);
+    setDeleteError("");
+    flashSaved("节点已删除");
+  };
+
   const nodeCount = library.length;
   const enabledCount = library.filter((node) => node.enabled).length;
   const onlineDevices = state.devices.filter((device) => device.status === "已连接").length;
@@ -671,6 +731,7 @@ export function DebuggingAdminPage({
   );
 
   const disableTarget = disableNodeId ? library.find((node) => node.id === disableNodeId) : null;
+  const deleteTarget = deleteNodeId ? library.find((node) => node.id === deleteNodeId) : null;
 
   return (
     <div className="debug-admin-shell param-admin-shell">
@@ -705,6 +766,11 @@ export function DebuggingAdminPage({
               }}
               onEditBindings={setBindingsNodeId}
               onDisable={setDisableNodeId}
+              onDelete={(nodeId) => {
+                setAdminError("");
+                setDeleteError("");
+                setDeleteNodeId(nodeId);
+              }}
               onCreate={() => {
                 setEditorMode("create");
                 setEditorNodeId(null);
@@ -770,6 +836,21 @@ export function DebuggingAdminPage({
               if (!disableTarget) return;
               void disableNode(disableTarget);
               setDisableNodeId(null);
+            }}
+          />
+
+          <DeleteDebugNodeDialog
+            open={Boolean(deleteTarget)}
+            nodeName={deleteTarget?.name ?? ""}
+            loading={adminLoading}
+            error={deleteError}
+            onCancel={() => {
+              setDeleteError("");
+              setDeleteNodeId(null);
+            }}
+            onConfirm={() => {
+              if (!deleteTarget) return;
+              void deleteNode(deleteTarget);
             }}
           />
 

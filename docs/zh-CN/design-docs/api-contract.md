@@ -109,6 +109,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | `GET` | `/api/v1/debugging/admin/nodes` | 查询逻辑调试节点；`includeArchived=true` 时包含 disabled 或 archived 行，可按 `moduleId` 子树筛选。 |
 | `POST` | `/api/v1/debugging/admin/nodes` | 创建逻辑调试节点和可选 HDC/ADB bindings。 |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | 更新逻辑节点 metadata。 |
+| `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | 永久删除启用或禁用的节点；仅当没有 `node_operations` 引用时允许。成功返回 `204` 并级联删除 HDC/ADB binding；存在历史引用时返回带 `reason=node-history-protection` 和 `operationCount` 的 `409`。 |
 | `PUT` / `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert 或更新 HDC/ADB 节点 binding。 |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | 禁用单个 protocol binding，不影响节点及另一协议。 |
 | `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织调试节点目录（模块、节点、bindings）为 `wiseeff.debug-node-catalog.v1`。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计，不包含原始 node path。 |

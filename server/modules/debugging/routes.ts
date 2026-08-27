@@ -189,6 +189,15 @@ export function registerDebuggingRoutes(
     return { status: 200, body: { item } };
   });
 
+  router.delete("/api/v1/debugging/admin/nodes/:nodeId", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminNodeParamsSchema, request.params);
+    await service.deleteAdminDebugNode(auth, params.nodeId, { requestId: request.requestId });
+
+    return { status: 204, body: null };
+  });
+
   router.get("/api/v1/debugging/admin/modules", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);

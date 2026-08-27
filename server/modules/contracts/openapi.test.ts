@@ -223,6 +223,13 @@ describe("M5 OpenAPI contract", () => {
           stability: "mvp"
         }),
         expect.objectContaining({
+          id: "debugging.admin.deleteNode",
+          method: "DELETE",
+          path: "/api/v1/debugging/admin/nodes/:nodeId",
+          module: "debugging",
+          stability: "mvp"
+        }),
+        expect.objectContaining({
           id: "debugging.admin.upsertNodeBinding",
           method: "PUT",
           path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol",
@@ -272,8 +279,16 @@ describe("M5 OpenAPI contract", () => {
       requestBody: "DebugAdminNodeBindingRequest",
       responseBody: "DebugAdminNodeBindingResponse"
     });
+    expect(schemaRegistry["debugging.admin.deleteNode"]).toMatchObject({
+      responseBody: "DeleteResponse",
+      successStatus: 204,
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    });
 
     const document = buildOpenApiDocument();
+    expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}"]?.delete?.responses).toEqual(
+      expect.objectContaining({ "204": expect.anything(), "409": expect.anything() })
+    );
     expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}"]?.put?.parameters).toEqual([
       { name: "nodeId", in: "path", required: true, schema: { type: "string" } },
       { name: "protocol", in: "path", required: true, schema: { type: "string" } }

@@ -8210,6 +8210,43 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "delete": {
+        "operationId": "debugging.admin.deleteNode",
+        "summary": "Delete an unused debug node registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful response."
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v1/debugging/admin/modules": {
