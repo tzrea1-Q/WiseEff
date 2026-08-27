@@ -580,6 +580,120 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     expect(afterBindings.rows[0]?.c).toBe(beforeBindings.rows[0]?.c);
   });
 
+  it("enforces bidirectional trusted execution identity on governed rows", async () => {
+    const seeded = await seedLegacyGraph(db!);
+    await db!.query(
+      `insert into parameter_modules (
+         id, organization_id, name, path, depth, description, scope
+       ) values ($1, $2, 'mig-identity', 'mig-identity', 1, '', '')`,
+      ["module-mig-identity", ORG]
+    );
+    await db!.query(
+      `insert into project_parameter_bindings (
+         id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+       ) values ($1, $2, $3, $4, $5, $6)`,
+      [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig-identity"]
+    );
+    await db!.query(
+      `insert into project_parameter_binding_revisions (
+         id, binding_id, config_revision_id, parameter_spec_version_id,
+         typed_value, canonical_value, raw_value, schema_state
+       ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                 '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid')`,
+      ["bpr-mig-identity", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+    );
+    await db!.query(
+      `insert into parameter_review_decisions (
+         id, organization_id, request_id, reviewer_user_id,
+         decision, from_status, to_status, note
+       ) values ($1, $2, $3, $4, 'approve', 'pending_review', 'merged', 'identity checks')`,
+      ["decision-mig-identity", ORG, seeded.openCrId, USER]
+    );
+    await db!.query(
+      `insert into project_parameter_file_candidates (
+         id, organization_id, project_id, file_id, file_name, format, status,
+         created_by_user_id
+       ) values ($1, $2, $3, $4, 'mig-base.dts', 'dts', 'ready', $5)`,
+      ["candidate-mig-identity", ORG, PROJECT, "file-mig-14", USER]
+    );
+
+    const userRows = [
+      { table: "parameter_drafts", userColumn: "user_id", id: seeded.draftId },
+      { table: "parameter_review_decisions", userColumn: "reviewer_user_id", id: "decision-mig-identity" },
+      { table: "parameter_history_entries", userColumn: "changed_by_user_id", id: seeded.historyId },
+      { table: "project_parameter_values", userColumn: "updated_by_user_id", id: PPV_ID },
+      { table: "project_parameter_file_versions", userColumn: "created_by_user_id", id: "fv-mig-14" },
+      { table: "project_parameter_file_candidates", userColumn: "created_by_user_id", id: "candidate-mig-identity" },
+      { table: "dts_config_revisions", userColumn: "created_by_user_id", id: seeded.configRevisionId }
+    ] as const;
+
+    for (const row of userRows) {
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'agent', ${row.userColumn} = null
+             where id = $1`,
+            [row.id]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'user', initiator_system_kind = 'job',
+                 initiator_system_name = 'forbidden-system-field'
+             where id = $1`,
+            [row.id]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'system', ${row.userColumn} = $2,
+                 initiator_system_kind = 'job', initiator_system_name = 'system-must-be-user-null'
+             where id = $1`,
+            [row.id, USER]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+    }
+
+    const binding = await db!.query<{ id: string }>(
+      `select id from project_parameter_binding_revisions
+       where config_revision_id = $1 limit 1`,
+      [seeded.configRevisionId]
+    );
+    expect(binding.rows[0]?.id).toBeTruthy();
+    await expect(
+      db!.transaction(async (tx) => {
+        await tx.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'agent', initiator_system_kind = 'job',
+               initiator_system_name = 'agent-cannot-carry-system-fields'
+           where id = $1`,
+          [binding.rows[0]!.id]
+        );
+      })
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      db!.transaction(async (tx) => {
+        await tx.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'system', initiator_system_kind = null,
+               initiator_system_name = null
+           where id = $1`,
+          [binding.rows[0]!.id]
+        );
+      })
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("checker surfaces SQL failures instead of swallowing them as zero", async () => {
     const brokenDb = {
       query: async (text: string) => {

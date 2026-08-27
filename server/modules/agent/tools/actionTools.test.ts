@@ -261,7 +261,15 @@ describe("action.submitParameterChange", () => {
 
     expect(mockedDeleteDraft).toHaveBeenCalledWith(db, {
       organizationId: "org1",
-      userId: "u1",
+      owner: {
+        userId: "u1",
+        initiatorType: "agent",
+        systemKind: null,
+        systemName: null,
+        sessionId: "s1",
+        toolCallId: "tool-call-1",
+        approvalId: "approval-1"
+      },
       draftId: "draft-1"
     });
   });

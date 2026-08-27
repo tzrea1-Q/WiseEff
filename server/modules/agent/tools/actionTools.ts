@@ -4,6 +4,7 @@ import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../
 import {
   assertTrustedInvocationContext,
   TrustedInvocationContextError,
+  trustedDomainAttribution,
   type AgentInvocationContext
 } from "../../auth/trustedInvocation";
 import { createAgentKnowledgeDraft } from "../../knowledge/service";
@@ -277,7 +278,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           try {
             await deleteDraft(db, {
               organizationId: context.auth.organization.id,
-              userId: invocation.principal.user.id,
+              owner: trustedDomainAttribution(invocation),
               draftId: draft.draftId
             });
           } catch {

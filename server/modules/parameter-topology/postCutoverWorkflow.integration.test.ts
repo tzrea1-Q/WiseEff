@@ -3425,6 +3425,48 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           }
         ]);
 
+        // A non-target binding is copied into every candidate revision.  Keep
+        // one explicit row so the test observes the carry-forward provenance,
+        // not only the binding edited by the enablement draft.
+        const baseBinding = await db.query<{
+          module_id: string;
+          parameter_spec_version_id: string;
+        }>(
+          `select b.module_id, br.parameter_spec_version_id
+           from project_parameter_bindings b
+           inner join project_parameter_binding_revisions br
+             on br.binding_id = b.id and br.config_revision_id = $2
+           where b.id = $1`,
+          [expectedBindingId(seeded.specId, expectedLogicalNodeId()), seeded.configRevisionId]
+        );
+        expect(baseBinding.rows[0]).toBeTruthy();
+        const carriedBindingId = "binding-pcw-carried-forward";
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, null, $4, $5)`,
+          [
+            carriedBindingId,
+            ORG,
+            PROJECT,
+            seeded.specId,
+            baseBinding.rows[0]!.module_id
+          ]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"7"}'::jsonb,
+                     '{"kind":"integer","value":"7"}'::jsonb, '<7>', 'valid')`,
+          [
+            "bpr-pcw-carried-forward-base",
+            carriedBindingId,
+            seeded.configRevisionId,
+            baseBinding.rows[0]!.parameter_spec_version_id
+          ]
+        );
+
         const systemDraft = await withRefusalSink(connectionString, (refusalSink) =>
           createNodeEnablementDraft(
             db,
@@ -3444,6 +3486,24 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
           )
         );
+
+        const carriedForward = await db.query<{
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select initiator_type, initiator_system_kind, initiator_system_name
+           from project_parameter_binding_revisions
+           where binding_id = $1 and config_revision_id = $2`,
+          [carriedBindingId, systemDraft.candidateRevisionId]
+        );
+        expect(carriedForward.rows).toEqual([
+          {
+            initiator_type: "system",
+            initiator_system_kind: "job",
+            initiator_system_name: "draft-owner-job"
+          }
+        ]);
 
         const submitted = await withRefusalSink(connectionString, (refusalSink) =>
           submitParameterChanges(

@@ -17,6 +17,7 @@ import {
 import type { AuthContext } from "../auth/types";
 import {
   trustedDomainAttribution,
+  type TrustedInvocationDomainAttribution,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -293,6 +294,7 @@ async function carryForwardBindingRevisions(
     baseRevisionId: string;
     candidateRevisionId: string;
     excludeBindingId?: string;
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<void> {
   const rows = await db.query<{
@@ -335,8 +337,10 @@ async function carryForwardBindingRevisions(
       `
       insert into project_parameter_binding_revisions (
         id, binding_id, config_revision_id, parameter_spec_version_id,
-        typed_value, canonical_value, raw_value, schema_state, policy_state
-      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+        typed_value, canonical_value, raw_value, schema_state, policy_state,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
+      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       `,
       [
         randomUUID(),
@@ -350,6 +354,12 @@ async function carryForwardBindingRevisions(
         row.raw_value,
         row.schema_state,
         row.policy_state,
+        input.attribution?.initiatorType ?? "user",
+        input.attribution?.systemKind ?? null,
+        input.attribution?.systemName ?? null,
+        input.attribution?.sessionId ?? null,
+        input.attribution?.toolCallId ?? null,
+        input.attribution?.approvalId ?? null,
       ],
     );
   }
@@ -675,6 +685,7 @@ export async function createBindingDraft(
   await carryForwardBindingRevisions(db, {
     baseRevisionId: revision.id,
     candidateRevisionId,
+    attribution,
     // Always exclude the edited binding — ingest match may attach a remapped
     // logical-node binding while this draft still keys the original binding id.
     excludeBindingId: binding.binding_id,
@@ -716,6 +727,7 @@ export async function createBindingDraft(
         schemaState: "valid",
         policyState: "not_applicable",
       },
+      attribution,
     });
   }
 
@@ -1267,6 +1279,7 @@ async function createNodeEnablementDraftInTransaction(
   await carryForwardBindingRevisions(db, {
     baseRevisionId: revision.id,
     candidateRevisionId,
+    attribution,
   });
 
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
