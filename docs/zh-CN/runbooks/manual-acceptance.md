@@ -23,6 +23,17 @@
 
 ## 补充验收流程
 
+### 小泽悬浮窗交互
+
+在 API mode 的普通业务路由打开小泽，并记录三档视口证据：
+
+- 在 `1440x900` 与 `768x1024` 下，从小泽中部品牌区拖动、从右下角手柄缩放；确认窗口始终保留 `16px` 视口安全边距，刷新后恢复已提交布局。
+- 桌面或平板悬浮窗打开时，操作页面控件并通过侧栏执行 SPA 跳转；确认页面仍可操作，小泽保持打开且布局不变。
+- 聚焦拖动手柄，验证方向键移动、Shift+方向键加速和 Home 复位；可见复位按钮应恢复同一默认布局。
+- 小泽打开时再打开业务弹窗；确认业务弹窗位于小泽上方。若可触发 Agent 审批，审批层还应高于两者，且不得关闭对话。
+- 在 `390x844` 下确认小泽为全屏模态，背景不可操作，拖拽/缩放不可用，且不覆盖已保存的桌面布局。
+- 保存截图并记录控制台错误；环境依赖导致的 API 或设备错误必须与悬浮窗交互缺陷分开报告。
+
 ### 视觉 fixture 安全边界
 
 Populated review 视觉 fixture 只能写入本次验收独占且可丢弃的数据库。运行 `npm run seed:quality:visual-review` 或 `npm run cleanup:quality:visual-review` 前，必须同时设置 `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true`，并把 `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME` 设为 `current_database()` 的精确结果。数据库名不一致或固定 ID 已归属其他数据时，命令会在写入前 fail-closed。共享库、客户库、staging 或 target synthetic 数据库一律不得设置这两个变量。

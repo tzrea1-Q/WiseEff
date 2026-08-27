@@ -138,4 +138,55 @@ test.describe("M5.11 responsive quality gate", () => {
     await expect(userDialog).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
+
+  for (const viewport of viewports) {
+    test(`Xiaoze popup uses the expected ${viewport.name} presentation`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/parameters?project=aurora");
+      await expectUsablePage(page);
+      const toggle = page.getByTestId("copilot-chat-toggle");
+      if ((await toggle.getAttribute("data-state")) !== "open") {
+        const hintDismiss = page.locator(".xiaoze-toggle-hint__dismiss");
+        if (await hintDismiss.isVisible().catch(() => false)) {
+          await hintDismiss.click();
+        }
+        await toggle.click();
+      }
+
+      const layer = page.getByTestId("xiaoze-popup-layer");
+      const popup = page.getByTestId("copilot-popup");
+      await expect(popup).toBeVisible();
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => {
+          const iterations = animation.effect?.getComputedTiming().iterations;
+          return iterations === Infinity || animation.playState === "finished" || animation.playState === "idle";
+        })
+      );
+      const box = await popup.boundingBox();
+      if (!box) {
+        throw new Error("Xiaoze popup has no responsive bounding box.");
+      }
+
+      if (viewport.name === "mobile") {
+        await expect(layer).toHaveAttribute("data-presentation", "modal");
+        await expect(popup).toHaveAttribute("aria-modal", "true");
+        expect(box.x).toBeCloseTo(0, 3);
+        expect(box.y).toBeCloseTo(0, 3);
+        expect(box.width).toBeCloseTo(viewport.width, 3);
+        expect(box.height).toBeCloseTo(viewport.height, 3);
+        await expect(page.getByRole("button", { name: "拖动小泽窗口" })).toHaveCount(0);
+        await expect(page.locator("[data-xiaoze-mobile-brand]")).toContainText("小泽");
+        await expect(page.getByRole("button", { name: "调整小泽窗口大小" })).toBeHidden();
+      } else {
+        await expect(layer).toHaveAttribute("data-presentation", "modeless");
+        await expect(popup).not.toHaveAttribute("aria-modal");
+        expect(box.x).toBeGreaterThanOrEqual(16);
+        expect(box.y).toBeGreaterThanOrEqual(16);
+        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 16);
+        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 16);
+        await expect(page.getByRole("button", { name: "拖动小泽窗口" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "调整小泽窗口大小" })).toBeVisible();
+      }
+    });
+  }
 });

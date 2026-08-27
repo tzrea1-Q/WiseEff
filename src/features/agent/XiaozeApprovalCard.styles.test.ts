@@ -13,15 +13,18 @@ function stylesheet(): string {
 }
 
 describe("Xiaoze approval card stacking", () => {
-  it("declares the approval layer above the chat popup and below the toast", () => {
+  it("declares business modals above the modeless popup and approval above both", () => {
     const styles = stylesheet();
     const value = (name: string) => Number(declarationFor(styles, ":root", name));
 
     const popup = value("--z-xiaoze-popup");
+    const modal = value("--z-modal-backdrop");
     const approval = value("--z-xiaoze-approval");
     const toast = value("--z-toast");
 
     expect(Number.isNaN(approval)).toBe(false);
+    expect(modal).toBeGreaterThan(popup);
+    expect(approval).toBeGreaterThan(modal);
     expect(approval).toBeGreaterThan(popup);
     expect(toast).toBeGreaterThan(approval);
   });

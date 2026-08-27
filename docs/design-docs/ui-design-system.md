@@ -147,7 +147,7 @@ Rules: no `ease` keyword; no UI transition above 400ms; entrances animate opacit
 
 ### Z-Index
 
-One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The ladder extends the existing overlay scale (`--z-xiaoze-fab: 1100`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-toast: 1180`, `--z-xiaoze-popup: 1200`) downward with app-layer tokens (sticky header, sidebar, dropdown/popover). "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
+One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The overlay scale is `--z-xiaoze-fab: 1100`, `--z-xiaoze-popup: 1140`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-xiaoze-approval: 1250`, and `--z-toast: 1350`, with app-layer tokens below it (sticky header, sidebar, dropdown/popover). The modeless Xiaoze popup deliberately sits below business dialogs; its approval surface and toasts deliberately sit above them. "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
 
 ## Interaction States
 

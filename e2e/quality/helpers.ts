@@ -90,15 +90,28 @@ export async function closeXiaozePopupIfOpen(page: Page) {
     return;
   }
 
-  await page.keyboard.press("Escape");
+  // The initial-open policy can concurrently detach this control while setup
+  // is closing the popup. Dispatch on whichever owned close control currently
+  // exists instead of letting locator actionability retries consume the test
+  // timeout; a concurrent policy close is also a successful outcome.
+  const deadline = Date.now() + 10_000;
+  while ((await popup.isVisible().catch(() => false)) && Date.now() < deadline) {
+    await page.evaluate(() => {
+      const layer = document.querySelector('[data-testid="xiaoze-popup-layer"]');
+      const button = layer?.querySelector('[data-testid="copilot-close-button"]');
+      if (button instanceof HTMLElement) {
+        button.click();
+      }
+    });
+    await page.waitForTimeout(100);
+  }
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
 /**
- * Wait until the Xiaoze popup layer settles hidden. CopilotKit mounts the
- * popup DOM briefly visible before XiaozePopupOpenPolicy closes it on first
- * commit; an axe scan launched right after `main` becomes visible can race
- * that transient and report the (visually closed) chat panel. Require the
+ * Wait until the Xiaoze popup layer settles hidden. CopilotKit can keep its
+ * popup DOM mounted while open state is being restored; an axe scan launched
+ * right after `main` becomes visible can race that transition. Require the
  * layer to stay hidden for a short dwell so scans always see the steady state.
  */
 export async function settleXiaozePopupClosed(page: Page, dwellMs = 600, timeoutMs = 15_000) {
@@ -133,6 +146,7 @@ export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 2
 
   const dismiss = hint.getByRole("button", { name: "不再提示" });
   if (await dismiss.isVisible().catch(() => false)) {
+    await settleAppToasts(page);
     await dismiss.click();
   }
   await expect(hint).toBeHidden();

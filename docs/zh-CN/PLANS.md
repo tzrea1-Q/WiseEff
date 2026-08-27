@@ -55,6 +55,10 @@
 - **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+### 最近完成
+
+- `exec-plans/completed/2026-08-27-xiaoze-draggable-modeless-popup.md`：已完成桌面/平板小泽可拖动、可缩放非模态陪伴浮窗，包含浏览器本地布局持久化、键盘拖动/缩放/复位、跨路由连续性、业务 modal 层级、手机焦点陷阱全屏保留及本地 API-mode 验收/质量证据。
+
 ## 同类中文文档
 
 - [docs/zh-CN/root/AGENTS.md](root/AGENTS.md)

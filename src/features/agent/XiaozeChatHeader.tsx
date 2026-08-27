@@ -1,9 +1,10 @@
-import { cloneElement, isValidElement, type MouseEvent, type ReactNode } from "react";
-import { History, MessageSquarePlus } from "lucide-react";
+import { cloneElement, isValidElement, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { GripHorizontal, History, MessageSquarePlus, RotateCcw } from "lucide-react";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { clearXiaozePromptDebugStore } from "./XiaozePromptDebugContext";
 import { useXiaozeThreads } from "./XiaozeThreadContext";
 import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
+import { isXiaozePopupDesktop } from "./xiaozePopupLayout";
 import { XiaozeThreadHistoryPanel } from "./XiaozeThreadHistoryPanel";
 
 type XiaozeChatHeaderProps = {
@@ -13,12 +14,25 @@ type XiaozeChatHeaderProps = {
 };
 
 export function XiaozeChatHeader({ closeButton }: XiaozeChatHeaderProps) {
-  const resolvedCloseButton = isValidElement<{ onClick?: (event: MouseEvent<HTMLButtonElement>) => void }>(closeButton)
+  const [isDesktop, setIsDesktop] = useState(() => isXiaozePopupDesktop());
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(isXiaozePopupDesktop());
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const resolvedCloseButton = isValidElement<{
+    "aria-label"?: string;
+    onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+    title?: string;
+  }>(closeButton)
     ? cloneElement(closeButton, {
+        "aria-label": "关闭小泽",
         onClick: (event: MouseEvent<HTMLButtonElement>) => {
           writeXiaozePopupOpenSession(false);
           closeButton.props.onClick?.(event);
-        }
+        },
+        title: "关闭小泽"
       })
     : closeButton;
   const { agent } = useAgent({ agentId: "default" });
@@ -69,10 +83,42 @@ export function XiaozeChatHeader({ closeButton }: XiaozeChatHeaderProps) {
             <span>新对话</span>
           </button>
         </div>
-        <div className="xiaoze-chat-header__brand">
-          <strong className="xiaoze-chat-header__title">小泽</strong>
+        {isDesktop ? (
+          <>
+            <button
+              type="button"
+              className="xiaoze-chat-header__brand xiaoze-chat-header__drag-handle"
+              data-xiaoze-drag-handle=""
+              aria-label="拖动小泽窗口"
+              aria-describedby="xiaoze-drag-handle-instructions"
+              title="拖动小泽窗口；方向键微调，Shift 加速，Home 复位"
+            >
+              <GripHorizontal aria-hidden="true" size={15} />
+              <strong className="xiaoze-chat-header__title">小泽</strong>
+            </button>
+            <span id="xiaoze-drag-handle-instructions" className="sr-only">
+              使用鼠标或触屏拖动；方向键每次移动 8 像素，按住 Shift 每次移动 32 像素，Home 恢复默认位置。
+            </span>
+          </>
+        ) : (
+          <div className="xiaoze-chat-header__brand xiaoze-chat-header__mobile-brand" data-xiaoze-mobile-brand="">
+            <strong className="xiaoze-chat-header__title">小泽</strong>
+          </div>
+        )}
+        <div className="xiaoze-chat-header__actions xiaoze-chat-header__actions--end">
+          <button
+            type="button"
+            className="xiaoze-chat-header__button xiaoze-chat-header__reset"
+            data-xiaoze-layout-reset=""
+            aria-label="恢复小泽默认位置和大小"
+            title="恢复默认位置和大小"
+            hidden
+          >
+            <RotateCcw aria-hidden="true" size={15} />
+            <span className="sr-only">恢复默认位置和大小</span>
+          </button>
+          {resolvedCloseButton}
         </div>
-        <div className="xiaoze-chat-header__actions xiaoze-chat-header__actions--end">{resolvedCloseButton}</div>
       </header>
       <div className={`xiaoze-thread-history-shell${historyOpen ? " is-open" : ""}`} aria-hidden={!historyOpen}>
         <XiaozeThreadHistoryPanel

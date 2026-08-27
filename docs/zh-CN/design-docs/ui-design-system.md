@@ -147,7 +147,7 @@
 
 ### z-index
 
-`:root` 中只声明一条阶梯;组件 CSS 或 TSX 里的裸数字一律禁止。阶梯向下扩展现有浮层刻度（`--z-xiaoze-fab: 1100`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-toast: 1180`、`--z-xiaoze-popup: 1200`）,补充应用层令牌（吸顶头、侧边栏、下拉/浮层）。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
+`:root` 中只声明一条阶梯；组件 CSS 或 TSX 里的裸数字一律禁止。浮层刻度为 `--z-xiaoze-fab: 1100`、`--z-xiaoze-popup: 1140`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-xiaoze-approval: 1250`、`--z-toast: 1350`，吸顶头、侧边栏、下拉/浮层等应用层令牌位于其下。无模态小泽窗口刻意低于业务弹窗，小泽审批层和 toast 刻意高于业务弹窗。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
 
 ## 交互状态
 

@@ -16,7 +16,6 @@ import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozeChatHeader } from "./XiaozeChatHeader";
 import { XiaozeChatScrollView } from "./XiaozeChatScrollView";
 import { XiaozeCopilotPopup } from "./XiaozeCopilotPopup";
-import { readStoredXiaozePopupSize } from "./xiaozePopupLayout";
 import { XiaozeOpenHandoffListener } from "./XiaozeOpenHandoffListener";
 import { XiaozePopupOpenPolicy } from "./XiaozePopupOpenPolicy";
 import { XiaozeMessageView } from "./XiaozeMessageView";
@@ -67,7 +66,6 @@ function XiaozeRuntimeTools() {
 
 function XiaozeCopilotPopupHost() {
   const { activeThreadId } = useXiaozeThreads();
-  const popupSize = useMemo(() => readStoredXiaozePopupSize(), []);
   return (
     <CopilotChatConfigurationProvider threadId={activeThreadId} hasExplicitThreadId isModalDefaultOpen={false}>
       <XiaozePopupOpenPolicy />
@@ -76,8 +74,6 @@ function XiaozeCopilotPopupHost() {
         agentId="default"
         throttleMs={16}
         defaultOpen={false}
-        width={popupSize.width}
-        height={popupSize.height}
         header={XIAOZE_POPUP_HEADER}
         labels={XIAOZE_POPUP_LABELS}
         messageView={XiaozeMessageView as typeof CopilotChatMessageView}

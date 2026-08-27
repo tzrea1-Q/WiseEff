@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozePopupOpenPolicy } from "./XiaozePopupOpenPolicy";
 
 const setModalOpen = vi.fn();
-let pagePath = "/parameters";
 
 vi.mock("@copilotkit/react-core/v2", () => ({
   useCopilotChatConfiguration: () => ({
@@ -12,30 +11,25 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   })
 }));
 
-vi.mock("./xiaozePageContext", () => ({
-  useXiaozePageContextValue: () => ({ path: pagePath, pageKey: "parameters" })
-}));
-
 describe("XiaozePopupOpenPolicy", () => {
   beforeEach(() => {
     sessionStorage.clear();
-    pagePath = "/parameters";
     setModalOpen.mockReset();
   });
 
   it("closes the outer modal scope on first mount", () => {
     render(<XiaozePopupOpenPolicy />);
 
+    expect(setModalOpen).toHaveBeenCalledTimes(1);
     expect(setModalOpen).toHaveBeenCalledWith(false);
   });
 
-  it("closes the outer modal scope when the page path changes", () => {
+  it("does not close the popup again when its provider rerenders", () => {
     const { rerender } = render(<XiaozePopupOpenPolicy />);
     setModalOpen.mockClear();
-    pagePath = "/debugging";
 
     rerender(<XiaozePopupOpenPolicy />);
 
-    expect(setModalOpen).toHaveBeenCalledWith(false);
+    expect(setModalOpen).not.toHaveBeenCalled();
   });
 });

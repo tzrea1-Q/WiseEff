@@ -2,7 +2,7 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 1013,
+      "count": 1009,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 31,
@@ -10,18 +10,18 @@
         "src/features/parameter-home/parameter-home.css": 1,
         "src/features/parameter-review/parameter-review.css": 33,
         "src/linear-template/linear-template.css": 35,
-        "src/styles.css": 864
+        "src/styles.css": 860
       }
     },
     "raw-z-index": {
-      "count": 48,
+      "count": 45,
       "note": "73 CSS declarations plus ColumnFilter.tsx zIndex literals (FA-06); migrate to the var(--z-*) ladder.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 7,
         "src/features/log-analysis/log-analysis.css": 2,
         "src/features/parameter-review/parameter-review.css": 3,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 35
+        "src/styles.css": 32
       }
     },
     "raw-font-size": {
@@ -49,7 +49,7 @@
       }
     },
     "raw-spacing": {
-      "count": 1244,
+      "count": 1239,
       "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 73,
@@ -58,11 +58,11 @@
         "src/features/parameter-home/parameter-home.css": 68,
         "src/features/parameter-review/parameter-review.css": 48,
         "src/linear-template/linear-template.css": 25,
-        "src/styles.css": 962
+        "src/styles.css": 957
       }
     },
     "raw-radius": {
-      "count": 147,
+      "count": 146,
       "note": "Off-grid radius stock after wave 3 exact --radius-* burn; ratchet down as non-token radii are migrated.",
       "files": {
         "src/components/project-configuration-workbench/configuration-workbench.css": 2,
@@ -70,7 +70,7 @@
         "src/features/parameter-home/parameter-home.css": 9,
         "src/features/parameter-review/parameter-review.css": 6,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 121
+        "src/styles.css": 120
       }
     },
     "ease-keyword": {

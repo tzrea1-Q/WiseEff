@@ -94,8 +94,10 @@ test.describe("M5.11 accessibility quality gate", () => {
 
   test("scans key modal, drawer, and Xiaoze interaction states", async ({ page }, testInfo) => {
     await openXiaozePopup(page);
+    const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
+    await expect(dragHandle).toBeVisible();
+    await expect(dragHandle).toBeEnabled();
     await scan(page, testInfo, "xiaoze-popup-open", [
-      "[data-testid='xiaoze-popup-layer']",
       "[data-testid='copilot-add-menu-button']",
       "[data-testid='copilot-chat-panel']",
       "[data-copilotkit]"

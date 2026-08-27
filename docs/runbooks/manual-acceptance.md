@@ -69,6 +69,17 @@ This review does not replace:
 - Customer data governance approval.
 - HDC hardware signoff when the device lab is not available. Local ADB evidence can supplement debugging coverage, but it does not replace HDC full-pilot signoff.
 
+### Xiaoze popup interaction
+
+For API-mode browser acceptance, open Xiaoze on a normal business route and record all three viewports:
+
+- At `1440x900` and `768x1024`, drag from the centered Xiaoze brand handle and resize from the lower-right handle. Confirm the popup remains inside a `16px` viewport inset and a reload restores the committed layout.
+- While the desktop/tablet popup is open, edit a page control and navigate through a SPA sidebar action. Confirm the page stays operable and Xiaoze remains open with its layout preserved.
+- Focus the drag handle and verify Arrow movement, Shift+Arrow accelerated movement, and Home reset. Confirm the visible reset control restores the same default.
+- Open a business dialog while Xiaoze is open. Confirm the dialog appears above Xiaoze; if an Agent approval is available, confirm the approval appears above both without dismissing the chat.
+- At `390x844`, confirm Xiaoze is full-screen modal, background interaction is blocked, drag/resize controls are unavailable, and the stored desktop layout is unchanged.
+- Capture screenshots and record console errors. Environment-only API/device failures must be reported separately from popup interaction defects.
+
 ## Pre-Flight Checklist
 
 Steps through runtime health checks can be automated for local non-HDC acceptance:
