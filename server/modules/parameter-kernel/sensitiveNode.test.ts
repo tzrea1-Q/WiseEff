@@ -305,6 +305,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       expect(text).toContain("v.id = $4");
       expect(text).not.toContain("f.current_version_id");
       expect(text).toContain("f.organization_id = $1");
+      expect(text).toContain("case when node.node_path = $6 then 0 else 1 end");
       expect(values).toEqual([
         "org-1",
         "project-1",

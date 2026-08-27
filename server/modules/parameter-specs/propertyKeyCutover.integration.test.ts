@@ -16,6 +16,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { ApiError } from "../../shared/http/errors";
+import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { activateCandidate } from "../parameter-files/candidateService";
 import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
 import { getProjectParameterFileById } from "../parameter-files/repository";
@@ -777,7 +778,7 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
              start_offset, end_offset, start_line, start_column, end_line, end_column,
              raw_text, ast_json, source_order
            ) values (
-             'no-pk-cutover-critical', $1, $2, 'critical', '[]'::jsonb, '/critical@7f',
+             'no-pk-cutover-critical', $1, $2, 'critical', '[]'::jsonb, '/soc/i2c@1/critical@7f',
              81, 140, 5, 1, 8, 2, 'node', '{}'::jsonb, 1
            )`,
           [CONFIG_REVISION_ID, FILE_VERSION_ID]
@@ -817,7 +818,7 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
            )`,
           [CONFIG_REVISION_ID, `${SPEC_ID}:v1`]
         );
-        const twoLocationSource = `${BOARD_DTS.slice(0, -3)}\tcritical@7f {\n\t\t${FROM_KEY} = <2>;\n\t};\n};\n`;
+        const twoLocationSource = `${BOARD_DTS.slice(0, -3)}\tsoc {\n\t\ti2c@1 {\n\t\t\tcritical@7f {\n\t\t\t\t${FROM_KEY} = <2>;\n\t\t\t};\n\t\t};\n\t};\n};\n`;
         const twoLocationStored = await objectStore.put({
           organizationId: ORG_ID,
           fileName: "board.dts",
@@ -839,7 +840,8 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
           `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
            values
              ('dts-node-pk-cutover-locked-safe', $1, 'charger', '/charger@6e', 'wiseeff,safe'),
-             ('dts-node-pk-cutover-locked-critical', $1, 'critical', '/critical@7f', 'wiseeff,locked-critical')`,
+             ('dts-node-pk-cutover-locked-parent', $1, 'i2c', '/soc/i2c@1', 'wiseeff,safe'),
+             ('dts-node-pk-cutover-locked-critical', $1, 'critical', '/soc/i2c@1/critical@7f', 'wiseeff,locked-critical')`,
           [FILE_VERSION_ID]
         );
         const safeHeadStored = await objectStore.put({
@@ -858,7 +860,7 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
         );
         await db.query(
           `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
-           values ('dts-node-pk-cutover-safe-head', 'fv-pk-cutover-safe-head', 'critical', '/critical@7f', 'wiseeff,safe')`
+           values ('dts-node-pk-cutover-safe-head', 'fv-pk-cutover-safe-head', 'critical', '/soc/i2c@1/critical@7f', 'wiseeff,safe')`
         );
         await db.query(
           `update project_parameter_files set current_version_id = 'fv-pk-cutover-safe-head' where id = $1`,
@@ -980,6 +982,54 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
             })
           })
         ]);
+        await db.query(
+          `update dts_nodes
+           set compatible = case
+             when node_path = '/soc/i2c@1' then 'wiseeff,locked-critical'
+             when node_path = '/soc/i2c@1/critical@7f' then 'wiseeff,safe'
+             else compatible
+           end
+           where file_version_id = $1`,
+          [FILE_VERSION_ID]
+        );
+        await expect(
+          assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+            organizationId: ORG_ID,
+            projectId: PROJECT_ID,
+            nodePath: "/soc/i2c@1/critical@7f",
+            sourceFileName: "board.dts",
+            sourceFileVersionId: FILE_VERSION_ID,
+            invocation: createSystemInvocation({ kind: "job", name: "nested-cutover-reverse" }),
+            requestId: "cutover-nested-reverse-system",
+            refusalSink
+          })
+        ).resolves.toBeUndefined();
+        expect(await db.query(
+          `select count(*)::text as count from audit_events where trace_id = 'cutover-nested-reverse-system'`
+        )).toMatchObject({ rows: [{ count: "0" }] });
+        expect(await db.query<Record<string, string>>(
+          `select
+             (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status,
+             (select count(*)::text from parameter_spec_property_key_cutover_items) as items,
+             (select count(*)::text from project_parameter_file_candidates) as candidates,
+             (select current_version_id from project_parameter_files where id = '${FILE_ID}') as current_version,
+             (select storage_key from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_storage_key,
+             (select checksum from project_parameter_file_versions where id = '${FILE_VERSION_ID}') as source_checksum,
+             (select count(*)::text from audit_events where kind = 'parameter-topology-governance'
+               and action = 'spec-property-key-cutover-prepared') as success_audits`,
+          [SPEC_ID]
+        )).toMatchObject({ rows: [before] });
+        expect(putSpy).not.toHaveBeenCalled();
+        await db.query(
+          `update dts_nodes
+           set compatible = case
+             when node_path = '/soc/i2c@1' then 'wiseeff,safe'
+             when node_path = '/soc/i2c@1/critical@7f' then 'wiseeff,locked-critical'
+             else compatible
+           end
+           where file_version_id = $1`,
+          [FILE_VERSION_ID]
+        );
         await db.query(
           `create or replace function fail_cutover_prepare_audit() returns trigger as $$
            begin

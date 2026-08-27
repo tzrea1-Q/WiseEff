@@ -32,6 +32,8 @@ export type BindingWriteLockContext = BindingWriteLockFields & {
   targetRef: string;
   /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
   sourceNodePath: string;
+  /** Compatible from the exact logical-node revision pinned by baseConfigRevisionId. */
+  compatible: string | null;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -44,6 +46,8 @@ export type EnablementWriteLockContext = EnablementWriteLockFields & {
   targetRef: string;
   /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
   sourceNodePath: string;
+  /** Compatible from the exact logical-node revision pinned by baseConfigRevisionId. */
+  compatible: string | null;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -58,7 +62,6 @@ type BindingContextRow = {
   parameter_spec_id: string;
   logical_node_id: string | null;
   property_key: string;
-  node_locator: string | null;
   constraints: unknown;
   schema_default: unknown;
   example_value: unknown;
@@ -113,13 +116,6 @@ export async function loadBindingContext(
       b.parameter_spec_id,
       b.logical_node_id,
       coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key,
-      (
-        select lnr.node_locator
-        from dts_logical_node_revisions lnr
-        where lnr.logical_node_id = b.logical_node_id
-        order by lnr.config_revision_id desc
-        limit 1
-      ) as node_locator,
       coalesce(dps.constraints, '{}'::jsonb) as constraints,
       (
         select psv.schema_default
@@ -535,12 +531,6 @@ export async function resolveBindingWriteLock(
   input: { bindingId: string; baseRevisionId?: string },
 ): Promise<BindingWriteLockContext> {
   const binding = await loadBindingContext(db, auth, input.bindingId);
-  if (!binding.node_locator) {
-    throw new ApiError("CONFLICT", "Binding has no exact logical node locator for write lock.", {
-      reason: "missing-node-locator",
-      bindingId: input.bindingId,
-    });
-  }
 
   const baseRevisionId =
     input.baseRevisionId ??
@@ -569,6 +559,20 @@ export async function resolveBindingWriteLock(
     });
   }
 
+  if (!binding.logical_node_id) {
+    throw new ApiError("CONFLICT", "Binding has no logical node identity for write lock.", {
+      reason: "missing-logical-node",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+  const logicalNode = await loadLogicalNodeSubmissionContext(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    configRevisionId: baseRevisionId,
+    logicalNodeId: binding.logical_node_id,
+  });
+
   const bindingRevision = await db.query<{ id: string }>(
     `
     select id from project_parameter_binding_revisions
@@ -596,7 +600,7 @@ export async function resolveBindingWriteLock(
     configRevisionId: baseRevisionId,
     logicalNodeId: binding.logical_node_id,
     propertyKey: binding.property_key,
-    nodeLocator: binding.node_locator,
+    nodeLocator: logicalNode.nodeLocator,
   });
 
   if (!writeTarget.fileVersionId || !writeTarget.checksum) {
@@ -615,7 +619,8 @@ export async function resolveBindingWriteLock(
     occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
     propertyKey: binding.property_key,
     targetRef,
-    sourceNodePath: binding.node_locator,
+    sourceNodePath: logicalNode.nodeLocator,
+    compatible: logicalNode.compatible,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,
@@ -866,6 +871,7 @@ export async function resolveEnablementWriteLock(
     propertyKey: "status",
     targetRef,
     sourceNodePath: nodeContext.nodeLocator,
+    compatible: nodeContext.compatible,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,

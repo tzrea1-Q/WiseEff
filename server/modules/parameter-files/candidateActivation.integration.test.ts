@@ -8,6 +8,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
+import { createSystemInvocation } from "../auth/trustedInvocation";
 import {
   activateCandidate,
   abandonCandidate,
@@ -111,6 +112,36 @@ describe.skipIf(!databaseAvailable)("parameter file candidate activation", () =>
       bytes: Buffer.from(v2, "utf8")
     });
     expect(candidate.status).toBe("ready");
+
+    await expect(
+      activateCandidate(
+        db!,
+        objectStore,
+        auth,
+        {
+          projectId: "project-act-int",
+          candidateId: candidate.id,
+          expectedCurrentVersionId: uploaded.version.id
+        },
+        {
+          invocation: createSystemInvocation({ kind: "job", name: "candidate-activation" }),
+          requestId: "candidate-activation-system"
+        } as never
+      )
+    ).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+    expect(
+      (await getParameterFileCandidateById(db!, {
+        organizationId: auth.organization.id,
+        projectId: "project-act-int",
+        candidateId: candidate.id
+      }))?.status
+    ).toBe("ready");
+    expect(
+      (await getProjectParameterFileById(db!, {
+        organizationId: auth.organization.id,
+        fileId: uploaded.file.id
+      }))?.currentVersionId
+    ).toBe(uploaded.version.id);
 
     const result = await activateCandidate(db!, objectStore, auth, {
       projectId: "project-act-int",

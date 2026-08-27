@@ -52,15 +52,19 @@ import type {
   ProjectParameterFileVersionDto
 } from "./types";
 
-export type CandidateServiceContext = AuditCorrelationContext & {
+/** Legacy correlation-only context for candidate mutations outside #614 creation. */
+export type CandidateServiceContext = AuditCorrelationContext;
+
+/** Trusted provenance is intentionally accepted only by candidate creation. */
+export type CandidateCreationContext = CandidateServiceContext & {
   invocation?: TrustedInvocationContext;
 };
 
-function normalizeCandidateMutationContext(
+function normalizeCandidateCreationContext(
   auth: AuthContext,
-  context: CandidateServiceContext,
+  context: CandidateCreationContext,
   operation: string
-): CandidateServiceContext {
+): CandidateCreationContext {
   if (!context.invocation) return context;
   if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
     throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
@@ -70,6 +74,18 @@ function normalizeCandidateMutationContext(
     invocation: assertTrustedInvocationMatchesAuth(auth, context.invocation, operation),
     requestId: context.requestId.trim()
   };
+}
+
+function rejectTrustedContextForUnmigratedCandidateMutation(
+  context: CandidateServiceContext,
+  operation: string
+): CandidateServiceContext {
+  if ((context as CandidateCreationContext).invocation) {
+    throw new TrustedInvocationContextError(
+      `${operation} does not accept trusted invocation until its user attribution and nested audits are migrated`
+    );
+  }
+  return context;
 }
 
 export type CreateCandidateInput = {
@@ -127,15 +143,16 @@ function writeCandidateAudit(
     kind: string;
     metadata?: Record<string, unknown>;
   },
-  context: CandidateServiceContext = {}
+  context: CandidateServiceContext | CandidateCreationContext = {}
 ) {
-  if (context.invocation) {
+  const invocation = (context as CandidateCreationContext).invocation;
+  if (invocation) {
     if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
       throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
     }
     return writeTrustedAuditEventInTx(tx, {
-      invocation: context.invocation,
-      ...(context.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      invocation,
+      ...(invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
       app: "parameters",
       kind: input.kind,
       action: input.action,
@@ -299,9 +316,9 @@ export async function createCandidate(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: CreateCandidateInput,
-  context: CandidateServiceContext = {}
+  context: CandidateCreationContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
-  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate creation");
+  const trustedContext = normalizeCandidateCreationContext(auth, context, "parameter file candidate creation");
   requireCandidateAdmin(auth);
 
   const fileName = input.fileName.trim();
@@ -541,7 +558,10 @@ export async function abandonCandidate(
   input: { projectId: string; candidateId: string },
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
-  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate abandonment");
+  const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
+    context,
+    "parameter file candidate abandonment"
+  );
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id,
@@ -593,7 +613,10 @@ export async function recomputeCandidateImpact(
   input: { projectId: string; candidateId: string },
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
-  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate recompute");
+  const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
+    context,
+    "parameter file candidate recompute"
+  );
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id,
@@ -713,7 +736,10 @@ export async function activateCandidate(
   input: ActivateCandidateInput,
   context: CandidateServiceContext = {}
 ): Promise<ActivateCandidateResult> {
-  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate activation");
+  const trustedContext = rejectTrustedContextForUnmigratedCandidateMutation(
+    context,
+    "parameter file candidate activation"
+  );
   requireCandidateAdmin(auth);
 
   const existing = await getParameterFileCandidateById(db, {

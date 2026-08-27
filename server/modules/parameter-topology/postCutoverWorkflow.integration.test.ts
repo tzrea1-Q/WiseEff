@@ -881,14 +881,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           baseRevisionId: seeded.configRevisionId
         });
         await db.query(
-          `update dts_nodes set compatible = 'wiseeff,enablement-locked-critical'
-           where file_version_id = $1 and node_path = $2`,
-          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
-        );
-        await db.query(
-          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
-           values ('node-enablement-locked-compatible', $1, 'locked', $2, 'wiseeff,enablement-locked-critical')`,
-          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,enablement-locked-critical'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [seeded.configRevisionId, exactNode.rows[0]!.logical_node_id]
         );
         await db.query(
           `insert into project_parameter_file_versions (
@@ -2007,9 +2003,30 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           permissions: [...makeAuth().permissions, "parameter:edit-critical"]
         });
         const mergedGpioValue = "<&gpio13 30 0>";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           )
+           select 'zz-newer-unbound-revision', organization_id, project_id, config_set_id, 999, 'compiled',
+                  created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           from dts_config_revisions where id = $1`,
+          [seeded.configRevisionId]
+        );
+        await db.query(
+          `insert into dts_logical_node_revisions (
+             id, logical_node_id, config_revision_id, node_locator, name, unit_address,
+             parent_logical_node_id, compatible
+           ) values (
+             'lnr-newer-unbound-revision', $1, 'zz-newer-unbound-revision',
+             '/wrong/latest/locator', 'wrong', null, null, 'wiseeff,newer-safe'
+           )`,
+          [expectedLogicalNodeId()]
+        );
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
         expect(writeLock.baseConfigRevisionId).toBeTruthy();
         expect(writeLock.bindingRevisionId).toBeTruthy();
+        expect(writeLock.sourceNodePath).toBe(NODE_LOCATOR);
 
         const draftId = randomUUID();
         const draft = await upsertDraft(db, {
@@ -2152,14 +2169,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           put
         };
         await db.query(
-          `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'
-           where file_version_id = $1 and node_path = $2`,
-          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
-        );
-        await db.query(
-          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
-           values ('node-semantic-locked-compatible', $1, 'locked', $2, 'wiseeff,semantic-locked-critical')`,
-          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,semantic-locked-critical'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
         );
         await db.query(
           `insert into project_parameter_file_versions (
@@ -2232,9 +2245,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           }
         });
         await db.query(
-          `update dts_nodes set compatible = 'wiseeff,safe'
-           where file_version_id = $1 and node_path = $2`,
-          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,safe'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
         );
         await db.query(
           `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'

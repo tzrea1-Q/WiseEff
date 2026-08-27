@@ -7,7 +7,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createCandidate, abandonCandidate, getCandidateImpact } from "./candidateService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { getFileConfigSetMembership } from "./configSetRepository";
@@ -139,7 +139,25 @@ describe.skipIf(!databaseAvailable)("parameter file candidate non-activation inv
         db!,
         auth,
         { projectId: "project-cand-int", candidateId: candidate.id },
-        { invocation: createUserInvocation(otherPrincipal), requestId: "candidate-abandon-cross-user" }
+        { invocation: createUserInvocation(otherPrincipal), requestId: "candidate-abandon-cross-user" } as never
+      )
+    ).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+    expect(
+      (await getCandidateImpact(db!, auth, {
+        projectId: "project-cand-int",
+        candidateId: candidate.id
+      })).candidate.status
+    ).toBe(candidate.status);
+
+    await expect(
+      abandonCandidate(
+        db!,
+        auth,
+        { projectId: "project-cand-int", candidateId: candidate.id },
+        {
+          invocation: createSystemInvocation({ kind: "service", name: "candidate-maintenance" }),
+          requestId: "candidate-abandon-system"
+        } as never
       )
     ).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
     expect(

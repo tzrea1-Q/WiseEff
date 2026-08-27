@@ -180,7 +180,7 @@ export async function resolveDtsNodeCompatible(
         from dts_nodes node
         where node.file_version_id = v.id
           and (node.node_path = $5 or node.node_path = $6)
-        order by case when node.node_path = $5 then 0 else 1 end
+        order by case when node.node_path = $6 then 0 else 1 end
         limit 1
       ) n on true
       where f.organization_id = $1
@@ -219,7 +219,7 @@ export async function resolveDtsNodeCompatible(
       and f.project_id = $2
       and f.file_name = $3
       and (n.node_path = $4 or n.node_path = $5)
-    order by case when n.node_path = $4 then 0 else 1 end
+    order by case when n.node_path = $5 then 0 else 1 end
     limit 1
     `,
     [input.organizationId, input.projectId, input.sourceFileName, nodePath, input.sourceNodePath.trim()]
@@ -243,13 +243,15 @@ async function resolveTrustedSensitiveNodeMatch(
     sourceFileName?: string | null;
     sourceFileVersionId?: string | null;
     compatible?: string | null;
+    /** True when compatible (including null) came from an exact server-owned logical-node revision. */
+    compatibleIsAuthoritative?: boolean;
   }
 ) {
   const nodePath = input.nodePath.trim();
   if (!nodePath) return null;
   let compatible = input.compatible?.trim() || null;
   const sourceFileName = input.sourceFileName?.trim() || null;
-  if (!compatible && sourceFileName) {
+  if (!compatible && !input.compatibleIsAuthoritative && sourceFileName) {
     compatible = await resolveDtsNodeCompatible(db, {
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -292,6 +294,7 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     sourceFileName?: string | null;
     sourceFileVersionId?: string | null;
     compatible?: string | null;
+    compatibleIsAuthoritative?: boolean;
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
