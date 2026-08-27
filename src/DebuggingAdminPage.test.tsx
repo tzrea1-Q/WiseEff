@@ -38,10 +38,10 @@ function createDebuggingAdminApiMock() {
     }),
     post: vi.fn().mockResolvedValue({ item: seedNode }),
     patch: vi.fn().mockImplementation((_path, body) => Promise.resolve({ item: { ...seedNode, ...body } })),
-    put: vi.fn().mockImplementation((_path, body) =>
+    put: vi.fn().mockImplementation((path, body) =>
       Promise.resolve({
         item: {
-          protocol: "hdc",
+          protocol: path.endsWith("/adb") ? "adb" : "hdc",
           nodePath: body.nodePath,
           accessMode: body.accessMode,
           enabled: body.enabled,
@@ -258,6 +258,35 @@ describe("/debugging-admin API mode", () => {
         nodePath: "/sys/hdc/current-edited",
         accessMode: "RW",
         enabled: true
+      })
+    );
+  });
+
+  it("preserves an unsaved sibling protocol draft after saving one binding", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
+    fireEvent.change(screen.getByLabelText("ADB 节点路径"), { target: { value: "/sys/adb/current-edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
+
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1/bindings/hdc", {
+        nodePath: "/sys/hdc/current-edited",
+        accessMode: "RW",
+        enabled: true
+      })
+    );
+    expect(screen.getByLabelText("ADB 节点路径")).toHaveValue("/sys/adb/current-edited");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存 ADB binding" }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenNthCalledWith(2, "/api/v1/debugging/admin/nodes/node-1/bindings/adb", {
+        nodePath: "/sys/adb/current-edited",
+        accessMode: "RO",
+        enabled: false,
+        notes: ""
       })
     );
   });
