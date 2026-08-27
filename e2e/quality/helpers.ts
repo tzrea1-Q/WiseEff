@@ -90,9 +90,10 @@ export async function closeXiaozePopupIfOpen(page: Page) {
     return;
   }
 
-  // Desktop Escape is intentionally scoped to focus owned by Xiaoze. Quality
-  // setup may currently have page focus, so use the authoritative toggle.
-  await page.getByTestId("copilot-chat-toggle").click();
+  // Desktop Xiaoze intentionally ignores Escape while page focus is outside
+  // the popup, and the mobile sheet can cover the floating toggle. Use the
+  // popup-owned close control so setup works in every presentation mode.
+  await popup.getByTestId("copilot-close-button").click();
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
