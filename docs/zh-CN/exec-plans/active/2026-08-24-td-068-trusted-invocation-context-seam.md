@@ -187,6 +187,18 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - Pgvector-backed `npm run docs:check`、`npm run lint`（0 errors / 继承的 299 warnings）、`npm run selfhost:check`、`npm run acceptance:ci` 与 `git diff --check origin/main...HEAD` 均在 exact repair tree 上通过。测试输出保留继承的 jsdom navigation 和 `ps: process id too large` 提示；任何 skip 或 warning 都没有被当作 pass 报告。
 - #614 保持 Open，继续负责 topology/writeback 从 legacy `actorType` 到 `TrustedInvocationContext` 的迁移，包括 Agent/System provenance、refusal-audit durability、接口及完整 acceptance matrix。本次只有 test/docs repair，未重跑也未声称 Xiaoze owned-browser、viewport、Hosted、HDC、硬件或 live-provider 验证；此前 `6652a1286` 的 Xiaoze acceptance 仅作为历史证据。
 
+## #614 实现检查点
+
+- 范围：把 topology node-enablement draft、property-key cutover prepare、semantic parameter writeback、保留的 legacy parameter writeback 与 enablement writeback 迁移到同一个必填 branded `TrustedInvocationContext`，并使用由服务端 PostgreSQL root 创建的 branded refusal sink。review/software-merge route 在服务端构造 User invocation，并原样传给三种 writeback；内部 Agent/System caller 可以显式传入原始 invocation。
+- 共享 sensitive-write guard 在策略或写入前校验冻结的 invocation brand、非空 request id、root-owned branded sink，以及 User/Agent principal 与 organization 的精确一致性。具备 capability 的直接 User 仍可通过 critical rule；Agent 与 System 稳定收到 `parameter-sensitive-node-human-required`。high/no-match 行为不变，成功审计不会把 Agent/System 降级成 User。
+- HTTP route 是 User provenance 的构造边界。body、query 与 header 中伪造的 `actorType`/provenance 均被忽略，DTO 和 OpenAPI 没有增加 selector。嵌套 service 不自行构造 User invocation，也不接受裸 transaction/database 作为 refusal sink。
+- property-key cutover 在第一次 candidate、source version 或 object put 前，对全部 would-rewrite location 做完整预检。PostgreSQL 回归将 critical location 放在第二项，证明 Agent/System 拒绝后 run/items、candidate、current/source version、object store 与 success audit 均不变，而独立 refusal audit 仍持久存在。
+- topology、cutover 与 writeback success audit 都从同一个 invocation 和 trace 做可信投影，并与数据库领域变化处于同一事务。audit-failure 注入会回滚 draft、candidate、current version、binding revision、review decision 与 merged change-request 状态。若 immutable blob put 先于数据库 audit failure，物理对象本身不可事务化；测试证明它没有数据库行或 current-version 引用，并如实记录为不可达对象，不宣称 object store 具备数据库原子性。
+- owned PostgreSQL provenance 覆盖五类 operation，以及 User、Agent、System、missing、malformed/unbranded、空 request id、伪造 sink、cross-user 与 cross-organization context。独立风险场景覆盖 critical/high/no-match、capable/incapable User、完整 Agent approval provenance、System service/job identity、caller rollback 后 refusal 仍持久，以及 success-audit failure rollback。object-store spy 证明 validation/policy 拒绝单元不会 put。
+- 唯一窄幅 shared audit 改动，是 candidate creation 可选接收 trusted invocation。原有 candidate audit 输入只能投影 legacy User auth，无法在 property-cutover 的 System/Agent high/no-match 成功路径中如实保留 initiator metadata；既有 caller 保持兼容，#610-#613 行为不变。
+- TDD Red：`npm run test:server -- --run server/modules/parameter-kernel/sensitiveNode.test.ts` 为 1 个失败、11 个通过，原因是 `assertTrustedSensitiveNodeWriteAllowed` 尚不存在。Green 引入共享 guard 后，精确 affected PostgreSQL 命令通过 11 个文件 / 162 个测试。
+- 明确排除：#615 legacy API/type ratchet 与 TD-068 关闭、TD-123 device-write audit、前端/public DTO/schema/migration、cutover preview/start/finalize 迁移、Xiaoze #611、DTS reload #612、HDC、硬件、live provider 与 Hosted CI。GitHub Actions 月度额度仍已耗尽，不宣称 Hosted 通过。本计划保持 active，等待 #615 完成 TD-068。
+
 ## 文档影响矩阵
 
 | 范围 | 状态 | 证据 |
@@ -196,7 +208,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 | 产品与 API 契约 | Review | `docs/design-docs/api-contract.md`、`server/modules/contracts/`；route path 与 request contract 不变，服务端 provenance 与 actor 字段剥离由 route 测试覆盖。 |
 | 架构与领域模型 | Review | `docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md`、`docs/design-docs/full-stack-architecture.md`、`docs/design-docs/domain-model.md`。 |
 | 安全与审计指引 | Review | `docs/SECURITY.md`、`server/modules/audit/auditedWrite.ts`；可信上下文及禁止 default-user 仍是部分迁移。 |
-| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#613 增加 exact-revision compatible-only PostgreSQL refusal 覆盖，并明确 HDC 不在本证据边界内。 |
+| 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#614 增加五类 operation trusted-provenance、second-location preflight 与 audit-rollback PostgreSQL 覆盖，并明确 HDC 不在本证据边界内。 |
 | 中文开发文档 | Review | `docs/zh-CN/SECURITY.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/zh-CN/PLANS.md`。 |
 | 生成物、runbook、前端/设计、references | No change | `docs/generated/`、`docs/runbooks/`、`src/`、`docs/references/`；没有生成 schema、operation、运行时、UI 或运维流程变化。 |
 
@@ -204,8 +216,8 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 - [x] 已按实现 seam 复核 ADR-0038 及英中文安全/架构/领域/API/计划引用。
 - [x] 没有公开契约或前端文档因此变陈旧。
-- [x] 已在本文件及同步的英文计划中记录 #613 repair 范围、compatible-only Red、exact binding/draft revision provenance、rollback audit 边界、零残留断言及 HDC 证据边界。
-- [x] #613 没有吸收或修改原工作树中无关的 `src/App.tsx` 与 `src/App.test.tsx` 改动。
+- [x] 已在本文件及同步的英文计划中记录 #614 范围、TDD Red/Green、五条 trusted write 路径、durable refusal、success-audit rollback、object-store 边界及 HDC/Hosted 排除项。
+- [x] #614 没有吸收或修改原工作树中无关的 `src/App.tsx` 与 `src/App.test.tsx` 改动。
 - [x] repair 前的 frontend/完整 server 失败及干净 `origin/main` 复现仍与当前 repair 结果分开记录；当前 exact-tree server 与 `test:all` 重跑结果连同 warning 和 skip 已记录。
 - [x] 已通过 #617 / PR #619 修复继承的 acceptance-quality 失败，并在重基后的最终树上重跑全部必需本地 CI。
 - [x] #610 在自身合入前取得 Standards 与 Spec 最终复审零 finding；#611 在本合入记录后由 parent 独立进行最终复审。
@@ -213,4 +225,4 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 ## Git & PR Workflow
 
-上文 #610-#612 的 branch/worktree 引用均为历史记录。当前实现与独立 repair 保持在 `/Users/tzrea1/Develop/WiseEff-td613` 的 `codex/td-068-parameter-submission-provenance`，基于 `origin/main@b676a1e320f1d7fcc1c5e9baaba78c3510c97b14`；repair 前 HEAD 为 `cbbe13fce16097e5fdd5f3ee6d4a127e3411364f`。追加 repair chain 为 `8bd4eb844`（exact binding revision）、`de6efbca4`（双语 repair evidence）、`3326d8eec`（Xiaoze assembly fixture）、`54da2bd02`（verification record）、`6652a1286`（enablement、竞争 revision 与 compatible-high 的 review repair）、`7caf31e8c`（最终独立 review record）与 `f661fbcfd`（shared-loader topology enablement regression），以及随后包含本段的双语 boundary record。本 session 不创建或合并 PR，也不关闭 Issue #613。TD-068 保持 active；#614 保持 Open，其 trusted-provenance 迁移未在此实现。最终 PR、合入、Issue 与 main 同步权限仍归 parent/session owner。
+上文 #610-#613 的 branch/worktree 引用均为历史记录。#614 实现位于 `/Users/tzrea1/Develop/WiseEff-td614` 的 `codex/td-068-parameter-governance-provenance`，基于 fetch 后的 `origin/main@8b6a2ad2d80e6bdd24af150863ef1c7293039dbe`。本 session 不创建或合并 PR，不关闭 #614/#609，也不修改 Issue label。TD-068 保持 active，因为 #615 负责最终 legacy ratchet 与关闭证据。最终 PR、合入、Issue 与 main 同步权限仍归 parent/session owner。
