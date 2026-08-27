@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyXiaozeLauncherLayout,
   applyXiaozePopupLayout,
+  clearLegacyStoredXiaozeLauncherPosition,
   clampXiaozePopupLayout,
   getDefaultXiaozePopupLayout,
+  getDefaultXiaozeLauncherPosition,
+  getXiaozeLauncherPosition,
+  placeXiaozePopupByLauncher,
+  clampXiaozeLauncherPosition,
   readStoredXiaozePopupLayout,
   writeStoredXiaozePopupLayout,
   XIAOZE_POPUP_LAYOUT_STORAGE_KEY,
+  XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY,
+  XIAOZE_POPUP_DEFAULT_SIZE,
   XIAOZE_POPUP_MIN_SIZE,
   XIAOZE_POPUP_SAFE_INSET,
   XIAOZE_POPUP_SIZE_STORAGE_KEY
@@ -111,5 +119,64 @@ describe("xiaozePopupLayout", () => {
     expect(popup.style.getPropertyValue("--copilot-popup-width")).toBe("520px");
     expect(popup.style.getPropertyValue("--copilot-popup-height")).toBe("720px");
     expect(popup.style.transform).toBe("");
+  });
+
+  it("derives and applies a launcher position attached below the popup", () => {
+    const layout = { version: 2 as const, x: 120, y: 80, width: 520, height: 720 };
+    const anchor = document.createElement("div");
+
+    expect(getXiaozeLauncherPosition(layout)).toEqual({ x: 584, y: 816 });
+    applyXiaozeLauncherLayout(anchor, { x: 584, y: 816 });
+
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("584px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("816px");
+    expect(anchor.dataset.xiaozeMovable).toBe("true");
+  });
+
+  it("clamps the popup independently from the launcher", () => {
+    const layout = clampXiaozePopupLayout(
+      { version: 2, x: 5000, y: 5000, width: 420, height: 680 },
+      { width: 1440, height: 900 }
+    );
+    const launcher = getXiaozeLauncherPosition(layout);
+
+    expect(layout.y).toBe(204);
+    expect(launcher.y).toBe(900);
+  });
+
+  it("lets the closed launcher cover all four viewport edges independently", () => {
+    expect(getDefaultXiaozeLauncherPosition()).toEqual({ x: 1360, y: 820 });
+    expect(clampXiaozeLauncherPosition({ x: -500, y: -500 })).toEqual({ x: 16, y: 16 });
+    expect(clampXiaozeLauncherPosition({ x: 5000, y: 5000 })).toEqual({ x: 1368, y: 828 });
+  });
+
+  it("clears the legacy persisted launcher position without changing popup geometry", () => {
+    writeStoredXiaozePopupLayout({ version: 2, x: 600, y: 100, width: 420, height: 680 });
+    window.localStorage.setItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY, '{"x":16,"y":16}');
+
+    clearLegacyStoredXiaozeLauncherPosition();
+
+    expect(window.localStorage.getItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY)).toBeNull();
+    expect(readStoredXiaozePopupLayout()).toMatchObject({ x: 600, y: 100 });
+  });
+
+  it("attaches the popup beside the launcher without restricting launcher coverage", () => {
+    const topLeft = { x: 16, y: 16 };
+    const bottomRight = { x: 1368, y: 828 };
+
+    expect(placeXiaozePopupByLauncher(topLeft, XIAOZE_POPUP_DEFAULT_SIZE)).toEqual({
+      version: 2,
+      x: 16,
+      y: 88,
+      width: 420,
+      height: 680
+    });
+    expect(placeXiaozePopupByLauncher(bottomRight, XIAOZE_POPUP_DEFAULT_SIZE)).toEqual({
+      version: 2,
+      x: 1004,
+      y: 132,
+      width: 420,
+      height: 680
+    });
   });
 });

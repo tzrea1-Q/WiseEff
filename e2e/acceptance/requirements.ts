@@ -548,7 +548,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "XIAOZE-POPUP-MOVE-001",
     workflow: "G",
-    title: "Desktop and tablet users can move, resize, reset, restore, and keep the modeless Xiaoze popup open while operating and navigating the page; mobile remains full screen.",
+    title: "Desktop and tablet users can drag the Xiaoze launcher; while open, the launcher and modeless popup move together, remain resizable and restorable, and coexist with page navigation; mobile remains full screen.",
     required: true
   },
   {

@@ -1,10 +1,13 @@
 export const XIAOZE_POPUP_SIZE_STORAGE_KEY = "wiseeff.xiaoze.popup.size.v1";
 export const XIAOZE_POPUP_LAYOUT_STORAGE_KEY = "wiseeff.xiaoze.popup.layout.v2";
+export const XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY = "wiseeff.xiaoze.launcher.position.v1";
 export const XIAOZE_POPUP_LAYOUT_VERSION = 2 as const;
 export const XIAOZE_POPUP_DESKTOP_MIN_WIDTH = 768;
 export const XIAOZE_POPUP_SAFE_INSET = 16;
 export const XIAOZE_POPUP_DEFAULT_RIGHT = 24;
 export const XIAOZE_POPUP_DEFAULT_BOTTOM = 96;
+export const XIAOZE_LAUNCHER_SIZE = 56;
+export const XIAOZE_LAUNCHER_GAP = 16;
 
 export const XIAOZE_POPUP_DEFAULT_SIZE = {
   width: 420,
@@ -30,6 +33,11 @@ export type XiaozePopupLayout = XiaozePopupSize & {
 export type XiaozePopupViewport = {
   width: number;
   height: number;
+};
+
+export type XiaozeLauncherPosition = {
+  x: number;
+  y: number;
 };
 
 function currentViewport(): XiaozePopupViewport {
@@ -92,6 +100,83 @@ export function clampXiaozePopupLayout(
     width,
     height
   };
+}
+
+export function getXiaozeLauncherPosition(layout: XiaozePopupLayout): XiaozeLauncherPosition {
+  return {
+    x: layout.x + layout.width - XIAOZE_LAUNCHER_SIZE,
+    y: layout.y + layout.height + XIAOZE_LAUNCHER_GAP
+  };
+}
+
+export function clampXiaozeLauncherPosition(
+  position: XiaozeLauncherPosition,
+  viewport: XiaozePopupViewport = currentViewport()
+): XiaozeLauncherPosition {
+  return {
+    x: Math.min(
+      Math.max(position.x, XIAOZE_POPUP_SAFE_INSET),
+      Math.max(XIAOZE_POPUP_SAFE_INSET, viewport.width - XIAOZE_POPUP_SAFE_INSET - XIAOZE_LAUNCHER_SIZE)
+    ),
+    y: Math.min(
+      Math.max(position.y, XIAOZE_POPUP_SAFE_INSET),
+      Math.max(XIAOZE_POPUP_SAFE_INSET, viewport.height - XIAOZE_POPUP_SAFE_INSET - XIAOZE_LAUNCHER_SIZE)
+    )
+  };
+}
+
+export function getDefaultXiaozeLauncherPosition(
+  viewport: XiaozePopupViewport = currentViewport()
+): XiaozeLauncherPosition {
+  return clampXiaozeLauncherPosition(
+    {
+      x: viewport.width - XIAOZE_POPUP_DEFAULT_RIGHT - XIAOZE_LAUNCHER_SIZE,
+      y: viewport.height - XIAOZE_POPUP_DEFAULT_RIGHT - XIAOZE_LAUNCHER_SIZE
+    },
+    viewport
+  );
+}
+
+export function clearLegacyStoredXiaozeLauncherPosition() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(XIAOZE_LEGACY_LAUNCHER_POSITION_STORAGE_KEY);
+  } catch {
+    // Cleanup is best effort when browser storage is unavailable.
+  }
+}
+
+export function placeXiaozePopupByLauncher(
+  position: XiaozeLauncherPosition,
+  size: XiaozePopupSize,
+  viewport: XiaozePopupViewport = currentViewport()
+): XiaozePopupLayout {
+  const launcher = clampXiaozeLauncherPosition(position, viewport);
+  const base = clampXiaozePopupLayout({ version: 2, x: 0, y: 0, ...size }, viewport);
+  const alignX = launcher.x + XIAOZE_LAUNCHER_SIZE / 2 < viewport.width / 2
+    ? launcher.x
+    : launcher.x + XIAOZE_LAUNCHER_SIZE - base.width;
+  const alignY = Math.min(
+    Math.max(launcher.y + (XIAOZE_LAUNCHER_SIZE - base.height) / 2, XIAOZE_POPUP_SAFE_INSET),
+    viewport.height - XIAOZE_POPUP_SAFE_INSET - base.height
+  );
+  const above = { ...base, x: alignX, y: launcher.y - XIAOZE_LAUNCHER_GAP - base.height };
+  const below = { ...base, x: alignX, y: launcher.y + XIAOZE_LAUNCHER_SIZE + XIAOZE_LAUNCHER_GAP };
+  const left = { ...base, x: launcher.x - XIAOZE_LAUNCHER_GAP - base.width, y: alignY };
+  const right = { ...base, x: launcher.x + XIAOZE_LAUNCHER_SIZE + XIAOZE_LAUNCHER_GAP, y: alignY };
+  const candidates = launcher.y + XIAOZE_LAUNCHER_SIZE / 2 < viewport.height / 2
+    ? [below, right, left, above]
+    : [above, left, right, below];
+  const fitting = candidates.find(
+    (candidate) =>
+      candidate.x >= XIAOZE_POPUP_SAFE_INSET &&
+      candidate.y >= XIAOZE_POPUP_SAFE_INSET &&
+      candidate.x + candidate.width <= viewport.width - XIAOZE_POPUP_SAFE_INSET &&
+      candidate.y + candidate.height <= viewport.height - XIAOZE_POPUP_SAFE_INSET
+  );
+  return clampXiaozePopupLayout(fitting ?? candidates[0]!, viewport);
 }
 
 export function getDefaultXiaozePopupLayout(
@@ -181,6 +266,13 @@ export function applyXiaozePopupLayout(popup: HTMLElement, layout: XiaozePopupLa
   popup.style.setProperty("--copilot-popup-height", `${clamped.height}px`);
   popup.dataset.xiaozeResizable = "true";
   popup.dataset.xiaozeMovable = "true";
+}
+
+export function applyXiaozeLauncherLayout(anchor: HTMLElement, position: XiaozeLauncherPosition) {
+  const clamped = clampXiaozeLauncherPosition(position);
+  anchor.style.setProperty("--xiaoze-launcher-left", `${clamped.x}px`);
+  anchor.style.setProperty("--xiaoze-launcher-top", `${clamped.y}px`);
+  anchor.dataset.xiaozeMovable = "true";
 }
 
 export function clampXiaozePopupSize(size: XiaozePopupSize): XiaozePopupSize {

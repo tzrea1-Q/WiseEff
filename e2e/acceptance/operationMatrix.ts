@@ -1170,7 +1170,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "agent",
     route: "/parameters",
     roles: ["Admin"],
-    action: "Move, resize, reset, restore, and keep the modeless Xiaoze popup open while operating and navigating the page; retain the mobile full-screen presentation.",
+    action: "Drag the Xiaoze launcher while closed, move launcher and popup together while open, resize and restore the popup, and keep it open while operating and navigating the page; retain the mobile full-screen presentation.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-POPUP-MOVE-001"],
     specFiles: ["e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts"],
