@@ -2,11 +2,16 @@ import { useEffect } from "react";
 import {
   applyXiaozeLauncherLayout,
   applyXiaozePopupLayout,
+  clampXiaozeLauncherPosition,
   clampXiaozePopupLayout,
+  getDefaultXiaozeLauncherPosition,
   getDefaultXiaozePopupLayout,
   isXiaozePopupDesktop,
+  placeXiaozePopupByLauncher,
+  readStoredXiaozeLauncherPosition,
   readStoredXiaozePopupLayout,
   resetStoredXiaozePopupLayout,
+  writeStoredXiaozeLauncherPosition,
   writeStoredXiaozePopupLayout,
   XIAOZE_POPUP_MIN_SIZE,
   XIAOZE_POPUP_SAFE_INSET,
@@ -62,7 +67,8 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
 
   dragHandle.disabled = false;
   resizeHandle.disabled = false;
-  let layout = readStoredXiaozePopupLayout();
+  const storedLayout = readStoredXiaozePopupLayout();
+  let layout = placeXiaozePopupByLauncher(readStoredXiaozeLauncherPosition(), storedLayout);
   let defaultLayout = getDefaultXiaozePopupLayout();
   let frame = 0;
   let gestureCleanup: (() => void) | undefined;
@@ -70,10 +76,6 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
   const renderLayout = (next: XiaozePopupLayout) => {
     layout = next;
     applyXiaozePopupLayout(popup, next);
-    const launcherAnchor = document.querySelector<HTMLElement>(LAUNCHER_ANCHOR_SELECTOR);
-    if (launcherAnchor) {
-      applyXiaozeLauncherLayout(launcherAnchor, next);
-    }
     resetButton.hidden = sameLayout(next, defaultLayout);
   };
 
@@ -227,6 +229,12 @@ function bindXiaozePopupLayout(popup: HTMLElement) {
   };
   const onReset = () => {
     defaultLayout = getDefaultXiaozePopupLayout();
+    const launcherPosition = getDefaultXiaozeLauncherPosition();
+    const launcherAnchor = document.querySelector<HTMLElement>(LAUNCHER_ANCHOR_SELECTOR);
+    if (launcherAnchor) {
+      applyXiaozeLauncherLayout(launcherAnchor, launcherPosition);
+    }
+    writeStoredXiaozeLauncherPosition(launcherPosition);
     commitLayout(resetStoredXiaozePopupLayout());
   };
   const onWindowResize = () => {
@@ -263,28 +271,37 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
     return;
   }
 
-  let layout = readStoredXiaozePopupLayout();
+  let launcherPosition = readStoredXiaozeLauncherPosition();
   let frame = 0;
   let gestureCleanup: (() => void) | undefined;
   let suppressClick = false;
   let suppressClickTimer = 0;
 
-  const renderLayout = (next: XiaozePopupLayout) => {
-    layout = next;
+  const renderLayout = (next: ReturnType<typeof readStoredXiaozeLauncherPosition>) => {
+    launcherPosition = next;
     applyXiaozeLauncherLayout(anchor, next);
     const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
     if (popup) {
-      applyXiaozePopupLayout(popup, next);
+      const storedPopup = readStoredXiaozePopupLayout();
+      const attachedPopup = placeXiaozePopupByLauncher(next, storedPopup);
+      applyXiaozePopupLayout(popup, attachedPopup);
       const resetButton = popup.querySelector<HTMLButtonElement>(RESET_SELECTOR);
       if (resetButton) {
-        resetButton.hidden = sameLayout(next, getDefaultXiaozePopupLayout());
+        resetButton.hidden =
+          sameLayout(attachedPopup, getDefaultXiaozePopupLayout()) &&
+          next.x === getDefaultXiaozeLauncherPosition().x &&
+          next.y === getDefaultXiaozeLauncherPosition().y;
       }
     }
   };
 
-  const commitLayout = (next: XiaozePopupLayout) => {
+  const commitLayout = (next: ReturnType<typeof readStoredXiaozeLauncherPosition>) => {
     renderLayout(next);
-    writeStoredXiaozePopupLayout(next);
+    writeStoredXiaozeLauncherPosition(next);
+    const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
+    if (popup) {
+      writeStoredXiaozePopupLayout(placeXiaozePopupByLauncher(next, readStoredXiaozePopupLayout()));
+    }
   };
 
   const onPointerDown = (event: PointerEvent) => {
@@ -299,9 +316,9 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
-    const startLayout = readStoredXiaozePopupLayout();
+    const startPosition = readStoredXiaozeLauncherPosition();
     let changed = false;
-    let nextLayout = startLayout;
+    let nextPosition = startPosition;
     handle.setPointerCapture(pointerId);
 
     const clearGesture = () => {
@@ -324,7 +341,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
       }
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        renderLayout(nextLayout);
+        renderLayout(nextPosition);
       });
     };
 
@@ -341,10 +358,9 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
       moveEvent.preventDefault();
       anchor.classList.add("xiaoze-launcher-is-dragging");
       document.body.classList.add("xiaoze-launcher-drag-active");
-      nextLayout = clampXiaozePopupLayout({
-        ...startLayout,
-        x: startLayout.x + deltaX,
-        y: startLayout.y + deltaY
+      nextPosition = clampXiaozeLauncherPosition({
+        x: startPosition.x + deltaX,
+        y: startPosition.y + deltaY
       });
       scheduleRender();
     };
@@ -363,7 +379,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
         suppressClickTimer = window.setTimeout(() => {
           suppressClick = false;
         }, 500);
-        commitLayout(nextLayout);
+        commitLayout(nextPosition);
       }
     };
 
@@ -372,7 +388,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
         return;
       }
       clearGesture();
-      renderLayout(startLayout);
+      renderLayout(startPosition);
     };
 
     handle.addEventListener("pointermove", onPointerMove);
@@ -381,7 +397,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
     handle.addEventListener("lostpointercapture", onPointerCancel);
     gestureCleanup = () => {
       clearGesture();
-      renderLayout(startLayout);
+      renderLayout(startPosition);
     };
   };
 
@@ -398,7 +414,9 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Home") {
       event.preventDefault();
-      commitLayout(resetStoredXiaozePopupLayout());
+      const next = getDefaultXiaozeLauncherPosition();
+      writeStoredXiaozePopupLayout(getDefaultXiaozePopupLayout());
+      commitLayout(next);
       return;
     }
     const step = event.shiftKey ? 32 : 8;
@@ -413,12 +431,11 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
       return;
     }
     event.preventDefault();
-    const currentLayout = readStoredXiaozePopupLayout();
+    const currentPosition = readStoredXiaozeLauncherPosition();
     commitLayout(
-      clampXiaozePopupLayout({
-        ...currentLayout,
-        x: currentLayout.x + offset[0],
-        y: currentLayout.y + offset[1]
+      clampXiaozeLauncherPosition({
+        x: currentPosition.x + offset[0],
+        y: currentPosition.y + offset[1]
       })
     );
   };
@@ -426,7 +443,7 @@ function bindXiaozeLauncherLayout(anchor: HTMLElement) {
   handle.addEventListener("pointerdown", onPointerDown);
   handle.addEventListener("click", onClickCapture, true);
   handle.addEventListener("keydown", onKeyDown);
-  renderLayout(layout);
+  renderLayout(launcherPosition);
 
   return () => {
     gestureCleanup?.();

@@ -7,20 +7,20 @@ Baseline: `origin/main@e87d7d23d6c9e442839527b0bc9879ce27d83b37`
 
 ## Goal
 
-Let desktop and tablet users drag the Xiaoze launcher. When Xiaoze is open, the launcher remains the visible drag handle and moves together with the popup as one clamped group. Mobile keeps the established full-screen popup contract.
+Let desktop and tablet users drag the Xiaoze launcher across the full safe viewport. When Xiaoze is open, the launcher remains the visible drag handle and the popup follows through smart top/bottom/left/right attachment. Mobile keeps the established full-screen popup contract.
 
 ## Success Criteria
 
 - A pointer drag on the launcher moves it without toggling Xiaoze.
 - A click without crossing the drag threshold still opens or closes Xiaoze.
 - Opening after a closed-state drag places the popup next to the launcher.
-- Dragging the launcher while open moves both surfaces by the same delta and keeps the whole group inside the safe viewport.
+- Dragging the launcher while open lets the launcher cover the safe viewport while the popup follows on the side with enough room and stays visible.
 - Header drag, resize, reset, persistence, route continuity, keyboard access, and mobile full-screen behavior remain intact.
 - `XIAOZE-POPUP-MOVE-001` acceptance evidence exercises launcher drag in closed and open states.
 
 ## Architecture
 
-`xiaozePopupLayout.ts` remains the sole persisted layout owner. The launcher position is derived from the popup rectangle, launcher size, and gap; it is not a second persisted coordinate. `useXiaozePopupLayout.ts` binds launcher and popup surfaces to one in-memory layout and one gesture cleanup path. Pointer movement updates both surfaces through CSS variables and commits once on pointer-up. A post-drag click is suppressed, while sub-threshold pointer input remains a normal toggle click.
+`xiaozePopupLayout.ts` remains the sole layout boundary. Launcher position is independent from popup geometry and persisted under `wiseeff.xiaoze.launcher.position.v1`; popup geometry remains under layout v2. On open launcher drag, the module selects a fitting top, bottom, left, or right attachment and clamps both surfaces independently. `useXiaozePopupLayout.ts` owns gesture cleanup and commit timing. A post-drag click is suppressed, while sub-threshold pointer input remains a normal toggle click.
 
 ## Git & PR Workflow
 
@@ -70,5 +70,6 @@ Completed: frontend and coverage truth sources were updated in both languages; r
 - Production build passed.
 - `XIAOZE-POPUP-MOVE-001`: runtime warmup plus acceptance spec passed, 2/2.
 - `playwright-cli` snapshots and screenshots passed at `1440x900`, `768x1024`, and `390x844`; console errors: 0.
-- Desktop real pointer evidence: closed-state launcher moved from `(1360, 820)` to `(1152, 712)` without opening. Open-state launcher moved from about `(1153, 713)` to `(954, 714)` while popup moved from `(788, 16)` to `(588, 16)`; both remained open and attached.
+- Follow-up defect evidence: the original top-left repro produced `(381,713)` because the launcher was derived from a clamped popup at `(16,16)`. After separating launcher position, the same command reaches the top-left safe inset; acceptance also covers the opposite bottom-right corner and smart popup reattachment.
+- Follow-up screenshots: `work/ui-checks/xiaoze-launcher-full-coverage/desktop-smart-attachment.png`, `tablet-smart-attachment.png`, and `mobile-fullscreen.png`.
 - Screenshots: `work/ui-checks/xiaoze-launcher-coupled/desktop-closed-drag.png`, `desktop-open-coupled-drag.png`, `tablet-open.png`, and `mobile-fullscreen.png`.

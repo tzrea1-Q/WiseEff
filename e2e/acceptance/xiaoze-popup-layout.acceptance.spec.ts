@@ -34,13 +34,13 @@ test.describe("Xiaoze modeless popup layout", () => {
       closedLauncherBefore.y + closedLauncherBefore.height / 2
     );
     await page.mouse.down();
-    await page.mouse.move(closedLauncherBefore.x - 160, closedLauncherBefore.y - 80, { steps: 8 });
+    await page.mouse.move(20, 20, { steps: 8 });
     await page.mouse.up();
     await expect(toggle).toHaveAttribute("data-state", "closed");
     const closedLauncherMoved = await launcher.boundingBox();
     expect(closedLauncherMoved).not.toBeNull();
-    expect(closedLauncherMoved!.x).toBeLessThan(closedLauncherBefore.x - 100);
-    expect(closedLauncherMoved!.y).toBeLessThan(closedLauncherBefore.y - 40);
+    expect(closedLauncherMoved!.x).toBeLessThanOrEqual(24);
+    expect(closedLauncherMoved!.y).toBeLessThanOrEqual(24);
 
     await toggle.click();
 
@@ -67,21 +67,20 @@ test.describe("Xiaoze modeless popup layout", () => {
       coupledLauncherBefore.y + coupledLauncherBefore.height / 2
     );
     await page.mouse.down();
-    await page.mouse.move(coupledLauncherBefore.x - 90, coupledLauncherBefore.y + 55, { steps: 8 });
+    await page.mouse.move(1420, 880, { steps: 12 });
     await page.mouse.up();
     await expect(toggle).toHaveAttribute("data-state", "open");
     const coupledPopupAfter = await popup.boundingBox();
     const coupledLauncherAfter = await launcher.boundingBox();
     expect(coupledPopupAfter).not.toBeNull();
     expect(coupledLauncherAfter).not.toBeNull();
-    expect(coupledPopupAfter!.x - coupledPopupBefore.x).toBeCloseTo(
-      coupledLauncherAfter!.x - coupledLauncherBefore.x,
-      0
-    );
-    expect(coupledPopupAfter!.y - coupledPopupBefore.y).toBeCloseTo(
-      coupledLauncherAfter!.y - coupledLauncherBefore.y,
-      0
-    );
+    expect(coupledLauncherAfter!.x).toBeGreaterThanOrEqual(1360);
+    expect(coupledLauncherAfter!.y).toBeGreaterThanOrEqual(820);
+    expect(coupledPopupAfter!.x).toBeGreaterThan(coupledPopupBefore.x + 500);
+    expect(coupledPopupAfter!.x).toBeGreaterThanOrEqual(16);
+    expect(coupledPopupAfter!.y).toBeGreaterThanOrEqual(16);
+    expect(coupledPopupAfter!.x + coupledPopupAfter!.width).toBeLessThanOrEqual(1424);
+    expect(coupledPopupAfter!.y + coupledPopupAfter!.height).toBeLessThanOrEqual(884);
 
     const before = await popup.boundingBox();
     if (!before) {
@@ -125,8 +124,6 @@ test.describe("Xiaoze modeless popup layout", () => {
     );
     const restored = await popup.boundingBox();
     expect(restored).not.toBeNull();
-    expect(restored!.x).toBeCloseTo(resized!.x, 0);
-    expect(restored!.y).toBeCloseTo(resized!.y, 0);
     expect(restored!.width).toBeCloseTo(resized!.width, 0);
     expect(restored!.height).toBeCloseTo(resized!.height, 0);
 
