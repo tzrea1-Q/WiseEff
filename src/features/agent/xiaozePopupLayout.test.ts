@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyXiaozeLauncherLayout,
   applyXiaozePopupLayout,
   clampXiaozePopupLayout,
   getDefaultXiaozePopupLayout,
+  getXiaozeLauncherPosition,
   readStoredXiaozePopupLayout,
   writeStoredXiaozePopupLayout,
   XIAOZE_POPUP_LAYOUT_STORAGE_KEY,
@@ -43,7 +45,7 @@ describe("xiaozePopupLayout", () => {
       x: XIAOZE_POPUP_SAFE_INSET,
       y: XIAOZE_POPUP_SAFE_INSET,
       width: 1408,
-      height: 868
+      height: 796
     });
 
     expect(
@@ -51,7 +53,7 @@ describe("xiaozePopupLayout", () => {
     ).toEqual({
       version: 2,
       x: 1440 - XIAOZE_POPUP_SAFE_INSET - XIAOZE_POPUP_MIN_SIZE.width,
-      y: 900 - XIAOZE_POPUP_SAFE_INSET - XIAOZE_POPUP_MIN_SIZE.height,
+      y: 900 - XIAOZE_POPUP_SAFE_INSET - XIAOZE_POPUP_MIN_SIZE.height - 72,
       ...XIAOZE_POPUP_MIN_SIZE
     });
   });
@@ -111,5 +113,29 @@ describe("xiaozePopupLayout", () => {
     expect(popup.style.getPropertyValue("--copilot-popup-width")).toBe("520px");
     expect(popup.style.getPropertyValue("--copilot-popup-height")).toBe("720px");
     expect(popup.style.transform).toBe("");
+  });
+
+  it("derives and applies a launcher position attached below the popup", () => {
+    const layout = { version: 2 as const, x: 120, y: 80, width: 520, height: 720 };
+    const anchor = document.createElement("div");
+
+    expect(getXiaozeLauncherPosition(layout)).toEqual({ x: 584, y: 816 });
+    applyXiaozeLauncherLayout(anchor, layout);
+
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-left")).toBe("584px");
+    expect(anchor.style.getPropertyValue("--xiaoze-launcher-top")).toBe("816px");
+    expect(anchor.dataset.xiaozeMovable).toBe("true");
+  });
+
+  it("clamps the popup and launcher as one visible group", () => {
+    const layout = clampXiaozePopupLayout(
+      { version: 2, x: 5000, y: 5000, width: 420, height: 680 },
+      { width: 1440, height: 900 }
+    );
+    const launcher = getXiaozeLauncherPosition(layout);
+
+    expect(layout.y).toBe(132);
+    expect(launcher.y + 56).toBe(884);
+    expect(launcher.x + 56).toBeLessThanOrEqual(1424);
   });
 });

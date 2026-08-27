@@ -19,10 +19,30 @@ test.describe("Xiaoze modeless popup layout", () => {
       await hintDismiss.click();
     }
     const toggle = page.getByTestId("copilot-chat-toggle");
+    const launcher = page.locator("[data-xiaoze-launcher-anchor]");
     await expect(toggle).toBeVisible();
-    if ((await toggle.getAttribute("data-state")) !== "open") {
+    if ((await toggle.getAttribute("data-state")) === "open") {
       await toggle.click();
     }
+
+    const closedLauncherBefore = await launcher.boundingBox();
+    if (!closedLauncherBefore) {
+      throw new Error("Xiaoze launcher has no desktop bounding box.");
+    }
+    await page.mouse.move(
+      closedLauncherBefore.x + closedLauncherBefore.width / 2,
+      closedLauncherBefore.y + closedLauncherBefore.height / 2
+    );
+    await page.mouse.down();
+    await page.mouse.move(closedLauncherBefore.x - 160, closedLauncherBefore.y - 80, { steps: 8 });
+    await page.mouse.up();
+    await expect(toggle).toHaveAttribute("data-state", "closed");
+    const closedLauncherMoved = await launcher.boundingBox();
+    expect(closedLauncherMoved).not.toBeNull();
+    expect(closedLauncherMoved!.x).toBeLessThan(closedLauncherBefore.x - 100);
+    expect(closedLauncherMoved!.y).toBeLessThan(closedLauncherBefore.y - 40);
+
+    await toggle.click();
 
     const layer = page.getByTestId("xiaoze-popup-layer");
     const popup = page.getByTestId("copilot-popup");
@@ -30,6 +50,38 @@ test.describe("Xiaoze modeless popup layout", () => {
     await expect(layer).toBeVisible();
     await expect(layer).toHaveAttribute("data-presentation", "modeless");
     await expect(popup).not.toHaveAttribute("aria-modal");
+    await page.waitForFunction(() =>
+      document.getAnimations().every((animation) => {
+        const iterations = animation.effect?.getComputedTiming().iterations;
+        return iterations === Infinity || animation.playState === "finished" || animation.playState === "idle";
+      })
+    );
+
+    const coupledPopupBefore = await popup.boundingBox();
+    const coupledLauncherBefore = await launcher.boundingBox();
+    if (!coupledPopupBefore || !coupledLauncherBefore) {
+      throw new Error("Xiaoze coupled surfaces have no desktop bounding box.");
+    }
+    await page.mouse.move(
+      coupledLauncherBefore.x + coupledLauncherBefore.width / 2,
+      coupledLauncherBefore.y + coupledLauncherBefore.height / 2
+    );
+    await page.mouse.down();
+    await page.mouse.move(coupledLauncherBefore.x - 90, coupledLauncherBefore.y + 55, { steps: 8 });
+    await page.mouse.up();
+    await expect(toggle).toHaveAttribute("data-state", "open");
+    const coupledPopupAfter = await popup.boundingBox();
+    const coupledLauncherAfter = await launcher.boundingBox();
+    expect(coupledPopupAfter).not.toBeNull();
+    expect(coupledLauncherAfter).not.toBeNull();
+    expect(coupledPopupAfter!.x - coupledPopupBefore.x).toBeCloseTo(
+      coupledLauncherAfter!.x - coupledLauncherBefore.x,
+      0
+    );
+    expect(coupledPopupAfter!.y - coupledPopupBefore.y).toBeCloseTo(
+      coupledLauncherAfter!.y - coupledLauncherBefore.y,
+      0
+    );
 
     const before = await popup.boundingBox();
     if (!before) {
@@ -42,7 +94,7 @@ test.describe("Xiaoze modeless popup layout", () => {
     const moved = await popup.boundingBox();
     expect(moved).not.toBeNull();
     expect(moved!.x).toBeLessThan(before.x - 100);
-    expect(moved!.y).toBeGreaterThan(before.y + 30);
+    expect(moved!.y).toBeGreaterThanOrEqual(16);
 
     const resizeHandle = page.getByRole("button", { name: "调整小泽窗口大小" });
     const resizeBox = await resizeHandle.boundingBox();
@@ -62,6 +114,8 @@ test.describe("Xiaoze modeless popup layout", () => {
     expect(storedAfterDrag).toContain('"version":2');
 
     await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(toggle).toHaveAttribute("data-state", "closed");
+    await toggle.click();
     await expect(layer).toBeVisible();
     await page.waitForFunction(() =>
       document.getAnimations().every((animation) => {
@@ -143,7 +197,7 @@ test.describe("Xiaoze modeless popup layout", () => {
       page,
       testInfo,
       notes:
-        "Desktop popup moved, resized, and restored after reload; the business page remained operable and its modal covered Xiaoze; SPA navigation retained the popup; keyboard reset restored default layout; tablet touch input stayed viewport-clamped; and mobile retained full-screen modal semantics without overwriting desktop layout."
+        "Desktop launcher moved without toggling while closed; after opening, launcher drag moved the launcher and popup by the same delta without closing; header drag, resize, and reload restoration remained intact; the business page remained operable and its modal covered Xiaoze; SPA navigation retained the popup; keyboard reset restored default layout; tablet touch input stayed viewport-clamped; and mobile retained full-screen modal semantics without overwriting desktop layout."
     });
   });
 });

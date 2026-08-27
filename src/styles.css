@@ -12343,6 +12343,15 @@ td small {
   height: 3.5rem;
 }
 
+@media (min-width: 768px) {
+  .xiaoze-chat-toggle-anchor[data-xiaoze-movable="true"] {
+    left: var(--xiaoze-launcher-left);
+    top: var(--xiaoze-launcher-top);
+    right: auto;
+    bottom: auto;
+  }
+}
+
 .xiaoze-chat-toggle {
   position: relative;
   width: 100%;
@@ -12353,8 +12362,18 @@ td small {
   background: transparent;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  touch-action: none;
   transition: transform var(--xiaoze-popup-close-ms, 360ms) var(--ease-in-out);
+}
+
+.xiaoze-launcher-is-dragging .xiaoze-chat-toggle {
+  cursor: grabbing;
+  transform: scale(1.04);
+}
+
+body.xiaoze-launcher-drag-active {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .xiaoze-chat-toggle:focus-visible {

@@ -5,6 +5,8 @@ export const XIAOZE_POPUP_DESKTOP_MIN_WIDTH = 768;
 export const XIAOZE_POPUP_SAFE_INSET = 16;
 export const XIAOZE_POPUP_DEFAULT_RIGHT = 24;
 export const XIAOZE_POPUP_DEFAULT_BOTTOM = 96;
+export const XIAOZE_LAUNCHER_SIZE = 56;
+export const XIAOZE_LAUNCHER_GAP = 16;
 
 export const XIAOZE_POPUP_DEFAULT_SIZE = {
   width: 420,
@@ -30,6 +32,11 @@ export type XiaozePopupLayout = XiaozePopupSize & {
 export type XiaozePopupViewport = {
   width: number;
   height: number;
+};
+
+export type XiaozeLauncherPosition = {
+  x: number;
+  y: number;
 };
 
 function currentViewport(): XiaozePopupViewport {
@@ -73,7 +80,8 @@ export function clampXiaozePopupLayout(
   viewport: XiaozePopupViewport = currentViewport()
 ): XiaozePopupLayout {
   const availableWidth = Math.max(0, viewport.width - XIAOZE_POPUP_SAFE_INSET * 2);
-  const availableHeight = Math.max(0, viewport.height - XIAOZE_POPUP_SAFE_INSET * 2);
+  const launcherFootprint = XIAOZE_LAUNCHER_GAP + XIAOZE_LAUNCHER_SIZE;
+  const availableHeight = Math.max(0, viewport.height - XIAOZE_POPUP_SAFE_INSET * 2 - launcherFootprint);
   const width = Math.min(
     Math.max(layout.width, Math.min(XIAOZE_POPUP_MIN_SIZE.width, availableWidth)),
     availableWidth
@@ -83,7 +91,10 @@ export function clampXiaozePopupLayout(
     availableHeight
   );
   const maxX = Math.max(XIAOZE_POPUP_SAFE_INSET, viewport.width - XIAOZE_POPUP_SAFE_INSET - width);
-  const maxY = Math.max(XIAOZE_POPUP_SAFE_INSET, viewport.height - XIAOZE_POPUP_SAFE_INSET - height);
+  const maxY = Math.max(
+    XIAOZE_POPUP_SAFE_INSET,
+    viewport.height - XIAOZE_POPUP_SAFE_INSET - height - launcherFootprint
+  );
 
   return {
     version: XIAOZE_POPUP_LAYOUT_VERSION,
@@ -91,6 +102,13 @@ export function clampXiaozePopupLayout(
     y: Math.min(Math.max(layout.y, XIAOZE_POPUP_SAFE_INSET), maxY),
     width,
     height
+  };
+}
+
+export function getXiaozeLauncherPosition(layout: XiaozePopupLayout): XiaozeLauncherPosition {
+  return {
+    x: layout.x + layout.width - XIAOZE_LAUNCHER_SIZE,
+    y: layout.y + layout.height + XIAOZE_LAUNCHER_GAP
   };
 }
 
@@ -181,6 +199,14 @@ export function applyXiaozePopupLayout(popup: HTMLElement, layout: XiaozePopupLa
   popup.style.setProperty("--copilot-popup-height", `${clamped.height}px`);
   popup.dataset.xiaozeResizable = "true";
   popup.dataset.xiaozeMovable = "true";
+}
+
+export function applyXiaozeLauncherLayout(anchor: HTMLElement, layout: XiaozePopupLayout) {
+  const clamped = clampXiaozePopupLayout(layout);
+  const position = getXiaozeLauncherPosition(clamped);
+  anchor.style.setProperty("--xiaoze-launcher-left", `${position.x}px`);
+  anchor.style.setProperty("--xiaoze-launcher-top", `${position.y}px`);
+  anchor.dataset.xiaozeMovable = "true";
 }
 
 export function clampXiaozePopupSize(size: XiaozePopupSize): XiaozePopupSize {

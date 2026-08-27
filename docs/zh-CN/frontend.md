@@ -245,7 +245,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 - API mode（`VITE_WISEEFF_RUNTIME_MODE=api`）始终挂载 `XiaozeProvider`（CopilotKit V2 + `HttpAgent`），SSE 对接 `POST /api/v1/agent/xiaoze`；`XiaozePageContextRegistrar` 声明 `wiseeff.page` 上下文。
 - mock mode 不挂载任何 Agent UI，前端也不发起 Agent HTTP 请求。
-- 视口宽度不少于 `768px` 时，打开的小泽是无模态悬浮窗：页面保持可操作，点击外部和 SPA 路由切换都不会关闭；中部品牌区支持指针拖动和方向键移动（默认 `8px`，Shift 加速到 `32px`），Home 或复位按钮恢复右下角默认布局；右下角手柄在固定左上角的前提下调整大小。布局按 `16px` 安全边距限制在视口内，并以绝对像素写入 `localStorage` 的 `wiseeff.xiaoze.popup.layout.v2`，仅在手势提交时落盘。小于 `768px` 时保持全屏模态，停用拖拽和缩放且不覆盖桌面布局。桌面 Escape 只有在焦点位于小泽或其审批层内时才关闭。
+- 视口宽度不少于 `768px` 时，小泽悬浮球可直接拖动；跨过移动阈值的拖动不会误触打开或关闭。展开后，拖动悬浮球会让悬浮球和无模态弹窗作为一个固定间距的整体移动；中部品牌区仍支持指针拖动和方向键移动（默认 `8px`，Shift 加速到 `32px`）。页面保持可操作，点击外部和 SPA 路由切换都不会关闭；Home 或复位按钮恢复右下角默认布局，右下角手柄在固定左上角的前提下调整大小并同步更新悬浮球位置。整个组合按 `16px` 安全边距限制在视口内，弹窗矩形以绝对像素写入 `localStorage` 的 `wiseeff.xiaoze.popup.layout.v2`，仅在手势提交时落盘。小于 `768px` 时保持全屏模态，停用悬浮球/弹窗组合拖动和缩放且不覆盖桌面布局。桌面 Escape 只有在焦点位于小泽或其审批层内时才关闭。
 - P0：`perception.*` 只读工具。
 - P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案；低风险前端工具仅保留 `navigateTo`（`useFrontendTool`，不写库）——原 `prefillParameterValue` 因注册表无任何页面消费、会让小泽虚报「已预填」而被移除。审批卡已全中文化（批准 / 拒绝 / 目标值），payload 携带理由时渲染「变更理由」区块；拒绝提供可选理由输入（默认「在小泽对话中被拒绝」），随 interrupt resolve 的 `reason` 字段回传。`on_interrupt` emitter、审批卡与服务端 Zod schema 都编译依赖零依赖协议包中唯一的 `XiaozeInterruptPayload` shape。
 - P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`src/infrastructure/http/xiaozeSuggestionsClient.ts` 负责带认证的 `POST /api/v1/agent/xiaoze/suggest` 请求与响应合同解析；`useXiaozeSuggestions` 只消费类型化建议，并在失败时关闭为空 insight 列表。点击建议可预填打开小泽聊天。
