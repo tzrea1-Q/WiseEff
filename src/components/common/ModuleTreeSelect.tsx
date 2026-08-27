@@ -25,6 +25,10 @@ type ModuleTreeSelectProps = {
   hideSingleRoot?: boolean;
   /** Number of visible tree levels expanded when the menu first opens. */
   initialExpandedDepth?: number;
+  /** Add an explicit root-level target for single-select ownership changes. */
+  includeRootOption?: boolean;
+  /** Accessible and visible label for the explicit root-level target. */
+  rootOptionLabel?: string;
 };
 
 type MenuPosition = {
@@ -45,7 +49,9 @@ export function ModuleTreeSelect({
   selectableIds,
   searchable = mode === "multi-filter",
   hideSingleRoot = mode === "multi-filter",
-  initialExpandedDepth = 1
+  initialExpandedDepth = 1,
+  includeRootOption = false,
+  rootOptionLabel = placeholder ?? "根级（无父模块）"
 }: ModuleTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
@@ -172,6 +178,18 @@ export function ModuleTreeSelect({
       style={portalMenu && menuPosition ? { top: menuPosition.top, left: menuPosition.left } : undefined}
       onMouseDown={(event) => event.stopPropagation()}
     >
+      {mode === "single" && includeRootOption ? (
+        <div
+          aria-level={1}
+          aria-selected={!selectedId}
+          className={`module-tree-root-option-row${!selectedId ? " is-selected" : ""}`}
+          role="treeitem"
+        >
+          <button className="module-tree-root-option" type="button" onClick={() => handleSelect("")}>
+            <span className="module-tree-root-option-label">{rootOptionLabel}</span>
+          </button>
+        </div>
+      ) : null}
       <TreeFilterOptions
         ariaLabel={`${label}树形选项`}
         classNamePrefix="module-tree"

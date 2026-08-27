@@ -349,4 +349,25 @@ describe("addDebugParameterFromDraft", () => {
     const blockedDelete = deleteParameterModule(withUnused, "Charge Policy");
     expect(blockedDelete.parameterModules.some((module) => module.name === "Charge Policy")).toBe(true);
   });
+
+  it("moves a parameter module to a new parent or back to root", () => {
+    const base = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const moved = updateParameterModule(base, "Battery", {
+      name: "Battery",
+      parent: "Charging"
+    });
+    expect(moved.parameterModules.find((module) => module.name === "Battery")?.parent).toBe("Charging");
+
+    const rooted = updateParameterModule(moved, "Battery", {
+      name: "Battery",
+      parent: ""
+    });
+    expect(rooted.parameterModules.find((module) => module.name === "Battery")?.parent).toBeUndefined();
+
+    const cyclic = updateParameterModule(base, "Battery", {
+      name: "Battery",
+      parent: "Battery Health"
+    });
+    expect(cyclic).toBe(base);
+  });
 });

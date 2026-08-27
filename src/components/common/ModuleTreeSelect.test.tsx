@@ -36,6 +36,30 @@ describe("ModuleTreeSelect", () => {
     expect(onChange).toHaveBeenCalledWith("pm-c");
   });
 
+  it("offers an explicit root option for single-select moves", () => {
+    const onChange = vi.fn();
+    render(
+      <ModuleTreeSelect
+        mode="single"
+        label="目标父模块"
+        nodes={[...nodes]}
+        value="pm-b"
+        onChange={onChange}
+        includeRootOption
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /电源 \/ 电池/ }));
+    const tree = screen.getByRole("tree");
+    const rootOption = within(tree).getByRole("button", { name: "根级（无父模块）" });
+
+    expect(rootOption).toBeInTheDocument();
+    fireEvent.click(rootOption);
+
+    expect(onChange).toHaveBeenCalledWith("");
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+  });
+
   it("highlights the selected module in single-select mode", () => {
     render(<ModuleTreeSelect mode="single" label="模块" nodes={[...nodes]} value="pm-c" onChange={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /充电/ }));

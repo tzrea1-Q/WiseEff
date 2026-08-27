@@ -331,6 +331,25 @@ export function countChildParameterModules(config: PowerManagementConfig, module
   return config.parameterModules.filter((module) => module.parent?.trim() === moduleName).length;
 }
 
+function wouldCreateParameterModuleCycle(
+  config: PowerManagementConfig,
+  moduleName: string,
+  parentName: string
+) {
+  const visited = new Set<string>();
+  let currentName = parentName;
+
+  while (currentName) {
+    if (currentName === moduleName || visited.has(currentName)) {
+      return true;
+    }
+    visited.add(currentName);
+    currentName = config.parameterModules.find((module) => module.name === currentName)?.parent?.trim() ?? "";
+  }
+
+  return false;
+}
+
 export function listParameterModuleNames(modules: readonly PowerManagementParameterModule[]) {
   return modules.map((module) => module.name);
 }
@@ -580,11 +599,21 @@ export function updateParameterModule(config: PowerManagementConfig, moduleName:
     return config;
   }
 
+  const nextParent = patch.parent !== undefined ? patch.parent.trim() : existing.parent?.trim() ?? "";
+  if (
+    patch.parent !== undefined &&
+    nextParent &&
+    (!config.parameterModules.some((module) => module.name === nextParent) ||
+      wouldCreateParameterModuleCycle(config, moduleName, nextParent))
+  ) {
+    return config;
+  }
+
   const nextModule: PowerManagementParameterModule = {
     name: nextName,
     description: patch.description ?? existing.description,
     scope: patch.scope ?? existing.scope,
-    ...(existing.parent ? { parent: existing.parent } : {})
+    ...(nextParent ? { parent: nextParent } : {})
   };
 
   const parameterModules = config.parameterModules

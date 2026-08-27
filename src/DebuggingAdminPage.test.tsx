@@ -161,6 +161,21 @@ describe("/debugging-admin API mode", () => {
     expect(within(dialog).getByRole("button", { name: "1" })).toBeInTheDocument();
   });
 
+  it("opens module moves in a dedicated dialog", async () => {
+    renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(moduleDialog).getByRole("button", { name: "Battery Charging 更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动" }));
+
+    const moveDialog = screen.getByRole("dialog", { name: "移动「Battery Charging」" });
+    expect(moveDialog).toBeInTheDocument();
+    expect(within(moveDialog).getByText("当前位置：Battery Charging")).toBeInTheDocument();
+    expect(screen.queryByText("移动模块「Battery Charging」到：")).not.toBeInTheDocument();
+  });
+
   it("opens node deletion confirmation from a module detail entry", async () => {
     const apiClient = renderDebuggingAdminPage();
 

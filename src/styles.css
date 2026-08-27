@@ -16450,13 +16450,130 @@ body.xiaoze-popup-resize-active {
   margin: 0;
 }
 
-.param-admin-module-move {
+.debug-module-move-dialog {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100dvh - var(--space-12)));
+}
+
+.debug-module-move-dialog__body {
+  gap: var(--space-4);
+}
+
+.debug-module-move-dialog__context {
   display: grid;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border-subtle, var(--border));
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-muted, #f8fafc);
+}
+
+.debug-module-move-dialog__context-label,
+.debug-module-move-dialog__label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.debug-module-move-dialog__context strong {
+  color: var(--text);
+  font-size: var(--text-lg);
+}
+
+.debug-module-move-dialog__context p,
+.debug-module-move-dialog__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.debug-module-move-dialog__field {
+  gap: var(--space-2);
+}
+
+.module-move-dialog.debug-module-move-dialog .module-tree-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--leading-2xl);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+.module-move-dialog.debug-module-move-dialog .module-tree-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.module-move-dialog.debug-module-move-dialog .module-tree-trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-color: var(--app-primary);
+}
+
+.module-move-dialog.debug-module-move-dialog .module-tree-menu {
+  z-index: var(--z-modal-backdrop-nested);
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.debug-module-move-dialog__error {
+  margin: 0 var(--space-5);
+}
+
+.debug-module-move-dialog .dialog-actions {
+  margin-top: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--outline);
+  background: var(--surface);
+}
+
+.module-tree-root-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--leading-2xl);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.module-tree-root-option-row {
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+
+.module-tree-root-option-row.is-selected {
+  background: var(--accent-soft);
+}
+
+.module-tree-root-option:hover {
+  background: var(--surface-low);
+}
+
+.module-tree-root-option:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.module-tree-root-option-row.is-selected .module-tree-root-option {
+  color: var(--app-primary);
+  font-weight: 600;
 }
 
 .param-group--tree .param-group-header {
