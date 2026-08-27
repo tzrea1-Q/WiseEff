@@ -43,9 +43,10 @@ import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
 import { isValidMergeLink } from "./mergeLink";
 import {
-  assertSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteContext,
   assertTrustedSensitiveNodeSubmissionAllowed
 } from "../parameter-kernel/sensitiveNode";
+import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {
@@ -143,6 +144,8 @@ type ServiceContext = AuditCorrelationContext & {
   /** Test-only: skip semantic promotion gates after resolve/toolchain. */
   skipSemanticGates?: boolean;
 };
+
+export type ParameterReviewContext = ServiceContext & Partial<TrustedSensitiveNodeWriteContext>;
 
 export type ParameterSubmissionContext = ServiceContext & {
   invocation: TrustedInvocationContext;
@@ -1961,7 +1964,12 @@ export async function withdrawSubmissionRound(
   });
 }
 
-export async function reviewChange(db: Database, auth: AuthContext, input: ReviewParameterChangeInput, context: ServiceContext = {}) {
+export async function reviewChange(
+  db: Database,
+  auth: AuthContext,
+  input: ReviewParameterChangeInput,
+  context: ParameterReviewContext = {}
+) {
   return db.transaction(async (tx) => {
     const request = await loadChangeRequestForReview(tx, auth, input.requestId);
     const fromStatus = request.status;
@@ -2116,6 +2124,19 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     }
 
     requireCanMerge(auth, request.projectId);
+    const suppliedMergeContext =
+      context.invocation && context.refusalSink && context.requestId !== undefined
+        ? {
+            invocation: context.invocation,
+            refusalSink: context.refusalSink,
+            requestId: context.requestId
+          }
+        : undefined;
+    const trustedMergeContext = assertTrustedSensitiveNodeWriteContext(
+      auth,
+      suppliedMergeContext,
+      "parameter review software merge"
+    );
 
     let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisions>> = [];
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
@@ -2207,7 +2228,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
               action: merged.action,
               changeRequestId: input.requestId,
             },
-            { ...context, refusalDb: db }
+            { ...context, ...trustedMergeContext }
           )
         : await writebackMergedParameterValue(
             asAuditTx(tx),
@@ -2222,7 +2243,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
               parameterSpecId: merged.parameterSpecId,
               changeRequestId: input.requestId,
             },
-            { ...context, refusalDb: db }
+            { ...context, ...trustedMergeContext }
           );
       if (writeback.skipped) {
         throw new ApiError(
@@ -2282,7 +2303,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           parameterSpecId: merged.parameterSpecId,
           changeRequestId: input.requestId,
         },
-        { ...context, refusalDb: db }
+        { ...context, ...trustedMergeContext }
       );
     }
 

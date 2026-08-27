@@ -525,7 +525,15 @@ export function registerParameterRoutes(
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
     requireCanReviewOrMerge(auth);
-    const item = await reviewChange(db, auth, body, { requestId: request.requestId, objectStore: options.objectStore });
+    if (!refusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for parameter review.");
+    }
+    const item = await reviewChange(db, auth, body, {
+      invocation: createUserInvocation(auth),
+      requestId: request.requestId,
+      refusalSink: refusalAuditSink,
+      objectStore: options.objectStore
+    });
 
     return { status: 200, body: { item } };
   });

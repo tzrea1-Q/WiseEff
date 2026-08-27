@@ -14,9 +14,13 @@ import type { ObjectStore } from "../logs/objectStore";
 import { createCandidate } from "../parameter-files/candidateService";
 import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
 import { getFileVersionById } from "../parameter-files/repository";
-import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
+import {
+  assertTrustedSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteContext,
+  type TrustedSensitiveNodeWriteContext
+} from "../parameter-kernel/sensitiveNode";
 import { canAdminParameters } from "../parameter-kernel/policy";
-import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
+import { writeGovernanceAudit, writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { rewritePropertyKeyInDtsSource } from "./propertyKeySourceRewrite";
@@ -868,7 +872,7 @@ async function stageWouldRewriteLocations(
     existingDetailsByBinding: Map<string, Record<string, unknown>>;
     objectStore: ObjectStore;
     createCandidate: typeof createCandidate;
-    context: AuditCorrelationContext;
+    context: TrustedSensitiveNodeWriteContext;
   },
 ): Promise<Map<string, StagedPropertyKeyRewrite | { errorCode: string }>> {
   const stagedByBinding = new Map<string, StagedPropertyKeyRewrite | { errorCode: string }>();
@@ -924,22 +928,6 @@ async function stageWouldRewriteLocations(
     }
 
     try {
-      for (const location of writable) {
-        await assertSensitiveNodeWriteAllowed(
-          db,
-          auth,
-          {
-            organizationId: auth.organization.id,
-            projectId,
-            nodePath: location.nodePath,
-            sourceFileName: fileName,
-            actorType: "user",
-            requestId: input.context.requestId,
-          },
-          { refusalDb: db },
-        );
-      }
-
       const version = await getFileVersionById(db, { versionId: fileVersionId });
       if (!version) {
         throw new ApiError("NOT_FOUND", "Source file version was not found for rewrite.", {
@@ -1015,11 +1003,11 @@ export async function getOpenPropertyKeySourceCutover(
   };
 }
 
-export async function preparePropertyKeySourceCutover(
+async function preparePropertyKeySourceCutoverInTransaction(
   db: Database,
   auth: AuthContext,
   input: { specId: string; reason?: string },
-  context: AuditCorrelationContext = {},
+  context: TrustedSensitiveNodeWriteContext,
   deps?: PropertyKeyCutoverPrepareDeps,
 ): Promise<{ item: PropertyKeyCutoverRunDto }> {
   requireCanAdmin(auth);
@@ -1049,6 +1037,20 @@ export async function preparePropertyKeySourceCutover(
     fromKey: run.from_key,
     toKey: run.to_key,
   });
+  for (const location of locations) {
+    const nodePath = location.nodePath?.trim();
+    const fileName = location.fileName?.trim();
+    if (location.status !== "would-rewrite" || !nodePath || !fileName) continue;
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+      organizationId: auth.organization.id,
+      projectId: location.projectId,
+      nodePath,
+      sourceFileName: fileName,
+      invocation: context.invocation,
+      requestId: context.requestId,
+      refusalSink: context.refusalSink
+    });
+  }
   const existing = await db.query<{ binding_id: string; details: ItemRow["details"] }>(
     `select binding_id, details from parameter_spec_property_key_cutover_items where run_id = $1`,
     [run.id],
@@ -1064,19 +1066,19 @@ export async function preparePropertyKeySourceCutover(
     context,
   });
 
-  return db.transaction(async (tx) => {
-    const counts = await syncItemsFromLocations(tx, run.id, locations, { stagedByBinding });
+  const counts = await syncItemsFromLocations(db, run.id, locations, { stagedByBinding });
     const nextStatus = runStatusFromCounts(counts);
-    await tx.query(`update parameter_spec_property_key_cutover_runs set status = $2 where id = $1`, [
+    await db.query(`update parameter_spec_property_key_cutover_runs set status = $2 where id = $1`, [
       run.id,
       nextStatus,
     ]);
 
-    await writeGovernanceAudit(
-      asAuditTx(tx),
-      auth,
+    await writeTrustedGovernanceAudit(
+      asAuditTx(db),
+      context.invocation,
       {
         action: "spec-property-key-cutover-prepared",
+        organizationId: auth.organization.id,
         targetType: "parameter-spec",
         targetId: input.specId,
         metadata: {
@@ -1091,13 +1093,25 @@ export async function preparePropertyKeySourceCutover(
           ).length,
         },
       },
-      context,
+      context.requestId,
     );
 
     return {
-      item: await loadRunDto(tx, auth, { ...run, status: nextStatus }, []),
+      item: await loadRunDto(db, auth, { ...run, status: nextStatus }, []),
     };
-  });
+}
+
+export async function preparePropertyKeySourceCutover(
+  db: Database,
+  auth: AuthContext,
+  input: { specId: string; reason?: string },
+  context: TrustedSensitiveNodeWriteContext,
+  deps?: PropertyKeyCutoverPrepareDeps,
+): Promise<{ item: PropertyKeyCutoverRunDto }> {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "property-key cutover prepare");
+  return db.transaction((tx) =>
+    preparePropertyKeySourceCutoverInTransaction(tx, auth, input, trustedContext, deps)
+  );
 }
 
 export async function finalizePropertyKeySourceCutover(

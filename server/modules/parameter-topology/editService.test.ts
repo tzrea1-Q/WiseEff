@@ -581,6 +581,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
         reason: "Raise current limit for board variant",
       },
       { toolchain: passToolchain },
+      createTestParameterSubmissionContext(auth, "enablement-draft-shared-tip"),
     );
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
@@ -2226,6 +2227,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
         reason: "Disable charging_core for board bring-up",
       },
       { toolchain: passToolchain },
+      createTestParameterSubmissionContext(auth, "enablement-draft-shared-tip"),
     );
 
     expect(enablement.logicalNodeId).toBe(logicalNodeId);

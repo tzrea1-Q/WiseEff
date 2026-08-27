@@ -19,6 +19,12 @@ export type SensitiveMatchType = "path" | "compatible";
 export type SensitiveWriteActorType = "user" | "agent" | "system";
 export const PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE = "parameter-sensitive-node-human-required" as const;
 
+export type TrustedSensitiveNodeWriteContext = {
+  invocation: TrustedInvocationContext;
+  requestId: string;
+  refusalSink: TrustedRefusalAuditSink;
+};
+
 export type SensitiveNodeRule = {
   id: string;
   organizationId: string;
@@ -206,8 +212,33 @@ async function resolveTrustedSensitiveNodeMatch(
   return matched ? { matched, nodePath } : null;
 }
 
-/** #613 submission-only guard. Other sensitive write callers migrate under #614. */
-export async function assertTrustedSensitiveNodeSubmissionAllowed(
+export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiveNodeWriteContext>(
+  auth: AuthContext,
+  context: T | undefined,
+  operation: string
+): T {
+  if (!context || typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+    throw new TrustedInvocationContextError(
+      `${operation} requires a requestId, server-owned refusal audit sink, and trusted invocation context`
+    );
+  }
+  assertTrustedRefusalAuditSink(context.refusalSink);
+  const invocation = assertTrustedInvocationContext(context.invocation);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError(
+      `${operation} invocation principal does not match the authenticated principal`
+    );
+  }
+  return { ...context, invocation, requestId: context.requestId.trim() };
+}
+
+/** Shared trusted-provenance guard for parameter-sensitive production writes. */
+export async function assertTrustedSensitiveNodeWriteAllowed(
   db: Queryable,
   auth: AuthContext,
   input: {
@@ -221,18 +252,8 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
     refusalSink: TrustedRefusalAuditSink;
   }
 ) {
-  assertTrustedRefusalAuditSink(input.refusalSink);
-  const invocation = assertTrustedInvocationContext(input.invocation);
-  if (
-    invocation.initiator !== "system" &&
-    (invocation.principal.user.id !== auth.user.id ||
-      invocation.principal.organization.id !== auth.organization.id ||
-      invocation.principal.user.organizationId !== auth.organization.id)
-  ) {
-    throw new TrustedInvocationContextError(
-      "parameter sensitive-node invocation principal does not match the authenticated principal"
-    );
-  }
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, input, "parameter sensitive-node write");
+  const invocation = trustedContext.invocation;
   const resolved = await resolveTrustedSensitiveNodeMatch(db, input);
   if (!resolved) return;
   const { matched, nodePath } = resolved;
@@ -257,7 +278,7 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
         pattern: matched.pattern,
         requiredCapability: matched.requiredCapability
       },
-      traceId: input.requestId
+      traceId: trustedContext.requestId
     });
     throw new ApiError("FORBIDDEN", "Critical sensitive-node submissions require a user-initiated invocation.", {
       code: PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE,
@@ -277,6 +298,9 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
     });
   }
 }
+
+/** #613 compatibility name; #615 owns final legacy API cleanup. */
+export const assertTrustedSensitiveNodeSubmissionAllowed = assertTrustedSensitiveNodeWriteAllowed;
 
 export async function assertSensitiveNodeWriteAllowed(
   db: Queryable,

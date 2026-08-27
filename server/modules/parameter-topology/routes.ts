@@ -1,9 +1,15 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import {
+  assertTrustedRefusalAuditSink,
+  createTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
-import type { Database } from "../../shared/database/client";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -81,9 +87,15 @@ export function registerParameterTopologyRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  const refusalAuditSink = options.refusalAuditSink
+    ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
+    : options.db && isRootDatabase(options.db)
+      ? createTrustedRefusalAuditSink(options.db)
+      : undefined;
   router.get(
     "/api/v2/projects/:projectId/config-sets/:configSetId/revisions",
     async (request) => {
@@ -230,6 +242,9 @@ export function registerParameterTopologyRoutes(
     requireCanEdit(auth);
     const params = parseWithSchema(createNodeEnablementDraftParamsSchema, request.params);
     const body = parseWithSchema(createNodeEnablementDraftBodySchema, request.body ?? {});
+    if (!refusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for node enablement drafts.");
+    }
     const item = await createNodeEnablementDraft(
       db,
       auth,
@@ -238,7 +253,11 @@ export function registerParameterTopologyRoutes(
         ...body
       },
       { objectStore: options.objectStore },
-      { requestId: request.requestId }
+      {
+        invocation: createUserInvocation(auth),
+        requestId: request.requestId,
+        refusalSink: refusalAuditSink
+      }
     );
     return { status: 201, body: { item } };
   });

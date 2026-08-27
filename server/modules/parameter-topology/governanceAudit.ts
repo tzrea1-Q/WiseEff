@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
+import { writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 
@@ -56,6 +57,35 @@ export async function writeGovernanceAudit(
     targetType: input.targetType,
     targetId: input.targetId,
     metadata: input.metadata
+  });
+}
+
+/** Trusted-provenance variant used only by migrated #614 governance writes. */
+export async function writeTrustedGovernanceAudit(
+  tx: AuditTx,
+  invocation: TrustedInvocationContext,
+  input: {
+    action: GovernanceAuditAction;
+    organizationId: string;
+    projectId?: string | null;
+    targetType: string;
+    targetId: string;
+    metadata: Record<string, unknown>;
+  },
+  requestId: string
+) {
+  await writeTrustedAuditEventInTx(tx, {
+    invocation,
+    ...(invocation.initiator === "system" ? { organizationId: input.organizationId } : {}),
+    projectId: input.projectId ?? null,
+    app: "parameters",
+    kind: "parameter-topology-governance",
+    action: input.action,
+    severity: "Medium",
+    targetType: input.targetType,
+    targetId: input.targetId,
+    metadata: input.metadata,
+    traceId: requestId
   });
 }
 

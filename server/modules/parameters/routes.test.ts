@@ -495,7 +495,14 @@ describe("parameter routes", () => {
       "/api/v1/parameter-change-requests/request-1/review",
       {
         method: "POST",
-        body: JSON.stringify({ decision: "advance", expectedVersion: 7, note: "https://example.com/mr/1" })
+        headers: { "x-wiseeff-actor-type": "agent", "x-wiseeff-initiator": "system" },
+        body: JSON.stringify({
+          decision: "advance",
+          expectedVersion: 7,
+          note: "https://example.com/mr/1",
+          actorType: "agent",
+          provenance: { initiator: "system" }
+        })
       }
     );
 
@@ -510,7 +517,11 @@ describe("parameter routes", () => {
         expectedVersion: 7,
         note: "https://example.com/mr/1"
       },
-      { requestId: "test-request" }
+      expect.objectContaining({
+        invocation: expect.objectContaining({ initiator: "user" }),
+        requestId: "test-request",
+        refusalSink: testRefusalAuditSink
+      })
     );
   });
 

@@ -8,17 +8,20 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
+import { createDatabase, createPostgresDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDatabase";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { asAuditTx } from "../audit/auditedWrite";
 import { insertNodeOperation } from "../debugging/repository";
 import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
-import { writebackMergedParameterValue } from "../parameter-files/writebackService";
+import { writebackMergedEnablementValue, writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   listParameterHistory,
@@ -37,9 +40,10 @@ import {
   mergeChangeRequest,
   updateChangeRequestStatus
 } from "../parameters/reviewWorkflowRepository";
-import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
+import { reviewChange as reviewChangeService, saveDraft, submitParameterChanges } from "../parameters/service";
+import type { ParameterReviewContext } from "../parameters/service";
 import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
-import { resolveBindingWriteLock } from "./writeLock";
+import { resolveBindingWriteLock, resolveEnablementWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
@@ -53,6 +57,18 @@ const ORG = "org-pcw-t1t2";
 const PROJECT = "project-pcw-t1t2";
 const USER = "user-pcw-t1t2";
 const CONFIG_SET = "dcs-pcw-t1t2";
+
+function reviewChange(
+  db: Parameters<typeof reviewChangeService>[0],
+  auth: AuthContext,
+  input: Parameters<typeof reviewChangeService>[2],
+  context: ParameterReviewContext = {}
+) {
+  return reviewChangeService(db, auth, input, {
+    ...createTestParameterSubmissionContext(auth, `review-${input.requestId}`),
+    ...context
+  });
+}
 const DEF_ID = "pd-pcw-gpio-int";
 const PPV_ID = "ppv-pcw-gpio-int";
 const SCHEMA_NS = "vendor";
@@ -112,6 +128,18 @@ async function withTempDatabase(fn: (db: Database, connectionString: string) => 
   await withSharedTempDatabase({ prefix: "pcw" }, ({ db, connectionString }) =>
     fn(db, connectionString)
   );
+}
+
+async function withRefusalSink<T>(
+  connectionString: string,
+  fn: (sink: TrustedRefusalAuditSink) => Promise<T>
+): Promise<T> {
+  const root = createPostgresDatabase(connectionString);
+  try {
+    return await fn(createTrustedRefusalAuditSink(root));
+  } finally {
+    await root.close().catch(() => undefined);
+  }
 }
 
 function makeAuth(): AuthContext {
@@ -495,7 +523,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "matches quoted exact-revision compatible before topology enablement capability checks",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         await db.query(
           `delete from parameter_drafts
@@ -600,7 +628,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               target: "force-disabled",
               reason: "Verify quoted compatible capability gate"
             },
-            { toolchain: passToolchain }
+            { toolchain: passToolchain },
+            createTestParameterSubmissionContext(incapableAuth, "enablement-capability-denied")
           )
         ).rejects.toMatchObject({
           code: "FORBIDDEN",
@@ -620,6 +649,107 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           organizationName: "PCW Org",
           permissions: [...incapableAuth.permissions, "parameter:edit-critical"]
         });
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agentInvocation = createAgentInvocation(capableAuth, {
+            sessionId: "session-topology-enablement",
+            toolCallId: "tool-topology-enablement",
+            approval: { required: true, approvalId: "approval-topology-enablement" }
+          });
+          const systemInvocation = createSystemInvocation({ kind: "job", name: "topology-enablement-job" });
+          for (const [requestId, invocation] of [
+            ["enablement-agent-refusal", agentInvocation],
+            ["enablement-system-refusal", systemInvocation]
+          ] as const) {
+            await expect(
+              createNodeEnablementDraft(
+                db,
+                capableAuth,
+                {
+                  projectId: PROJECT,
+                  logicalNodeId: exactNode.rows[0]!.logical_node_id,
+                  baseRevisionId: seeded.configRevisionId,
+                  target: "force-disabled",
+                  reason: "Critical topology enablement must preserve initiator"
+                },
+                { toolchain: passToolchain },
+                { invocation, requestId, refusalSink }
+              )
+            ).rejects.toMatchObject({
+              code: "FORBIDDEN",
+              status: 403,
+              details: { code: "parameter-sensitive-node-human-required", requireHuman: true }
+            });
+            expect(await snapshot()).toEqual(before);
+          }
+        });
+        const refusalRows = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'
+           order by trace_id`,
+          [ORG]
+        );
+        expect(refusalRows.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "agent",
+            actor_user_id: USER,
+            trace_id: "enablement-agent-refusal",
+            metadata: expect.objectContaining({
+              initiator: "agent",
+              sessionId: "session-topology-enablement",
+              toolCallId: "tool-topology-enablement",
+              approvalId: "approval-topology-enablement"
+            })
+          }),
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-system-refusal",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "topology-enablement-job"
+            })
+          })
+        ]);
+        await db.query(
+          `create or replace function fail_enablement_draft_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-topology-governance' and new.action = 'enablement-changed' then
+               raise exception 'injected enablement draft audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_enablement_draft_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_enablement_draft_audit()`
+        );
+        await expect(
+          createNodeEnablementDraft(
+            db,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "Success audit failure must roll back the draft"
+            },
+            { toolchain: passToolchain },
+            createTestParameterSubmissionContext(capableAuth, "enablement-audit-failure")
+          )
+        ).rejects.toThrow("injected enablement draft audit failure");
+        expect(await snapshot()).toEqual(before);
+        await db.query(`drop trigger fail_enablement_draft_audit_trigger on audit_events`);
+        await db.query(`drop function fail_enablement_draft_audit()`);
         const created = await createNodeEnablementDraft(
           db,
           capableAuth,
@@ -630,7 +760,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             target: "force-disabled",
             reason: "Allow capable direct user on quoted compatible"
           },
-          { toolchain: passToolchain }
+          { toolchain: passToolchain },
+          createTestParameterSubmissionContext(capableAuth, "enablement-capable-user")
         );
         expect(created).toMatchObject({
           logicalNodeId: exactNode.rows[0]!.logical_node_id,
@@ -638,6 +769,148 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           action: "set"
         });
         expect(await snapshot()).toEqual({ drafts: "1", candidates: "1" });
+        await db.query(
+          `update dts_sensitive_node_rules set risk_tier = 'high'
+           where id = 'rule-pcw-quoted-compatible'`
+        );
+        await db.query(`delete from parameter_drafts where id = $1`, [created.draftId]);
+        const systemHighDraft = await createNodeEnablementDraft(
+          db,
+          capableAuth,
+          {
+            projectId: PROJECT,
+            logicalNodeId: exactNode.rows[0]!.logical_node_id,
+            baseRevisionId: seeded.configRevisionId,
+            target: "force-enabled",
+            reason: "High risk keeps System initiator provenance"
+          },
+          { toolchain: passToolchain },
+          createTestParameterSubmissionContext(
+            capableAuth,
+            "enablement-high-system",
+            createSystemInvocation({ kind: "service", name: "topology-high-service" })
+          )
+        );
+        expect(systemHighDraft.target).toBe("force-enabled");
+        const systemHighAudit = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events where trace_id = 'enablement-high-system'`
+        );
+        expect(systemHighAudit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-high-system",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "service",
+              systemName: "topology-high-service"
+            })
+          })
+        ]);
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values (
+             'rule-pcw-enablement-writeback-path', $1, $2, 'path', '*',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+
+        const enablementLock = await resolveEnablementWriteLock(db, capableAuth, {
+          logicalNodeId: exactNode.rows[0]!.logical_node_id,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const enablementPut = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/enablement-writeback.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
+        const enablementStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          put: enablementPut
+        };
+        const enablementState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from audit_events where kind = 'parameter-writeback-to-file') as success_audits`
+          )
+        ).rows[0];
+        const beforeEnablementWriteback = await enablementState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agent = createAgentInvocation(capableAuth, {
+            sessionId: "session-enablement-writeback",
+            toolCallId: "tool-enablement-writeback",
+            approval: { required: true, approvalId: "approval-enablement-writeback" }
+          });
+          const system = createSystemInvocation({ kind: "job", name: "enablement-writeback-job" });
+          for (const [requestId, invocation] of [
+            ["enablement-writeback-agent-refusal", agent],
+            ["enablement-writeback-system-refusal", system]
+          ] as const) {
+            await expect(
+              db.transaction((tx) =>
+                writebackMergedEnablementValue(
+                  asAuditTx(tx),
+                  enablementStore as never,
+                  capableAuth,
+                  {
+                    projectId: PROJECT,
+                    logicalNodeId: exactNode.rows[0]!.logical_node_id,
+                    mergedValue: '"disabled"',
+                    writeLock: enablementLock
+                  },
+                  {
+                    invocation,
+                    requestId,
+                    refusalSink,
+                    toolchain: passToolchain,
+                    skipSemanticGates: true
+                  }
+                )
+              )
+            ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+            expect(await enablementState()).toEqual(beforeEnablementWriteback);
+            expect(enablementPut).not.toHaveBeenCalled();
+          }
+        });
+        const enablementWriteback = await db.transaction((tx) =>
+          writebackMergedEnablementValue(
+            asAuditTx(tx),
+            enablementStore as never,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              mergedValue: '"disabled"',
+              writeLock: enablementLock
+            },
+            {
+              ...createTestParameterSubmissionContext(capableAuth, "enablement-writeback-user"),
+              toolchain: passToolchain,
+              skipSemanticGates: true
+            }
+          )
+        );
+        expect(enablementWriteback.skipped).toBe(false);
+        expect(enablementPut).toHaveBeenCalledTimes(1);
+        const enablementAudit = await db.query<{ actor_type: string; actor_user_id: string | null; trace_id: string }>(
+          `select actor_type, actor_user_id, trace_id from audit_events
+           where kind = 'parameter-writeback-to-file' and trace_id = 'enablement-writeback-user'`
+        );
+        expect(enablementAudit.rows).toEqual([
+          { actor_type: "user", actor_user_id: USER, trace_id: "enablement-writeback-user" }
+        ]);
       });
     },
     90_000
@@ -646,7 +919,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "submits an exact binding draft identity and rejects project/spec/candidate/write-lock mismatches",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1272,7 +1545,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "merges a persisted delete action through locked writeback without a replacement binding revision",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1289,7 +1562,14 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           PROJECT
         ]);
 
-        const auth = makeAuth();
+        const auth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
         const writeLock = await resolveBindingWriteLock(db, auth, {
           bindingId: seeded.bindingId,
           baseRevisionId: seeded.configRevisionId
@@ -1325,17 +1605,16 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(request.action).toBe("delete");
 
+        const deletePut = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/delete-writeback-pcw.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
         const objectStore = {
           async get(key: string) {
             return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
           },
-          async put(input: { bytes: Buffer }) {
-            return {
-              storageKey: `${ORG}/delete-writeback-pcw.dts`,
-              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
-              fileSizeBytes: input.bytes.length
-            };
-          }
+          put: deletePut
         };
         await db.query(
           `update dts_occurrence_effects set effect_kind = 'set'
@@ -1385,6 +1664,86 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            where config_revision_id = $1 and property_name = $2`,
           [submittedCandidateRevisionId, PROPERTY_KEY]
         );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-review-merge-critical', $1, $2, 'path', '*',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+        const mergeState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select status from parameter_change_requests where id = $1) as status,
+               (select count(*)::text from parameter_history_entries where request_id = $1) as history,
+               (select count(*)::text from parameter_review_decisions where request_id = $1) as decisions,
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from audit_events where kind in ('parameter-merge', 'parameter-writeback-to-file')) as success_audits`,
+            [request.id]
+          )
+        ).rows[0];
+        const beforeRefusal = await mergeState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agentInvocation = createAgentInvocation(auth, {
+            sessionId: "session-review-merge",
+            toolCallId: "tool-review-merge",
+            approval: { required: true, approvalId: "approval-review-merge" }
+          });
+          await expect(
+            reviewChangeService(
+              db,
+              auth,
+              { requestId: request.id, decision: "advance", note: "https://example.com/agent-delete" },
+              {
+                invocation: agentInvocation,
+                requestId: "review-merge-agent-refusal",
+                refusalSink,
+                objectStore: objectStore as never,
+                toolchain: passToolchain,
+                skipSemanticGates: true
+              }
+            )
+          ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+        });
+        expect(await mergeState()).toEqual(beforeRefusal);
+        expect(deletePut).not.toHaveBeenCalled();
+
+        await db.query(
+          `create or replace function fail_review_merge_writeback_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-writeback-to-file' then
+               raise exception 'injected review merge writeback audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_review_merge_writeback_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_review_merge_writeback_audit()`
+        );
+        await expect(
+          reviewChange(
+            db,
+            auth,
+            { requestId: request.id, decision: "advance", note: "https://example.com/audit-failure-delete" },
+            {
+              objectStore: objectStore as never,
+              toolchain: passToolchain,
+              skipSemanticGates: true,
+              requestId: "trace-pcw-delete-merge-audit-failure"
+            }
+          )
+        ).rejects.toThrow("injected review merge writeback audit failure");
+        expect(await mergeState()).toEqual(beforeRefusal);
+        expect(deletePut).toHaveBeenCalledTimes(1);
+        await db.query(`drop trigger fail_review_merge_writeback_audit_trigger on audit_events`);
+        await db.query(`drop function fail_review_merge_writeback_audit()`);
+        deletePut.mockClear();
+
         const merged = await reviewChange(
           db,
           auth,
@@ -1481,7 +1840,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "runs list/draft/submit/review/merge/history/writeback/debug/delete without shadow PPV",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1514,7 +1873,14 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           PROJECT
         ]);
 
-        const auth = makeAuth();
+        const auth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
         const mergedGpioValue = "<&gpio13 30 0>";
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
         expect(writeLock.baseConfigRevisionId).toBeTruthy();
@@ -1646,6 +2012,11 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         );
         expect(baseBindingRaw.rows[0]?.raw_value).toBe("<1>");
 
+        const put = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/writeback-pcw.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
         const objectStore = {
           async get(key: string) {
             if (key.includes("overlay")) {
@@ -1653,14 +2024,58 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
             return Buffer.from(seeded.content, "utf8");
           },
-          async put(input: { bytes: Buffer }) {
-            return {
-              storageKey: `${ORG}/writeback-pcw.dts`,
-              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
-              fileSizeBytes: input.bytes.length
-            };
-          }
+          put
         };
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-semantic-writeback-critical', $1, $2, 'path', '*',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+        const writebackState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from dts_config_revisions where status = 'draft') as candidates,
+               (select count(*)::text from project_parameter_binding_revisions) as binding_revisions,
+               (select count(*)::text from audit_events where kind = 'parameter-writeback-to-file') as success_audits`
+          )
+        ).rows[0];
+        const beforeWriteback = await writebackState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agent = createAgentInvocation(auth, {
+            sessionId: "session-semantic-writeback",
+            toolCallId: "tool-semantic-writeback",
+            approval: { required: true, approvalId: "approval-semantic-writeback" }
+          });
+          const system = createSystemInvocation({ kind: "service", name: "semantic-writeback-service" });
+          for (const [requestId, invocation] of [
+            ["semantic-writeback-agent-refusal", agent],
+            ["semantic-writeback-system-refusal", system]
+          ] as const) {
+            await expect(
+              writebackMergedParameterValue(db, objectStore as never, auth, {
+                projectId: PROJECT,
+                parameterDefinitionId: seeded.specId,
+                mergedValue: mergedGpioValue,
+                projectParameterBindingId: seeded.bindingId,
+                parameterSpecId: seeded.specId,
+                changeRequestId: request.id
+              }, {
+                invocation,
+                requestId,
+                refusalSink,
+                toolchain: passToolchain,
+                skipSemanticGates: true
+              })
+            ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+            expect(await writebackState()).toEqual(beforeWriteback);
+            expect(put).not.toHaveBeenCalled();
+          }
+        });
         const writeback = await writebackMergedParameterValue(db, objectStore as never, auth, {
           projectId: PROJECT,
           parameterDefinitionId: seeded.specId,
@@ -1669,6 +2084,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterSpecId: seeded.specId,
           changeRequestId: request.id,
         }, {
+          ...createTestParameterSubmissionContext(auth, "semantic-writeback-direct"),
           toolchain: {
             async validate() {
               return {
@@ -2041,6 +2457,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               changeRequestId: request.id
             },
             {
+              ...createTestParameterSubmissionContext(auth, "semantic-writeback-stale"),
               toolchain: {
                 async validate() {
                   return {

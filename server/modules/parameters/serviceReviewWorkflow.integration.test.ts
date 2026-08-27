@@ -22,11 +22,12 @@ import {
   listDrafts,
   listSubmissionRounds,
   listWorkflowAssignees,
-  reviewChange,
+  reviewChange as reviewChangeService,
   saveDraft,
   submitParameterChanges
 } from "./service";
 import { createTestParameterSubmissionContext } from "./testSubmissionContext";
+import type { ParameterReviewContext } from "./service";
 
 const ORG = "org-srw";
 const PROJECT = "project-srw";
@@ -59,6 +60,18 @@ const completeAssignees = {
   softwareCommitterId: SWC,
   softwareUserId: SWU
 };
+
+function reviewChange(
+  db: Parameters<typeof reviewChangeService>[0],
+  auth: AuthContext,
+  input: Parameters<typeof reviewChangeService>[2],
+  context: ParameterReviewContext = {}
+) {
+  return reviewChangeService(db, auth, input, {
+    ...createTestParameterSubmissionContext(auth, `review-${input.requestId}`),
+    ...context
+  });
+}
 
 function authFor(
   userId: string,

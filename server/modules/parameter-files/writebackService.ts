@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
-import type { AuditCorrelationContext } from "../audit/types";
+import { writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database, Queryable } from "../../shared/database/client";
+import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
@@ -12,7 +11,11 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
-import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
+import {
+  assertTrustedSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteContext,
+  type TrustedSensitiveNodeWriteContext
+} from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameter-drafts/repository";
@@ -63,14 +66,8 @@ export type WritebackMergedEnablementValueInput = {
   writeLock?: EnablementWriteLockFields;
 };
 
-export type WritebackServiceContext = AuditCorrelationContext & {
+export type WritebackServiceContext = TrustedSensitiveNodeWriteContext & {
   objectStore?: ObjectStore;
-  /**
-   * Pool handle for sensitive-node refusal audits. Writeback runs inside the
-   * caller's merge transaction; a deny thrown here rolls that transaction back,
-   * so the refusal evidence must be written outside it (ADR-0027 refusal audits).
-   */
-  refusalDb?: Database;
   /**
    * Explicit toolchain runner injection for tests.
    * Production must omit this and use the pinned host runner.
@@ -345,10 +342,11 @@ async function createWritebackAudit(
     candidateRevisionId?: string;
     action: BindingEditAction;
   },
-  context: WritebackServiceContext = {}
+  context: WritebackServiceContext
 ) {
-  // requestId fallback survives only until writeback contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+  await writeTrustedAuditEventInTx(tx, {
+    invocation: context.invocation,
+    ...(context.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
     app: "parameters",
     kind: "parameter-writeback-to-file",
     action: "writeback",
@@ -365,7 +363,8 @@ async function createWritebackAudit(
       versionNumber: input.versionNumber,
       candidateRevisionId: input.candidateRevisionId,
       changeAction: input.action,
-    }
+    },
+    traceId: context.requestId
   });
 }
 
@@ -445,7 +444,7 @@ export async function writebackMergedEnablementValue(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: WritebackMergedEnablementValueInput,
-  context: WritebackServiceContext = {},
+  context: WritebackServiceContext,
 ): Promise<
   | { skipped: true }
   | {
@@ -456,17 +455,19 @@ export async function writebackMergedEnablementValue(
       candidateRevisionId?: string;
     }
 > {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "enablement writeback");
   const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
   const nodePath = `${lock.targetRef}/status`;
 
-  await assertSensitiveNodeWriteAllowed(db, auth, {
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath,
     sourceFileName: lock.overlayFileName,
-    actorType: "user",
-    requestId: context.requestId,
-  }, { refusalDb: context.refusalDb });
+    invocation: trustedContext.invocation,
+    requestId: trustedContext.requestId,
+    refusalSink: trustedContext.refusalSink,
+  });
 
   const applied = await applyLockedEnablementWriteback(
     db,
@@ -478,8 +479,8 @@ export async function writebackMergedEnablementValue(
     },
     {
       objectStore,
-      skipSemanticGates: context.skipSemanticGates,
-      toolchain: context.toolchain ?? createDtsToolchainRunner(),
+      skipSemanticGates: trustedContext.skipSemanticGates,
+      toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
     },
   );
 
@@ -496,7 +497,7 @@ export async function writebackMergedEnablementValue(
       candidateRevisionId: applied.candidateRevisionId,
       action: input.action ?? "set",
     },
-    context,
+    trustedContext,
   );
 
   return {
@@ -513,7 +514,7 @@ export async function writebackMergedParameterValue(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: WritebackMergedParameterValueInput,
-  context: WritebackServiceContext = {}
+  context: WritebackServiceContext
 ): Promise<
   | { skipped: true }
   | {
@@ -525,6 +526,7 @@ export async function writebackMergedParameterValue(
       bindingRevisionId?: string;
     }
 > {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "parameter writeback");
   if (parameterIdentityMode() === "semantic") {
     if (!input.projectParameterBindingId) {
       throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", {
@@ -536,14 +538,15 @@ export async function writebackMergedParameterValue(
     const { lock, parameterSpecVersionId } = await resolveLockedWritebackContext(db, auth, input);
     const nodePath = `${lock.targetRef}/${lock.propertyKey}`;
 
-    await assertSensitiveNodeWriteAllowed(db, auth, {
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
       nodePath,
       sourceFileName: lock.overlayFileName,
-      actorType: "user",
-      requestId: context.requestId,
-    }, { refusalDb: context.refusalDb });
+      invocation: trustedContext.invocation,
+      requestId: trustedContext.requestId,
+      refusalSink: trustedContext.refusalSink,
+    });
 
     const applied = await applyLockedOverlayWriteback(
       db,
@@ -558,8 +561,8 @@ export async function writebackMergedParameterValue(
       },
       {
         objectStore,
-        skipSemanticGates: context.skipSemanticGates,
-        toolchain: context.toolchain ?? createDtsToolchainRunner(),
+        skipSemanticGates: trustedContext.skipSemanticGates,
+        toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
       },
     );
 
@@ -578,7 +581,7 @@ export async function writebackMergedParameterValue(
         candidateRevisionId: applied.candidateRevisionId,
         action: input.action ?? "set",
       },
-      context,
+      trustedContext,
     );
 
     return {
@@ -602,14 +605,15 @@ export async function writebackMergedParameterValue(
     return { skipped: true };
   }
 
-  await assertSensitiveNodeWriteAllowed(db, auth, {
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath: source.sourceNodePath,
     sourceFileName: source.sourceFileName,
-    actorType: "user",
-    requestId: context.requestId
-  }, { refusalDb: context.refusalDb });
+    invocation: trustedContext.invocation,
+    requestId: trustedContext.requestId,
+    refusalSink: trustedContext.refusalSink
+  });
 
   const file = await getProjectParameterFileByName(db, {
     organizationId: auth.organization.id,
@@ -677,7 +681,7 @@ export async function writebackMergedParameterValue(
       parameterSpecId: input.parameterSpecId,
       action: input.action ?? "set"
     },
-    context
+    trustedContext
   );
 
   return {

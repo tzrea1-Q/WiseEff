@@ -1,12 +1,15 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
+import { createUserInvocation } from "../auth/trustedInvocation";
 import {
-  canAdminParameters,
-  canViewParameters,
-} from "../parameter-kernel/policy";
-import type { Database } from "../../shared/database/client";
+  assertTrustedRefusalAuditSink,
+  createTrustedRefusalAuditSink,
+  type TrustedRefusalAuditSink
+} from "../audit/trustedRefusalSink";
+import type { ObjectStore } from "../logs/objectStore";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
+import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -124,11 +127,17 @@ export function registerParameterSpecRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    refusalAuditSink?: TrustedRefusalAuditSink;
     getCurrentAuthContext: (
       request: RouteRequest,
     ) => Promise<AuthContext> | AuthContext;
   },
 ) {
+  const refusalAuditSink = options.refusalAuditSink
+    ? (assertTrustedRefusalAuditSink(options.refusalAuditSink), options.refusalAuditSink)
+    : options.db && isRootDatabase(options.db)
+      ? createTrustedRefusalAuditSink(options.db)
+      : undefined;
   router.get("/api/v2/parameter-specs", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -440,11 +449,21 @@ export function registerParameterSpecRoutes(
         preparePropertyKeyCutoverBodySchema,
         request.body ?? {},
       );
+      if (!refusalAuditSink) {
+        throw new ApiError(
+          "INTERNAL_ERROR",
+          "Trusted refusal audit sink is required for property-key cutover prepare.",
+        );
+      }
       const result = await preparePropertyKeySourceCutover(
         db,
         auth,
         { specId: params.specId, reason: body.reason },
-        { requestId: request.requestId },
+        {
+          invocation: createUserInvocation(auth),
+          requestId: request.requestId,
+          refusalSink: refusalAuditSink,
+        },
         options.objectStore ? { objectStore: options.objectStore } : undefined,
       );
       return { status: 200, body: result };

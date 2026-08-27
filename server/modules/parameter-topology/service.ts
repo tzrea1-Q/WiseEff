@@ -15,6 +15,7 @@ import {
 } from "../parameter-specs/repository";
 import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/definitionVerification";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
+import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -1646,7 +1647,7 @@ export async function createNodeEnablementDraft(
     projectId: string;
   } & CreateNodeEnablementDraftBody,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {}
+  context: TrustedSensitiveNodeWriteContext
 ): Promise<CreateNodeEnablementDraftServiceResult> {
   requireCanEdit(auth);
 

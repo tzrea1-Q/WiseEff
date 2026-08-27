@@ -6,9 +6,11 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { testRefusalAuditSink } from "../audit/testRefusalSink";
 import { registerParameterSpecRoutes } from "../parameter-specs/routes";
 import { registerParameterTopologyRoutes } from "./routes";
 import * as specService from "../parameter-specs/service";
+import * as cutoverService from "../parameter-specs/propertyKeyCutover";
 import * as topologyService from "./service";
 
 vi.mock("../parameter-specs/service", () => ({
@@ -28,6 +30,14 @@ vi.mock("./service", () => ({
   validateConfigRevision: vi.fn(),
   createBindingDraft: vi.fn(),
   createNodeEnablementDraft: vi.fn()
+}));
+
+vi.mock("../parameter-specs/propertyKeyCutover", () => ({
+  getOpenPropertyKeySourceCutover: vi.fn(),
+  previewPropertyKeySourceCutover: vi.fn(),
+  startPropertyKeySourceCutover: vi.fn(),
+  preparePropertyKeySourceCutover: vi.fn(),
+  finalizePropertyKeySourceCutover: vi.fn()
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -71,6 +81,7 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
   const router = createRouter();
   const deps = {
     db: options.db,
+    refusalAuditSink: testRefusalAuditSink,
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   };
   registerParameterSpecRoutes(router, deps);
@@ -548,14 +559,17 @@ describe("parameter semantic v2 routes", () => {
 
     const response = await requestJson(
       makeServer({ db: makeDb(), auth: makeEditorAuth() }),
-      "/api/v2/projects/project-1/node-enablement-drafts",
+      "/api/v2/projects/project-1/node-enablement-drafts?actorType=agent&initiator=system",
       {
         method: "POST",
+        headers: { "x-wiseeff-actor-type": "agent" },
         body: JSON.stringify({
           logicalNodeId: "node-1",
           baseRevisionId: "rev-1",
           target: "force-disabled",
-          reason: "Board power rail offline"
+          reason: "Board power rail offline",
+          actorType: "agent",
+          provenance: { initiator: "system" }
         })
       }
     );
@@ -578,7 +592,40 @@ describe("parameter semantic v2 routes", () => {
         reason: "Board power rail offline"
       }),
       expect.objectContaining({ objectStore: undefined }),
-      { requestId: expect.any(String) }
+      expect.objectContaining({
+        invocation: expect.objectContaining({ initiator: "user" }),
+        requestId: expect.any(String),
+        refusalSink: testRefusalAuditSink
+      })
+    );
+  });
+
+  it("property-key prepare constructs User provenance and ignores client actor spoofing", async () => {
+    vi.mocked(cutoverService.preparePropertyKeySourceCutover).mockResolvedValue({
+      item: { id: "cutover-1", status: "ready" }
+    } as never);
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      "/api/v2/parameter-specs/spec-1/property-key-cutover/prepare?actorType=agent",
+      {
+        method: "POST",
+        headers: { "x-wiseeff-initiator": "system" },
+        body: JSON.stringify({ reason: "prepare", actorType: "agent", provenance: { initiator: "system" } })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(cutoverService.preparePropertyKeySourceCutover).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
+      { specId: "spec-1", reason: "prepare" },
+      expect.objectContaining({
+        invocation: expect.objectContaining({ initiator: "user" }),
+        requestId: expect.any(String),
+        refusalSink: testRefusalAuditSink
+      }),
+      undefined
     );
   });
 });

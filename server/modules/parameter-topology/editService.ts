@@ -23,7 +23,11 @@ import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameter-kernel/policy";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacyParameterIdentityAdapter";
-import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
+import {
+  assertTrustedSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteContext,
+  type TrustedSensitiveNodeWriteContext
+} from "../parameter-kernel/sensitiveNode";
 import {
   upsertDraft,
   upsertEnablementDraft,
@@ -45,7 +49,7 @@ import type {
   ConfigRevisionManifestMember,
   PersistedValidationDiagnostic,
 } from "./types";
-import { writeGovernanceAudit } from "./governanceAudit";
+import { writeGovernanceAudit, writeTrustedGovernanceAudit } from "./governanceAudit";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import {
@@ -909,12 +913,12 @@ async function listRevisionStatusRawValues(
  * Create a node-enablement draft that patches (or deletes) `status` on a logical node.
  * Shares working tip / candidate revision coordination with binding drafts (ADR-0003).
  */
-export async function createNodeEnablementDraft(
+async function createNodeEnablementDraftInTransaction(
   db: Database,
   auth: AuthContext,
   input: CreateNodeEnablementDraftInput,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {},
+  context: TrustedSensitiveNodeWriteContext,
 ): Promise<NodeEnablementDraftResult> {
   requireCanEdit(auth);
 
@@ -1005,12 +1009,14 @@ export async function createNodeEnablementDraft(
     logicalNodeId: input.logicalNodeId,
   });
 
-  await assertSensitiveNodeWriteAllowed(db, auth, {
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath: nodeContext.nodeLocator,
     compatible: nodeContext.compatible,
-    actorType: "user",
+    invocation: context.invocation,
+    requestId: context.requestId,
+    refusalSink: context.refusalSink,
   });
 
   const projectSpelling =
@@ -1292,7 +1298,7 @@ export async function createNodeEnablementDraft(
   const { draftId, rebasedDraftIds } = await withAuditedWrite(
     db,
     auth,
-    { requestId: context.requestId ?? randomUUID() },
+    { requestId: context.requestId },
     async (tx) => {
       const persistedDraft = await upsertEnablementDraft(tx, {
         id: randomUUID(),
@@ -1322,33 +1328,26 @@ export async function createNodeEnablementDraft(
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          action: "enablement-changed",
-          projectId: input.projectId,
-          targetType: "dts-logical-node",
-          targetId: input.logicalNodeId,
-          metadata: {
-            draftId: persistedDraft.id,
-            candidateRevisionId,
-            previousRaw: nodeContext.currentRaw,
-            nextRaw: writePlan.rawText,
-            target: input.target,
-            reason: input.reason,
-            writeTargetRole: writeTarget.role,
-            targetRef,
-            action: writePlan.action,
-          },
+      await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, {
+        action: "enablement-changed",
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        targetType: "dts-logical-node",
+        targetId: input.logicalNodeId,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          previousRaw: nodeContext.currentRaw,
+          nextRaw: writePlan.rawText,
+          target: input.target,
+          reason: input.reason,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action: writePlan.action,
         },
-        context,
-      );
-      return {
-        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
-        audit: null,
-      };
-    },
+      }, context.requestId);
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
   );
 
   return {
@@ -1365,6 +1364,17 @@ export async function createNodeEnablementDraft(
     previousRaw: nodeContext.currentRaw,
     target: input.target,
   };
+}
+
+export async function createNodeEnablementDraft(
+  db: Database,
+  auth: AuthContext,
+  input: CreateNodeEnablementDraftInput,
+  deps: CreateBindingDraftDeps = {},
+  context: TrustedSensitiveNodeWriteContext,
+): Promise<NodeEnablementDraftResult> {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "topology enablement draft");
+  return db.transaction((tx) => createNodeEnablementDraftInTransaction(tx, auth, input, deps, trustedContext));
 }
 
 async function loadRevisionDiagnostics(

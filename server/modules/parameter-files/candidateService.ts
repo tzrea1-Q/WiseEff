@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
+import { asAuditTx, writeAuditEventInTx, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import { TrustedInvocationContextError, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
@@ -46,7 +47,9 @@ import type {
   ProjectParameterFileVersionDto
 } from "./types";
 
-export type CandidateServiceContext = AuditCorrelationContext;
+export type CandidateServiceContext = AuditCorrelationContext & {
+  invocation?: TrustedInvocationContext;
+};
 
 export type CreateCandidateInput = {
   projectId: string;
@@ -105,6 +108,30 @@ function writeCandidateAudit(
   },
   context: CandidateServiceContext = {}
 ) {
+  if (context.invocation) {
+    if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+      throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
+    }
+    return writeTrustedAuditEventInTx(tx, {
+      invocation: context.invocation,
+      ...(context.invocation.initiator === "system" ? { organizationId: auth.organization.id } : {}),
+      app: "parameters",
+      kind: input.kind,
+      action: input.action,
+      severity: "Medium",
+      projectId: input.projectId,
+      targetType: "project-parameter-file-candidate",
+      targetId: input.candidate.id,
+      metadata: {
+        fileName: input.candidate.fileName,
+        fileId: input.candidate.fileId ?? null,
+        status: input.candidate.status,
+        sizeBytes: input.candidate.sizeBytes ?? null,
+        ...(input.metadata ?? {})
+      },
+      traceId: context.requestId.trim()
+    });
+  }
   // requestId fallback survives only until candidate contexts become mandatory (ADR-0027).
   return writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
