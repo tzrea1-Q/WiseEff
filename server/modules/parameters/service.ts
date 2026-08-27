@@ -1568,6 +1568,7 @@ export async function submitParameterChanges(
           nodePath: parameter.sourceNodePath,
           sourceFileName: parameter.sourceFileName,
           sourceFileVersionId: parameter.sourceFileVersionId,
+          sourcePath: { kind: "property-path", value: parameter.sourceNodePath },
           invocation: submissionContext.invocation,
           requestId: submissionContext.requestId,
           refusalSink: submissionContext.refusalSink

@@ -109,6 +109,8 @@ async function submitLegacyParameterChange(
       projectId: input.projectId,
       nodePath: parameter.sourceNodePath,
       sourceFileName: parameter.sourceFileName,
+      sourceFileVersionId: parameter.sourceFileVersionId,
+      sourcePath: { kind: "property-path", value: parameter.sourceNodePath },
       invocation,
       requestId: context.requestId,
       refusalSink
