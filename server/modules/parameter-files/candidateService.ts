@@ -55,6 +55,22 @@ export type CandidateServiceContext = AuditCorrelationContext & {
   invocation?: TrustedInvocationContext;
 };
 
+function normalizeCandidateMutationContext(
+  auth: AuthContext,
+  context: CandidateServiceContext,
+  operation: string
+): CandidateServiceContext {
+  if (!context.invocation) return context;
+  if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+    throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
+  }
+  return {
+    ...context,
+    invocation: assertTrustedInvocationMatchesAuth(auth, context.invocation, operation),
+    requestId: context.requestId.trim()
+  };
+}
+
 export type CreateCandidateInput = {
   projectId: string;
   fileName: string;
@@ -284,12 +300,7 @@ export async function createCandidate(
   input: CreateCandidateInput,
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
-  if (context.invocation) {
-    if (typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
-      throw new TrustedInvocationContextError("trusted candidate audit requires a non-empty requestId");
-    }
-    assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter file candidate creation");
-  }
+  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate creation");
   requireCandidateAdmin(auth);
 
   const fileName = input.fileName.trim();
@@ -404,7 +415,7 @@ export async function createCandidate(
         asAuditTx(tx),
         auth,
         { projectId: input.projectId, candidate: failed, action: "create", kind: "parameter-file-candidate-create" },
-        context
+        trustedContext
       );
       return failed;
     }
@@ -452,7 +463,7 @@ export async function createCandidate(
       asAuditTx(tx),
       auth,
       { projectId: input.projectId, candidate: updated, action: "create", kind: "parameter-file-candidate-create" },
-      context
+      trustedContext
     );
     return updated;
   });
@@ -527,6 +538,7 @@ export async function abandonCandidate(
   input: { projectId: string; candidateId: string },
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
+  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate abandonment");
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id,
@@ -565,7 +577,7 @@ export async function abandonCandidate(
         action: "abandon",
         kind: "parameter-file-candidate-abandon"
       },
-      context
+      trustedContext
     );
     return abandoned;
   });
@@ -578,6 +590,7 @@ export async function recomputeCandidateImpact(
   input: { projectId: string; candidateId: string },
   context: CandidateServiceContext = {}
 ): Promise<ProjectParameterFileCandidateDto> {
+  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate recompute");
   requireCandidateAdmin(auth);
   const existing = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id,
@@ -669,7 +682,7 @@ export async function recomputeCandidateImpact(
         action: "recompute",
         kind: "parameter-file-candidate-recompute"
       },
-      context
+      trustedContext
     );
     return updated;
   });
@@ -697,6 +710,7 @@ export async function activateCandidate(
   input: ActivateCandidateInput,
   context: CandidateServiceContext = {}
 ): Promise<ActivateCandidateResult> {
+  const trustedContext = normalizeCandidateMutationContext(auth, context, "parameter file candidate activation");
   requireCandidateAdmin(auth);
 
   const existing = await getParameterFileCandidateById(db, {
@@ -775,7 +789,7 @@ export async function activateCandidate(
             preservedWorkingConfiguration: true
           }
         },
-        context
+        trustedContext
       );
       return marked;
     });
@@ -924,7 +938,7 @@ export async function activateCandidate(
           role: input.role ?? null
         }
       },
-      context
+      trustedContext
     );
 
     return {

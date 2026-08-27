@@ -2169,12 +2169,29 @@ export async function reviewChange(
     }
 
     const participants = await buildReviewParticipants(tx, auth.organization.id, request, reviewDecisions);
-    participants.push({
-      role: "合入执行",
-      name: auth.user.name,
-      action: "合入参数",
-      note: mergeLink
-    });
+    const mergeInvocation = trustedMergeContext.invocation;
+    participants.push(
+      mergeInvocation.initiator === "user"
+        ? {
+            role: "合入执行",
+            name: mergeInvocation.principal.user.name,
+            action: "合入参数",
+            note: mergeLink
+          }
+        : mergeInvocation.initiator === "agent"
+          ? {
+              role: "Agent 合入执行",
+              name: `tool:${mergeInvocation.toolCallId}`,
+              action: "合入参数",
+              note: mergeLink
+            }
+          : {
+              role: "System 合入执行",
+              name: `${mergeInvocation.identity.kind}:${mergeInvocation.identity.name}`,
+              action: "合入参数",
+              note: mergeLink
+            }
+    );
 
     const semanticIdentity = parameterIdentityMode() === "semantic";
     let semanticMerge:

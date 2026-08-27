@@ -2816,12 +2816,13 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           await assertMergeSucceeded(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId, "<9>");
           if (trustedInvocation && trustedTrace) {
             const audits = await db.query<{
+              kind: string;
               actor_type: string;
               actor_user_id: string | null;
               trace_id: string;
               metadata: Record<string, unknown>;
             }>(
-              `select actor_type, actor_user_id, trace_id, metadata
+              `select kind, actor_type, actor_user_id, trace_id, metadata
                from audit_events
                where trace_id = $1 and kind in ('parameter-merge', 'parameter-writeback-to-file')
                order by kind`,
@@ -2845,6 +2846,13 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 ])
               );
               expect(audits.rows.every((row) => row.actor_type === "agent" && row.actor_user_id === USER)).toBe(true);
+              expect(audits.rows.find((row) => row.kind === "parameter-merge")?.metadata).toEqual(
+                expect.objectContaining({
+                  participants: expect.arrayContaining([
+                    expect.objectContaining({ role: "Agent 合入执行", name: "tool:tool-merge-high-agent" })
+                  ])
+                })
+              );
             } else {
               expect(audits.rows).toEqual(
                 expect.arrayContaining([
@@ -2861,6 +2869,28 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 ])
               );
               expect(audits.rows.every((row) => row.actor_type === "system" && row.actor_user_id === null)).toBe(true);
+              const mergeMetadata = audits.rows.find((row) => row.kind === "parameter-merge")?.metadata;
+              expect(mergeMetadata).toEqual(
+                expect.objectContaining({
+                  participants: expect.arrayContaining([
+                    expect.objectContaining({
+                      role: "System 合入执行",
+                      name: "job:parameter-merge-high-job"
+                    })
+                  ])
+                })
+              );
+              const executionParticipants = (mergeMetadata?.participants as Array<{
+                role: string;
+                name: string;
+                action?: string;
+                note?: string;
+              }>)
+                .filter((participant) => participant.role.includes("合入执行"));
+              expect(executionParticipants).toEqual([
+                { role: "System 合入执行", name: "job:parameter-merge-high-job", action: "合入参数", note: expect.any(String) }
+              ]);
+              expect(executionParticipants.some((participant) => participant.name === auth.user.name)).toBe(false);
             }
           }
         });
