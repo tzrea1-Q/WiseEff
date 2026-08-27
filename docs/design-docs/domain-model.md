@@ -281,6 +281,8 @@ The node-only architecture decision is:
 - **Debug node bindings** (`debug_node_bindings`) store per-protocol HDC/ADB paths, access mode, and enablement for each logical node. One enabled binding row per `(node_id, protocol)`; disabling or archiving one protocol binding does not hide the other protocol's binding from admin governance.
 
 Node governance is complete at this seam: node CRUD, independent protocol bindings, module taxonomy, JSON export/import with explicit conflict behavior, server authorization, and count-only audit. Legacy parameter-catalog parity is not a product requirement. Live device validation is a separate evidence gate tracked by Open TD-100; deterministic catalog acceptance must not claim HDC readiness.
+
+Permanent node deletion is a guarded catalog-governance operation, distinct from disabling. It is allowed for enabled or disabled nodes only when no `node_operations.node_id` history exists. The delete transaction locks the node, checks the history count, deletes the node, and relies on the restrictive `node_operations` foreign key as the final concurrent-write guard; a race is translated to the same `409` protection response. `debug_node_bindings` cascade on successful deletion. The audit records only node identity/state and binding count, never paths, values, or notes.
 Runtime separation:
 
 - `/node-debugging` creates sessions with `session_kind = node`, lists federated runtime nodes via `GET /api/v1/debugging/nodes?protocol=...`, and reads/writes through node APIs using `nodeId`. The runtime list inner-joins enabled `debug_node_bindings` for the requested protocol (Option A: nodes without an enabled selected-protocol binding are omitted).

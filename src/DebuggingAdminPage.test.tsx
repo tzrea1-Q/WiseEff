@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopBarActionsContext } from "@/components/layout";
 import { DebuggingAdminPage } from "./DebuggingAdminPage";
+import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "./infrastructure/http/debuggingAdminClient";
 import { initialState } from "./mockData";
 
@@ -47,11 +48,12 @@ function createDebuggingAdminApiMock() {
           notes: body.notes ?? null
         }
       })
-    )
+    ),
+    delete: vi.fn().mockResolvedValue(undefined)
   };
 }
 
-function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
+function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock(), apiAuthPermissions = ["debugging:admin"]) {
   render(
     <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
       <DebuggingAdminPage
@@ -62,7 +64,7 @@ function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
         area="nodes"
         runtimeMode="api"
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
-        apiAuthPermissions={["debugging:admin"]}
+        apiAuthPermissions={apiAuthPermissions}
       />
     </TopBarActionsContext.Provider>
   );
@@ -159,6 +161,44 @@ describe("/debugging-admin API mode", () => {
     expect(within(dialog).getByRole("button", { name: "1" })).toBeInTheDocument();
   });
 
+  it("opens node deletion confirmation from a module detail entry", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(moduleDialog).getByRole("button", { name: "1" }));
+
+    const nodeEntry = within(moduleDialog).getByText("Fast charge current").closest("li");
+    if (!nodeEntry) {
+      throw new Error("找不到模块详情中的节点条目");
+    }
+    fireEvent.click(within(nodeEntry).getByRole("button", { name: "删除节点" }));
+
+    const confirmation = screen.getByRole("dialog", { name: "永久删除节点 Fast charge current" });
+    expect(confirmation).toBeInTheDocument();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "删除节点" }));
+
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1"));
+  });
+
+  it("disables module detail deletion for read-only API users", async () => {
+    renderDebuggingAdminPage(createDebuggingAdminApiMock(), []);
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+    const moduleDialog = screen.getByRole("dialog", { name: "模块管理" });
+    fireEvent.click(within(moduleDialog).getByRole("button", { name: "1" }));
+
+    const nodeEntry = within(moduleDialog).getByText("Fast charge current").closest("li");
+    if (!nodeEntry) {
+      throw new Error("找不到模块详情中的节点条目");
+    }
+    const deleteButton = within(nodeEntry).getByRole("button", { name: "删除节点" });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("title", "缺少 debugging:admin 权限");
+  });
+
   it("upserts node bindings through the bindings dialog", async () => {
     const apiClient = renderDebuggingAdminPage();
 
@@ -235,5 +275,106 @@ describe("/debugging-admin API mode", () => {
         { enabled: false }
       )
     );
+  });
+
+  it("deletes an unused node after explicit confirmation and removes it from the catalog", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+
+    expect(screen.getByRole("dialog", { name: /永久删除节点/ })).toBeInTheDocument();
+    expect(screen.getByText(/同时删除该节点的 HDC \/ ADB 路径绑定/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
+
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1"));
+    await waitFor(() => expect(screen.queryByText("Fast charge current")).not.toBeInTheDocument());
+    expect(screen.getByText("节点已删除")).toBeInTheDocument();
+  });
+
+  it("does not submit the same deletion twice while the request is pending", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    let resolveDelete: (() => void) | undefined;
+    apiClient.delete.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      })
+    );
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    const confirmButton = screen.getByRole("button", { name: "删除节点" });
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+
+    expect(apiClient.delete).toHaveBeenCalledTimes(1);
+    resolveDelete?.();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /永久删除节点/ })).not.toBeInTheDocument());
+  });
+
+  it("refreshes the catalog when a concurrent deletion returns not found", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    apiClient.delete.mockRejectedValueOnce(new WiseEffApiError("NOT_FOUND", "Debug node was not found.", {}, "request-delete"));
+    apiClient.get.mockImplementation((path: string) => {
+      if (path === "/api/v1/debugging/admin/modules") {
+        return Promise.resolve({ items: [{ name: "Battery Charging", description: "", scope: "" }] });
+      }
+      return Promise.resolve({ items: [] });
+    });
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /永久删除节点/ })).not.toBeInTheDocument());
+    expect(screen.queryByText("Fast charge current")).not.toBeInTheDocument();
+    expect(screen.getByText("节点已不存在，列表已刷新")).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?includeArchived=true");
+  });
+
+  it("keeps the node and confirmation dialog open when operation history protects deletion", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    apiClient.delete.mockRejectedValueOnce(
+      new WiseEffApiError(
+        "CONFLICT",
+        "Debug node has historical operations and cannot be deleted; disable it instead.",
+        { nodeId: "node-1", reason: "node-history-protection", operationCount: 2 },
+        "request-delete"
+      )
+    );
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /删除 Fast charge current/ }));
+    fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
+
+    expect(await screen.findByText("节点存在 2 条调试历史记录，无法永久删除，请改用禁用。")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: /永久删除节点/ });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAccessibleName("永久删除节点 Fast charge current");
+    expect(dialog).toHaveAccessibleDescription(/无法永久删除，请改用禁用/);
+  });
+
+  it("converges mock deletion with the shared debug-parameter state", async () => {
+    const dispatch = vi.fn();
+    const node = adminState.configDraft.debugParameters[0]!;
+    render(
+      <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+        <DebuggingAdminPage
+          state={adminState}
+          dispatch={dispatch}
+          onNavigate={vi.fn()}
+          search=""
+          area="nodes"
+          runtimeMode="mock"
+        />
+      </TopBarActionsContext.Provider>
+    );
+
+    const row = await screen.findByRole("row", { name: new RegExp(node.name) });
+    fireEvent.click(within(row).getByRole("button", { name: new RegExp(`删除 ${node.name}`) }));
+    fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_DEBUG_PARAMETER", parameterId: node.id });
+    await waitFor(() => expect(screen.queryByRole("row", { name: new RegExp(node.name) })).not.toBeInTheDocument());
   });
 });

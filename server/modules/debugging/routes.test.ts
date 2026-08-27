@@ -45,6 +45,7 @@ const serviceMocks = vi.hoisted(() => ({
   listAdminDebugNodes: vi.fn(),
   createAdminDebugNode: vi.fn(),
   updateAdminDebugNode: vi.fn(),
+  deleteAdminDebugNode: vi.fn(),
   upsertAdminDebugNodeBinding: vi.fn(),
   archiveAdminDebugNodeBinding: vi.fn(),
   listAdminDebugModules: vi.fn(),
@@ -514,6 +515,26 @@ describe("debugging routes", () => {
         enabled: true,
         bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
       }),
+      { requestId: "test-request" }
+    );
+  });
+
+  it("DELETE /api/v1/debugging/admin/nodes/:nodeId permanently deletes a debug node", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    serviceMocks.deleteAdminDebugNode.mockResolvedValue(undefined);
+
+    const response = await requestJson<null>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/nodes/node-1",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.body).toBeNull();
+    expect(serviceMocks.deleteAdminDebugNode).toHaveBeenCalledWith(
+      makeAuth(),
+      "node-1",
       { requestId: "test-request" }
     );
   });

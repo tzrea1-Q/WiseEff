@@ -69,6 +69,15 @@ describe("debugging admin client", () => {
     expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?includeArchived=true");
   });
 
+  it("deletes a logical node through the guarded admin endpoint", async () => {
+    const apiClient = createApiClientMock();
+    apiClient.delete.mockResolvedValue(undefined);
+    const client = createDebuggingAdminClient(apiClient as never);
+
+    await expect(client.deleteNode("node/1")).resolves.toBeUndefined();
+    expect(apiClient.delete).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node%2F1");
+  });
+
   it("exports the debug node catalog and imports a v1 document", async () => {
     const apiClient = createApiClientMock();
     const document = {

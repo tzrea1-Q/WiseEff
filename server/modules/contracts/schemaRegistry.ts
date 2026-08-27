@@ -6,7 +6,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   responseMedia?: "json" | "binary";
-  successStatus?: 200 | 201 | 410;
+  successStatus?: 200 | 201 | 204 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
 };
@@ -1218,6 +1218,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "DebugNodeAdminPatchRequest",
     responseBody: "DebugNodeResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.deleteNode": {
+    summary: "Delete an unused debug node registry entry",
+    tags: ["debugging"],
+    responseBody: "DeleteResponse",
+    successStatus: 204,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "debugging.admin.upsertNodeBinding": {
     summary: "Upsert debug node protocol binding",

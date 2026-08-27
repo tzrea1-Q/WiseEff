@@ -17,6 +17,7 @@
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 已完成实现见 `docs/exec-plans/completed/`（含工作流发现面可见性 `2026-08-18-workflow-discovery-visibility.md`，#556；2026-08-18 属性键源文件 cutover 与余量方案 `2026-08-18-property-key-source-cutover.md`、`2026-08-19-property-key-cutover-remainder.md`，#544/#549/#553/#555/#558；TD-117 已按接受残留关闭；2026-08-18 CI 反馈环 `2026-08-18-ci-feedback-loop-optimization.md`，#523–#525；2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504；以及 2026-08-17 归档的归属 deferred D-AG-01–04 证据收口 `2026-08-01-attribution-deferred-implementation.md`）。不要把那些计划重新当成活跃工作。
+- `exec-plans/completed/2026-08-27-issue-640-debug-node-delete.md`：Issue #640 增加带历史保护的调试节点永久删除、binding 级联、脱敏审计、API/UI 并发收敛和 mock runtime 状态同步。
 - `exec-plans/completed/2026-08-25-dts-bridge-target-detection.md`：Issue #630 让 DTS 目标检测使用 health 确认且已注册的 Device Bridge，使旧协议/Bridge 响应失效，保留结构化错误，并把本地浏览器证据与真实 Windows/HDC 验收分开记录。
 - `exec-plans/completed/2026-08-24-compact-application-footer.md`：已为普通登录后路由增加随内容滚动的紧凑页脚，并在现有首页大型页脚增加信息行；版权所有者、版本和联系方式使用构建期配置；复用带当前页上下文的产品反馈入口；明确排除认证/故障/全高工作台；应用壳、响应式、无障碍和中英文文档门禁均已验证。
 - `exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout.md`：确定性并行收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059。

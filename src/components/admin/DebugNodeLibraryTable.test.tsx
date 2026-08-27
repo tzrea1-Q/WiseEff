@@ -49,6 +49,7 @@ function renderTable(
       onEdit={onEdit}
       onEditBindings={override.onEditBindings ?? vi.fn()}
       onDisable={override.onDisable ?? vi.fn()}
+      onDelete={override.onDelete ?? vi.fn()}
       {...override}
     />
   );
@@ -121,6 +122,31 @@ describe("DebugNodeLibraryTable", () => {
 
     expect(onEditBindings).toHaveBeenCalledWith("node-1");
     expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("calls onDelete from the row action without opening the editor", async () => {
+    const onDelete = vi.fn();
+    const onEdit = vi.fn();
+    renderTable({ onDelete, onEdit });
+
+    await userEvent.click(
+      within(screen.getByRole("row", { name: /Fast charge current/ })).getByRole("button", { name: /删除 Fast charge current/ })
+    );
+
+    expect(onDelete).toHaveBeenCalledWith("node-1");
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("allows deleting an unused disabled node while keeping disablement unavailable", () => {
+    const disabledNode = { ...nodes[0], id: "node-disabled", name: "Disabled unused node", enabled: false };
+    renderTable({
+      nodes: [disabledNode],
+      moduleNodes: buildDebugModuleTree([disabledNode])
+    });
+
+    const row = screen.getByRole("row", { name: /Disabled unused node/ });
+    expect(within(row).getByRole("button", { name: /删除 Disabled unused node/ })).toBeEnabled();
+    expect(within(row).getByRole("button", { name: /禁用 Disabled unused node/ })).toBeDisabled();
   });
 
   it("paginates when the catalog exceeds one page", () => {
