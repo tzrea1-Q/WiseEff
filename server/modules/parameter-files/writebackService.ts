@@ -140,6 +140,7 @@ export async function preflightMergedParameterWriteback(
     nodePath: source.sourceNodePath,
     sourceFileName: source.sourceFileName,
     sourceFileVersionId: file.currentVersionId,
+    sourcePath: { kind: "property-path", value: source.sourceNodePath },
     invocation: trusted.invocation,
     requestId: trusted.requestId,
     refusalSink: trusted.refusalSink,
@@ -309,6 +310,7 @@ async function resolveLockedWritebackContext(
   const resolved = await resolveBindingWriteLock(db, auth, {
     bindingId: input.projectParameterBindingId,
     baseRevisionId: persistedLock.baseConfigRevisionId,
+    projectId: input.projectId,
   });
 
   if (
@@ -372,6 +374,7 @@ async function resolveLockedEnablementWritebackContext(
   const resolved = await resolveEnablementWriteLock(db, auth, {
     logicalNodeId: input.logicalNodeId,
     baseRevisionId: persistedLock.baseConfigRevisionId,
+    projectId: input.projectId,
   });
 
   if (

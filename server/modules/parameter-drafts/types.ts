@@ -20,6 +20,9 @@ export type ParameterDraftDto = {
   action: ParameterChangeAction;
   reason: string;
   updatedAt: string;
+  /** Subject identity for topology enablement drafts. */
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   /** Trusted execution identity for Agent/System drafts; omitted for legacy User rows. */
   initiatorType?: "user" | "agent" | "system";
   initiatorSystemKind?: "service" | "job";

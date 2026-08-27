@@ -448,7 +448,7 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listDraftsQuerySchema, request.query);
-    const items = await listDrafts(db, auth, query);
+    const items = await listDrafts(db, auth, query, { invocation: createUserInvocation(auth) });
 
     return { status: 200, body: { items } };
   });
@@ -458,7 +458,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithDraftIdSchema, request.params);
 
-    await deleteDraft(db, auth, params.draftId);
+    await deleteDraft(db, auth, params.draftId, { invocation: createUserInvocation(auth) });
 
     return { status: 200, body: { ok: true } };
   });

@@ -26,19 +26,28 @@ begin
   end if;
 
   if exists (
-    select 1 from parameter_history_entries where project_parameter_binding_id is null
+    select 1
+    from parameter_history_entries
+    where logical_node_id is null
+      and project_parameter_binding_id is null
   ) then
     raise exception 'cutover blocked: history missing project_parameter_binding_id';
   end if;
 
   if exists (
-    select 1 from parameter_change_requests where project_parameter_binding_id is null
+    select 1
+    from parameter_change_requests
+    where edit_subject_kind = 'binding'
+      and project_parameter_binding_id is null
   ) then
     raise exception 'cutover blocked: change requests missing project_parameter_binding_id';
   end if;
 
   if exists (
-    select 1 from parameter_drafts where project_parameter_binding_id is null
+    select 1
+    from parameter_drafts
+    where edit_subject_kind = 'binding'
+      and project_parameter_binding_id is null
   ) then
     raise exception 'cutover blocked: drafts missing project_parameter_binding_id';
   end if;
@@ -63,19 +72,9 @@ begin
 end;
 $$;
 
--- Make semantic workflow columns non-null where fully populated.
-alter table parameter_history_entries
-  alter column project_parameter_binding_id set not null;
-
-alter table parameter_change_requests
-  alter column project_parameter_binding_id set not null;
-
-alter table parameter_submission_items
-  alter column project_parameter_binding_id set not null;
-
-alter table parameter_drafts
-  alter column project_parameter_binding_id set not null;
-
+-- Binding rows are fully populated at cutover, but node-enablement rows use a
+-- logical node rather than a binding and must retain a nullable binding id.
+-- The subject checks below and the preflight above enforce the binding side.
 alter table parameter_file_sync_conflicts
   alter column project_parameter_binding_id set not null;
 
@@ -136,12 +135,25 @@ alter table parameter_submission_items
 alter table parameter_file_sync_conflicts
   drop column if exists project_parameter_value_id;
 
--- Recreate draft uniqueness on semantic binding identity.
+-- Recreate draft uniqueness on semantic binding identity while keeping
+-- User/Agent/System ownership independent.  The old user-only constraint was
+-- correct before trusted initiator metadata existed but conflates a direct
+-- User draft with an Agent draft for the same principal.
 alter table parameter_drafts
   drop constraint if exists parameter_drafts_project_binding_user_key;
-alter table parameter_drafts
-  add constraint parameter_drafts_project_binding_user_key
-  unique (project_id, project_parameter_binding_id, user_id);
+drop index if exists parameter_drafts_binding_user_unique;
+drop index if exists parameter_drafts_enablement_user_unique;
+create unique index if not exists parameter_drafts_binding_initiator_unique
+  on parameter_drafts (
+    project_id,
+    project_parameter_binding_id,
+    initiator_type,
+    coalesce(user_id, ''),
+    coalesce(initiator_system_kind, ''),
+    coalesce(initiator_system_name, '')
+  )
+  where edit_subject_kind = 'binding'
+    and project_parameter_binding_id is not null;
 
 alter table project_parameter_values
   drop constraint if exists project_parameter_values_parameter_definition_id_fkey;

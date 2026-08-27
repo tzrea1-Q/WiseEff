@@ -93,16 +93,27 @@ function toRule(row: SensitiveNodeRuleRow): SensitiveNodeRule {
 
 export function matchSensitiveRules(
   rules: SensitiveNodeRule[],
-  input: { nodePath: string; compatible?: string | null; projectId: string }
+  input: {
+    nodePath: string;
+    compatible?: string | null;
+    projectId: string;
+    /**
+     * A complete node locator is matched exactly. Only a property path may
+     * explicitly resolve a rule on its owning node.
+     */
+    sourcePathKind?: SensitiveNodeSourcePath["kind"];
+  }
 ): SensitiveNodeRule | null {
   const nodePath = input.nodePath.trim();
   const parentNodePath = nodePathFromSourceNodePath(nodePath);
+  const allowParentMatch = input.sourcePathKind !== "node-locator";
   const candidates = rules.filter((rule) => {
     if (!rule.enabled) return false;
     if (rule.projectId != null && rule.projectId !== input.projectId) return false;
 
     if (rule.matchType === "path") {
-      return matchesPattern(rule.pattern, nodePath) || matchesPattern(rule.pattern, parentNodePath);
+      return matchesPattern(rule.pattern, nodePath) ||
+        (allowParentMatch && matchesPattern(rule.pattern, parentNodePath));
     }
 
     const compatible = input.compatible?.trim();
@@ -150,6 +161,7 @@ export async function resolveSensitiveNodeMatch(
     projectId: string;
     nodePath: string;
     compatible?: string | null;
+    sourcePathKind?: SensitiveNodeSourcePath["kind"];
   }
 ): Promise<SensitiveNodeRule | null> {
   const nodePath = input.nodePath.trim();
@@ -162,7 +174,8 @@ export async function resolveSensitiveNodeMatch(
   return matchSensitiveRules(rules, {
     nodePath,
     compatible: input.compatible,
-    projectId: input.projectId
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePathKind ?? "property-path"
   });
 }
 
@@ -178,6 +191,7 @@ export async function resolveDtsNodeCompatible(
   }
 ): Promise<string | null> {
   const sourcePathValue = input.sourcePath.value.trim();
+  const sourceFileName = input.sourceFileName.trim();
   const nodePath =
     input.sourcePath.kind === "property-path"
       ? nodePathFromSourceNodePath(sourcePathValue)
@@ -186,7 +200,7 @@ export async function resolveDtsNodeCompatible(
     throw new ApiError("CONFLICT", "Exact source node identity is empty.", {
       code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
       projectId: input.projectId,
-      sourceFileName: input.sourceFileName,
+      sourceFileName,
       sourceFileVersionId: input.sourceFileVersionId ?? null,
       sourcePath: sourcePathValue,
     });
@@ -208,7 +222,7 @@ export async function resolveDtsNodeCompatible(
       [
         input.organizationId,
         input.projectId,
-        input.sourceFileName,
+        sourceFileName,
         sourceFileVersionId,
       ]
     );
@@ -217,7 +231,7 @@ export async function resolveDtsNodeCompatible(
       throw new ApiError("CONFLICT", "Exact source file version does not belong to the requested file scope.", {
         code: "parameter-sensitive-source-version-mismatch",
         projectId: input.projectId,
-        sourceFileName: input.sourceFileName,
+        sourceFileName,
         sourceFileVersionId,
         nodePath
       });
@@ -241,13 +255,13 @@ export async function resolveDtsNodeCompatible(
         and f.file_name = $3
       limit 1
       `,
-      [input.organizationId, input.projectId, input.sourceFileName, sourceFileVersionId, nodePath]
+      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, nodePath]
     );
     if (!exact.rows[0]) {
       throw new ApiError("CONFLICT", "Exact source node identity was not found in the locked file version.", {
         code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
         projectId: input.projectId,
-        sourceFileName: input.sourceFileName,
+        sourceFileName,
         sourceFileVersionId,
         nodePath,
         sourcePathKind: input.sourcePath.kind,
@@ -271,7 +285,7 @@ export async function resolveDtsNodeCompatible(
       and n.node_path = $4
     limit 1
     `,
-    [input.organizationId, input.projectId, input.sourceFileName, lookupPath]
+    [input.organizationId, input.projectId, sourceFileName, lookupPath]
   );
   return result.rows[0]?.compatible ?? null;
 }
@@ -300,25 +314,43 @@ async function resolveTrustedSensitiveNodeMatch(
   const nodePath = input.nodePath.trim();
   if (!nodePath) return null;
   let compatible = input.compatible?.trim() || null;
+  const hasSourceFileName = input.sourceFileName !== undefined && input.sourceFileName !== null;
   const sourceFileName = input.sourceFileName?.trim() || null;
+  const sourceFileVersionId = input.sourceFileVersionId?.trim() || null;
+  if (!input.compatibleIsAuthoritative && (hasSourceFileName || sourceFileVersionId)) {
+    if (!sourceFileName || !sourceFileVersionId) {
+      throw new ApiError("CONFLICT", "Trusted sensitive-node writes require an exact source file version.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: input.projectId,
+        sourceFileName,
+        sourceFileVersionId,
+        nodePath,
+      });
+    }
+  }
   // A source file/version held by a server-side lock is the only compatible
   // authority for writeback.  Ignore any caller-supplied compatible value and
   // resolve it from that exact persisted version; only topology revision
   // callers may explicitly mark their persisted compatible as authoritative.
-  if (!input.compatibleIsAuthoritative && sourceFileName) {
+  if (!input.compatibleIsAuthoritative && sourceFileName && sourceFileVersionId) {
     compatible = await resolveDtsNodeCompatible(db, {
       organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
       sourcePath: input.sourcePath ?? { kind: "property-path", value: nodePath },
-      sourceFileVersionId: input.sourceFileVersionId
+      sourceFileVersionId
     });
   }
   const rules = await listSensitiveNodeRules(db, {
     organizationId: input.organizationId,
     projectId: input.projectId
   });
-  const matched = matchSensitiveRules(rules, { nodePath, compatible, projectId: input.projectId });
+  const matched = matchSensitiveRules(rules, {
+    nodePath,
+    compatible,
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePath?.kind ?? "node-locator"
+  });
   return matched ? { matched, nodePath } : null;
 }
 
@@ -498,7 +530,8 @@ export async function assertSensitiveNodeWriteAllowed(
   const matched = matchSensitiveRules(rules, {
     nodePath,
     compatible,
-    projectId: input.projectId
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePath?.kind ?? "property-path"
   });
   if (!matched) return;
 

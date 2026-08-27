@@ -14,6 +14,41 @@ import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { ApiError } from "../../shared/http/errors";
 
+/**
+ * Stable owner key for a draft working tip.  The principal user identifies
+ * who is accountable for User/Agent executions; initiator type and explicit
+ * System identity keep those executions from sharing a user-owned draft.
+ */
+export type ParameterDraftOwner = Pick<
+  TrustedInvocationDomainAttribution,
+  "userId" | "initiatorType" | "systemKind" | "systemName"
+>;
+
+type DraftOwnerInput = { owner: ParameterDraftOwner } | { userId: string };
+
+function normalizeDraftOwner(input: DraftOwnerInput): ParameterDraftOwner {
+  if ("owner" in input) return input.owner;
+  return {
+    userId: input.userId,
+    initiatorType: "user",
+    systemKind: null,
+    systemName: null,
+  };
+}
+
+function draftOwnerWhere(alias: string, firstPlaceholder: number) {
+  return [
+    `${alias}.initiator_type = $${firstPlaceholder}`,
+    `${alias}.user_id is not distinct from $${firstPlaceholder + 1}`,
+    `${alias}.initiator_system_kind is not distinct from $${firstPlaceholder + 2}`,
+    `${alias}.initiator_system_name is not distinct from $${firstPlaceholder + 3}`,
+  ];
+}
+
+function draftOwnerValues(owner: ParameterDraftOwner): unknown[] {
+  return [owner.initiatorType, owner.userId, owner.systemKind, owner.systemName];
+}
+
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;
   binding_revision_id: string | null;
@@ -48,9 +83,9 @@ export async function getDraftWriteLock(
     organizationId: string;
     projectId: string;
     bindingId: string;
-    userId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<BindingWriteLockFields | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<ParameterWriteLockRow>(
     `
     select
@@ -64,10 +99,10 @@ export async function getDraftWriteLock(
     where organization_id = $1
       and project_id = $2
       and project_parameter_binding_id = $3
-      and user_id = $4
+      and ${draftOwnerWhere("parameter_drafts", 4).join("\n      and ")}
     limit 1
     `,
-    [input.organizationId, input.projectId, input.bindingId, input.userId]
+    [input.organizationId, input.projectId, input.bindingId, ...draftOwnerValues(owner)]
   );
   const row = result.rows[0];
   return row ? toWriteLockFields(row) : null;
@@ -97,10 +132,10 @@ export async function getBindingDraftForSubmission(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     draftId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<BindingDraftForSubmission | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<
     ParameterWriteLockRow & {
       id: string;
@@ -130,8 +165,8 @@ export async function getBindingDraftForSubmission(
        and b.project_id = d.project_id
       where d.organization_id = $1
         and d.project_id = $2
-        and d.user_id = $3
-        and d.id = $4
+        and ${draftOwnerWhere("d", 3).join("\n        and ")}
+        and d.id = $7
       limit 1
       for update of d
     ),
@@ -225,7 +260,7 @@ export async function getBindingDraftForSubmission(
     from locked_draft d
     left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
     `,
-    [input.organizationId, input.projectId, input.userId, input.draftId]
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner), input.draftId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -291,10 +326,10 @@ export async function getEnablementDraftForSubmission(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     draftId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<EnablementDraftForSubmission | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<
     ParameterWriteLockRow & {
       id: string;
@@ -327,8 +362,8 @@ export async function getEnablementDraftForSubmission(
        and base_lnr.config_revision_id = d.base_config_revision_id
       where d.organization_id = $1
         and d.project_id = $2
-        and d.user_id = $3
-        and d.id = $4
+        and ${draftOwnerWhere("d", 3).join("\n        and ")}
+        and d.id = $7
         and d.edit_subject_kind = 'node-enablement'
       limit 1
       for update of d
@@ -421,7 +456,7 @@ export async function getEnablementDraftForSubmission(
     from locked_draft d
     left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
     `,
-    [input.organizationId, input.projectId, input.userId, input.draftId]
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner), input.draftId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -539,6 +574,8 @@ type DraftRow = {
   origin_file_version_id?: string | null;
   updated_at: string | Date;
   project_parameter_binding_id?: string | null;
+  edit_subject_kind?: "binding" | "node-enablement" | null;
+  logical_node_id?: string | null;
   candidate_config_revision_id?: string | null;
   parameter_spec_id?: string | null;
   base_raw_value?: string | null;
@@ -574,7 +611,7 @@ export type ParameterDraftWithOrigin = {
 function toDraftDto(row: DraftRow): ParameterDraftDto {
   const bindingId = row.project_parameter_binding_id ?? undefined;
   // Post-cutover: parameterId DTO field carries the semantic binding id.
-  const parameterId = bindingId ?? row.project_parameter_value_id;
+  const parameterId = bindingId || row.project_parameter_value_id?.trim() || row.logical_node_id;
   if (!parameterId) {
     throw new ApiError("CONFLICT", "Parameter draft has no persisted parameter identity.", {
       draftId: row.id,
@@ -593,6 +630,10 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     action: row.action ?? "set",
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at),
+    ...(row.edit_subject_kind && row.edit_subject_kind !== "binding"
+      ? { editSubjectKind: row.edit_subject_kind }
+      : {}),
+    ...(row.logical_node_id ? { logicalNodeId: row.logical_node_id } : {}),
     ...(bindingId ? { projectParameterBindingId: bindingId } : {}),
     ...(candidateConfigRevisionId ? { candidateConfigRevisionId } : {}),
     ...(parameterSpecId ? { parameterSpecId } : {}),
@@ -643,10 +684,11 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
 
 export async function listDraftsForUser(
   db: Queryable,
-  query: { organizationId: string; userId: string; projectId?: string }
+  query: { organizationId: string; projectId?: string } & DraftOwnerInput
 ) {
-  const values: unknown[] = [query.organizationId, query.userId];
-  const where = ["d.organization_id = $1", "d.user_id = $2"];
+  const owner = normalizeDraftOwner(query);
+  const values: unknown[] = [query.organizationId, ...draftOwnerValues(owner)];
+  const where = ["d.organization_id = $1", ...draftOwnerWhere("d", 2)];
 
   if (query.projectId) {
     addCondition(where, values, (placeholder) => `d.project_id = ${placeholder}`, query.projectId);
@@ -666,6 +708,8 @@ export async function listDraftsForUser(
       d.reason,
       d.updated_at,
       d.project_parameter_binding_id,
+      d.edit_subject_kind,
+      d.logical_node_id,
       d.candidate_config_revision_id,
       d.initiator_type,
       d.initiator_system_kind,
@@ -706,6 +750,8 @@ export async function listDraftsForUser(
       d.reason,
       d.updated_at,
       d.project_parameter_binding_id,
+      d.edit_subject_kind,
+      d.logical_node_id,
       d.candidate_config_revision_id,
       d.initiator_type,
       d.initiator_system_kind,
@@ -795,7 +841,7 @@ export async function listDraftsForParameterValue(
 
 export async function listOpenBindingDraftsForUser(
   db: Queryable,
-  input: { organizationId: string; projectId: string; userId: string },
+  input: { organizationId: string; projectId: string } & DraftOwnerInput,
 ): Promise<
   Array<{
     id: string;
@@ -806,6 +852,7 @@ export async function listOpenBindingDraftsForUser(
     updatedAt: string;
   }>
 > {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<{
     id: string;
     candidate_config_revision_id: string | null;
@@ -820,10 +867,10 @@ export async function listOpenBindingDraftsForUser(
     from parameter_drafts
     where organization_id = $1
       and project_id = $2
-      and user_id = $3
+      and ${draftOwnerWhere("parameter_drafts", 3).join("\n      and ")}
     order by updated_at desc, id asc
     `,
-    [input.organizationId, input.projectId, input.userId],
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner)],
   );
   return result.rows.map((row) => ({
     id: row.id,
@@ -841,27 +888,27 @@ export async function rebaseOpenBindingDraftCandidates(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     candidateConfigRevisionId: string;
     excludeDraftId?: string;
-  },
+  } & DraftOwnerInput,
 ): Promise<string[]> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<{ id: string }>(
     `
     update parameter_drafts
-    set candidate_config_revision_id = $4,
+    set candidate_config_revision_id = $7,
         updated_at = now()
     where organization_id = $1
       and project_id = $2
-      and user_id = $3
-      and candidate_config_revision_id is distinct from $4
-      and ($5::text is null or id <> $5)
+      and ${draftOwnerWhere("parameter_drafts", 3).join("\n      and ")}
+      and candidate_config_revision_id is distinct from $7
+      and ($8::text is null or id <> $8)
     returning id
     `,
     [
       input.organizationId,
       input.projectId,
-      input.userId,
+      ...draftOwnerValues(owner),
       input.candidateConfigRevisionId,
       input.excludeDraftId ?? null,
     ],
@@ -870,7 +917,7 @@ export async function rebaseOpenBindingDraftCandidates(
 }
 
 /**
- * Upsert an open node-enablement draft for (project, logical node, user).
+ * Upsert an open node-enablement draft for (project, logical node, trusted owner).
  * Uses select-then-update/insert so binding drafts' partial unique index is untouched.
  */
 export async function upsertEnablementDraft(
@@ -906,16 +953,18 @@ export async function upsertEnablementDraft(
     `
     select id
     from parameter_drafts
-    where project_id = $1
-      and user_id is not distinct from $2
-      and logical_node_id = $3
+    where organization_id = $1
+      and project_id = $2
+      and user_id is not distinct from $3
+      and logical_node_id = $4
       and edit_subject_kind = 'node-enablement'
-      and initiator_type = $4
-      and initiator_system_kind is not distinct from $5
-      and initiator_system_name is not distinct from $6
+      and initiator_type = $5
+      and initiator_system_kind is not distinct from $6
+      and initiator_system_name is not distinct from $7
     limit 1
+    for update
     `,
-    [input.projectId, userId, input.logicalNodeId, initiatorType, systemKind, systemName],
+    [input.organizationId, input.projectId, userId, input.logicalNodeId, initiatorType, systemKind, systemName],
   );
 
   const draftId = existing.rows[0]?.id ?? input.id;
@@ -1243,45 +1292,47 @@ export async function upsertFileSyncDraft(
 
 export async function deleteDraft(
   db: Queryable,
-  input: { organizationId: string; userId: string; draftId: string }
+  input: { organizationId: string; draftId: string } & DraftOwnerInput
 ) {
+  const owner = normalizeDraftOwner(input);
   await db.query(
     `
     delete from parameter_drafts
     where organization_id = $1
-      and user_id = $2
-      and id = $3
+      and ${draftOwnerWhere("parameter_drafts", 2).join("\n      and ")}
+      and id = $6
     `,
-    [input.organizationId, input.userId, input.draftId]
+    [input.organizationId, ...draftOwnerValues(owner), input.draftId]
   );
 }
 
 export async function deleteDraftForParameter(
   db: Queryable,
-  input: { organizationId: string; userId: string; projectId: string; parameterId: string }
+  input: { organizationId: string; projectId: string; parameterId: string } & DraftOwnerInput
 ) {
+  const owner = normalizeDraftOwner(input);
   if (parameterIdentityMode() === "semantic") {
     await db.query(
       `
       delete from parameter_drafts
       where organization_id = $1
-        and user_id = $2
-        and project_id = $3
-        and project_parameter_binding_id = $4
+        and ${draftOwnerWhere("parameter_drafts", 2).join("\n        and ")}
+        and project_id = $6
+        and project_parameter_binding_id = $7
       `,
-      [input.organizationId, input.userId, input.projectId, input.parameterId]
+      [input.organizationId, ...draftOwnerValues(owner), input.projectId, input.parameterId]
     );
     return;
   }
 
   await db.query(
     `
-    delete from parameter_drafts
-    where organization_id = $1
-      and user_id = $2
-      and project_id = $3
-      and project_parameter_value_id = $4
-    `,
-    [input.organizationId, input.userId, input.projectId, input.parameterId]
+      delete from parameter_drafts
+      where organization_id = $1
+        and ${draftOwnerWhere("parameter_drafts", 2).join("\n        and ")}
+        and project_id = $6
+        and project_parameter_value_id = $7
+      `,
+    [input.organizationId, ...draftOwnerValues(owner), input.projectId, input.parameterId]
   );
 }

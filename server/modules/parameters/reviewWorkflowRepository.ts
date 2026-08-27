@@ -95,6 +95,31 @@ type ChangeRequestRow = {
   source_node_path?: string | null;
 };
 
+/** Render a persisted initiator without ever substituting the auth user. */
+const TRUSTED_SUBMITTER_LABEL = (rowAlias: string, userAlias: string) => `
+      case
+        when ${rowAlias}.initiator_type = 'system' then
+          concat('System ', ${rowAlias}.initiator_system_kind, ':', ${rowAlias}.initiator_system_name)
+        when ${rowAlias}.initiator_type = 'agent' then
+          concat('Agent tool:', ${rowAlias}.initiator_tool_call_id, ' (session:', ${rowAlias}.initiator_session_id, ')')
+        else ${userAlias}.name
+      end`;
+
+function userAttribution(
+  input: TrustedInvocationDomainAttribution | undefined,
+  userId: string | null | undefined
+): TrustedInvocationDomainAttribution {
+  return input ?? {
+    userId: userId ?? null,
+    initiatorType: "user",
+    systemKind: null,
+    systemName: null,
+    sessionId: null,
+    toolCallId: null,
+    approvalId: null
+  };
+}
+
 /** Prefer binding leaf module name; fall back to spec-key prefix. */
 const CR_MODULE_NAME_SEMANTIC_EXPR = `
       coalesce(
@@ -480,33 +505,53 @@ export async function createSubmissionRound(
     id: string;
     organizationId: string;
     projectId: string;
-    submitterUserId: string;
+    submitterUserId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     status: ParameterSubmissionRoundStatus;
     summary: string;
   }
 ) {
+  const attribution = userAttribution(input.attribution, input.submitterUserId);
   const result = await db.query<SubmissionRoundRow>(
     `
     with inserted as (
       insert into parameter_submission_rounds (
-        id, organization_id, project_id, submitter_user_id, status, summary
+        id, organization_id, project_id, submitter_user_id, status, summary,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
       )
-      values ($1, $2, $3, $4, $5, $6)
-      returning id, project_id, submitter_user_id, status, summary, created_at
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      returning id, project_id, submitter_user_id, initiator_type,
+        initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id,
+        status, summary, created_at
     )
     select
       inserted.id,
       inserted.project_id,
       projects.name as project_name,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("inserted", "submitter_user")} as submitter,
       inserted.status,
       inserted.summary,
       inserted.created_at
     from inserted
     inner join projects on projects.id = inserted.project_id
-    left join users on users.id = inserted.submitter_user_id
+    left join users submitter_user on submitter_user.id = inserted.submitter_user_id
     `,
-    [input.id, input.organizationId, input.projectId, input.submitterUserId, input.status, input.summary]
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      attribution.userId,
+      input.status,
+      input.summary,
+      attribution.initiatorType,
+      attribution.systemKind,
+      attribution.systemName,
+      attribution.sessionId,
+      attribution.toolCallId,
+      attribution.approvalId
+    ]
   );
 
   return toSubmissionRoundDto(result.rows[0]);
@@ -526,7 +571,8 @@ export async function createChangeRequest(
     targetValue: string;
     action?: ParameterChangeAction;
     status: ParameterChangeRequestStatus;
-    submitterUserId: string;
+    submitterUserId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     assignedToUserId?: string;
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
     parameterSpecId?: string;
@@ -535,6 +581,7 @@ export async function createChangeRequest(
     writeLock?: BindingWriteLockFields;
   }
 ) {
+  const attribution = userAttribution(input.attribution, input.submitterUserId);
   if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const result = await db.query<ChangeRequestRow>(
@@ -547,9 +594,11 @@ export async function createChangeRequest(
           workflow_software_user_id, parameter_spec_id, project_parameter_binding_id,
           candidate_config_revision_id,
           base_config_revision_id, binding_revision_id, property_occurrence_id,
-          source_file_version_id, expected_checksum, occurrence_span, action
+          source_file_version_id, expected_checksum, occurrence_span, action,
+          initiator_type, initiator_system_kind, initiator_system_name,
+          initiator_session_id, initiator_tool_call_id, initiator_approval_id
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23, $24, $25, $26, $27, $28, $29)
         returning *
       )
       select
@@ -563,7 +612,7 @@ export async function createChangeRequest(
         inserted.target_value,
         inserted.action,
         inserted.candidate_config_revision_id,
-        ${RETAINED_SUBMITTER_SQL} as submitter,
+        ${TRUSTED_SUBMITTER_LABEL("inserted", "submitter_user")} as submitter,
         inserted.status,
         'Low' as risk,
         'legacy-text' as value_kind,
@@ -582,7 +631,7 @@ export async function createChangeRequest(
         null::text as source_node_path
       from inserted
       left join parameter_specs ps on ps.id = inserted.parameter_spec_id
-      left join users on users.id = inserted.submitter_user_id
+      left join users submitter_user on submitter_user.id = inserted.submitter_user_id
       left join users assignee on assignee.id = inserted.assigned_to_user_id
       `,
       [
@@ -594,7 +643,7 @@ export async function createChangeRequest(
         input.currentValue,
         input.targetValue,
         input.status,
-        input.submitterUserId,
+        attribution.userId,
         input.assignedToUserId ?? null,
         input.workflowAssignees?.hardwareCommitterId ?? null,
         input.workflowAssignees?.softwareCommitterId ?? null,
@@ -608,7 +657,13 @@ export async function createChangeRequest(
         input.writeLock?.sourceFileVersionId ?? null,
         input.writeLock?.expectedChecksum ?? null,
         input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
-        input.action ?? "set"
+        input.action ?? "set",
+        attribution.initiatorType,
+        attribution.systemKind,
+        attribution.systemName,
+        attribution.sessionId,
+        attribution.toolCallId,
+        attribution.approvalId
       ]
     );
     return toChangeRequestDto(db, result.rows[0]);
@@ -621,9 +676,11 @@ export async function createChangeRequest(
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
         assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id, action
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id, action,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
       returning *
     )
     select
@@ -637,7 +694,7 @@ export async function createChangeRequest(
       inserted.target_value,
       inserted.action,
       inserted.candidate_config_revision_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("inserted", "submitter_user")} as submitter,
       inserted.status,
       pd.risk,
       pd.value_kind,
@@ -656,7 +713,7 @@ export async function createChangeRequest(
       ppv.source_node_path
     from inserted
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = inserted.parameter_definition_id
-    left join users on users.id = inserted.submitter_user_id
+    left join users submitter_user on submitter_user.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = inserted.project_parameter_value_id
     `,
@@ -671,14 +728,20 @@ export async function createChangeRequest(
       input.currentValue,
       input.targetValue,
       input.status,
-      input.submitterUserId,
+      attribution.userId,
       input.assignedToUserId ?? null,
       input.workflowAssignees?.hardwareCommitterId ?? null,
       input.workflowAssignees?.softwareCommitterId ?? null,
       input.workflowAssignees?.softwareUserId ?? null,
       input.parameterSpecId ?? null,
       input.projectParameterBindingId ?? null,
-      input.action ?? "set"
+      input.action ?? "set",
+      attribution.initiatorType,
+      attribution.systemKind,
+      attribution.systemName,
+      attribution.sessionId,
+      attribution.toolCallId,
+      attribution.approvalId
     ]
   );
 
@@ -698,13 +761,15 @@ export async function createEnablementChangeRequest(
     targetValue: string;
     action?: ParameterChangeAction;
     status: ParameterChangeRequestStatus;
-    submitterUserId: string;
+    submitterUserId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     assignedToUserId?: string;
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
     candidateConfigRevisionId?: string;
     writeLock?: EnablementWriteLockFields;
   }
 ) {
+  const attribution = userAttribution(input.attribution, input.submitterUserId);
   const result = await db.query<ChangeRequestRow>(
     `
     with inserted as (
@@ -716,9 +781,11 @@ export async function createEnablementChangeRequest(
         candidate_config_revision_id,
         base_config_revision_id, binding_revision_id, property_occurrence_id,
         source_file_version_id, expected_checksum, occurrence_span, action,
-        edit_subject_kind, logical_node_id
+        edit_subject_kind, logical_node_id,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, null, null, $14, $15, null, $16, $17, $18, $19::jsonb, $20, 'node-enablement', $21)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, null, null, $14, $15, null, $16, $17, $18, $19::jsonb, $20, 'node-enablement', $21, $22, $23, $24, $25, $26, $27)
       returning *
     )
     select
@@ -738,7 +805,7 @@ export async function createEnablementChangeRequest(
       inserted.candidate_config_revision_id,
       inserted.edit_subject_kind,
       inserted.logical_node_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("inserted", "submitter_user")} as submitter,
       inserted.status,
       'Low' as risk,
       'legacy-text' as value_kind,
@@ -759,7 +826,7 @@ export async function createEnablementChangeRequest(
     left join dts_logical_node_revisions lnr
       on lnr.logical_node_id = inserted.logical_node_id
      and lnr.config_revision_id = inserted.base_config_revision_id
-    left join users on users.id = inserted.submitter_user_id
+    left join users submitter_user on submitter_user.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
     `,
     [
@@ -771,7 +838,7 @@ export async function createEnablementChangeRequest(
       input.currentValue,
       input.targetValue,
       input.status,
-      input.submitterUserId,
+      attribution.userId,
       input.assignedToUserId ?? null,
       input.workflowAssignees?.hardwareCommitterId ?? null,
       input.workflowAssignees?.softwareCommitterId ?? null,
@@ -783,7 +850,13 @@ export async function createEnablementChangeRequest(
       input.writeLock?.expectedChecksum ?? null,
       input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
       input.action ?? "set",
-      input.logicalNodeId
+      input.logicalNodeId,
+      attribution.initiatorType,
+      attribution.systemKind,
+      attribution.systemName,
+      attribution.sessionId,
+      attribution.toolCallId,
+      attribution.approvalId
     ]
   );
   return toChangeRequestDto(db, result.rows[0]);
@@ -1036,7 +1109,7 @@ export async function listSubmissionRounds(
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("psr", "users")} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
@@ -1073,7 +1146,7 @@ export async function getSubmissionRoundById(
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("psr", "users")} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
@@ -1110,7 +1183,7 @@ export async function getSubmissionRoundSubmitterUserId(
   db: Queryable,
   query: { organizationId: string; roundId: string }
 ) {
-  const result = await db.query<{ submitter_user_id: string; status: ParameterSubmissionRoundStatus }>(
+  const result = await db.query<{ submitter_user_id: string | null; status: ParameterSubmissionRoundStatus }>(
     `
     select submitter_user_id, status
     from parameter_submission_rounds
@@ -1201,7 +1274,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       'Low' as risk,
@@ -1246,7 +1319,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1304,7 +1377,7 @@ export async function findOpenChangeRequest(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1328,7 +1401,7 @@ export async function findOpenChangeRequest(
       ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
-      left join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
         and pcr.project_id = $2
@@ -1357,7 +1430,7 @@ export async function findOpenChangeRequest(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1430,7 +1503,7 @@ export async function getChangeRequestById(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1454,7 +1527,7 @@ export async function getChangeRequestById(
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
       ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
-      left join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
         and pcr.id = $2
@@ -1482,7 +1555,7 @@ export async function getChangeRequestById(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      ${RETAINED_SUBMITTER_SQL} as submitter,
+      ${TRUSTED_SUBMITTER_LABEL("pcr", "users")} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1624,6 +1697,10 @@ export async function insertReviewDecision(
     note?: string;
   }
 ) {
+  // Once a trusted projection is supplied it is the only source of the
+  // accountable user field. This keeps System rows user-null and prevents a
+  // caller from pairing a trusted initiator with a different reviewer id.
+  const reviewerUserId = input.attribution ? input.attribution.userId : input.reviewerUserId;
   const result = await db.query<ReviewDecisionRow>(
     `
     insert into parameter_review_decisions (
@@ -1640,7 +1717,7 @@ export async function insertReviewDecision(
       input.id,
       input.organizationId,
       input.requestId,
-      input.reviewerUserId,
+      reviewerUserId,
       input.decision,
       input.fromStatus,
       input.toStatus,
@@ -1703,7 +1780,13 @@ export async function updateChangeRequestStatus(
         target_value,
         action,
         candidate_config_revision_id,
-        (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
+        case
+          when parameter_change_requests.initiator_type = 'system' then
+            concat('System ', parameter_change_requests.initiator_system_kind, ':', parameter_change_requests.initiator_system_name)
+          when parameter_change_requests.initiator_type = 'agent' then
+            concat('Agent tool:', parameter_change_requests.initiator_tool_call_id, ' (session:', parameter_change_requests.initiator_session_id, ')')
+          else (select name from users where id = parameter_change_requests.submitter_user_id)
+        end as submitter,
         status,
         'Low' as risk,
         'legacy-text' as value_kind,
@@ -1754,7 +1837,13 @@ export async function updateChangeRequestStatus(
       current_value,
       target_value,
       action,
-      (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
+      case
+        when parameter_change_requests.initiator_type = 'system' then
+          concat('System ', parameter_change_requests.initiator_system_kind, ':', parameter_change_requests.initiator_system_name)
+        when parameter_change_requests.initiator_type = 'agent' then
+          concat('Agent tool:', parameter_change_requests.initiator_tool_call_id, ' (session:', parameter_change_requests.initiator_session_id, ')')
+        else (select name from users where id = parameter_change_requests.submitter_user_id)
+      end as submitter,
       status,
       (select risk from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as risk,
       (select value_kind from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as value_kind,

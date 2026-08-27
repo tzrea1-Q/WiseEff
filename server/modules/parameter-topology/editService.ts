@@ -923,13 +923,18 @@ async function createNodeEnablementDraftInTransaction(
 ): Promise<NodeEnablementDraftResult> {
   requireCanEdit(auth);
 
-  const openDrafts = context.invocation.initiator === "system"
-    ? []
-    : await listOpenBindingDraftsForUser(db, {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
-        userId: context.invocation.principal.user.id,
-      });
+  const attribution = trustedDomainAttribution(context.invocation);
+  const draftOwner = {
+    userId: attribution.userId,
+    initiatorType: attribution.initiatorType,
+    systemKind: attribution.systemKind,
+    systemName: attribution.systemName,
+  } as const;
+  const openDrafts = await listOpenBindingDraftsForUser(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    owner: draftOwner,
+  });
   const openWorkingTips = [
     ...new Set(
       openDrafts
@@ -1018,12 +1023,13 @@ async function createNodeEnablementDraftInTransaction(
     nodePath: nodeContext.nodeLocator,
     sourcePath: { kind: "node-locator", value: nodeContext.nodeLocator },
     compatible: nodeContext.compatible,
+    // The logical-node compatible token was loaded from this exact persisted
+    // config revision above; it is not a client-provided override.
+    compatibleIsAuthoritative: true,
     invocation: context.invocation,
     requestId: context.requestId,
     refusalSink: context.refusalSink,
   });
-
-  const attribution = trustedDomainAttribution(context.invocation);
 
   const projectSpelling =
     input.spellingOverride ??
@@ -1339,15 +1345,13 @@ async function createNodeEnablementDraftInTransaction(
         },
       });
 
-      const rebased = attribution.userId
-        ? await rebaseOpenBindingDraftCandidates(tx, {
-            organizationId: auth.organization.id,
-            projectId: input.projectId,
-            userId: attribution.userId,
-            candidateConfigRevisionId: candidateRevisionId,
-            excludeDraftId: persistedDraft.id,
-          })
-        : [];
+      const rebased = await rebaseOpenBindingDraftCandidates(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        owner: draftOwner,
+        candidateConfigRevisionId: candidateRevisionId,
+        excludeDraftId: persistedDraft.id,
+      });
 
       await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, {
         action: "enablement-changed",

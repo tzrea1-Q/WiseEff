@@ -74,7 +74,8 @@ export async function notifyParameterReviewRejected(
     projectName?: string;
     requestId: string;
     parameterName: string;
-    submitterUserId: string;
+    /** Nullable for a System-owned submission; reviewers/assignees still receive the event. */
+    submitterUserId?: string | null;
     reviewerName: string;
     note?: string;
   }
@@ -83,7 +84,7 @@ export async function notifyParameterReviewRejected(
   const noteSuffix = input.note?.trim() ? `：${input.note.trim()}` : "";
   await notifyUsers(db, {
     organizationId: input.organizationId,
-    recipientUserIds: [input.submitterUserId],
+    recipientUserIds: input.submitterUserId ? [input.submitterUserId] : [],
     category: "parameter.review.rejected",
     title: `审阅打回 · ${input.parameterName}`,
     body: `${input.reviewerName} 打回了 ${projectLabel} 的参数变更${noteSuffix}`,
@@ -173,7 +174,7 @@ export async function notifyParameterMergeCompleted(
     projectName?: string;
     requestId: string;
     parameterName: string;
-    submitterUserId: string;
+    submitterUserId: string | null;
     mergerName: string;
     reviewerUserIds: string[];
     /** Derived once from the trusted merge invocation; never reconstructed from AuthContext. */
@@ -181,7 +182,7 @@ export async function notifyParameterMergeCompleted(
   }
 ) {
   const projectLabel = input.projectName?.trim() || input.projectId;
-  const recipients = uniqueRecipients([input.submitterUserId, ...input.reviewerUserIds]);
+  const recipients = uniqueRecipients([input.submitterUserId ?? "", ...input.reviewerUserIds]);
   await notifyUsers(db, {
     organizationId: input.organizationId,
     recipientUserIds: recipients,
@@ -412,6 +413,6 @@ export async function notifyDebugNodeReadbackFailed(
   });
 }
 
-function uniqueRecipients(userIds: string[]) {
-  return [...new Set(userIds.map((id) => id.trim()).filter(Boolean))];
+function uniqueRecipients(userIds: Array<string | null | undefined>) {
+  return [...new Set(userIds.map((id) => id?.trim() ?? "").filter(Boolean))];
 }

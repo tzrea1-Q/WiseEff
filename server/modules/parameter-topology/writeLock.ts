@@ -107,6 +107,7 @@ export async function loadBindingContext(
   db: Queryable,
   auth: AuthContext,
   bindingId: string,
+  projectId?: string,
 ): Promise<BindingContextRow> {
   const result = await db.query<BindingContextRow>(
     `
@@ -150,10 +151,12 @@ export async function loadBindingContext(
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-    where b.id = $1 and b.organization_id = $2
+    where b.id = $1
+      and b.organization_id = $2
+      and ($3::text is null or b.project_id = $3)
     limit 1
     `,
-    [bindingId, auth.organization.id],
+    [bindingId, auth.organization.id, projectId ?? null],
   );
   const row = result.rows[0];
   if (!row) {
@@ -411,10 +414,15 @@ export async function loadLogicalNodeEnablementContext(
     `
     select lnr.id as logical_node_revision_id, lnr.node_locator, lnr.compatible
     from dts_logical_node_revisions lnr
+    inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
     inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
     inner join dts_config_set cs on cs.id = cr.config_set_id
     where lnr.config_revision_id = $1
       and lnr.logical_node_id = $2
+      and ln.organization_id = $3
+      and ln.project_id = $4
+      and cr.organization_id = $3
+      and cr.project_id = $4
       and cs.organization_id = $3
       and cs.project_id = $4
     limit 1
@@ -479,10 +487,15 @@ export async function loadLogicalNodeSubmissionContext(
     `
     select lnr.node_locator, lnr.compatible
     from dts_logical_node_revisions lnr
+    inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
     inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
     inner join dts_config_set cs on cs.id = cr.config_set_id
     where lnr.config_revision_id = $1
       and lnr.logical_node_id = $2
+      and ln.organization_id = $3
+      and ln.project_id = $4
+      and cr.organization_id = $3
+      and cr.project_id = $4
       and cs.organization_id = $3
       and cs.project_id = $4
     limit 1
@@ -536,9 +549,9 @@ export async function resolveBindingHeadRevisionId(
 export async function resolveBindingWriteLock(
   db: Queryable,
   auth: AuthContext,
-  input: { bindingId: string; baseRevisionId?: string },
+  input: { bindingId: string; baseRevisionId?: string; projectId?: string },
 ): Promise<BindingWriteLockContext> {
-  const binding = await loadBindingContext(db, auth, input.bindingId);
+  const binding = await loadBindingContext(db, auth, input.bindingId, input.projectId);
 
   const baseRevisionId =
     input.baseRevisionId ??
@@ -786,16 +799,18 @@ export async function verifyEnablementWriteLock(
 export async function resolveEnablementWriteLock(
   db: Queryable,
   auth: AuthContext,
-  input: { logicalNodeId: string; baseRevisionId?: string },
+  input: { logicalNodeId: string; baseRevisionId?: string; projectId?: string },
 ): Promise<EnablementWriteLockContext> {
   const node = await db.query<{ project_id: string }>(
     `
     select project_id
     from dts_logical_nodes
-    where id = $1 and organization_id = $2
+    where id = $1
+      and organization_id = $2
+      and ($3::text is null or project_id = $3)
     limit 1
     `,
-    [input.logicalNodeId, auth.organization.id],
+    [input.logicalNodeId, auth.organization.id, input.projectId ?? null],
   );
   const projectId = node.rows[0]?.project_id;
   if (!projectId) {

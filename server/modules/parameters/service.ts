@@ -19,6 +19,8 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationContext,
+  assertTrustedInvocationMatchesAuth,
+  createUserInvocation,
   trustedDomainAttribution,
   trustedExecutionLabel,
   TrustedInvocationContextError,
@@ -831,13 +833,7 @@ async function buildReviewParticipants(
   ];
 
   for (const decision of decisions) {
-    const executionName = decision.reviewerUserId
-      ? names.get(decision.reviewerUserId) ?? decision.reviewerUserId
-      : decision.initiatorType === "system"
-        ? `System ${decision.initiatorSystemKind ?? "service"}:${decision.initiatorSystemName ?? "unknown"}`
-        : decision.initiatorType === "agent"
-          ? `Agent tool:${decision.initiatorToolCallId ?? "unknown"}`
-          : "未指派";
+    const executionName = reviewDecisionExecutionLabel(decision, names);
     participants.push({
       role: parameterStatusLabels[decision.fromStatus as ParameterChangeRequestStatus],
       name: executionName,
@@ -860,14 +856,14 @@ function reviewDecisionExecutionLabel(
   decision: Awaited<ReturnType<typeof listReviewDecisions>>[number],
   userNames: Map<string, string>,
 ): string {
-  if (decision.reviewerUserId) {
-    return userNames.get(decision.reviewerUserId) ?? decision.reviewerUserId;
-  }
   if (decision.initiatorType === "system") {
     return `System ${decision.initiatorSystemKind ?? "service"}:${decision.initiatorSystemName ?? "unknown"}`;
   }
   if (decision.initiatorType === "agent") {
     return `Agent tool:${decision.initiatorToolCallId ?? "unknown"} (session:${decision.initiatorSessionId ?? "unknown"})`;
+  }
+  if (decision.reviewerUserId) {
+    return userNames.get(decision.reviewerUserId) ?? decision.reviewerUserId;
   }
   return "未指派";
 }
@@ -1281,12 +1277,22 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
   });
 }
 
-export async function deleteDraft(db: Queryable, auth: AuthContext, draftId: string) {
+export async function deleteDraft(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string,
+  context?: { invocation: TrustedInvocationContext }
+) {
   requireCanEdit(auth);
+
+  const invocation = context
+    ? assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter draft delete")
+    : createUserInvocation(auth);
+  const attribution = trustedDomainAttribution(invocation);
 
   await deleteDraftRow(db, {
     organizationId: auth.organization.id,
-    userId: auth.user.id,
+    owner: attribution,
     draftId
   });
 }
@@ -1313,6 +1319,13 @@ export async function submitParameterChanges(
   }
   assertUniqueSubmissionParameters(input.items);
   const workflowAssignees = getCompleteWorkflowAssignees(input);
+  const submissionAttribution = trustedDomainAttribution(submissionContext.invocation);
+  const submissionOwner = {
+    userId: submissionAttribution.userId,
+    initiatorType: submissionAttribution.initiatorType,
+    systemKind: submissionAttribution.systemKind,
+    systemName: submissionAttribution.systemName,
+  } as const;
 
   return db.transaction(async (tx) => {
     await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
@@ -1348,7 +1361,7 @@ export async function submitParameterChanges(
         const loadedDraft = await getEnablementDraftForSubmission(tx, {
           organizationId: auth.organization.id,
           projectId: input.projectId,
-          userId: auth.user.id,
+          owner: submissionOwner,
           draftId: item.draftId
         });
         if (!loadedDraft) {
@@ -1418,6 +1431,9 @@ export async function submitParameterChanges(
           projectId: input.projectId,
           nodePath: nodeContext.nodeLocator,
           compatible: nodeContext.compatible,
+          // This token is selected from the exact draft/base revision, never
+          // from a request payload or mutable current head.
+          compatibleIsAuthoritative: true,
           invocation: submissionContext.invocation,
           requestId: submissionContext.requestId,
           refusalSink: submissionContext.refusalSink
@@ -1442,7 +1458,7 @@ export async function submitParameterChanges(
         const loadedDraft = await getBindingDraftForSubmission(tx, {
           organizationId: auth.organization.id,
           projectId: input.projectId,
-          userId: auth.user.id,
+          owner: submissionOwner,
           draftId: item.draftId
         });
         if (!loadedDraft) {
@@ -1532,6 +1548,7 @@ export async function submitParameterChanges(
           projectId: input.projectId,
           nodePath: node.nodeLocator,
           compatible: node.compatible,
+          compatibleIsAuthoritative: true,
           invocation: submissionContext.invocation,
           requestId: submissionContext.requestId,
           refusalSink: submissionContext.refusalSink
@@ -1614,7 +1631,8 @@ export async function submitParameterChanges(
       id: randomUUID(),
       organizationId: auth.organization.id,
       projectId: input.projectId,
-      submitterUserId: auth.user.id,
+      submitterUserId: submissionAttribution.userId,
+      attribution: submissionAttribution,
       status,
       summary: input.reason?.trim() || "Parameter changes submitted."
     });
@@ -1640,7 +1658,10 @@ export async function submitParameterChanges(
           where organization_id = $1
             and project_id = $2
             and project_parameter_binding_id = $3
-            and user_id = $4
+            and initiator_type = $4
+            and user_id is not distinct from $5
+            and initiator_system_kind is not distinct from $6
+            and initiator_system_name is not distinct from $7
           limit 1
           `
             : `
@@ -1649,10 +1670,21 @@ export async function submitParameterChanges(
           where organization_id = $1
             and project_id = $2
             and project_parameter_value_id = $3
-            and user_id = $4
+            and initiator_type = $4
+            and user_id is not distinct from $5
+            and initiator_system_kind is not distinct from $6
+            and initiator_system_name is not distinct from $7
           limit 1
           `,
-          [auth.organization.id, input.projectId, parameter.id, auth.user.id]
+          [
+            auth.organization.id,
+            input.projectId,
+            parameter.id,
+            submissionOwner.initiatorType,
+            submissionOwner.userId,
+            submissionOwner.systemKind,
+            submissionOwner.systemName,
+          ]
         );
         projectParameterBindingId =
           item.projectParameterBindingId ?? draftIdentity.rows[0]?.project_parameter_binding_id ?? undefined;
@@ -1674,7 +1706,7 @@ export async function submitParameterChanges(
                 organizationId: auth.organization.id,
                 projectId: input.projectId,
                 bindingId: projectParameterBindingId,
-                userId: auth.user.id
+                owner: submissionOwner
               })
             : null;
         if (projectParameterBindingId && useSemanticIdentity && !writeLock) {
@@ -1696,7 +1728,8 @@ export async function submitParameterChanges(
         targetValue: item.targetValue,
         action: "draftId" in item ? item.action ?? "set" : "set",
         status,
-        submitterUserId: auth.user.id,
+        submitterUserId: submissionAttribution.userId,
+        attribution: submissionAttribution,
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
         workflowAssignees,
         parameterSpecId,
@@ -1722,13 +1755,13 @@ export async function submitParameterChanges(
       if ("draftId" in item) {
         await deleteDraftRow(tx, {
           organizationId: auth.organization.id,
-          userId: auth.user.id,
+          owner: submissionOwner,
           draftId: item.draftId
         });
       } else {
         await deleteDraftForParameter(tx, {
           organizationId: auth.organization.id,
-          userId: auth.user.id,
+          owner: submissionOwner,
           projectId: input.projectId,
           parameterId: parameter.id
         });
@@ -1749,7 +1782,8 @@ export async function submitParameterChanges(
         targetValue: item.targetValue,
         action: item.action ?? "set",
         status,
-        submitterUserId: auth.user.id,
+        submitterUserId: submissionAttribution.userId,
+        attribution: submissionAttribution,
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
         workflowAssignees,
         candidateConfigRevisionId: exactDraft.candidateConfigRevisionId ?? undefined,
@@ -1771,7 +1805,7 @@ export async function submitParameterChanges(
 
       await deleteDraftRow(tx, {
         organizationId: auth.organization.id,
-        userId: auth.user.id,
+        owner: submissionOwner,
         draftId: item.draftId
       });
 
@@ -1819,7 +1853,7 @@ export async function submitParameterChanges(
         projectName: project?.name,
         roundId: round.id,
         itemCount: items.length,
-        submitterName: auth.user.name,
+        submitterName: trustedExecutionLabel(submissionContext.invocation),
         reviewerUserIds: [workflowAssignees.hardwareCommitterId]
       });
     }
@@ -1828,12 +1862,22 @@ export async function submitParameterChanges(
   });
 }
 
-export async function listDrafts(db: Queryable, auth: AuthContext, query: DraftListQuery = {}) {
+export async function listDrafts(
+  db: Queryable,
+  auth: AuthContext,
+  query: DraftListQuery = {},
+  context?: { invocation: TrustedInvocationContext }
+) {
   requireCanView(auth);
+
+  const invocation = context
+    ? assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter draft list")
+    : createUserInvocation(auth);
+  const attribution = trustedDomainAttribution(invocation);
 
   return listDraftsForUser(db, {
     organizationId: auth.organization.id,
-    userId: auth.user.id,
+    owner: attribution,
     projectId: query.projectId
   });
 }
@@ -2437,23 +2481,33 @@ export async function reviewChange(
       );
     }
 
-    if (request.submitterUserId && request.projectId) {
+    if (request.projectId) {
       const project = await getProjectById(tx, {
         organizationId: auth.organization.id,
         projectId: request.projectId
       });
+      const mergeRecipientUserIds = [
+        ...reviewDecisions
+          .map((decision) => decision.reviewerUserId)
+          .filter((userId): userId is string => Boolean(userId)),
+        ...(request.workflowAssignees
+          ? [
+              request.workflowAssignees.hardwareCommitterId,
+              request.workflowAssignees.softwareCommitterId,
+              request.workflowAssignees.softwareUserId
+            ]
+          : [])
+      ];
       await notifyParameterMergeCompleted(tx, {
         organizationId: auth.organization.id,
         projectId: request.projectId,
         projectName: project?.name,
         requestId: input.requestId,
         parameterName: request.title,
-        submitterUserId: request.submitterUserId,
+        submitterUserId: request.submitterUserId ?? null,
         mergerName: trustedExecutionLabel(trustedMergeContext.invocation),
         execution: attribution,
-        reviewerUserIds: reviewDecisions
-          .map((decision) => decision.reviewerUserId)
-          .filter((userId): userId is string => Boolean(userId))
+        reviewerUserIds: mergeRecipientUserIds
       });
     }
 
