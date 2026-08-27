@@ -67,6 +67,7 @@ import {
 import {
   loadBindingContext,
   loadLogicalNodeEnablementContext,
+  loadLogicalNodeSubmissionContext,
   resolveWriteTarget,
   type BindingDraftWriteTarget,
 } from "./writeLock";
@@ -469,6 +470,20 @@ export async function createBindingDraft(
     );
   }
 
+  if (!binding.logical_node_id) {
+    throw new ApiError("CONFLICT", "Binding has no logical node identity for typed edit.", {
+      reason: "missing-logical-node",
+      bindingId: input.bindingId,
+      baseRevisionId: effectiveBaseRevisionId,
+    });
+  }
+  const logicalNode = await loadLogicalNodeSubmissionContext(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    configRevisionId: effectiveBaseRevisionId,
+    logicalNodeId: binding.logical_node_id,
+  });
+
   // Schema enforcement is ON by default; callers cannot turn it off for the normal path.
   if (action === "set" && input.targetValue) {
     assertSchemaAllows(input.targetValue, binding.constraints);
@@ -487,7 +502,7 @@ export async function createBindingDraft(
     configRevisionId: revision.id,
     logicalNodeId: binding.logical_node_id,
     propertyKey: binding.property_key,
-    nodeLocator: binding.node_locator,
+    nodeLocator: logicalNode.nodeLocator,
   });
 
   const memberContents = new Map<string, string>();
