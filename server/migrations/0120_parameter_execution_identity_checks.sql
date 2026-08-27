@@ -1,8 +1,15 @@
 -- Make the #614 domain projection bidirectional at the database boundary.
 -- User/Agent rows must carry their authenticated accountable principal and no
 -- System fields; System rows have no user attribution and must carry an
--- explicit service/job identity.  These checks prevent a future write path
--- from silently changing an Agent/System execution into a User row.
+-- explicit service/job identity. These checks prevent a future write path from
+-- silently changing an Agent/System execution into a User row.
+--
+-- The constraints are deliberately NOT VALID. Existing rows created before
+-- #614 can have no historical user attribution (the 0116 `user` default), but
+-- PostgreSQL still enforces this predicate for every new row and every update.
+-- A later, explicitly-owned backfill can validate the constraints after those
+-- rows have been resolved; this migration must not fail an otherwise safe
+-- upgrade before that work is complete.
 
 do $$
 declare
@@ -39,7 +46,7 @@ begin
           and initiator_system_kind is null
           and initiator_system_name is null
         )
-      )',
+      ) not valid',
       spec.table_name,
       spec.table_name || '_execution_identity_check',
       spec.user_column,
@@ -70,4 +77,4 @@ alter table project_parameter_binding_revisions
       and initiator_system_kind is null
       and initiator_system_name is null
     )
-  );
+  ) not valid;

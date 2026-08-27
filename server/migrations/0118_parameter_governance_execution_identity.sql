@@ -87,6 +87,5 @@ create unique index if not exists parameter_drafts_binding_initiator_unique
     coalesce(initiator_system_kind, ''),
     coalesce(initiator_system_name, '')
   )
-  where edit_subject_kind = 'binding'
+where edit_subject_kind = 'binding'
     and project_parameter_binding_id is not null;
-

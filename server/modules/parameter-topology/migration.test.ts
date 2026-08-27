@@ -12,8 +12,10 @@ import {
 } from "../../testing/testDatabase";
 import {
   openDatabaseConnection,
+  migrationsDir,
   withTempDatabase as withSharedTempDatabase
 } from "../../testing/tempDatabase";
+import { applyMigrations } from "../../shared/database/migrations";
 import {
   applyParameterIdentityCutover,
   checkParameterIdentityCutover,
@@ -1140,6 +1142,60 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
         objectSnapshotId: "obj-snap-ambiguous"
       })
     ).rejects.toThrow(/apply blocked|ambiguous logical node/i);
+  });
+});
+
+describe.skipIf(!databaseAvailable)("parameter execution identity migration upgrades", () => {
+  it("preserves legacy null rows while rejecting new unprojected rows", async () => {
+    await withSharedTempDatabase(
+      { prefix: "mig14-upgrade", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0119_parameter_draft_enablement_owner_index.sql"
+        });
+        const seeded = await seedLegacyGraph(db);
+        await db.query(
+          `update parameter_history_entries
+           set changed_by_user_id = null,
+               initiator_type = 'user',
+               initiator_system_kind = null,
+               initiator_system_name = null,
+               initiator_session_id = null,
+               initiator_tool_call_id = null,
+               initiator_approval_id = null
+           where id = $1`,
+          [seeded.historyId]
+        );
+
+        await applyMigrations(db, migrationsDir);
+
+        const legacy = await db.query<{ changed_by_user_id: string | null }>(
+          `select changed_by_user_id
+           from parameter_history_entries
+           where id = $1`,
+          [seeded.historyId]
+        );
+        expect(legacy.rows[0]?.changed_by_user_id).toBeNull();
+
+        await expect(
+          db.query(
+            `insert into parameter_history_entries (
+               id, organization_id, project_id, parameter_definition_id,
+               project_parameter_value_id, version, value, changed_by_user_id,
+               request_id, initiator_type
+             ) values ($1, $2, $3, $4, $5, 99, '<99>', null, $6, 'user')`,
+            [
+              "hist-mig14-new-unprojected",
+              ORG,
+              PROJECT,
+              DEF_ID,
+              PPV_ID,
+              seeded.openCrId
+            ]
+          )
+        ).rejects.toMatchObject({ code: "23514" });
+      }
+    );
   });
 });
 

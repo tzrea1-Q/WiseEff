@@ -3,4 +3,3 @@
 -- User/Agent drafts with the same accountable principal.
 
 drop index if exists parameter_drafts_enablement_user_unique;
-
