@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import { trustedAccountableUser } from "../auth/trustedInvocation";
+import { trustedAccountableUser, trustedDomainAttribution } from "../auth/trustedInvocation";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -94,8 +94,7 @@ export async function preflightMergedEnablementWriteback(
     nodePath: `${lock.sourceNodePath}/status`,
     sourceFileName: lock.overlayFileName,
     sourceFileVersionId: lock.sourceFileVersionId,
-    compatible: lock.compatible,
-    compatibleIsAuthoritative: true,
+    sourcePath: { kind: "property-path", value: `${lock.sourceNodePath}/status` },
     invocation: trusted.invocation,
     requestId: trusted.requestId,
     refusalSink: trusted.refusalSink,
@@ -118,8 +117,7 @@ export async function preflightMergedParameterWriteback(
       nodePath: `${lock.sourceNodePath}/${lock.propertyKey}`,
       sourceFileName: lock.overlayFileName,
       sourceFileVersionId: lock.sourceFileVersionId,
-      compatible: lock.compatible,
-      compatibleIsAuthoritative: true,
+      sourcePath: { kind: "property-path", value: `${lock.sourceNodePath}/${lock.propertyKey}` },
       invocation: trusted.invocation,
       requestId: trusted.requestId,
       refusalSink: trusted.refusalSink,
@@ -539,8 +537,7 @@ export async function writebackMergedEnablementValue(
     nodePath,
     sourceFileName: lock.overlayFileName,
     sourceFileVersionId: lock.sourceFileVersionId,
-    compatible: lock.compatible,
-    compatibleIsAuthoritative: true,
+    sourcePath: { kind: "property-path", value: `${lock.sourceNodePath}/status` },
     invocation: trustedContext.invocation,
     requestId: trustedContext.requestId,
     refusalSink: trustedContext.refusalSink,
@@ -559,6 +556,7 @@ export async function writebackMergedEnablementValue(
       skipSemanticGates: trustedContext.skipSemanticGates,
       toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
       createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? null,
+      attribution: trustedDomainAttribution(trustedContext.invocation),
     },
   );
 
@@ -622,8 +620,7 @@ export async function writebackMergedParameterValue(
       nodePath,
       sourceFileName: lock.overlayFileName,
       sourceFileVersionId: lock.sourceFileVersionId,
-      compatible: lock.compatible,
-      compatibleIsAuthoritative: true,
+      sourcePath: { kind: "property-path", value: `${lock.sourceNodePath}/${lock.propertyKey}` },
       invocation: trustedContext.invocation,
       requestId: trustedContext.requestId,
       refusalSink: trustedContext.refusalSink,
@@ -645,6 +642,7 @@ export async function writebackMergedParameterValue(
         skipSemanticGates: trustedContext.skipSemanticGates,
         toolchain: trustedContext.toolchain ?? createDtsToolchainRunner(),
         createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? null,
+        attribution: trustedDomainAttribution(trustedContext.invocation),
       },
     );
 
@@ -716,6 +714,7 @@ export async function writebackMergedParameterValue(
     nodePath: source.sourceNodePath,
     sourceFileName: source.sourceFileName,
     sourceFileVersionId: currentVersion.id,
+    sourcePath: { kind: "property-path", value: source.sourceNodePath },
     invocation: trustedContext.invocation,
     requestId: trustedContext.requestId,
     refusalSink: trustedContext.refusalSink
@@ -743,7 +742,8 @@ export async function writebackMergedParameterValue(
     sizeBytes: stored.fileSizeBytes,
     parsedIndex,
     origin: "writeback",
-    createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? undefined
+    createdByUserId: trustedAccountableUser(trustedContext.invocation)?.id ?? undefined,
+    attribution: trustedDomainAttribution(trustedContext.invocation)
   });
 
   await setCurrentVersion(db, { fileId: file.id, versionId: version.id });

@@ -1055,6 +1055,7 @@ async function preparePropertyKeySourceCutoverInTransaction(
       nodePath,
       sourceFileName: fileName,
       sourceFileVersionId: location.fileVersionId,
+      sourcePath: { kind: "node-locator", value: nodePath },
       invocation: context.invocation,
       requestId: context.requestId,
       refusalSink: context.refusalSink
