@@ -62,6 +62,7 @@ type BindingContextRow = {
   parameter_spec_id: string;
   logical_node_id: string | null;
   property_key: string;
+  node_locator: string | null;
   constraints: unknown;
   schema_default: unknown;
   example_value: unknown;
@@ -116,6 +117,13 @@ export async function loadBindingContext(
       b.parameter_spec_id,
       b.logical_node_id,
       coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key,
+      (
+        select lnr.node_locator
+        from dts_logical_node_revisions lnr
+        where lnr.logical_node_id = b.logical_node_id
+        order by lnr.config_revision_id desc
+        limit 1
+      ) as node_locator,
       coalesce(dps.constraints, '{}'::jsonb) as constraints,
       (
         select psv.schema_default
