@@ -15,7 +15,11 @@ import {
   type StatusSpelling,
 } from "../../../src/domain/parameter-topology/enablementEdit";
 import type { AuthContext } from "../auth/types";
-import { trustedDomainAttribution } from "../auth/trustedInvocation";
+import {
+  trustedDomainAttribution,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
+import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
@@ -83,6 +87,12 @@ export type CreateBindingDraftInput = {
    * Callers cannot disable it; this field is ignored when false.
    */
   enforceSchema?: boolean;
+};
+
+/** Optional trusted context for internal Agent/System typed-draft callers. */
+export type CreateBindingDraftContext = AuditCorrelationContext & {
+  invocation?: TrustedInvocationContext;
+  refusalSink?: TrustedRefusalAuditSink;
 };
 
 export type BindingDraftResult = {
@@ -355,9 +365,28 @@ export async function createBindingDraft(
   auth: AuthContext,
   input: CreateBindingDraftInput,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {},
+  context: CreateBindingDraftContext = {},
 ): Promise<BindingDraftResult> {
   requireCanEdit(auth);
+
+  const trustedContext = context.invocation || context.refusalSink
+    ? assertTrustedSensitiveNodeWriteContext(auth, {
+        invocation: context.invocation!,
+        requestId: context.requestId ?? "",
+        refusalSink: context.refusalSink!,
+      }, "typed binding draft")
+    : undefined;
+  const attribution = trustedContext ? trustedDomainAttribution(trustedContext.invocation) : undefined;
+  const draftOwner = attribution
+    ? {
+        owner: {
+          userId: attribution.userId,
+          initiatorType: attribution.initiatorType,
+          systemKind: attribution.systemKind,
+          systemName: attribution.systemName,
+        }
+      }
+    : { userId: auth.user.id };
 
   const action: BindingEditAction = input.action ?? "set";
   if (action === "set" && !input.targetValue) {
@@ -372,7 +401,7 @@ export async function createBindingDraft(
   const openDrafts = await listOpenBindingDraftsForUser(db, {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
-    userId: auth.user.id,
+    ...draftOwner,
   });
   const openWorkingTips = [
     ...new Set(
@@ -547,9 +576,12 @@ export async function createBindingDraft(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin,
+      created_by_user_id, initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7
+    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback',
+      $7, $8, $9, $10, $11, $12, $13
     from project_parameter_file_versions
     where file_id = $2
     `,
@@ -560,7 +592,13 @@ export async function createBindingDraft(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      attribution?.userId ?? auth.user.id,
+      attribution?.initiatorType ?? "user",
+      attribution?.systemKind ?? null,
+      attribution?.systemName ?? null,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null,
     ],
   );
 
@@ -624,7 +662,14 @@ export async function createBindingDraft(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(
+    db,
+    manifest,
+    auth,
+    attribution
+      ? { createdByUserId: attribution.userId, domain: attribution }
+      : undefined,
+  );
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
@@ -811,14 +856,15 @@ export async function createBindingDraft(
   const { draftId, rebasedDraftIds } = await withAuditedWrite(
     db,
     auth,
-    { requestId: context.requestId ?? randomUUID() },
+    { requestId: trustedContext?.requestId ?? context.requestId ?? randomUUID() },
     async (tx) => {
       const persistedDraft = await upsertDraft(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
         projectId: binding.project_id,
         parameterId: draftParameterId,
-        userId: auth.user.id,
+        userId: attribution?.userId ?? auth.user.id,
+        attribution,
         targetValue: rawText,
         reason: input.reason,
         origin: "manual",
@@ -839,35 +885,37 @@ export async function createBindingDraft(
       const rebased = await rebaseOpenBindingDraftCandidates(tx, {
         organizationId: auth.organization.id,
         projectId: binding.project_id,
-        userId: auth.user.id,
+        ...draftOwner,
         candidateConfigRevisionId: candidateRevisionId,
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          action: "binding-edited",
-          projectId: binding.project_id,
-          targetType: "project-parameter-binding",
-          targetId: binding.binding_id,
-          metadata: {
-            draftId: persistedDraft.id,
-            candidateRevisionId,
-            propertyKey: binding.property_key,
-            writeTargetRole: writeTarget.role,
-            targetRef,
-            action,
-          },
+      const auditInput = {
+        action: "binding-edited" as const,
+        projectId: binding.project_id,
+        targetType: "project-parameter-binding",
+        targetId: binding.binding_id,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          propertyKey: binding.property_key,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action,
         },
-        context,
-      );
-      return {
-        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
-        audit: null,
       };
-    },
+      if (trustedContext) {
+        await writeTrustedGovernanceAudit(
+          asAuditTx(tx),
+          trustedContext.invocation,
+          { ...auditInput, organizationId: auth.organization.id },
+          trustedContext.requestId,
+        );
+      } else {
+        await writeGovernanceAudit(asAuditTx(tx), auth, auditInput, context);
+      }
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
   );
 
   const baseChecksumAfter = checksumOf(baseContent);

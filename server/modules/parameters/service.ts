@@ -1439,6 +1439,14 @@ export async function submitParameterChanges(
           refusalSink: submissionContext.refusalSink
         });
 
+        if (!loadedDraft.ownerMatches) {
+          throw new ApiError("FORBIDDEN", "Parameter draft owner does not match the trusted invocation.", {
+            code: "parameter-draft-owner-mismatch",
+            draftId: loadedDraft.id,
+            projectId: input.projectId,
+          });
+        }
+
         enablementEntries.push({
           item,
           exactDraft: loadedDraft,
@@ -1559,9 +1567,19 @@ export async function submitParameterChanges(
           projectId: input.projectId,
           nodePath: parameter.sourceNodePath,
           sourceFileName: parameter.sourceFileName,
+          sourceFileVersionId: parameter.sourceFileVersionId,
           invocation: submissionContext.invocation,
           requestId: submissionContext.requestId,
           refusalSink: submissionContext.refusalSink
+        });
+
+      }
+
+      if (exactDraft && !exactDraft.ownerMatches) {
+        throw new ApiError("FORBIDDEN", "Parameter draft owner does not match the trusted invocation.", {
+          code: "parameter-draft-owner-mismatch",
+          draftId: exactDraft.id,
+          projectId: input.projectId,
         });
       }
 

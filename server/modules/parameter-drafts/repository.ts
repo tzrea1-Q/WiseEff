@@ -36,12 +36,38 @@ function normalizeDraftOwner(input: DraftOwnerInput): ParameterDraftOwner {
   };
 }
 
-function draftOwnerWhere(alias: string, firstPlaceholder: number) {
-  return [
+function draftOwnerWhere(
+  alias: string,
+  firstPlaceholder: number,
+  options: { allowAgentLegacyUserOwner?: boolean; allowAnyOwnerById?: boolean; draftIdPlaceholder?: number } = {},
+) {
+  const exact = [
     `${alias}.initiator_type = $${firstPlaceholder}`,
     `${alias}.user_id is not distinct from $${firstPlaceholder + 1}`,
     `${alias}.initiator_system_kind is not distinct from $${firstPlaceholder + 2}`,
     `${alias}.initiator_system_name is not distinct from $${firstPlaceholder + 3}`,
+  ].join("\n        and ");
+  const compatibility: string[] = [];
+  if (options.allowAgentLegacyUserOwner) {
+    // A pre-existing user draft may be explicitly handed to an Agent whose
+    // validated principal is that same user.  Keep newly-created drafts
+    // initiator-separated; this compatibility read preserves the old typed
+    // action flow without allowing a different principal to borrow it.
+    compatibility.push(`(${alias}.initiator_type = 'user'
+        and ${alias}.user_id is not distinct from $${firstPlaceholder + 1}
+        and ${alias}.initiator_system_kind is null
+        and ${alias}.initiator_system_name is null)`);
+  }
+  if (options.allowAnyOwnerById && options.draftIdPlaceholder) {
+    // System may inspect an explicitly named legacy draft long enough for the
+    // sensitive guard to produce its truthful refusal.  The service rejects
+    // the owner mismatch after preflight, so this never authorizes a write.
+    compatibility.push(`${alias}.id = $${options.draftIdPlaceholder}`);
+  }
+  if (compatibility.length === 0) return [exact];
+
+  return [
+    `(${exact}\n        or ${compatibility.join("\n        or ")})`,
   ];
 }
 
@@ -125,6 +151,11 @@ export type BindingDraftForSubmission = {
   reason: string;
   writeLock: BindingWriteLockFields | null;
   writeLockMatchesBinding: boolean;
+  draftOwnerUserId: string | null;
+  draftOwnerInitiatorType: "user" | "agent" | "system";
+  draftOwnerSystemKind: "service" | "job" | null;
+  draftOwnerSystemName: string | null;
+  ownerMatches: boolean;
 };
 
 export async function getBindingDraftForSubmission(
@@ -150,6 +181,10 @@ export async function getBindingDraftForSubmission(
       candidate_delete_tombstone: boolean;
       candidate_action_proven: boolean;
       write_lock_matches_binding: boolean;
+      draft_owner_user_id: string | null;
+      draft_owner_initiator_type: "user" | "agent" | "system";
+      draft_owner_system_kind: "service" | "job" | null;
+      draft_owner_system_name: string | null;
       target_value: string;
       action: ParameterChangeAction;
       reason: string;
@@ -165,7 +200,11 @@ export async function getBindingDraftForSubmission(
        and b.project_id = d.project_id
       where d.organization_id = $1
         and d.project_id = $2
-        and ${draftOwnerWhere("d", 3).join("\n        and ")}
+        and ${draftOwnerWhere("d", 3, {
+          allowAgentLegacyUserOwner: owner.initiatorType === "agent",
+          allowAnyOwnerById: owner.initiatorType === "system",
+          draftIdPlaceholder: 7,
+        }).join("\n        and ")}
         and d.id = $7
       limit 1
       for update of d
@@ -251,6 +290,10 @@ export async function getBindingDraftForSubmission(
       d.target_value,
       d.action,
       d.reason,
+      d.user_id as draft_owner_user_id,
+      d.initiator_type as draft_owner_initiator_type,
+      d.initiator_system_kind as draft_owner_system_kind,
+      d.initiator_system_name as draft_owner_system_name,
       d.base_config_revision_id,
       d.binding_revision_id,
       d.property_occurrence_id,
@@ -280,7 +323,16 @@ export async function getBindingDraftForSubmission(
     action: row.action,
     reason: row.reason,
     writeLock: toWriteLockFields(row),
-    writeLockMatchesBinding: row.write_lock_matches_binding
+    writeLockMatchesBinding: row.write_lock_matches_binding,
+    draftOwnerUserId: row.draft_owner_user_id,
+    draftOwnerInitiatorType: row.draft_owner_initiator_type,
+    draftOwnerSystemKind: row.draft_owner_system_kind,
+    draftOwnerSystemName: row.draft_owner_system_name,
+    ownerMatches:
+      row.draft_owner_user_id === owner.userId &&
+      row.draft_owner_initiator_type === owner.initiatorType &&
+      row.draft_owner_system_kind === owner.systemKind &&
+      row.draft_owner_system_name === owner.systemName
   };
 }
 
@@ -314,6 +366,11 @@ export type EnablementDraftForSubmission = {
   reason: string;
   writeLock: EnablementWriteLockFields | null;
   writeLockMatchesRevision: boolean;
+  draftOwnerUserId: string | null;
+  draftOwnerInitiatorType: "user" | "agent" | "system";
+  draftOwnerSystemKind: "service" | "job" | null;
+  draftOwnerSystemName: string | null;
+  ownerMatches: boolean;
 };
 
 /**
@@ -342,6 +399,10 @@ export async function getEnablementDraftForSubmission(
       candidate_delete_tombstone: boolean;
       candidate_action_proven: boolean;
       write_lock_matches_revision: boolean;
+      draft_owner_user_id: string | null;
+      draft_owner_initiator_type: "user" | "agent" | "system";
+      draft_owner_system_kind: "service" | "job" | null;
+      draft_owner_system_name: string | null;
       target_value: string;
       action: ParameterChangeAction;
       reason: string;
@@ -362,7 +423,11 @@ export async function getEnablementDraftForSubmission(
        and base_lnr.config_revision_id = d.base_config_revision_id
       where d.organization_id = $1
         and d.project_id = $2
-        and ${draftOwnerWhere("d", 3).join("\n        and ")}
+        and ${draftOwnerWhere("d", 3, {
+          allowAgentLegacyUserOwner: owner.initiatorType === "agent",
+          allowAnyOwnerById: owner.initiatorType === "system",
+          draftIdPlaceholder: 7,
+        }).join("\n        and ")}
         and d.id = $7
         and d.edit_subject_kind = 'node-enablement'
       limit 1
@@ -447,6 +512,10 @@ export async function getEnablementDraftForSubmission(
       d.target_value,
       d.action,
       d.reason,
+      d.user_id as draft_owner_user_id,
+      d.initiator_type as draft_owner_initiator_type,
+      d.initiator_system_kind as draft_owner_system_kind,
+      d.initiator_system_name as draft_owner_system_name,
       d.base_config_revision_id,
       d.binding_revision_id,
       d.property_occurrence_id,
@@ -474,7 +543,16 @@ export async function getEnablementDraftForSubmission(
     action: row.action,
     reason: row.reason,
     writeLock: toEnablementWriteLockFields(row),
-    writeLockMatchesRevision: row.write_lock_matches_revision
+    writeLockMatchesRevision: row.write_lock_matches_revision,
+    draftOwnerUserId: row.draft_owner_user_id,
+    draftOwnerInitiatorType: row.draft_owner_initiator_type,
+    draftOwnerSystemKind: row.draft_owner_system_kind,
+    draftOwnerSystemName: row.draft_owner_system_name,
+    ownerMatches:
+      row.draft_owner_user_id === owner.userId &&
+      row.draft_owner_initiator_type === owner.initiatorType &&
+      row.draft_owner_system_kind === owner.systemKind &&
+      row.draft_owner_system_name === owner.systemName
   };
 }
 
@@ -1295,11 +1373,14 @@ export async function deleteDraft(
   input: { organizationId: string; draftId: string } & DraftOwnerInput
 ) {
   const owner = normalizeDraftOwner(input);
+  const legacyUserOwner = !("owner" in input);
   await db.query(
     `
     delete from parameter_drafts
     where organization_id = $1
-      and ${draftOwnerWhere("parameter_drafts", 2).join("\n      and ")}
+      and ${draftOwnerWhere("parameter_drafts", 2, {
+        allowAgentLegacyUserOwner: legacyUserOwner,
+      }).join("\n      and ")}
       and id = $6
     `,
     [input.organizationId, ...draftOwnerValues(owner), input.draftId]

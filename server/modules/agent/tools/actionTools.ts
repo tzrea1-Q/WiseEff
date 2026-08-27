@@ -234,7 +234,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             reason
           },
           { objectStore: options.objectStore, toolchain: options.toolchain },
-          { requestId: context.requestId }
+          { requestId: context.requestId, invocation, refusalSink }
         );
 
         try {
@@ -275,7 +275,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           try {
             await deleteDraft(db, {
               organizationId: context.auth.organization.id,
-              userId: context.auth.user.id,
+              userId: invocation.principal.user.id,
               draftId: draft.draftId
             });
           } catch {
