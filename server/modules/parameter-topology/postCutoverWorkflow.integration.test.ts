@@ -16,7 +16,7 @@ import { makeTestAuthContext } from "../../testing/authContext";
 import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDatabase";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
-import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { asAuditTx } from "../audit/auditedWrite";
 import { insertNodeOperation } from "../debugging/repository";
@@ -3300,4 +3300,177 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
       120_000
     );
   }
+
+  it(
+    "keeps topology draft ownership separated by trusted initiator and lets System submit its own draft",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        // Give the overlay fixture a concrete status effect so the enablement
+        // draft can resolve its write target before the ownership assertions.
+        await db.query(
+          `update dts_node_occurrences
+           set labels = '["sc8562"]'::jsonb
+           where config_revision_id = $1 and node_path = $2`,
+          [seeded.configRevisionId, "amba/i2c@FDF5E000/sc8562@6E"]
+        );
+        await db.query(
+          `insert into dts_occurrence_effects (
+             id, config_revision_id, logical_node_revision_id, node_occurrence_id,
+             property_name, effect_kind, source_order
+           ) values ($1, $2, $3, $4, 'status', 'delete', 2)`,
+          [
+            "oe-pcw-owner-status",
+            seeded.configRevisionId,
+            `lnr-${expectedLogicalNodeId()}`,
+            "no-pcw-1"
+          ]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-draft-owner",
+          objectSnapshotId: "obj-snap-draft-owner"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+
+        const auth = makeAuth();
+        const userDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "Direct user draft must keep its own working tip"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createUserInvocation(auth),
+              requestId: "draft-owner-user",
+              refusalSink
+            }
+          )
+        );
+        const userTip = userDraft.candidateRevisionId;
+
+        const agentDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-enabled",
+              reason: "Agent draft must not rebase the direct user draft"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createAgentInvocation(auth, {
+                sessionId: "session-draft-owner",
+                toolCallId: "tool-draft-owner",
+                approval: { required: false }
+              }),
+              requestId: "draft-owner-agent",
+              refusalSink
+            }
+          )
+        );
+
+        const owners = await db.query<{
+          id: string;
+          user_id: string | null;
+          initiator_type: string;
+          initiator_session_id: string | null;
+          candidate_config_revision_id: string | null;
+        }>(
+          `select id, user_id, initiator_type, initiator_session_id, candidate_config_revision_id
+           from parameter_drafts
+           where project_id = $1 and logical_node_id = $2
+           order by initiator_type`,
+          [PROJECT, expectedLogicalNodeId()]
+        );
+        expect(owners.rows).toEqual([
+          {
+            id: agentDraft.draftId,
+            user_id: USER,
+            initiator_type: "agent",
+            initiator_session_id: "session-draft-owner",
+            candidate_config_revision_id: agentDraft.candidateRevisionId
+          },
+          {
+            id: userDraft.draftId,
+            user_id: USER,
+            initiator_type: "user",
+            initiator_session_id: null,
+            candidate_config_revision_id: userTip
+          }
+        ]);
+
+        const systemDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "System draft has an independently addressable owner"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "draft-owner-job" }),
+              requestId: "draft-owner-system",
+              refusalSink
+            }
+          )
+        );
+
+        const submitted = await withRefusalSink(connectionString, (refusalSink) =>
+          submitParameterChanges(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              items: [
+                {
+                  draftId: systemDraft.draftId,
+                  editSubjectKind: "node-enablement",
+                  logicalNodeId: expectedLogicalNodeId(),
+                  targetValue: systemDraft.rawText,
+                  reason: "System draft has an independently addressable owner"
+                }
+              ]
+            },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "draft-owner-job" }),
+              requestId: "draft-owner-system-submit",
+              refusalSink
+            }
+          )
+        );
+        expect(submitted).toMatchObject({ status: "submitted" });
+      });
+    },
+    120_000
+  );
 });
