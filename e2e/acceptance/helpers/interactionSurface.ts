@@ -14,10 +14,21 @@ export async function closeXiaozePopupIfOpen(page: Page) {
     return;
   }
 
-  // Desktop Xiaoze intentionally ignores Escape while page focus is outside
-  // the popup, and the mobile sheet can cover the floating toggle. Use the
-  // popup-owned close control so setup works in every presentation mode.
-  await popup.getByTestId("copilot-close-button").click();
+  // The initial-open policy can concurrently detach this control while setup
+  // is closing the popup. Dispatch on whichever owned close control currently
+  // exists instead of letting locator actionability retries consume the test
+  // timeout; a concurrent policy close is also a successful outcome.
+  const deadline = Date.now() + 10_000;
+  while ((await popup.isVisible().catch(() => false)) && Date.now() < deadline) {
+    await page.evaluate(() => {
+      const layer = document.querySelector('[data-testid="xiaoze-popup-layer"]');
+      const button = layer?.querySelector('[data-testid="copilot-close-button"]');
+      if (button instanceof HTMLElement) {
+        button.click();
+      }
+    });
+    await page.waitForTimeout(100);
+  }
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
