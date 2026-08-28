@@ -1805,6 +1805,13 @@ async function assertIdentityTripleAvailable(
 /**
  * Correct a mis-authored attribution subject in place (ADR-0017).
  * Allowed in any lifecycle; does not rewrite `parameter_specs.id`.
+ *
+ * A DTS property whose DriverSchema already names another subject is not
+ * independently reattributable: changing only the property row would break
+ * the canonical driver graph. Those rows stay fail-closed for the audited
+ * reconciliation command, which has the schema candidate needed to repair
+ * the whole tuple. A DTS driver root with an unassigned subject is safe to
+ * complete here, so its root row is updated in the same transaction.
  */
 export async function reattributeParameterSpec(
   db: Database,
@@ -1828,6 +1835,118 @@ export async function reattributeParameterSpec(
     }
     if (previousSubjectId === nextSubjectId) {
       return { item: toParameterSpecDetailDto(spec) };
+    }
+
+    const dtsProperty = await tx.query<{
+      driver_schema_id: string | null;
+      property_key: string | null;
+    }>(
+      `select driver_schema_id, property_key
+       from dts_property_specs
+       where parameter_spec_id = $1
+       for update`,
+      [input.specId],
+    );
+    const dtsPropertyRow = dtsProperty.rows[0] ?? null;
+    const driverRoots = await tx.query<{
+      id: string;
+      organization_id: string | null;
+      attribution_subject_id: string | null;
+    }>(
+      `select id, organization_id, attribution_subject_id
+       from driver_schemas
+       where parameter_spec_id = $1
+       for update`,
+      [input.specId],
+    );
+    const rootIdsNeedingSubject = driverRoots.rows
+      .filter((root) => root.attribution_subject_id === null)
+      .map((root) => root.id);
+
+    if (spec.sourceKind === "dts") {
+      if (
+        dtsPropertyRow &&
+        dtsPropertyRow.property_key !== null &&
+        dtsPropertyRow.property_key !== propertyKey
+      ) {
+        throw new ApiError(
+          "CONFLICT",
+          "A DTS property key mismatch must be repaired by parameter-definition reconciliation.",
+          {
+            parameterSpecId: input.specId,
+            parameterPropertyKey: propertyKey,
+            dtsPropertyKey: dtsPropertyRow.property_key,
+          },
+        );
+      }
+      if (dtsPropertyRow?.driver_schema_id) {
+        const schema = await tx.query<{
+          attribution_subject_id: string | null;
+          organization_id: string | null;
+        }>(
+          `select attribution_subject_id, organization_id
+           from driver_schemas
+           where id = $1
+           for update`,
+          [dtsPropertyRow.driver_schema_id],
+        );
+        const schemaRow = schema.rows[0];
+        if (
+          !schemaRow ||
+          schemaRow.attribution_subject_id !== nextSubjectId ||
+          (schemaRow.organization_id !== null &&
+            schemaRow.organization_id !== spec.organizationId)
+        ) {
+          throw new ApiError(
+            "CONFLICT",
+            "A linked DTS DriverSchema identity must be repaired by parameter-definition reconciliation.",
+            {
+              parameterSpecId: input.specId,
+              driverSchemaId: dtsPropertyRow.driver_schema_id,
+              requestedSubjectId: nextSubjectId,
+              driverSchemaSubjectId: schemaRow?.attribution_subject_id ?? null,
+            },
+          );
+        }
+      }
+      const conflictingRoot = driverRoots.rows.find(
+        (root) =>
+          root.attribution_subject_id !== null &&
+          root.attribution_subject_id !== nextSubjectId,
+      );
+      if (conflictingRoot) {
+        throw new ApiError(
+          "CONFLICT",
+          "A DTS driver root identity must be repaired by parameter-definition reconciliation.",
+          {
+            parameterSpecId: input.specId,
+            driverSchemaId: conflictingRoot.id,
+            requestedSubjectId: nextSubjectId,
+            driverSchemaSubjectId: conflictingRoot.attribution_subject_id,
+          },
+        );
+      }
+      if (rootIdsNeedingSubject.length > 0) {
+        const references = await tx.query<{ parameter_spec_id: string }>(
+          `select distinct parameter_spec_id
+           from dts_property_specs
+           where driver_schema_id = any($1::text[])
+             and parameter_spec_id <> $2
+           limit 1`,
+          [rootIdsNeedingSubject, input.specId],
+        );
+        if (references.rows[0]) {
+          throw new ApiError(
+            "CONFLICT",
+            "A shared DTS driver root identity must be repaired by parameter-definition reconciliation.",
+            {
+              parameterSpecId: input.specId,
+              driverSchemaId: rootIdsNeedingSubject[0],
+              referencedPropertySpecId: references.rows[0].parameter_spec_id,
+            },
+          );
+        }
+      }
     }
 
     await assertAttributionSubjectUsable(tx, {
@@ -1857,6 +1976,14 @@ export async function reattributeParameterSpec(
       `,
       [input.specId, nextSubjectId, propertyKey, derived.specificationKey],
     );
+    if (rootIdsNeedingSubject.length > 0) {
+      await tx.query(
+        `update driver_schemas
+         set attribution_subject_id = $2
+         where id = any($1::text[])`,
+        [rootIdsNeedingSubject, nextSubjectId],
+      );
+    }
     await tx.query(
       `
       update dts_property_specs

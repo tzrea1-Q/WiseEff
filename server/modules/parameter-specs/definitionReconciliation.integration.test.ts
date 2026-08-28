@@ -248,6 +248,7 @@ describe.skipIf(!databaseAvailable)(
       const repaired = await db!.query<{
         subject: string;
         lifecycle: string;
+        specification_key: string;
         driver_schema_id: string | null;
         version_status: string;
         schema_state: string;
@@ -255,6 +256,7 @@ describe.skipIf(!databaseAvailable)(
       }>(
         `
       select ps.attribution_subject_id as subject, ps.definition_lifecycle as lifecycle,
+             ps.specification_key,
              dps.driver_schema_id, psv.version_status, br.schema_state, b.module_id
       from parameter_specs ps
       inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
@@ -269,6 +271,11 @@ describe.skipIf(!databaseAvailable)(
       expect(repaired.rows[0]).toMatchObject({
         subject: PLATFORM_SUBJECT,
         lifecycle: "active",
+        specification_key: buildSubjectScopedManualSpecIds({
+          organizationId: ORG_ID,
+          attributionSubjectId: PLATFORM_SUBJECT,
+          propertyKey: PROPERTY_KEY,
+        }).specificationKey,
         driver_schema_id: DRIVER_SCHEMA_ID,
         version_status: "active",
         schema_state: "valid",

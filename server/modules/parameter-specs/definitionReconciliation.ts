@@ -8,6 +8,7 @@ import {
   getDriverRegistrationPlacement,
 } from "../parameter-modules/driverRegistrationPlacement";
 import { normalizeMatchToken } from "../parameter-modules/modulePlacement";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 
 export type DefinitionReconciliationMode = "dry-run" | "apply";
 
@@ -1252,14 +1253,26 @@ async function applyItem(
   if (!placement) return "skipped";
   if (placement.driverGroupModuleId !== targetModuleId) return "skipped";
 
+  const repairedIdentity = buildSubjectScopedManualSpecIds({
+    organizationId: item.organization_id,
+    attributionSubjectId: candidateRow.attribution_subject_id,
+    propertyKey: item.property_key,
+  });
   await tx.query(
     `
     update parameter_specs
     set attribution_subject_id = $2,
+        property_key = $3,
+        specification_key = $4,
         definition_lifecycle = 'active'
     where id = $1
     `,
-    [item.current_parameter_spec_id, candidateRow.attribution_subject_id],
+    [
+      item.current_parameter_spec_id,
+      candidateRow.attribution_subject_id,
+      item.property_key,
+      repairedIdentity.specificationKey,
+    ],
   );
   await tx.query(
     `
