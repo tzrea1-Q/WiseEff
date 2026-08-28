@@ -46,6 +46,7 @@ function snippet(value: string) {
 }
 
 function submitterLabel(feedback: ProductFeedback) {
+  if (feedback.submitterUserId === null) return "已注销用户";
   return feedback.submitterUserId ?? "内测用户";
 }
 

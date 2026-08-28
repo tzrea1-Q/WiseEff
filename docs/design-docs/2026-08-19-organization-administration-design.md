@@ -53,7 +53,7 @@ Scenario checks:
 One sidebar destination, two scope pages, `users:manage` (same as today’s user governance):
 
 1. **Profile** (`/organization`) — display name (editable), id, created time.
-2. **People management** (`/organization/members`) — today’s user directory: create, role replace, activate/deactivate, Committer registration approval. No project column.
+2. **People management** (`/organization/members`) — today’s user directory: create, role replace, activate/deactivate, permanent non-self deletion, Committer registration approval. No project column. Permanent deletion removes account-owned state and preserves durable history with nullable user references.
 
 Sidebar label: Organization administration. Old deep links to `/user-permissions` redirect to `/organization/members` and keep query strings.
 

@@ -184,7 +184,7 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
-M6.2 增加 OIDC 身份边界和后端用户治理 API。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储和备份/恢复证据。M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。M6.5 增加自托管观测性基线。rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。
+M6.2 增加 OIDC 身份边界和后端用户治理 API。`DELETE /api/v1/users/:userId` 在同一事务内永久注销非当前用户：账号凭据、会话、角色等账号自有数据级联清理，业务与审计历史保留且用户外键置为 `null`。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储和备份/恢复证据。M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。M6.5 增加自托管观测性基线。rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。
 
 ## Observability / 观测性
 

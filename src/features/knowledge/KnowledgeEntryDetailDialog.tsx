@@ -103,7 +103,7 @@ export function KnowledgeEntryDetailDialog({
               </h2>
               <p id={descriptionId} className="mt-1 text-xs text-muted-foreground">
                 修订 #{entry.headRevisionNumber} · 来源 {knowledgeSourceTypeLabels[entry.sourceType]} ·{" "}
-                {entry.createdByUserId} 创建 · 更新于 {formatDateTime(entry.updatedAt)}
+                {entry.createdByUserId ?? "已注销用户"} 创建 · 更新于 {formatDateTime(entry.updatedAt)}
                 {entry.status === "published" ? ` · 发布于 ${formatDateTime(entry.publishedAt)}` : ""}
                 {entry.status === "archived" ? ` · 归档于 ${formatDateTime(entry.archivedAt)}` : ""}
               </p>

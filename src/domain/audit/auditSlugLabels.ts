@@ -29,6 +29,7 @@ export const AUDIT_KIND_LABELS: Record<string, string> = {
   "user-role-replace": "角色变更",
   "user-add": "新增用户",
   "user-create": "创建用户",
+  "user-delete": "注销用户",
   "user-update": "更新用户",
   "user-toggle": "用户状态",
   "user-activation": "用户启停",

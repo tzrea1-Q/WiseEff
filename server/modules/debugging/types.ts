@@ -141,7 +141,7 @@ export type DebugSessionRecord = {
   bridgeId: string | null;
   bridgeMachineLabel: string | null;
   sessionKind: DebugSessionKind;
-  actorUserId: string;
+  actorUserId: string | null;
   status: DebugSessionStatus;
   startedAt: string;
   endedAt: string | null;

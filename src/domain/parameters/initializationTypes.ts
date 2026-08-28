@@ -43,7 +43,7 @@ export type InitializationDraftDto = {
   projectId: string;
   projectName: string;
   projectCode: string;
-  ownerUserId: string;
+  ownerUserId: string | null;
   sourceProjectIds: string[];
   primarySourceProjectId: string | null;
   supplementSourceProjectIds: string[];
@@ -53,7 +53,7 @@ export type InitializationDraftDto = {
   bindingSnapshots: SemanticInitializationSnapshotItem[];
   emptyLibrary: boolean;
   notes: string;
-  createdByUserId: string;
+  createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -64,9 +64,9 @@ export type InitializationReviewDto = {
   organizationId: string;
   projectId: string;
   status: "pending" | "approved" | "rejected";
-  submittedByUserId: string;
+  submittedByUserId: string | null;
   submittedAt: string;
-  reviewedByUserId?: string;
+  reviewedByUserId?: string | null;
   reviewedAt?: string;
   rejectionReason?: string;
 };

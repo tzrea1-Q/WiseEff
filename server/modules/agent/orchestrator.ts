@@ -113,7 +113,7 @@ function resumeTargetMismatch(approvalId: string) {
  * same-organization user holding an approvalId could execute someone else's
  * pending write under their own auth.
  */
-function requireApprovalRequester(approval: { id: string; requestedByUserId: string }, auth: AuthContext) {
+function requireApprovalRequester(approval: { id: string; requestedByUserId: string | null }, auth: AuthContext) {
   if (approval.requestedByUserId !== auth.user.id) {
     throw new ApiError("FORBIDDEN", "Only the user who requested this approval may decide it.", {
       approvalId: approval.id

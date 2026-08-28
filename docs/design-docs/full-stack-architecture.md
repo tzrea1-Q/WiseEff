@@ -14,7 +14,7 @@ The frontend contains route/application shell code, domain types and pure rules,
 
 ## Backend
 
-The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, dts-reload, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules.
+The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, dts-reload, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules. User deletion is a users-module transaction: account-owned state cascades, while durable cross-module history keeps nullable user references.
 
 **DTS reload debugging** (`server/modules/dts-reload/`, UI `/dts-reload`) validates candidate library values on a real device by generating a `/plugin/` debug overlay, compiling it with the pinned `dtc`/`fdtoverlay` toolchain, deploying through the local device bridge, and capturing a reload snapshot. Debug values never mutate the parameter library (ADR-0019). Deploy runs in-request on the API process that holds the bridge WebSocket (ADR-0020) — it is not a BullMQ job. The reload snapshot records library baselines, on-device artifact integrity, optional kernel-log evidence, and behavioural verification outcomes when debug-node bindings exist (ADR-0021).
 

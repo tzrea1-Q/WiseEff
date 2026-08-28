@@ -84,6 +84,28 @@ describe("KnowledgeAdminPage", () => {
     expect(onNavigate).toHaveBeenCalledWith("/knowledge?entryId=mock-kb-agent-1");
   });
 
+  it("labels a retained draft whose creator account was deleted", async () => {
+    const repository = createMockKnowledgeRepository();
+    const list = repository.list.bind(repository);
+    vi.spyOn(repository, "list").mockImplementation(async (query) => {
+      const result = await list(query);
+      return {
+        ...result,
+        items: result.items.map((entry) =>
+          entry.id === "mock-kb-agent-1"
+            ? { ...entry, createdByUserId: null }
+            : entry
+        )
+      };
+    });
+
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+
+    const queue = await screen.findByRole("table", { name: "Agent 知识草稿队列" });
+    const row = within(queue).getByText("小泽沉淀:充电异常断电根因排查").closest("tr")! as HTMLElement;
+    expect(within(row).getByText(/创建人 已注销用户/)).toBeInTheDocument();
+  });
+
   it("publishes an agent draft from the queue", async () => {
     const repository = createMockKnowledgeRepository();
     render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);

@@ -11,7 +11,7 @@ Discovery surfaces (sidebar groups, homepage wayfinding, and promotional homepag
 - Hardware engineers review and prepare parameter changes, device reads, and debugging evidence.
 - Software engineers review software-side parameter impact, logs, and workflow status.
 - Committers review and approve high-risk parameter changes.
-- Admins govern users, permissions, project configuration, audit, and pilot readiness.
+- Admins govern users, permissions, project configuration, audit, and pilot readiness. User lifecycle includes irreversible non-self account deletion; durable business/audit history remains and its deleted-user references become null.
 - Operators collect staging, self-hosted, backup, rollback, monitoring, and device-lab evidence.
 
 ## Core Workflows

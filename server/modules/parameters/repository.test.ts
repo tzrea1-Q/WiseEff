@@ -307,7 +307,7 @@ describe.skipIf(!databaseAvailable)("parameter repository", () => {
         version: "1",
         value: "3200",
         changedAt: "2026-05-25T01:00:00.000Z",
-        changedBy: "",
+        changedBy: null,
         requestId: undefined
       }
     ]);

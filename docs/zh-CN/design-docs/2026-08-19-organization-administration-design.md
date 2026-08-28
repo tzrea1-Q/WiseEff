@@ -53,7 +53,7 @@
 一个侧栏入口、两条范围页，权限仍是 `users:manage`（与今天的用户治理相同）：
 
 1. **组织管理**（`/organization`）— 可编辑显示名，只读 id 与创建时间。
-2. **人员管理**（`/organization/members`）— 今天的用户目录：开账号、换角色、启停、Committer 审批。没有项目列。
+2. **人员管理**（`/organization/members`）— 今天的用户目录：开账号、换角色、启停、永久注销非当前用户、Committer 审批。没有项目列。注销会清除账号自有状态，保留业务与审计历史，并将其中的用户引用置为 `null`。
 
 侧栏文案：组织管理。旧深链 `/user-permissions` 重定向到 `/organization/members` 并保留查询串。
 

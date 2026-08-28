@@ -37,7 +37,7 @@ export type KnowledgeParameterReferenceDto = {
   /** Attribution-subject display name (the module humans know the definition by). */
   driverModule: string | null;
   lifecycle: "draft" | "active" | "deprecated";
-  createdByUserId: string;
+  createdByUserId: string | null;
   createdAt: string;
 };
 
@@ -54,7 +54,7 @@ export type KnowledgeEntryDto = {
   sourceLogId: string | null;
   /** DTS reload run this entry was distilled from (deferred roadmap item 3). */
   sourceReloadRunId: string | null;
-  createdByUserId: string;
+  createdByUserId: string | null;
   headRevisionId: string | null;
   headRevisionNumber: number;
   createdAt: string;
@@ -78,7 +78,7 @@ export type KnowledgeRevisionDto = {
   tags: string[];
   contentMarkdown: string | null;
   fileId: string | null;
-  authorUserId: string;
+  authorUserId: string | null;
   restoredFromRevisionId: string | null;
   createdAt: string;
 };

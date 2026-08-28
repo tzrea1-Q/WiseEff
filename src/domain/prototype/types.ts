@@ -36,7 +36,7 @@ export type ParameterHistoryEntry = {
   version: string;
   value: string;
   changedAt: string;
-  changedBy: string;
+  changedBy: string | null;
   requestId?: string;
 };
 
@@ -246,6 +246,7 @@ export type AuditEventKind =
   | "bulk-module-change"
   | "bulk-delete"
   | "user-add"
+  | "user-delete"
   | "user-role-change"
   | "user-toggle"
   | "export"

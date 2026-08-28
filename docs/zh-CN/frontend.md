@@ -256,7 +256,7 @@ Xiaoze（小泽，唯一 Agent）：
 用户和身份：
 
 - `/api/v1/me` 在 OIDC、HMAC smoke 和本地账号下返回同一类 `AuthContext`。
-- 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。若目录响应不含当前调用者，状态只保留 `/api/v1/me` 返回的真实当前用户以稳定外壳身份，不会恢复演示用户。治理 action 提供 `resetUserPassword` 时，成员行可打开重置密码弹窗，提交 `POST /api/v1/users/:userId/password`，并提示该用户全部会话已退出。
+- 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。若目录响应不含当前调用者，状态只保留 `/api/v1/me` 返回的真实当前用户以稳定外壳身份，不会恢复演示用户。治理 action 提供 `resetUserPassword` 时，成员行可打开重置密码弹窗，提交 `POST /api/v1/users/:userId/password`，并提示该用户全部会话已退出。符合条件的非当前用户行还提供不可逆的“注销”：确认后调用 `DELETE /api/v1/users/:userId`，仅在收到 `204` 后移除列表行；后端拒绝时保留弹窗并显示错误。弹窗明确说明账号自有数据会清除，业务与审计历史保留且用户引用变为 `null`。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
 
 ## 快捷键与地标

@@ -165,7 +165,7 @@ function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
     version: String(row.version),
     value: row.value,
     changedAt: dateTimeToIso(row.changed_at),
-    changedBy: row.changed_by ?? "",
+    changedBy: row.changed_by,
     requestId: row.request_id ?? undefined
   };
 }

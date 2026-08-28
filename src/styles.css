@@ -5211,6 +5211,19 @@ td small {
   white-space: normal;
 }
 
+.user-permissions-action-with-reason {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 8.5rem;
+}
+
+.user-permissions-disabled-reason {
+  max-width: 13rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
 /* `.user-permissions-modal` is now only a backdrop scope for the add-user dialog
  * (positioning, dimming, and stacking come from the shared `.modal-backdrop`). */
 

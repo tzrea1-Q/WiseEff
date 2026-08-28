@@ -94,6 +94,7 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   { id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" },
+  { id: "users.delete", method: "DELETE", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" },
   {
     id: "users.activation",
     method: "PATCH",

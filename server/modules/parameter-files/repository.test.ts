@@ -222,5 +222,20 @@ describe.skipIf(!databaseAvailable)("parameter-files repository", () => {
       createdByUserId: "user-1",
       createdByDisplayName: "Riley Chen"
     });
+
+    const unattributed = await insertFileVersion(db, {
+      id: "ver-3",
+      fileId: "file-1",
+      versionNumber: 3,
+      storageKey: "org-1/files/battery-v3.dtsi",
+      checksum: "ghi789",
+      sizeBytes: 3072,
+      parsedIndex: {},
+      origin: "upload"
+    });
+    expect(unattributed).toMatchObject({
+      createdByUserId: null,
+      createdByDisplayName: null
+    });
   });
 });
