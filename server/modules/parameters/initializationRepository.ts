@@ -16,7 +16,7 @@ type DraftRow = {
   project_id: string;
   project_name: string;
   project_code: string;
-  owner_user_id: string;
+  owner_user_id: string | null;
   source_project_ids: unknown;
   primary_source_project_id: string | null;
   supplement_source_project_ids: unknown;
@@ -26,7 +26,7 @@ type DraftRow = {
   binding_snapshots: unknown;
   empty_library: boolean;
   notes: string;
-  created_by_user_id: string;
+  created_by_user_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -37,7 +37,7 @@ type ReviewRow = {
   project_id: string;
   draft_id: string;
   status: "pending" | "approved" | "rejected";
-  submitted_by_user_id: string;
+  submitted_by_user_id: string | null;
   submitted_at: string | Date;
   reviewed_by_user_id: string | null;
   reviewed_at: string | Date | null;
@@ -110,7 +110,7 @@ function toReviewDto(row: ReviewRow): InitializationReviewDto {
     status: row.status,
     submittedByUserId: row.submitted_by_user_id,
     submittedAt: dateTimeToIso(row.submitted_at),
-    reviewedByUserId: row.reviewed_by_user_id ?? undefined,
+    reviewedByUserId: row.reviewed_by_user_id,
     reviewedAt: row.reviewed_at ? dateTimeToIso(row.reviewed_at) : undefined,
     rejectionReason: row.rejection_reason ?? undefined
   };

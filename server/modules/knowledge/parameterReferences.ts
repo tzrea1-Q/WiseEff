@@ -13,7 +13,7 @@ import type { KnowledgeEntryDto, KnowledgeParameterReferenceDto, KnowledgeSearch
 type ReferenceRow = {
   entry_id: string;
   parameter_spec_id: string;
-  created_by_user_id: string;
+  created_by_user_id: string | null;
   created_at: string | Date;
   property_key: string | null;
   display_name: string | null;

@@ -106,7 +106,7 @@ type DebugSessionRow = {
   bridge_id: string | null;
   bridge_machine_label: string | null;
   session_kind?: DebugSessionKind;
-  actor_user_id: string;
+  actor_user_id: string | null;
   status: DebugSessionStatus;
   started_at: string | Date;
   ended_at: string | Date | null;

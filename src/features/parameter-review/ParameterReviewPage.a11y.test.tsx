@@ -78,4 +78,41 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     fireEvent.click(within(selectedPower).getByRole("button", { name: "展开" }));
     expect(within(menu).getByRole("treeitem", { name: "Charging" })).toHaveAttribute("aria-checked", "true");
   });
+
+  it("labels a retained initialization review whose submitter account was deleted", () => {
+    const state = hardwareCommitterState();
+    const project = state.configDraft.projects[0];
+    const draft = {
+      id: "init-deleted-user",
+      projectId: project.id,
+      projectName: project.name,
+      projectCode: project.code,
+      ownerUserId: null,
+      sourceProjectIds: [],
+      primarySourceProjectId: "",
+      supplementSourceProjectIds: [],
+      selectedModules: [],
+      selectedRisks: [],
+      selectedParameterIds: [],
+      parameterSnapshots: [],
+      notes: "",
+      createdBy: null,
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z"
+    };
+    renderReview({
+      ...state,
+      parameterInitializationDrafts: [draft],
+      parameterInitializationReviews: [{
+        id: "review-deleted-user",
+        draftId: draft.id,
+        projectId: draft.projectId,
+        status: "pending",
+        submittedBy: null,
+        submittedAt: "2026-08-28T00:00:00.000Z"
+      }]
+    });
+
+    expect(screen.getAllByText("已注销用户").length).toBeGreaterThan(0);
+  });
 });

@@ -15,6 +15,7 @@ Let an authorized administrator permanently delete a non-self user from Organiza
 - User deletion and role replacement take the same user-row lock, so a concurrent platform-admin grant is committed and rechecked before an ordinary Admin can delete the account.
 - The user row, role bindings, password credential, auth sessions, pending local registration requests, personal notifications, active device leases, and unsubmitted parameter drafts are removed.
 - Durable audit and business rows remain, with every foreign key to the deleted user changed to `NULL` by `ON DELETE SET NULL`.
+- Retained API DTOs model those references as nullable, and attribution surfaces render `已注销用户` instead of a blank or stale identity.
 - A High-severity `user-delete` audit event is committed in the same transaction. It retains the opaque target id and non-secret lifecycle facts, not the deleted user's name, username, email, password, or password hash.
 - `/organization/members` exposes a destructive `注销` action for eligible rows, explains irreversibility and reference nulling, waits for the API, removes the row only after success, and keeps the dialog open with a projected server refusal on failure.
 - Mock and API modes expose the same visible lifecycle semantics; backend authorization remains authoritative.
@@ -45,6 +46,7 @@ Migration `0117` must convert every foreign key targeting `users(id)` to one of 
 - `server/migrations/0117_user_account_deletion.sql`
 - `server/modules/users/{repository,service,routes}.ts`
 - `server/modules/users/*.test.ts` and a PostgreSQL integration test
+- retained-attribution DTO/UI seams under `server/modules/{knowledge,parameters}/` and `src/features/{knowledge,parameter-review}/`
 - `src/infrastructure/http/userGovernanceClient.ts` and tests
 - `src/UserPermissionsPage.tsx` and tests
 - `src/application/state/*`, reducer tests, and test harness ports as required
@@ -99,6 +101,8 @@ AUTH_MODE=production AUTH_PROVIDER=hmac \
   WISEEFF_ACCEPTANCE_OWNED_RUNTIME=true \
   WISEEFF_ACCEPTANCE_FRONTEND_URL=http://127.0.0.1:5188 \
   VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8899 \
+  WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT="$(git rev-parse HEAD)" \
+  WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID=user-delete-final \
   WISEEFF_ACCEPTANCE_EVIDENCE_ROOT=/tmp/wiseeff-user-delete-acceptance-evidence \
   WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR=/tmp/wiseeff-user-delete-playwright \
   WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR=/tmp/wiseeff-user-delete-report \
@@ -112,9 +116,10 @@ docker rm -f wiseeff-user-delete-acceptance
 Observed local evidence on 2026-08-28:
 
 - Focused final-tree user-deletion backend: 3 files, 49 tests passed, including a two-connection PostgreSQL lock barrier, account-owned lease/draft cleanup, platform-admin/missing/cross-organization route boundaries, and deletion audit behavior. Retained workflow/log null-adaptation tests are also included in the full server gate.
-- Full frontend at bounded concurrency: 420 files, 3153 tests passed. Full server: 362 files passed, 1 skipped; 2804 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
+- Full frontend at bounded concurrency: 420 files, 3156 tests passed. Full server: 362 files passed, 1 skipped; 2804 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed. The default-concurrency frontend attempt was stopped after 415 files passed and 16 tests failed under cross-module 5-second timeout pressure; the same exact tree passed completely with `npm test -- --maxWorkers=2`.
 - `npm run build`, `npm run ui:check`, `npm run contract:check`, `npm run docs:check`, `npm run acceptance:coverage`, and `npm run acceptance:operations` passed. The schema doc was generated from a disposable pgvector PostgreSQL container migrated from scratch.
 - `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and visible disabled reasons, responsive table containment, mobile dialog/removal, and zero console errors. The focused `PERM-USER-MGMT-001` API-mode acceptance also passed against a disposable pgvector PostgreSQL database (runtime warmup plus one product case), proving HTTP `204`, database null adaptation, deletion audit, and non-Admin `403`. Machine-readable results are at `/tmp/wiseeff-user-delete-playwright-final2/results.json`; the HTML report is `/tmp/wiseeff-user-delete-report-final2/index.html`. This is deterministic local HMAC evidence, not target OIDC evidence.
+- API-mode retained-attribution browser proof covered `/knowledge-admin` and `/parameter-review` at `1440x900`, `768x1024`, and `390x844`. Both surfaces rendered `已注销用户`; relevant API reads returned `200`, console errors were zero, and each mobile document remained 390 px wide without page-level overflow. Screenshots are under `work/ui-checks/user-delete-null-{knowledge,review}-{desktop-1440x900,tablet-768x1024,mobile-390x844}.png`.
 
 ## Git & PR Workflow
 

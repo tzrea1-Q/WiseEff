@@ -16,7 +16,7 @@ type AgentSessionRow = {
   id: string;
   organization_id: string;
   project_id: string | null;
-  actor_user_id: string;
+  actor_user_id: string | null;
   page_key: string;
   role_id: string | null;
   context: unknown;
@@ -82,14 +82,14 @@ export type AgentApprovalRecord = AgentApprovalDto & {
   organizationId: string;
   projectId?: string;
   /** User whose turn requested this approval; only they may decide it. */
-  requestedByUserId: string;
+  requestedByUserId: string | null;
 };
 
 export type AgentSessionRecord = {
   id: string;
   organizationId: string;
   projectId?: string;
-  actorUserId: string;
+  actorUserId: string | null;
   pageKey: string;
   roleId?: string;
   context: AgentContext;
@@ -249,7 +249,7 @@ function toAgentApprovalDto(row: AgentApprovalRow): AgentApprovalDto {
     status: row.status,
     createdAt: dateTimeToIso(row.requested_at),
     decidedAt: row.decided_at ? dateTimeToIso(row.decided_at) : undefined,
-    decidedByUserId: row.decided_by_user_id ?? undefined,
+    decidedByUserId: row.decided_by_user_id,
     reason: row.decision_reason ?? undefined
   };
 }
@@ -260,7 +260,7 @@ function toAgentApprovalRecord(row: AgentApprovalRow): AgentApprovalRecord {
     sessionId: String(row.session_id ?? ""),
     organizationId: String(row.organization_id ?? ""),
     projectId: row.project_id ?? undefined,
-    requestedByUserId: String(row.requested_by_user_id ?? "")
+    requestedByUserId: row.requested_by_user_id ?? null
   };
 }
 

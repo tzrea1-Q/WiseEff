@@ -8,6 +8,8 @@ import {
 } from "../../testing/testDatabase";
 import { createDatabase, type Database, type Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
+import { getEntryById, listRevisions } from "../knowledge/repository";
+import { getDraftByProject, listPendingReviews } from "../parameters/initializationRepository";
 import { deleteUser, replaceUserRoles } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -157,6 +159,46 @@ async function insertDeletionFixture(db: Queryable) {
     )
     `
   );
+  await db.query(
+    `insert into project_parameter_initialization_drafts (
+       id, organization_id, project_id, project_name, project_code, owner_user_id,
+       source_project_ids, primary_source_project_id, supplement_source_project_ids,
+       selected_module_ids, selected_risks, selected_source_binding_ids, binding_snapshots,
+       empty_library, notes, created_by_user_id
+     ) values (
+       'initialization-target', 'org-chargelab', 'project-delete', 'Delete fixture', 'DELETE', 'u-target',
+       '[]', null, '[]', '[]', '[]', '[]', '[]', true, '', 'u-target'
+     )`
+  );
+  await db.query(
+    `insert into project_parameter_initialization_reviews (
+       id, organization_id, project_id, draft_id, status, submitted_by_user_id, reviewed_by_user_id
+     ) values (
+       'initialization-review-target', 'org-chargelab', 'project-delete', 'initialization-target',
+       'pending', 'u-target', 'u-target'
+     )`
+  );
+  await db.query(
+    `insert into knowledge_entries (
+       id, organization_id, title, content_form, status, source_type, created_by_user_id
+     ) values (
+       '00000000-0000-4000-8000-000000000011', 'org-chargelab', 'Retained knowledge',
+       'markdown', 'published', 'human', 'u-target'
+     )`
+  );
+  await db.query(
+    `insert into knowledge_revisions (
+       id, entry_id, organization_id, revision_number, title, content_markdown, author_user_id
+     ) values (
+       '00000000-0000-4000-8000-000000000012', '00000000-0000-4000-8000-000000000011',
+       'org-chargelab', 1, 'Retained knowledge', '# retained', 'u-target'
+     )`
+  );
+  await db.query(
+    `update knowledge_entries
+     set head_revision_id = '00000000-0000-4000-8000-000000000012', head_revision_number = 1
+     where id = '00000000-0000-4000-8000-000000000011'`
+  );
 }
 
 describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract", () => {
@@ -246,6 +288,25 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       "select actor_user_id from audit_events where id = 'audit-target-history'"
     );
     expect(retainedHistory.rows).toEqual([{ actor_user_id: null }]);
+
+    const retainedKnowledge = await getEntryById(
+      db,
+      adminAuth,
+      "00000000-0000-4000-8000-000000000011"
+    );
+    expect(retainedKnowledge?.createdByUserId).toBeNull();
+    await expect(
+      listRevisions(db, adminAuth, "00000000-0000-4000-8000-000000000011")
+    ).resolves.toMatchObject([{ authorUserId: null }]);
+
+    const retainedInitialization = await getDraftByProject(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-delete"
+    });
+    expect(retainedInitialization).toMatchObject({ ownerUserId: null, createdByUserId: null });
+    await expect(listPendingReviews(db, { organizationId: "org-chargelab" })).resolves.toMatchObject([
+      { submittedByUserId: null, reviewedByUserId: null }
+    ]);
 
     const deletionAudit = await db.query<{
       actor_user_id: string | null;

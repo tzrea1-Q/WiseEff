@@ -14,7 +14,7 @@ import type {
 type ProductFeedbackRow = {
   id: string;
   organization_id: string;
-  submitter_user_id: string;
+  submitter_user_id: string | null;
   page_path: string;
   page_title: string;
   feedback_type: ProductFeedbackType;

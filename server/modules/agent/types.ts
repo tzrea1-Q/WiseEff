@@ -60,7 +60,7 @@ export type AgentApprovalDto = {
   status: AgentApprovalStatus;
   createdAt?: string;
   decidedAt?: string;
-  decidedByUserId?: string;
+  decidedByUserId?: string | null;
   reason?: string;
 };
 
