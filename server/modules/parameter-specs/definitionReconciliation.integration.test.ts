@@ -7,6 +7,7 @@ import {
 } from "../../testing/testDatabase";
 import { reconcileDriverParameterDefinitions } from "./definitionReconciliation";
 import { verifyEffectiveDriverParameterDefinitions } from "./definitionVerification";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 
 const ORG_ID = "org-definition-reconciliation";
 const PROJECT_ID = "project-definition-reconciliation";
