@@ -180,6 +180,20 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
     expect(fullList.find((log) => log.id === archivedId)?.archiveState).toBe("archived");
   });
 
+  it("keeps retained logs readable after the submitting user is deleted", async () => {
+    const { logId } = await seedUploadedLog("deleted-submitter");
+
+    await db.query("delete from users where id = 'user-1'");
+
+    await expect(getLogDetail(db, auth(), logId)).resolves.toMatchObject({
+      id: logId,
+      submittedBy: "已注销用户"
+    });
+    await expect(listLogs(db, auth(), {})).resolves.toEqual([
+      expect.objectContaining({ id: logId, submittedBy: "已注销用户" })
+    ]);
+  });
+
   it("getLogDetail assembles the current run's report, evidence, and raw lines", async () => {
     const { logId, runId } = await seedUploadedLog("detail");
     await persistLogAnalysisReport(db, {

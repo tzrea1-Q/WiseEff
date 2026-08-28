@@ -144,4 +144,26 @@ describe("buildSubmissionWorkflowTrail", () => {
 
     expect(trail[0].executorName).toBe("王杰 等 2 人");
   });
+
+  it("keeps a deleted reviewer visible in retained workflow history", () => {
+    const trail = buildSubmissionWorkflowTrail({
+      activeIndex: 3,
+      workflowAssignees,
+      requestIds: ["PRQ-1"],
+      changeRequests: [],
+      reviewDecisions: [
+        {
+          id: "d-deleted",
+          requestId: "PRQ-1",
+          decision: "advance",
+          fromStatus: "hardware_review",
+          toStatus: "software_review",
+          createdAt: "2026-06-17T03:00:00.000Z"
+        }
+      ],
+      resolveUserName
+    });
+
+    expect(trail[0]).toMatchObject({ executorName: "已注销用户", state: "completed" });
+  });
 });

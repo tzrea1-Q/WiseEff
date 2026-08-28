@@ -4,6 +4,7 @@ import { presentAuditAction, presentAuditKind } from "./auditSlugLabels";
 describe("presentAuditKind", () => {
   it("maps known backend kind slugs to product Chinese", () => {
     expect(presentAuditKind("auth-event")).toEqual({ label: "认证事件", isRaw: false });
+    expect(presentAuditKind("user-delete")).toEqual({ label: "注销用户", isRaw: false });
     expect(presentAuditKind("parameter-module-bindings-recomputed")).toEqual({ label: "模块绑定重算", isRaw: false });
     expect(presentAuditKind("log-upload-failed")).toEqual({ label: "日志上传失败", isRaw: false });
   });

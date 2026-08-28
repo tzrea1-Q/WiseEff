@@ -7,7 +7,7 @@ export type ParameterHistoryEntry = {
   version: string;
   value: string;
   changedAt: string;
-  changedBy: string;
+  changedBy: string | null;
   requestId?: string;
   /** Present once the entry is bound to a semantic project binding. */
   projectParameterBindingId?: string;
@@ -162,7 +162,7 @@ export type SubmissionWorkflowStageDetail = {
 export type ParameterReviewDecisionRecord = {
   id: string;
   requestId: string;
-  reviewerUserId: string;
+  reviewerUserId?: string;
   decision: "advance" | "reject";
   fromStatus: string;
   toStatus: string;
@@ -221,7 +221,7 @@ export type ProjectParameterInitializationDraft = {
   projectId: string;
   projectName: string;
   projectCode: string;
-  ownerUserId: string;
+  ownerUserId: string | null;
   sourceProjectIds: string[];
   primarySourceProjectId: string;
   supplementSourceProjectIds: string[];
@@ -230,7 +230,7 @@ export type ProjectParameterInitializationDraft = {
   selectedParameterIds: string[];
   parameterSnapshots: ProjectParameterInitializationSnapshotItem[];
   notes: string;
-  createdBy: string;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -240,9 +240,9 @@ export type ProjectParameterInitializationReview = {
   draftId: string;
   projectId: string;
   status: "pending" | "approved" | "rejected";
-  submittedBy: string;
+  submittedBy: string | null;
   submittedAt: string;
-  reviewedBy?: string;
+  reviewedBy?: string | null;
   reviewedAt?: string;
   rejectionReason?: string;
 };

@@ -50,7 +50,7 @@ export type KnowledgeParameterReferenceDto = {
   displayName: string | null;
   driverModule: string | null;
   lifecycle: KnowledgeParameterReference["lifecycle"];
-  createdByUserId: string;
+  createdByUserId: string | null;
   createdAt: string;
 };
 
@@ -65,7 +65,7 @@ export type KnowledgeEntryDto = {
   sourceSessionId: string | null;
   sourceLogId: string | null;
   sourceReloadRunId: string | null;
-  createdByUserId: string;
+  createdByUserId: string | null;
   headRevisionId: string | null;
   headRevisionNumber: number;
   createdAt: string;
@@ -86,7 +86,7 @@ export type KnowledgeRevisionDto = {
   tags: string[];
   contentMarkdown: string | null;
   fileId: string | null;
-  authorUserId: string;
+  authorUserId: string | null;
   restoredFromRevisionId: string | null;
   createdAt: string;
 };

@@ -7,6 +7,7 @@ import {
   approveRegistrationRoleRequest,
   createUser,
   deactivateUser,
+  deleteUser,
   getHomeOrganization,
   listGovernedUsers,
   listRegistrationRoleRequests,
@@ -132,6 +133,15 @@ export function registerUserRoutes(
     const item = await deactivateUser(db, auth, params.userId, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/users/:userId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(userIdParamsSchema, request.params);
+    await deleteUser(db, auth, params.userId, { requestId: request.requestId });
+
+    return { status: 204, body: null };
   });
 
   router.post("/api/v1/users/:userId/password", async (request) => {

@@ -77,17 +77,20 @@ function resolveStageExecutors(
   toStatus: string,
   resolveUserName: (userId?: string) => string
 ) {
-  const reviewerIds = reviewDecisions
+  const reviewers = reviewDecisions
     .filter(
       (decision) =>
         requestIds.includes(decision.requestId) &&
         decision.decision === "advance" &&
         decision.fromStatus === fromStatus &&
         decision.toStatus === toStatus
-    )
-    .map((decision) => decision.reviewerUserId);
+    );
 
-  return formatExecutorNames(reviewerIds.map((reviewerId) => resolveUserName(reviewerId)));
+  return formatExecutorNames(
+    reviewers.map((decision) =>
+      decision.reviewerUserId ? resolveUserName(decision.reviewerUserId) : "已注销用户"
+    )
+  );
 }
 
 function resolveActiveHandler(

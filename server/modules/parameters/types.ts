@@ -34,7 +34,7 @@ export type ParameterHistoryEntryDto = {
   version: string;
   value: string;
   changedAt: string;
-  changedBy: string;
+  changedBy: string | null;
   requestId?: string;
 };
 

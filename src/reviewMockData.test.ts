@@ -65,7 +65,7 @@ describe("buildParameterHistory", () => {
     entries.forEach((entry) => {
       expect(entry.value.length).toBeGreaterThan(0);
       expect(entry.version.length).toBeGreaterThan(0);
-      expect(entry.changedBy.length).toBeGreaterThan(0);
+      expect(entry.changedBy).toEqual(expect.any(String));
     });
   });
 });

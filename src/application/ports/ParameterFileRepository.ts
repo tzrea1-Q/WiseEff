@@ -29,8 +29,8 @@ export type ProjectParameterFileVersion = {
   parsedIndex: ParameterFileParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdAt: string;
-  createdByUserId?: string;
-  createdByDisplayName?: string;
+  createdByUserId?: string | null;
+  createdByDisplayName?: string | null;
 };
 
 export type UploadParameterFileInput = {

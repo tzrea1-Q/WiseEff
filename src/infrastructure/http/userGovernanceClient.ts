@@ -108,6 +108,9 @@ export function createUserGovernanceClient(
       });
       return userFromDto(response.item);
     },
+    async deleteUser(userId: string) {
+      await apiClient.delete<null>(`/api/v1/users/${encodeURIComponent(userId)}`);
+    },
     async resetUserPassword(userId: string, password: string) {
       const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>(
         `/api/v1/users/${encodeURIComponent(userId)}/password`,

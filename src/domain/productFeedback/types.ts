@@ -17,7 +17,7 @@ export type ProductFeedbackAttachment = {
 
 export type ProductFeedback = {
   id: string;
-  submitterUserId?: string;
+  submitterUserId?: string | null;
   pagePath: string;
   pageTitle: string;
   feedbackType: ProductFeedbackType;

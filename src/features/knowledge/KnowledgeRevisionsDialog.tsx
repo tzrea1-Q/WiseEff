@@ -132,7 +132,7 @@ export function KnowledgeRevisionsDialog({
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{snippet(revision.contentMarkdown)}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {revision.authorUserId} · {formatDateTime(revision.createdAt)}
+                        {revision.authorUserId ?? "已注销用户"} · {formatDateTime(revision.createdAt)}
                       </p>
                     </div>
                     {canRestore && !isHead && entry?.status !== "archived" ? (

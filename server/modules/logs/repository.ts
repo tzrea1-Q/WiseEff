@@ -239,7 +239,7 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
     rawLines: row.raw_lines ?? [],
     capturedAt: dateTimeToIso(row.captured_at),
     updatedAt: dateTimeToIso(row.updated_at),
-    submittedBy: row.submitted_by ?? "",
+    submittedBy: row.submitted_by ?? "已注销用户",
     relatedParameterId: row.related_parameter_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
     analysisQuestion: row.analysis_question ?? undefined,

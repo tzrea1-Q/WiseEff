@@ -146,6 +146,32 @@ describe("KnowledgePage", () => {
     });
   });
 
+  it("labels a retained revision whose author account was deleted", async () => {
+    const repository = createMockKnowledgeRepository();
+    const listRevisions = repository.listRevisions.bind(repository);
+    vi.spyOn(repository, "listRevisions").mockImplementation(async (entryId) =>
+      (await listRevisions(entryId)).map((revision, index) =>
+        index === 0 ? { ...revision, authorUserId: null } : revision
+      )
+    );
+    render(
+      <KnowledgePage
+        repository={repository}
+        capability={editorCapability}
+        askXiaozeEnabled={false}
+        initialEntryId={null}
+      />
+    );
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(within(table).getByText("快充温控调参经验"));
+    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    await user.click(within(detail).getByRole("button", { name: "修订历史" }));
+
+    expect(await within(screen.getByRole("dialog", { name: /修订历史/ })).findByText(/已注销用户/)).toBeInTheDocument();
+  });
+
   it("uploads a file entry and shows its extraction status", async () => {
     renderPage();
     const user = userEvent.setup();

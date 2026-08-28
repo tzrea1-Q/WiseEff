@@ -27,6 +27,27 @@ describe("mapAuditEventView", () => {
     expect(view.metadata?.fromStatus).toBe("pending-merge");
   });
 
+  it("labels a retained user audit event whose actor was deleted", () => {
+    const view = mapApiAuditEventToView({
+      id: "audit-deleted-user",
+      organizationId: "org-1",
+      actorUserId: null,
+      actorType: "user",
+      actorName: null,
+      app: "parameter-management",
+      kind: "parameter-update",
+      action: "update",
+      severity: "Medium",
+      targetType: "parameter",
+      targetId: "parameter-1",
+      metadata: {},
+      traceId: "trace-deleted-user",
+      createdAt: "2026-08-28T08:00:00.000Z"
+    });
+
+    expect(view.actor).toBe("用户已注销或未记录");
+  });
+
   it("maps mock audit events preserving relative labels when time is not ISO", () => {
     const view = mapMockAuditEventToView({
       id: "ae-1",

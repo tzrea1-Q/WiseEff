@@ -63,6 +63,14 @@ type ParameterReviewRow =
   | ParameterInitializationReviewRow
   | { kind: "change"; request: ChangeRequest };
 
+function resolveRetainedUserName(
+  users: ReadonlyArray<{ id: string; name: string }>,
+  userId: string | null
+) {
+  if (userId === null) return "已注销用户";
+  return users.find((user) => user.id === userId)?.name ?? userId;
+}
+
 export function ParameterReviewPage({
   state,
   dispatch,
@@ -131,7 +139,7 @@ export function ParameterReviewPage({
   );
   const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "project" | "module" | "submitter" | "change" | "status") => {
     if (row.kind === "initialization") {
-      const submitter = state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy;
+      const submitter = resolveRetainedUserName(state.users, row.review.submittedBy);
       const modules = row.draft.parameterSnapshots.map((snapshot) => snapshot.module);
       const primaryModule = modules[0] ?? "参数初始化";
       const moduleText = modules.length > 1 ? `${primaryModule} 等 ${modules.length} 个模块` : primaryModule;
@@ -257,7 +265,7 @@ export function ParameterReviewPage({
     () =>
       Array.from(
         new Set([
-          ...visibleInitializationRows.map((row) => state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy),
+          ...visibleInitializationRows.map((row) => resolveRetainedUserName(state.users, row.review.submittedBy)),
           ...visibleRequests.map((r) => r.submitter)
         ])
       ),
@@ -319,7 +327,7 @@ export function ParameterReviewPage({
     selectedReviewParameter?.explanation?.trim() ||
     "";
   const selectedInitializationSubmitter = selectedInitialization
-    ? state.users.find((user) => user.id === selectedInitialization.review.submittedBy)?.name ?? selectedInitialization.review.submittedBy
+    ? resolveRetainedUserName(state.users, selectedInitialization.review.submittedBy)
     : "";
   const selectedProjectName = selected
     ? getReviewRowField({ kind: "change", request: selected }, "project")
@@ -789,7 +797,7 @@ export function ParameterReviewPage({
                       {showBatchColumn ? <TableCell className="review-batch-cell" /> : null}
                       <TableCell>{row.draft.projectName}</TableCell>
                       <TableCell>参数初始化</TableCell>
-                      <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
+                      <TableCell>{resolveRetainedUserName(state.users, row.review.submittedBy)}</TableCell>
                       <TableCell className="change-cell">
                         <button
                           className="value-change value-change-button"

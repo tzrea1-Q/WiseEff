@@ -20,6 +20,8 @@ Build a shared user permissions management page for WiseEff. The page should rep
 - Manage user lifecycle with add, enable, disable, and role change.
 - Do not delete users in this iteration.
 
+> Superseded lifecycle note (2026-08-28): the later [user account deletion plan](../exec-plans/active/2026-08-28-user-account-deletion.md) adds permanent non-self deletion with nullable retained-history references; the line above remains the boundary of this historical design iteration.
+
 ## Roles
 
 | Role | Permissions |

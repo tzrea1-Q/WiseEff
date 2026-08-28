@@ -25,7 +25,7 @@ type KnowledgeEntryRow = {
   source_session_id: string | null;
   source_log_id: string | null;
   source_reload_run_id: string | null;
-  created_by_user_id: string;
+  created_by_user_id: string | null;
   head_revision_id: string | null;
   head_revision_number: number | string;
   created_at: string | Date;
@@ -43,7 +43,7 @@ type KnowledgeRevisionRow = {
   tags: string[];
   content_markdown: string | null;
   file_id: string | null;
-  author_user_id: string;
+  author_user_id: string | null;
   restored_from_revision_id: string | null;
   created_at: string | Date;
 };

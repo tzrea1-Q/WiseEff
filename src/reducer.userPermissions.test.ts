@@ -153,6 +153,23 @@ describe("shared user permission reducer actions", () => {
     expect(next).toBe(state);
   });
 
+  it("removes a non-self user after account deletion succeeds", () => {
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
+    const target = state.users.find((user) => user.id === "u-liu-min")!;
+
+    const next = appReducer(state, {
+      type: "DELETE_USER",
+      userId: target.id
+    });
+
+    expect(next.users.map((user) => user.id)).not.toContain(target.id);
+    expect(next.auditEvents[0]).toMatchObject({
+      kind: "user-delete",
+      action: "delete",
+      userId: target.id
+    });
+  });
+
   it("prevents the current Admin from downgrading themselves", () => {
     const state = { ...createPrototypeState(), activeRoleId: "admin" };
     const next = appReducer(state, {

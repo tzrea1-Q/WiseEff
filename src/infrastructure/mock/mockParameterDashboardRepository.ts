@@ -55,7 +55,7 @@ function filterChangeRequests(state: PrototypeState, start: Date, end: Date, pro
   );
 }
 
-function matchesCurrentUser(actor: string, userId: string, userName?: string) {
+function matchesCurrentUser(actor: string | null, userId: string, userName?: string) {
   return actor === userId || actor === userName;
 }
 

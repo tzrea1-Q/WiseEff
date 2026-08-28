@@ -31,7 +31,7 @@ export const parameterHistoryEntryDtoSchema = z.object({
   version: z.string(),
   value: z.string(),
   changedAt: z.string(),
-  changedBy: z.string(),
+  changedBy: z.string().nullable(),
   requestId: z.string().optional(),
   projectParameterBindingId: z.string().optional(),
   parameterSpecId: z.string().optional()
