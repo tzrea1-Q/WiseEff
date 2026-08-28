@@ -27,7 +27,7 @@ WiseEff reliability work should protect user trust in parameter changes, log ana
 - Normal API pages: P95 response below 800ms in MVP design.
 - Log upload: progress feedback for large files.
 - Worker tasks: explicit failed, retrying, complete, and canceled states.
-- Device gateway: clear timeout, stderr, offline, and readback mismatch reporting.
+- Device gateway: clear write-command and readback outcomes, including timeout, stderr, offline, unsupported readback, and unknown legacy Bridge results.
 - Agent tools: failure should not corrupt the conversation or business object.
 
 ## Health Checks
@@ -121,7 +121,7 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 ## M3 Debugging Operations
 
 - Local debugging acceptance is simulator-first. `DEBUG_DEVICE_GATEWAY_MODE=simulator` uses the seeded Aurora target and deterministic node values, so read/write/readback/rollback can be verified without a physical device.
-- Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator covers read-only rejection and readback mismatch. The M5 HDC adapter adds fake-runner tests for target detection, nonzero/stderr failures, argv construction, command timeout text, and read-back mismatch.
+- Write-command failures surface as operation failures with readable timeout, offline, or stderr text. A command that executed followed by a technical readback failure remains an executed write with a warning; the last known current value stays stale until a linked read retry succeeds. An alternate observed representation remains `executed + observed`, not a mismatch. The simulator and HDC/ADB fake-runner suites cover representation differences and technical failures. Legacy Bridge payloads with only a top-level result remain `unknown` and instruct the operator to upgrade; capability version 2 reports both outcomes explicitly.
 - A successful write creates a pre-write snapshot. Rollback is expected to write each snapshot entry back with readback, mark the snapshot consumed only if all writes succeed, and leave failed snapshots valid for retry.
 - **DTS reload deploy is in-request** (ADR-0020): mount, push, trigger, kernel-log capture, and behavioural verification run on the API process that holds the bridge WebSocket. There is no BullMQ / durable-queue path for reload. The stock supported topology therefore uses one API replica; non-bridge-aware multi-replica deployment is unsupported.
 - Current residual UI gap: API write snapshots created on `/node-debugging` are not yet automatically surfaced in the `/debugging` rollback card. The backend rollback API and audit path are verified by M3 E2E; UI state promotion remains tracked as technical debt. `/debugging` itself is product-offline; DTS reload evidence lives on `/dts-reload`.
@@ -147,7 +147,7 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - Frontend static assets should be quickly reversible.
 - Database migrations should be forward-compatible or include a recovery note.
 - Worker releases should avoid interrupting high-risk tasks.
-- Device gateway changes should be verified against the simulator and HDC fake-runner tests before real devices. Real-device rollout must then record target detection, read, write, timeout/offline, stderr, readback mismatch, and rollback evidence from the device lab.
+- Device gateway changes should be verified against the simulator and HDC/ADB fake-runner tests before real devices. Real-device rollout must then record target detection, read, write-command failure, readback failure, alternate readback representation, linked read retry, timeout/offline, stderr, and strict rollback evidence from the device lab.
 
 ## References
 

@@ -594,21 +594,25 @@ describe.skipIf(!databaseAvailable)("debugging repository (behavior)", () => {
         parameterId: null,
         nodePath: "/sys/class/power/fast_charge",
         operationType: "write",
-        status: "success",
-        requestedValue: "3200",
+        status: "succeeded",
+        requestedValue: "1",
         previousValue: "3000",
-        readbackValue: "3200",
-        verified: true,
+        readbackValue: "0x1",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         durationMs: 42,
         actorUserId: USER_A
       });
       expect(write).toMatchObject({
         operationType: "write",
-        status: "success",
-        requestedValue: "3200",
+        status: "succeeded",
+        requestedValue: "1",
         previousValue: "3000",
-        readbackValue: "3200",
-        verified: true,
+        readbackValue: "0x1",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         durationMs: 42
       });
 
@@ -619,11 +623,12 @@ describe.skipIf(!databaseAvailable)("debugging repository (behavior)", () => {
         nodePath: "/sys/class/power/fast_charge",
         operationType: "read",
         status: "failed",
+        relatedOperationId: write.id,
         failureReason: "node busy",
         durationMs: 7,
         actorUserId: USER_A
       });
-      expect(failedRead).toMatchObject({ status: "failed", failureReason: "node busy" });
+      expect(failedRead).toMatchObject({ status: "failed", failureReason: "node busy", relatedOperationId: write.id });
 
       // created_at is frozen inside the fixture transaction; backdate the first
       // operation so the newest-last ordering is observable.

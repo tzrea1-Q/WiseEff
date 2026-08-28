@@ -429,4 +429,50 @@ describe("debugging dto mappers", () => {
       error: "Readback mismatch."
     });
   });
+
+  it("maps new write execution and readback observation independently", () => {
+    expect(
+      nodeWriteResultFromDto({
+        operation: {
+          ...writeOperationDto,
+          status: "succeeded",
+          requestedValue: "1",
+          readbackValue: "0x1",
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
+          failureReason: null
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      value: "0x1",
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      error: undefined
+    });
+  });
+
+  it("keeps an executed write successful when readback fails", () => {
+    expect(
+      nodeWriteResultFromDto({
+        operation: {
+          ...writeOperationDto,
+          status: "succeeded",
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: "failed",
+          readbackValue: null,
+          failureReason: "read timed out"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      error: "read timed out",
+      readResult: expect.objectContaining({ ok: false, error: "read timed out" })
+    });
+  });
 });

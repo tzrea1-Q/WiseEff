@@ -10,7 +10,7 @@ export const debugAccessModeSchema = z.enum(["RO", "WO", "RW"]);
 export const debugRiskLevelSchema = z.enum(["Low", "Medium", "High"]);
 export const debugSessionStatusSchema = z.enum(["active", "closed"]);
 export const debugOperationTypeSchema = z.enum(["detect", "read", "write", "reload", "rollback"]);
-export const debugOperationStatusSchema = z.enum(["pending", "succeeded", "failed", "readback_mismatch"]);
+export const debugOperationStatusSchema = z.enum(["pending", "succeeded", "failed", "unknown", "readback_mismatch"]);
 export const debugSnapshotStatusSchema = z.enum(["valid", "rollback_pending", "consumed", "invalid"]);
 export const debugValueKindSchema = z.enum(["scalar", "complex"]);
 export const debugValueFormatSchema = z.enum(["raw", "json", "dts", "line-list", "kv-list"]);
@@ -144,7 +144,10 @@ export const nodeOperationDtoSchema = z.object({
   previousValue: z.string().nullable(),
   readValue: z.string().nullable(),
   readbackValue: z.string().nullable(),
-  verified: z.boolean(),
+  verified: z.boolean().nullable(),
+  writeOutcome: z.enum(["executed", "failed", "unknown"]).nullable().optional(),
+  readbackOutcome: z.enum(["observed", "failed", "unsupported", "not_requested", "unknown"]).nullable().optional(),
+  relatedOperationId: z.string().nullable().optional(),
   failureReason: z.string().nullable(),
   durationMs: z.number(),
   snapshotId: z.string().nullable(),

@@ -1,7 +1,7 @@
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import type { DebugConnectionProtocol } from "./protocol";
-import type { GatewayNodeResult, GatewayWriteResult } from "./gateway";
+import type { DebugReadbackOutcome, DebugWriteOutcome, GatewayNodeResult, GatewayWriteResult } from "./gateway";
 
 type BridgeDescriptor = {
   id: string;
@@ -77,6 +77,16 @@ function readNodeResultFromBridgePayload(payload: Record<string, unknown>, durat
 
 function deriveReadbackValue(result: GatewayNodeResult) {
   return result.value ?? result.stdout;
+}
+
+function parseWriteOutcome(value: unknown): DebugWriteOutcome | undefined {
+  return value === "executed" || value === "failed" || value === "unknown" ? value : undefined;
+}
+
+function parseReadbackOutcome(value: unknown): DebugReadbackOutcome | undefined {
+  return value === "observed" || value === "failed" || value === "unsupported" || value === "not_requested" || value === "unknown"
+    ? value
+    : undefined;
 }
 
 export async function detectTargetsAcrossBridges(input: {
@@ -184,24 +194,49 @@ export async function writeNodeViaBridge(input: {
     );
     const endMs = typeof now() === "number" ? (now() as number) : (now() as Date).getTime();
     const elapsedMs = toDurationMs(startMs, endMs);
+    const hasNestedWriteResult = typeof result.writeResult === "object" && result.writeResult !== null;
     const writeResult = readNodeResultFromBridgePayload(
-      (typeof result.writeResult === "object" && result.writeResult !== null ? result.writeResult : result) as Record<string, unknown>,
+      (hasNestedWriteResult ? result.writeResult : result) as Record<string, unknown>,
       elapsedMs
     );
     const readResultRaw =
       typeof result.readResult === "object" && result.readResult !== null ? (result.readResult as Record<string, unknown>) : null;
     const readResult = readResultRaw ? readNodeResultFromBridgePayload(readResultRaw, elapsedMs) : undefined;
     const readbackValue = readResult ? deriveReadbackValue(readResult) : typeof result.value === "string" ? result.value : undefined;
+    const explicitWriteOutcome = parseWriteOutcome(result.writeOutcome);
+    const explicitReadbackOutcome = parseReadbackOutcome(result.readbackOutcome);
+    const writeOutcome = explicitWriteOutcome ?? (hasNestedWriteResult ? (writeResult.ok ? "executed" : "failed") : "unknown");
+    const readbackOutcome =
+      explicitReadbackOutcome ??
+      (readResult ? (readResult.ok ? "observed" : "failed") : hasNestedWriteResult && !input.readBack ? "not_requested" : "unknown");
     const computedVerified =
-      typeof readbackValue === "string" && input.compareReadback ? input.compareReadback(input.value, readbackValue) : undefined;
-    const verified = typeof computedVerified === "boolean" ? computedVerified : result.verified === true;
-    const ok = result.ok === true;
+      readbackOutcome === "observed" && typeof readbackValue === "string" && input.compareReadback
+        ? input.compareReadback(input.value, readbackValue)
+        : undefined;
+    const verified = computedVerified === true;
+    const strictFailure = input.compareReadback && (computedVerified === false || readbackOutcome !== "observed");
+    const ok = writeOutcome === "executed" && !strictFailure;
+    const upgradeError = "Device Bridge did not report write outcome details; upgrade the Bridge and read the node again.";
+    const error =
+      writeOutcome === "unknown" || readbackOutcome === "unknown"
+        ? upgradeError
+        : writeOutcome === "failed"
+          ? typeof result.error === "string"
+            ? result.error
+            : writeResult.error
+          : readbackOutcome === "failed"
+            ? readResult?.error
+            : strictFailure
+              ? "Readback mismatch after write."
+              : undefined;
 
     return {
       ok,
       value: typeof result.value === "string" ? result.value : readbackValue,
       verified,
-      error: typeof result.error === "string" ? result.error : undefined,
+      writeOutcome,
+      readbackOutcome,
+      error,
       writeResult,
       readResult
     };
@@ -212,6 +247,8 @@ export async function writeNodeViaBridge(input: {
     return {
       ok: false,
       verified: false,
+      writeOutcome: "unknown",
+      readbackOutcome: "unknown",
       error: failureMessage,
       writeResult: {
         ok: false,

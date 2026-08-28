@@ -257,6 +257,9 @@ function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOper
     readValue: "3000",
     readbackValue: null,
     verified: true,
+    writeOutcome: null,
+    readbackOutcome: null,
+    relatedOperationId: null,
     failureReason: null,
     durationMs: 5,
     approvalId: null,
@@ -859,10 +862,53 @@ describe("debugging routes", () => {
     );
   });
 
+  it("forwards a related write operation id for read-only retry", async () => {
+    const operation = operationRecord({
+      id: "op-read-retry",
+      operationType: "read",
+      relatedOperationId: "op-write-1"
+    });
+    serviceMocks.readNode.mockResolvedValue(operation);
+
+    const response = await requestJson<{ operation: NodeOperationRecord }>(
+      makeServer({ db: makeDb(), gateway: makeGateway() }),
+      "/api/v1/debugging/nodes/read",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "session-1",
+          parameterId: "param-1",
+          relatedOperationId: "op-write-1"
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.operation.relatedOperationId).toBe("op-write-1");
+    expect(serviceMocks.readNode).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        sessionId: "session-1",
+        parameterId: "param-1",
+        relatedOperationId: "op-write-1"
+      },
+      { requestId: "test-request" }
+    );
+  });
+
   it("POST /api/v1/debugging/nodes/write returns an operation and snapshot when available", async () => {
     const db = makeDb();
     const gateway = makeGateway();
-    const operation = operationRecord({ id: "op-write", operationType: "write", requestedValue: "3200", snapshotId: "snapshot-1" });
+    const operation = operationRecord({
+      id: "op-write",
+      operationType: "write",
+      requestedValue: "1",
+      readbackValue: "0x1",
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      snapshotId: "snapshot-1"
+    });
     const snapshot = snapshotRecord();
     serviceMocks.writeNode.mockResolvedValue({ operation, snapshot });
 
@@ -875,7 +921,7 @@ describe("debugging routes", () => {
           sessionId: "session-1",
           parameterId: "param-1",
           nodePath: "/sys/current",
-          value: "3200",
+          value: "1",
           readBack: true,
           confirmationToken: "confirm-high-risk-write"
         })
@@ -889,7 +935,7 @@ describe("debugging routes", () => {
       {
         sessionId: "session-1",
         parameterId: "param-1",
-        value: "3200",
+        value: "1",
         confirmationToken: "confirm-high-risk-write"
       },
       { requestId: "test-request" }

@@ -25,7 +25,7 @@
 | Readiness | `/health/live`、`/health/ready`、pilot-readiness |
 | 小泽 LLM | 健康状态（`xiaozeLlm` / `wiseeff_xiaoze_llm_ready`）、fallback、延迟、token、成本、安全状态 |
 | Worker / 队列 | 排队/运行/失败/dead-letter、Redis/BullMQ 连接 |
-| 对象存储 / 设备网关 | 探针失败、超时、回读不一致 |
+| 对象存储 / 设备网关 | 探针失败、超时、写命令失败、回读失败/不支持/未知、严格回滚失败 |
 
 指标标签不得包含 bearer token、API key、高基数 model id、原始日志或参数值。小泽 LLM 标签仅允许有界字段（如 readiness mode、deterministic flag）。配置与告警规则见 `ops/self-hosted/observability/` 及英文版全文。
 

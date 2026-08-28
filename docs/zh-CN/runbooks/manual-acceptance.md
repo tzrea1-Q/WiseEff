@@ -70,7 +70,7 @@ npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 - [ ] ADB target detection 通过后端 gateway 成功。
 - [ ] `/node-debugging` 在 API 模式下可以切换到 ADB。
 - [ ] 节点读取通过 WiseEff API 成功。
-- [ ] 可选写入模式要么明确跳过，要么记录写入、回读、回滚和最终恢复证据。
+- [ ] 可选写入模式要么明确跳过，要么分别记录写命令结果、回读结果、不同表示、仅回读重试、严格回滚和最终恢复证据；不同表示不得记为普通写入失败。
 - [ ] 生成的 operation evidence 只记录 shape、状态和一致性摘要，不记录原始 node path 或原始读写值。
 
 ## 同类中文文档

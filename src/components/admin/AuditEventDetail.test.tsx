@@ -46,4 +46,26 @@ describe("AuditEventDetail", () => {
     expect(screen.getByText("pending-merge → merged")).toBeInTheDocument();
     expect(screen.getByText("approved")).toBeInTheDocument();
   });
+
+  it("renders ordinary debug write and readback outcomes independently", () => {
+    render(
+      <AuditEventDetail
+        event={{
+          ...event,
+          kind: "debug-node-write",
+          app: "node-debugging",
+          metadata: {
+            nodePath: "/sys/class/power_supply/battery/cycle_count",
+            writeOutcome: "executed",
+            readbackOutcome: "observed",
+            snapshotId: "snapshot-1"
+          }
+        }}
+      />
+    );
+
+    expect(screen.getByText("写入已执行")).toBeInTheDocument();
+    expect(screen.getByText("已回读（仅观测）")).toBeInTheDocument();
+    expect(screen.queryByText(/已回读验证/)).not.toBeInTheDocument();
+  });
 });

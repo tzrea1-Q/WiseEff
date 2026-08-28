@@ -14,6 +14,8 @@ import type {
   DebugValueKind
 } from "@/debugValueKind";
 import type {
+  DebugReadbackOutcome,
+  DebugWriteOutcome,
   DebugSnapshotSummary,
   DeviceTarget,
   NodeOperationSnapshot,
@@ -88,12 +90,15 @@ export type NodeOperationDto = {
   protocol?: DebugConnectionProtocol;
   nodePath: string;
   operationType: "detect" | "read" | "write" | "reload" | "rollback";
-  status: "pending" | "succeeded" | "failed" | "readback_mismatch";
+  status: "pending" | "succeeded" | "failed" | "unknown" | "readback_mismatch";
   requestedValue: string | null;
   previousValue: string | null;
   readValue: string | null;
   readbackValue: string | null;
-  verified: boolean;
+  verified: boolean | null;
+  writeOutcome?: DebugWriteOutcome | null;
+  readbackOutcome?: DebugReadbackOutcome | null;
+  relatedOperationId?: string | null;
   failureReason: string | null;
   durationMs: number;
   snapshotId: string | null;
@@ -231,6 +236,9 @@ export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapsh
     readValue: dto.readValue ?? undefined,
     readbackValue: dto.readbackValue ?? undefined,
     verified: dto.verified,
+    writeOutcome: dto.writeOutcome ?? undefined,
+    readbackOutcome: dto.readbackOutcome ?? undefined,
+    relatedOperationId: dto.relatedOperationId ?? undefined,
     failureReason: dto.failureReason ?? undefined,
     durationMs: dto.durationMs,
     snapshotId: dto.snapshotId ?? undefined,
@@ -262,24 +270,36 @@ export function debugSnapshotFromDto(dto: DebugSnapshotDto): DebugSnapshotSummar
 
 export function nodeWriteResultFromDto(response: { operation: NodeOperationDto; snapshot?: DebugSnapshotDto }): NodeWriteResult {
   const { operation } = response;
-  const ok = operation.status === "succeeded";
+  const writeOutcome =
+    operation.writeOutcome ??
+    (operation.status === "failed" ? "failed" : operation.status === "pending" || operation.status === "unknown" ? "unknown" : "executed");
+  const readbackOutcome =
+    operation.readbackOutcome ??
+    (operation.readbackValue !== null || operation.readValue !== null
+      ? "observed"
+      : operation.status === "readback_mismatch"
+        ? "observed"
+        : "unknown");
+  const ok = writeOutcome === "executed";
   return {
     ok,
     value: operation.readbackValue ?? operation.readValue ?? operation.requestedValue ?? undefined,
     verified: operation.verified,
-    error: ok ? undefined : operation.failureReason ?? "Node write failed.",
+    writeOutcome,
+    readbackOutcome,
+    error: operation.failureReason ?? (ok ? undefined : "Node write failed."),
     writeResult: {
-      ok: operation.status !== "failed",
+      ok,
       value: operation.requestedValue ?? undefined,
       error: operation.status === "failed" ? operation.failureReason ?? undefined : undefined,
       durationMs: operation.durationMs
     },
     readResult:
-      operation.readbackValue || operation.readValue
+      readbackOutcome === "observed" || readbackOutcome === "failed"
         ? {
-            ok: operation.status === "succeeded",
+            ok: readbackOutcome === "observed",
             value: operation.readbackValue ?? operation.readValue ?? undefined,
-            error: operation.status === "readback_mismatch" ? operation.failureReason ?? undefined : undefined,
+            error: readbackOutcome === "failed" ? operation.failureReason ?? undefined : undefined,
             durationMs: operation.durationMs
           }
         : undefined

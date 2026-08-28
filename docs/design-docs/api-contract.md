@@ -73,6 +73,8 @@ Upload file names may carry `.gz` (single gzip file whose inner name keeps a sup
 
 Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindings` when `nodeId` is provided (preferred) or from legacy `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog-backed nodes.
 
+Ordinary `POST /api/v1/debugging/nodes/write` responses and `node_operations` expose independent outcomes: `writeOutcome` is `executed | failed | unknown`, while `readbackOutcome` is `observed | failed | unsupported | not_requested | unknown`. An observed readback is evidence only; the server does not compare its representation with the requested value. `targetValue` remains the request and `currentValue` advances only from an observed readback. A technical readback failure preserves the prior current value. `verified` and operation status `readback_mismatch` are nullable/deprecated legacy evidence; new ordinary writes do not produce mismatch status. `POST /api/v1/debugging/nodes/read` accepts optional `relatedOperationId` for a read-only retry linked to a same-session, same-node write. RW writes still require a pre-write snapshot; WO writes are rejected. Snapshot rollback deliberately retains strict comparison semantics.
+
 ### Runtime Node Catalog (Option A)
 
 `GET /api/v1/debugging/nodes?protocol=hdc|adb` returns enabled, non-archived logical nodes that have an **enabled binding for the requested protocol**. Nodes missing or with a disabled binding for that protocol are omitted from runtime lists. Admin list APIs return full logical nodes with all bindings so `/debugging-admin` can show HDC/ADB coverage labels.

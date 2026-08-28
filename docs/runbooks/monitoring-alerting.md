@@ -15,7 +15,7 @@ This runbook defines the minimum signals needed for controlled staging and pilot
 | Redis/BullMQ | queue transport readiness, Redis connection failures, waiting/active/delayed/failed/dead-letter counts |
 | Object storage | readiness probe failures, write/read/delete failures |
 | Logs | analysis duration, failed unsupported formats, rerun counts |
-| Device gateway | timeout, stderr, offline, readback mismatch, rollback failure |
+| Device gateway | timeout, stderr, offline, write-command failure, readback failure/unsupported/unknown, strict rollback failure |
 | Xiaoze LLM | health status (`xiaozeLlm` / `wiseeff_xiaoze_llm_ready`), fallback reason, latency, token usage, estimated cost, safety status |
 | Audit | missing audit event for production writes |
 | Release capacity | p95 latency, error rate, throughput, CPU, memory, database connections, queue backlog, object-store probe |

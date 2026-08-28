@@ -23,6 +23,20 @@ const actorTypeLabel = {
   system: "系统"
 } as const;
 
+const debugWriteOutcomeLabel: Record<string, string> = {
+  executed: "写入已执行",
+  failed: "写入失败",
+  unknown: "写入结果未知"
+};
+
+const debugReadbackOutcomeLabel: Record<string, string> = {
+  observed: "已回读（仅观测）",
+  failed: "回读失败",
+  unsupported: "不支持回读",
+  not_requested: "未请求回读",
+  unknown: "回读结果未知"
+};
+
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="audit-detail-row">
@@ -87,6 +101,20 @@ function renderMetadataDetails(event: AuditEventView) {
     rows.push({
       label: "写入结果",
       value: `${metadata.previousValue} → ${metadata.readbackValue}${metadata.verified === true ? "（已回读验证）" : ""}`
+    });
+  }
+
+  if (typeof metadata.writeOutcome === "string") {
+    rows.push({
+      label: "写命令",
+      value: debugWriteOutcomeLabel[metadata.writeOutcome] ?? metadata.writeOutcome
+    });
+  }
+
+  if (typeof metadata.readbackOutcome === "string") {
+    rows.push({
+      label: "写后回读",
+      value: debugReadbackOutcomeLabel[metadata.readbackOutcome] ?? metadata.readbackOutcome
     });
   }
 

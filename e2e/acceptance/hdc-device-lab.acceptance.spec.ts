@@ -30,7 +30,9 @@ type NodeOperationDto = {
   readbackValue: string | null;
   requestedValue: string | null;
   previousValue: string | null;
-  verified: boolean;
+  verified: boolean | null;
+  writeOutcome?: "executed" | "failed" | "unknown" | null;
+  readbackOutcome?: "observed" | "failed" | "unsupported" | "not_requested" | "unknown" | null;
   failureReason: string | null;
   snapshotId: string | null;
 };
@@ -760,7 +762,19 @@ async function latestWriteOperationFromAudit(request: APIRequestContext, config:
       readbackValue: typeof event!.metadata!.readbackValue === "string" ? event!.metadata!.readbackValue : null,
       requestedValue: typeof event!.metadata!.requestedValue === "string" ? event!.metadata!.requestedValue : null,
       previousValue: typeof event!.metadata!.previousValue === "string" ? event!.metadata!.previousValue : null,
-      verified: event!.metadata!.verified === true,
+      verified: null,
+      writeOutcome:
+        event!.metadata!.writeOutcome === "executed" || event!.metadata!.writeOutcome === "failed" || event!.metadata!.writeOutcome === "unknown"
+          ? event!.metadata!.writeOutcome
+          : null,
+      readbackOutcome:
+        event!.metadata!.readbackOutcome === "observed" ||
+        event!.metadata!.readbackOutcome === "failed" ||
+        event!.metadata!.readbackOutcome === "unsupported" ||
+        event!.metadata!.readbackOutcome === "not_requested" ||
+        event!.metadata!.readbackOutcome === "unknown"
+          ? event!.metadata!.readbackOutcome
+          : null,
       failureReason: event!.metadata!.failureReason ? "present" : null,
       snapshotId: String(event!.metadata!.snapshotId)
     } satisfies NodeOperationDto
@@ -940,7 +954,7 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
       },
       notes: [
         `Browser route=/node-debugging; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
-        `Frontend selected the default HDC protocol, detected ${identifierShape(config.targetRef)}, read the lab-only temporary node, wrote an approved value through the UI, and verified readback.`,
+        `Frontend selected the default HDC protocol, detected ${identifierShape(config.targetRef)}, read the lab-only temporary node, wrote an approved value through the UI, and displayed the post-write observation without judging representation equality.`,
         `Read evidence for configured parameter ${identifierShape(config.parameterId)}: ${readEvidence}.`,
         `Write evidence for configured parameter ${identifierShape(config.parameterId)}: ${writeEvidence({
           writeValue: config.writeValue,

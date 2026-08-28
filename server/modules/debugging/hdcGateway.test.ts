@@ -178,7 +178,7 @@ describe("HDC debug device gateway", () => {
     });
   });
 
-  it("reports read-back mismatch after a successful HDC write", async () => {
+  it("reports an executed HDC write and observed readback without comparing representations", async () => {
     const { runCommand } = makeRunner([
       {
         code: 0,
@@ -203,10 +203,11 @@ describe("HDC debug device gateway", () => {
     });
 
     expect(result).toEqual({
-      ok: false,
+      ok: true,
       value: "new-value",
       verified: false,
-      error: "Read-back mismatch after HDC write.",
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
       writeResult: {
         ok: true,
         value: "new-value",
@@ -222,6 +223,29 @@ describe("HDC debug device gateway", () => {
         durationMs: 9
       }
     });
+  });
+
+  it("does not fabricate a readback value when the HDC readback fails", async () => {
+    const { runCommand } = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 8 },
+      { code: 1, stdout: "", stderr: "device offline", durationMs: 9 }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+
+    const result = await gateway.writeNode({
+      targetRef: "AURORA-001",
+      nodePath: "/sys/node",
+      value: "new-value",
+      readBack: true
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      readResult: expect.objectContaining({ ok: false })
+    });
+    expect(result).not.toHaveProperty("value");
   });
 
   it("returns timeout failures with configured timeout and measured duration", async () => {

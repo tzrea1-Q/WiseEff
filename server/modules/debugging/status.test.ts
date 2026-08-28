@@ -19,7 +19,7 @@ describe("debugging status helpers", () => {
     expect(debugTargetStatuses).toEqual(["detected", "lost"]);
     expect(debugSessionStatuses).toEqual(["active", "closed"]);
     expect(debugOperationTypes).toEqual(["detect", "read", "write", "reload", "rollback"]);
-    expect(debugOperationStatuses).toEqual(["pending", "succeeded", "failed", "readback_mismatch"]);
+    expect(debugOperationStatuses).toEqual(["pending", "succeeded", "failed", "unknown", "readback_mismatch"]);
     expect(debugSnapshotStatuses).toEqual(["valid", "rollback_pending", "consumed", "invalid"]);
   });
 

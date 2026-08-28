@@ -29,7 +29,9 @@ type NodeOperationDto = {
   readbackValue: string | null;
   requestedValue: string | null;
   previousValue: string | null;
-  verified: boolean;
+  verified: boolean | null;
+  writeOutcome?: "executed" | "failed" | "unknown" | null;
+  readbackOutcome?: "observed" | "failed" | "unsupported" | "not_requested" | "unknown" | null;
   failureReason: string | null;
   snapshotId: string | null;
 };
@@ -1045,11 +1047,10 @@ test.describe("ADB device-lab full-chain loop", () => {
           snapshotId,
           "ADB write succeeded without operation.snapshotId, so the test cannot safely restore hardware through snapshot rollback."
         ).toEqual(expect.any(String));
-        expect(writeResponse.body.operation.verified).toBe(true);
-        expect(
-          writeResponse.body.operation.readbackValue === config.writeValue,
-          `ADB write readback mismatch; requested ${stringValueShape(config.writeValue)} and readback ${stringValueShape(writeResponse.body.operation.readbackValue)}.`
-        ).toBe(true);
+        expect(writeResponse.body.operation.verified).toBeNull();
+        expect(writeResponse.body.operation.writeOutcome).toBe("executed");
+        expect(writeResponse.body.operation.readbackOutcome).toBe("observed");
+        expect(writeResponse.body.operation.readbackValue).toEqual(expect.any(String));
       } finally {
         if (snapshotId) {
           rollbackResponse = await postJson<{ operations: NodeOperationDto[]; snapshot: DebugSnapshotDto }>(

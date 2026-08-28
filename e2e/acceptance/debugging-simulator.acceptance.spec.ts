@@ -505,7 +505,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await prepareSimulatorAcceptanceState();
   });
 
-  test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }, testInfo) => {
+  test("reads, writes, displays alternate readback, rolls back, and records audit evidence", async ({ page }, testInfo) => {
     // @acceptance DEBUG-SIM-001
     // @operation DEBUG-SIM-001
     await signInBrowserAsRole(page, "admin", "/node-debugging");
@@ -537,7 +537,14 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await closeParameterSheet(page);
 
     await setTargetAndWrite(page, "Readback mismatch probe", "2");
-    await expect(parameterRow(page, "Readback mismatch probe")).toContainText(/readback mismatch/i, { timeout: 30_000 });
+    const alternateReadbackRow = parameterRow(page, "Readback mismatch probe");
+    await expect(alternateReadbackRow).toContainText("写入已执行", { timeout: 30_000 });
+    await expect(alternateReadbackRow).toContainText("1", { timeout: 30_000 });
+    await expect(alternateReadbackRow).not.toContainText(/readback mismatch|回读不一致/i);
+    const alternateReadbackSheet = await openParameterSheet(page, "Readback mismatch probe");
+    await expect(alternateReadbackSheet).toContainText("写入已执行");
+    await expect(alternateReadbackSheet).toContainText("回读值：1");
+    await closeParameterSheet(page);
 
     const complexJsonRow = parameterRow(page, "Config JSON overlay");
     await expect(complexJsonRow).toBeVisible({ timeout: 30_000 });
@@ -582,7 +589,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
 
     await recordOperationEvidence({
       operationId: "DEBUG-SIM-001",
-      title: "debugging simulator read write mismatch rollback audit",
+      title: "debugging simulator read write observation rollback audit",
       status: "passed",
       page,
       testInfo,
@@ -605,7 +612,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
         auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: complexJsonParameterId }),
         auditSummaryFor(auditBody.items, { kind: "debug-snapshot-rollback", targetId: fastChargeSnapshotId })
       ],
-      notes: `Simulator scalar and complex JSON write paths produced audit evidence with value metadata; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
+      notes: `Simulator scalar writes displayed alternate readback as an observation without judging equality; complex JSON writes produced value metadata; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
     });
   });
 

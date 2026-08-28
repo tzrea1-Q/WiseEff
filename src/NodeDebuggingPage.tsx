@@ -61,7 +61,9 @@ const defaultProbeBridgeHealth = () => probeLocalBridgeHealthDetailed();
 function isUnsupportedParameterError(message?: string) {
   if (!message) return false;
   return message.includes("not configured for the selected protocol")
-    || message.includes("binding is disabled for the selected protocol");
+    || message.includes("binding is disabled for the selected protocol")
+    || message.includes("当前协议未配置该节点")
+    || message.includes("绑定已禁用");
 }
 
 function statusClass(status: RuntimeRow["runtimeStatus"]) {
@@ -69,9 +71,11 @@ function statusClass(status: RuntimeRow["runtimeStatus"]) {
     "未检测": "node-status-untested",
     "待写入": "node-status-pending",
     "执行中": "node-status-running",
+    "写入已执行": "node-status-success",
     "成功": "node-status-success",
     "失败": "node-status-failed",
     "写入失败": "node-status-failed",
+    "写入结果未知": "node-status-pending",
     "不可用": "node-status-unavailable"
   };
   return `node-status-badge ${classMap[status]}`;
@@ -108,7 +112,7 @@ function buildDebugModuleNavigationTree(
 }
 
 function displayCurrentValue(row: RuntimeRow, context: "table" | "detail" = "detail"): string {
-  if (row.accessMode === "WO") return "写入后不可回读";
+  if (row.accessMode === "WO") return "安全写入不可用";
   if (bindingUnavailableReason(row)) return unsupportedNodeValueLabel;
   if (row.runtimeStatus === "写入失败") {
     if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
@@ -164,10 +168,28 @@ function DebugCurrentValueCell({ row }: { row: RuntimeRow }) {
     row.runtimeStatus !== "写入失败";
 
   if (hasComplexPayload) {
-    return <DebugTableValuePreview value={row.runtimeCurrentValue} row={row} />;
+    return (
+      <>
+        <DebugTableValuePreview value={row.runtimeCurrentValue} row={row} />
+        {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
+      </>
+    );
   }
 
-  return <>{text}</>;
+  return (
+    <>
+      {text}
+      {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
+    </>
+  );
+}
+
+function readbackOutcomeLabel(row: RuntimeRow) {
+  if (row.readbackOutcome === "observed") return row.lastReadValue === undefined ? "已回读" : `回读值：${displayCurrentValue(row)}`;
+  if (row.readbackOutcome === "failed") return "回读失败";
+  if (row.readbackOutcome === "unsupported" || row.readbackOutcome === "not_requested") return "不支持回读";
+  if (row.readbackOutcome === "unknown") return "回读结果未知";
+  return "尚未回读";
 }
 
 function DebugValueCodeBlock({ label, row, value }: { label: string; row: RuntimeRow; value: string }) {
@@ -198,7 +220,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
       </div>
       <p>
         {isComplex
-          ? "复杂值会按所选格式与规范化模式写入设备端调试节点，写入后按相同规则回读校验。"
+          ? "复杂值会按所选格式与规范化模式写入设备端调试节点；写后回读仅展示设备返回值，不做相等性判定。"
           : "输入内容会作为原始字符串写入设备端调试节点。"}
       </p>
       <dl>
@@ -226,7 +248,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
         ) : null}
         <div>
           <dt>写入方式</dt>
-          <dd>{row.accessMode === "RW" ? "写入后自动回读并校验" : "仅写入，设备不支持回读确认"}</dd>
+          <dd>{row.accessMode === "RW" ? "写入后自动回读并展示返回值" : "无法取得写前快照，安全写入不可用"}</dd>
         </div>
       </dl>
       {!isComplex ? (
@@ -674,7 +696,7 @@ export function NodeDebuggingPage({
                             row.draftValue
                           )
                         ) : (
-                          <span>只读</span>
+                          <span>{row.accessMode === "WO" ? "只写（安全写入不可用）" : "只读"}</span>
                         )}
                       </td>
                       <td data-label="状态"><span className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
@@ -768,8 +790,8 @@ export function NodeDebuggingPage({
               <div className="draft-sheet-footer">
                 <span>
                   {editingRow.accessMode === "RW"
-                    ? "写入后将自动回读并校验设备返回值。"
-                    : "该节点仅支持写入，写入后不可回读。"}
+                    ? "写命令执行后会自动回读并展示设备返回值，不做相等性判定。"
+                    : "该节点无法取得写前快照，因此不提供安全写入。"}
                 </span>
                 <div className="draft-sheet-footer-actions">
                   <button
@@ -790,7 +812,7 @@ export function NodeDebuggingPage({
                     onClick={() => void session.requestWrite(editingRow.id, debuggingActions)}
                   >
                     {editingRow.accessMode === "RW" ? <RotateCw size={14} aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
-                    {editingRow.accessMode === "RW" ? "写入并回读" : "写入"}
+                    {editingRow.accessMode === "RW" ? "写入并回读（仅展示）" : "写入"}
                   </button>
                 </div>
               </div>
@@ -823,8 +845,20 @@ export function NodeDebuggingPage({
                 )}
                 <div className="debug-detail-row">
                   <span>目标写入值</span>
-                  <strong className="mono">{canWrite(editingRow) ? editingRow.draftValue : "只读"}</strong>
+                  <strong className="mono">{canWrite(editingRow) ? editingRow.draftValue : editingRow.accessMode === "WO" ? "安全写入不可用" : "只读"}</strong>
                 </div>
+                {editingRow.writeOutcome ? (
+                  <div className="debug-detail-row">
+                    <span>写命令</span>
+                    <strong>{editingRow.writeOutcome === "executed" ? "写入已执行" : editingRow.writeOutcome === "failed" ? "写入失败" : "写入结果未知"}</strong>
+                  </div>
+                ) : null}
+                {editingRow.readbackOutcome ? (
+                  <div className="debug-detail-row">
+                    <span>写后回读</span>
+                    <strong>{readbackOutcomeLabel(editingRow)}</strong>
+                  </div>
+                ) : null}
                 <div className="debug-detail-row">
                   <span>模块</span>
                   <strong>{editingRow.module}</strong>
@@ -843,6 +877,17 @@ export function NodeDebuggingPage({
                 ) : null}
               </div>
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
+              {editingRow.currentValueStale && editingRow.lastWriteOperationId ? (
+                <button
+                  className="button subtle"
+                  type="button"
+                  disabled={!connected || editingRow.runtimeStatus === "执行中"}
+                  onClick={() => void session.retryRead(editingRow.id, debuggingActions)}
+                >
+                  <RotateCw size={14} aria-hidden="true" />
+                  重新回读（不会再次写入）
+                </button>
+              ) : null}
               {canWrite(editingRow) ? (
                 <>
                   <NodeWriteFormatPanel row={editingRow} protocol={protocol} />

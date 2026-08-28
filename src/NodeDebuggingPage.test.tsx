@@ -793,13 +793,14 @@ describe("/node-debugging", () => {
     expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
   });
 
-  it("shows API readback mismatches as failed row status with the returned error", async () => {
+  it("shows a different API readback as an observation without failing the write", async () => {
     const debuggingActions = createDebuggingActions({
       writeNode: vi.fn().mockResolvedValue({
         ok: true,
         value: "3600",
-        verified: false,
-        error: "readback mismatch: expected 3700, got 3600",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         writeResult: { ok: true, stdout: "write ok\n" },
         readResult: { ok: true, value: "3600", stdout: "3600\n" },
         operation: {
@@ -808,11 +809,12 @@ describe("/node-debugging", () => {
           nodeId: "dbg-charge-input-current",
           nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
           operationType: "write",
-          status: "readback_mismatch",
+          status: "succeeded",
           requestedValue: "3700",
           readbackValue: "3600",
-          verified: false,
-          failureReason: "readback mismatch: expected 3700, got 3600",
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
           durationMs: 18,
           createdAt: "2026-05-27T09:00:02.000Z"
         }
@@ -828,11 +830,89 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^失败$/);
-    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+    await within(row).findByText(/^写入已执行$/);
+    expect(currentValueCell(row)).toHaveTextContent("3600");
+    expect(row).not.toHaveTextContent("readback mismatch");
   });
 
-  it("keeps a failed write state when a stale API auto-read resolves later", async () => {
+  it("shows readback failure separately and retries with a linked read without writing again", async () => {
+    const baseActions = createDebuggingActions();
+    const baseReadNode = baseActions.readNode;
+    const readNode = vi.fn(async (input) => {
+      if (input.relatedOperationId) {
+        return {
+          ok: true,
+          value: "0x1",
+          stdout: "0x1\n",
+          operation: {
+            id: "op-read-retry",
+            sessionId: apiSession.id,
+            nodeId: input.nodeId,
+            nodePath: input.nodePath,
+            operationType: "read" as const,
+            status: "succeeded" as const,
+            readValue: "0x1",
+            verified: true,
+            relatedOperationId: input.relatedOperationId,
+            durationMs: 8,
+            createdAt: "2026-05-27T09:00:03.000Z"
+          }
+        };
+      }
+      return baseReadNode(input);
+    });
+    const writeNode = vi.fn().mockResolvedValue({
+      ok: true,
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      error: "read timed out",
+      writeResult: { ok: true, stdout: "write ok\n" },
+      readResult: { ok: false, error: "read timed out" },
+      operation: {
+        id: "op-write-readback-failed",
+        sessionId: apiSession.id,
+        nodeId: "dbg-charge-input-current",
+        nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+        operationType: "write",
+        status: "succeeded",
+        requestedValue: "1",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "failed",
+        failureReason: "read timed out",
+        durationMs: 30,
+        createdAt: "2026-05-27T09:00:02.000Z"
+      }
+    });
+    const debuggingActions = createDebuggingActions({ readNode, writeNode });
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    await within(row).findByText("3651");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = getNodeDetailDialog();
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
+
+    await within(row).findByText(/^写入已执行$/);
+    expect(currentValueCell(row)).toHaveTextContent("3651");
+    expect(currentValueCell(row)).toHaveTextContent("写后状态待重新回读");
+    expect(within(dialog).getByText("回读失败")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新回读（不会再次写入）" }));
+
+    await waitFor(() => expect(readNode).toHaveBeenCalledWith(expect.objectContaining({
+      relatedOperationId: "op-write-readback-failed"
+    })));
+    expect(writeNode).toHaveBeenCalledOnce();
+    await waitFor(() => expect(currentValueCell(row)).toHaveTextContent("0x1"));
+    expect(currentValueCell(row)).not.toHaveTextContent("写后状态待重新回读");
+  });
+
+  it("keeps the write observation when a stale API auto-read resolves later", async () => {
     const delayedRead = createDeferred<Awaited<ReturnType<DebuggingRuntimeActions["readNode"]>> & { operation?: unknown }>();
     const debuggingActions = createDebuggingActions({
       readNode: vi.fn((input) => {
@@ -849,8 +929,9 @@ describe("/node-debugging", () => {
       writeNode: vi.fn().mockResolvedValue({
         ok: true,
         value: "3600",
-        verified: false,
-        error: "readback mismatch: expected 3700, got 3600",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         writeResult: { ok: true, stdout: "write ok\n" },
         readResult: { ok: true, value: "3600", stdout: "3600\n" },
         operation: {
@@ -859,11 +940,12 @@ describe("/node-debugging", () => {
           nodeId: "dbg-charge-input-current",
           nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
           operationType: "write",
-          status: "readback_mismatch",
+          status: "succeeded",
           requestedValue: "3700",
           readbackValue: "3600",
-          verified: false,
-          failureReason: "readback mismatch: expected 3700, got 3600",
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
           durationMs: 18,
           createdAt: "2026-05-27T09:00:02.000Z"
         }
@@ -879,8 +961,8 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^失败$/);
-    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+    await within(row).findByText(/^写入已执行$/);
+    expect(currentValueCell(row)).toHaveTextContent("3600");
 
     delayedRead.resolve({
       ok: true,
@@ -901,8 +983,8 @@ describe("/node-debugging", () => {
     });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("10 条"));
-    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
-    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(currentValueCell(row)).toHaveTextContent("3600");
+    expect(within(row).getByText(/^写入已执行$/)).toBeInTheDocument();
     expect(within(row).queryByText(/^成功$/)).not.toBeInTheDocument();
   });
 
@@ -931,7 +1013,9 @@ describe("/node-debugging", () => {
       writeNode: vi.fn(async (input) => ({
         ok: true,
         value: input.value,
-        verified: true,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         operation: {
           id: `op-write-${input.nodeId ?? input.parameterId}`,
           sessionId: apiSession.id,
@@ -940,7 +1024,9 @@ describe("/node-debugging", () => {
           operationType: "write",
           status: "succeeded",
           requestedValue: input.value,
-          verified: true,
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
           durationMs: 11,
           createdAt: "2026-05-27T09:00:02.000Z"
         }
@@ -949,29 +1035,47 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/已连接：API Gateway Target/);
 
-    const pendingWoRow = findRowByText("charger.trickle_switch_soc");
+    const pendingRwRow = findRowByText("charger.input_current_limit_ma");
     const syncedRwRow = findRowByText("battery.thermal_foldback_pct");
-    fireEvent.click(within(pendingWoRow).getByRole("checkbox", { name: /选择 涓流切换电量点/ }));
+    fireEvent.click(within(pendingRwRow).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.change(within(getNodeDetailDialog()).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(getNodeDetailDialog()).getByRole("button", { name: "暂存" }));
     fireEvent.click(within(syncedRwRow).getByRole("checkbox", { name: /选择 热降额触发点/ }));
     fireEvent.click(screen.getByRole("button", { name: /下发选中 \(1\)/ }));
 
+    const aggregateDialog = await screen.findByRole("dialog", { name: /批量写入包含 1 个高风险节点/ });
+    fireEvent.click(within(aggregateDialog).getByRole("button", { name: /确认写入（含 1 个高风险）/ }));
+
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledTimes(1));
     expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
-      nodeId: "dbg-trickle-start",
-      value: "95",
-      readBack: false
+      nodeId: "dbg-charge-input-current",
+      value: "3700",
+      readBack: true
     }));
   });
 
-  it("aggregates all high-risk rows into one bulk confirmation and writes only after confirm", async () => {
+  it("aggregates high-risk rows and reports mixed write and readback outcomes", async () => {
     const debuggingActions = createDebuggingActions({
-      writeNode: vi.fn(async (input) => ({
-        ok: true,
-        value: input.value,
-        verified: true,
-        writeResult: { ok: true, durationMs: 5 },
-        readResult: { ok: true, value: input.value, durationMs: 5 }
-      }))
+      writeNode: vi.fn(async (input) =>
+        input.nodeId === "dbg-cell-temp-limit"
+          ? {
+              ok: false,
+              verified: null,
+              writeOutcome: "failed" as const,
+              readbackOutcome: "not_requested" as const,
+              error: "写入失败",
+              writeResult: { ok: false, durationMs: 5 }
+            }
+          : {
+              ok: true,
+              value: input.value,
+              verified: null,
+              writeOutcome: "executed" as const,
+              readbackOutcome: "observed" as const,
+              writeResult: { ok: true, durationMs: 5 },
+              readResult: { ok: true, value: input.value, durationMs: 5 }
+            }
+      )
     });
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/已连接：API Gateway Target/);
@@ -1013,7 +1117,8 @@ describe("/node-debugging", () => {
     expect(debuggingActions.writeNode).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "dbg-cell-temp-limit", confirmationToken: "confirm-high-risk-write" })
     );
-    expect(await screen.findByText("批量写入完成：成功 2 / 失败 0")).toBeInTheDocument();
+    expect(await screen.findByText("批量写入完成：写入已执行 1 / 写入失败 1 / 写入结果未知 0；已回读 1 / 回读失败 0 / 不支持回读 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /下发选中 \(1\)/ })).toBeEnabled();
   });
 
   it("shows a Windows install CTA when the local bridge is missing", async () => {
@@ -1335,7 +1440,7 @@ describe("/node-debugging", () => {
     expect(currentValueCell(rwRow)).not.toHaveTextContent("3600");
     expect(currentValueCell(roRow)).toHaveTextContent("等待读取");
     expect(currentValueCell(roRow)).not.toHaveTextContent("68");
-    expect(currentValueCell(woRow)).toHaveTextContent("写入后不可回读");
+    expect(currentValueCell(woRow)).toHaveTextContent("安全写入不可用");
   });
 
   it("auto-reads readable nodes after hdc detection", async () => {
@@ -1357,10 +1462,10 @@ describe("/node-debugging", () => {
 
     await within(findRowByText("charger.input_current_limit_ma")).findByText("成功");
     const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("成功");
-    const pendingBadge = within(findRowByText("charger.trickle_switch_soc")).getByText("待写入");
+    const unavailableBadge = within(findRowByText("charger.trickle_switch_soc")).getByText("不可用");
 
     expect(successBadge).toHaveClass("node-status-badge", "node-status-success");
-    expect(pendingBadge).toHaveClass("node-status-badge", "node-status-pending");
+    expect(unavailableBadge).toHaveClass("node-status-badge", "node-status-unavailable");
     expect(screen.queryByText("读取成功")).not.toBeInTheDocument();
     expect(screen.queryByText("回读一致")).not.toBeInTheDocument();
     expect(screen.queryByText("回读不一致")).not.toBeInTheDocument();
@@ -1398,7 +1503,7 @@ describe("/node-debugging", () => {
     expect(screen.getByRole("button", { name: "模块筛选", expanded: false })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "待写入" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "不可用" }));
 
     expect(screen.getByRole("button", { name: "筛选状态" })).toHaveClass("active");
     expect(findRowByText("charger.trickle_switch_soc")).toBeInTheDocument();
@@ -1411,7 +1516,7 @@ describe("/node-debugging", () => {
     await screen.findByText(mockStoryConnectedLabel);
 
     const headers: Array<[string, string, string | RegExp]> = [
-      ["状态", "筛选状态", "待写入"]
+      ["状态", "筛选状态", "不可用"]
     ];
 
     for (const [headerName, buttonName, optionName] of headers) {
@@ -1430,7 +1535,7 @@ describe("/node-debugging", () => {
 
     const statusHeader = screen.getByRole("columnheader", { name: /状态/ });
     fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "待写入" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "不可用" }));
 
     expect(findRowByText("charger.trickle_switch_soc")).toBeInTheDocument();
     expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
@@ -1514,7 +1619,7 @@ describe("/node-debugging", () => {
     expect(within(rwRow).queryByLabelText(/目标写入值/)).not.toBeInTheDocument();
     expect(within(roRow).getByRole("button", { name: /查看详情/ })).toBeInTheDocument();
     expect(within(roRow).queryByRole("button", { name: /写入/ })).not.toBeInTheDocument();
-    expect(within(woRow).getByRole("button", { name: /查看\/修改/ })).toBeInTheDocument();
+    expect(within(woRow).getByRole("button", { name: /查看详情/ })).toBeInTheDocument();
     expect(within(rwRow).getByRole("button", { name: /查看\/修改/ })).toBeInTheDocument();
   });
 
@@ -1535,7 +1640,7 @@ describe("/node-debugging", () => {
     expect(within(dialog).queryByRole("button", { name: /写入/ })).not.toBeInTheDocument();
   });
 
-  it("writes and verifies RW nodes from the detail sheet", async () => {
+  it("writes and observes RW nodes from the detail sheet", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1548,7 +1653,7 @@ describe("/node-debugging", () => {
     await confirmHighRiskWriteIfPrompted();
 
     expect(screen.queryByRole("dialog", { name: /确认写入节点/ })).not.toBeInTheDocument();
-    await within(row).findByText(/^成功$/);
+    await within(row).findByText(/^写入已执行$/);
     expect(currentValueCell(row)).toHaveTextContent("3700");
   });
 
@@ -1576,7 +1681,7 @@ describe("/node-debugging", () => {
     const aggregateDialog = await screen.findByRole("dialog", { name: /批量写入包含 1 个高风险节点/ });
     fireEvent.click(within(aggregateDialog).getByRole("button", { name: /确认写入（含 1 个高风险）/ }));
 
-    await within(row).findByText(/^成功$/);
+    await within(row).findByText(/^写入已执行$/);
     expect(gateway.writeNode).toHaveBeenLastCalledWith(expect.objectContaining({
       nodeId: "dbg-charge-input-current",
       value: "3700",
@@ -1827,11 +1932,13 @@ describe("/node-debugging", () => {
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
   });
 
-  it("marks RW readback mismatch", async () => {
+  it("shows an alternate RW readback value without a mismatch state", async () => {
     const gateway = createTestDebuggingGateway({
       writeNode: vi.fn().mockResolvedValue({
         ok: true,
-        verified: false,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         value: "3600",
         writeResult: { ok: true, stdout: "write ok\n" },
         readResult: { ok: true, value: "3600", stdout: "3600\n" }
@@ -1847,6 +1954,8 @@ describe("/node-debugging", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
     await confirmHighRiskWriteIfPrompted();
 
-    await within(row).findByText(/^失败$/);
+    await within(row).findByText(/^写入已执行$/);
+    expect(currentValueCell(row)).toHaveTextContent("3600");
+    expect(row).not.toHaveTextContent("回读不一致");
   });
 });

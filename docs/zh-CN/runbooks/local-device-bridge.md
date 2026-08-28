@@ -139,9 +139,9 @@ chmod +x wiseeff-bridge
 
 Bridge CLI 在本机执行 `adb` 与 `hdc`，argv、超时与 shell 转义规则与服务端 gateway adapter 一致。
 
-- `bridge.getCapabilities` 报告 Bridge 主机上 `adb` / `hdc` 是否可用。
+- `bridge.getCapabilities` 报告 Bridge 主机上 `adb` / `hdc` 是否可用；当 `debug.writeNode` 能独立返回 `writeOutcome` 与 `readbackOutcome` 时，同时声明 `debugWriteOutcomeVersion: 2`。
 - `debug.detectTargets` 接受 `protocol=adb` 或 `protocol=hdc`，并返回对应协议的目标列表。
-- `debug.readNode` / `debug.writeNode` 使用与会话相同的协议与 target ref。
+- `debug.readNode` / `debug.writeNode` 使用与会话相同的协议与 target ref。Version 2 不比较普通写入的请求值与回读表示。旧版若仍有嵌套 write/read 结果则保守推断；只有顶层结果时记为 `unknown` 并要求升级 Bridge，不虚构成功或失败。
 - DTS 重载部署额外需要桥接能力 `debug.mountTarget`、`debug.pushFile`、`debug.readKernelLog`（见 `DTS_RELOAD_BRIDGE_RPC_METHODS`）。触发复用 `debug.writeNode`（`readBack: false`）。部署在持有桥接 socket 的 API 进程内执行（ADR-0020）。
 
 运维检查：

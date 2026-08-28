@@ -30,10 +30,15 @@ export type GatewayNodeResult = {
   durationMs: number;
 };
 
+export type DebugWriteOutcome = "executed" | "failed" | "unknown";
+export type DebugReadbackOutcome = "observed" | "failed" | "unsupported" | "not_requested" | "unknown";
+
 export type GatewayWriteResult = {
   ok: boolean;
   value?: string;
   verified: boolean;
+  writeOutcome?: DebugWriteOutcome;
+  readbackOutcome?: DebugReadbackOutcome;
   error?: string;
   writeResult: GatewayNodeResult;
   readResult?: GatewayNodeResult;

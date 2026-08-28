@@ -413,7 +413,8 @@ export function createRpcHandlers(options: {
           });
           return {
             protocols: tools,
-            methods: [...BRIDGE_RPC_METHODS]
+            methods: [...BRIDGE_RPC_METHODS],
+            debugWriteOutcomeVersion: 2
           };
         }
         case "debug.detectTargets": {
@@ -482,20 +483,21 @@ export function createRpcHandlers(options: {
             return {
               ok: writePayload.ok,
               verified: writePayload.ok && !readBack,
+              writeOutcome: writePayload.ok ? "executed" : "failed",
+              readbackOutcome: "not_requested",
               error: writePayload.error,
               writeResult: writePayload
             };
           }
 
           const readPayload = await readNode({ protocol, targetRef, nodePath, preserveExactRead });
-          const readValue = typeof readPayload.value === "string" ? readPayload.value : "";
-          const expected = preserveExactRead ? value : value.trim();
-          const verified = readPayload.ok === true && readValue === expected;
           return {
-            ok: writePayload.ok && readPayload.ok === true && verified,
-            verified,
+            ok: true,
+            verified: false,
+            writeOutcome: "executed",
+            readbackOutcome: readPayload.ok === true ? "observed" : "failed",
             value: readPayload.value,
-            error: verified ? undefined : "Readback mismatch after write.",
+            error: readPayload.ok === true ? undefined : readPayload.error,
             writeResult: writePayload,
             readResult: readPayload
           };

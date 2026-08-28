@@ -100,6 +100,8 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 当请求提供 `parameterId` 时，读写节点 API 会从 `debugging_parameter_node_bindings` 解析对应协议的 `nodePath`。Catalog 参数请求不需要发送原始 node path。
 
+普通 `POST /api/v1/debugging/nodes/write` 响应与 `node_operations` 使用两个独立结果：`writeOutcome` 为 `executed | failed | unknown`，`readbackOutcome` 为 `observed | failed | unsupported | not_requested | unknown`。回读成功只是观测证据，服务端不把其字符串表示与请求值比较。`targetValue` 保留请求值，`currentValue` 仅在成功观测后更新；回读技术失败保留旧当前值。`verified` 与 operation 状态 `readback_mismatch` 为可空、废弃的历史证据，新普通写入不再产生 mismatch。`POST /api/v1/debugging/nodes/read` 可带 `relatedOperationId`，把一次只读重试关联到同会话、同节点的写操作。RW 写入仍要求写前快照；WO 写入被拒绝。快照回滚有意保留严格比较语义。
+
 ### 调试管理 Catalog
 
 `/api/v1/debugging/admin/*` 专用于 Admin catalog governance，要求 `debugging:admin` 权限。
@@ -706,8 +708,8 @@ Dashboard hotspot（`GET /api/v1/parameters/dashboard/hotspots`）对租户绑�
 | `POST` | `/api/v1/debugging/sessions` | 创建调试会话 |
 | `GET` | `/api/v1/debugging/sessions/:sessionId` | 调试会话详情 |
 | `GET` | `/api/v1/debugging/sessions/:sessionId/events` | 调试会话事件 |
-| `POST` | `/api/v1/debugging/nodes/read` | 读取节点 |
-| `POST` | `/api/v1/debugging/nodes/write` | 写入节点 |
+| `POST` | `/api/v1/debugging/nodes/read` | 读取节点；可选 `relatedOperationId` 关联一次写后只读重试 |
+| `POST` | `/api/v1/debugging/nodes/write` | 写入 RW 节点；分别返回写命令结果与回读观测结果 |
 | `POST` | `/api/v1/debugging/snapshots/:snapshotId/rollback` | 回滚 |
 
 写入节点：

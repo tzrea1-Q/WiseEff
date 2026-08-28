@@ -133,6 +133,8 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
         return {
           ok: false,
           verified: false,
+          writeOutcome: "failed",
+          readbackOutcome: "not_requested",
           error: writeResult.error,
           writeResult
         };
@@ -149,6 +151,8 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
         return {
           ok: false,
           verified: false,
+          writeOutcome: "failed",
+          readbackOutcome: "not_requested",
           error: "Node is read-only.",
           writeResult
         };
@@ -165,6 +169,8 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
         return {
           ok: false,
           verified: false,
+          writeOutcome: "failed",
+          readbackOutcome: "not_requested",
           error: writeResult.error,
           writeResult
         };
@@ -184,6 +190,8 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
           ok: true,
           value: input.value,
           verified: true,
+          writeOutcome: "executed",
+          readbackOutcome: "not_requested",
           writeResult
         };
       }
@@ -194,15 +202,15 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
 
       const readResult = readNodeValue({ ...input, preserveExactRead: input.preserveExactRead ?? false }, startedAt);
 
-      const readbackMatches = input.compareReadback
-        ? input.compareReadback(input.value, readResult.value ?? "")
-        : readResult.ok && readResult.stdout === input.value;
+      const readbackMatches = input.compareReadback?.(input.value, readResult.value ?? "");
 
       return {
-        ok: true,
+        ok: readbackMatches !== false,
         value: input.value,
-        verified: readbackMatches,
-        error: readbackMatches ? undefined : "Readback mismatch.",
+        verified: readbackMatches === true,
+        writeOutcome: "executed",
+        readbackOutcome: readResult.ok ? "observed" : "failed",
+        error: readbackMatches === false ? "Readback mismatch." : readResult.ok ? undefined : readResult.error,
         writeResult,
         readResult
       };

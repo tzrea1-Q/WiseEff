@@ -35,6 +35,7 @@ import type {
   DebugSnapshotStatus,
   DebugTargetStatus
 } from "./status";
+import type { DebugReadbackOutcome, DebugWriteOutcome } from "./gateway";
 
 type DebugDeviceRow = {
   id: string;
@@ -150,7 +151,10 @@ type NodeOperationRow = {
   previous_value: string | null;
   read_value: string | null;
   readback_value: string | null;
-  verified: boolean;
+  verified: boolean | null;
+  write_outcome: DebugWriteOutcome | null;
+  readback_outcome: DebugReadbackOutcome | null;
+  related_operation_id: string | null;
   failure_reason: string | null;
   duration_ms: number | string;
   approval_id: string | null;
@@ -308,6 +312,9 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     readValue: row.read_value,
     readbackValue: row.readback_value,
     verified: row.verified,
+    writeOutcome: row.write_outcome,
+    readbackOutcome: row.readback_outcome,
+    relatedOperationId: row.related_operation_id,
     failureReason: row.failure_reason,
     durationMs: Number(row.duration_ms),
     approvalId: row.approval_id,
@@ -384,6 +391,9 @@ const nodeOperationColumnsLegacy = `
   read_value,
   readback_value,
   verified,
+  write_outcome,
+  readback_outcome,
+  related_operation_id,
   failure_reason,
   duration_ms,
   approval_id,
@@ -415,6 +425,9 @@ const nodeOperationColumnsSemantic = `
   read_value,
   readback_value,
   verified,
+  write_outcome,
+  readback_outcome,
+  related_operation_id,
   failure_reason,
   duration_ms,
   approval_id,
@@ -553,12 +566,12 @@ export async function getDebugParameter(
 
 export async function updateDebugParameterValues(
   db: Queryable,
-  input: { organizationId: string; parameterId: string; currentValue: string; targetValue: string }
+  input: { organizationId: string; parameterId: string; currentValue: string | null; targetValue: string }
 ): Promise<void> {
   await db.query(
     `
     update debugging_parameters
-    set current_value = $3,
+    set current_value = coalesce($3, current_value),
       target_value = $4,
       updated_at = now()
     where organization_id = $1
@@ -982,6 +995,25 @@ export async function listDebugSessionEvents(
   return result.rows.map(toNodeOperationRecord);
 }
 
+export async function getNodeOperation(
+  db: Queryable,
+  input: { organizationId: string; operationId: string }
+): Promise<NodeOperationRecord | null> {
+  const semantic = parameterIdentityMode() === "semantic";
+  const result = await db.query<NodeOperationRow>(
+    `
+    select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy}
+    from node_operations
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [input.organizationId, input.operationId]
+  );
+
+  return result.rows[0] ? toNodeOperationRecord(result.rows[0]) : null;
+}
+
 async function ensureBridgeDebugDevices(
   db: Queryable,
   input: {
@@ -1399,7 +1431,10 @@ export async function insertNodeOperation(
     previousValue?: string;
     readValue?: string;
     readbackValue?: string;
-    verified?: boolean;
+    verified?: boolean | null;
+    writeOutcome?: DebugWriteOutcome | null;
+    readbackOutcome?: DebugReadbackOutcome | null;
+    relatedOperationId?: string | null;
     failureReason?: string;
     durationMs: number;
     approvalId?: string;
@@ -1421,26 +1456,28 @@ export async function insertNodeOperation(
     insert into node_operations (
       id, organization_id, session_id, parameter_id, node_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
+      write_outcome, readback_outcome, related_operation_id,
       failure_reason, duration_ms, approval_id, snapshot_id,
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id,
       parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
     returning ${nodeOperationColumnsSemantic}
     `
       : `
     insert into node_operations (
       id, organization_id, session_id, parameter_id, node_id, parameter_definition_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
+      write_outcome, readback_outcome, related_operation_id,
       failure_reason, duration_ms, approval_id, snapshot_id,
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id,
       parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
     returning ${nodeOperationColumnsLegacy}
     `,
     semantic
@@ -1461,7 +1498,10 @@ export async function insertNodeOperation(
           input.previousValue ?? null,
           input.readValue ?? null,
           input.readbackValue ?? null,
-          input.verified ?? false,
+          input.verified === undefined ? false : input.verified,
+          input.writeOutcome ?? null,
+          input.readbackOutcome ?? null,
+          input.relatedOperationId ?? null,
           input.failureReason ?? null,
           input.durationMs,
           input.approvalId ?? null,
@@ -1492,7 +1532,10 @@ export async function insertNodeOperation(
           input.previousValue ?? null,
           input.readValue ?? null,
           input.readbackValue ?? null,
-          input.verified ?? false,
+          input.verified === undefined ? false : input.verified,
+          input.writeOutcome ?? null,
+          input.readbackOutcome ?? null,
+          input.relatedOperationId ?? null,
           input.failureReason ?? null,
           input.durationMs,
           input.approvalId ?? null,

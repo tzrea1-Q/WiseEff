@@ -51,12 +51,15 @@ export type NodeOperationSnapshot = {
   protocol?: DebugConnectionProtocol;
   nodePath: string;
   operationType: "detect" | "read" | "write" | "reload" | "rollback";
-  status: "pending" | "succeeded" | "failed" | "readback_mismatch";
+  status: "pending" | "succeeded" | "failed" | "unknown" | "readback_mismatch";
   requestedValue?: string;
   previousValue?: string;
   readValue?: string;
   readbackValue?: string;
-  verified: boolean;
+  verified: boolean | null;
+  writeOutcome?: DebugWriteOutcome;
+  readbackOutcome?: DebugReadbackOutcome;
+  relatedOperationId?: string;
   failureReason?: string;
   durationMs: number;
   snapshotId?: string;
@@ -82,6 +85,7 @@ export type ReadNodeInput = {
   parameterId?: string;
   nodeId?: string;
   nodePath?: string;
+  relatedOperationId?: string;
 };
 
 export type NodeReadResult = {
@@ -109,11 +113,16 @@ export type WriteNodeInput = {
 export type NodeWriteResult = {
   ok: boolean;
   value?: string;
-  verified?: boolean;
+  verified?: boolean | null;
+  writeOutcome: DebugWriteOutcome;
+  readbackOutcome: DebugReadbackOutcome;
   error?: string;
   writeResult?: NodeReadResult;
   readResult?: NodeReadResult;
 };
+
+export type DebugWriteOutcome = "executed" | "failed" | "unknown";
+export type DebugReadbackOutcome = "observed" | "failed" | "unsupported" | "not_requested" | "unknown";
 
 export type RollbackSnapshotInput = {
   snapshotId: string;

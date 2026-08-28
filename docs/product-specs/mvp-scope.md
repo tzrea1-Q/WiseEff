@@ -18,7 +18,7 @@ File upload/object storage seam, log records, analysis jobs, worker processing, 
 
 ## M3 Debugging
 
-Device gateway seam, simulator, target detection, node reads/writes, snapshots, rollback, guarded writes, readback handling, and API-backed debugging UI.
+Device gateway seam, simulator, target detection, node reads/RW writes, snapshots, rollback, guarded writes, independent write/readback outcomes, and API-backed debugging UI. Ordinary write readback is observational; strict equality remains rollback-only.
 
 ## M4 Agent Collaboration
 
