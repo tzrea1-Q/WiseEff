@@ -739,6 +739,62 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     );
   });
 
+  it("keeps the module edit dialog open when the update request is rejected", async () => {
+    const moduleRegistry = createModuleRegistry();
+    const nextRegistry = await moduleRegistry.getRegistry();
+    const updateModule = vi.mocked(moduleRegistry.updateModule);
+    updateModule
+      .mockReset()
+      .mockRejectedValueOnce(new Error('relation "parameter_definitions" does not exist'))
+      .mockResolvedValueOnce(nextRegistry);
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
+
+    const panel = await screen.findByRole("region", { name: "模块归属" });
+    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
+    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
+    fireEvent.change(within(editDialog).getByLabelText("模块名称"), {
+      target: { value: "SC8562 Updated" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(updateModule).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByLabelText("模块名称")).toHaveValue(
+      "SC8562 Updated"
+    );
+    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByRole("alert")).toHaveTextContent(
+      "保存模块失败，请重试。"
+    );
+
+    const retryDialog = screen.getByRole("dialog", { name: "SC8562" });
+    await waitFor(() => expect(within(retryDialog).getByRole("button", { name: "保存" })).toBeEnabled());
+    fireEvent.click(within(retryDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(updateModule).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument());
+  });
+
+  it("keeps the module edit dialog open when driver registration update is rejected", async () => {
+    const moduleRegistry = createModuleRegistry({
+      updateDriverRegistration: vi.fn().mockRejectedValue(new Error("driver registration unavailable"))
+    });
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
+
+    const panel = await screen.findByRole("region", { name: "模块归属" });
+    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
+    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
+    fireEvent.change(within(editDialog).getByLabelText("驱动性质"), {
+      target: { value: "logical-service" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(moduleRegistry.updateDriverRegistration).toHaveBeenCalled());
+    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "SC8562" })).getByRole("alert")).toHaveTextContent(
+      "保存模块失败，请重试。"
+    );
+  });
+
   it("removes an inline mapping rule from the module tree with audit", async () => {
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
