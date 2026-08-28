@@ -261,6 +261,7 @@ describe("user governance service", () => {
     let userReadCount = 0;
     const { db, txCalls } = createDb(
       (text) => {
+        if (text.includes("for update")) return [{ id: "u-target" }];
         if (text.includes("from users")) {
           userReadCount += 1;
           return [

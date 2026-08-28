@@ -255,7 +255,7 @@ describe("user governance routes", () => {
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
-  it("returns not found for a missing or cross-organization deletion target at the API boundary", async () => {
+  it("returns not found for a missing deletion target at the API boundary", async () => {
     const { calls, db } = makeDb((text) => (text.includes("from users") ? [] : [userRow()]));
 
     const response = await requestJson<{ error: { code: string } }>(
@@ -266,6 +266,28 @@ describe("user governance routes", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("keeps an existing cross-organization user invisible and unchanged at the API boundary", async () => {
+    const foreignUsers = [userRow({ id: "u-outside", organization_id: "org-foreign" })];
+    const { calls, db } = makeDb((text, values) => {
+      if (!text.includes("from users")) return [];
+      return foreignUsers.filter(
+        (user) => user.organization_id === values[0] && user.id === values[1]
+      );
+    });
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db, auth: { mode: "production", verifier: { verify: async () => adminAuth } } }),
+      "/api/v1/users/u-outside",
+      { method: "DELETE", headers: { Authorization: "Bearer admin" } }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(foreignUsers).toEqual([expect.objectContaining({ id: "u-outside", organization_id: "org-foreign" })]);
     expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });

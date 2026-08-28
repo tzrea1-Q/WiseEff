@@ -168,6 +168,19 @@ export async function getUserById(db: Queryable, input: { organizationId: string
   return result.rows[0] ? toDto(result.rows[0]) : null;
 }
 
+export async function lockUserById(db: Queryable, input: { organizationId: string; userId: string }) {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from users
+    where organization_id = $1 and id = $2
+    for update
+    `,
+    [input.organizationId, input.userId]
+  );
+  return result.rows[0]?.id ?? null;
+}
+
 export async function deleteUserById(
   db: Queryable,
   input: { organizationId: string; userId: string; allowPlatformAdmin: boolean }

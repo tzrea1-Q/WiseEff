@@ -18,6 +18,7 @@ import {
   listAllPendingRegistrationRoleRequests,
   insertUser,
   insertPasswordCredential,
+  lockUserById,
   updatePasswordCredential,
   listPendingRegistrationRoleRequests,
   listUsers,
@@ -412,6 +413,10 @@ export async function deleteUser(
   }
 
   await db.transaction(async (tx) => {
+    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!lockedUserId) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
     const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });

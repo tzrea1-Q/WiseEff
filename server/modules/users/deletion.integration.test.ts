@@ -1,10 +1,12 @@
+import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import type { Database, Queryable } from "../../shared/database/client";
+import { createDatabase, type Database, type Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { deleteUser } from "./service";
 
@@ -42,7 +44,7 @@ const adminAuth: AuthContext = {
   permissions: ["users:manage", "admin:access"]
 };
 
-async function insertDeletionFixture(db: InMemoryTestDatabase) {
+async function insertDeletionFixture(db: Queryable) {
   await db.query("insert into organizations (id, name) values ('org-chargelab', 'ChargeLab')");
   await db.query(
     `
@@ -268,40 +270,74 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target@example.com");
   });
 
-  it("rechecks platform-admin protection in the delete statement", async () => {
-    await insertDeletionFixture(db);
-    let injectedRole = false;
-    const raceDatabase: Database = {
-      query: db.query.bind(db),
-      transaction: async (fn) =>
-        db.transaction(async (tx) => {
-          const guardedTx: Queryable = {
-            query: async (text, values = []) => {
-              if (!injectedRole && text.includes("delete from users")) {
-                injectedRole = true;
-                await tx.query(
-                  `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-                   values ('urb-target-platform-race', 'u-target', 'org-chargelab', null, 'platform-admin')`
-                );
-              }
-              return tx.query(text, values);
-            }
-          };
-          return fn(guardedTx);
-        })
-    };
+  it("waits for a concurrent platform-admin grant and then refuses deletion", async () => {
+    const ephemeral = await createEphemeralTestDatabase("userdel");
+    const controlClient = new pg.Client({ connectionString: ephemeral.url });
+    const grantClient = new pg.Client({ connectionString: ephemeral.url });
+    const deleteClient = new pg.Client({ connectionString: ephemeral.url });
+    await Promise.all([controlClient.connect(), grantClient.connect(), deleteClient.connect()]);
 
-    await expect(deleteUser(raceDatabase, adminAuth, "u-target", { requestId: "delete-race" })).rejects.toThrow(
-      "Only a platform super admin may delete a platform-admin user."
-    );
+    const databaseFor = (client: pg.Client): Database =>
+      createDatabase({
+        query: async (text, values = []) => {
+          const result = await client.query(text, values);
+          return { rows: result.rows, rowCount: result.rowCount };
+        }
+      });
 
-    expect(injectedRole).toBe(true);
-    expect((await db.query("select id from users where id = 'u-target'")).rows).toHaveLength(1);
-    expect(
-      (await db.query("select id from user_role_bindings where id = 'urb-target-platform-race'")).rows
-    ).toEqual([]);
-    expect(
-      (await db.query("select id from audit_events where kind = 'user-delete' and trace_id = 'delete-race'")).rows
-    ).toEqual([]);
+    try {
+      await insertDeletionFixture(databaseFor(controlClient));
+      await grantClient.query("begin");
+      await grantClient.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ('urb-target-platform-race', 'u-target', 'org-chargelab', null, 'platform-admin')`
+      );
+
+      const deletePid = Number((await deleteClient.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid);
+      const deletionOutcome = deleteUser(databaseFor(deleteClient), adminAuth, "u-target", {
+        requestId: "delete-race"
+      }).then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error })
+      );
+
+      let deleteWaitedForLock = false;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const activity = await controlClient.query<{ wait_event_type: string | null }>(
+          "select wait_event_type from pg_stat_activity where pid = $1",
+          [deletePid]
+        );
+        if (activity.rows[0]?.wait_event_type === "Lock") {
+          deleteWaitedForLock = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(deleteWaitedForLock).toBe(true);
+
+      await grantClient.query("commit");
+      const outcome = await deletionOutcome;
+      expect(outcome.ok).toBe(false);
+      expect(outcome.ok ? "" : String(outcome.error)).toContain(
+        "Only a platform super admin may delete a platform-admin user."
+      );
+
+      expect((await controlClient.query("select id from users where id = 'u-target'")).rows).toHaveLength(1);
+      expect(
+        (await controlClient.query("select id from user_role_bindings where id = 'urb-target-platform-race'")).rows
+      ).toHaveLength(1);
+      expect(
+        (await controlClient.query("select id from audit_events where kind = 'user-delete' and trace_id = 'delete-race'")).rows
+      ).toEqual([]);
+    } finally {
+      await grantClient.query("rollback").catch(() => undefined);
+      await Promise.all([
+        controlClient.end().catch(() => undefined),
+        grantClient.end().catch(() => undefined),
+        deleteClient.end().catch(() => undefined)
+      ]);
+      await ephemeral.drop();
+    }
   });
 });

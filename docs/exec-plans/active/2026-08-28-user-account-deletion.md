@@ -82,8 +82,8 @@ Browser verification covers `/organization/members` at `1440x900`, `768x1024`, a
 
 Observed local evidence on 2026-08-28:
 
-- Focused real-PostgreSQL/backend: 5 files, 80 tests passed; user-deletion schema/behavior, atomic platform-admin protection, account-owned lease/draft cleanup, and retained workflow/log read tests included.
-- Full frontend at bounded concurrency: 420 files, 3153 tests passed. Full server: 362 files passed, 1 skipped; 2803 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
+- Focused final-tree user-deletion backend: 3 files, 49 tests passed, including a two-connection PostgreSQL lock barrier, account-owned lease/draft cleanup, platform-admin/missing/cross-organization route boundaries, and deletion audit behavior. Retained workflow/log null-adaptation tests are also included in the full server gate.
+- Full frontend at bounded concurrency: 420 files, 3153 tests passed. Full server: 362 files passed, 1 skipped; 2804 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
 - `npm run build`, `npm run ui:check`, `npm run contract:check`, `npm run docs:check`, `npm run acceptance:coverage`, and `npm run acceptance:operations` passed. The schema doc was generated from a disposable pgvector PostgreSQL container migrated from scratch.
 - `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and visible disabled reasons, responsive table containment, mobile dialog/removal, and zero console errors. The focused `PERM-USER-MGMT-001` API-mode acceptance also passed against a disposable pgvector PostgreSQL database (runtime warmup plus one product case), proving HTTP `204`, database null adaptation, deletion audit, and non-Admin `403`. This is deterministic local HMAC evidence, not target OIDC evidence.
 
