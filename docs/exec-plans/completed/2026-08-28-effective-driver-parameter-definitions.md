@@ -93,7 +93,7 @@ affected acceptance requirement and operation IDs, or add them before completion
 
 ### Final verification evidence
 
-- A fresh PostgreSQL migration rehearsal applied all 119 migrations through
+- A fresh PostgreSQL migration rehearsal applied all 122 migrations through
   `0124_harden_driver_identity_owner.sql`; rerunning
   `npm run db:migrate` on that rehearsal returned `Applied 0 migration(s): none`, confirming
   the recorded checksums are stable. `npm run db:schema-doc:check` reports the generated schema
@@ -105,16 +105,12 @@ affected acceptance requirement and operation IDs, or add them before completion
   These databases are local test data, not a production cutover; the target database still
   requires the runbook's snapshot, dry-run review, per-organization apply, and post-migration gate.
 - `TEST_DATABASE_URL=... VITEST_SERVER_MAX_WORKERS=1 npm run test:server -- --run --maxWorkers=1`:
-  364 files passed and 2,804 tests passed; 1 file/4 tests were skipped by the existing
+  365 files passed and 2,833 tests passed; 1 file/4 tests were skipped by the existing
   environment gates (pgvector and the optional Xiaoze checkpoint proof). `npm test
-  -- --maxWorkers=1` reported 419 passed / 1 failed files (420 total) and 3,142 passed / 1 failed
-  tests (3,143 total): one unrelated `LogAdminPage` timeout and one worker-start failure in the
-  pre-existing full frontend suite;
-  the changed `ParameterSpecLibrary` tests pass in isolation (2 files, 21 tests). `npm run
-  test:scripts -- --maxWorkers=1`: 69 files, 948 passed, 5 environment skips. `npm run
-  bridge:test`: 21 files, 138 passed.
-  `npm run build`, `npx tsc -b --pretty false --incremental false`, and `git diff --check`
-  passed (build emitted only existing chunk-size and browser-externalization warnings).
+  -- --maxWorkers=1`: 421 files and 3,164 tests passed. `npm run test:scripts -- --maxWorkers=1`:
+  69 files, 948 passed, 5 environment skips. `npm run bridge:test`: 21 files, 138 passed.
+  `npm run build` and `git diff --check` passed (build emitted only existing chunk-size and
+  browser-externalization warnings).
 - API-mode browser smoke reached `http://127.0.0.1:5173/parameter-admin/specs` and showed the
   login gate. No credentials were available, so authenticated interactions, all three required
   viewports, screenshots, console/network assertions, and operation evidence remain target-

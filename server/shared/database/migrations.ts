@@ -22,6 +22,15 @@ export function getPendingMigrations(allMigrations: string[], appliedMigrations:
   return allMigrations.filter((migration) => !applied.has(migration));
 }
 
+/** Applied migration names are immutable inventory, not just a checksum list. */
+export function getMissingMigrationFiles(
+  allMigrations: string[],
+  appliedMigrations: string[],
+): string[] {
+  const available = new Set(allMigrations);
+  return appliedMigrations.filter((migration) => !available.has(migration));
+}
+
 function sha256(text: string) {
   return createHash("sha256").update(text).digest("hex");
 }
@@ -55,6 +64,14 @@ export async function applyMigrations(
     "select name, checksum from schema_migrations order by name"
   );
   const appliedChecksums = new Map(applied.rows.map((row) => [row.name, row.checksum]));
+
+  const missingFiles = getMissingMigrationFiles(files, [...appliedChecksums.keys()]);
+  if (missingFiles.length > 0) {
+    throw new Error(
+      `Applied migration files are missing from the repository: ${missingFiles.join(", ")}. ` +
+        "Restore the immutable migration file before applying new migrations.",
+    );
+  }
 
   // Fail loudly when an already-applied migration file was edited afterwards;
   // backfill checksums for rows recorded before checksums existed.

@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { createDatabase } from "./client";
-import { applyMigrations, getPendingMigrations } from "./migrations";
+import {
+  applyMigrations,
+  getMissingMigrationFiles,
+  getPendingMigrations,
+} from "./migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations");
@@ -38,6 +42,17 @@ describe("getPendingMigrations", () => {
     const pending = getPendingMigrations(["0001_m0_foundation.sql", "0002_next.sql"], ["0001_m0_foundation.sql"]);
 
     expect(pending).toEqual(["0002_next.sql"]);
+  });
+});
+
+describe("getMissingMigrationFiles", () => {
+  it("reports applied migration names whose immutable files disappeared", () => {
+    expect(
+      getMissingMigrationFiles(
+        ["0001_m0_foundation.sql", "0002_next.sql"],
+        ["0001_m0_foundation.sql", "0117_user_account_deletion.sql"],
+      ),
+    ).toEqual(["0117_user_account_deletion.sql"]);
   });
 });
 

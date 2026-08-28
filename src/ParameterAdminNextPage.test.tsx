@@ -337,7 +337,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       /three-cell interrupt/
     );
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
-    expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
+    expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int", { view: "governance" });
     expect(screen.queryByRole("status", { name: "治理审计" })).not.toBeInTheDocument();
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
