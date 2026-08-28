@@ -313,12 +313,19 @@ export function DebuggingAdminPage({
   bindingsNodeRef.current = bindingsNode;
 
   useEffect(() => {
-    if (!bindingsNode) {
+    if (!bindingsNodeId) {
       setBindingsDraft([]);
+    }
+  }, [bindingsNodeId]);
+
+  const openBindingsDialog = (nodeId: string) => {
+    const node = library.find((item) => item.id === nodeId);
+    if (!node) {
       return;
     }
-    setBindingsDraft(bindingsNode.bindings ?? []);
-  }, [bindingsNode]);
+    setBindingsDraft(node.bindings ?? []);
+    setBindingsNodeId(nodeId);
+  };
 
   const saveMockNode = (draft: DebugNodeDraft, existingNode?: DebugNodeRegistryEntry | null) => {
     if (existingNode) {
@@ -790,7 +797,7 @@ export function DebuggingAdminPage({
                 setEditorMode("edit");
                 setEditorNodeId(nodeId);
               }}
-              onEditBindings={setBindingsNodeId}
+              onEditBindings={openBindingsDialog}
               onDisable={setDisableNodeId}
               onDelete={(nodeId) => {
                 setAdminError("");
