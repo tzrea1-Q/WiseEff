@@ -7,7 +7,7 @@ export type ParameterHistoryEntry = {
   version: string;
   value: string;
   changedAt: string;
-  changedBy: string;
+  changedBy: string | null;
   requestId?: string;
   /** Present once the entry is bound to a semantic project binding. */
   projectParameterBindingId?: string;

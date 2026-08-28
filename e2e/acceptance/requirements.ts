@@ -626,7 +626,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PERM-USER-MGMT-001",
     workflow: "H",
-    title: "Admin user-management mutation is covered with non-Admin denial and audit evidence.",
+    title: "Admin user deletion is covered with non-Admin denial, null-adapted retained attribution, and audit evidence.",
     required: true
   },
   {

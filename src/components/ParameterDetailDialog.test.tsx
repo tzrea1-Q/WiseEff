@@ -88,6 +88,29 @@ afterEach(() => {
 });
 
 describe("ParameterDetailDialog", () => {
+  it("labels retained parameter history from a deleted user", () => {
+    const deletedActorParameter = parameter("aurora", "3850", {
+      history: [{ version: "v5.2", value: "3800", changedAt: "yesterday", changedBy: null }]
+    });
+
+    render(
+      <ParameterDetailDialog
+        parameter={deletedActorParameter}
+        parameters={[deletedActorParameter]}
+        projects={projects}
+        currentProjectId="aurora"
+        targetProjectId="nebula"
+        canEdit
+        alreadyInDraft={false}
+        onTargetProjectChange={vi.fn()}
+        onAddToDraft={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/yesterday \/ 已注销用户/)).toBeInTheDocument();
+  });
+
   it("shows definition and all-project comparison for the selected parameter", () => {
     render(
       <ParameterDetailDialog

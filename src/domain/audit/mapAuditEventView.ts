@@ -12,7 +12,7 @@ function actorLabelFromDto(dto: AuditEventDto) {
   if (dto.actorType === "system") {
     return "System";
   }
-  return dto.actorUserId ?? "Unknown";
+  return dto.actorUserId ?? "已注销用户";
 }
 
 function actorTypeFromMock(event: AuditEvent): AuditActorType {

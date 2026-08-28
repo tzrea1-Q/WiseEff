@@ -173,7 +173,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `BRIDGE-HDC-001` | E | No | Real paired bridge HDC detect smoke runs when `DEVICE_BRIDGE_HDC_AVAILABLE` is enabled. | `e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
 | `ADB-LAB-001` | F | No | Real ADB device lab read-only smoke runs when explicitly enabled, with optional independently observed write and strict rollback. | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
 | `XIAOZE-ACTION-RESUME-001` | G | Yes | Xiaoze AG-UI native resume continues an approved mutating action without reopening a change request. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
-| `PERM-USER-MGMT-001` | H | Yes | Admin create/update/permanent-delete user-management mutations are covered with non-Admin denial, DB null-adaptation, and audit evidence. | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `PERM-USER-MGMT-001` | H | Yes | Admin create/update/permanent-delete user-management mutations are covered with non-Admin denial, DB null-adaptation, audit evidence, and deleted-attribution rendering on `/knowledge-admin` and `/parameter-review`. | `e2e/acceptance/permissions.acceptance.spec.ts` |
 | `ORG-ADMIN-RENAME-001` | H | Yes | Admin can rename the home organization with audit evidence, and non-Admin rename is rejected. | `e2e/acceptance/permissions.acceptance.spec.ts` |
 
 ## Interpretation

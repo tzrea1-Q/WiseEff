@@ -139,6 +139,89 @@ async function seedDeletedUserHistory(userId: string) {
       `,
       [`acceptance-delete-history-${userId}`, userId]
     );
+    await client.query(
+      `
+      insert into knowledge_entries (
+        id, organization_id, title, content_form, status, source_type, source_session_id,
+        created_by_user_id
+      ) values (
+        '00000000-0000-4000-8000-0000000000a1', 'org-chargelab',
+        'Retained deleted-user knowledge', 'markdown', 'draft', 'agent',
+        'acceptance-deleted-user-session', $1
+      )
+      on conflict (id) do update set
+        source_type = excluded.source_type,
+        source_session_id = excluded.source_session_id,
+        created_by_user_id = excluded.created_by_user_id
+      `,
+      [userId]
+    );
+    await client.query(
+      `
+      insert into knowledge_revisions (
+        id, entry_id, organization_id, revision_number, title, content_markdown, author_user_id
+      ) values (
+        '00000000-0000-4000-8000-0000000000a2',
+        '00000000-0000-4000-8000-0000000000a1', 'org-chargelab', 1,
+        'Retained deleted-user knowledge', '# retained', $1
+      )
+      on conflict (id) do update set author_user_id = excluded.author_user_id
+      `,
+      [userId]
+    );
+    await client.query(
+      `
+      update knowledge_entries
+      set head_revision_id = '00000000-0000-4000-8000-0000000000a2', head_revision_number = 1
+      where id = '00000000-0000-4000-8000-0000000000a1'
+      `
+    );
+    await client.query(
+      `
+      insert into projects (id, organization_id, name, code, status)
+      values (
+        'acceptance-delete-project', 'org-chargelab',
+        'Deleted user initialization', 'DEL-USER', 'initialized'
+      )
+      on conflict (id) do update set
+        name = excluded.name,
+        code = excluded.code,
+        status = excluded.status
+      `
+    );
+    await client.query(
+      `
+      insert into project_parameter_initialization_drafts (
+        id, organization_id, project_id, project_name, project_code, owner_user_id,
+        source_project_ids, primary_source_project_id, supplement_source_project_ids,
+        selected_module_ids, selected_risks, selected_source_binding_ids, binding_snapshots,
+        empty_library, notes, created_by_user_id
+      ) values (
+        'acceptance-delete-init-draft', 'org-chargelab', 'acceptance-delete-project',
+        'Deleted user initialization', 'DEL-USER', $1,
+        '[]', null, '[]', '[]', '[]', '[]', '[]', true, '', $1
+      )
+      on conflict (id) do update set
+        owner_user_id = excluded.owner_user_id,
+        created_by_user_id = excluded.created_by_user_id
+      `,
+      [userId]
+    );
+    await client.query(
+      `
+      insert into project_parameter_initialization_reviews (
+        id, organization_id, project_id, draft_id, status, submitted_by_user_id, reviewed_by_user_id
+      ) values (
+        'acceptance-delete-init-review', 'org-chargelab', 'acceptance-delete-project',
+        'acceptance-delete-init-draft', 'pending', $1, $1
+      )
+      on conflict (id) do update set
+        status = 'pending',
+        submitted_by_user_id = excluded.submitted_by_user_id,
+        reviewed_by_user_id = excluded.reviewed_by_user_id
+      `,
+      [userId]
+    );
   });
 }
 
@@ -148,12 +231,16 @@ async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
       user_count: string;
       role_count: string;
       historical_actor_user_id: string | null;
+      knowledge_creator_user_id: string | null;
+      initialization_submitter_user_id: string | null;
     }>(
       `
       select
         (select count(*)::text from users where id = $1) as user_count,
         (select count(*)::text from user_role_bindings where user_id = $1 and role_id = $2) as role_count,
-        (select actor_user_id from audit_events where id = $3) as historical_actor_user_id
+        (select actor_user_id from audit_events where id = $3) as historical_actor_user_id,
+        (select created_by_user_id from knowledge_entries where id = '00000000-0000-4000-8000-0000000000a1') as knowledge_creator_user_id,
+        (select submitted_by_user_id from project_parameter_initialization_reviews where id = 'acceptance-delete-init-review') as initialization_submitter_user_id
       `,
       [input.userId, input.roleId, `acceptance-delete-history-${input.userId}`]
     );
@@ -161,7 +248,7 @@ async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
     return {
       table: "users,user_role_bindings,audit_events",
       predicate: `deleted userId=${input.userId}; retained audit actor is null`,
-      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; historicalActor=${row?.historical_actor_user_id ?? "null"}`,
+      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; historicalActor=${row?.historical_actor_user_id ?? "null"}; knowledgeCreator=${row?.knowledge_creator_user_id ?? "null"}; initializationSubmitter=${row?.initialization_submitter_user_id ?? "null"}`,
       rowCount: Number(row?.user_count ?? 0)
     };
   });
@@ -318,6 +405,14 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(deleteDialog).not.toBeVisible();
     await expect(chenRow).toHaveCount(0);
 
+    await page.goto("/knowledge-admin");
+    const retainedKnowledgeRow = page.getByRole("row").filter({ hasText: "Retained deleted-user knowledge" });
+    await expect(retainedKnowledgeRow).toContainText("已注销用户");
+
+    await page.goto("/parameter-review");
+    const retainedInitializationRow = page.getByRole("row").filter({ hasText: "Deleted user initialization" });
+    await expect(retainedInitializationRow).toContainText("已注销用户");
+
     const usersAfterDeleteApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
     expect(usersAfterDeleteApi.body.items.some((user) => user.id === createdUser!.id)).toBe(false);
 
@@ -342,6 +437,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       ])
     );
 
+    await page.goto("/organization/members");
     await setPrototypeRole(page, "Software User");
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
     await expect(page.getByText("当前角色：软件开发")).toBeVisible();
@@ -406,7 +502,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         })
       ],
       notes:
-        "Admin changed a non-self user's role, created a backend-governed user, and permanently deleted that user through the UI. The user and role rows were removed, retained audit history adapted its actor reference to null, and a non-Admin DELETE was denied with 403."
+        "Admin changed a non-self user's role, created a backend-governed user, and permanently deleted that user through the UI. The user and role rows were removed; retained audit, knowledge, and parameter-initialization attribution adapted to null; /knowledge-admin and /parameter-review rendered the deleted-user label; and a non-Admin DELETE was denied with 403."
     });
   });
 

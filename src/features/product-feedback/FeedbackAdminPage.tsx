@@ -46,7 +46,7 @@ function snippet(value: string) {
 }
 
 function submitterLabel(feedback: ProductFeedback) {
-  return feedback.submitterUserId ?? "内测用户";
+  return feedback.submitterUserId ?? "已注销用户";
 }
 
 function includesQuery(feedback: ProductFeedback, query: string) {

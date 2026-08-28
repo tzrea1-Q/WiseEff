@@ -83,6 +83,13 @@ describe("FeedbackAdminPage", () => {
     expect(screen.getByText("待处理 1 条")).toBeInTheDocument();
   });
 
+  it("labels retained feedback from a deleted submitter", async () => {
+    await renderPage(createRepository([feedback({ submitterUserId: null })]));
+
+    expect(screen.getByText("已注销用户")).toBeInTheDocument();
+    expect(screen.queryByText("内测用户")).not.toBeInTheDocument();
+  });
+
   it("filters by status", async () => {
     await renderPage(
       createRepository([

@@ -67,8 +67,8 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     parsedIndex: row.parsed_index ?? {},
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
-    createdByUserId: row.created_by_user_id ?? undefined,
-    createdByDisplayName: row.created_by_display_name ?? undefined
+    createdByUserId: row.created_by_user_id,
+    createdByDisplayName: row.created_by_display_name ?? null
   };
 }
 

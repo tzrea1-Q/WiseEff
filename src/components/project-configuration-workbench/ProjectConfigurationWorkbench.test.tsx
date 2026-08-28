@@ -1409,8 +1409,8 @@ describe("ProjectConfigurationWorkbench", () => {
         parsedIndex: {},
         origin: "writeback" as const,
         createdAt: "2026-08-05T08:00:00.000Z",
-        createdByUserId: "user-ops",
-        createdByDisplayName: "Riley Chen"
+        createdByUserId: null,
+        createdByDisplayName: null
       }
     ]);
     const rollbackVersion = vi.fn(async () => ({
@@ -1444,7 +1444,7 @@ describe("ProjectConfigurationWorkbench", () => {
     ensureInspectorOpen();
     expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
     expect(screen.getByText("操作人：Xu Yun")).toBeInTheDocument();
-    expect(screen.getByText("操作人：Riley Chen")).toBeInTheDocument();
+    expect(screen.getByText("操作人：已注销用户")).toBeInTheDocument();
     expect(screen.queryByText("user-ops")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "将版本 12 恢复为当前" })).not.toBeInTheDocument();
 

@@ -22,7 +22,7 @@
 
 ## TDD 公共边界
 
-按纵向切片依次验证：真实 PostgreSQL 服务、HTTP DELETE API、前端 HTTP 客户端、组织成员页面，以及 `PERM-USER-MGMT-001` 浏览器验收。每个切片先观察失败测试，再补充最小实现。
+按纵向切片依次验证：真实 PostgreSQL 服务、HTTP DELETE API、前端 HTTP 客户端、组织成员页面，以及 `e2e/acceptance/permissions.acceptance.spec.ts` 中 requirement/operation `PERM-USER-MGMT-001` 浏览器验收。自动化验收在注销后继续访问 `/knowledge-admin` 与 `/parameter-review`，验证保留归属显示“已注销用户”。每个切片先观察失败测试，再补充最小实现。
 
 ## 数据保留策略
 

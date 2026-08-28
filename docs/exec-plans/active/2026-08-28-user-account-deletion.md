@@ -28,7 +28,7 @@ Vertical slices use these public seams:
 2. HTTP API: `DELETE /api/v1/users/:userId` success and authorization/self/cross-Organization failures.
 3. Frontend HTTP client: encoded DELETE request and empty `204` handling.
 4. Organization members page: eligibility, confirmation copy, awaited success removal, and visible server failure.
-5. Browser acceptance: Admin deletion plus non-Admin denial under `PERM-USER-MGMT-001` with UI/API/DB/audit evidence.
+5. Browser acceptance: `e2e/acceptance/permissions.acceptance.spec.ts` covers Admin deletion, non-Admin denial, and post-delete rendering on `/knowledge-admin` and `/parameter-review` under requirement/operation `PERM-USER-MGMT-001`, with UI/API/DB/audit evidence.
 
 Tests are added one vertical slice at a time and observed red before the minimum implementation for that slice.
 
@@ -81,7 +81,7 @@ npm run acceptance:operations
 playwright-cli --version
 ```
 
-Browser verification covers `/organization/members` at `1440x900`, `768x1024`, and `390x844`, with snapshot, screenshot, confirmation interaction, success removal, refusal behavior, console errors, and relevant network requests checked. The focused acceptance spec is `e2e/acceptance/permissions.acceptance.spec.ts` under requirement and operation `PERM-USER-MGMT-001`.
+Browser verification covers `/organization/members`, `/knowledge-admin`, and `/parameter-review` at `1440x900`, `768x1024`, and `390x844`, with snapshot, screenshot, confirmation interaction, success removal, retained-attribution rendering, refusal behavior, console errors, and relevant network requests checked. The focused automated acceptance spec is `e2e/acceptance/permissions.acceptance.spec.ts` under requirement and operation `PERM-USER-MGMT-001`; it now seeds retained knowledge and initialization-review rows, deletes their user through the UI, and asserts both downstream pages render `已注销用户`.
 
 The focused API-mode acceptance can be reproduced against a disposable pgvector PostgreSQL database as follows. The HMAC key and token are local test credentials only; this command does not constitute target OIDC evidence.
 
@@ -139,7 +139,7 @@ Observed local evidence on 2026-08-28:
 | Reliability overview | Review | `docs/RELIABILITY.md` | No deployment dependency or runtime-readiness boundary changed. |
 | Identity runbook | Update | `docs/runbooks/identity-provider.md` | Keep local HMAC and target OIDC evidence boundaries explicit. |
 | Security/governance | Update | `docs/SECURITY.md`, `docs/security/audit-retention.md` | Define delete authorization, audit, and PII retention boundary. |
-| Frontend/design | Update | `docs/FRONTEND.md`, `docs/design-docs/2026-08-19-organization-administration-design.md` | Add the members-page lifecycle action. |
+| Frontend/design | Update | `docs/FRONTEND.md`, `docs/design-docs/2026-05-17-user-permissions-design.md`, `docs/design-docs/2026-08-19-organization-administration-design.md`, `docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md` | Add the members-page lifecycle action. The 2026-05-17 file is a historical English-only design record rather than an active bilingual developer guide; its supersession note links to the current bilingual organization-administration design, so no separate Chinese copy is created. |
 | Generated artifacts | Update | `docs/generated/openapi.json`, `docs/generated/db-schema.md` | Regenerate after route/migration changes. |
 | References | Review | `docs/references/productization-api-contract-draft.md` | No compact-reference contract changed. |
 | Chinese developer docs | Update | `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/frontend.md`, `docs/zh-CN/security-reliability.md`, `docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md`, `docs/zh-CN/exec-plans/active/2026-08-28-user-account-deletion.md` | Keep developer-facing semantics bilingual. |

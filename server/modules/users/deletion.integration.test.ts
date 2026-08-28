@@ -9,7 +9,9 @@ import {
 import { createDatabase, type Database, type Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { getEntryById, listRevisions } from "../knowledge/repository";
+import { listFileVersions } from "../parameter-files/repository";
 import { getDraftByProject, listPendingReviews } from "../parameters/initializationRepository";
+import { listParameterHistory } from "../parameters/repository";
 import { deleteUser, replaceUserRoles } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -94,6 +96,31 @@ async function insertDeletionFixture(db: Queryable) {
        id, organization_id, project_id, project_parameter_value_id, user_id, target_value, reason
      ) values (
        'draft-target', 'org-chargelab', 'project-delete', 'value-delete', 'u-target', '1', 'Delete fixture'
+     )`
+  );
+  await db.query(
+    `insert into parameter_history_entries (
+       id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
+       version, value, changed_by_user_id
+     ) values (
+       'history-target', 'org-chargelab', 'project-delete', 'definition-delete', 'value-delete',
+       1, '0', 'u-target'
+     )`
+  );
+  await db.query(
+    `insert into project_parameter_files (
+       id, organization_id, project_id, file_name, format
+     ) values (
+       'file-target', 'org-chargelab', 'project-delete', 'delete.dts', 'dts'
+     )`
+  );
+  await db.query(
+    `insert into project_parameter_file_versions (
+       id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin,
+       created_by_user_id
+     ) values (
+       'file-version-target', 'file-target', 1, 'delete/file.dts', 'delete-checksum', 1, '{}',
+       'upload', 'u-target'
      )`
   );
   await db.query(
@@ -306,6 +333,16 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(retainedInitialization).toMatchObject({ ownerUserId: null, createdByUserId: null });
     await expect(listPendingReviews(db, { organizationId: "org-chargelab" })).resolves.toMatchObject([
       { submittedByUserId: null, reviewedByUserId: null }
+    ]);
+
+    await expect(
+      listParameterHistory(db, {
+        organizationId: "org-chargelab",
+        parameterId: "value-delete"
+      })
+    ).resolves.toMatchObject([{ changedBy: null }]);
+    await expect(listFileVersions(db, { fileId: "file-target" })).resolves.toMatchObject([
+      { createdByUserId: null, createdByDisplayName: null }
     ]);
 
     const deletionAudit = await db.query<{

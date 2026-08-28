@@ -11481,7 +11481,10 @@
                         "type": "string"
                       },
                       "changedBy": {
-                        "type": "string"
+                        "type": [
+                          "string",
+                          "null"
+                        ]
                       },
                       "requestId": {
                         "type": "string"
@@ -11626,7 +11629,10 @@
                       "type": "string"
                     },
                     "changedBy": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "requestId": {
                       "type": "string"
@@ -11692,7 +11698,10 @@
                   "type": "string"
                 },
                 "changedBy": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "requestId": {
                   "type": "string"
