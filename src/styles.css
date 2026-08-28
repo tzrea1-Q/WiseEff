@@ -2508,6 +2508,10 @@ body {
   max-height: min(670px, calc(100vh - 230px));
 }
 
+.node-debugging-module-workbench .dts-topology-navigator {
+  flex: 0 1 auto;
+}
+
 .node-debugging-module-results {
   min-width: 0;
 }
@@ -8623,10 +8627,6 @@ td small {
   list-style: none;
 }
 
-.node-debugging-page .parameters-table-grid td[data-label="访问模式"] {
-  font-weight: 700;
-}
-
 .node-debugging-page .node-debug-module-cell {
   display: block;
   min-width: 0;
@@ -8638,8 +8638,8 @@ td small {
   white-space: nowrap;
 }
 
-.node-debugging-page .parameters-table-grid th:nth-child(7),
-.node-debugging-page .parameters-table-grid td:nth-child(7),
+.node-debugging-page .parameters-table-grid th:nth-child(6),
+.node-debugging-page .parameters-table-grid td:nth-child(6),
 .node-debugging-page .parameters-table-grid th:last-child,
 .node-debugging-page .parameters-table-grid td:last-child {
   width: 88px;
@@ -8829,6 +8829,17 @@ td small {
   text-overflow: ellipsis;
 }
 
+.node-debugging-page .debug-value-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-overflow: ellipsis;
+}
+
 .debug-value-format-badge {
   display: inline-flex;
   align-items: center;
@@ -8926,15 +8937,6 @@ td small {
     max-width: 220px;
     text-align: left;
     vertical-align: top;
-  }
-
-  .node-debugging-page .parameters-table-grid th:nth-child(4),
-  .node-debugging-page .parameters-table-grid td:nth-child(4) {
-    width: 88px;
-    min-width: 88px;
-    max-width: 88px;
-    text-align: center;
-    vertical-align: middle;
   }
 
   .node-debugging-page .parameters-table-grid th:last-child,
@@ -11183,17 +11185,8 @@ td small {
   }
 
   .parameters-table-grid.node-debugging-grid th:nth-child(3),
-  .parameters-table-grid.node-debugging-grid td:nth-child(3),
-  .parameters-table-grid.node-debugging-grid th:nth-child(6),
-  .parameters-table-grid.node-debugging-grid td:nth-child(6) {
+  .parameters-table-grid.node-debugging-grid td:nth-child(3) {
     display: table-cell;
-  }
-
-  .parameters-table-grid.node-debugging-grid th:nth-child(4),
-  .parameters-table-grid.node-debugging-grid td:nth-child(4),
-  .parameters-table-grid.node-debugging-grid th:nth-child(7),
-  .parameters-table-grid.node-debugging-grid td:nth-child(7) {
-    display: none;
   }
 
   .parameters-table-grid th:nth-child(2),

@@ -1510,6 +1510,19 @@ describe("/node-debugging", () => {
     expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
   });
 
+  it("removes the access mode column while retaining access details in the inspector", async () => {
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
+
+    await screen.findByText(mockStoryConnectedLabel);
+
+    expect(screen.queryByRole("columnheader", { name: "访问模式" })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-label="访问模式"]')).not.toBeInTheDocument();
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    expect(within(getNodeDetailDialog()).getByText("访问模式")).toBeInTheDocument();
+  });
+
   it("仅支持从状态表头筛选节点参数", async () => {
     renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
@@ -1831,6 +1844,47 @@ describe("/node-debugging", () => {
     expect(currentValueCell(row).querySelector(".debug-value-preview")).toBeInTheDocument();
     expect(currentValueCell(row)).toHaveTextContent("…");
     expect(currentValueCell(row)).not.toHaveTextContent("alert-levels");
+  });
+
+  it("preserves line breaks in the current value table preview", async () => {
+    const multilineValue = [
+      "voltage=5V",
+      "current=3A",
+      "mode=turbo",
+      "profile=balanced"
+    ].join("\n");
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn(async (input) => {
+        const nodeId = input.nodeId ?? input.parameterId;
+        const value = nodeId === "dbg-charge-input-current" ? multilineValue : "12";
+        return {
+          ok: true,
+          value,
+          stdout: `${value}\n`,
+          durationMs: 7,
+          operation: {
+            id: `op-read-${nodeId}`,
+            sessionId: apiSession.id,
+            parameterId: nodeId,
+            nodePath: input.nodePath,
+            operationType: "read",
+            status: "succeeded",
+            readValue: value,
+            verified: true,
+            durationMs: 7,
+            createdAt: "2026-05-27T09:00:01.000Z"
+          }
+        };
+      })
+    });
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    const preview = await within(currentValueCell(row)).findByText((_, element) =>
+      element?.classList.contains("debug-value-preview")
+    );
+    expect(preview.textContent).toBe(multilineValue);
   });
 
   it("shows preview and digest for complex write events in operation history", async () => {
