@@ -322,6 +322,10 @@ describe("parameter semantic v2 routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body?.items[0]).toMatchObject({ id: "rev-2", revisionNumber: 2 });
+    expect(response.body?.items[0]).not.toHaveProperty("initiatorSessionId");
+    expect(response.body?.items[0]).not.toHaveProperty("initiatorToolCallId");
+    expect(response.body?.items[0]).not.toHaveProperty("initiatorApprovalId");
+    expect(response.body?.items[0]).not.toHaveProperty("initiatorSystemName");
     expect(topologyService.listConfigRevisions).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
@@ -537,7 +541,11 @@ describe("parameter semantic v2 routes", () => {
         reason: "Raise limit"
       }),
       expect.objectContaining({ objectStore: undefined }),
-      { requestId: expect.any(String) }
+      expect.objectContaining({
+        invocation: expect.objectContaining({ initiator: "user" }),
+        requestId: expect.any(String),
+        refusalSink: testRefusalAuditSink
+      })
     );
   });
 

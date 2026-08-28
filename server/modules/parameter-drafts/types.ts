@@ -23,13 +23,6 @@ export type ParameterDraftDto = {
   /** Subject identity for topology enablement drafts. */
   editSubjectKind?: "binding" | "node-enablement";
   logicalNodeId?: string;
-  /** Trusted execution identity for Agent/System drafts; omitted for legacy User rows. */
-  initiatorType?: "user" | "agent" | "system";
-  initiatorSystemKind?: "service" | "job";
-  initiatorSystemName?: string;
-  initiatorSessionId?: string;
-  initiatorToolCallId?: string;
-  initiatorApprovalId?: string;
   /** Semantic binding identity for topology-aware drafts. */
   projectParameterBindingId?: string;
   /** Working candidate revision tip for binding draft rounds. */

@@ -474,6 +474,42 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
     });
   });
 
+  it("rejects a caller-supplied compatible without an exact server-owned source", async () => {
+    await withTempDatabase({ prefix: "senswritecompatible" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+        const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+        const refusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+
+        await expect(assertTrustedSensitiveNodeWriteAllowed({ query }, principal, {
+          organizationId: "org-1",
+          projectId: "project-1",
+          nodePath: "amba/wdt@0",
+          compatible: "vendor,client-supplied",
+          invocation: createUserInvocation(principal),
+          requestId: "trusted-write-client-compatible",
+          refusalSink,
+        })).rejects.toMatchObject({
+          name: "ApiError",
+          code: "CONFLICT",
+          details: { code: "parameter-sensitive-source-version-mismatch" },
+        });
+        expect(query).not.toHaveBeenCalled();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
+  });
+
   it("allows a capable direct User invocation through the shared trusted write guard", async () => {
     await withTempDatabase({ prefix: "senswriteunit" }, async ({ connectionString }) => {
       const trustedRefusalRoot = createPostgresDatabase(connectionString);

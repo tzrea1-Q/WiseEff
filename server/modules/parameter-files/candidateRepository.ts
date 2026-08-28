@@ -10,8 +10,9 @@ import type {
   ProjectParameterFileCandidateDto,
   UpdateParameterFileCandidateParseResultInput
 } from "./types";
+import type { TrustedInvocationDomainAttributionRow } from "../auth/trustedInvocation";
 
-type CandidateRow = {
+type CandidateRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   organization_id: string;
   project_id: string;
@@ -28,12 +29,6 @@ type CandidateRow = {
   impact: CandidateImpact | null;
   blockers: CandidateBlocker[] | null;
   created_by_user_id: string | null;
-  initiator_type: "user" | "agent" | "system";
-  initiator_system_kind: "service" | "job" | null;
-  initiator_system_name: string | null;
-  initiator_session_id: string | null;
-  initiator_tool_call_id: string | null;
-  initiator_approval_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
   abandoned_at: string | Date | null;
@@ -67,16 +62,6 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
     createdAt: dateTimeToIso(row.created_at),
     updatedAt: dateTimeToIso(row.updated_at),
     createdByUserId: row.created_by_user_id ?? undefined,
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {}),
     abandonedAt: row.abandoned_at ? dateTimeToIso(row.abandoned_at) : undefined,
     abandonedByUserId: row.abandoned_by_user_id ?? undefined,
     activatedAt: row.activated_at ? dateTimeToIso(row.activated_at) : undefined,

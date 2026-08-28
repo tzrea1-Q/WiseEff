@@ -20,9 +20,10 @@ import type { AuthContext } from "../auth/types";
 import {
   assertTrustedInvocationContext,
   assertTrustedInvocationMatchesAuth,
+  assertTrustedMutationInvocation,
   createUserInvocation,
   trustedDomainAttribution,
-  trustedExecutionLabel,
+  trustedPublicExecutionLabel,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -113,8 +114,8 @@ import {
   insertReviewDecision,
   listEligibleWorkflowAssignees,
   listChangeRequests as listChangeRequestRows,
-  listReviewDecisions,
-  listReviewDecisionsForRequestIds,
+  listReviewDecisionsForRequestIdsInternal,
+  listReviewDecisionsInternal,
   listChangeRequestWorkflowStateByIds,
   listUserNamesByIds,
   listSubmissionRounds as listSubmissionRoundRows,
@@ -184,6 +185,7 @@ function assertParameterSubmissionContext(
       "parameter submission invocation principal does not match the authenticated principal"
     );
   }
+  assertTrustedMutationInvocation(invocation, "parameter submission");
   return { ...context, invocation, requestId: context.requestId.trim() };
 }
 
@@ -781,7 +783,7 @@ async function loadProjectForImport(db: Queryable, auth: AuthContext, projectId:
 }
 
 function hasHighRiskReviewEvidence(
-  decisions: Awaited<ReturnType<typeof listReviewDecisions>>
+  decisions: Awaited<ReturnType<typeof listReviewDecisionsInternal>>
 ) {
   const hasHardwareDecision = decisions.some(
     (decision) =>
@@ -816,7 +818,7 @@ async function buildReviewParticipants(
   db: Queryable,
   organizationId: string,
   request: ChangeRequestDto,
-  decisions: Awaited<ReturnType<typeof listReviewDecisions>>
+  decisions: Awaited<ReturnType<typeof listReviewDecisionsInternal>>
 ) {
   const userIds = new Set<string>();
   for (const decision of decisions) {
@@ -853,14 +855,14 @@ const workflowTrailTransitions = {
 } as const;
 
 function reviewDecisionExecutionLabel(
-  decision: Awaited<ReturnType<typeof listReviewDecisions>>[number],
+  decision: Awaited<ReturnType<typeof listReviewDecisionsInternal>>[number],
   userNames: Map<string, string>,
 ): string {
   if (decision.initiatorType === "system") {
-    return `System ${decision.initiatorSystemKind ?? "service"}:${decision.initiatorSystemName ?? "unknown"}`;
+    return `WiseEff System ${decision.initiatorSystemKind ?? "service"}`;
   }
   if (decision.initiatorType === "agent") {
-    return `Agent tool:${decision.initiatorToolCallId ?? "unknown"} (session:${decision.initiatorSessionId ?? "unknown"})`;
+    return "WiseEff Agent";
   }
   if (decision.reviewerUserId) {
     return userNames.get(decision.reviewerUserId) ?? decision.reviewerUserId;
@@ -870,7 +872,7 @@ function reviewDecisionExecutionLabel(
 
 function preserveTrustedWorkflowExecutors(
   trail: Awaited<ReturnType<typeof buildSubmissionWorkflowTrail>>,
-  decisions: Awaited<ReturnType<typeof listReviewDecisions>>,
+  decisions: Awaited<ReturnType<typeof listReviewDecisionsInternal>>,
   userNames: Map<string, string>,
 ) {
   return trail.map((stage) => {
@@ -1872,7 +1874,7 @@ export async function submitParameterChanges(
         projectName: project?.name,
         roundId: round.id,
         itemCount: items.length,
-        submitterName: trustedExecutionLabel(submissionContext.invocation),
+        submitterName: trustedPublicExecutionLabel(submissionContext.invocation),
         reviewerUserIds: [workflowAssignees.hardwareCommitterId]
       });
     }
@@ -1917,7 +1919,7 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
 
   const requestIds = [...new Set(rounds.flatMap((round) => round.items.map((item) => item.requestId)))];
   const [decisions, workflowStates] = await Promise.all([
-    listReviewDecisionsForRequestIds(db, { organizationId, requestIds }),
+    listReviewDecisionsForRequestIdsInternal(db, { organizationId, requestIds }),
     listChangeRequestWorkflowStateByIds(db, { organizationId, requestIds })
   ]);
 
@@ -2272,9 +2274,9 @@ export async function reviewChange(
         requestId: input.requestId
       });
     }
-    let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisions>> = [];
+    let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisionsInternal>> = [];
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
-      reviewDecisions = await listReviewDecisions(tx, {
+      reviewDecisions = await listReviewDecisionsInternal(tx, {
         organizationId: auth.organization.id,
         requestId: input.requestId
       });
@@ -2287,7 +2289,7 @@ export async function reviewChange(
         );
       }
     } else {
-      reviewDecisions = await listReviewDecisions(tx, {
+      reviewDecisions = await listReviewDecisionsInternal(tx, {
         organizationId: auth.organization.id,
         requestId: input.requestId
       });
@@ -2315,13 +2317,13 @@ export async function reviewChange(
         : mergeInvocation.initiator === "agent"
           ? {
               role: "Agent 合入执行",
-              name: `tool:${mergeInvocation.toolCallId}`,
+              name: "WiseEff Agent",
               action: "合入参数",
               note: mergeLink
             }
           : {
               role: "System 合入执行",
-              name: `${mergeInvocation.identity.kind}:${mergeInvocation.identity.name}`,
+              name: `WiseEff System ${mergeInvocation.identity.kind}`,
               action: "合入参数",
               note: mergeLink
             }
@@ -2524,8 +2526,7 @@ export async function reviewChange(
         requestId: input.requestId,
         parameterName: request.title,
         submitterUserId: request.submitterUserId ?? null,
-        mergerName: trustedExecutionLabel(trustedMergeContext.invocation),
-        execution: attribution,
+        execution: trustedMergeContext.invocation,
         reviewerUserIds: mergeRecipientUserIds
       });
     }

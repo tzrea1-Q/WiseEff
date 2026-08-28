@@ -387,6 +387,7 @@ export async function createBindingDraft(
       }, "typed binding draft")
     : undefined;
   const attribution = trustedContext ? trustedDomainAttribution(trustedContext.invocation) : undefined;
+  const accountableUserId = attribution ? attribution.userId : auth.user.id;
   const draftOwner = attribution
     ? {
         owner: {
@@ -529,6 +530,33 @@ export async function createBindingDraft(
     nodeLocator: binding.node_locator,
   });
 
+  if (trustedContext) {
+    const sourceFileName = writeTarget.fileName?.trim();
+    const sourceFileVersionId = writeTarget.fileVersionId?.trim();
+    const nodePath = (binding.node_locator ?? writeTarget.nodeLocator)?.trim();
+    if (!sourceFileName || !sourceFileVersionId || !nodePath) {
+      throw new ApiError("CONFLICT", "Typed binding draft is missing an exact sensitive-node source identity.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: binding.project_id,
+        bindingId: binding.binding_id,
+        sourceFileName: sourceFileName ?? null,
+        sourceFileVersionId: sourceFileVersionId ?? null,
+        nodePath: nodePath ?? null,
+      });
+    }
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+      organizationId: auth.organization.id,
+      projectId: binding.project_id,
+      nodePath,
+      sourcePath: { kind: "node-locator", value: nodePath },
+      sourceFileName,
+      sourceFileVersionId,
+      invocation: trustedContext.invocation,
+      requestId: trustedContext.requestId,
+      refusalSink: trustedContext.refusalSink,
+    });
+  }
+
   const memberContents = new Map<string, string>();
   for (const member of members) {
     try {
@@ -602,7 +630,7 @@ export async function createBindingDraft(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      attribution?.userId ?? auth.user.id,
+      accountableUserId,
       attribution?.initiatorType ?? "user",
       attribution?.systemKind ?? null,
       attribution?.systemName ?? null,
@@ -875,7 +903,7 @@ export async function createBindingDraft(
         organizationId: auth.organization.id,
         projectId: binding.project_id,
         parameterId: draftParameterId,
-        userId: attribution?.userId ?? auth.user.id,
+        userId: accountableUserId,
         attribution,
         targetValue: rawText,
         reason: input.reason,

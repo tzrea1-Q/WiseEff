@@ -206,6 +206,11 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             projectId,
             nodePath: node.nodeLocator,
             compatible: node.compatible,
+            // The logical-node compatible token was read from the exact,
+            // server-selected binding-head revision above. It is not a
+            // client-supplied compatible override and must remain the
+            // authoritative source for this preflight.
+            compatibleIsAuthoritative: true,
             invocation,
             requestId: context.requestId,
             refusalSink

@@ -27,6 +27,11 @@ import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";
+import {
+  trustedDomainAttributionFromRow,
+  trustedPublicExecutionLabelFromAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 
 type ParameterRow = {
   id: string;
@@ -100,18 +105,12 @@ type ProjectParameterValueMatchRow = {
   current_value: string;
 };
 
-type ParameterHistoryRow = {
+type ParameterHistoryRow = TrustedInvocationDomainAttributionRow & {
   version: number | string;
   value: string;
   changed_at: string | Date;
   changed_by: string | null;
   request_id: string | null;
-  initiator_type?: "user" | "agent" | "system" | null;
-  initiator_system_kind?: "service" | "job" | null;
-  initiator_system_name?: string | null;
-  initiator_session_id?: string | null;
-  initiator_tool_call_id?: string | null;
-  initiator_approval_id?: string | null;
 };
 
 export type ListParametersQuery = {
@@ -170,11 +169,11 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
 }
 
 function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
-  const changedBy = row.initiator_type === "system"
-    ? `System ${row.initiator_system_kind ?? "service"}:${row.initiator_system_name ?? "unknown"}`
-    : row.initiator_type === "agent"
-      ? `Agent ${row.changed_by ?? "principal"} (tool:${row.initiator_tool_call_id ?? "unknown"}, session:${row.initiator_session_id ?? "unknown"})`
-      : row.changed_by ?? "";
+  const attribution = trustedDomainAttributionFromRow(row, row.changed_by);
+  const changedBy = trustedPublicExecutionLabelFromAttribution(
+    attribution,
+    row.changed_by ?? ""
+  );
   return {
     version: String(row.version),
     value: row.value,

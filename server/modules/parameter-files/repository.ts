@@ -8,6 +8,11 @@ import type {
   ProjectParameterFileDto,
   ProjectParameterFileVersionDto
 } from "./types";
+import {
+  trustedDomainAttributionFromRow,
+  trustedPublicExecutionLabelFromAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 
 type ProjectParameterFileRow = {
   id: string;
@@ -23,7 +28,7 @@ type ProjectParameterFileRow = {
   current_version_number?: number | string | null;
 };
 
-type ProjectParameterFileVersionRow = {
+type ProjectParameterFileVersionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   file_id: string;
   version_number: number | string;
@@ -33,12 +38,6 @@ type ProjectParameterFileVersionRow = {
   parsed_index: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   created_by_user_id: string | null;
-  initiator_type: "user" | "agent" | "system";
-  initiator_system_kind: "service" | "job" | null;
-  initiator_system_name: string | null;
-  initiator_session_id: string | null;
-  initiator_tool_call_id: string | null;
-  initiator_approval_id: string | null;
   created_at: string | Date;
   created_by_display_name?: string | null;
 };
@@ -63,11 +62,11 @@ function toFileDto(row: ProjectParameterFileRow): ProjectParameterFileDto {
 }
 
 function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFileVersionDto {
-  const executionDisplayName = row.initiator_type === "system"
-    ? `System ${row.initiator_system_kind ?? "service"}:${row.initiator_system_name ?? "unknown"}`
-    : row.initiator_type === "agent"
-      ? `Agent tool:${row.initiator_tool_call_id ?? "unknown"} (session:${row.initiator_session_id ?? "unknown"})`
-      : undefined;
+  const attribution = trustedDomainAttributionFromRow(row, row.created_by_user_id);
+  const executionDisplayName = trustedPublicExecutionLabelFromAttribution(
+    attribution,
+    row.created_by_display_name ?? ""
+  ) || undefined;
   return {
     id: row.id,
     fileId: row.file_id,
@@ -79,17 +78,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
     createdByUserId: row.created_by_user_id ?? undefined,
-    createdByDisplayName: row.created_by_display_name ?? executionDisplayName,
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {})
+    createdByDisplayName: executionDisplayName,
   };
 }
 

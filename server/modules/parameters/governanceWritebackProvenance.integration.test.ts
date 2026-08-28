@@ -346,7 +346,7 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
             }, { invocation, requestId, refusalSink })
           ).rejects.toMatchObject({
             code: "FORBIDDEN",
-            message: "Missing permission: parameter:edit-critical."
+            message: "Critical sensitive-node submissions require a user-initiated invocation."
           });
           expect(await state()).toEqual(before);
           expect(put).not.toHaveBeenCalled();
@@ -357,7 +357,7 @@ describe.skipIf(!databaseAvailable)("#614 missing and malformed provenance matri
               `select count(*)::text as count from audit_events where kind = 'parameter-sensitive-node-denied'`
             )
           ).rows[0]?.count
-        ).toBe(refusalCountBeforeIncapable);
+        ).toBe(String(Number(refusalCountBeforeIncapable ?? "0") + 2));
 
         await root.transaction((tx) =>
           writebackMergedParameterValue(asAuditTx(tx), objectStore as never, auth, {

@@ -1,5 +1,8 @@
 import type { Queryable } from "../../shared/database/client";
-import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import {
+  trustedPublicExecutionLabel,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
 import { notifyUsers } from "./service";
 
 function reviewQueueUrl(projectId: string) {
@@ -175,20 +178,20 @@ export async function notifyParameterMergeCompleted(
     requestId: string;
     parameterName: string;
     submitterUserId: string | null;
-    mergerName: string;
     reviewerUserIds: string[];
-    /** Derived once from the trusted merge invocation; never reconstructed from AuthContext. */
-    execution?: TrustedInvocationDomainAttribution;
+    /** The one trusted invocation used for domain, audit, and notification projection. */
+    execution: TrustedInvocationContext;
   }
 ) {
   const projectLabel = input.projectName?.trim() || input.projectId;
   const recipients = uniqueRecipients([input.submitterUserId ?? "", ...input.reviewerUserIds]);
+  const displayMergerName = trustedPublicExecutionLabel(input.execution);
   await notifyUsers(db, {
     organizationId: input.organizationId,
     recipientUserIds: recipients,
     category: "parameter.merge.completed",
     title: `参数已合入 · ${input.parameterName}`,
-    body: `${input.mergerName} 已将 ${projectLabel} 的参数变更合入基线。`,
+    body: `${displayMergerName} 已将 ${projectLabel} 的参数变更合入基线。`,
     severity: "success",
     actionUrl: parameterAdminUrl(input.projectId),
     sourceKind: "parameter-change-request",
@@ -196,17 +199,9 @@ export async function notifyParameterMergeCompleted(
     metadata: {
       projectId: input.projectId,
       parameterName: input.parameterName,
-      mergerName: input.mergerName,
-      ...(input.execution
-        ? {
-            initiatorType: input.execution.initiatorType,
-            initiatorSystemKind: input.execution.systemKind,
-            initiatorSystemName: input.execution.systemName,
-            initiatorSessionId: input.execution.sessionId,
-            initiatorToolCallId: input.execution.toolCallId,
-            initiatorApprovalId: input.execution.approvalId,
-          }
-        : {})
+      mergerName: displayMergerName,
+      initiatorType: input.execution.initiator,
+      executionLabel: displayMergerName,
     }
   });
 }

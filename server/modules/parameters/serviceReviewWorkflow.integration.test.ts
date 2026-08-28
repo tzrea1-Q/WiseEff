@@ -1137,7 +1137,7 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
             workflowTrail: expect.arrayContaining([
               expect.objectContaining({
                 key: "software_merge",
-                executorName: "Agent tool:tool-merge-trail-agent (session:session-merge-trail-agent)",
+                executorName: "WiseEff Agent",
                 executorLabel: "执行人",
               }),
             ]),
@@ -1241,7 +1241,7 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         }]);
         await expect(listParameterHistory(db, { organizationId: ORG, parameterId: PPV_HIGH })).resolves.toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ changedBy: "System job:system-merge-job" })
+            expect.objectContaining({ changedBy: "WiseEff System job" })
           ])
         );
         const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
@@ -1251,12 +1251,16 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         );
         expect(notifications.rows.length).toBeGreaterThan(0);
         expect(notifications.rows.every((row) =>
-          row.body.includes("System job:system-merge-job") &&
+          row.body.includes("WiseEff System job") &&
+          !row.body.includes("system-merge-job") &&
           !row.body.includes(auth.user.name) &&
-          row.metadata.mergerName === "System job:system-merge-job" &&
+          row.metadata.mergerName === "WiseEff System job" &&
           row.metadata.initiatorType === "system" &&
-          row.metadata.initiatorSystemKind === "job" &&
-          row.metadata.initiatorSystemName === "system-merge-job"
+          row.metadata.executionLabel === "WiseEff System job" &&
+          !row.metadata.initiatorSystemName &&
+          !row.metadata.initiatorSessionId &&
+          !row.metadata.initiatorToolCallId &&
+          !row.metadata.initiatorApprovalId
         )).toBe(true);
         const roundView = await listSubmissionRounds(db, auth, { projectId: PROJECT });
         expect(roundView).toEqual(expect.arrayContaining([
@@ -1264,7 +1268,7 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
             workflowTrail: expect.arrayContaining([
               expect.objectContaining({
                 key: "software_merge",
-                executorName: "System job:system-merge-job",
+                executorName: "WiseEff System job",
                 executorLabel: "执行人",
                 state: "active"
               })
@@ -1360,11 +1364,16 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         );
         expect(notifications.rows.length).toBeGreaterThan(0);
         expect(notifications.rows.every((row) =>
-          row.body.includes("System service:system-no-match-service") &&
+          row.body.includes("WiseEff System service") &&
+          !row.body.includes("system-no-match-service") &&
           !row.body.includes(auth.user.name) &&
-          row.metadata.mergerName === "System service:system-no-match-service" &&
+          row.metadata.mergerName === "WiseEff System service" &&
           row.metadata.initiatorType === "system" &&
-          row.metadata.initiatorSystemName === "system-no-match-service",
+          row.metadata.executionLabel === "WiseEff System service" &&
+          !row.metadata.initiatorSystemName &&
+          !row.metadata.initiatorSessionId &&
+          !row.metadata.initiatorToolCallId &&
+          !row.metadata.initiatorApprovalId,
         )).toBe(true);
 
         const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(

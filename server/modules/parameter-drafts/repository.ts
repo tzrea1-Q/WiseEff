@@ -5,7 +5,11 @@
  */
 
 import type { Queryable } from "../../shared/database/client";
-import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import {
+  trustedDomainAttributionFromRow,
+  type TrustedInvocationDomainAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction, ParameterDraftDto } from "./types";
 import { upsertSemanticDraft } from "./semanticDraftUpsert";
 // Identity mode lives in the parameter kernel (ADR-0029); this is the
@@ -152,7 +156,7 @@ export type BindingDraftForSubmission = {
   writeLock: BindingWriteLockFields | null;
   writeLockMatchesBinding: boolean;
   draftOwnerUserId: string | null;
-  draftOwnerInitiatorType: "user" | "agent" | "system";
+  draftOwnerInitiatorType: "user" | "agent" | "system" | "legacy";
   draftOwnerSystemKind: "service" | "job" | null;
   draftOwnerSystemName: string | null;
   ownerMatches: boolean;
@@ -182,7 +186,7 @@ export async function getBindingDraftForSubmission(
       candidate_action_proven: boolean;
       write_lock_matches_binding: boolean;
       draft_owner_user_id: string | null;
-      draft_owner_initiator_type: "user" | "agent" | "system";
+      draft_owner_initiator_type: "user" | "agent" | "system" | "legacy";
       draft_owner_system_kind: "service" | "job" | null;
       draft_owner_system_name: string | null;
       target_value: string;
@@ -367,7 +371,7 @@ export type EnablementDraftForSubmission = {
   writeLock: EnablementWriteLockFields | null;
   writeLockMatchesRevision: boolean;
   draftOwnerUserId: string | null;
-  draftOwnerInitiatorType: "user" | "agent" | "system";
+  draftOwnerInitiatorType: "user" | "agent" | "system" | "legacy";
   draftOwnerSystemKind: "service" | "job" | null;
   draftOwnerSystemName: string | null;
   ownerMatches: boolean;
@@ -400,7 +404,7 @@ export async function getEnablementDraftForSubmission(
       candidate_action_proven: boolean;
       write_lock_matches_revision: boolean;
       draft_owner_user_id: string | null;
-      draft_owner_initiator_type: "user" | "agent" | "system";
+      draft_owner_initiator_type: "user" | "agent" | "system" | "legacy";
       draft_owner_system_kind: "service" | "job" | null;
       draft_owner_system_name: string | null;
       target_value: string;
@@ -640,7 +644,7 @@ export async function getChangeRequestEnablementWriteLock(
   return row ? toEnablementWriteLockFields(row) : null;
 }
 
-type DraftRow = {
+type DraftRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   project_id: string;
   project_parameter_value_id: string | null;
@@ -659,12 +663,6 @@ type DraftRow = {
   base_raw_value?: string | null;
   property_name?: string | null;
   driver_module?: string | null;
-  initiator_type?: "user" | "agent" | "system";
-  initiator_system_kind?: "service" | "job" | null;
-  initiator_system_name?: string | null;
-  initiator_session_id?: string | null;
-  initiator_tool_call_id?: string | null;
-  initiator_approval_id?: string | null;
 };
 
 export type ParameterDraftWithOrigin = {
@@ -678,7 +676,7 @@ export type ParameterDraftWithOrigin = {
   origin: "manual" | "file_sync";
   originFileVersionId?: string;
   updatedAt: string;
-  initiatorType?: "user" | "agent" | "system";
+  initiatorType?: "user" | "agent" | "system" | "legacy";
   initiatorSystemKind?: "service" | "job";
   initiatorSystemName?: string;
   initiatorSessionId?: string;
@@ -718,16 +716,6 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     ...(name ? { name } : {}),
     ...(module ? { module } : {}),
     ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {}),
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {})
   };
 }
 
@@ -737,6 +725,7 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
       draftId: row.id,
     });
   }
+  const attribution = trustedDomainAttributionFromRow(row, row.user_id);
   return {
     id: row.id,
     userId: row.user_id ?? null,
@@ -747,14 +736,14 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
     origin: row.origin ?? "manual",
     originFileVersionId: row.origin_file_version_id ?? undefined,
     updatedAt: dateTimeToIso(row.updated_at),
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
+    ...((attribution.initiatorType === "agent" || attribution.initiatorType === "system")
       ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
+          initiatorType: attribution.initiatorType,
+          initiatorSystemKind: attribution.systemKind ?? undefined,
+          initiatorSystemName: attribution.systemName ?? undefined,
+          initiatorSessionId: attribution.sessionId ?? undefined,
+          initiatorToolCallId: attribution.toolCallId ?? undefined,
+          initiatorApprovalId: attribution.approvalId ?? undefined,
         }
       : {})
   };

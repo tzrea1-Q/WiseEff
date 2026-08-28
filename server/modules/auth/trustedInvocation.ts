@@ -57,6 +57,30 @@ export type TrustedInvocationDomainAttribution = Readonly<{
   approvalId: string | null;
 }>;
 
+/**
+ * Shared shape for an internal SQL row projection.  Public DTOs must never
+ * use this type: the correlation fields are durable evidence for policy,
+ * audit, and transaction code only.
+ */
+export type TrustedInvocationDomainAttributionRow = Readonly<{
+  initiator_type?: TrustedInvocationContext["initiator"] | "legacy" | null;
+  initiator_system_kind?: SystemInvocationInput["kind"] | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
+}>;
+
+export type PersistedInvocationDomainAttribution = Readonly<{
+  userId: string | null;
+  initiatorType: TrustedInvocationContext["initiator"] | "legacy";
+  systemKind: SystemInvocationInput["kind"] | null;
+  systemName: string | null;
+  sessionId: string | null;
+  toolCallId: string | null;
+  approvalId: string | null;
+}>;
+
 const backendRoleIds = new Set<string>(BACKEND_ROLE_IDS);
 const backendPermissions = new Set<string>(BACKEND_PERMISSIONS);
 
@@ -274,6 +298,18 @@ export function assertTrustedInvocationMatchesAuth(
   return invocation;
 }
 
+/** Mutating #614 seams require complete Agent correlation, including approval. */
+export function assertTrustedMutationInvocation(
+  value: TrustedInvocationContext,
+  operation = "trusted mutation"
+): TrustedInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "agent" && (!invocation.approvalId || invocation.approvalId.trim().length === 0)) {
+    throw new TrustedInvocationContextError(`${operation} Agent invocation requires a non-empty approvalId`);
+  }
+  return invocation;
+}
+
 /** Accountable authorization principal for domain rows; System has no user principal. */
 export function trustedAccountableUser(value: TrustedInvocationContext): AuthContext["user"] | null {
   const invocation = assertTrustedInvocationContext(value);
@@ -316,10 +352,59 @@ export function trustedDomainAttribution(value: TrustedInvocationContext): Trust
   };
 }
 
+/** Convert one internal SQL projection into a durable-domain attribution. */
+export function trustedDomainAttributionFromRow(
+  row: TrustedInvocationDomainAttributionRow,
+  userId: string | null | undefined
+): PersistedInvocationDomainAttribution {
+  return {
+    userId: userId ?? null,
+    initiatorType: row.initiator_type ?? "legacy",
+    systemKind: row.initiator_system_kind ?? null,
+    systemName: row.initiator_system_name ?? null,
+    sessionId: row.initiator_session_id ?? null,
+    toolCallId: row.initiator_tool_call_id ?? null,
+    approvalId: row.initiator_approval_id ?? null,
+  };
+}
+
 /** Truthful, user-visible executor label derived from the same trusted invocation. */
 export function trustedExecutionLabel(value: TrustedInvocationContext): string {
   const invocation = assertTrustedInvocationContext(value);
   if (invocation.initiator === "user") return invocation.principal.user.name;
   if (invocation.initiator === "agent") return `Agent tool:${invocation.toolCallId} (session:${invocation.sessionId})`;
   return `System ${invocation.identity.kind}:${invocation.identity.name}`;
+}
+
+/**
+ * Stable public display projection.  Internal correlation and System names
+ * remain available only through the trusted domain/audit projection.
+ */
+export function trustedPublicExecutionLabel(value: TrustedInvocationContext): string {
+  const invocation = assertTrustedInvocationContext(value);
+  return trustedPublicExecutionLabelFromAttribution(
+    trustedDomainAttribution(invocation),
+    invocation.initiator === "user" ? invocation.principal.user.name : ""
+  );
+}
+
+/**
+ * Public display projection for an already persisted attribution row.  This
+ * deliberately accepts only the discriminant and System kind: correlation
+ * ids and System names never cross the public DTO/notification boundary.
+ */
+export function trustedPublicExecutionLabelFromAttribution(
+  attribution:
+    | {
+        initiatorType: TrustedInvocationDomainAttribution["initiatorType"] | "legacy";
+        systemKind: TrustedInvocationDomainAttribution["systemKind"];
+      }
+    | undefined,
+  userFallback = ""
+): string {
+  if (!attribution || attribution.initiatorType === "user" || attribution.initiatorType === "legacy") {
+    return userFallback;
+  }
+  if (attribution.initiatorType === "agent") return "WiseEff Agent";
+  return `WiseEff System ${attribution.systemKind ?? "service"}`;
 }

@@ -222,6 +222,9 @@ export function registerParameterTopologyRoutes(
     requireCanEdit(auth);
     const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
     const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
+    if (!refusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
+    }
     const item = await createBindingDraft(
       db,
       auth,
@@ -231,7 +234,11 @@ export function registerParameterTopologyRoutes(
         ...body
       },
       { objectStore: options.objectStore },
-      { requestId: request.requestId }
+      {
+        invocation: createUserInvocation(auth),
+        requestId: request.requestId,
+        refusalSink: refusalAuditSink
+      }
     );
     return { status: 201, body: { item } };
   });

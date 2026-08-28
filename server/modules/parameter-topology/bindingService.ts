@@ -15,7 +15,10 @@ import {
   type LogicalNodeSnapshot,
 } from "../dts/identity";
 import type { Queryable } from "../../shared/database/client";
-import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import type {
+  TrustedInvocationDomainAttribution,
+  TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import { ApiError } from "../../shared/http/errors";
 import { updateConfigRevisionStatus } from "./repository";
 import type { ConfigRevisionStatus } from "./types";
@@ -61,12 +64,6 @@ export type ProjectParameterBindingRevision = {
   schemaState?: string;
   policyState?: string;
   createdAt: string;
-  initiatorType?: "user" | "agent" | "system";
-  initiatorSystemKind?: "service" | "job";
-  initiatorSystemName?: string;
-  initiatorSessionId?: string;
-  initiatorToolCallId?: string;
-  initiatorApprovalId?: string;
 };
 
 export type IdentityMappingTask = {
@@ -164,7 +161,7 @@ type BindingRow = {
   created_at: string | Date;
 };
 
-type BindingRevisionRow = {
+type BindingRevisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   binding_id: string;
   config_revision_id: string;
@@ -174,12 +171,6 @@ type BindingRevisionRow = {
   raw_value: string | null;
   schema_state: string | null;
   policy_state: string | null;
-  initiator_type?: "user" | "agent" | "system";
-  initiator_system_kind?: "service" | "job" | null;
-  initiator_system_name?: string | null;
-  initiator_session_id?: string | null;
-  initiator_tool_call_id?: string | null;
-  initiator_approval_id?: string | null;
   created_at: string | Date;
 };
 
@@ -227,16 +218,6 @@ function toBindingRevision(row: BindingRevisionRow): ProjectParameterBindingRevi
     schemaState: row.schema_state ?? undefined,
     policyState: row.policy_state ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {}),
   };
 }
 

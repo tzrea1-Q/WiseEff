@@ -3,6 +3,7 @@ import { createAuditEvent } from "../audit/repository";
 import { writeRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import {
+  assertTrustedMutationInvocation,
   assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type TrustedInvocationContext
@@ -18,7 +19,6 @@ export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
 export type SensitiveWriteActorType = "user" | "agent" | "system";
 export const PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE = "parameter-sensitive-node-human-required" as const;
-export const PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE = "parameter-accountable-user-required" as const;
 export const PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE =
   "parameter-sensitive-node-identity-mismatch" as const;
 
@@ -328,6 +328,13 @@ async function resolveTrustedSensitiveNodeMatch(
       });
     }
   }
+  if (!input.compatibleIsAuthoritative && input.compatible !== undefined && !sourceFileName && !sourceFileVersionId) {
+    throw new ApiError("CONFLICT", "Trusted sensitive-node writes cannot accept caller-supplied compatible values.", {
+      code: "parameter-sensitive-source-version-mismatch",
+      projectId: input.projectId,
+      nodePath,
+    });
+  }
   // A source file/version held by a server-side lock is the only compatible
   // authority for writeback.  Ignore any caller-supplied compatible value and
   // resolve it from that exact persisted version; only topology revision
@@ -337,7 +344,10 @@ async function resolveTrustedSensitiveNodeMatch(
       organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
-      sourcePath: input.sourcePath ?? { kind: "property-path", value: nodePath },
+      // Ambiguous trusted callers must fail closed to the stricter complete
+      // locator semantics; only an explicit property-path input may resolve
+      // its owning node.
+      sourcePath: input.sourcePath ?? { kind: "node-locator", value: nodePath },
       sourceFileVersionId
     });
   }
@@ -366,6 +376,7 @@ export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiv
   }
   assertTrustedRefusalAuditSink(context.refusalSink);
   const invocation = assertTrustedInvocationMatchesAuth(auth, context.invocation, operation);
+  assertTrustedMutationInvocation(invocation, operation);
   return { ...context, invocation, requestId: context.requestId.trim() };
 }
 
@@ -397,14 +408,6 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
   const resolved = await resolveTrustedSensitiveNodeMatch(db, input);
   if (!resolved) return;
   const { matched, nodePath } = resolved;
-
-  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
-    throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
-      riskTier: matched.riskTier,
-      nodePath,
-      requiredCapability: matched.requiredCapability
-    });
-  }
 
   if (matched.riskTier === "critical" && invocation.initiator !== "user") {
     await input.refusalSink.write({
@@ -438,45 +441,14 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     });
   }
 
-}
+  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
+    throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
+      riskTier: matched.riskTier,
+      nodePath,
+      requiredCapability: matched.requiredCapability
+    });
+  }
 
-/** Fail closed when a legacy user-owned domain row cannot truthfully represent System. */
-export async function requireTrustedAccountableUser(
-  auth: AuthContext,
-  input: TrustedSensitiveNodeWriteContext & {
-    organizationId: string;
-    projectId: string;
-    operation: string;
-    targetType: string;
-    targetId: string;
-  }
-): Promise<AuthContext["user"]> {
-  const trusted = assertTrustedSensitiveNodeWriteContext(auth, input, input.operation);
-  if (trusted.invocation.initiator !== "system") {
-    return trusted.invocation.principal.user;
-  }
-  await trusted.refusalSink.write({
-    invocation: trusted.invocation,
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    app: "parameter-management",
-    kind: "parameter-accountable-user-denied",
-    action: "deny",
-    severity: "High",
-    targetType: input.targetType,
-    targetId: input.targetId,
-    metadata: {
-      code: PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE,
-      operation: input.operation,
-      reason: "user-owned-domain-record"
-    },
-    traceId: trusted.requestId
-  });
-  throw new ApiError("FORBIDDEN", "This workflow requires an accountable user principal.", {
-    code: PARAMETER_ACCOUNTABLE_USER_REQUIRED_CODE,
-    initiator: "system",
-    operation: input.operation
-  });
 }
 
 /** #613 compatibility name; #615 owns final legacy API cleanup. */

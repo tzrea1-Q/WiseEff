@@ -7,7 +7,10 @@ import {
   createSystemInvocation,
   createUserInvocation,
   trustedAccountableUser,
+  trustedDomainAttributionFromRow,
   trustedExecutionLabel,
+  trustedPublicExecutionLabel,
+  assertTrustedMutationInvocation,
   TrustedInvocationContextError
 } from "./trustedInvocation";
 
@@ -89,6 +92,55 @@ describe("trusted invocation context", () => {
     expect(trustedAccountableUser(context)?.id).toBe("user-1");
     expect(trustedExecutionLabel(context)).toBe("Agent tool:tool-accountable (session:session-accountable)");
     expect(trustedExecutionLabel(context)).not.toContain(auth().user.name);
+  });
+
+  it("projects public execution labels without internal correlation", () => {
+    const agent = createAgentInvocation(auth(), {
+      sessionId: "public-session",
+      toolCallId: "public-tool",
+      approval: { required: true, approvalId: "public-approval" }
+    });
+    const system = createSystemInvocation({ kind: "service", name: "private-service-name" });
+    expect(trustedPublicExecutionLabel(createUserInvocation(auth()))).toBe("Riley Chen");
+    expect(trustedPublicExecutionLabel(agent)).toBe("WiseEff Agent");
+    expect(trustedPublicExecutionLabel(system)).toBe("WiseEff System service");
+    expect(trustedPublicExecutionLabel(agent)).not.toContain("public-session");
+    expect(trustedPublicExecutionLabel(system)).not.toContain("private-service-name");
+  });
+
+  it("uses the shared SQL-row projection for durable attribution", () => {
+    expect(
+      trustedDomainAttributionFromRow(
+        {
+          initiator_type: "system",
+          initiator_system_kind: "job",
+          initiator_system_name: "private-job",
+          initiator_session_id: null,
+          initiator_tool_call_id: null,
+          initiator_approval_id: null
+        },
+        null
+      )
+    ).toEqual({
+      userId: null,
+      initiatorType: "system",
+      systemKind: "job",
+      systemName: "private-job",
+      sessionId: null,
+      toolCallId: null,
+      approvalId: null
+    });
+  });
+
+  it("requires approval correlation at trusted mutation boundaries", () => {
+    const readOnlyAgent = createAgentInvocation(auth(), {
+      sessionId: "read-session",
+      toolCallId: "read-tool",
+      approval: { required: false }
+    });
+    expect(() => assertTrustedMutationInvocation(readOnlyAgent, "parameter write")).toThrow(
+      TrustedInvocationContextError
+    );
   });
 
   it("rejects malformed, anonymous, and incomplete provenance", () => {

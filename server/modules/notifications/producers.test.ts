@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
 import * as service from "./service";
-import { createSystemInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
+import { createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import {
   notifyDebugNodeReadbackFailed,
   notifyDebugSnapshotRollback,
@@ -13,6 +13,20 @@ import {
 } from "./producers";
 
 describe("notification producers", () => {
+  const userInvocation = createUserInvocation({
+    user: {
+      id: "u-merger",
+      organizationId: "org-1",
+      name: "Merger",
+      email: "merger@example.com",
+      title: "Engineer",
+      isActive: true
+    },
+    organization: { id: "org-1", name: "ChargeLab" },
+    roles: [],
+    permissions: []
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -28,8 +42,8 @@ describe("notification producers", () => {
       requestId: "req-1",
       parameterName: "cpu.freq",
       submitterUserId: "u-submitter",
-      mergerName: "Merger",
-      reviewerUserIds: ["u-reviewer-1", "u-reviewer-1"]
+      reviewerUserIds: ["u-reviewer-1", "u-reviewer-1"],
+      execution: userInvocation
     });
 
     expect(notifyUsers).toHaveBeenCalledWith(
@@ -44,9 +58,6 @@ describe("notification producers", () => {
   it("keeps a System merge notification free of user attribution", async () => {
     const notifyUsers = vi.spyOn(service, "notifyUsers").mockResolvedValue(undefined);
     const db = {} as Queryable;
-    const execution = trustedDomainAttribution(
-      createSystemInvocation({ kind: "job", name: "parameter-merge-job" }),
-    );
 
     await notifyParameterMergeCompleted(db, {
       organizationId: "org-1",
@@ -54,24 +65,51 @@ describe("notification producers", () => {
       requestId: "req-system-1",
       parameterName: "cpu.freq",
       submitterUserId: null,
-      mergerName: "System job:parameter-merge-job",
       reviewerUserIds: ["u-reviewer-1"],
-      execution,
+      execution: createSystemInvocation({ kind: "job", name: "parameter-merge-job" }),
     });
 
     expect(notifyUsers).toHaveBeenCalledWith(
       db,
       expect.objectContaining({
         recipientUserIds: ["u-reviewer-1"],
-        body: "System job:parameter-merge-job 已将 aurora 的参数变更合入基线。",
+        body: "WiseEff System job 已将 aurora 的参数变更合入基线。",
         metadata: expect.objectContaining({
-          mergerName: "System job:parameter-merge-job",
+          mergerName: "WiseEff System job",
           initiatorType: "system",
-          initiatorSystemKind: "job",
-          initiatorSystemName: "parameter-merge-job",
+          executionLabel: "WiseEff System job",
         }),
       }),
     );
+    const payload = notifyUsers.mock.calls[0]?.[1];
+    expect(payload?.body).not.toContain("parameter-merge-job");
+    expect(payload?.metadata).not.toHaveProperty("initiatorSystemName");
+    expect(payload?.metadata).not.toHaveProperty("initiatorSessionId");
+    expect(payload?.metadata).not.toHaveProperty("initiatorToolCallId");
+    expect(payload?.metadata).not.toHaveProperty("initiatorApprovalId");
+  });
+
+  it("keeps merge notifications free of internal trusted correlation", async () => {
+    const notifyUsers = vi.spyOn(service, "notifyUsers").mockResolvedValue(undefined);
+    const db = {} as Queryable;
+
+    await notifyParameterMergeCompleted(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      requestId: "req-red-public-projection",
+      parameterName: "cpu.freq",
+      submitterUserId: null,
+      reviewerUserIds: ["u-reviewer-1"],
+      execution: createSystemInvocation({ kind: "job", name: "internal-red-system-name" }),
+    });
+
+    const payload = notifyUsers.mock.calls[0]?.[1];
+    expect(payload?.body).not.toContain("internal-red-system-name");
+    expect(payload?.body).not.toContain("session-red-public-projection");
+    expect(payload?.metadata).not.toHaveProperty("initiatorSessionId");
+    expect(payload?.metadata).not.toHaveProperty("initiatorToolCallId");
+    expect(payload?.metadata).not.toHaveProperty("initiatorApprovalId");
+    expect(payload?.metadata).not.toHaveProperty("initiatorSystemName");
   });
 
   it("notifies log analysis terminal states", async () => {

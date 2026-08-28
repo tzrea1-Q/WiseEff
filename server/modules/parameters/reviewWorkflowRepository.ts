@@ -1,5 +1,9 @@
 import type { Queryable } from "../../shared/database/client";
-import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import {
+  trustedDomainAttributionFromRow,
+  type TrustedInvocationDomainAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import type {
   ChangeRequestDto,
   ParameterSubmissionItemDto,
@@ -95,13 +99,13 @@ type ChangeRequestRow = {
   source_node_path?: string | null;
 };
 
-/** Render a persisted initiator without ever substituting the auth user. */
+/** Render a persisted initiator for public workflow DTOs without leaking correlation. */
 const TRUSTED_SUBMITTER_LABEL = (rowAlias: string, userAlias: string) => `
       case
         when ${rowAlias}.initiator_type = 'system' then
-          concat('System ', ${rowAlias}.initiator_system_kind, ':', ${rowAlias}.initiator_system_name)
+          concat('WiseEff System ', coalesce(${rowAlias}.initiator_system_kind, 'service'))
         when ${rowAlias}.initiator_type = 'agent' then
-          concat('Agent tool:', ${rowAlias}.initiator_tool_call_id, ' (session:', ${rowAlias}.initiator_session_id, ')')
+          'WiseEff Agent'
         else ${userAlias}.name
       end`;
 
@@ -228,12 +232,6 @@ export type ReviewDecisionDto = {
   id: string;
   requestId: string;
   reviewerUserId: string | null;
-  initiatorType?: "user" | "agent" | "system";
-  initiatorSystemKind?: "service" | "job";
-  initiatorSystemName?: string;
-  initiatorSessionId?: string;
-  initiatorToolCallId?: string;
-  initiatorApprovalId?: string;
   decision: ParameterReviewDecision;
   fromStatus: ParameterChangeRequestStatus;
   toStatus: ParameterChangeRequestStatus;
@@ -241,16 +239,20 @@ export type ReviewDecisionDto = {
   createdAt: string;
 };
 
-type ReviewDecisionRow = {
+/** Internal-only decision projection used by trusted workflow/audit code. */
+type ReviewDecisionInternal = ReviewDecisionDto & {
+  initiatorType: "user" | "agent" | "system" | "legacy";
+  initiatorSystemKind: "service" | "job" | null;
+  initiatorSystemName: string | null;
+  initiatorSessionId: string | null;
+  initiatorToolCallId: string | null;
+  initiatorApprovalId: string | null;
+};
+
+type ReviewDecisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   request_id: string;
   reviewer_user_id: string | null;
-  initiator_type?: "user" | "agent" | "system";
-  initiator_system_kind?: "service" | "job" | null;
-  initiator_system_name?: string | null;
-  initiator_session_id?: string | null;
-  initiator_tool_call_id?: string | null;
-  initiator_approval_id?: string | null;
   decision: ParameterReviewDecision;
   from_status: ParameterChangeRequestStatus;
   to_status: ParameterChangeRequestStatus;
@@ -460,21 +462,24 @@ function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
     id: row.id,
     requestId: row.request_id,
     reviewerUserId: row.reviewer_user_id,
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {}),
     decision: row.decision,
     fromStatus: row.from_status,
     toStatus: row.to_status,
     note: row.note ?? undefined,
     createdAt: dateTimeToIso(row.created_at)
+  };
+}
+
+function toReviewDecisionInternal(row: ReviewDecisionRow): ReviewDecisionInternal {
+  const attribution = trustedDomainAttributionFromRow(row, row.reviewer_user_id);
+  return {
+    ...toReviewDecisionDto(row),
+    initiatorType: attribution.initiatorType,
+    initiatorSystemKind: attribution.systemKind,
+    initiatorSystemName: attribution.systemName,
+    initiatorSessionId: attribution.sessionId,
+    initiatorToolCallId: attribution.toolCallId,
+    initiatorApprovalId: attribution.approvalId,
   };
 }
 
@@ -1609,6 +1614,26 @@ export async function listReviewDecisions(
   return result.rows.map(toReviewDecisionDto);
 }
 
+/** Internal trusted projection; never serialize this result as a public DTO. */
+export async function listReviewDecisionsInternal(
+  db: Queryable,
+  query: { organizationId: string; requestId: string }
+) {
+  const result = await db.query<ReviewDecisionRow>(
+    `
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
+           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
+    from parameter_review_decisions
+    where organization_id = $1
+      and request_id = $2
+    order by created_at asc, id asc
+    `,
+    [query.organizationId, query.requestId]
+  );
+  return result.rows.map(toReviewDecisionInternal);
+}
+
 export async function listReviewDecisionsForRequestIds(
   db: Queryable,
   query: { organizationId: string; requestIds: string[] }
@@ -1631,6 +1656,30 @@ export async function listReviewDecisionsForRequestIds(
   );
 
   return result.rows.map(toReviewDecisionDto);
+}
+
+/** Internal trusted projection for server-side workflow trail/audit assembly. */
+export async function listReviewDecisionsForRequestIdsInternal(
+  db: Queryable,
+  query: { organizationId: string; requestIds: string[] }
+) {
+  if (query.requestIds.length === 0) {
+    return [] as ReviewDecisionInternal[];
+  }
+
+  const result = await db.query<ReviewDecisionRow>(
+    `
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
+           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
+    from parameter_review_decisions
+    where organization_id = $1
+      and request_id = any($2::text[])
+    order by created_at asc, id asc
+    `,
+    [query.organizationId, query.requestIds]
+  );
+  return result.rows.map(toReviewDecisionInternal);
 }
 
 export async function listChangeRequestWorkflowStateByIds(
@@ -1782,9 +1831,9 @@ export async function updateChangeRequestStatus(
         candidate_config_revision_id,
         case
           when parameter_change_requests.initiator_type = 'system' then
-            concat('System ', parameter_change_requests.initiator_system_kind, ':', parameter_change_requests.initiator_system_name)
+            concat('WiseEff System ', coalesce(parameter_change_requests.initiator_system_kind, 'service'))
           when parameter_change_requests.initiator_type = 'agent' then
-            concat('Agent tool:', parameter_change_requests.initiator_tool_call_id, ' (session:', parameter_change_requests.initiator_session_id, ')')
+            'WiseEff Agent'
           else (select name from users where id = parameter_change_requests.submitter_user_id)
         end as submitter,
         status,
@@ -1839,9 +1888,9 @@ export async function updateChangeRequestStatus(
       action,
       case
         when parameter_change_requests.initiator_type = 'system' then
-          concat('System ', parameter_change_requests.initiator_system_kind, ':', parameter_change_requests.initiator_system_name)
+          concat('WiseEff System ', coalesce(parameter_change_requests.initiator_system_kind, 'service'))
         when parameter_change_requests.initiator_type = 'agent' then
-          concat('Agent tool:', parameter_change_requests.initiator_tool_call_id, ' (session:', parameter_change_requests.initiator_session_id, ')')
+          'WiseEff Agent'
         else (select name from users where id = parameter_change_requests.submitter_user_id)
       end as submitter,
       status,

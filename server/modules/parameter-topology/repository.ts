@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
-import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+import type {
+  TrustedInvocationDomainAttribution,
+  TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import {
   withEffectiveEnablement,
   withSourceEnablement,
@@ -19,7 +22,7 @@ import type {
 } from "./types";
 import type { TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
 
-type RevisionRow = {
+type RevisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   organization_id: string;
   project_id: string;
@@ -31,12 +34,6 @@ type RevisionRow = {
   overlay_order: unknown;
   manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
-  initiator_type: "user" | "agent" | "system";
-  initiator_system_kind: "service" | "job" | null;
-  initiator_system_name: string | null;
-  initiator_session_id: string | null;
-  initiator_tool_call_id: string | null;
-  initiator_approval_id: string | null;
   created_at: string | Date;
   resolved_at: string | Date | null;
 };
@@ -72,16 +69,6 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     overlayOrder: parseStringArray(row.overlay_order),
     manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
-    ...((row.initiator_type === "agent" || row.initiator_type === "system")
-      ? {
-          initiatorType: row.initiator_type,
-          initiatorSystemKind: row.initiator_system_kind ?? undefined,
-          initiatorSystemName: row.initiator_system_name ?? undefined,
-          initiatorSessionId: row.initiator_session_id ?? undefined,
-          initiatorToolCallId: row.initiator_tool_call_id ?? undefined,
-          initiatorApprovalId: row.initiator_approval_id ?? undefined,
-        }
-      : {}),
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
   };

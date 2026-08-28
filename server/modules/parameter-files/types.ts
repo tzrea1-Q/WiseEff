@@ -34,12 +34,6 @@ export type ProjectParameterFileVersionDto = {
   createdAt: string;
   createdByUserId?: string;
   createdByDisplayName?: string;
-  initiatorType?: "user" | "agent" | "system";
-  initiatorSystemKind?: "service" | "job";
-  initiatorSystemName?: string;
-  initiatorSessionId?: string;
-  initiatorToolCallId?: string;
-  initiatorApprovalId?: string;
 };
 
 export type InsertProjectParameterFileInput = {
@@ -144,12 +138,6 @@ export type ProjectParameterFileCandidateDto = {
   createdAt: string;
   updatedAt: string;
   createdByUserId?: string;
-  initiatorType?: "user" | "agent" | "system";
-  initiatorSystemKind?: "service" | "job";
-  initiatorSystemName?: string;
-  initiatorSessionId?: string;
-  initiatorToolCallId?: string;
-  initiatorApprovalId?: string;
   abandonedAt?: string;
   abandonedByUserId?: string;
   activatedAt?: string;

@@ -43,7 +43,6 @@ import {
   createBindingDraft as createBindingDraftEdit,
   createNodeEnablementDraft as createNodeEnablementDraftEdit,
   type BindingDraftResult,
-  type CreateBindingDraftContext,
   type NodeEnablementDraftResult
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
@@ -1576,7 +1575,7 @@ export async function createBindingDraft(
     bindingId: string;
   } & CreateBindingDraftBody,
   deps: CreateBindingDraftDeps = {},
-  context: CreateBindingDraftContext = {}
+  context: TrustedSensitiveNodeWriteContext
 ): Promise<CreateBindingDraftServiceResult> {
   requireCanEdit(auth);
 
