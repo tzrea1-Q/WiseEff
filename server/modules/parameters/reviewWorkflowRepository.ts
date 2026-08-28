@@ -25,6 +25,8 @@ import {
   PINNED_OR_RANKED_SPEC_VERSION_FROM_INSERTED_BINDING_LATERAL
 } from "./specVersionSelection";
 
+const RETAINED_SUBMITTER_SQL = "coalesce(users.name, '已注销用户')";
+
 export async function findOpenEnablementChangeRequest(
   db: Queryable,
   query: { organizationId: string; projectId: string; logicalNodeId: string }
@@ -199,7 +201,7 @@ type WorkflowAssigneesRow = {
 export type ReviewDecisionDto = {
   id: string;
   requestId: string;
-  reviewerUserId: string;
+  reviewerUserId?: string;
   decision: ParameterReviewDecision;
   fromStatus: ParameterChangeRequestStatus;
   toStatus: ParameterChangeRequestStatus;
@@ -210,7 +212,7 @@ export type ReviewDecisionDto = {
 type ReviewDecisionRow = {
   id: string;
   request_id: string;
-  reviewer_user_id: string;
+  reviewer_user_id: string | null;
   decision: ParameterReviewDecision;
   from_status: ParameterChangeRequestStatus;
   to_status: ParameterChangeRequestStatus;
@@ -419,7 +421,7 @@ function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
   return {
     id: row.id,
     requestId: row.request_id,
-    reviewerUserId: row.reviewer_user_id,
+    reviewerUserId: row.reviewer_user_id ?? undefined,
     decision: row.decision,
     fromStatus: row.from_status,
     toStatus: row.to_status,
@@ -473,7 +475,7 @@ export async function createSubmissionRound(
       inserted.id,
       inserted.project_id,
       projects.name as project_name,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       inserted.status,
       inserted.summary,
       inserted.created_at
@@ -538,7 +540,7 @@ export async function createChangeRequest(
         inserted.target_value,
         inserted.action,
         inserted.candidate_config_revision_id,
-        coalesce(users.name, '已注销用户') as submitter,
+        ${RETAINED_SUBMITTER_SQL} as submitter,
         inserted.status,
         'Low' as risk,
         'legacy-text' as value_kind,
@@ -612,7 +614,7 @@ export async function createChangeRequest(
       inserted.target_value,
       inserted.action,
       inserted.candidate_config_revision_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       inserted.status,
       pd.risk,
       pd.value_kind,
@@ -713,7 +715,7 @@ export async function createEnablementChangeRequest(
       inserted.candidate_config_revision_id,
       inserted.edit_subject_kind,
       inserted.logical_node_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       inserted.status,
       'Low' as risk,
       'legacy-text' as value_kind,
@@ -1011,7 +1013,7 @@ export async function listSubmissionRounds(
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
@@ -1048,7 +1050,7 @@ export async function getSubmissionRoundById(
   const result = await db.query<SubmissionRoundRow>(
     `
     select psr.id, psr.project_id, projects.name as project_name,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
@@ -1176,7 +1178,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       'Low' as risk,
@@ -1221,7 +1223,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1279,7 +1281,7 @@ export async function findOpenChangeRequest(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        coalesce(users.name, '已注销用户') as submitter,
+        ${RETAINED_SUBMITTER_SQL} as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1332,7 +1334,7 @@ export async function findOpenChangeRequest(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1405,7 +1407,7 @@ export async function getChangeRequestById(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        coalesce(users.name, '已注销用户') as submitter,
+        ${RETAINED_SUBMITTER_SQL} as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1457,7 +1459,7 @@ export async function getChangeRequestById(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      coalesce(users.name, '已注销用户') as submitter,
+      ${RETAINED_SUBMITTER_SQL} as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,

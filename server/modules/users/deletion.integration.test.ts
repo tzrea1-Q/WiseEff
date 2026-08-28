@@ -4,6 +4,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
+import type { Database, Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { deleteUser } from "./service";
 
@@ -47,6 +48,7 @@ async function insertDeletionFixture(db: InMemoryTestDatabase) {
     `
     insert into roles (id, name, level, permissions) values
       ('admin', 'Admin', 'platform', array['users:manage', 'admin:access']),
+      ('platform-admin', 'Platform Admin', 'platform', array['users:manage', 'admin:access', 'platform:access']),
       ('hardware-user', 'Hardware User', 'platform', array['parameter:view']),
       ('hardware-committer', 'Hardware Committer', 'platform', array['parameter:view', 'parameter:review'])
     on conflict (id) do nothing
@@ -58,6 +60,50 @@ async function insertDeletionFixture(db: InMemoryTestDatabase) {
       ('u-admin', 'org-chargelab', 'Admin', 'admin@example.com', 'Admin', true),
       ('u-target', 'org-chargelab', 'Target User', 'target@example.com', 'Engineer', true)
     `
+  );
+  await db.query(
+    `insert into projects (id, organization_id, name, code, status)
+     values ('project-delete', 'org-chargelab', 'Delete fixture', 'DELETE', 'initialized')`
+  );
+  await db.query(
+    `insert into parameter_definitions (
+       id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+     ) values (
+       'definition-delete', 'org-chargelab', 'Delete parameter', 'Fixture', 'Fixture', 'dts', 'Fixture', '0-1', '', 'Low'
+     )`
+  );
+  await db.query(
+    `insert into project_parameter_values (
+       id, organization_id, project_id, parameter_definition_id, current_value, recommended_value
+     ) values (
+       'value-delete', 'org-chargelab', 'project-delete', 'definition-delete', '0', '1'
+     )`
+  );
+  await db.query(
+    `insert into parameter_drafts (
+       id, organization_id, project_id, project_parameter_value_id, user_id, target_value, reason
+     ) values (
+       'draft-target', 'org-chargelab', 'project-delete', 'value-delete', 'u-target', '1', 'Delete fixture'
+     )`
+  );
+  await db.query(
+    `insert into debugging_devices (id, organization_id, name, transport, status, firmware)
+     values ('device-delete', 'org-chargelab', 'Delete device', 'simulator', 'online', 'test')`
+  );
+  await db.query(
+    `insert into debugging_targets (id, organization_id, device_id, target_ref, label, status)
+     values ('target-delete', 'org-chargelab', 'device-delete', 'simulator://delete', 'Delete target', 'detected')`
+  );
+  await db.query(
+    `insert into debugging_sessions (id, organization_id, device_id, target_id, actor_user_id, status)
+     values ('debug-session-target', 'org-chargelab', 'device-delete', 'target-delete', 'u-admin', 'active')`
+  );
+  await db.query(
+    `insert into debug_device_leases (
+       organization_id, device_id, session_id, lease_owner_user_id, expires_at
+     ) values (
+       'org-chargelab', 'device-delete', 'debug-session-target', 'u-target', now() + interval '1 hour'
+     )`
   );
   await db.query(
     `
@@ -171,13 +217,19 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
 
     for (const table of [
       "auth_sessions",
+      "debug_device_leases",
       "local_registration_role_requests",
+      "parameter_drafts",
       "user_notifications",
       "user_password_credentials",
       "user_role_bindings"
     ]) {
       const accountRows = await db.query(`select * from ${table} where ${
-        table === "user_notifications" ? "recipient_user_id" : "user_id"
+        table === "user_notifications"
+          ? "recipient_user_id"
+          : table === "debug_device_leases"
+            ? "lease_owner_user_id"
+            : "user_id"
       } = 'u-target'`);
       expect(accountRows.rows, table).toEqual([]);
     }
@@ -214,5 +266,42 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("Target User");
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target.user");
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target@example.com");
+  });
+
+  it("rechecks platform-admin protection in the delete statement", async () => {
+    await insertDeletionFixture(db);
+    let injectedRole = false;
+    const raceDatabase: Database = {
+      query: db.query.bind(db),
+      transaction: async (fn) =>
+        db.transaction(async (tx) => {
+          const guardedTx: Queryable = {
+            query: async (text, values = []) => {
+              if (!injectedRole && text.includes("delete from users")) {
+                injectedRole = true;
+                await tx.query(
+                  `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+                   values ('urb-target-platform-race', 'u-target', 'org-chargelab', null, 'platform-admin')`
+                );
+              }
+              return tx.query(text, values);
+            }
+          };
+          return fn(guardedTx);
+        })
+    };
+
+    await expect(deleteUser(raceDatabase, adminAuth, "u-target", { requestId: "delete-race" })).rejects.toThrow(
+      "Only a platform super admin may delete a platform-admin user."
+    );
+
+    expect(injectedRole).toBe(true);
+    expect((await db.query("select id from users where id = 'u-target'")).rows).toHaveLength(1);
+    expect(
+      (await db.query("select id from user_role_bindings where id = 'urb-target-platform-race'")).rows
+    ).toEqual([]);
+    expect(
+      (await db.query("select id from audit_events where kind = 'user-delete' and trace_id = 'delete-race'")).rows
+    ).toEqual([]);
   });
 });

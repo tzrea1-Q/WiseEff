@@ -553,6 +553,14 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     await expect(
       listReviewDecisions(db, { organizationId: "org-foreign", requestId: "request-1" })
     ).resolves.toEqual([]);
+
+    await db.query("delete from users where id = 'u-hardware'");
+    const retainedDecisions = await listReviewDecisions(db, { organizationId: ORG, requestId: "request-1" });
+    expect(retainedDecisions.find((decision) => decision.id === "decision-1")).toMatchObject({
+      id: "decision-1",
+      reviewerUserId: undefined,
+      note: "Hardware reviewed."
+    });
   });
 
   it("updates request status with reviewer note and persists it for later reads", async () => {

@@ -429,8 +429,19 @@ export async function deleteUser(
       userId,
       metadata: { isActive: user.isActive, roles: user.roles }
     }, context);
-    const deletedRows = await deleteUserById(tx, { organizationId: auth.organization.id, userId });
+    const deletedRows = await deleteUserById(tx, {
+      organizationId: auth.organization.id,
+      userId,
+      allowPlatformAdmin: callerHasPlatformAdmin(auth)
+    });
     if (deletedRows !== 1) {
+      const currentUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+      if (currentUser && rolesIncludePlatformAdmin(currentUser.roles) && !callerHasPlatformAdmin(auth)) {
+        throw new ApiError("FORBIDDEN", "Only a platform super admin may delete a platform-admin user.", {
+          userId,
+          roleId: "platform-admin"
+        });
+      }
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
   });

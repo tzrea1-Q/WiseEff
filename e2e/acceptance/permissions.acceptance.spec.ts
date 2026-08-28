@@ -13,6 +13,7 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     { method: "GET", path: "/api/v1/users", status: 403 },
     { method: "DELETE", path: "/api/v1/users/", status: 403 },
+    { method: "GET", path: "/api/v1/parameters/projects/aurora/initialization", status: 404 },
     { method: "PATCH", path: "/api/v1/organization", status: 403 }
   ]
 });

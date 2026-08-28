@@ -82,10 +82,10 @@ Browser verification covers `/organization/members` at `1440x900`, `768x1024`, a
 
 Observed local evidence on 2026-08-28:
 
-- Focused real-PostgreSQL/backend: 5 files, 74 tests passed; user-deletion schema/behavior and retained workflow-read tests included.
-- Full frontend at bounded concurrency: 420 files, 3152 tests passed. Full server: 362 files passed, 1 skipped; 2798 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
+- Focused real-PostgreSQL/backend: 5 files, 80 tests passed; user-deletion schema/behavior, atomic platform-admin protection, account-owned lease/draft cleanup, and retained workflow/log read tests included.
+- Full frontend at bounded concurrency: 420 files, 3153 tests passed. Full server: 362 files passed, 1 skipped; 2803 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
 - `npm run build`, `npm run ui:check`, `npm run contract:check`, `npm run docs:check`, `npm run acceptance:coverage`, and `npm run acceptance:operations` passed. The schema doc was generated from a disposable pgvector PostgreSQL container migrated from scratch.
-- `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and removal, responsive table containment, mobile dialog, disabled self/platform-admin actions, and zero console errors. API/DB behavior is proven separately by PostgreSQL and HTTP tests; the evidence-grade API-mode acceptance case was updated and successfully listed/compiled, but was not executed against a target OIDC environment in this worktree.
+- `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and visible disabled reasons, responsive table containment, mobile dialog/removal, and zero console errors. The focused `PERM-USER-MGMT-001` API-mode acceptance also passed against a disposable pgvector PostgreSQL database (runtime warmup plus one product case), proving HTTP `204`, database null adaptation, deletion audit, and non-Admin `403`. This is deterministic local HMAC evidence, not target OIDC evidence.
 
 ## Git & PR Workflow
 
@@ -101,7 +101,7 @@ Observed local evidence on 2026-08-28:
 | Planning docs | Update | `docs/PLANS.md`, this plan, Chinese companion | Track active scope and verification. |
 | Product specs | Update | `docs/product-specs/product-spec.md`, `docs/product-specs/prototype-functional-spec.md` | Replace the prior no-delete lifecycle boundary. |
 | Architecture/API | Update | `docs/design-docs/api-contract.md`, `docs/design-docs/full-stack-architecture.md`, `docs/api/authentication.md` | Document DELETE contract and data-retention behavior. |
-| Quality/testing | Update | `docs/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md`, acceptance coverage/operation matrices | Record PostgreSQL and browser gates. |
+| Quality/testing | Update | `docs/design-docs/testing-strategy.md`, `docs/zh-CN/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md`, `docs/zh-CN/developer/verification-matrix.md`, `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` | Record PostgreSQL and API-mode browser gates. |
 | Reliability/runbooks | Review | `docs/RELIABILITY.md`, `docs/runbooks/identity-provider.md` | Record unchanged or update operator consequences. |
 | Security/governance | Update | `docs/SECURITY.md`, `docs/security/audit-retention.md` | Define delete authorization, audit, and PII retention boundary. |
 | Frontend/design | Update | `docs/FRONTEND.md`, `docs/design-docs/2026-08-19-organization-administration-design.md` | Add the members-page lifecycle action. |

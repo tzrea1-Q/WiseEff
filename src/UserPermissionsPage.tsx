@@ -132,6 +132,10 @@ function canGrantPlatformAdmin(state: PrototypeState) {
   return migrateLegacyRoleId(currentUser?.roleId ?? "guest") === "platform-admin";
 }
 
+function isPlatformAdminLocked(state: PrototypeState, user: User) {
+  return migrateLegacyRoleId(user.roleId) === "platform-admin" && !canGrantPlatformAdmin(state);
+}
+
 function visiblePlatformRoles(state: PrototypeState) {
   return platformRoles.filter((role) => role.id !== "platform-admin" || canGrantPlatformAdmin(state));
 }
@@ -557,8 +561,7 @@ export function UserPermissionsPage({
       render: (user) => {
         const isCurrentUser = user.id === state.currentUserId;
         const normalizedRoleId = migrateLegacyRoleId(user.roleId);
-        const platformAdminLocked =
-          normalizedRoleId === "platform-admin" && !canGrantPlatformAdmin(state);
+        const platformAdminLocked = isPlatformAdminLocked(state, user);
 
         return (
           <div
@@ -605,8 +608,7 @@ export function UserPermissionsPage({
       headerFilter: headerFilterConfig("status", "状态"),
       render: (user) => {
         const isCurrentUser = user.id === state.currentUserId;
-        const statusPlatformAdminLocked =
-          migrateLegacyRoleId(user.roleId) === "platform-admin" && !canGrantPlatformAdmin(state);
+        const statusPlatformAdminLocked = isPlatformAdminLocked(state, user);
 
         return (
           <button
@@ -651,28 +653,36 @@ export function UserPermissionsPage({
       header: "注销",
       render: (user) => {
         const isCurrentUser = user.id === state.currentUserId;
-        const platformAdminLocked =
-          migrateLegacyRoleId(user.roleId) === "platform-admin" && !canGrantPlatformAdmin(state);
+        const platformAdminLocked = isPlatformAdminLocked(state, user);
         const disabledReason = isCurrentUser
           ? "不能注销当前登录账号。"
           : platformAdminLocked
             ? "只有平台超级管理员可以注销平台超级管理员。"
             : undefined;
 
+        const reasonId = disabledReason ? `delete-user-reason-${user.id}` : undefined;
+
         return (
-          <button
-            className="button danger"
-            type="button"
-            aria-label={`注销 ${user.name}`}
-            disabled={Boolean(disabledReason)}
-            title={disabledReason}
-            onClick={() => {
-              setGovernanceError(null);
-              setPendingGovernance({ kind: "delete", user });
-            }}
-          >
-            注销
-          </button>
+          <div className="user-permissions-action-with-reason">
+            <button
+              className="button danger"
+              type="button"
+              aria-label={`注销 ${user.name}`}
+              aria-describedby={reasonId}
+              disabled={Boolean(disabledReason)}
+              onClick={() => {
+                setGovernanceError(null);
+                setPendingGovernance({ kind: "delete", user });
+              }}
+            >
+              注销
+            </button>
+            {disabledReason ? (
+              <span id={reasonId} className="user-permissions-disabled-reason">
+                {disabledReason}
+              </span>
+            ) : null}
+          </div>
         );
       }
     },
@@ -875,8 +885,8 @@ export function UserPermissionsPage({
             ) : pendingGovernance.kind === "delete" ? (
               <p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（
-                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计记录保留，
-                用户引用将置为空。此操作不可恢复。
+                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计历史记录会保留，
+                用户引用会自动变为 null。此操作不可恢复。
               </p>
             ) : pendingGovernance.nextActive ? (
               <p>

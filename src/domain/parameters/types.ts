@@ -162,7 +162,7 @@ export type SubmissionWorkflowStageDetail = {
 export type ParameterReviewDecisionRecord = {
   id: string;
   requestId: string;
-  reviewerUserId: string;
+  reviewerUserId?: string;
   decision: "advance" | "reject";
   fromStatus: string;
   toStatus: string;

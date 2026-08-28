@@ -807,7 +807,7 @@ async function buildReviewParticipants(
 ) {
   const userIds = new Set<string>();
   for (const decision of decisions) {
-    userIds.add(decision.reviewerUserId);
+    if (decision.reviewerUserId) userIds.add(decision.reviewerUserId);
   }
   if (request.workflowAssignees) {
     userIds.add(request.workflowAssignees.hardwareCommitterId);
@@ -822,7 +822,9 @@ async function buildReviewParticipants(
   for (const decision of decisions) {
     participants.push({
       role: parameterStatusLabels[decision.fromStatus as ParameterChangeRequestStatus],
-      name: names.get(decision.reviewerUserId) ?? decision.reviewerUserId,
+      name: decision.reviewerUserId
+        ? names.get(decision.reviewerUserId) ?? "已注销用户"
+        : "已注销用户",
       action: decision.decision === "advance" ? "推进流程" : "打回变更",
       note: decision.note ?? undefined,
       time: decision.createdAt
@@ -1798,7 +1800,7 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
     }
   }
   for (const decision of decisions) {
-    userIds.add(decision.reviewerUserId);
+    if (decision.reviewerUserId) userIds.add(decision.reviewerUserId);
   }
   for (const request of workflowStates) {
     if (request.assignedTo) {
@@ -2297,7 +2299,9 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         parameterName: request.title,
         submitterUserId: request.submitterUserId,
         mergerName: auth.user.name,
-        reviewerUserIds: reviewDecisions.map((decision) => decision.reviewerUserId)
+        reviewerUserIds: reviewDecisions.flatMap((decision) =>
+          decision.reviewerUserId ? [decision.reviewerUserId] : []
+        )
       });
     }
 

@@ -464,7 +464,7 @@ describe("UserPermissionsPage", () => {
     expect(userGovernanceActions.deleteUser).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
     expect(dialog).toHaveTextContent("永久删除");
-    expect(dialog).toHaveTextContent("用户引用将置为空");
+    expect(dialog).toHaveTextContent("用户引用会自动变为 null");
     await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
 
     expect(userGovernanceActions.deleteUser).toHaveBeenCalledWith("u-liu-min");
@@ -500,7 +500,11 @@ describe("UserPermissionsPage", () => {
     renderPage();
     const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
 
-    expect(within(currentUserRow).getByRole("button", { name: "注销 Xu Yun" })).toBeDisabled();
+    const deleteButton = within(currentUserRow).getByRole("button", { name: "注销 Xu Yun" });
+    const reason = within(currentUserRow).getByText("不能注销当前登录账号。");
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("aria-describedby", reason.id);
+    expect(reason).toBeVisible();
   });
 
   it("resets a member password through the governance action", async () => {

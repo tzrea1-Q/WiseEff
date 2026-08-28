@@ -257,6 +257,33 @@ describe("user governance service", () => {
     expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(true);
   });
 
+  it("fails closed when a platform-admin role appears between the initial read and delete", async () => {
+    let userReadCount = 0;
+    const { db, txCalls } = createDb(
+      (text) => {
+        if (text.includes("from users")) {
+          userReadCount += 1;
+          return [
+            userRow({
+              roles: userReadCount === 1
+                ? [{ projectId: "aurora", roleId: "hardware-user" }]
+                : [{ projectId: null, roleId: "platform-admin" }]
+            })
+          ];
+        }
+        return [];
+      },
+      (text) => (text.includes("delete from users") ? 0 : 1)
+    );
+
+    await expect(deleteUser(db, adminAuth, "u-target", { requestId: "request-race" })).rejects.toThrow(
+      "Only a platform super admin may delete a platform-admin user."
+    );
+    const deleteCall = txCalls.find((call) => call.text.includes("delete from users"));
+    expect(deleteCall?.text).toContain("not exists");
+    expect(deleteCall?.values).toEqual(["org-chargelab", "u-target", false]);
+  });
+
   it("returns not found without audit or delete for a missing or cross-organization target", async () => {
     const { db, txCalls } = createDb(() => []);
 

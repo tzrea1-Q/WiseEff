@@ -89,6 +89,8 @@ MVP 必须覆盖：
 
 M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
 
+永久注销用户新增真实 PostgreSQL 合约门禁：所有指向 `users(id)` 的外键必须明确分类为账号自有数据的 `ON DELETE CASCADE`，或历史保留数据的可空 `ON DELETE SET NULL`。聚焦浏览器操作 `PERM-USER-MGMT-001` 必须在 API 模式执行，并证明二次确认、HTTP `204`、成功后才移除列表行、历史引用置空后的兼容展示、无 PII 的注销审计，以及非管理员拒绝。Mock 模式的多视口检查只属于界面证据，不能替代 API/数据库门禁。
+
 证据级 artifact 不得放在 Playwright 会清空的 `outputDir`。完整 browser runner 在 `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>/{records,artifacts}` 创建同一运行目录，仅当干净 source 的完整 Playwright 与 operation evidence 均通过时，才原子发布 `latest-full.json`。Record 必须携带相同 `runId` 与 `sourceCommit`；`npm run acceptance:evidence` 拒绝混合身份和缺失 artifact。直接聚焦的 `acceptance:e2e` 使用未发布 focused 目录，不能覆盖或删除最近完整运行证据。
 
 调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复、HDC/ADB binding 管理，以及复杂值元数据编辑。

@@ -236,6 +236,40 @@ describe("user governance routes", () => {
     expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
   });
 
+  it("rejects ordinary Admin deletion of a platform-admin at the API boundary", async () => {
+    const { calls, db } = makeDb((text) =>
+      text.includes("from users")
+        ? [userRow({ roles: [{ projectId: null, roleId: "platform-admin" }] })]
+        : []
+    );
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db, auth: { mode: "production", verifier: { verify: async () => adminAuth } } }),
+      "/api/v1/users/u-target",
+      { method: "DELETE", headers: { Authorization: "Bearer admin" } }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("returns not found for a missing or cross-organization deletion target at the API boundary", async () => {
+    const { calls, db } = makeDb((text) => (text.includes("from users") ? [] : [userRow()]));
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db, auth: { mode: "production", verifier: { verify: async () => adminAuth } } }),
+      "/api/v1/users/u-outside",
+      { method: "DELETE", headers: { Authorization: "Bearer admin" } }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
   it("lets Admin list and decide pending registration role requests", async () => {
     const { calls, db } = makeDb((text, values) => {
       if (text.includes("update local_registration_role_requests")) {
