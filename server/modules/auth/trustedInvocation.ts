@@ -368,14 +368,6 @@ export function trustedDomainAttributionFromRow(
   };
 }
 
-/** Truthful, user-visible executor label derived from the same trusted invocation. */
-export function trustedExecutionLabel(value: TrustedInvocationContext): string {
-  const invocation = assertTrustedInvocationContext(value);
-  if (invocation.initiator === "user") return invocation.principal.user.name;
-  if (invocation.initiator === "agent") return `Agent tool:${invocation.toolCallId} (session:${invocation.sessionId})`;
-  return `System ${invocation.identity.kind}:${invocation.identity.name}`;
-}
-
 /**
  * Stable public display projection.  Internal correlation and System names
  * remain available only through the trusted domain/audit projection.

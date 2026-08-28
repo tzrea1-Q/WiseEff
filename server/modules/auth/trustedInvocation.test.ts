@@ -8,7 +8,6 @@ import {
   createUserInvocation,
   trustedAccountableUser,
   trustedDomainAttributionFromRow,
-  trustedExecutionLabel,
   trustedPublicExecutionLabel,
   assertTrustedMutationInvocation,
   TrustedInvocationContextError
@@ -80,18 +79,6 @@ describe("trusted invocation context", () => {
     });
     expect(context).not.toHaveProperty("principal");
     expect(trustedAccountableUser(context)).toBeNull();
-    expect(trustedExecutionLabel(context)).toBe("System job:nightly-reconciliation");
-  });
-
-  it("separates an Agent accountable principal from its execution label", () => {
-    const context = createAgentInvocation(auth(), {
-      sessionId: "session-accountable",
-      toolCallId: "tool-accountable",
-      approval: { required: false }
-    });
-    expect(trustedAccountableUser(context)?.id).toBe("user-1");
-    expect(trustedExecutionLabel(context)).toBe("Agent tool:tool-accountable (session:session-accountable)");
-    expect(trustedExecutionLabel(context)).not.toContain(auth().user.name);
   });
 
   it("projects public execution labels without internal correlation", () => {
