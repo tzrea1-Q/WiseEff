@@ -163,7 +163,11 @@ describe("shared user permission reducer actions", () => {
     });
 
     expect(next.users.map((user) => user.id)).not.toContain(target.id);
-    expect(next.auditEvents[0]).toMatchObject({ kind: "user-delete", userId: target.id });
+    expect(next.auditEvents[0]).toMatchObject({
+      kind: "user-delete",
+      action: "delete",
+      userId: target.id
+    });
   });
 
   it("prevents the current Admin from downgrading themselves", () => {

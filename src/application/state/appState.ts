@@ -1429,7 +1429,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const event = buildAuditEvent({
         kind: "user-delete",
         actor: auditActor,
-        action: `Deleted user ${user.id}`,
+        action: "delete",
         severity: "High",
         userId: user.id,
         metadata: { isActive: user.isActive }
