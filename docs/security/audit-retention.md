@@ -10,7 +10,7 @@ Audit records are product evidence. Missing audit is a product failure for produ
 - Log upload, upload failed, rerun, archive, unarchive, and feedback.
 - Debugging target detection, session creation, node read/write, and snapshot rollback.
 - Agent session, tool requested, approval requested, approval executed/rejected, and tool failure.
-- User governance create, profile update, activation/deactivation, and role replacement.
+- User governance create, permanent delete, profile update, activation/deactivation, and role replacement. Delete audit retains the opaque target id and non-secret lifecycle facts, not deleted-user PII or credential material.
 
 ## Retention Guidance
 

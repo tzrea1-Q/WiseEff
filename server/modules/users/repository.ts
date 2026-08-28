@@ -168,6 +168,17 @@ export async function getUserById(db: Queryable, input: { organizationId: string
   return result.rows[0] ? toDto(result.rows[0]) : null;
 }
 
+export async function deleteUserById(db: Queryable, input: { organizationId: string; userId: string }) {
+  const result = await db.query(
+    `
+    delete from users
+    where organization_id = $1 and id = $2
+    `,
+    [input.organizationId, input.userId]
+  );
+  return result.rowCount;
+}
+
 export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string }) {
   const result = await db.query<UserGovernanceRow>(
     `

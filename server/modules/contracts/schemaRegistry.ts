@@ -134,6 +134,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "UserGovernanceResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "users.delete": {
+    summary: "Permanently delete a governed user account",
+    tags: ["users"],
+    responseBody: "DeleteResponse",
+    successStatus: 204,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "users.activation": {
     summary: "Update governed user activation",
     tags: ["users"],

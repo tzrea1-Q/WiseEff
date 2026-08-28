@@ -38,6 +38,7 @@ export type UserGovernanceActions = {
   createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
   assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
+  deleteUser(userId: string): Promise<void>;
   resetUserPassword?(userId: string, password: string): Promise<User | void>;
   listRegistrationRoleRequests?(): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
@@ -118,7 +119,8 @@ type RoleHintState = {
 
 type PendingGovernanceAction =
   | { kind: "role"; user: User; nextRoleId: PlatformRoleId }
-  | { kind: "active"; user: User; nextActive: boolean };
+  | { kind: "active"; user: User; nextActive: boolean }
+  | { kind: "delete"; user: User };
 
 function roleLabelOf(roleId: PlatformRoleId) {
   const normalizedRoleId = migrateLegacyRoleId(roleId);
@@ -422,13 +424,17 @@ export function UserPermissionsPage({
           userId: pendingGovernance.user.id,
           roleId: pendingGovernance.nextRoleId
         });
-      } else {
+      } else if (pendingGovernance.kind === "active") {
         await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
         dispatch({
           type: "TOGGLE_USER_ACTIVE",
           userId: pendingGovernance.user.id,
           isActive: pendingGovernance.nextActive
         });
+      } else {
+        await userGovernanceActions?.deleteUser(pendingGovernance.user.id);
+        dispatch({ type: "DELETE_USER", userId: pendingGovernance.user.id });
+        dispatch({ type: "ADD_NOTIFICATION", message: `已注销用户 ${pendingGovernance.user.name}` });
       }
       setPendingGovernance(null);
     } catch (error) {
@@ -641,6 +647,36 @@ export function UserPermissionsPage({
         ]
       : []),
     {
+      key: "delete",
+      header: "注销",
+      render: (user) => {
+        const isCurrentUser = user.id === state.currentUserId;
+        const platformAdminLocked =
+          migrateLegacyRoleId(user.roleId) === "platform-admin" && !canGrantPlatformAdmin(state);
+        const disabledReason = isCurrentUser
+          ? "不能注销当前登录账号。"
+          : platformAdminLocked
+            ? "只有平台超级管理员可以注销平台超级管理员。"
+            : undefined;
+
+        return (
+          <button
+            className="button danger"
+            type="button"
+            aria-label={`注销 ${user.name}`}
+            disabled={Boolean(disabledReason)}
+            title={disabledReason}
+            onClick={() => {
+              setGovernanceError(null);
+              setPendingGovernance({ kind: "delete", user });
+            }}
+          >
+            注销
+          </button>
+        );
+      }
+    },
+    {
       key: "lastActive",
       header: "最近活跃",
       headerFilter: headerFilterConfig("lastActive", "最近活跃"),
@@ -822,9 +858,11 @@ export function UserPermissionsPage({
         title={
           pendingGovernance?.kind === "role"
             ? "确认调整用户角色"
-            : pendingGovernance?.nextActive
-              ? "确认启用用户"
-              : "确认停用用户"
+            : pendingGovernance?.kind === "delete"
+              ? "确认注销用户"
+              : pendingGovernance?.nextActive
+                ? "确认启用用户"
+                : "确认停用用户"
         }
         description={
           pendingGovernance ? (
@@ -833,6 +871,12 @@ export function UserPermissionsPage({
                 将把 <strong>{pendingGovernance.user.name}</strong> 的角色从「
                 {roleLabelOf(migrateLegacyRoleId(pendingGovernance.user.roleId))}」调整为「
                 {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
+              </p>
+            ) : pendingGovernance.kind === "delete" ? (
+              <p>
+                将永久删除 <strong>{pendingGovernance.user.name}</strong>（
+                {userAccountIdentifier(pendingGovernance.user)}）。账号的角色、凭据、会话和临时数据将一并清除；业务与审计记录保留，
+                用户引用将置为空。此操作不可恢复。
               </p>
             ) : pendingGovernance.nextActive ? (
               <p>
@@ -848,11 +892,22 @@ export function UserPermissionsPage({
           ) : null
         }
         confirmLabel={
-          pendingGovernance?.kind === "role" ? "确认调整" : pendingGovernance?.nextActive ? "确认启用" : "确认停用"
+          pendingGovernance?.kind === "role"
+            ? "确认调整"
+            : pendingGovernance?.kind === "delete"
+              ? "确认注销"
+              : pendingGovernance?.nextActive
+                ? "确认启用"
+                : "确认停用"
         }
-        tone={pendingGovernance?.kind === "active" && !pendingGovernance.nextActive ? "danger" : "primary"}
+        tone={
+          pendingGovernance?.kind === "delete" ||
+          (pendingGovernance?.kind === "active" && !pendingGovernance.nextActive)
+            ? "danger"
+            : "primary"
+        }
         pending={governancePending}
-        pendingLabel="提交中…"
+        pendingLabel={pendingGovernance?.kind === "delete" ? "注销中…" : "提交中…"}
         error={governanceError}
         onCancel={() => {
           if (governancePending) return;

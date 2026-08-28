@@ -33,6 +33,8 @@ production mode 不允许回退到 development user。OIDC token 必须通过 is
 
 前端下拉框也必须先过滤权限或槽位资格不匹配的选项和用户；这只是 UX，最终仍以后端认证、授权、槽位资格、校验和审计为准。
 
+用户永久注销要求 `users:manage`，只能删除本组织的非当前用户；普通 Admin 不能删除平台超级管理员。注销事务级联清理凭据、会话、角色、个人通知、租约和未提交草稿，业务与审计历史保留，并通过可空的 `ON DELETE SET NULL` 用户外键继续可读。`user-delete` 高风险审计只保留不透明目标 id 和非敏感生命周期事实，不保留被删用户的姓名、用户名、邮箱或凭据材料。
+
 ## 审计
 
 M1-M5 的写入路径都会产生审计事件：
@@ -41,6 +43,7 @@ M1-M5 的写入路径都会产生审计事件：
 - 日志：upload、upload failed、rerun、archive、unarchive、feedback。
 - 调试：detect、session、node read/write、snapshot rollback。
 - Agent：session、tool requested、approval requested、approval executed/rejected、tool failed。
+- 用户治理：create、profile update、activate/deactivate、role replace、registration decision、permanent delete。
 
 `X-Request-Id` 会用于请求和审计关联。排查生产问题时优先追踪 request id、audit event、job id、session id、snapshot id。
 

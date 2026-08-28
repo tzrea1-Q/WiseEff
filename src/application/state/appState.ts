@@ -176,6 +176,7 @@ export type AppAction =
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
   | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
+  | { type: "DELETE_USER"; userId: string }
   | { type: "ADD_USER"; id?: string; name: string; username: string; title: string; roleId: PlatformRoleId }
   | { type: "HYDRATE_USERS"; users: User[] }
   | { type: "MARK_CONFIG_PERSISTED" }
@@ -1397,6 +1398,41 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         severity: "Medium",
         userId: user.id,
         metadata: { isActive: action.isActive }
+      });
+
+      return {
+        ...state,
+        users: nextUsers,
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "DELETE_USER": {
+      if (!canManageUsers(state) || action.userId === state.currentUserId) {
+        return state;
+      }
+
+      const user = state.users.find((item) => item.id === action.userId);
+      const currentUser = state.users.find((item) => item.id === state.currentUserId);
+      if (
+        !user ||
+        (migrateLegacyRoleId(user.roleId) === "platform-admin" &&
+          migrateLegacyRoleId(currentUser?.roleId ?? "guest") !== "platform-admin")
+      ) {
+        return state;
+      }
+
+      const nextUsers = state.users.filter((item) => item.id !== user.id);
+      if (!wouldHaveActiveAdmin(state, nextUsers)) {
+        return state;
+      }
+
+      const event = buildAuditEvent({
+        kind: "user-delete",
+        actor: auditActor,
+        action: `Deleted user ${user.id}`,
+        severity: "High",
+        userId: user.id,
+        metadata: { isActive: user.isActive }
       });
 
       return {

@@ -6,6 +6,7 @@ import {
   approveRegistrationRoleRequest,
   createUser,
   deactivateUser,
+  deleteUser,
   getHomeOrganization,
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
@@ -41,19 +42,22 @@ const nonAdminAuth: AuthContext = {
   permissions: ["parameter:view"]
 };
 
-function createDb(rowsForQuery: (text: string, values: unknown[]) => unknown[] = () => []) {
+function createDb(
+  rowsForQuery: (text: string, values: unknown[]) => unknown[] = () => [],
+  rowCountForQuery: (text: string, values: unknown[]) => number = () => 1
+) {
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
   const tx: Queryable = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       txCalls.push({ text, values });
-      return { rows: rowsForQuery(text, values) as Row[], rowCount: 1 };
+      return { rows: rowsForQuery(text, values) as Row[], rowCount: rowCountForQuery(text, values) };
     }
   };
   const db: Database = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       calls.push({ text, values });
-      return { rows: rowsForQuery(text, values) as Row[], rowCount: 1 };
+      return { rows: rowsForQuery(text, values) as Row[], rowCount: rowCountForQuery(text, values) };
     },
     transaction: async (fn) => fn(tx)
   };
@@ -214,6 +218,53 @@ describe("user governance service", () => {
     await expect(deactivateUser(db, adminAuth, adminAuth.user.id, { isActive: false }, { requestId: "request-1" })).rejects.toThrow(
       "Active Admin cannot disable itself."
     );
+  });
+
+  it("prevents the active admin from deleting itself", async () => {
+    const { db, txCalls } = createDb((text) => (text.includes("from users") ? [userRow({ id: "u-admin" })] : []));
+
+    await expect(deleteUser(db, adminAuth, adminAuth.user.id, { requestId: "request-1" })).rejects.toThrow(
+      "Active Admin cannot delete itself."
+    );
+    expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("prevents an ordinary admin from deleting a platform super admin", async () => {
+    const { db, txCalls } = createDb((text) =>
+      text.includes("from users")
+        ? [userRow({ roles: [{ projectId: null, roleId: "platform-admin" }] })]
+        : []
+    );
+
+    await expect(deleteUser(db, adminAuth, "u-target", { requestId: "request-1" })).rejects.toThrow(
+      "Only a platform super admin may delete a platform-admin user."
+    );
+    expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("fails the transaction when the target disappears before the scoped delete", async () => {
+    const { db, txCalls } = createDb(
+      (text) => (text.includes("from users") ? [userRow()] : []),
+      (text) => (text.includes("delete from users") ? 0 : 1)
+    );
+
+    await expect(deleteUser(db, adminAuth, "u-target", { requestId: "request-1" })).rejects.toThrow(
+      "User was not found."
+    );
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(true);
+  });
+
+  it("returns not found without audit or delete for a missing or cross-organization target", async () => {
+    const { db, txCalls } = createDb(() => []);
+
+    await expect(deleteUser(db, adminAuth, "u-outside", { requestId: "request-1" })).rejects.toThrow(
+      "User was not found."
+    );
+    expect(txCalls.some((call) => call.text.includes("delete from users"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
   it("rejects non-platform-admin callers granting platform-admin to another user", async () => {

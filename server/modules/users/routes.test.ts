@@ -181,6 +181,61 @@ describe("user governance routes", () => {
     expect(response.body.error.message).toBe("Active Admin cannot disable itself.");
   });
 
+  it("lets Admin permanently delete a non-self user through the route", async () => {
+    const { calls, db } = makeDb((text) => (text.includes("from users") ? [userRow()] : []));
+
+    const response = await requestJson<null>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/users/u-target",
+      {
+        method: "DELETE",
+        headers: { Authorization: "Bearer admin" }
+      }
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.body).toBeNull();
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
+
+  it("rejects non-Admin deletion before any user mutation", async () => {
+    const { calls, db } = makeDb(() => [userRow()], nonAdminAuth);
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => nonAdminAuth } }
+      }),
+      "/api/v1/users/u-target",
+      { method: "DELETE", headers: { Authorization: "Bearer user" } }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toBe("User management permission is required.");
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
+  });
+
+  it("prevents the active Admin from deleting itself through the route", async () => {
+    const { calls, db } = makeDb();
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/users/u-admin",
+      { method: "DELETE", headers: { Authorization: "Bearer admin" } }
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toBe("Active Admin cannot delete itself.");
+    expect(calls.some((call) => call.text.includes("delete from users"))).toBe(false);
+  });
+
   it("lets Admin list and decide pending registration role requests", async () => {
     const { calls, db } = makeDb((text, values) => {
       if (text.includes("update local_registration_role_requests")) {

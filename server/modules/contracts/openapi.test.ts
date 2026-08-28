@@ -157,6 +157,7 @@ describe("M5 OpenAPI contract", () => {
           stability: "commercial-readiness"
         }),
         expect.objectContaining({ id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "users.delete", method: "DELETE", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" }),
         expect.objectContaining({
           id: "users.activation",
           method: "PATCH",
@@ -188,6 +189,11 @@ describe("M5 OpenAPI contract", () => {
     });
     expect(schemaRegistry["users.approveRegistrationRoleRequest"]).toMatchObject({
       responseBody: "RegistrationRoleRequestResponse",
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    });
+    expect(schemaRegistry["users.delete"]).toMatchObject({
+      responseBody: "DeleteResponse",
+      successStatus: 204,
       additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
     });
   });

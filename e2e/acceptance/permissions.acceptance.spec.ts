@@ -12,6 +12,7 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
     { method: "GET", path: "/api/v1/users", status: 403 },
+    { method: "DELETE", path: "/api/v1/users/", status: 403 },
     { method: "PATCH", path: "/api/v1/organization", status: 403 }
   ]
 });
@@ -121,27 +122,45 @@ async function expectSuccessfulApiGet<T>(page: Page, route: string) {
   return { response, body: (await response.json()) as T };
 }
 
-async function userGovernanceDbSummary(input: { userId: string; roleId: string }) {
+async function seedDeletedUserHistory(userId: string) {
+  if (!databaseUrl) return;
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      insert into audit_events (
+        id, organization_id, actor_user_id, actor_type, app, kind, action, severity,
+        target_type, target_id, metadata, trace_id
+      ) values (
+        $1, 'org-chargelab', $2, 'user', 'acceptance', 'parameter-update', 'update', 'Medium',
+        'parameter', 'acceptance-parameter', '{}', 'acceptance-user-delete-history'
+      )
+      on conflict (id) do update set actor_user_id = excluded.actor_user_id
+      `,
+      [`acceptance-delete-history-${userId}`, userId]
+    );
+  });
+}
+
+async function deletedUserDbSummary(input: { userId: string; roleId: string }) {
   return withPgClient(async (client) => {
-    const result = await client.query<{ user_count: string; role_count: string; active: boolean | null }>(
+    const result = await client.query<{
+      user_count: string;
+      role_count: string;
+      historical_actor_user_id: string | null;
+    }>(
       `
       select
         (select count(*)::text from users where id = $1) as user_count,
-        (
-          select count(*)::text
-          from user_role_bindings
-          where user_id = $1 and role_id = $2
-        ) as role_count,
-        (select is_active from users where id = $1) as active
+        (select count(*)::text from user_role_bindings where user_id = $1 and role_id = $2) as role_count,
+        (select actor_user_id from audit_events where id = $3) as historical_actor_user_id
       `,
-      [input.userId, input.roleId]
+      [input.userId, input.roleId, `acceptance-delete-history-${input.userId}`]
     );
     const row = result.rows[0];
-
     return {
-      table: "users,user_role_bindings",
-      predicate: `userId=${input.userId}; roleId=${input.roleId}`,
-      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; active=${row?.active ?? "missing"}`,
+      table: "users,user_role_bindings,audit_events",
+      predicate: `deleted userId=${input.userId}; retained audit actor is null`,
+      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; historicalActor=${row?.historical_actor_user_id ?? "null"}`,
       rowCount: Number(row?.user_count ?? 0)
     };
   });
@@ -282,6 +301,25 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     });
     expect(createdUser?.roles).toEqual(expect.arrayContaining([expect.objectContaining({ roleId: "software-user" })]));
 
+    await seedDeletedUserHistory(createdUser!.id);
+    const deleteResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname === `/api/v1/users/${encodeURIComponent(createdUser!.id)}`
+    );
+    await chenRow.getByRole("button", { name: "注销 Chen Rui" }).click();
+    const deleteDialog = page.getByRole("dialog", { name: "确认注销用户" });
+    await expect(deleteDialog).toContainText("业务与审计历史记录会保留");
+    await expect(deleteDialog).toContainText("用户引用会自动变为 null");
+    await deleteDialog.getByRole("button", { name: "确认注销" }).click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status()).toBe(204);
+    await expect(deleteDialog).not.toBeVisible();
+    await expect(chenRow).toHaveCount(0);
+
+    const usersAfterDeleteApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
+    expect(usersAfterDeleteApi.body.items.some((user) => user.id === createdUser!.id)).toBe(false);
+
     const auditApi = await expectSuccessfulApiGet<{ items: AuditApiItem[] }>(page, "/api/v1/audit-events");
     expect(auditApi.body.items).toEqual(
       expect.arrayContaining([
@@ -294,6 +332,11 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
           kind: "user-role-replace",
           action: "replace-roles",
           targetId: "u-wang-jie"
+        }),
+        expect.objectContaining({
+          kind: "user-delete",
+          action: "delete",
+          targetId: createdUser?.id
         })
       ])
     );
@@ -303,6 +346,15 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByText("当前角色：软件开发")).toBeVisible();
     await expect(page.getByText("所需角色：管理员")).toBeVisible();
     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
+
+    const deniedDelete = await page.request.delete(apiRoute("/api/v1/users/u-wang-jie"), {
+      headers: authHeadersForUser(
+        acceptanceCast.liuMin.userId,
+        acceptanceCast.liuMin.email,
+        acceptanceCast.liuMin.name
+      )
+    });
+    expect(deniedDelete.status()).toBe(403);
 
     await recordOperationEvidence({
       operationId: "PERM-USER-MGMT-001",
@@ -319,11 +371,21 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         summarizeApiResponse(auditApi.response, {
           method: "GET",
           path: "/api/v1/audit-events",
-          responseSummary: "user-create and user-role-replace audit events visible"
+          responseSummary: "user-create, user-role-replace, and user-delete audit events visible"
+        }),
+        summarizeApiResponse(deleteResponse, {
+          method: "DELETE",
+          path: `/api/v1/users/${createdUser!.id}`,
+          responseSummary: "204 permanent deletion"
+        }),
+        summarizeApiResponse(deniedDelete, {
+          method: "DELETE",
+          path: "/api/v1/users/u-wang-jie",
+          responseSummary: "non-Admin deletion denied with 403"
         })
       ],
       db: [
-        await userGovernanceDbSummary({
+        await deletedUserDbSummary({
           userId: createdUser!.id,
           roleId: "software-user"
         })
@@ -336,10 +398,14 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         userAuditSummaryFor(auditApi.body.items, {
           kind: "user-role-replace",
           targetId: "u-wang-jie"
+        }),
+        userAuditSummaryFor(auditApi.body.items, {
+          kind: "user-delete",
+          targetId: createdUser!.id
         })
       ],
       notes:
-        "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /organization/members, and API, DB, and audit evidence confirmed durable user-governance writes."
+        "Admin changed a non-self user's role, created a backend-governed user, and permanently deleted that user through the UI. The user and role rows were removed, retained audit history adapted its actor reference to null, and a non-Admin DELETE was denied with 403."
     });
   });
 

@@ -7,6 +7,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
 import {
   countActiveAdmins,
+  deleteUserById,
   decideRegistrationRoleRequest,
   getPendingRegistrationRoleRequestByIdForAdmin,
   getPendingRegistrationRoleRequestById,
@@ -149,8 +150,8 @@ async function auditUserMutation(
   tx: AuditTx,
   auth: AuthContext,
   input: {
-    kind: "user-create" | "user-update" | "user-activation" | "user-role-replace" | "user-password-reset";
-    action: "create" | "update" | "activate" | "deactivate" | "replace-roles" | "reset-password";
+    kind: "user-create" | "user-update" | "user-activation" | "user-role-replace" | "user-password-reset" | "user-delete";
+    action: "create" | "update" | "activate" | "deactivate" | "replace-roles" | "reset-password" | "delete";
     userId: string;
     metadata: Record<string, unknown>;
   },
@@ -396,6 +397,42 @@ export async function deactivateUser(
     }
 
     return user;
+  });
+}
+
+export async function deleteUser(
+  db: Database,
+  auth: AuthContext,
+  userId: string,
+  context: AuditCorrelationContext = {}
+) {
+  requireUserManager(auth);
+  if (userId === auth.user.id) {
+    throw new ApiError("CONFLICT", "Active Admin cannot delete itself.", { userId });
+  }
+
+  await db.transaction(async (tx) => {
+    const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!user) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+    if (rolesIncludePlatformAdmin(user.roles) && !callerHasPlatformAdmin(auth)) {
+      throw new ApiError("FORBIDDEN", "Only a platform super admin may delete a platform-admin user.", {
+        userId,
+        roleId: "platform-admin"
+      });
+    }
+
+    await auditUserMutation(asAuditTx(tx), auth, {
+      kind: "user-delete",
+      action: "delete",
+      userId,
+      metadata: { isActive: user.isActive, roles: user.roles }
+    }, context);
+    const deletedRows = await deleteUserById(tx, { organizationId: auth.organization.id, userId });
+    if (deletedRows !== 1) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
   });
 }
 

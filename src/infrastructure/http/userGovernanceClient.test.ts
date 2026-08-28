@@ -108,6 +108,18 @@ describe("createUserGovernanceClient", () => {
     });
   });
 
+  it("permanently deletes a governed user and accepts an empty 204 response", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(client.deleteUser("u/target")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/u%2Ftarget", {
+      headers: { Accept: "application/json" },
+      method: "DELETE"
+    });
+  });
+
   it("resets a governed user password", async () => {
     const fetchMock = createFetchMock({
       item: {

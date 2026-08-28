@@ -74,10 +74,11 @@ Use WiseEff, not Keycloak, for project-scoped role changes:
 - `GET /api/v1/users`
 - `POST /api/v1/users`
 - `PATCH /api/v1/users/:userId`
+- `DELETE /api/v1/users/:userId`
 - `PATCH /api/v1/users/:userId/activation`
 - `PUT /api/v1/users/:userId/roles`
 
-Only active users with `users:manage` may call mutation routes. The API must prevent self-lockout and no-final-admin states, and it must write audit events for create, update, activation, deactivation, and role replacement.
+Only active users with `users:manage` may call mutation routes. The API must prevent self-lockout and no-final-admin states, and it must write audit events for create, permanent delete, update, activation, deactivation, and role replacement. Deletion is Organization-scoped and cannot delete the caller; ordinary Admins cannot delete platform super admins. Provisioning operators must separately remove or disable the external IdP identity because deleting a WiseEff row does not mutate Keycloak.
 
 Creating a WiseEff user does not automatically provision a Keycloak account. Operators must provision or link the external account so the OIDC `sub` or email claim resolves to the WiseEff user record before that person can authenticate as the governed account.
 

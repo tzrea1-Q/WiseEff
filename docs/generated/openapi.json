@@ -775,6 +775,43 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "delete": {
+        "operationId": "users.delete",
+        "summary": "Permanently delete a governed user account",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful response."
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v1/users/{userId}/activation": {
@@ -10906,6 +10943,10 @@
         "type": "object",
         "x-wiseeff-schema": "UpdateUserGovernanceRequest"
       },
+      "DeleteResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DeleteResponse"
+      },
       "UpdateUserActivationRequest": {
         "type": "object",
         "x-wiseeff-schema": "UpdateUserActivationRequest"
@@ -11035,10 +11076,6 @@
       "MoveParameterModuleRequest": {
         "type": "object",
         "x-wiseeff-schema": "MoveParameterModuleRequest"
-      },
-      "DeleteResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "DeleteResponse"
       },
       "ParameterModuleRegistryResponse": {
         "type": "object",

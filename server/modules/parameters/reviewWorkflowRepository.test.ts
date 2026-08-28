@@ -245,6 +245,27 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     expect(rounds[0].items).toEqual([item]);
   });
 
+  it("keeps retained submission and change-request history readable after its submitter is deleted", async () => {
+    await createRound({ id: "round-deleted-submitter" });
+    await createRequest({ id: "request-deleted-submitter", roundId: "round-deleted-submitter" });
+
+    await db.query("delete from users where id = 'user-1'");
+
+    const rounds = await listSubmissionRounds(db, { organizationId: ORG, projectId: PROJECT });
+    expect(rounds).toEqual([
+      expect.objectContaining({ id: "round-deleted-submitter", submitter: "已注销用户" })
+    ]);
+    const request = await getChangeRequestById(db, {
+      organizationId: ORG,
+      requestId: "request-deleted-submitter"
+    });
+    expect(request).toMatchObject({
+      id: "request-deleted-submitter",
+      submitter: "已注销用户",
+      submitterUserId: undefined
+    });
+  });
+
   it("persists and maps workflow assignees on created change requests", async () => {
     await createRound({ id: "round-1" });
     const request = await createRequest({

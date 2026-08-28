@@ -449,6 +449,60 @@ describe("UserPermissionsPage", () => {
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
   });
 
+  it("confirms permanent deletion before calling the backend and removing the user", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => undefined)
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+    const row = screen.getByText("Liu Min").closest("tr")!;
+
+    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    expect(userGovernanceActions.deleteUser).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
+    expect(dialog).toHaveTextContent("永久删除");
+    expect(dialog).toHaveTextContent("用户引用将置为空");
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
+
+    expect(userGovernanceActions.deleteUser).toHaveBeenCalledWith("u-liu-min");
+    expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "已注销用户 Liu Min" });
+    expect(screen.queryByRole("dialog", { name: "确认注销用户" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the deletion dialog open and preserves the row when the backend refuses", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      deleteUser: vi.fn(async () => {
+        throw new Error("服务端拒绝注销");
+      })
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+    const row = screen.getByText("Liu Min").closest("tr")!;
+
+    await userEvent.click(within(row).getByRole("button", { name: "注销 Liu Min" }));
+    const dialog = screen.getByRole("dialog", { name: "确认注销用户" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认注销" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("服务端拒绝注销"));
+    expect(dialog).toBeInTheDocument();
+    expect(within(row).getByText("Liu Min")).toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "DELETE_USER", userId: "u-liu-min" });
+  });
+
+  it("disables permanent deletion for the current signed-in user", () => {
+    renderPage();
+    const currentUserRow = screen.getByText("Xu Yun").closest("tr")!;
+
+    expect(within(currentUserRow).getByRole("button", { name: "注销 Xu Yun" })).toBeDisabled();
+  });
+
   it("resets a member password through the governance action", async () => {
     const userGovernanceActions: UserGovernanceActions = {
       listUsers: vi.fn(async () => []),

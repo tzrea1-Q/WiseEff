@@ -73,7 +73,7 @@ type ChangeRequestRow = {
   action?: ParameterChangeAction;
   candidate_config_revision_id?: string | null;
   submitter: string;
-  submitter_user_id?: string;
+  submitter_user_id?: string | null;
   status: ParameterChangeRequestStatus;
   risk: ParameterRiskLevel;
   created_at: string | Date;
@@ -388,7 +388,7 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     action: row.action ?? "set",
     candidateConfigRevisionId: row.candidate_config_revision_id ?? undefined,
     submitter: row.submitter,
-    submitterUserId: row.submitter_user_id,
+    submitterUserId: row.submitter_user_id ?? undefined,
     createdAt,
     createdAtTs: createdAt,
     updatedAt,
@@ -473,13 +473,13 @@ export async function createSubmissionRound(
       inserted.id,
       inserted.project_id,
       projects.name as project_name,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       inserted.status,
       inserted.summary,
       inserted.created_at
     from inserted
     inner join projects on projects.id = inserted.project_id
-    inner join users on users.id = inserted.submitter_user_id
+    left join users on users.id = inserted.submitter_user_id
     `,
     [input.id, input.organizationId, input.projectId, input.submitterUserId, input.status, input.summary]
   );
@@ -538,7 +538,7 @@ export async function createChangeRequest(
         inserted.target_value,
         inserted.action,
         inserted.candidate_config_revision_id,
-        users.name as submitter,
+        coalesce(users.name, '已注销用户') as submitter,
         inserted.status,
         'Low' as risk,
         'legacy-text' as value_kind,
@@ -557,7 +557,7 @@ export async function createChangeRequest(
         null::text as source_node_path
       from inserted
       left join parameter_specs ps on ps.id = inserted.parameter_spec_id
-      inner join users on users.id = inserted.submitter_user_id
+      left join users on users.id = inserted.submitter_user_id
       left join users assignee on assignee.id = inserted.assigned_to_user_id
       `,
       [
@@ -612,7 +612,7 @@ export async function createChangeRequest(
       inserted.target_value,
       inserted.action,
       inserted.candidate_config_revision_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       inserted.status,
       pd.risk,
       pd.value_kind,
@@ -631,7 +631,7 @@ export async function createChangeRequest(
       ppv.source_node_path
     from inserted
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = inserted.parameter_definition_id
-    inner join users on users.id = inserted.submitter_user_id
+    left join users on users.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = inserted.project_parameter_value_id
     `,
@@ -713,7 +713,7 @@ export async function createEnablementChangeRequest(
       inserted.candidate_config_revision_id,
       inserted.edit_subject_kind,
       inserted.logical_node_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       inserted.status,
       'Low' as risk,
       'legacy-text' as value_kind,
@@ -734,7 +734,7 @@ export async function createEnablementChangeRequest(
     left join dts_logical_node_revisions lnr
       on lnr.logical_node_id = inserted.logical_node_id
      and lnr.config_revision_id = inserted.base_config_revision_id
-    inner join users on users.id = inserted.submitter_user_id
+    left join users on users.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
     `,
     [
@@ -1010,11 +1010,12 @@ export async function listSubmissionRounds(
 
   const result = await db.query<SubmissionRoundRow>(
     `
-    select psr.id, psr.project_id, projects.name as project_name, users.name as submitter,
+    select psr.id, psr.project_id, projects.name as project_name,
+      coalesce(users.name, '已注销用户') as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
-    inner join users on users.id = psr.submitter_user_id
+    left join users on users.id = psr.submitter_user_id
     where ${where.join("\n      and ")}
     order by psr.created_at desc
     `,
@@ -1046,11 +1047,12 @@ export async function getSubmissionRoundById(
 ) {
   const result = await db.query<SubmissionRoundRow>(
     `
-    select psr.id, psr.project_id, projects.name as project_name, users.name as submitter,
+    select psr.id, psr.project_id, projects.name as project_name,
+      coalesce(users.name, '已注销用户') as submitter,
       psr.status, psr.summary, psr.created_at
     from parameter_submission_rounds psr
     inner join projects on projects.id = psr.project_id
-    inner join users on users.id = psr.submitter_user_id
+    left join users on users.id = psr.submitter_user_id
     where psr.organization_id = $1
       and psr.id = $2
     `,
@@ -1174,7 +1176,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       pcr.submitter_user_id,
       pcr.status,
       'Low' as risk,
@@ -1199,7 +1201,7 @@ export async function listChangeRequests(
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
     ${SEMANTIC_LNR_FROM_BINDING_SQL}
-    inner join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     where ${where.join("\n      and ")}
     order by pcr.updated_at desc
@@ -1219,7 +1221,7 @@ export async function listChangeRequests(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1239,7 +1241,7 @@ export async function listChangeRequests(
       ppv.source_node_path
     from parameter_change_requests pcr
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
-    inner join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     ${CR_MODULE_JOINS_LEGACY_SQL}
@@ -1277,7 +1279,7 @@ export async function findOpenChangeRequest(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        users.name as submitter,
+        coalesce(users.name, '已注销用户') as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1301,7 +1303,7 @@ export async function findOpenChangeRequest(
       ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
-      inner join users on users.id = pcr.submitter_user_id
+      left join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
         and pcr.project_id = $2
@@ -1330,7 +1332,7 @@ export async function findOpenChangeRequest(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1350,7 +1352,7 @@ export async function findOpenChangeRequest(
       ppv.source_node_path
     from parameter_change_requests pcr
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
-    inner join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     ${CR_MODULE_JOINS_LEGACY_SQL}
@@ -1403,7 +1405,7 @@ export async function getChangeRequestById(
         pcr.target_value,
         pcr.action,
         pcr.candidate_config_revision_id,
-        users.name as submitter,
+        coalesce(users.name, '已注销用户') as submitter,
         pcr.submitter_user_id,
         pcr.status,
         'Low' as risk,
@@ -1427,7 +1429,7 @@ export async function getChangeRequestById(
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
       ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
-      inner join users on users.id = pcr.submitter_user_id
+      left join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
         and pcr.id = $2
@@ -1455,7 +1457,7 @@ export async function getChangeRequestById(
       pcr.target_value,
       pcr.action,
       pcr.candidate_config_revision_id,
-      users.name as submitter,
+      coalesce(users.name, '已注销用户') as submitter,
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
@@ -1475,7 +1477,7 @@ export async function getChangeRequestById(
       ppv.source_node_path
     from parameter_change_requests pcr
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
-    inner join users on users.id = pcr.submitter_user_id
+    left join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     ${CR_MODULE_JOINS_LEGACY_SQL}
