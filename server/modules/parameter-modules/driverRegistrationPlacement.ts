@@ -120,10 +120,14 @@ export async function getNodeTypeDefinitionPlacement(
       )
     order by case when node_type.attribution_subject_id = $2 then 0 else 1 end,
              node_type.id
-    limit 1
     `,
     [input.organizationId, input.attributionSubjectId, input.sourceKey],
   );
+  // A node type may be discoverable both by its canonical subject and by its
+  // stable source key. If more than one taxonomy row matches, choosing the
+  // first row would turn placement ambiguity into a false effective result.
+  // Leave it for governance/reconciliation instead.
+  if (result.rows.length !== 1) return null;
   const row = result.rows[0];
   return row
     ? {

@@ -174,4 +174,33 @@ describe.skipIf(!databaseAvailable)("applyMigrations concurrency and drift", () 
       await admin.end().catch(() => undefined);
     }
   });
+
+  it("fails closed when a historical alias has no checksum evidence", async () => {
+    const dbName = `wiseeff_migrate_alias_null_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+    const admin = new pg.Client({ connectionString: adminConnectionString("postgres") });
+    await admin.connect();
+    await admin.query(`create database ${dbName}`);
+
+    const connection = await connectDatabase(adminConnectionString(dbName));
+    try {
+      await applyMigrations(connection.db, migrationsDir, {
+        through: "0116_node_write_observation_outcomes.sql",
+      });
+      await connection.db.query(
+        `insert into schema_migrations (name, checksum)
+         values ($1, null)`,
+        ["0117_effective_driver_parameter_catalog.sql"],
+      );
+
+      await expect(
+        applyMigrations(connection.db, migrationsDir, {
+          through: "0118_effective_driver_parameter_catalog.sql",
+        }),
+      ).rejects.toThrow(/Migration history checksum missing for historical alias/);
+    } finally {
+      await connection.client.end().catch(() => undefined);
+      await admin.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined);
+      await admin.end().catch(() => undefined);
+    }
+  });
 });

@@ -648,7 +648,7 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 | `GET` | `/api/v2/organization-driver-schemas/:schemaId/deprecation-impact` | Admin 预览 overlay 退役影响：`{ item: { schemaId, compatible, coverageLoss, definitionCount, projectCount, successorSource? } }`。 |
 | `POST` | `/api/v2/organization-driver-schemas/:schemaId/deprecate` | 废弃 overlay，使其不再参与匹配。预览报告 `coverageLoss` 时请求体须 `confirmCoverageLoss: true`，否则 `409` 且 `confirmRequired`。活跃**平台** overlay 已覆盖 compatible 时拒绝新建/激活。 |
 | `GET` | `/api/v2/platform/driver-schemas/promotion-candidates` | 仅 `platform:schema-promote`。按 `lower(compatible)` 聚合跨组织活跃 overlay 的固定投影：compatible、贡献组织 id、属性键/形状、等价判定、分歧（如有）、既有平台 overlay id。**不**返回完整 overlay 记录。 |
-| `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`。请求体 `{ compatible, documentationSourceOrganizationId? }`。要求贡献方等价。写入平台 overlay（`organization_id IS NULL`），原地提升链接 ParameterSpec，标记贡献方为 `superseded`，失效各组织 schema 注册表缓存，并扇出平台 + 租户审计。 |
+| `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`。请求体 `{ compatible, documentationSourceOrganizationId? }`。要求贡献方等价。写入平台 overlay（`organization_id IS NULL`），**物化平台拥有且按 subject 作用域隔离的 ParameterSpec 副本**；贡献方定义继续归属各组织且保持不变，贡献方 overlay 标记为 `superseded`，失效各组织 schema 注册表缓存，并扇出平台 + 租户审计。 |
 | `POST` | `/api/v2/platform/driver-schemas/promotions/:promotionId/revert` | `platform:schema-promote`。废弃平台 overlay 并将贡献方 overlay 恢复为 `active`。 |
 
 `DriverRegistryParseCoverage` 在已覆盖时含 `scope: "platform" | "organization"` 及可选 `shadowedBy[]`（输给所选层级的低优先级匹配）。

@@ -82,8 +82,8 @@ organization placement, lifecycle precedence, and active-version cardinality are
 client display names, observed module names, or caller-selected precedence. Unknown or ambiguous DTS
 evidence remains review/occurrence evidence and cannot create a recognized binding. New active DTS
 property writes are rejected by migrations `0118`/`0119` (with `0121` defining the legacy staging
-compatibility boundary, `0122` correcting nodename-only subject taxonomy, and `0124` closing owner/property-key
-identity writes); reconciliation corrections use a trusted
+compatibility boundary, `0122` correcting nodename-only subject taxonomy, `0124` closing owner/property-key
+identity writes, and `0125` enforcing symmetric DriverSchema-root owner scope); reconciliation corrections use a trusted
 system/job invocation and an audited transaction, while `parameter-definitions:check` independently
 blocks release on missing subjects, duplicate active definitions/versions, missing placement, or
 unreviewed binding tips. Operators must follow the snapshot and restore boundary in the [effective

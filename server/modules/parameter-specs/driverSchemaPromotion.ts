@@ -14,7 +14,7 @@ import {
   insertPlatformDriverSchemaOverlay,
   listActiveOrganizationDriverSchemaOverlays,
   listPromotionsForPlatformSchema,
-  promoteParameterSpecsToPlatform,
+  materializePlatformParameterSpecs,
   restoreSupersededContributors,
   setOrganizationDriverSchemaLifecycle,
   setPlatformDriverSchemaOverlayLifecycle,
@@ -288,8 +288,19 @@ export async function promoteDriverSchemaOverlayForAuth(
       (overlay) => overlay.organizationId === documentationSourceOrgId,
     ) ?? overlays[0];
 
-    const parameterSpecIds = referenceOverlay.properties.map((property) => property.parameterSpecId);
-    await promoteParameterSpecsToPlatform(tx, parameterSpecIds);
+    const parameterSpecIdsBySource = await materializePlatformParameterSpecs(tx, {
+      compatible: referenceOverlay.compatible,
+      properties: referenceOverlay.properties,
+    });
+    const parameterSpecIds = referenceOverlay.properties.map((property) => {
+      const platformParameterSpecId = parameterSpecIdsBySource.get(property.parameterSpecId);
+      if (!platformParameterSpecId) {
+        throw new Error(
+          `Platform promotion did not materialize ${property.parameterSpecId}.`,
+        );
+      }
+      return platformParameterSpecId;
+    });
 
     const platformSchemaId = randomUUID();
     const platformOverlay = await insertPlatformDriverSchemaOverlay(tx, {
@@ -300,7 +311,7 @@ export async function promoteDriverSchemaOverlayForAuth(
       createdByUserId: auth.user.id,
       properties: referenceOverlay.properties.map((property, index) => ({
         id: randomUUID(),
-        parameterSpecId: property.parameterSpecId,
+        parameterSpecId: parameterSpecIds[index]!,
         propertyKey: property.propertyKey,
         sortOrder: index,
       })),
@@ -355,6 +366,9 @@ export async function promoteDriverSchemaOverlayForAuth(
         supersededSchemaIds,
         promotionIds,
         parameterSpecIds,
+        sourceParameterSpecIds: referenceOverlay.properties.map(
+          (property) => property.parameterSpecId,
+        ),
         contributorCount: overlays.length,
       },
       affectedOrganizationIds,

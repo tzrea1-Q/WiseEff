@@ -109,20 +109,22 @@ export async function applyMigrations(
 
   // Historical aliases are validation-only. They must carry one of the
   // immutable checksums recorded for the pre-rebase branch; no alias SQL is
-  // ever executed by this runner. Rows created before checksum recording are
-  // backfilled to the canonical historical checksum so subsequent runs keep
-  // the same drift protection as current files.
+  // ever executed by this runner. A NULL checksum cannot prove which SQL was
+  // applied, so it is a deliberate stop requiring an audited history repair
+  // before deployment can continue.
   for (const [name, checksums] of Object.entries(LEGACY_MIGRATION_CHECKSUMS)) {
     if (!appliedChecksums.has(name)) continue;
     const stored = appliedChecksums.get(name);
     const canonical = checksums[0];
     if (!canonical) continue;
     if (stored == null) {
-      await db.query(
-        "update schema_migrations set checksum = $2 where name = $1 and checksum is null",
-        [name, canonical],
+      throw new Error(
+        `Migration history checksum missing for historical alias ${name}. ` +
+          `Verify the exact legacy SQL and repair schema_migrations.checksum to ${canonical} ` +
+          "under an audited maintenance procedure before continuing.",
       );
-    } else if (!checksums.includes(stored)) {
+    }
+    if (!checksums.includes(stored)) {
       throw new Error(
         `Migration drift detected: ${name} has an unknown historical checksum. ` +
           "Restore the exact applied migration or perform an audited migration-history repair.",

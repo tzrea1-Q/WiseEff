@@ -169,6 +169,44 @@ describe.skipIf(!databaseAvailable)(
       ).toBe(1);
     });
 
+    it("blocks a subject-bearing DTS staging property even when its spec is also a driver root", async () => {
+      await db!.query(
+        `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id, property_key)
+       values ('pspec:reconciliation:subjectful-staging', $1, 'dts', 'legacy/subjectful-staging', 'active', $2, 'subjectful_limit')`,
+        [ORG_ID, PLATFORM_SUBJECT],
+      );
+      await db!.query(
+        `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+       values ('psv-reconciliation-subjectful-staging', 'pspec:reconciliation:subjectful-staging', 1,
+         'subjectful', 'subjectful', '{"kind":"cells"}'::jsonb, 'active', 'active', 'subjectful')`,
+      );
+      await db!.query(
+        `insert into dts_property_specs
+         (id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints, documentation)
+       values ('dps-reconciliation-subjectful-staging', 'pspec:reconciliation:subjectful-staging', null,
+         'subjectful_limit', 'legacy/subjectful-staging', '{}'::jsonb, 'subjectful')`,
+      );
+      await db!.query(
+        `insert into driver_schemas
+           (id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id)
+       values ('driver-reconciliation-subjectful-root', 'pspec:reconciliation:subjectful-staging', $1, $2, $3)`,
+        [ORG_ID, "legacy/subjectful-staging", PLATFORM_SUBJECT],
+      );
+
+      const verification = await verifyEffectiveDriverParameterDefinitions(
+        db!,
+        { organizationId: ORG_ID },
+      );
+      expect(verification.status).toBe("blocked");
+      expect(
+        verification.checks.find(
+          (check) => check.code === "active-driver-definition-incomplete",
+        )?.count,
+      ).toBe(1);
+    });
+
     it("classifies a parameter-key mismatch as a review blocker instead of guessing", async () => {
       await db!.query(
         `update parameter_specs set property_key = 'different_limit' where id = $1`,

@@ -680,6 +680,16 @@ export async function countOpenSpecReviewTasksForRevision(
     configRevisionId: string;
     excludePropertyKeys?: string[];
     unmatchedOnly?: boolean;
+    /**
+     * An explicit binding edit may carry an existing canonical binding even
+     * when the re-ingested surface itself is unmatched. Exclude only the
+     * matching *unmatched* task for that node/property; ambiguous tasks remain
+     * release blockers and no new identity is created by this exception.
+     */
+    excludeUnmatchedIdentities?: ReadonlyArray<{
+      nodeLocator: string;
+      propertyKey: string;
+    }>;
   },
 ): Promise<number> {
   const values: unknown[] = [
@@ -707,6 +717,24 @@ export async function countOpenSpecReviewTasksForRevision(
         or coalesce(t.source_evidence->>'inferred', '') = 'true'
       )`,
     );
+  }
+
+  for (const identity of input.excludeUnmatchedIdentities ?? []) {
+    values.push(identity.nodeLocator, identity.propertyKey);
+    const nodeLocatorParam = values.length - 1;
+    const propertyKeyParam = values.length;
+    extraConditions.push(`not (
+      coalesce(t.source_evidence->>'nodeLocator', '') = $${nodeLocatorParam}
+      and coalesce(t.source_evidence->>'propertyKey', '') = $${propertyKeyParam}
+      and (
+        coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+        or coalesce(t.source_evidence->>'inferred', '') = 'true'
+      )
+      and (
+        t.config_revision_id = $3
+        or coalesce(t.source_evidence->>'configRevisionId', '') = $3
+      )
+    )`);
   }
 
   const result = await db.query<{ count: string }>(

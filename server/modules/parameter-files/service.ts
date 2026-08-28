@@ -273,9 +273,7 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    allowLegacyProvisionalSurface: false,
-  });
+  await ingestConfigRevisionInTransaction(db, manifest, auth);
 }
 
 export async function uploadProjectParameterFile(

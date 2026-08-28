@@ -45,19 +45,10 @@ import {
   isModuleScaffoldingNode,
   isScaffoldingDriverLabel,
 } from "../parameter-modules/modulePlacement";
-import {
-  isParameterSurfaceRow,
-  isStructuralPropertyKey,
-} from "./parameterSurface";
+import { isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
-  ensureAttributionSubjectForCompatible,
-  getModuleAttributionSubjectId,
-} from "../parameter-modules/resolveAttributionSubject";
-import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
-import {
-  createOrReuseBinding,
   persistAmbiguousIdentityMapping,
   applyReviewedContinuityToSnapshots,
   listReviewedContinuityDecisions,
@@ -612,12 +603,6 @@ async function matchBindAndQueueReviews(
     stableLogicalIdByLocator: Map<string, string>;
     propertyOccurrenceByKey: Map<string, string>;
     registry: SchemaRegistry;
-    /**
-     * Legacy surface staging is retained only for explicitly opted-in
-     * compatibility callers. API ingest defaults to the fail-closed review
-     * path so an unknown property cannot become a recognized binding.
-     */
-    allowLegacyProvisionalSurface: boolean;
   },
 ): Promise<SpecReviewTaskDraft[]> {
   const overrides = await listMatcherOverridesForProject(tx, {
@@ -803,110 +788,6 @@ async function matchBindAndQueueReviews(
         continue;
       }
 
-      // During the legacy identity rollout, an explicitly opted-in compatibility
-      // caller may preserve the historical surface staging path. API ingest
-      // leaves unknown evidence review-only by default; this branch never marks
-      // an occurrence resolved and its binding revision remains unreviewed.
-      if (
-        input.allowLegacyProvisionalSurface &&
-        decision.kind === "unmatched" &&
-        isParameterSurfaceRow({
-          propertyKey,
-          locator: matchable.nodeLocator,
-          compatible: matchable.compatible[0] ?? null,
-        })
-      ) {
-        const driverModule =
-          driverModuleFromSchemaNamespace(
-            matchable.compatible[0]?.split(",").pop() ?? null,
-          ) ?? matchable.name;
-        const surfaceModuleId = await resolveAttributionModuleForBinding(tx, {
-          organizationId: input.organizationId,
-          driverModule,
-          compatible: matchable.compatible[0] ?? null,
-          instanceName: instanceNameFor(matchable),
-          nodeLocator: matchable.nodeLocator,
-        });
-        let attributionSubjectId = await getModuleAttributionSubjectId(
-          tx,
-          surfaceModuleId,
-        );
-        if (!attributionSubjectId) {
-          const compatibleToken = matchable.compatible[0]?.trim() || null;
-          const ensureToken = compatibleToken || driverModule?.trim() || null;
-          if (ensureToken) {
-            attributionSubjectId = await ensureAttributionSubjectForCompatible(
-              tx,
-              {
-                organizationId: input.organizationId,
-                compatible: ensureToken,
-              },
-            );
-            await tx.query(
-              `
-              update parameter_modules
-              set attribution_subject_id = coalesce(attribution_subject_id, $2),
-                  updated_at = now()
-              where id = $1
-                and kind in ('driver-group', 'node-type')
-              `,
-              [surfaceModuleId, attributionSubjectId],
-            );
-          }
-        }
-        if (!attributionSubjectId) {
-          throw new ApiError(
-            "CONFLICT",
-            "Cannot resolve attribution subject for provisional surface binding.",
-            {
-              organizationId: input.organizationId,
-              moduleId: surfaceModuleId,
-              propertyKey,
-              compatible: matchable.compatible[0] ?? null,
-            },
-          );
-        }
-        const { parameterSpecId, parameterSpecVersionId } =
-          await upsertProvisionalSurfacePropertySpec(tx, {
-            organizationId: input.organizationId,
-            propertyKey,
-            attributionSubjectId,
-            occurrenceAstJson: property.value ?? {
-              kind: "raw",
-              rawText: property.rawText,
-            },
-            occurrenceRawText: property.rawText,
-          });
-        const binding = await createOrReuseBinding(tx, {
-          organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId,
-            moduleId: surfaceModuleId,
-          },
-        });
-        await upsertBindingRevisionValues(tx, {
-          bindingId: binding.id,
-          configRevisionId: input.configRevisionId,
-          parameterSpecVersionId,
-          values: {
-            typedValue: property.value ?? {
-              kind: "raw",
-              rawText: property.rawText,
-            },
-            canonicalValue: property.value ?? property.normalizedValue,
-            rawValue: property.rawText,
-            schemaState: "unreviewed",
-          },
-        });
-        // There is no review-only decision enum in the immutable occurrence
-        // table. Deliberately leave this occurrence undecided instead of
-        // writing `resolved`; the unreviewed binding revision is not eligible
-        // for the effective catalog or release gate.
-        continue;
-      }
-
       // An unmatched property is never recognized from a historical binding.
       // Continuity may carry logical-node identity, but it cannot prove the
       // current canonical subject, unique active version, or authoritative
@@ -930,10 +811,9 @@ export async function ingestConfigRevision(
   db: Database,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
-  options: { allowLegacyProvisionalSurface?: boolean } = {},
 ): Promise<DtsConfigRevisionDto> {
   return db.transaction(async (tx) =>
-    ingestConfigRevisionInTransaction(tx, manifest, auth, options),
+    ingestConfigRevisionInTransaction(tx, manifest, auth),
   );
 }
 
@@ -942,16 +822,14 @@ export async function ingestConfigRevisionInTransaction(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
-  options: { allowLegacyProvisionalSurface?: boolean } = {},
 ): Promise<DtsConfigRevisionDto> {
-  return ingestConfigRevisionTx(tx, manifest, auth, options);
+  return ingestConfigRevisionTx(tx, manifest, auth);
 }
 
 async function ingestConfigRevisionTx(
   tx: Queryable,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
-  options: { allowLegacyProvisionalSurface?: boolean } = {},
 ): Promise<DtsConfigRevisionDto> {
   const normalized = normalizePersistedManifest({
     entryFile: manifest.entryFile,
@@ -1161,8 +1039,6 @@ async function ingestConfigRevisionTx(
     stableLogicalIdByLocator: continuity.stableLogicalIdByLocator,
     propertyOccurrenceByKey,
     registry,
-    allowLegacyProvisionalSurface:
-      options.allowLegacyProvisionalSurface ?? false,
   });
   await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 

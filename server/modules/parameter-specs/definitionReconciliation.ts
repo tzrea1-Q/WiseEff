@@ -238,7 +238,9 @@ async function listSuspects(
     left join project_parameter_bindings b
       on b.parameter_spec_id = ps.id
      and b.organization_id = ps.organization_id
-    left join parameter_modules binding_module on binding_module.id = b.module_id
+    left join parameter_modules binding_module
+      on binding_module.id = b.module_id
+     and binding_module.organization_id = b.organization_id
     left join parameter_spec_versions current_version
       on current_version.id = (
           select psv.id

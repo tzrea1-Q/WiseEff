@@ -71,6 +71,11 @@ export async function verifyEffectiveDriverParameterDefinitions(
           )
           or (
             ps.source_kind = 'dts'
+            and dps.parameter_spec_id is not null
+            and dps.driver_schema_id is null
+          )
+          or (
+            ps.source_kind = 'dts'
             and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
               select 1 from driver_schemas driver_root
@@ -132,6 +137,11 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where (
             (
               ps.source_kind = 'dts'
+              and dps.parameter_spec_id is not null
+              and dps.driver_schema_id is null
+            )
+            or (
+              ps.source_kind = 'dts'
               and asub.subject_kind is distinct from 'node-type-definition'
               and not exists (
               select 1 from driver_schemas driver_root
@@ -174,6 +184,11 @@ export async function verifyEffectiveDriverParameterDefinitions(
       left join attribution_subjects asub on asub.id = ps.attribution_subject_id
         where (
           (
+              ps.source_kind = 'dts'
+              and dps.parameter_spec_id is not null
+              and dps.driver_schema_id is null
+            )
+            or (
               ps.source_kind = 'dts'
               and asub.subject_kind is distinct from 'node-type-definition'
               and not exists (
@@ -313,10 +328,16 @@ export async function verifyEffectiveDriverParameterDefinitions(
         from (
           select ps.organization_id, ps.id as parameter_spec_id, ps.attribution_subject_id
           from parameter_specs ps
+          left join dts_property_specs dps on dps.parameter_spec_id = ps.id
           inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
           where ps.organization_id is not null
             and (
               (
+                ps.source_kind = 'dts'
+                and dps.parameter_spec_id is not null
+                and dps.driver_schema_id is null
+              )
+              or (
                 ps.source_kind = 'dts'
                 and asub.subject_kind is distinct from 'node-type-definition'
                 and not exists (
@@ -427,6 +448,73 @@ export async function verifyEffectiveDriverParameterDefinitions(
             or lower(coalesce(node_type.source_key, '')) = lower(coalesce(target.source_key, ''))
           )
       )
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
+    code: "active-node-type-placement-ambiguous",
+    count: await count(
+      db,
+      `
+      with targets as (
+        select distinct
+               ps.organization_id as target_organization_id,
+               ps.attribution_subject_id,
+               asub.source_key
+        from parameter_specs ps
+        inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
+        where ps.organization_id is not null
+          and asub.subject_kind = 'node-type-definition'
+          and ps.definition_lifecycle = 'active'
+          and exists (
+            select 1 from parameter_spec_versions psv
+            where psv.parameter_spec_id = ps.id
+              and psv.version_status = 'active'
+              and psv.lifecycle = 'active'
+          )
+          ${input.organizationId ? "and ps.organization_id = $1" : ""}
+        union all
+        select distinct
+               org.id,
+               ps.attribution_subject_id,
+               asub.source_key
+        from organizations org
+        cross join parameter_specs ps
+        inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
+        where ps.organization_id is null
+          and asub.subject_kind = 'node-type-definition'
+          and ps.definition_lifecycle = 'active'
+          and exists (
+            select 1 from parameter_spec_versions psv
+            where psv.parameter_spec_id = ps.id
+              and psv.version_status = 'active'
+              and psv.lifecycle = 'active'
+          )
+          ${input.organizationId ? "and org.id = $1" : ""}
+      ), matching as (
+        select distinct
+               t.target_organization_id,
+               t.attribution_subject_id,
+               t.source_key,
+               node_type.id as node_type_module_id
+        from targets t
+        inner join parameter_modules node_type
+          on node_type.organization_id = t.target_organization_id
+         and node_type.kind = 'node-type'
+         and (
+           node_type.attribution_subject_id = t.attribution_subject_id
+           or lower(coalesce(node_type.source_key, '')) = lower(coalesce(t.source_key, ''))
+         )
+      )
+      select count(*)::text as count
+      from (
+        select target_organization_id, attribution_subject_id, source_key
+        from matching
+        group by target_organization_id, attribution_subject_id, source_key
+        having count(*) > 1
+      ) ambiguous
       `,
       values,
     ),
@@ -603,6 +691,11 @@ export async function verifyEffectiveDriverParameterDefinitions(
             ps.source_kind = 'dts'
             and ps.attribution_subject_id is null
             and dps.parameter_spec_id is not null
+          )
+          or (
+            ps.source_kind = 'dts'
+            and dps.parameter_spec_id is not null
+            and dps.driver_schema_id is null
           )
           or (
             ps.source_kind = 'dts'

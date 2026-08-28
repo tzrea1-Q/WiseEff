@@ -527,6 +527,25 @@ describe("driver identity owner hardening migration invariants (Issue #649)", ()
   });
 });
 
+describe("symmetric DriverSchema owner hardening migration invariants (Issue #649)", () => {
+  it("rejects both cross-organization and platform-to-organization root links", () => {
+    const migration = readFileSync(
+      path.join(
+        root,
+        "server",
+        "migrations",
+        "0125_harden_driver_schema_owner_scope.sql",
+      ),
+      "utf8",
+    );
+    expect(migration).toContain(
+      "if new.organization_id is distinct from spec_organization_id then",
+    );
+    expect(migration).toContain("wiseeff_driver_schema_identity_owner_guard");
+    expect(migration).toContain("DriverSchema owner scope");
+  });
+});
+
 describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
   it("removes structural definitions after full FK preflight and prevents re-entry", () => {
     const migration = readFileSync(

@@ -619,12 +619,7 @@ export async function createBindingDraft(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    // Editing an unresolved legacy surface still needs a durable draft target,
-    // but ingestService keeps that binding unreviewed and leaves the occurrence
-    // undecided. It can therefore never enter the effective/recognized catalog.
-    allowLegacyProvisionalSurface: true,
-  });
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
@@ -696,12 +691,57 @@ export async function createBindingDraft(
     );
   }
 
+  const existingBindingIdentities = await db.query<{
+    node_locator: string;
+    property_key: string;
+  }>(
+    `
+    select lnr.node_locator,
+           coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = b.logical_node_id
+     and lnr.config_revision_id = $2
+    inner join project_parameter_binding_revisions br
+      on br.binding_id = b.id
+     and br.config_revision_id = $2
+     and br.schema_state = 'valid'
+    where b.organization_id = $1
+      and b.project_id = $3
+    `,
+    [auth.organization.id, revision.id, binding.project_id],
+  );
+  const existingBindingIdentityRows = existingBindingIdentities.rows.map(
+    ({ node_locator: nodeLocator, property_key: propertyKey }) => ({
+      nodeLocator,
+      propertyKey,
+    }),
+  );
+  // Continuity may assign a fresh logical-node id on the candidate revision
+  // while the binding's persisted locator remains the exact write target. Keep
+  // that one server-owned locator as a narrow fallback for the edited binding.
+  if (
+    binding.node_locator &&
+    !existingBindingIdentityRows.some(
+      (identity) =>
+        identity.nodeLocator === binding.node_locator &&
+        identity.propertyKey === binding.property_key,
+    )
+  ) {
+    existingBindingIdentityRows.push({
+      nodeLocator: binding.node_locator,
+      propertyKey: binding.property_key,
+    });
+  }
+
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     configRevisionId: candidateRevisionId,
+    excludeUnmatchedIdentities: existingBindingIdentityRows,
   });
-
   const earlyGate = assertCanPromoteCandidateToDraft({
     status: ingested.status,
     ...semanticCounts,
@@ -1143,11 +1183,7 @@ export async function createNodeEnablementDraft(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    // Preserve the legacy edit seam as review-only staging; product/API reads
-    // remain fail-closed because the provisional revision is unreviewed.
-    allowLegacyProvisionalSurface: true,
-  });
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
@@ -1175,10 +1211,38 @@ export async function createNodeEnablementDraft(
     );
   }
 
+  const bindingIdentities = await db.query<{
+    node_locator: string;
+    property_key: string;
+  }>(
+    `
+    select lnr.node_locator,
+           coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = b.logical_node_id
+     and lnr.config_revision_id = $2
+    inner join project_parameter_binding_revisions br
+      on br.binding_id = b.id and br.config_revision_id = $2
+    where b.organization_id = $1
+      and b.project_id = $3
+      and b.logical_node_id = $4
+    `,
+    [auth.organization.id, revision.id, input.projectId, input.logicalNodeId],
+  );
+
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     configRevisionId: candidateRevisionId,
+    excludeUnmatchedIdentities: bindingIdentities.rows.map(
+      ({ node_locator: nodeLocator, property_key: propertyKey }) => ({
+        nodeLocator,
+        propertyKey,
+      }),
+    ),
   });
 
   const earlyGate = assertCanPromoteCandidateToDraft({

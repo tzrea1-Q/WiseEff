@@ -16,7 +16,8 @@ and exactly one organization driver-group placement.
   `0121_effective_driver_parameter_catalog_legacy_write_compat.sql`,
   `0122_classify_nodename_driver_subjects.sql`, and
   `0123_harden_node_type_identity.sql`, and
-  `0124_harden_driver_identity_owner.sql`, with the application. The last four
+  `0124_harden_driver_identity_owner.sql`, and
+  `0125_harden_driver_schema_owner_scope.sql`, with the application. The last five
   migrations preserve the legacy staging boundary, correct nodename-only
   subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
   names and close cross-tenant identity writes; they do not make an unlinked definition effective.
@@ -24,9 +25,11 @@ and exactly one organization driver-group placement.
   branch, its `schema_migrations` may contain the old `0117_effective...` through
   `0121_classify...` names. The migration runner accepts only the recorded,
   SHA-256-checked historical aliases and never replays them; do not rename or
-  delete those rows. It then applies the current `0117_user_account_deletion`
-  and pending `0118+` files normally. Any unknown name or checksum remains a
-  hard stop for an audited history repair.
+  delete those rows. A NULL or unknown alias checksum is a hard stop: verify the
+  exact legacy SQL and repair that one `schema_migrations` row under an audited
+  maintenance procedure before retrying. The runner then applies the current
+  `0117_user_account_deletion` and pending `0118+` files normally. Any unknown
+  migration name remains a hard stop for an audited history repair.
 - Take a PostgreSQL and object-store snapshot. Keep the write freeze through
   verification and post-deploy observation.
 - Stop on any non-zero command, a non-empty blocker report, or a failed verification.
@@ -76,6 +79,10 @@ The check must report `status: "ready"`. The API effective view (`GET
 canonical driver/property identity. Use `view=governance` to inspect drafts,
 deprecated rows, shadowed twins, and blockers. Release validation also blocks
 unreviewed recognized driver tips and incomplete/duplicate effective catalog rows.
+
+Platform overlay promotion follows the same identity boundary: it creates
+platform-owned subject-scoped ParameterSpec copies and leaves organization
+contributor definitions untouched. An in-place owner change is not supported.
 
 ## Rollback
 

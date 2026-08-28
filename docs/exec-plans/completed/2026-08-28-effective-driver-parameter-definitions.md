@@ -38,7 +38,8 @@ that preserves history and binding revision meaning.
    and remove provisional unmatched binding/spec creation from production ingest.
 4. **Unify effective selection and APIs**: server-owned precedence, declared placement versus
    observed modules, effective default listing plus explicit governance/raw listing, and client/UI
-   fields for driver identity, placement, and observation state.
+   fields for driver identity, placement, and observation state. Platform overlay promotion
+   materializes subject-scoped platform copies instead of changing contributor ownership in place.
 5. **Implement reconciliation command/service**: preflight classification, audited dry-run/apply,
    canonical subject correction, staged successor-version cutover for uniquely matched provisional
    drafts, blockers for conflicts/incompatible values, bounded rollback, and idempotence.
@@ -67,7 +68,7 @@ that preserves history and binding revision meaning.
 | Product specs | Reviewed; no change | `docs/product-specs/product-spec.md` — this repair tightens the existing parameter-governance contract and adds no new product workflow or scope. |
 | Architecture / domain / ADR | Update | `docs/design-docs/domain-model.md`, `docs/design-docs/api-contract.md`, new or amended `docs/adr/` decision. |
 | Quality / testing | Updated | `docs/design-docs/testing-strategy.md`; focused PostgreSQL seams and CLI gates are recorded below. `docs/developer/verification-matrix.md` receives the new commands. |
-| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document the unchanged 0117 base migration, Issue #649 migrations 0118→0124, snapshot, transaction, stop, and restore boundaries. |
+| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document the unchanged 0117 base migration, Issue #649 migrations 0118→0125, checksum-audited legacy aliases, snapshot, transaction, stop, and restore boundaries. |
 | Security / governance | Updated | `docs/SECURITY.md` and Chinese companion document server-owned identity, trusted system audit, and fail-closed release checks; no separate `docs/security/` page needed. |
 | Frontend / design | Updated | `docs/FRONTEND.md` documents effective/governance API projection and server-owned DTO fields. No route, layout, styling, or interaction contract changed; browser requirement is recorded as data-projection coverage in the map. |
 | Generated artifacts | Updated | `docs/generated/db-schema.md` is regenerated from the migration set and checked with `npm run db:schema-doc:check`. |
@@ -93,8 +94,8 @@ affected acceptance requirement and operation IDs, or add them before completion
 
 ### Final verification evidence
 
-- A fresh PostgreSQL migration rehearsal applied all 122 migrations through
-  `0124_harden_driver_identity_owner.sql`; rerunning
+- A fresh PostgreSQL migration rehearsal applied all 123 migrations through
+  `0125_harden_driver_schema_owner_scope.sql`; rerunning
   `npm run db:migrate` on that rehearsal returned `Applied 0 migration(s): none`, confirming
   the recorded checksums are stable. `npm run db:schema-doc:check` reports the generated schema
   artifact current.
@@ -105,7 +106,7 @@ affected acceptance requirement and operation IDs, or add them before completion
   These databases are local test data, not a production cutover; the target database still
   requires the runbook's snapshot, dry-run review, per-organization apply, and post-migration gate.
 - `TEST_DATABASE_URL=... VITEST_SERVER_MAX_WORKERS=1 npm run test:server -- --run --maxWorkers=1`:
-  365 files passed and 2,837 tests passed; 1 file/4 tests were skipped by the existing
+  365 files passed and 2,843 tests passed; 1 file/4 tests were skipped by the existing
   environment gates (pgvector and the optional Xiaoze checkpoint proof). `npm test
   -- --maxWorkers=1`: 421 files and 3,164 tests passed. `npm run test:scripts -- --maxWorkers=1`:
   69 files, 948 passed, 5 environment skips. `npm run bridge:test`: 21 files, 138 passed.

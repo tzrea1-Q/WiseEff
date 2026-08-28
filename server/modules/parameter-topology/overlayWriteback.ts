@@ -453,6 +453,12 @@ export async function loadCandidateSemanticGateCounts(
     organizationId: string;
     projectId: string;
     configRevisionId: string;
+    /** Existing binding identities may be edited while their raw surface stays
+     * review-only; no identity or binding is created by this narrow exception. */
+    excludeUnmatchedIdentities?: ReadonlyArray<{
+      nodeLocator: string;
+      propertyKey: string;
+    }>;
   },
 ): Promise<{
   openIdentityMappings: number;
@@ -471,12 +477,14 @@ export async function loadCandidateSemanticGateCounts(
   const openSpecReviews = await countOpenSpecReviewTasksForRevision(db, {
     ...input,
     excludePropertyKeys: structuralKeys,
+    excludeUnmatchedIdentities: input.excludeUnmatchedIdentities,
   });
 
   const unmatchedOccurrences = await countOpenSpecReviewTasksForRevision(db, {
     ...input,
     excludePropertyKeys: structuralKeys,
     unmatchedOnly: true,
+    excludeUnmatchedIdentities: input.excludeUnmatchedIdentities,
   });
 
   const resolverErrors = await db.query<{ count: string }>(
@@ -774,12 +782,7 @@ export async function applyLockedOverlayWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    // Writeback may stage an unresolved legacy surface, but ingestService marks
-    // it unreviewed and does not resolve its occurrence, so it cannot become
-    // an effective/recognized definition.
-    allowLegacyProvisionalSurface: true,
-  });
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
@@ -1063,11 +1066,7 @@ export async function applyLockedEnablementWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
-    // Keep unresolved writeback review-only; the effective catalog excludes its
-    // unreviewed binding revision until a canonical match is supplied.
-    allowLegacyProvisionalSurface: true,
-  });
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
