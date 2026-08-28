@@ -100,7 +100,9 @@ with candidates as (
       else null
     end as default_business_category_module_id
   from parameter_modules pm
-  left join parameter_modules parent on parent.id = pm.parent_id
+  left join parameter_modules parent
+    on parent.id = pm.parent_id
+   and parent.organization_id = pm.organization_id
   left join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
   left join parameter_modules default_category
     on default_category.id = dr.default_business_category_module_id

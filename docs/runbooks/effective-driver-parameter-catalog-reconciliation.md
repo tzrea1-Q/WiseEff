@@ -20,6 +20,13 @@ and exactly one organization driver-group placement.
   migrations preserve the legacy staging boundary, correct nodename-only
   subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
   names and close cross-tenant identity writes; they do not make an unlinked definition effective.
+- If an existing database was briefly deployed from the pre-rebase Issue #649
+  branch, its `schema_migrations` may contain the old `0117_effective...` through
+  `0121_classify...` names. The migration runner accepts only the recorded,
+  SHA-256-checked historical aliases and never replays them; do not rename or
+  delete those rows. It then applies the current `0117_user_account_deletion`
+  and pending `0118+` files normally. Any unknown name or checksum remains a
+  hard stop for an audited history repair.
 - Take a PostgreSQL and object-store snapshot. Keep the write freeze through
   verification and post-deploy observation.
 - Stop on any non-zero command, a non-empty blocker report, or a failed verification.

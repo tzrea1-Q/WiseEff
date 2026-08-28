@@ -157,7 +157,9 @@ with candidates as (
         pm.id
     ) as candidate_rank
   from parameter_modules pm
-  left join parameter_modules parent on parent.id = pm.parent_id
+  left join parameter_modules parent
+    on parent.id = pm.parent_id
+   and parent.organization_id = pm.organization_id
   where pm.kind = 'driver-group'
     and pm.attribution_subject_id is not null
 )

@@ -38,6 +38,7 @@ function toPlacement(row: PlacementRow): DriverRegistrationPlacement {
 export async function getDriverRegistrationPlacement(
   db: Queryable,
   input: { organizationId: string; attributionSubjectId: string },
+  options: { forUpdate?: boolean } = {},
 ): Promise<DriverRegistrationPlacement | null> {
   const result = await db.query<PlacementRow>(
     `
@@ -67,6 +68,7 @@ export async function getDriverRegistrationPlacement(
         )
       )
     limit 1
+    ${options.forUpdate ? "for update of drp" : ""}
     `,
     [input.organizationId, input.attributionSubjectId],
   );
@@ -102,7 +104,9 @@ export async function getNodeTypeDefinitionPlacement(
       on asub.id = $2
      and asub.subject_kind = 'node-type-definition'
      and (asub.organization_id is null or asub.organization_id = $1)
-    left join parameter_modules parent on parent.id = node_type.parent_id
+    left join parameter_modules parent
+      on parent.id = node_type.parent_id
+     and parent.organization_id = node_type.organization_id
     where node_type.organization_id = $1
       and node_type.kind = 'node-type'
       and exists (
@@ -161,7 +165,9 @@ export async function ensureDriverRegistrationPlacement(
   ) {
     return null;
   }
-  const existing = await getDriverRegistrationPlacement(db, input);
+  const existing = await getDriverRegistrationPlacement(db, input, {
+    forUpdate: true,
+  });
   if (existing) return existing;
   // Keep the unique legacy row instead of attempting an insert that silently
   // loses on conflict. A row can be stale because its module/category was

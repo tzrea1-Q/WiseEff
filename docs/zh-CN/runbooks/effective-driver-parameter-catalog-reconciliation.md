@@ -17,6 +17,10 @@ Issue #649 的维护窗口流程。修复组织 draft / 平台 active 成对行�
   `0124_harden_driver_identity_owner.sql`。后四个迁移保留旧暂存兼容边界，把仅有 nodename
   的主体/模块修正为 `NodeTypeDefinition`，并拒绝空的 node-type taxonomy 名称；不会让未链接定义进入
   effective 视图，并阻断跨租户身份写入。
+- 如果存量数据库曾短暂部署过重排前的 Issue #649 分支，`schema_migrations` 可能记录旧的
+  `0117_effective...` 至 `0121_classify...` 名称。迁移 runner 只接受带已记录且经 SHA-256 校验的
+  历史别名，不会重放这些 SQL；不得改名或删除这些行，随后会正常执行当前的
+  `0117_user_account_deletion` 与待执行的 `0118+`。出现未知名称或 checksum 时必须停止并走审计后的迁移历史修复。
 - 先做 PostgreSQL 与对象存储快照；验证及上线观察期间保持写冻结。
 - 任意命令非零、报告存在 blocker 或验证失败都立即停止。不得删除脏行、修改已应用迁移，
   也不得在数据库已变化后重试 apply。

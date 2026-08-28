@@ -522,7 +522,7 @@ describe("driver identity owner hardening migration invariants (Issue #649)", ()
     );
     expect(migration).toContain("wiseeff_driver_schema_identity_owner_guard");
     expect(migration).toContain(
-      "before insert or update of source_kind, definition_lifecycle, attribution_subject_id, property_key",
+      "before insert or update of source_kind, definition_lifecycle, organization_id,",
     );
   });
 });

@@ -1191,6 +1191,7 @@ export async function listParameterSpecRows(
        )
       left join parameter_modules node_type_category
         on node_type_category.id = node_type_module.parent_id
+       and node_type_category.organization_id = node_type_module.organization_id
        and node_type_category.kind = 'business'
       where (ps.organization_id = $1 or ps.organization_id is null)
         and not exists (
@@ -1698,6 +1699,7 @@ export async function getParameterSpecRow(
      )
     left join parameter_modules node_type_category
       on node_type_category.id = node_type_module.parent_id
+     and node_type_category.organization_id = node_type_module.organization_id
      and node_type_category.kind = 'business'
     left join lateral (
       select target_value
@@ -1878,6 +1880,14 @@ export async function upsertMatchedPropertySpec(
     [parameterSpecId, property.version ?? 1],
   );
   const existingVersionRow = existingVersion.rows[0];
+  // A vendor catalog can replay a draft/deprecated source row after a newer
+  // active version is already installed. Never let that replay demote the
+  // active row for the same definition; explicit lifecycle transitions use
+  // the parameter-spec workflow instead.
+  const preserveExistingActiveVersion =
+    property.lifecycle !== "active" &&
+    existingVersionRow?.version_status === "active" &&
+    existingVersionRow.lifecycle === "active";
   if (property.lifecycle === "active") {
     const sameVersionIsActive =
       existingVersionRow?.version_status === "active" &&
@@ -1970,8 +1980,12 @@ export async function upsertMatchedPropertySpec(
       property.exampleValue === undefined
         ? null
         : JSON.stringify(property.exampleValue),
-      property.lifecycle,
-      property.lifecycle === "deprecated" ? "superseded" : property.lifecycle,
+      preserveExistingActiveVersion ? "active" : property.lifecycle,
+      preserveExistingActiveVersion
+        ? "active"
+        : property.lifecycle === "deprecated"
+          ? "superseded"
+          : property.lifecycle,
       property.units ?? null,
       JSON.stringify(property.constraints ?? {}),
       property.documentation ?? null,

@@ -975,6 +975,7 @@ async function applyItem(
     organization_id: string | null;
     attribution_subject_id: string | null;
     property_key: string | null;
+    parameter_property_key: string | null;
     definition_lifecycle: string;
     driver_schema_id: string | null;
     dts_property_key: string | null;
@@ -983,6 +984,7 @@ async function applyItem(
     select ps.id, ps.organization_id,
            ps.attribution_subject_id,
            coalesce(ps.property_key, dps.property_key) as property_key,
+           ps.property_key as parameter_property_key,
            ps.definition_lifecycle,
            dps.driver_schema_id,
            dps.property_key as dts_property_key
@@ -994,6 +996,19 @@ async function applyItem(
     [item.current_parameter_spec_id],
   );
   const current = currentSpec.rows[0];
+  const currentDts = await tx.query<{
+    driver_schema_id: string | null;
+    property_key: string | null;
+  }>(
+    `select driver_schema_id, property_key
+     from dts_property_specs
+     where parameter_spec_id = $1
+     for update`,
+    [item.current_parameter_spec_id],
+  );
+  const lockedDts = currentDts.rows[0] ?? null;
+  const currentPropertyKey =
+    current?.parameter_property_key ?? lockedDts?.property_key ?? null;
   const currentVersion = await tx.query<{
     id: string;
     version: number;
@@ -1019,10 +1034,10 @@ async function applyItem(
   if (
     !current ||
     current.organization_id !== item.organization_id ||
-    current.property_key !== item.property_key ||
+    currentPropertyKey !== item.property_key ||
     current.attribution_subject_id !== expectedPreviousSubjectId ||
-    (current.driver_schema_id ?? null) !== expectedCurrentDriverSchemaId ||
-    (current.dts_property_key ?? null) !== expectedCurrentDtsPropertyKey ||
+    (lockedDts?.driver_schema_id ?? null) !== expectedCurrentDriverSchemaId ||
+    (lockedDts?.property_key ?? null) !== expectedCurrentDtsPropertyKey ||
     (currentVersionRow?.id ?? null) !== expectedCurrentVersionId ||
     (currentVersionRow?.version ?? null) !== expectedCurrentVersion ||
     (currentVersionRow?.version_status ?? null) !==
@@ -1041,13 +1056,16 @@ async function applyItem(
   // the later upsert restores the verified schema/property tuple. The row is
   // never externally visible between these statements, and any failure rolls
   // the whole organization transaction back.
-  await tx.query(
-    `update dts_property_specs
-     set driver_schema_id = null
-     where parameter_spec_id = $1
-       and driver_schema_id is not null`,
-    [item.current_parameter_spec_id],
-  );
+  if (expectedCurrentDriverSchemaId) {
+    const detached = await tx.query(
+      `update dts_property_specs
+       set driver_schema_id = null
+       where parameter_spec_id = $1
+         and driver_schema_id = $2`,
+      [item.current_parameter_spec_id, expectedCurrentDriverSchemaId],
+    );
+    if (detached.rowCount !== 1) return "skipped";
+  }
   await tx.query(
     `select id from parameter_spec_versions where id = $1 for update`,
     [expectedVersionId],
@@ -1328,6 +1346,65 @@ async function applyItem(
       candidateRow.documentation,
     ],
   );
+
+  // Lock every binding that will receive the repaired version before choosing
+  // its config-set head. A concurrent ingest must either finish before this
+  // transaction or observe the repaired tuple afterwards; it must never be
+  // silently overwritten by the broad update below.
+  const bindingsToUpdate = await tx.query<{
+    id: string;
+    logical_node_id: string | null;
+    project_id: string;
+  }>(
+    `select id, logical_node_id, project_id
+     from project_parameter_bindings
+     where parameter_spec_id = $1 and organization_id = $2
+     order by id
+     for update`,
+    [item.current_parameter_spec_id, item.organization_id],
+  );
+  for (const binding of bindingsToUpdate.rows) {
+    const head = await tx.query<{
+      parameter_spec_version_id: string;
+    }>(
+      `select br.parameter_spec_version_id
+       from project_parameter_binding_revisions br
+       inner join dts_config_revisions cr on cr.id = br.config_revision_id
+       left join dts_logical_nodes binding_node on binding_node.id = $2
+       where br.binding_id = $1
+         and cr.project_id = $3
+         and cr.organization_id = $4
+         and cr.status <> 'resolving'
+         and (
+           binding_node.config_set_id is null
+           or (
+             cr.config_set_id = binding_node.config_set_id
+             and exists (
+               select 1
+               from dts_logical_node_revisions binding_node_revision
+               where binding_node_revision.config_revision_id = cr.id
+                 and binding_node_revision.logical_node_id = binding_node.id
+             )
+           )
+         )
+       order by cr.revision_number desc, br.created_at desc, br.id desc
+       limit 1
+       for update of br`,
+      [
+        binding.id,
+        binding.logical_node_id,
+        binding.project_id,
+        item.organization_id,
+      ],
+    );
+    if (
+      expectedCurrentVersionId &&
+      head.rows[0] &&
+      head.rows[0].parameter_spec_version_id !== expectedCurrentVersionId
+    ) {
+      return "skipped";
+    }
+  }
   await tx.query(
     `
     update project_parameter_binding_revisions br

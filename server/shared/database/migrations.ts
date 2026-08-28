@@ -17,6 +17,34 @@ export type ApplyMigrationsOptions = {
   through?: string;
 };
 
+/**
+ * Migration names used by the short-lived Issue #649 branch before it was
+ * rebased onto the main line's immutable 0117 user-deletion migration.
+ *
+ * These are validation-only aliases. They are deliberately not returned by
+ * the filesystem inventory and are never pending on a fresh database. A
+ * database that already recorded one of these names can still prove the
+ * applied SQL identity by its recorded checksum, while the rebased 0118+
+ * migrations continue from the current inventory.
+ */
+const LEGACY_MIGRATION_CHECKSUMS: Record<string, readonly string[]> = {
+  "0117_effective_driver_parameter_catalog.sql": [
+    "9c1fb3d1c69610b127bc03f6a66c66c25864e7e7dce43b69a46d670e162fe4db",
+  ],
+  "0118_effective_driver_parameter_catalog_contract.sql": [
+    "73a7a028be9a1fcf8115b7eb2da2099adf4c25283216b3e55d1001b3f9d3b80d",
+  ],
+  "0119_effective_driver_parameter_catalog_finalize.sql": [
+    "0f9b4096d455f2f259904b724bd3d18b5972418c13b4527f4bdd27c25a7dab1f",
+  ],
+  "0120_effective_driver_parameter_catalog_legacy_write_compat.sql": [
+    "26a66bfae9c2aad4bbb4ddeee3ea1f9ef7b18dd601bd943dca5c3f9d4d7d44dc",
+  ],
+  "0121_classify_nodename_driver_subjects.sql": [
+    "88f31d34bc6af73ce6b00bfcc320ae1cf24d645d3f32698da2fdcdfef1179d0e",
+  ],
+};
+
 export function getPendingMigrations(allMigrations: string[], appliedMigrations: string[]) {
   const applied = new Set(appliedMigrations);
   return allMigrations.filter((migration) => !applied.has(migration));
@@ -26,8 +54,9 @@ export function getPendingMigrations(allMigrations: string[], appliedMigrations:
 export function getMissingMigrationFiles(
   allMigrations: string[],
   appliedMigrations: string[],
+  legacyMigrations: string[] = [],
 ): string[] {
-  const available = new Set(allMigrations);
+  const available = new Set([...allMigrations, ...legacyMigrations]);
   return appliedMigrations.filter((migration) => !available.has(migration));
 }
 
@@ -65,12 +94,40 @@ export async function applyMigrations(
   );
   const appliedChecksums = new Map(applied.rows.map((row) => [row.name, row.checksum]));
 
-  const missingFiles = getMissingMigrationFiles(files, [...appliedChecksums.keys()]);
+  const legacyMigrationNames = Object.keys(LEGACY_MIGRATION_CHECKSUMS);
+  const missingFiles = getMissingMigrationFiles(
+    files,
+    [...appliedChecksums.keys()],
+    legacyMigrationNames,
+  );
   if (missingFiles.length > 0) {
     throw new Error(
       `Applied migration files are missing from the repository: ${missingFiles.join(", ")}. ` +
         "Restore the immutable migration file before applying new migrations.",
     );
+  }
+
+  // Historical aliases are validation-only. They must carry one of the
+  // immutable checksums recorded for the pre-rebase branch; no alias SQL is
+  // ever executed by this runner. Rows created before checksum recording are
+  // backfilled to the canonical historical checksum so subsequent runs keep
+  // the same drift protection as current files.
+  for (const [name, checksums] of Object.entries(LEGACY_MIGRATION_CHECKSUMS)) {
+    if (!appliedChecksums.has(name)) continue;
+    const stored = appliedChecksums.get(name);
+    const canonical = checksums[0];
+    if (!canonical) continue;
+    if (stored == null) {
+      await db.query(
+        "update schema_migrations set checksum = $2 where name = $1 and checksum is null",
+        [name, canonical],
+      );
+    } else if (!checksums.includes(stored)) {
+      throw new Error(
+        `Migration drift detected: ${name} has an unknown historical checksum. ` +
+          "Restore the exact applied migration or perform an audited migration-history repair.",
+      );
+    }
   }
 
   // Fail loudly when an already-applied migration file was edited afterwards;

@@ -679,5 +679,48 @@ describe.skipIf(!databaseAvailable)(
         { version: 2, version_status: "active", lifecycle: "active" },
       ]);
     });
+
+    it("does not let a deprecated replay demote the installed active property version", async () => {
+      await upsertMatchedPropertySpec(db!, {
+        id: "propspec:vendor/effective:effective_limit:v2",
+        parameterSpecId: "pspec:vendor/effective:effective_limit",
+        driverSchemaId: `${DRIVER_SCHEMA}:v2`,
+        propertyKey: PROPERTY_KEY,
+        schemaNamespace: "vendor/effective",
+        source: "vendor",
+        lifecycle: "active",
+        version: 2,
+        valueShape: { kind: "u32-array" },
+        constraints: {},
+        documentation: "effective v2 property",
+      });
+      await upsertMatchedPropertySpec(db!, {
+        id: "propspec:vendor/effective:effective_limit:v2",
+        parameterSpecId: "pspec:vendor/effective:effective_limit",
+        driverSchemaId: `${DRIVER_SCHEMA}:v2`,
+        propertyKey: PROPERTY_KEY,
+        schemaNamespace: "vendor/effective",
+        source: "vendor",
+        lifecycle: "deprecated",
+        version: 2,
+        valueShape: { kind: "u32-array" },
+        constraints: {},
+        documentation: "stale deprecated replay",
+      });
+
+      const active = await db!.query<{
+        version: number;
+        version_status: string;
+        lifecycle: string;
+      }>(
+        `select version, version_status, lifecycle
+         from parameter_spec_versions
+         where parameter_spec_id = $1 and version_status = 'active'`,
+        [PLATFORM_SPEC],
+      );
+      expect(active.rows).toEqual([
+        { version: 2, version_status: "active", lifecycle: "active" },
+      ]);
+    });
   },
 );

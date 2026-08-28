@@ -54,6 +54,16 @@ describe("getMissingMigrationFiles", () => {
       ),
     ).toEqual(["0117_user_account_deletion.sql"]);
   });
+
+  it("accepts the checked historical aliases used before the 0117 rebase", () => {
+    expect(
+      getMissingMigrationFiles(
+        ["0117_user_account_deletion.sql", "0118_effective_driver_parameter_catalog.sql"],
+        ["0117_effective_driver_parameter_catalog.sql"],
+        ["0117_effective_driver_parameter_catalog.sql"],
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("migration numbering invariants", () => {
@@ -126,6 +136,40 @@ describe.skipIf(!databaseAvailable)("applyMigrations concurrency and drift", () 
       await expect(applyMigrations(a.db, migrationsDir, { through })).rejects.toThrow(/Migration drift detected/);
     } finally {
       await a.client.end().catch(() => undefined);
+      await admin.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined);
+      await admin.end().catch(() => undefined);
+    }
+  });
+
+  it("continues a database that recorded the pre-rebase catalog migration names", async () => {
+    const dbName = `wiseeff_migrate_alias_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+    const admin = new pg.Client({ connectionString: adminConnectionString("postgres") });
+    await admin.connect();
+    await admin.query(`create database ${dbName}`);
+
+    const connection = await connectDatabase(adminConnectionString(dbName));
+    try {
+      await applyMigrations(connection.db, migrationsDir, {
+        through: "0116_node_write_observation_outcomes.sql",
+      });
+      await connection.db.query(
+        `insert into schema_migrations (name, checksum)
+         values ($1, $2)`,
+        [
+          "0117_effective_driver_parameter_catalog.sql",
+          "9c1fb3d1c69610b127bc03f6a66c66c25864e7e7dce43b69a46d670e162fe4db",
+        ],
+      );
+
+      const applied = await applyMigrations(connection.db, migrationsDir, {
+        through: "0118_effective_driver_parameter_catalog.sql",
+      });
+      expect(applied).toEqual([
+        "0117_user_account_deletion.sql",
+        "0118_effective_driver_parameter_catalog.sql",
+      ]);
+    } finally {
+      await connection.client.end().catch(() => undefined);
       await admin.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined);
       await admin.end().catch(() => undefined);
     }

@@ -127,7 +127,8 @@ $$;
 
 drop trigger if exists wiseeff_active_dts_parameter_spec_guard on parameter_specs;
 create trigger wiseeff_active_dts_parameter_spec_guard
-before insert or update of source_kind, definition_lifecycle, attribution_subject_id, property_key
+before insert or update of source_kind, definition_lifecycle, organization_id,
+  attribution_subject_id, property_key
 on parameter_specs
 for each row execute function wiseeff_guard_active_dts_parameter_spec();
 
