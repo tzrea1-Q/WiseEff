@@ -84,4 +84,11 @@ describe("DtsTopologyNavigator responsive width", () => {
     expect(topology["min-width"]).toBe("var(--module-navigator-min-width)");
     expect(topology["max-width"]).toBe("var(--module-navigator-max-width)");
   });
+
+  it("does not stretch collapsed roots on the node debugging page", () => {
+    const styles = readStylesheet("src/styles.css");
+    const tree = declarationsFor(styles, ".node-debugging-module-workbench .dts-topology-navigator");
+
+    expect(tree.flex).toBe("0 1 auto");
+  });
 });

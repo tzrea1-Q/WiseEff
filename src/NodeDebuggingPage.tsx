@@ -153,8 +153,16 @@ function DebugTableValuePreview({ value, row }: { value: string; row: RuntimeRow
 
   return (
     <span className="debug-value-cell">
-      <span className="debug-value-preview">{debugValuePreview(value, row)}</span>
+      <span className="debug-value-preview" title={value}>{debugValuePreview(value, row)}</span>
       <DebugValueFormatBadge row={row} />
+    </span>
+  );
+}
+
+function DebugTableValueText({ value }: { value: string }) {
+  return (
+    <span className="debug-value-cell">
+      <span className="debug-value-preview" title={value}>{value}</span>
     </span>
   );
 }
@@ -178,7 +186,7 @@ function DebugCurrentValueCell({ row }: { row: RuntimeRow }) {
 
   return (
     <>
-      {text}
+      <DebugTableValueText value={text} />
       {row.currentValueStale ? <small className="node-row-warning">写后状态待重新回读</small> : null}
     </>
   );
@@ -626,11 +634,6 @@ export function NodeDebuggingPage({
                     </th>
                     <th scope="col">
                       <div className="parameters-table-head-cell">
-                        <span>访问模式</span>
-                      </div>
-                    </th>
-                    <th scope="col">
-                      <div className="parameters-table-head-cell">
                         <span>当前值</span>
                       </div>
                     </th>
@@ -682,7 +685,6 @@ export function NodeDebuggingPage({
                           {modulePath || "未分类"}
                         </span>
                       </td>
-                      <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
                         <DebugCurrentValueCell row={row} />
                         {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
