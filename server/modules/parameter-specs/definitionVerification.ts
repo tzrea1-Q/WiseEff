@@ -63,7 +63,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
       where (
           (
             ps.source_kind = 'dts'
-            and asub.subject_kind = 'driver-registration'
+            and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
               select 1 from driver_schemas driver_root
               where driver_root.parameter_spec_id = ps.id
@@ -124,10 +124,10 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where (
             (
               ps.source_kind = 'dts'
-              and asub.subject_kind = 'driver-registration'
+              and asub.subject_kind is distinct from 'node-type-definition'
               and not exists (
-                select 1 from driver_schemas driver_root
-                where driver_root.parameter_spec_id = ps.id
+              select 1 from driver_schemas driver_root
+              where driver_root.parameter_spec_id = ps.id
               )
             )
             or (
@@ -167,7 +167,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where (
           (
               ps.source_kind = 'dts'
-              and asub.subject_kind = 'driver-registration'
+              and asub.subject_kind is distinct from 'node-type-definition'
               and not exists (
               select 1 from driver_schemas driver_root
               where driver_root.parameter_spec_id = ps.id
@@ -213,7 +213,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
             and (
               (
                 ps.source_kind = 'dts'
-                and asub.subject_kind = 'driver-registration'
+                and asub.subject_kind is distinct from 'node-type-definition'
                 and not exists (
                   select 1 from driver_schemas driver_root
                   where driver_root.parameter_spec_id = ps.id
@@ -473,7 +473,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
       where (
           (
             ps.source_kind = 'dts'
-            and asub.subject_kind = 'driver-registration'
+            and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
               select 1 from driver_schemas driver_root
               where driver_root.parameter_spec_id = ps.id
@@ -607,7 +607,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         and (
           (
             ps.source_kind = 'dts'
-            and asub.subject_kind = 'driver-registration'
+            and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
               select 1 from driver_schemas driver_root
               where driver_root.parameter_spec_id = ps.id

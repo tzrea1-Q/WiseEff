@@ -112,6 +112,31 @@ describe.skipIf(!databaseAvailable)("driver parameter definition reconciliation"
     await db?.rollback();
   });
 
+  it("blocks an active subjectless DTS property instead of treating legacy staging as ready", async () => {
+    await db!.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key, definition_lifecycle, property_key)
+       values ('pspec:reconciliation:subjectless', $1, 'dts', 'legacy/subjectless', 'active', 'subjectless_limit')`,
+      [ORG_ID],
+    );
+    await db!.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+       values ('psv-reconciliation-subjectless', 'pspec:reconciliation:subjectless', 1,
+         'subjectless', 'subjectless', '{"kind":"cells"}'::jsonb, 'active', 'active', 'subjectless')`,
+    );
+    await db!.query(
+      `insert into dts_property_specs
+         (id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints, documentation)
+       values ('dps-reconciliation-subjectless', 'pspec:reconciliation:subjectless', null,
+         'subjectless_limit', 'legacy/subjectless', '{}'::jsonb, 'subjectless')`,
+    );
+
+    const verification = await verifyEffectiveDriverParameterDefinitions(db!, { organizationId: ORG_ID });
+    expect(verification.status).toBe("blocked");
+    expect(verification.checks.find((check) => check.code === "active-driver-definition-incomplete")?.count).toBe(1);
+  });
+
   it("preflights the dirty twin and applies an audited, idempotent correction", async () => {
     const dryRun = await reconcileDriverParameterDefinitions(db!, { mode: "dry-run", organizationId: ORG_ID });
     expect(dryRun).toMatchObject({ mode: "dry-run", candidates: 1, blocked: 0 });

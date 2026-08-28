@@ -7,7 +7,10 @@
 
 insert into node_type_definitions (attribution_subject_id, bare_node_name)
 select asub.id,
-       nullif(regexp_replace(lower(asub.source_key), '^nodetype:', ''), '')
+       coalesce(
+         nullif(regexp_replace(lower(asub.source_key), '^nodetype:', ''), ''),
+         asub.display_name
+       )
 from attribution_subjects asub
 where asub.subject_kind = 'driver-registration'
   and lower(asub.source_key) like 'nodetype:%'
