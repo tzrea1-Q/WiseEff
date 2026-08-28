@@ -143,6 +143,83 @@ export async function ensureAttributionSubjectForCompatible(
 }
 
 /**
+ * Resolve a schema's stable registration identity. Compatible evidence is the
+ * preferred source; nodename-only schemas receive a namespaced node-type-like
+ * source key so they still cannot materialize as subjectless definitions.
+ */
+export async function ensureAttributionSubjectForDriverSchema(
+  db: Queryable,
+  input: {
+    organizationId: string | null;
+    compatible?: string | null;
+    nodename?: string | null;
+    displayName?: string;
+  },
+): Promise<string> {
+  const compatible = input.compatible?.trim();
+  if (compatible) {
+    return ensureAttributionSubjectForCompatible(db, {
+      organizationId: input.organizationId,
+      compatible,
+      displayName: input.displayName,
+    });
+  }
+
+  const nodename = input.nodename?.trim();
+  if (!nodename) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "A driver schema requires compatible or nodename evidence to resolve its attribution subject.",
+    );
+  }
+
+  const sourceKey = `nodetype:${nodename.toLowerCase()}`;
+  const existing = await findAttributionSubjectBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey,
+  });
+  if (existing) {
+    await db.query(
+      `
+      insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
+      values ($1, 'physical-device', 'multiple', '')
+      on conflict (attribution_subject_id) do nothing
+      `,
+      [existing],
+    );
+    return existing;
+  }
+
+  const subjectId = `asub:driver-registration:nodename:${createHash("sha256")
+    .update(`${input.organizationId ?? "platform"}\u001f${sourceKey}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+  await db.query(
+    `
+    insert into attribution_subjects (
+      id, organization_id, subject_kind, display_name, origin, source_key
+    ) values ($1, $2, 'driver-registration', $3, 'auto', $4)
+    on conflict (organization_id, source_key) do nothing
+    `,
+    [subjectId, input.organizationId, input.displayName?.trim() || nodename, sourceKey],
+  );
+  const resolved = await findAttributionSubjectBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey,
+  });
+  const finalId = resolved ?? subjectId;
+  await db.query(
+    `
+    insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
+    values ($1, 'physical-device', 'multiple', '')
+    on conflict (attribution_subject_id) do nothing
+    `,
+    [finalId],
+  );
+  return finalId;
+}
+
+/**
  * Fail-closed resolve for product write paths. No silent driverModule fallback.
  */
 export async function requireAttributionSubjectIdForCompatible(

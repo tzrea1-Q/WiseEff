@@ -28,6 +28,8 @@
 | `npm run dts:toolchain:check -- --required` | API/CLI 共享解析器找到 dtc + fdtoverlay + 项目本地 dt-validate，且版本与钉扎一致 | 发布模式校验或身份切换演练前；不得把个人 Python PATH 导出作为必要步骤。 |
 | `npm run parameter-identities:check` | 语义身份迁移只读预检/后检 | 维护窗口前后；见 cutover runbook。 |
 | `npm run parameter-identities:migrate` | 默认 dry-run，或门禁后的 `--apply` 历史迁移 | 仅切换演练；生产禁止双写。 |
+| `npm run parameter-definitions:reconcile -- --dry-run` / `--apply --organization-id <id>` | 经审计的生效驱动定义对账；dry-run 分类 blocker，apply 按组织原子修复 | Issue #649 维护窗口；先做快照，遇 blocker 立即停止。 |
+| `npm run parameter-definitions:check [-- --organization-id <id>]` | 独立只读的生效目录/绑定一致性门禁 | 目录迁移前后及配置修订发布前。 |
 | `npm run test:server -- server/modules/parameter-topology/legacyDependencyGuard.test.ts --run` | Vitest **源码扫描**（非运行时中间件），禁止在 migrations/cutovers/adapters/scripts/tests 之外出现已退役扁平身份/shadow token | 修改 cutover 后工作流、可能重新引入遗留 SQL 或 shadow PPV helper 后。 |
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |

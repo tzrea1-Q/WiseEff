@@ -130,7 +130,7 @@ export function OrganizationModuleGovernancePanel({
       canAdmin
       repository={repository}
       listLibrarySpecs={async () => {
-        const specs = await application.listSpecs({});
+        const specs = await application.listSpecs({ view: "governance" });
         return specs.map((spec) =>
           mapParameterSpecToLibraryRow({
             id: spec.id,

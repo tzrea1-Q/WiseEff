@@ -33,7 +33,20 @@ export const parameterSpecSummaryDtoSchema = z.object({
   compatiblePatterns: z.array(z.string()).nullable(),
   attributionModules: z.array(specAttributionModuleDtoSchema),
   attributionSubjectId: z.string().nullable().optional(),
-  referenceCount: z.number().int().nonnegative().optional()
+  referenceCount: z.number().int().nonnegative().optional(),
+  effectiveScope: z.enum(["organization", "platform", "governance"]).optional(),
+  overrideOfSpecId: z.string().nullable().optional(),
+  declaredPlacement: z
+    .object({
+      moduleId: nonEmptyString,
+      moduleName: nonEmptyString,
+      categoryId: z.string().nullable(),
+      categoryName: z.string().nullable(),
+      path: z.array(z.string()).optional(),
+    })
+    .nullable()
+    .optional(),
+  observationState: z.enum(["observed", "not-yet-observed", "unclassified"]).optional()
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
@@ -86,7 +99,9 @@ export const listParameterSpecsQuerySchema = z.object({
   sourceKind: parameterSourceKindSchema.optional(),
   lifecycle: specLifecycleSchema.optional(),
   attributionSubjectId: z.string().optional(),
-  propertyKey: z.string().optional()
+  propertyKey: z.string().optional(),
+  /** Effective is the safe product view; governance exposes raw/history rows. */
+  view: z.enum(["effective", "governance"]).optional()
 });
 
 export const parameterSpecParamsSchema = z.object({

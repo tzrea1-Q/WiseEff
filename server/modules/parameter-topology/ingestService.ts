@@ -33,15 +33,20 @@ import {
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
-import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
+import {
+  BOARD_INSTANCE_MODULE_NAME,
+  isModuleScaffoldingNode,
+  isScaffoldingDriverLabel,
+} from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
+import type { Database, Queryable } from "../../shared/database/client";
 import {
   ensureAttributionSubjectForCompatible,
   getModuleAttributionSubjectId,
 } from "../parameter-modules/resolveAttributionSubject";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
-import type { Database, Queryable } from "../../shared/database/client";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   createOrReuseBinding,
   persistAmbiguousIdentityMapping,
@@ -52,6 +57,7 @@ import {
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
+import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
 import { normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
@@ -598,15 +604,15 @@ async function matchBindAndQueueReviews(
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
+          attributionSubjectId: spec.attributionSubjectId,
         });
-        const binding = await createOrReuseBinding(tx, {
+        const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId: override.parameterSpecId,
-            moduleId: overrideModuleId,
-          },
+          projectId: input.projectId,
+          logicalNodeId,
+          parameterSpecId: override.parameterSpecId,
+          parameterSpecVersionId: spec.currentVersionId,
+          moduleId: overrideModuleId,
         });
         await upsertBindingRevisionValues(tx, {
           bindingId: binding.id,
@@ -638,7 +644,24 @@ async function matchBindAndQueueReviews(
 
       const decision = matchProperty(matchable, propertyKey, input.registry);
       if (decision.kind === "matched") {
-        const { parameterSpecId, parameterSpecVersionId } = await upsertMatchedPropertySpec(
+        // A schema attached to a bus/interconnect scaffolding driver (for
+        // example `interrupt-parent` on `arm,amba-bus`) is topology metadata,
+        // not a product parameter. Keep its occurrence in the immutable DTS
+        // record, but do not create an unclassified binding/module. Unknown
+        // properties still reach review, even when their node name resembles
+        // a scaffolding segment.
+        if (
+          isScaffoldingDriverLabel(driverModuleFromSchemaNamespace(decision.value.schemaNamespace)) ||
+          isModuleScaffoldingNode({
+            name: matchable.name,
+            compatible: matchable.compatible[0] ?? null,
+            nodePath: matchable.nodeLocator,
+            unitAddress: matchable.unitAddress,
+          })
+        ) {
+          continue;
+        }
+        const { parameterSpecId, parameterSpecVersionId, attributionSubjectId } = await upsertMatchedPropertySpec(
           tx,
           decision.value,
         );
@@ -648,15 +671,15 @@ async function matchBindAndQueueReviews(
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
+          attributionSubjectId,
         });
-        const binding = await createOrReuseBinding(tx, {
+        const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId,
-            moduleId: matchedModuleId,
-          },
+          projectId: input.projectId,
+          logicalNodeId,
+          parameterSpecId,
+          parameterSpecVersionId,
+          moduleId: matchedModuleId,
         });
         await upsertBindingRevisionValues(tx, {
           bindingId: binding.id,
@@ -669,10 +692,30 @@ async function matchBindAndQueueReviews(
             schemaState: "valid",
           },
         });
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "resolved",
+            parameterSpecId,
+            bindingId: binding.id,
+            reviewTaskId: null,
+          });
+        }
         continue;
       }
 
+      // During the legacy identity rollout, preserve the historical surface
+      // staging path for an unmatched but structurally meaningful property.
+      // Production/API mode resolves the semantic cutover at boot and skips
+      // this branch, leaving unknown evidence review-only as required by the
+      // effective catalog contract.
       if (
+        parameterIdentityMode() !== "semantic" &&
         decision.kind === "unmatched" &&
         isParameterSurfaceRow({
           propertyKey,
@@ -699,8 +742,6 @@ async function matchBindAndQueueReviews(
               organizationId: input.organizationId,
               compatible: ensureToken,
             });
-            // business/unclassified modules must keep attribution_subject_id null
-            // (parameter_modules_subject_kind_check); only catalog kinds may link.
             await tx.query(
               `
               update parameter_modules
@@ -765,6 +806,170 @@ async function matchBindAndQueueReviews(
             propertyKey,
             decision: "resolved",
             parameterSpecId,
+            bindingId: binding.id,
+            reviewTaskId: null,
+          });
+        }
+        continue;
+      }
+
+      // Preserve an already-recognized binding when an older catalog snapshot
+      // is being re-ingested before the current registry can resolve its
+      // schema.  This is continuity for an existing identity, not discovery:
+      // no new definition/module is created and a brand-new unknown property
+      // still becomes review evidence below.  The release verifier will keep
+      // legacy subjectless/unclassified rows from becoming effective until an
+      // audited reconciliation repairs them.
+      const existingBinding = await tx.query<{
+        id: string;
+        module_id: string;
+        parameter_spec_id: string;
+        parameter_spec_version_id: string;
+      }>(
+        `
+        select b.id, b.module_id, b.parameter_spec_id,
+               psv.id as parameter_spec_version_id
+        from project_parameter_bindings b
+        inner join parameter_specs ps on ps.id = b.parameter_spec_id
+        left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+        inner join lateral (
+          select id
+          from parameter_spec_versions
+          where parameter_spec_id = ps.id
+            and version_status = 'active'
+          order by version desc, id desc
+          limit 1
+        ) psv on true
+        where b.organization_id = $1
+          and b.project_id = $2
+          and (
+            b.logical_node_id = $3
+            or exists (
+              select 1
+              from dts_logical_node_revisions existing_node_revision
+              where existing_node_revision.logical_node_id = b.logical_node_id
+                and existing_node_revision.node_locator = $5
+            )
+          )
+          and coalesce(ps.property_key, dps.property_key) = $4
+          and ps.definition_lifecycle = 'active'
+          and not exists (
+            select 1 from driver_schemas driver_root
+            where driver_root.parameter_spec_id = ps.id
+          )
+        order by b.id
+        limit 1
+        `,
+        [input.organizationId, input.projectId, logicalNodeId, propertyKey, matchable.nodeLocator],
+      );
+      const legacyBinding = existingBinding.rows[0];
+      if (legacyBinding) {
+        const binding = await createOrReuseBinding(tx, {
+          organizationId: input.organizationId,
+          key: {
+            projectId: input.projectId,
+            logicalNodeId,
+            parameterSpecId: legacyBinding.parameter_spec_id,
+            moduleId: legacyBinding.module_id,
+          },
+        });
+        await upsertBindingRevisionValues(tx, {
+          bindingId: binding.id,
+          configRevisionId: input.configRevisionId,
+          parameterSpecVersionId: legacyBinding.parameter_spec_version_id,
+          values: {
+            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            canonicalValue: property.value ?? property.normalizedValue,
+            rawValue: property.rawText,
+            schemaState: "valid",
+          },
+        });
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "resolved",
+            parameterSpecId: legacyBinding.parameter_spec_id,
+            bindingId: binding.id,
+            reviewTaskId: null,
+          });
+        }
+        continue;
+      }
+
+      // A single project may observe the same known property on several
+      // logical nodes.  Older imports materialized one binding per occurrence;
+      // retain that project-local catalog identity for the other occurrences
+      // even when the registry is unavailable during a writeback re-ingest.
+      // Requiring an existing project binding prevents this compatibility path
+      // from discovering arbitrary unknown properties.
+      const existingProjectSpec = await tx.query<{
+        parameter_spec_id: string;
+        module_id: string;
+        parameter_spec_version_id: string;
+      }>(
+        `
+        select b.parameter_spec_id, b.module_id, psv.id as parameter_spec_version_id
+        from project_parameter_bindings b
+        inner join parameter_specs ps on ps.id = b.parameter_spec_id
+        left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+        inner join lateral (
+          select id
+          from parameter_spec_versions
+          where parameter_spec_id = ps.id
+            and version_status = 'active'
+          order by version desc, id desc
+          limit 1
+        ) psv on true
+        where b.organization_id = $1
+          and b.project_id = $2
+          and coalesce(ps.property_key, dps.property_key) = $3
+          and ps.definition_lifecycle = 'active'
+          and not exists (
+            select 1 from driver_schemas driver_root
+            where driver_root.parameter_spec_id = ps.id
+          )
+        order by b.id
+        limit 1
+        `,
+        [input.organizationId, input.projectId, propertyKey],
+      );
+      const projectSpec = existingProjectSpec.rows[0];
+      if (projectSpec) {
+        const binding = await createOrReuseBinding(tx, {
+          organizationId: input.organizationId,
+          key: {
+            projectId: input.projectId,
+            logicalNodeId,
+            parameterSpecId: projectSpec.parameter_spec_id,
+            moduleId: projectSpec.module_id,
+          },
+        });
+        await upsertBindingRevisionValues(tx, {
+          bindingId: binding.id,
+          configRevisionId: input.configRevisionId,
+          parameterSpecVersionId: projectSpec.parameter_spec_version_id,
+          values: {
+            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            canonicalValue: property.value ?? property.normalizedValue,
+            rawValue: property.rawText,
+            schemaState: "valid",
+          },
+        });
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "resolved",
+            parameterSpecId: projectSpec.parameter_spec_id,
             bindingId: binding.id,
             reviewTaskId: null,
           });

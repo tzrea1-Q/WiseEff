@@ -849,6 +849,15 @@ export async function seedM1SemanticTopology(
       await ingestConfigRevisionInTransaction(tx, manifest, auth);
     }
   });
+
+  // Seed fixtures may provide explicit curated compatible mappings whose
+  // historical attribution subject predates the schema catalog.  Recompute
+  // once after ingest so those declared mappings remain authoritative; normal
+  // product recognition still uses the subject-checked effective placement
+  // seam in ingestService.
+  for (const projectId of new Set(projectFiles.map((projectFile) => projectFile.projectId))) {
+    await recomputeBindingModules(db, auth, { projectId });
+  }
 }
 
 /** Default demo mutation: nudge one sc8562 property so its binding gains a 2nd revision. */

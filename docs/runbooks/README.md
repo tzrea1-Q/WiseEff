@@ -21,6 +21,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.
 - [Observability Operations](observability-operations.md): Prometheus, alert rules, Grafana dashboards, and M6.5 alert response.
 - [Parameter Identity Cutover](parameter-identity-cutover.md): maintenance-window write freeze, dry-run/apply, atomic cutover, observation, and whole-snapshot restore for semantic parameter identity.
+- [Effective Driver Parameter Catalog Reconciliation](effective-driver-parameter-catalog-reconciliation.md): Issue #649 expand/repair/contract migration for one canonical active driver definition per property.
 - [Incidents](incidents.md): severity, evidence, handoff, and closure for operational incidents.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
 - [ADB Device Lab](adb-device-lab.md): local real-device ADB evidence collection.

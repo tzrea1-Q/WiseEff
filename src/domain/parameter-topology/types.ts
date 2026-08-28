@@ -38,6 +38,7 @@ export type SpecQuery = {
   lifecycle?: SpecLifecycle;
   attributionSubjectId?: string;
   propertyKey?: string;
+  view?: "effective" | "governance";
 };
 
 export type SpecAttributionModule = {
@@ -84,6 +85,19 @@ export type ParameterSpecSummary = {
   attributionSubjectId?: string | null;
   /** Organization-scoped binding count for governance impact display. */
   referenceCount?: number;
+  /** Server-selected effective scope; absent on legacy/mock rows. */
+  effectiveScope?: "organization" | "platform" | "governance";
+  /** Definition hidden by a higher-precedence active row. */
+  overrideOfSpecId?: string | null;
+  /** Declared taxonomy placement, distinct from observed binding modules. */
+  declaredPlacement?: {
+    moduleId: string;
+    moduleName: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    path?: string[];
+  } | null;
+  observationState?: "observed" | "not-yet-observed" | "unclassified";
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {

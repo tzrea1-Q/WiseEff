@@ -84,6 +84,8 @@
     "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
     "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",
+    "parameter-definitions:reconcile": "tsx scripts/reconcile-parameter-definitions.ts",
+    "parameter-definitions:check": "tsx scripts/reconcile-parameter-definitions.ts --verify",
     "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
     "seed:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts",
     "cleanup:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts --cleanup",

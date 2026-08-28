@@ -3,7 +3,10 @@ import { pathToFileURL } from "node:url";
 
 import type { Database } from "../server/shared/database/client";
 import { loadSchemaRegistry } from "../server/modules/parameter-specs/schemaLoader";
-import { upsertMatchedPropertySpec } from "../server/modules/parameter-specs/repository";
+import {
+  upsertMatchedDriverSchema,
+  upsertMatchedPropertySpec,
+} from "../server/modules/parameter-specs/repository";
 import type { PropertySpec } from "../server/modules/parameter-specs/types";
 import { isStructuralPropertyKey } from "../src/domain/parameter-topology/parameterSurface";
 
@@ -13,9 +16,17 @@ export function isSyncableVendorProperty(property: Pick<PropertySpec, "propertyK
   return !isStructuralPropertyKey(property.propertyKey);
 }
 
-/** Refresh parameter_spec_versions / dts_property_specs from vendor YAML catalog. */
+/**
+ * Refresh the complete schema graph from the pinned YAML catalog. Driver roots
+ * are materialized first so every property can inherit the same canonical
+ * DriverRegistration subject; a property-only sync must never create a
+ * subjectless platform definition.
+ */
 export async function syncVendorPropertyDocs(db: Queryable): Promise<number> {
   const registry = loadSchemaRegistry("schemas/dts");
+  for (const driver of registry.drivers) {
+    await upsertMatchedDriverSchema(db, driver);
+  }
   let updated = 0;
   for (const property of registry.properties) {
     if (!isSyncableVendorProperty(property)) continue;

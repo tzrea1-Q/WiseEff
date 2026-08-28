@@ -51,6 +51,7 @@ import {
   setDriverRegistrationDefaultBusinessCategoryId,
   type DriverPlacementReplayCounts,
 } from "./driverPlacement";
+import { ensureDriverRegistrationPlacement } from "./driverRegistrationPlacement";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -157,6 +158,8 @@ async function planMovesForModuleIds(
       compatible: binding.compatible,
       instanceName: binding.instanceName,
       nodeLocator: binding.nodeLocator,
+      attributionSubjectId: binding.attributionSubjectId,
+      preferExplicitMapping: true,
     });
     if (nextModuleId === binding.moduleId) continue;
 
@@ -333,6 +336,8 @@ async function planScopedMoves(
       compatible: binding.compatible,
       instanceName: binding.instanceName,
       nodeLocator: binding.nodeLocator,
+      attributionSubjectId: binding.attributionSubjectId,
+      preferExplicitMapping: true,
     });
     if (nextModuleId === binding.moduleId) continue;
 
@@ -905,9 +910,16 @@ export async function registerOrClaimDriver(
       moduleId: module.id,
     });
     if (fresh?.attributionSubjectId) {
+      await ensureDriverRegistrationPlacement(tx, {
+        organizationId: auth.organization.id,
+        attributionSubjectId: fresh.attributionSubjectId,
+        driverGroupModuleId: fresh.id,
+        defaultBusinessCategoryModuleId: input.businessCategoryId,
+      });
       await setDriverRegistrationDefaultBusinessCategoryId(tx, {
         attributionSubjectId: fresh.attributionSubjectId,
         defaultBusinessCategoryModuleId: input.businessCategoryId,
+        organizationId: auth.organization.id,
       });
     }
 
@@ -982,6 +994,7 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
     await setDriverRegistrationDefaultBusinessCategoryId(tx, {
       attributionSubjectId: module.attributionSubjectId,
       defaultBusinessCategoryModuleId: input.defaultBusinessCategoryId,
+      organizationId: auth.organization.id,
     });
 
     const replay = await replayAutoDriverGroupToRegistrationDefault(tx, {
@@ -1106,9 +1119,15 @@ export async function listDriverRegistry(
       pm.id as module_id,
       dr.driver_nature,
       dr.instance_cardinality,
-      dr.default_business_category_module_id
+      coalesce(
+        placement.default_business_category_module_id,
+        dr.default_business_category_module_id
+      ) as default_business_category_module_id
     from parameter_modules pm
     inner join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
+    left join driver_registration_placements placement
+      on placement.organization_id = pm.organization_id
+     and placement.attribution_subject_id = pm.attribution_subject_id
     where pm.organization_id = $1
       and pm.kind = 'driver-group'
       and pm.attribution_subject_id is not null
@@ -1351,5 +1370,3 @@ export async function updateDriverRegistration(
     };
   });
 }
-
-

@@ -1,11 +1,10 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { nodeTypeKeyForNode } from "../parameter-modules/modulePlacement";
-import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import {
-  createOrReuseBinding,
   upsertBindingRevisionValues,
 } from "../parameter-topology/bindingService";
+import { createRecognizedBinding } from "./effectiveDefinitionService";
 import { updateConfigRevisionStatus } from "../parameter-topology/repository";
 import { DRAFT_PROVENANCE_KEY } from "./specCompleteness";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
@@ -40,17 +39,6 @@ function asString(value: unknown): string | null {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
-}
-
-/** Derive bare node-type key from a DTS node locator (unit address stripped). */
-function nodeTypeFromNodeLocator(nodeLocator: string | null): string | null {
-  if (!nodeLocator) return null;
-  const segments = nodeLocator.split("/").filter((segment) => segment.length > 0);
-  const leaf = segments.length > 0 ? segments[segments.length - 1]! : null;
-  if (!leaf) return null;
-  const at = leaf.indexOf("@");
-  const name = at >= 0 ? leaf.slice(0, at) : leaf;
-  return nodeTypeKeyForNode({ name, nodePath: nodeLocator });
 }
 
 export type SpecReviewEvidence = {
@@ -199,21 +187,27 @@ export async function applyResolvedSpecReview(
     organizationId: input.organizationId,
     specId: input.parameterSpecId,
   });
-  const moduleId = await resolveModuleIdForBinding(db, {
+  if (!spec) {
+    throw new ApiError("NOT_FOUND", "The selected parameter definition was not found.", {
+      parameterSpecId: input.parameterSpecId,
+    });
+  }
+  const moduleId = await resolveAttributionModuleForBinding(db, {
     organizationId: input.organizationId,
-    driverModule: null,
+    driverModule: spec.driverModule,
     compatible: evidence.compatible[0] ?? null,
-    nodeType: nodeTypeFromNodeLocator(evidence.nodeLocator),
+    instanceName: evidence.nodeLocator?.split("/").filter(Boolean).at(-1) ?? null,
+    nodeLocator: evidence.nodeLocator,
+    attributionSubjectId: spec.attributionSubjectId,
   });
 
-  const binding = await createOrReuseBinding(db, {
+  const { binding } = await createRecognizedBinding(db, {
     organizationId: input.organizationId,
-    key: {
-      projectId: locate.projectId,
-      logicalNodeId: locate.logicalNodeId,
-      parameterSpecId: input.parameterSpecId,
-      moduleId,
-    },
+    projectId: locate.projectId,
+    logicalNodeId: locate.logicalNodeId,
+    parameterSpecId: input.parameterSpecId,
+    parameterSpecVersionId: input.parameterSpecVersionId,
+    moduleId,
   });
 
   await assertBindingBelongsToTenant(db, {

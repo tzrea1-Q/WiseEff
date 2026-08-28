@@ -176,7 +176,7 @@ stateDiagram-v2
 | --- | --- |
 | 源码树 | 全部 DTS/DTSI/overlay occurrence 及其文件与 span 溯源 |
 | 生效树 | overlay 解析后的逻辑节点/属性，带有序 `sourceChain` |
-| `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份为归属范围 + `attribution_subject_id` + `property_key`。`parameter_specs.id` 是**代理键**（ADR-0017）：身份可就地纠错，不改行 id、不级联外键。`example_value` 仅作示例，不参与 DB 约束或发布策略 |
+| `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份为归属范围 + `attribution_subject_id` + `property_key`。`parameter_specs.id` 是**代理键**（ADR-0017）：身份可就地纠错，不改行 id、不级联外键。`example_value` 仅作示例，不参与 DB 约束或发布策略。驱动属性要成为生效定义，还必须具备启用的定义层、启用的当前版本、带主体的驱动 schema（DTS 属性）及恰好一条组织级 `driver_registration_placements` 放置。组织 active 优先于平台 active；draft/deprecated 与被遮蔽的成对行只保留在治理历史中。 |
 | Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy。策略目标仍有读取方，但今天没有生产写入（TD-055）。 |
 | `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
 | 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列。规格审核 `resolved` 会写入 occurrence→spec 决策、项目 binding 与可复用 matcher override；`dismissed` 不得假装已匹配，并作为 fail-closed 发布阻断。身份映射决议为 `resolved`（重写绑定身份）、`dismissed`（驳回候选，修订保持 `needs_mapping`）、`new_identity`（确认为新身份，不重写绑定）。修订仅在无 `open` 且无 `dismissed` 任务时离开 `needs_mapping`。仅 `dismissed` / `new_identity` 可重开；错误的 `resolved` 选择仅在连续性证据与下游使用门禁通过时原地执行受保护 re-resolve，不重开，也不做反向 undo（ADR-0033）。 |
@@ -186,6 +186,7 @@ stateDiagram-v2
 | 已审核连续性 | 已审核身份映射与 matcher override 可跨后续 revison 复用；仅稳定 revison 可作为连续性基线。 |
 | Config Set manifest | 每个 revision 持久化 `entryFile`、`includeSearchPaths`、overlay 顺序与成员角色。历史行缺失时从钉住的 `dts_config_revision_members` 回填。`manifestState=needs_review` 对编辑、校验、发布、回写失败关闭，直至运维修复 manifest。 |
 | Matcher override 作用域 | 可复用 override 键为 `compatible` 指纹 + **节点 locator 指纹** + `propertyKey`。同一 compatible/属性在不同逻辑节点上不得串用，除非经审核显式决议。 |
+| 生效驱动定义目录 | 默认目录投影是服务端选择的生效视图：每个 `(组织、规范 DriverRegistration source key、property_key)` 只返回一行，优先级为组织 active > 平台 active。`view=governance` 暴露 draft、deprecated、被遮蔽成对行及待修复阻断。声明放置（`driver_registration_placements`）是权威；binding 实测模块仅作证据。未匹配或歧义的 ingest 证据只创建审核元数据，不创建已识别规格、binding 或生效 occurrence。迁移 `0117` 扩展主体/放置，`0118` 守住后续 DTS active 写入，`0120` 定义旧版暂存兼容边界；经审计的 `parameter-definitions:reconcile` 执行数据修复，`parameter-definitions:check` 是只读发布门禁（ADR-0039）。 |
 | 审核阻断作用域 | 规格审核与映射阻断携带 `blocker_scope`（`revision` \| `project` \| `platform`）。校验/发布门禁按作用域生效——revision 级阻断不得 org 级误伤无关项目。 |
 | 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户可**读取并绑定** active 全局规格；组织 Admin **不得**经标准 Admin API 激活/修改/删除/再归属/改属性键全局 draft 或全局规格——仅本组织行（`organization_id === 调用者组织`）可变。平台全局规格通过 bootstrap/migration/独立平台治理（`platform-admin`）维护，包括对平台全局定义的废弃/恢复/身份纠错（ADR-0011 修订、ADR-0017 ID-R5）。 |
 | 手工规格身份 | 手工/组织 draft ID 在**铸造新行**时对原始语义键做**无损**规范哈希（`field:length:rawValue`）。查找按 `(organization_id, attribution_subject_id, property_key)` 解析，不再靠重算哈希判定是否存在（ADR-0017）。展示用 sanitize 不得作为唯一性哈希输入。`vendor,limit` 与 `vendor-limit` 等合法 DTS 键必须生成不同 ID。遗留 sanitize 碰撞仅 fail-closed 审计，不得静默重写已引用 ID。 |

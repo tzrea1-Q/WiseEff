@@ -32,6 +32,7 @@
 - [docs/zh-CN/runbooks/staging-deployment.md](staging-deployment.md)
 - [docs/zh-CN/runbooks/backup-restore.md](backup-restore.md)：备份恢复，以及 DTS overlay 产物保留 / `overlay-artifact-gc`。
 - [docs/zh-CN/runbooks/parameter-identity-cutover.md](parameter-identity-cutover.md)
+- [docs/zh-CN/runbooks/effective-driver-parameter-catalog-reconciliation.md](effective-driver-parameter-catalog-reconciliation.md)：Issue #649 驱动参数生效目录扩展、对账、收缩与回滚。
 - [docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md](platform-admin-and-schema-promotion.md)
 - [docs/zh-CN/runbooks/hdc-device-lab.md](hdc-device-lab.md)
 - [docs/zh-CN/runbooks/adb-device-lab.md](adb-device-lab.md)：本机真实 ADB 设备证据采集。

@@ -18,8 +18,29 @@ export type DriverPlacementReplayCounts = {
 
 export async function getDriverRegistrationDefaultBusinessCategoryId(
   db: Queryable,
-  input: { attributionSubjectId: string },
+  input: { attributionSubjectId: string; organizationId?: string },
 ): Promise<string | null> {
+  const placement = input.organizationId
+    ? await db.query<{ default_business_category_module_id: string | null }>(
+        `
+        select default_business_category_module_id
+        from driver_registration_placements
+        where organization_id = $1 and attribution_subject_id = $2
+        limit 1
+        `,
+        [input.organizationId, input.attributionSubjectId],
+      )
+    : await db.query<{ default_business_category_module_id: string | null }>(
+        `
+        select default_business_category_module_id
+        from driver_registration_placements
+        where attribution_subject_id = $1
+        order by organization_id
+        limit 1
+        `,
+        [input.attributionSubjectId],
+      );
+  if (placement.rows[0]) return placement.rows[0].default_business_category_module_id ?? null;
   const result = await db.query<{ default_business_category_module_id: string | null }>(
     `
     select default_business_category_module_id
@@ -37,16 +58,37 @@ export async function setDriverRegistrationDefaultBusinessCategoryId(
   input: {
     attributionSubjectId: string;
     defaultBusinessCategoryModuleId: string | null;
+    organizationId?: string;
   },
 ): Promise<void> {
   await db.query(
-    `
-    update driver_registrations
-    set default_business_category_module_id = $2
-    where attribution_subject_id = $1
-    `,
-    [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
+    input.organizationId
+      ? `
+        update driver_registration_placements
+        set default_business_category_module_id = $3,
+            updated_at = now()
+        where attribution_subject_id = $1 and organization_id = $2
+        `
+      : `
+        update driver_registration_placements
+        set default_business_category_module_id = $2,
+            updated_at = now()
+        where attribution_subject_id = $1
+        `,
+    input.organizationId
+      ? [input.attributionSubjectId, input.organizationId, input.defaultBusinessCategoryModuleId]
+      : [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
   );
+  if (!input.organizationId) {
+    await db.query(
+      `
+      update driver_registrations
+      set default_business_category_module_id = $2
+      where attribution_subject_id = $1
+      `,
+      [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
+    );
+  }
 }
 
 /**
@@ -58,20 +100,50 @@ export async function bootstrapDriverRegistrationDefaultIfNull(
   input: {
     attributionSubjectId: string;
     defaultBusinessCategoryModuleId: string;
+    organizationId?: string;
   },
 ): Promise<string> {
-  const result = await db.query<{ default_business_category_module_id: string | null }>(
-    `
-    update driver_registrations
-    set default_business_category_module_id = coalesce(
-      default_business_category_module_id,
-      $2
-    )
-    where attribution_subject_id = $1
-    returning default_business_category_module_id
-    `,
-    [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
+  const placement = await db.query<{ default_business_category_module_id: string | null }>(
+    input.organizationId
+      ? `
+        update driver_registration_placements
+        set default_business_category_module_id = coalesce(
+          default_business_category_module_id,
+          $3
+        ), updated_at = now()
+        where attribution_subject_id = $1 and organization_id = $2
+        returning default_business_category_module_id
+        `
+      : `
+        update driver_registration_placements
+        set default_business_category_module_id = coalesce(
+          default_business_category_module_id,
+          $2
+        ), updated_at = now()
+        where attribution_subject_id = $1
+        returning default_business_category_module_id
+        `,
+    input.organizationId
+      ? [input.attributionSubjectId, input.organizationId, input.defaultBusinessCategoryModuleId]
+      : [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
   );
+  if (placement.rows[0]?.default_business_category_module_id) {
+    return placement.rows[0].default_business_category_module_id;
+  }
+  const result = input.organizationId
+    ? { rows: [] as Array<{ default_business_category_module_id: string | null }> }
+    : await db.query<{ default_business_category_module_id: string | null }>(
+        `
+        update driver_registrations
+        set default_business_category_module_id = coalesce(
+          default_business_category_module_id,
+          $2
+        )
+        where attribution_subject_id = $1
+        returning default_business_category_module_id
+        `,
+        [input.attributionSubjectId, input.defaultBusinessCategoryModuleId],
+      );
   return (
     result.rows[0]?.default_business_category_module_id ??
     input.defaultBusinessCategoryModuleId
@@ -129,6 +201,7 @@ export async function replayAutoDriverGroupToRegistrationDefault(
 
   const defaultId = await getDriverRegistrationDefaultBusinessCategoryId(db, {
     attributionSubjectId: module.attributionSubjectId,
+    organizationId: input.organizationId,
   });
   if (!defaultId) {
     counts.skippedMissingDefault += 1;

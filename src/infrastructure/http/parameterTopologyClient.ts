@@ -101,6 +101,7 @@ function buildSpecsPath(query: SpecQuery = {}) {
   if (query.lifecycle) params.set("lifecycle", query.lifecycle);
   if (query.attributionSubjectId) params.set("attributionSubjectId", query.attributionSubjectId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
+  if (query.view) params.set("view", query.view);
   return appendQuery("/api/v2/parameter-specs", params);
 }
 
@@ -182,6 +183,10 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     compatiblePatterns: dto.compatiblePatterns ?? null,
     attributionModules: dto.attributionModules ?? [],
     attributionSubjectId: dto.attributionSubjectId ?? null,
+    effectiveScope: dto.effectiveScope,
+    overrideOfSpecId: dto.overrideOfSpecId ?? null,
+    declaredPlacement: dto.declaredPlacement ?? null,
+    observationState: dto.observationState,
   };
 }
 

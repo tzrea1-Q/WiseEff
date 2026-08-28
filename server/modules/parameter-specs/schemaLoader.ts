@@ -66,6 +66,7 @@ function materializeDocument(document: SchemaDocument): {
       schemaNamespace: document.schemaNamespace,
       source: propertySource,
       lifecycle: propertyLifecycle,
+      version,
       valueShape: normalizeValueShape(propertyDoc.valueShape),
       units: propertyDoc.units,
       constraints: propertyDoc.constraints ?? {},
@@ -84,6 +85,7 @@ function materializeDocument(document: SchemaDocument): {
     schemaNamespace: document.schemaNamespace,
     version,
     lifecycle,
+    attributionSubjectId: undefined,
     propertyIds,
     commonRefs: document.commonRefs ?? [],
   };

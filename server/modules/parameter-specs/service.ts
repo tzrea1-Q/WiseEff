@@ -201,6 +201,10 @@ export async function listParameterSpecs(
       attributionModules: row.attributionModules,
       attributionSubjectId: row.attributionSubjectId,
       referenceCount: row.referenceCount,
+      effectiveScope: row.effectiveScope,
+      overrideOfSpecId: row.overrideOfSpecId ?? null,
+      declaredPlacement: row.declaredPlacement ?? null,
+      observationState: row.observationState,
     })),
   };
 }

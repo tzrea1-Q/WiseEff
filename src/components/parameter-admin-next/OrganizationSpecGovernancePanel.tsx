@@ -177,7 +177,7 @@ export function OrganizationSpecGovernancePanel({
     setSpecLoadError(null);
     try {
       const [items] = await Promise.all([
-        application.listSpecs({}),
+        application.listSpecs({ view: "governance" }),
       ]);
       setSpecRows(
         items.map((item) =>

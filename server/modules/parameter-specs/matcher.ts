@@ -169,7 +169,10 @@ function propertiesForDriver(
       if (property.driverSchemaId !== null) continue;
       if (wantsCommon && !property.schemaNamespace.includes("common")) continue;
       if (!fromCommon.some((existing) => existing.id === property.id)) {
-        fromCommon.push(property);
+        // A common document is only a reusable shape. Once a concrete driver is
+        // resolved, retain that driver context so the materializer can assign a
+        // subject-scoped identity instead of emitting a subjectless definition.
+        fromCommon.push({ ...property, driverSchemaId: driver.id });
       }
     }
   }
