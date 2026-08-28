@@ -105,7 +105,7 @@ affected acceptance requirement and operation IDs, or add them before completion
   These databases are local test data, not a production cutover; the target database still
   requires the runbook's snapshot, dry-run review, per-organization apply, and post-migration gate.
 - `TEST_DATABASE_URL=... VITEST_SERVER_MAX_WORKERS=1 npm run test:server -- --run --maxWorkers=1`:
-  364 files passed and 2,803 tests passed; 1 file/4 tests were skipped by the existing
+  364 files passed and 2,804 tests passed; 1 file/4 tests were skipped by the existing
   environment gates (pgvector and the optional Xiaoze checkpoint proof). `npm test
   -- --maxWorkers=1` reported 419 passed / 1 failed files (420 total) and 3,142 passed / 1 failed
   tests (3,143 total): one unrelated `LogAdminPage` timeout and one worker-start failure in the
