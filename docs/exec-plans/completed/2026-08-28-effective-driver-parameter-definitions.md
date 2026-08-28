@@ -67,7 +67,7 @@ that preserves history and binding revision meaning.
 | Product specs | Reviewed; no change | `docs/product-specs/product-spec.md` — this repair tightens the existing parameter-governance contract and adds no new product workflow or scope. |
 | Architecture / domain / ADR | Update | `docs/design-docs/domain-model.md`, `docs/design-docs/api-contract.md`, new or amended `docs/adr/` decision. |
 | Quality / testing | Updated | `docs/design-docs/testing-strategy.md`; focused PostgreSQL seams and CLI gates are recorded below. `docs/developer/verification-matrix.md` receives the new commands. |
-| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document 0117→0120, snapshot, transaction, stop, and restore boundaries. |
+| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document 0117→0121, snapshot, transaction, stop, and restore boundaries. |
 | Security / governance | Updated | `docs/SECURITY.md` and Chinese companion document server-owned identity, trusted system audit, and fail-closed release checks; no separate `docs/security/` page needed. |
 | Frontend / design | Updated | `docs/FRONTEND.md` documents effective/governance API projection and server-owned DTO fields. No route, layout, styling, or interaction contract changed; browser requirement is recorded as data-projection coverage in the map. |
 | Generated artifacts | Updated | `docs/generated/db-schema.md` is regenerated from the migration set and checked with `npm run db:schema-doc:check`. |
@@ -93,19 +93,26 @@ affected acceptance requirement and operation IDs, or add them before completion
 
 ### Final verification evidence
 
-- A fresh PostgreSQL migration rehearsal applied all 118 migrations through
-  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql`; rerunning
+- A fresh PostgreSQL migration rehearsal applied all 119 migrations through
+  `0121_classify_nodename_driver_subjects.sql`; rerunning
   `npm run db:migrate` on that rehearsal returned `Applied 0 migration(s): none`, confirming
   the recorded checksums are stable. `npm run db:schema-doc:check` reports the generated schema
   artifact current.
-- On the seeded `wiseeff_issue649_finalbase` rehearsal database,
-  `npm run parameter-definitions:reconcile -- --dry-run` completed with zero candidates and
-  zero blockers, and `npm run parameter-definitions:check` returned `status: ready` with all six
-  verification counts at zero. The database is local test data, not a production cutover.
+- On isolated PostgreSQL rehearsal databases, the reconciliation dry-run/apply integration
+  exercised the draft/platform twin and returned an audited, idempotent correction; the
+  verification gate returned `status: ready` with all checks at zero after the correction.
+  A fresh empty rehearsal also returned zero pending migrations and a clean verification gate.
+  These databases are local test data, not a production cutover; the target database still
+  requires the runbook's snapshot, dry-run review, per-organization apply, and post-migration gate.
 - `TEST_DATABASE_URL=... VITEST_SERVER_MAX_WORKERS=1 npm run test:server -- --run --maxWorkers=1`:
-  365 files passed, 2,803 tests passed, 1 pre-existing environment skip. `npm test
-  -- --maxWorkers=1`: 421 files and 3,151 tests passed. `npm run test:scripts -- --maxWorkers=1`:
-  69 files, 948 passed, 5 environment skips. `npm run bridge:test`: 21 files, 138 passed.
+  364 files passed and 2,803 tests passed; 1 file/4 tests were skipped by the existing
+  environment gates (pgvector and the optional Xiaoze checkpoint proof). `npm test
+  -- --maxWorkers=1` reported 419 passed / 1 failed files (420 total) and 3,142 passed / 1 failed
+  tests (3,143 total): one unrelated `LogAdminPage` timeout and one worker-start failure in the
+  pre-existing full frontend suite;
+  the changed `ParameterSpecLibrary` tests pass in isolation (2 files, 21 tests). `npm run
+  test:scripts -- --maxWorkers=1`: 69 files, 948 passed, 5 environment skips. `npm run
+  bridge:test`: 21 files, 138 passed.
   `npm run build`, `npx tsc -b --pretty false --incremental false`, and `git diff --check`
   passed (build emitted only existing chunk-size and browser-externalization warnings).
 - API-mode browser smoke reached `http://127.0.0.1:5173/parameter-admin/specs` and showed the

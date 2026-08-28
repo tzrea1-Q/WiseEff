@@ -90,6 +90,15 @@ type ReconciliationItemRow = {
   evidence: Record<string, unknown>;
 };
 
+class ReconciliationApplyBlocked extends Error {
+  readonly blockerCode = "apply-skipped";
+
+  constructor(readonly itemId: string) {
+    super(`Reconciliation item ${itemId} no longer satisfies the apply preconditions.`);
+    this.name = "ReconciliationApplyBlocked";
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -185,6 +194,7 @@ async function listSuspects(
         from parameter_spec_versions active_versions
         where active_versions.parameter_spec_id = ps.id
           and active_versions.version_status = 'active'
+          and active_versions.lifecycle = 'active'
       ) as active_version_count,
       jsonb_agg(distinct jsonb_build_object(
         'id', b.module_id,
@@ -202,11 +212,14 @@ async function listSuspects(
     left join parameter_modules binding_module on binding_module.id = b.module_id
     left join parameter_spec_versions current_version
       on current_version.id = (
-        select psv.id
-        from parameter_spec_versions psv
-        where psv.parameter_spec_id = ps.id
-        order by
-          case psv.version_status when 'active' then 0 when 'superseded' then 1 else 2 end,
+          select psv.id
+          from parameter_spec_versions psv
+          where psv.parameter_spec_id = ps.id
+          order by
+          case when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+               when psv.version_status = 'active' then 1
+               when psv.version_status = 'superseded' then 2
+               else 3 end,
           psv.version desc
         limit 1
       )
@@ -226,13 +239,13 @@ async function listSuspects(
           from parameter_spec_versions active_versions
           where active_versions.parameter_spec_id = ps.id
             and active_versions.version_status = 'active'
+            and active_versions.lifecycle = 'active'
         ) <> 1
       )
       and (dps.id is not null or ps.attribution_subject_id is not null)
       -- Node-type definitions are a separate taxonomy surface (ADR-0013),
       -- not driver/property catalog candidates for this reconciliation.
       and asub.subject_kind is distinct from 'node-type-definition'
-      and coalesce(lower(asub.source_key), '') not like 'nodetype:%'
       ${scope}
     group by
       ps.organization_id,
@@ -278,6 +291,7 @@ async function listPlatformCandidates(
     inner join driver_schemas ds
       on ds.organization_id is null
      and ds.attribution_subject_id is not null
+     and (ps.attribution_subject_id is null or ds.attribution_subject_id = ps.attribution_subject_id)
      and (
        ds.id = dps.driver_schema_id
        or (dps.driver_schema_id is null and ds.schema_namespace = dps.schema_namespace)
@@ -300,6 +314,7 @@ async function listPlatformCandidates(
         from parameter_spec_versions active_versions
         where active_versions.parameter_spec_id = ps.id
           and active_versions.version_status = 'active'
+          and active_versions.lifecycle = 'active'
       ) = 1
       and coalesce(ps.property_key, dps.property_key) = $1
     order by ps.id
@@ -688,6 +703,41 @@ async function applyItem(
     return "skipped";
   }
   const evidence = asRecord(item.evidence);
+  const expectedVersionId = typeof evidence.candidateVersionId === "string" ? evidence.candidateVersionId : null;
+  const expectedSchemaId = typeof evidence.candidateDriverSchemaId === "string" ? evidence.candidateDriverSchemaId : null;
+  if (!expectedVersionId) return "skipped";
+
+  // Preflight evidence is advisory. Lock both the dirty organization row and
+  // the platform candidate, then re-read their identity/lifecycle tuple so a
+  // concurrent registry edit cannot apply a stale repair.
+  const currentSpec = await tx.query<{
+    id: string;
+    organization_id: string | null;
+    property_key: string | null;
+    definition_lifecycle: string;
+  }>(
+    `
+    select ps.id, ps.organization_id,
+           coalesce(ps.property_key, dps.property_key) as property_key,
+           ps.definition_lifecycle
+    from parameter_specs ps
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    where ps.id = $1
+    for update of ps
+    `,
+    [item.current_parameter_spec_id],
+  );
+  const current = currentSpec.rows[0];
+  if (
+    !current ||
+    current.organization_id !== item.organization_id ||
+    current.property_key !== item.property_key ||
+    current.definition_lifecycle === "deprecated"
+  ) {
+    return "skipped";
+  }
+  await tx.query(`select id from parameter_spec_versions where id = $1 for update`, [expectedVersionId]);
+  await tx.query(`select id from parameter_specs where id = $1 for update`, [item.candidate_parameter_spec_id]);
   const placementModuleId = typeof evidence.placementModuleId === "string" ? evidence.placementModuleId : null;
   const placementCategoryId = typeof evidence.placementCategoryId === "string" ? evidence.placementCategoryId : null;
   const candidate = await tx.query<CandidateRow>(
@@ -711,7 +761,10 @@ async function applyItem(
     from parameter_specs ps
     inner join parameter_spec_versions psv on psv.parameter_spec_id = ps.id
     inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
-    inner join driver_schemas ds on ds.id = dps.driver_schema_id
+    inner join driver_schemas ds
+      on ds.id = dps.driver_schema_id
+     and ds.organization_id is null
+     and ds.attribution_subject_id = ps.attribution_subject_id
     inner join lateral (
       select compatible_patterns, lifecycle
       from driver_schema_versions
@@ -720,28 +773,110 @@ async function applyItem(
       order by version desc
       limit 1
     ) dsv on true
-    where ps.id = $1 and psv.id = $2
+    where ps.id = $1
+      and ps.organization_id is null
+      and ps.source_kind = 'dts'
+      and ps.definition_lifecycle = 'active'
+      and psv.id = $2
+      and psv.version_status = 'active'
+      and psv.lifecycle = 'active'
+      and (
+        select count(*)
+        from parameter_spec_versions active_versions
+        where active_versions.parameter_spec_id = ps.id
+          and active_versions.version_status = 'active'
+          and active_versions.lifecycle = 'active'
+      ) = 1
+      and coalesce(ps.property_key, dps.property_key) = $3
     limit 1
     `,
-    [item.candidate_parameter_spec_id, evidence.candidateVersionId],
+    [item.candidate_parameter_spec_id, expectedVersionId, item.property_key],
   );
   const candidateRow = candidate.rows[0];
-  if (!candidateRow?.attribution_subject_id) return "skipped";
+  if (
+    !candidateRow?.attribution_subject_id ||
+    candidateRow.attribution_subject_id !== item.next_subject_id ||
+    (expectedSchemaId !== null && candidateRow.driver_schema_id !== expectedSchemaId)
+  ) {
+    return "skipped";
+  }
 
   let targetModuleId = placementModuleId;
   if (!targetModuleId) return "skipped";
-  const existingModule = await tx.query<{ id: string; kind: string; origin: string; attribution_subject_id: string | null }>(
-    `select id, kind, origin, attribution_subject_id from parameter_modules where id = $1 and organization_id = $2 for update`,
+  const existingModule = await tx.query<{
+    id: string;
+    kind: string;
+    origin: string;
+    source_key: string | null;
+    attribution_subject_id: string | null;
+  }>(
+    `select id, kind, origin, source_key, attribution_subject_id
+     from parameter_modules where id = $1 and organization_id = $2`,
     [targetModuleId, item.organization_id],
   );
-  const module = existingModule.rows[0];
+  let module = existingModule.rows[0];
   if (!module || module.kind !== "driver-group") return "skipped";
   if (module.attribution_subject_id !== candidateRow.attribution_subject_id) {
     if (module.origin !== "auto") return "skipped";
+    const candidatePatterns = canonicalValues(candidateRow.compatible_patterns);
+    const moduleCompatible = module.source_key?.startsWith("compatible:")
+      ? normalizeMatchToken(module.source_key.slice("compatible:".length))
+      : null;
+    if (!moduleCompatible || !candidatePatterns.some((pattern) => patternMatches(pattern, moduleCompatible))) {
+      return "skipped";
+    }
+    // Match the ingest placement lock order (placements before module) so a
+    // concurrent replay cannot deadlock while moving an auto group between
+    // canonical subjects.
+    const modulePlacements = await tx.query<{ id: string }>(
+      `select id
+       from driver_registration_placements
+       where organization_id = $1 and driver_group_module_id = $2
+       for update`,
+      [item.organization_id, targetModuleId],
+    );
+    const collision = await tx.query<{ id: string }>(
+      `select id
+       from driver_registration_placements
+       where organization_id = $1
+         and attribution_subject_id = $2
+         and driver_group_module_id <> $3
+       for update`,
+      [item.organization_id, candidateRow.attribution_subject_id, targetModuleId],
+    );
+    if (collision.rows.length > 0) return "skipped";
+    const lockedModule = await tx.query<{
+      id: string;
+      kind: string;
+      origin: string;
+      source_key: string | null;
+      attribution_subject_id: string | null;
+    }>(
+      `select id, kind, origin, source_key, attribution_subject_id
+       from parameter_modules where id = $1 and organization_id = $2 for update`,
+      [targetModuleId, item.organization_id],
+    );
+    module = lockedModule.rows[0];
+    if (
+      !module ||
+      module.kind !== "driver-group" ||
+      module.origin !== "auto" ||
+      module.attribution_subject_id !== existingModule.rows[0]?.attribution_subject_id
+    ) {
+      return "skipped";
+    }
     await tx.query(
       `update parameter_modules set attribution_subject_id = $2, updated_at = now() where id = $1`,
       [targetModuleId, candidateRow.attribution_subject_id],
     );
+    if (modulePlacements.rows.length > 0) {
+      await tx.query(
+        `update driver_registration_placements
+         set attribution_subject_id = $2, updated_at = now()
+         where organization_id = $1 and driver_group_module_id = $3`,
+        [item.organization_id, candidateRow.attribution_subject_id, targetModuleId],
+      );
+    }
   }
   const placement = await ensureDriverRegistrationPlacement(tx, {
     organizationId: item.organization_id,
@@ -750,6 +885,7 @@ async function applyItem(
     defaultBusinessCategoryModuleId: placementCategoryId,
   });
   if (!placement) return "skipped";
+  if (placement.driverGroupModuleId !== targetModuleId) return "skipped";
 
   await tx.query(
     `
@@ -934,14 +1070,13 @@ export async function reconcileDriverParameterDefinitions(
         await db.transaction(async (tx) => {
           for (const item of organizationItems) {
             const attemptedStatus = await applyItem(tx, item, runId);
-            const status = attemptedStatus === "skipped" ? "blocked" : attemptedStatus;
             if (attemptedStatus === "skipped") {
-              item.blocker_code = "apply-skipped";
-              item.evidence = {
-                ...item.evidence,
-                applySkipped: true,
-              };
+              // The organization is the atomic unit of reconciliation. A
+              // stale or incomplete item must roll back earlier writes rather
+              // than commit a partially repaired taxonomy.
+              throw new ReconciliationApplyBlocked(item.id);
             }
+            const status = attemptedStatus;
             await tx.query(
               `update parameter_definition_reconciliation_items
                set status = $2, blocker_code = coalesce($3, blocker_code),
@@ -951,8 +1086,8 @@ export async function reconcileDriverParameterDefinitions(
               [
                 item.id,
                 status,
-                attemptedStatus === "skipped" ? "apply-skipped" : null,
-                attemptedStatus === "skipped" ? JSON.stringify({ applySkipped: true }) : "{}",
+                null,
+                "{}",
               ],
             );
             item.status = status;
@@ -961,20 +1096,31 @@ export async function reconcileDriverParameterDefinitions(
       } catch (error) {
         // Business writes and their audit roll back together. Persist the
         // blocker on the root handle so a failed organization is resumable.
+        const blockerCode =
+          error instanceof ReconciliationApplyBlocked ? error.blockerCode : "apply-transaction-failed";
         await db.query(
           `
           update parameter_definition_reconciliation_items
-          set status = 'blocked', blocker_code = 'apply-transaction-failed',
-              evidence = evidence || $2::jsonb, updated_at = now()
-          where run_id = $1 and organization_id = $3 and status = 'pending'
+          set status = 'blocked', blocker_code = $2,
+              evidence = evidence || $3::jsonb, updated_at = now()
+          where run_id = $1 and organization_id = $4 and status = 'pending'
           `,
-          [runId, JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), organizationId],
+          [
+            runId,
+            blockerCode,
+            JSON.stringify({
+              ...(error instanceof ReconciliationApplyBlocked ? { applySkipped: true } : {}),
+              error: error instanceof Error ? error.message : String(error),
+            }),
+            organizationId,
+          ],
         );
         for (const item of organizationItems) {
           item.status = "blocked";
-          item.blocker_code = "apply-transaction-failed";
+          item.blocker_code = blockerCode;
           item.evidence = {
             ...item.evidence,
+            ...(error instanceof ReconciliationApplyBlocked ? { applySkipped: true } : {}),
             applyError: error instanceof Error ? error.message : String(error),
           };
         }

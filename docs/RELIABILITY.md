@@ -17,7 +17,9 @@ Effective driver-parameter catalog rollout is a three-step data-plane change: mi
 evidence, `0118_effective_driver_parameter_catalog_contract.sql` guards new DTS identity
 writes, and `0119_effective_driver_parameter_catalog_finalize.sql` completes safe graph
 backfill and rejects future duplicate active versions. `0120_effective_driver_parameter_catalog_legacy_write_compat.sql`
-keeps legacy unlinked staging writes compatible without making them effective. Operators must snapshot PostgreSQL
+keeps legacy unlinked staging writes compatible without making them effective, while
+`0121_classify_nodename_driver_subjects.sql` corrects nodename-only subjects/modules into the node-type taxonomy.
+Operators must snapshot PostgreSQL
 and object storage, run the reconciliation dry-run, apply one organization per transaction,
 and finish with `npm run parameter-definitions:check`; any blocker keeps release fail-closed.
 The recovery procedure and evidence fields are defined in the [effective catalog runbook](runbooks/effective-driver-parameter-catalog-reconciliation.md).

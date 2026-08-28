@@ -58,6 +58,13 @@ const PPV_ID = "ppv-pcw-gpio-int";
 const SCHEMA_NS = "vendor";
 const PROPERTY_KEY = "gpio_int";
 const DRIVER = "sc8562";
+const DRIVER_SUBJECT = "asub-pcw-sc8562";
+const DRIVER_SCHEMA_SPEC = "pspec-pcw-sc8562-schema";
+const DRIVER_SCHEMA_VERSION = "psv-pcw-sc8562-schema";
+const DRIVER_SCHEMA = "ds-pcw-sc8562";
+const DRIVER_SCHEMA_VERSION_ID = "dsv-pcw-sc8562-v1";
+const DRIVER_CATEGORY_MODULE = "pmod-pcw-power";
+const DRIVER_GROUP_MODULE = "pmod-pcw-sc8562";
 const NODE_LOCATOR = "/amba/i2c@FDF5E000/sc8562@6E";
 const SOURCE_NODE_PATH = "amba/i2c@FDF5E000/sc8562@6E/gpio_int";
 
@@ -133,7 +140,7 @@ async function seedPreCutoverGraph(db: Database) {
 	amba {
 		i2c@FDF5E000 {
 			sc8562: sc8562@6E {
-				compatible = "vendor,sc8562";
+				compatible = "sc8562";
 				gpio_int = <1>;
 			};
 		};
@@ -165,10 +172,78 @@ async function seedPreCutoverGraph(db: Database) {
      values ($1, $2, $3, 'pcw-power', 't1t2')`,
     [CONFIG_SET, ORG, PROJECT]
   );
+  // The graph below intentionally keeps the legacy flat rows used by the
+  // migration assertions, but it also carries a complete canonical driver
+  // identity. Post-cutover writeback must now prove this subject/schema/
+  // placement tuple before it can create a recognized binding.
   await db.query(
-    `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-     values ($1, $2, 'dts', $3)`,
-    [specId, ORG, `${DRIVER}/${PROPERTY_KEY}`]
+    `insert into attribution_subjects (
+       id, organization_id, subject_kind, display_name, origin, source_key
+     ) values ($1, null, 'driver-registration', 'SC8562', 'curated', 'compatible:sc8562')`,
+    [DRIVER_SUBJECT]
+  );
+  await db.query(
+    `insert into driver_registrations (
+       attribution_subject_id, driver_nature, instance_cardinality, notes
+     ) values ($1, 'physical-device', 'multiple', 'post-cutover workflow fixture')`,
+    [DRIVER_SUBJECT]
+  );
+  await db.query(
+    `insert into parameter_modules (
+       id, organization_id, parent_id, name, path, depth, sort_order,
+       description, scope, kind, origin, source_key, attribution_subject_id
+     ) values
+       ($1, $2, null, 'Power', $1, 1, 0, '', '', 'business', 'curated', null, null),
+       ($3, $2, $1, 'SC8562', $3, 2, 0, '', '', 'driver-group', 'curated',
+        'compatible:sc8562', $4)`,
+    [DRIVER_CATEGORY_MODULE, ORG, DRIVER_GROUP_MODULE, DRIVER_SUBJECT]
+  );
+  await db.query(
+    `insert into driver_registration_placements (
+       id, organization_id, attribution_subject_id, driver_group_module_id,
+       default_business_category_module_id
+     ) values ($1, $2, $3, $4, $5)`,
+    ["drp-pcw-sc8562", ORG, DRIVER_SUBJECT, DRIVER_GROUP_MODULE, DRIVER_CATEGORY_MODULE]
+  );
+  await db.query(
+    `insert into parameter_module_mappings (
+       id, organization_id, parameter_module_id, match_kind, match_value, priority
+     ) values ($1, $2, $3, 'compatible', $4, 500)`,
+    ["pmap-pcw-sc8562", ORG, DRIVER_GROUP_MODULE, "sc8562"]
+  );
+  await db.query(
+    `insert into parameter_specs (
+       id, organization_id, source_kind, specification_key, definition_lifecycle,
+       attribution_subject_id
+     ) values ($1, null, 'dts', 'schema/vendor,sc8562', 'active', $2)`,
+    [DRIVER_SCHEMA_SPEC, DRIVER_SUBJECT]
+  );
+  await db.query(
+    `insert into parameter_spec_versions (
+       id, parameter_spec_id, version, display_name, description, value_shape,
+       lifecycle, version_status, documentation
+     ) values ($1, $2, 1, 'SC8562 schema', 'schema root', '{"kind":"unknown"}'::jsonb,
+       'active', 'active', 'fixture schema')`,
+    [DRIVER_SCHEMA_VERSION, DRIVER_SCHEMA_SPEC]
+  );
+  await db.query(
+    `insert into driver_schemas (
+       id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id
+     ) values ($1, $2, null, 'vendor', $3)`,
+    [DRIVER_SCHEMA, DRIVER_SCHEMA_SPEC, DRIVER_SUBJECT]
+  );
+  await db.query(
+    `insert into driver_schema_versions (
+       id, driver_schema_id, parameter_spec_version_id, version,
+       compatible_patterns, parent_bus_constraints, source, lifecycle
+     ) values ($1, $2, $3, 1, '["sc8562"]'::jsonb, '{}'::jsonb, 'vendor', 'active')`,
+    [DRIVER_SCHEMA_VERSION_ID, DRIVER_SCHEMA, DRIVER_SCHEMA_VERSION]
+  );
+  await db.query(
+    `insert into parameter_specs (
+       id, organization_id, source_kind, specification_key, attribution_subject_id, property_key
+     ) values ($1, $2, 'dts', $3, $4, $5)`,
+    [specId, null, `${DRIVER}/${PROPERTY_KEY}`, DRIVER_SUBJECT, PROPERTY_KEY]
   );
   await db.query(
     `insert into parameter_spec_versions (
@@ -177,9 +252,10 @@ async function seedPreCutoverGraph(db: Database) {
     [specVersionId, specId]
   );
   await db.query(
-    `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-     values ($1, $2, $3, $4, '{}'::jsonb)`,
-    [propertySpecId, specId, PROPERTY_KEY, SCHEMA_NS]
+    `insert into dts_property_specs (
+       id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints
+     ) values ($1, $2, $3, $4, $5, '{}'::jsonb)`,
+    [propertySpecId, specId, DRIVER_SCHEMA, PROPERTY_KEY, SCHEMA_NS]
   );
   await db.query(
     `insert into project_parameter_files (
@@ -258,9 +334,10 @@ async function seedPreCutoverGraph(db: Database) {
   const logicalNodeRevisionId = `lnr-${logicalNodeId}`;
   await db.query(
     `insert into dts_logical_node_revisions (
-      id, logical_node_id, config_revision_id, node_locator, name, unit_address, parent_logical_node_id
-    ) values ($1, $2, $3, $4, 'sc8562', '6E', null)`,
-    [logicalNodeRevisionId, logicalNodeId, configRevisionId, NODE_LOCATOR]
+      id, logical_node_id, config_revision_id, node_locator, name, unit_address,
+      compatible, driver_schema_version_id, parent_logical_node_id
+    ) values ($1, $2, $3, $4, 'sc8562', '6E', 'sc8562', $5, null)`,
+    [logicalNodeRevisionId, logicalNodeId, configRevisionId, NODE_LOCATOR, DRIVER_SCHEMA_VERSION_ID]
   );
   const nodeOccurrenceId = "no-pcw-1";
   const propertyOccurrenceId = "po-pcw-gpio-int";

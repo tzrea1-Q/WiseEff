@@ -329,9 +329,15 @@ export async function seedM1Parameters(
       const sourceKey = module.sourceKey ?? null;
       let attributionSubjectId: string | null = null;
       if (kind === "driver-group" || kind === "node-type") {
+        // Committed DTS seed modules describe the platform schema taxonomy.
+        // Keep their subject global so an organization module can declare a
+        // tenant placement for the same canonical driver/node-type identity;
+        // organization overlays remain scoped by their `org/<id>/...`
+        // schema namespace and do not pass through this seed path.
+        const subjectOrganizationId = sourceKey ? null : organizationId;
         attributionSubjectId = await insertAttributionSubjectForNewModule(tx, {
           moduleId: id,
-          organizationId,
+          organizationId: subjectOrganizationId,
           kind,
           displayName: module.name,
           origin,

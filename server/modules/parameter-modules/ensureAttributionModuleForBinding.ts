@@ -36,8 +36,11 @@ import {
   findAttributionSubjectIdBySourceKey,
   getDriverRegistrationDefaultBusinessCategoryId,
 } from "./driverPlacement";
-import { ensureDriverRegistrationPlacement } from "./driverRegistrationPlacement";
-import { getDriverRegistrationPlacement } from "./driverRegistrationPlacement";
+import {
+  ensureDriverRegistrationPlacement,
+  getDriverRegistrationPlacement,
+  getNodeTypeDefinitionPlacement,
+} from "./driverRegistrationPlacement";
 
 export function compatibleSourceKey(compatible: string): string {
   return `compatible:${normalizeMatchToken(compatible) ?? compatible.trim().toLowerCase()}`;
@@ -601,7 +604,17 @@ export async function resolveAttributionModuleForBinding(
       organizationId: input.organizationId,
       moduleId: mappedId,
     });
-    if (mapped && mapped.kind !== "unclassified") return mapped.id;
+    // A replay mapping is only authoritative for the same canonical subject.
+    // Never let a stale compatible/node-name mapping move a recognized
+    // definition into another driver's module (or into a subjectless business
+    // module) just because the display name still matches.
+    if (
+      mapped &&
+      mapped.kind !== "unclassified" &&
+      (!input.attributionSubjectId || mapped.attributionSubjectId === input.attributionSubjectId)
+    ) {
+      return mapped.id;
+    }
   }
 
   if (!scaffolding) {
@@ -633,6 +646,18 @@ export async function resolveAttributionModuleForBinding(
   // resolver; this keeps recognized bindings subject-aligned instead of
   // parking them in the subjectless unclassified bucket.
   if (input.attributionSubjectId) {
+    const subjectKind = await db.query<{ subject_kind: "driver-registration" | "node-type-definition" }>(
+      `select subject_kind from attribution_subjects where id = $1 limit 1`,
+      [input.attributionSubjectId],
+    );
+    if (nodeType && subjectKind.rows[0]?.subject_kind === "node-type-definition") {
+      const nodeTypePlacement = await getNodeTypeDefinitionPlacement(db, {
+        organizationId: input.organizationId,
+        attributionSubjectId: input.attributionSubjectId,
+        sourceKey: nodeTypeSourceKey(nodeType),
+      });
+      if (nodeTypePlacement) return nodeTypePlacement.moduleId;
+    }
     const placement = await getDriverRegistrationPlacement(db, {
       organizationId: input.organizationId,
       attributionSubjectId: input.attributionSubjectId,

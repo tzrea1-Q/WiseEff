@@ -24,19 +24,19 @@ const databaseAvailable = await isTestDatabaseAvailable();
 async function seedDriverGroupMappings(db: InMemoryTestDatabase) {
   const chargePumpSubjectId = await insertAttributionSubjectForNewModule(db, {
     moduleId: "pmod-seed-charge-pump-ic",
-    organizationId: ORG_ID,
+    organizationId: null,
     kind: "driver-group",
     displayName: "Charge Pump IC",
     origin: "curated",
-    sourceKey: "compatible:fixture:sc8562",
+    sourceKey: "compatible:sc8562",
   });
   const chargerSubjectId = await insertAttributionSubjectForNewModule(db, {
     moduleId: "pmod-seed-charger-ic",
-    organizationId: ORG_ID,
+    organizationId: null,
     kind: "driver-group",
     displayName: "Charger IC",
     origin: "curated",
-    sourceKey: "compatible:fixture:huawei,bypass_bst_hl7603",
+    sourceKey: "compatible:huawei,bypass_bst_hl7603",
   });
   await db.query(
     `insert into parameter_modules (

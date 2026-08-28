@@ -12,9 +12,11 @@ and exactly one organization driver-group placement.
 - Deploy migrations `0117_effective_driver_parameter_catalog.sql`,
   `0118_effective_driver_parameter_catalog_contract.sql`,
   `0119_effective_driver_parameter_catalog_finalize.sql`, followed by
-  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql`, with the
-  application. The last migration is the compatibility boundary for legacy
-  active DTS surface writes; it does not make an unlinked definition effective.
+  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql` and
+  `0121_classify_nodename_driver_subjects.sql`, with the application. The last
+  two migrations preserve the legacy staging boundary and correct nodename-only
+  subjects/modules to `NodeTypeDefinition`; they do not make an unlinked
+  definition effective.
 - Take a PostgreSQL and object-store snapshot. Keep the write freeze through
   verification and post-deploy observation.
 - Stop on any non-zero command, a non-empty blocker report, or a failed verification.

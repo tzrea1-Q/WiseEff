@@ -15,6 +15,12 @@ const DRIVER_VERSION = "driver-effective-platform:v1";
 const CATEGORY = "module-effective-category";
 const PLATFORM_GROUP = "module-effective-platform-group";
 const ORG_GROUP = "module-effective-org-group";
+const NODE_SUBJECT = "asub-effective-node-type";
+const NODE_SPEC = "pspec:effective:node-type";
+const NODE_ROOT_SPEC = "pspec:driver:vendor/node-type";
+const NODE_SCHEMA = "driver-effective-node-type";
+const NODE_MODULE = "module-effective-node-type";
+const NODE_PROPERTY = "node_type_limit";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -87,6 +93,63 @@ async function seed(db: InMemoryTestDatabase) {
             ('dps-effective-org', $4, null, $3, 'org/effective', '{}'::jsonb, 'draft')`,
     [PLATFORM_SPEC, DRIVER_SCHEMA, PROPERTY_KEY, ORG_SPEC],
   );
+  await db.query(
+    `insert into attribution_subjects
+       (id, organization_id, subject_kind, display_name, origin, source_key)
+     values ($1, null, 'node-type-definition', 'uart-controller', 'curated', 'nodetype:uart-controller')`,
+    [NODE_SUBJECT],
+  );
+  await db.query(
+    `insert into node_type_definitions (attribution_subject_id, bare_node_name)
+     values ($1, 'uart-controller')`,
+    [NODE_SUBJECT],
+  );
+  await db.query(
+    `insert into parameter_specs
+       (id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id)
+     values ($1, null, 'dts', 'driver/vendor/node-type', 'active', $2)`,
+    [NODE_ROOT_SPEC, NODE_SUBJECT],
+  );
+  await db.query(
+    `insert into parameter_spec_versions
+       (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+     values ('psv-driver-node-type', $1, 1, 'uart-controller', 'node-type schema', '{"kind":"unknown"}'::jsonb,
+       'active', 'active', 'node-type schema')`,
+    [NODE_ROOT_SPEC],
+  );
+  await db.query(
+    `insert into driver_schemas
+       (id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id)
+     values ($1, $2, null, 'vendor/node-type', $3)`,
+    [NODE_SCHEMA, NODE_ROOT_SPEC, NODE_SUBJECT],
+  );
+  await db.query(
+    `insert into driver_schema_versions
+       (id, driver_schema_id, parameter_spec_version_id, version, compatible_patterns,
+        parent_bus_constraints, source, lifecycle)
+     values ('driver-effective-node-type:v1', $1, 'psv-driver-node-type', 1, '[]'::jsonb, '{}'::jsonb,
+       'vendor', 'draft')`,
+    [NODE_SCHEMA],
+  );
+  await db.query(
+    `insert into parameter_specs
+       (id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id, property_key)
+     values ($1, null, 'dts', 'vendor/node-type/node_type_limit', 'active', $2, $3)`,
+    [NODE_SPEC, NODE_SUBJECT, NODE_PROPERTY],
+  );
+  await db.query(
+    `insert into parameter_spec_versions
+       (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+     values ('psv-effective-node-type', $1, 1, 'node_type_limit', 'node-type property', '{"kind":"cells"}'::jsonb,
+       'active', 'active', 'node-type property')`,
+    [NODE_SPEC],
+  );
+  await db.query(
+    `insert into dts_property_specs
+       (id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints, documentation)
+     values ('dps-effective-node-type', $1, $2, $3, 'vendor/node-type', '{}'::jsonb, 'node-type property')`,
+    [NODE_SPEC, NODE_SCHEMA, NODE_PROPERTY],
+  );
 }
 
 describe.skipIf(!databaseAvailable)("effective parameter definition catalog", () => {
@@ -133,7 +196,61 @@ describe.skipIf(!databaseAvailable)("effective parameter definition catalog", ()
     });
 
     const governance = await listParameterSpecRows(db!, { organizationId: ORG_ID, view: "governance" });
-    expect(new Set(governance.map((row) => row.id))).toEqual(new Set([PLATFORM_SPEC, ORG_SPEC]));
+    expect(new Set(governance.map((row) => row.id))).toEqual(new Set([PLATFORM_SPEC, ORG_SPEC, NODE_SPEC]));
     expect(governance.find((row) => row.id === ORG_SPEC)?.effectiveScope).toBe("governance");
+  });
+
+  it("keeps a node-type DTS property out until its taxonomy module and active schema exist", async () => {
+    let rows = await listParameterSpecRows(db!, { organizationId: ORG_ID });
+    expect(rows.some((row) => row.id === NODE_SPEC)).toBe(false);
+
+    await db!.query(
+      `insert into parameter_modules
+         (id, organization_id, parent_id, name, path, depth, kind, origin, source_key, attribution_subject_id)
+       values ($1, $2, $3, 'uart-controller', $1, 2, 'node-type', 'curated', 'nodetype:uart-controller', $4)`,
+      [NODE_MODULE, ORG_ID, CATEGORY, NODE_SUBJECT],
+    );
+    rows = await listParameterSpecRows(db!, { organizationId: ORG_ID });
+    expect(rows.some((row) => row.id === NODE_SPEC)).toBe(false);
+
+    await db!.query(
+      `update driver_schema_versions set lifecycle = 'active' where driver_schema_id = $1`,
+      [NODE_SCHEMA],
+    );
+    rows = await listParameterSpecRows(db!, { organizationId: ORG_ID });
+    expect(rows.find((row) => row.id === NODE_SPEC)).toMatchObject({
+      effectiveScope: "platform",
+      declaredPlacement: { moduleId: NODE_MODULE, categoryId: CATEGORY },
+    });
+  });
+
+  it("fails closed when an organization has two active rows for one canonical identity", async () => {
+    await db!.query(
+      `insert into attribution_subjects
+         (id, organization_id, subject_kind, display_name, origin, source_key)
+       values ('asub-effective-org-duplicate', $1, 'driver-registration', 'duplicate', 'auto',
+         'COMPATIBLE:effective,driver')`,
+      [ORG_ID],
+    );
+    await db!.query(
+      `insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
+       values ('asub-effective-org-duplicate', 'physical-device', 'multiple', '')`,
+    );
+    await db!.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id, property_key)
+       values ('pspec:effective:org-duplicate', $1, 'dts', 'org/duplicate/effective_limit', 'active',
+         'asub-effective-org-duplicate', $2)`,
+      [ORG_ID, PROPERTY_KEY],
+    );
+    await db!.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+       values ('psv-effective-org-duplicate', 'pspec:effective:org-duplicate', 1, 'duplicate', 'duplicate',
+         '{"kind":"cells"}'::jsonb, 'active', 'active', 'duplicate')`,
+    );
+
+    const rows = await listParameterSpecRows(db!, { organizationId: ORG_ID });
+    expect(rows.some((row) => row.id === PLATFORM_SPEC || row.id === ORG_SPEC)).toBe(false);
   });
 });

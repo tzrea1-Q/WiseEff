@@ -10,8 +10,9 @@ Issue #649 的维护窗口流程。修复组织 draft / 平台 active 成对行�
 - 随应用部署迁移 `0117_effective_driver_parameter_catalog.sql`、
   `0118_effective_driver_parameter_catalog_contract.sql`、
   `0119_effective_driver_parameter_catalog_finalize.sql`，随后部署
-  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql`。最后一个迁移
-  只为旧版 active DTS 表面写入保留兼容边界，不会让未链接定义进入 effective 视图。
+  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql` 与
+  `0121_classify_nodename_driver_subjects.sql`。后两个迁移保留旧暂存兼容边界，并把仅有
+  nodename 的主体/模块修正为 `NodeTypeDefinition`；不会让未链接定义进入 effective 视图。
 - 先做 PostgreSQL 与对象存储快照；验证及上线观察期间保持写冻结。
 - 任意命令非零、报告存在 blocker 或验证失败都立即停止。不得删除脏行、修改已应用迁移，
   也不得在数据库已变化后重试 apply。

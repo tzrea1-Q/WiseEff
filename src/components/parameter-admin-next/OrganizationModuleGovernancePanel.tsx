@@ -143,6 +143,7 @@ export function OrganizationModuleGovernancePanel({
             compatiblePatterns: spec.compatiblePatterns,
             valueShape: spec.valueShape,
             attributionModules: spec.attributionModules,
+            declaredPlacement: spec.declaredPlacement ?? null,
           })
         );
       }}

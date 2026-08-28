@@ -26,6 +26,9 @@ proven, or allow a later active row to hide a draft without a durable precedence
    to a subject-aligned `DriverSchema`; a subject-bearing organization row must have
    exactly one `driver_registration_placements` row whose driver-group and business
    parent belong to that organization.
+   This driver-placement invariant applies to DTS driver definitions; legacy/manual policy rows
+   without a concrete `DriverSchema` remain on the policy activation workflow and are not used to
+   recognize DTS evidence.
 3. Selection is server-owned and deterministic: organization active wins over
    platform active; more than one active candidate at the winning scope is a
    governance blocker; drafts, deprecated rows, and shadowed twins are never
@@ -40,11 +43,14 @@ proven, or allow a later active row to hide a draft without a durable precedence
    future one-active-version trigger; existing conflicts remain for the audited
    `parameter-definitions:reconcile` command to classify and repair. Migration
    `0120` is the compatibility boundary for legacy active DTS surface writes: it
-   permits the old unlinked staging row while keeping linked rows fail-closed. The command
-   supports dry-run/apply, persists run/item evidence, uses per-organization
-   transactions, preserves historical versions/revisions, and records trusted
-   system audit events. The independent `parameter-definitions:check` command is
-   the final read-only gate.
+   permits the old unlinked staging row while keeping linked rows fail-closed.
+   `0121` corrects the earlier nodename-only classification by moving
+   `nodetype:*` subjects/modules to `NodeTypeDefinition` taxonomy; it preserves
+   ids/history and requires an organization node-type module before effective use.
+   The command supports dry-run/apply, persists run/item evidence, uses
+   per-organization transactions, preserves historical versions/revisions, and
+   records trusted system audit events. The independent `parameter-definitions:check`
+   command is the final read-only gate.
 
 ## Consequences
 

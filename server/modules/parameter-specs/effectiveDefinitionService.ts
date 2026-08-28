@@ -1,7 +1,10 @@
 import { ApiError } from "../../shared/http/errors";
 import type { Queryable } from "../../shared/database/client";
 import { createOrReuseBinding, type ProjectParameterBinding } from "../parameter-topology/bindingService";
-import { getDriverRegistrationPlacement } from "../parameter-modules/driverRegistrationPlacement";
+import {
+  getDriverRegistrationPlacement,
+  getNodeTypeDefinitionPlacement,
+} from "../parameter-modules/driverRegistrationPlacement";
 import { selectEffectiveDefinition, type EffectiveDefinitionCandidate } from "./effectiveDefinition";
 
 export type EffectiveDefinition = {
@@ -37,6 +40,7 @@ type CandidateRow = {
   placement_id: string | null;
   driver_group_module_id: string | null;
   default_business_category_module_id: string | null;
+  node_type_module_id: string | null;
   placement_ready: boolean;
 };
 
@@ -87,17 +91,32 @@ function candidateQuery(input: {
         drp.id as placement_id,
         drp.driver_group_module_id,
         drp.default_business_category_module_id,
+        node_type_module.id as node_type_module_id,
         case
           -- Legacy/manual policy rows are not driver definitions and do not
           -- participate in the driver-placement invariant.
           when ps.source_kind <> 'dts'
-            and dps.driver_schema_id is null
-            and ps.attribution_subject_id is null then true
-          when asub.subject_kind = 'node-type-definition' then true
-          -- Historical nodename schemas were materialized as driver-registration
-          -- subjects before the taxonomy cutover. They resolve through the
-          -- node-type module path and are outside the driver-placement gate.
-          when coalesce(lower(asub.source_key), '') like 'nodetype:%' then true
+            and dps.driver_schema_id is null then true
+          when asub.subject_kind = 'node-type-definition'
+            and node_type_module.id is not null
+            and exists (
+              select 1
+              from node_type_definitions node_type_definition
+              where node_type_definition.attribution_subject_id = ps.attribution_subject_id
+            )
+            and (
+              ps.source_kind <> 'dts'
+              or (
+                dps.driver_schema_id is not null
+                and driver_schema.attribution_subject_id = ps.attribution_subject_id
+                and exists (
+                  select 1
+                  from driver_schema_versions active_schema_version
+                  where active_schema_version.driver_schema_id = dps.driver_schema_id
+                    and active_schema_version.lifecycle = 'active'
+                )
+              )
+            ) then true
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is not null
@@ -112,7 +131,14 @@ function candidateQuery(input: {
               or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
             ) then true
           when dps.driver_schema_id is not null
+            and asub.subject_kind = 'driver-registration'
             and driver_schema.attribution_subject_id is not distinct from ps.attribution_subject_id
+            and exists (
+              select 1
+              from driver_schema_versions active_schema_version
+              where active_schema_version.driver_schema_id = dps.driver_schema_id
+                and active_schema_version.lifecycle = 'active'
+            )
             and dr.attribution_subject_id is not null
             and drp.id is not null
             and dgm.id is not null
@@ -132,11 +158,16 @@ function candidateQuery(input: {
           psv.id,
           psv.version_status,
           psv.lifecycle,
-          count(*) filter (where psv.version_status = 'active') over () as active_version_count
+          count(*) filter (where psv.version_status = 'active' and psv.lifecycle = 'active') over () as active_version_count
         from parameter_spec_versions psv
         where psv.parameter_spec_id = ps.id
         order by
-          case psv.version_status when 'active' then 0 when 'superseded' then 1 else 2 end,
+          case
+            when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+            when psv.version_status = 'active' then 1
+            when psv.version_status = 'superseded' then 2
+            else 3
+          end,
           psv.version desc
         limit 1
       ) psv on true
@@ -148,6 +179,13 @@ function candidateQuery(input: {
        and drp.attribution_subject_id = ps.attribution_subject_id
       left join parameter_modules dgm on dgm.id = drp.driver_group_module_id
       left join parameter_modules category on category.id = drp.default_business_category_module_id
+      left join parameter_modules node_type_module
+        on node_type_module.organization_id = $1
+       and node_type_module.kind = 'node-type'
+       and (
+         node_type_module.attribution_subject_id = ps.attribution_subject_id
+         or lower(coalesce(node_type_module.source_key, '')) = lower(coalesce(asub.source_key, ''))
+       )
       where (ps.organization_id = $1 or ps.organization_id is null)
         and not exists (
           select 1 from driver_schemas driver_root
@@ -197,10 +235,17 @@ export async function resolveEffectiveDefinition(
       propertyKey: input.propertyKey,
     });
   }
-  const placement = await getDriverRegistrationPlacement(db, {
-    organizationId: input.organizationId,
-    attributionSubjectId: winnerRow.attribution_subject_id,
-  });
+  const placement =
+    winnerRow.attribution_subject_kind === "node-type-definition"
+      ? await getNodeTypeDefinitionPlacement(db, {
+          organizationId: input.organizationId,
+          attributionSubjectId: winnerRow.attribution_subject_id,
+          sourceKey: winnerRow.driver_identity_key,
+        })
+      : await getDriverRegistrationPlacement(db, {
+          organizationId: input.organizationId,
+          attributionSubjectId: winnerRow.attribution_subject_id,
+        });
   if (!placement) {
     throw new ApiError("CONFLICT", "An effective driver property is missing its organization placement.", {
       parameterSpecId: winner.id,
@@ -217,8 +262,9 @@ export async function resolveEffectiveDefinition(
     propertyKey: winner.propertyKey,
     sourceKind: winner.sourceKind,
     declaredPlacement: {
-      moduleId: placement.driverGroupModuleId,
-      categoryId: placement.defaultBusinessCategoryModuleId,
+      moduleId: "driverGroupModuleId" in placement ? placement.driverGroupModuleId : placement.moduleId,
+      categoryId:
+        "driverGroupModuleId" in placement ? placement.defaultBusinessCategoryModuleId : placement.categoryId,
     },
   };
 }
@@ -257,14 +303,89 @@ export async function requireRecognizedDefinitionForBinding(
   // binding route. DTS driver definitions take the strict branch below.
   if (
     row.attribution_subject_kind === "node-type-definition" ||
-    row.driver_identity_key.startsWith("nodetype:") ||
     // Manual/organization overlay specs without a concrete DriverSchema are
-    // policy-governed definitions.  They may be resolved on a scaffolding node
-    // before a driver-group placement exists; keep the legacy manual workflow
-    // intact.  DTS driver properties take the strict subject/placement branch
-    // below.
+    // policy-governed definitions rather than DTS driver definitions. They
+    // retain the review/activation workflow even when the review evidence has
+    // already assigned a subject for provenance; DTS rows take the strict
+    // effective-definition and placement checks below.
     (row.source_kind !== "dts" && row.driver_schema_id === null)
   ) {
+    if (row.attribution_subject_kind === "node-type-definition") {
+      if (!row.attribution_subject_id) {
+        throw new ApiError("CONFLICT", "A node-type definition is missing its canonical subject.", {
+          parameterSpecId: input.parameterSpecId,
+        });
+      }
+      // A DTS-backed node type is still a driver definition. Its taxonomy
+      // module is necessary but not sufficient: the property must resolve
+      // through the same active-schema/active-version gate as a registered
+      // driver. Non-DTS policy rows retain the legacy node-type workflow.
+      if (row.source_kind === "dts") {
+        const effective = await resolveEffectiveDefinition(db, {
+          organizationId: input.organizationId,
+          propertyKey: row.property_key ?? "",
+          driverIdentityKey: row.driver_identity_key,
+        });
+        if (!effective || effective.parameterSpecId !== input.parameterSpecId) {
+          throw new ApiError("CONFLICT", "The requested node-type definition is not effective and active.", {
+            parameterSpecId: input.parameterSpecId,
+            propertyKey: row.property_key,
+          });
+        }
+        if (input.moduleId !== effective.declaredPlacement.moduleId) {
+          throw new ApiError("CONFLICT", "A recognized node-type binding must use its declared module.", {
+            parameterSpecId: input.parameterSpecId,
+            moduleId: input.moduleId,
+            declaredModuleId: effective.declaredPlacement.moduleId,
+          });
+        }
+        return effective;
+      }
+      const placement = await getNodeTypeDefinitionPlacement(db, {
+        organizationId: input.organizationId,
+        attributionSubjectId: row.attribution_subject_id,
+        sourceKey: row.driver_identity_key,
+      });
+      if (!placement) {
+        throw new ApiError("CONFLICT", "A node-type definition is missing its organization module placement.", {
+          parameterSpecId: input.parameterSpecId,
+          attributionSubjectId: row.attribution_subject_id,
+          propertyKey: row.property_key,
+        });
+      }
+      if (input.moduleId !== placement.moduleId) {
+        const moduleResult = await db.query<{ id: string }>(
+          `
+          select id
+          from parameter_modules
+          where id = $1 and organization_id = $2 and kind = 'node-type'
+            and lower(coalesce(source_key, '')) = lower($3)
+          limit 1
+          `,
+          [input.moduleId, input.organizationId, row.driver_identity_key],
+        );
+        if (!moduleResult.rows[0]) {
+          throw new ApiError("CONFLICT", "A recognized node-type binding must use its declared module.", {
+            parameterSpecId: input.parameterSpecId,
+            moduleId: input.moduleId,
+            declaredModuleId: placement.moduleId,
+          });
+        }
+      }
+      return {
+        parameterSpecId: input.parameterSpecId,
+        parameterSpecVersionId: input.parameterSpecVersionId,
+        attributionSubjectId: row.attribution_subject_id,
+        driverSchemaId: row.driver_schema_id,
+        organizationId: row.organization_id,
+        propertyKey: row.property_key ?? "",
+        sourceKind: row.source_kind,
+        declaredPlacement: {
+          moduleId: placement.moduleId,
+          categoryId: placement.categoryId,
+        },
+      };
+    }
     return {
       parameterSpecId: input.parameterSpecId,
       parameterSpecVersionId: input.parameterSpecVersionId,
@@ -307,6 +428,9 @@ export async function requireRecognizedDefinitionForBinding(
       parameterSpecId: input.parameterSpecId,
       moduleId: input.moduleId,
       attributionSubjectId: effective.attributionSubjectId,
+      moduleOrganizationId: module?.organization_id ?? null,
+      moduleKind: module?.kind ?? null,
+      moduleAttributionSubjectId: module?.attribution_subject_id ?? null,
     });
   }
   return effective;

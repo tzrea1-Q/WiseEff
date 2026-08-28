@@ -22,6 +22,8 @@ draft。
 2. 生效行必须有 active 定义、active 当前 `ParameterSpecVersion` 和规范驱动主体。
    DTS 属性还必须指向主体一致的 `DriverSchema`；带主体的组织行必须恰有一条
    `driver_registration_placements`，其驱动组及业务父节点属于该组织。
+   这项驱动放置不变量适用于 DTS 驱动定义；没有具体 `DriverSchema` 的旧版/手工策略行
+   仍走策略激活流程，不能用于识别 DTS 证据。
 3. 选择由服务端负责且确定：组织 active 优先于平台 active；胜出层有多个 active
    候选时进入治理阻断；draft、deprecated 与被遮蔽成对行不进入默认生效视图，
    `view=governance` 才用于修复和审计。
@@ -30,9 +32,10 @@ draft。
 5. `0117` 是加法式 expand：回填主体链接和组织放置，不删除脏数据。`0118` 守住新的 DTS
    active 写入，`0119` 只做安全图收尾并为未来写入增加单一 active 版本触发器；现存冲突仍交给
    经审计的 `parameter-definitions:reconcile` 分类和修复。`0120` 是旧版 active DTS
-   表面写入的兼容边界：允许旧的未链接暂存行，但仍对已链接行失败关闭。该命令支持 dry-run/apply，持久化
-   运行/条目证据，按组织事务处理，保留历史版本/修订，并记录可信 system 审计。独立的
-   `parameter-definitions:check` 是最终只读门禁。
+   表面写入的兼容边界：允许旧的未链接暂存行，但仍对已链接行失败关闭。`0121` 修正此前仅有 nodename
+   的错误分类，将 `nodetype:*` 主体/模块归入 `NodeTypeDefinition` taxonomy；保留 id 与历史，并要求组织的
+   node-type 模块存在后才能进入 effective。该命令支持 dry-run/apply，持久化运行/条目证据，按组织事务处理，
+   保留历史版本/修订，并记录可信 system 审计。独立的 `parameter-definitions:check` 是最终只读门禁。
 
 ## 影响
 

@@ -296,6 +296,23 @@ describe("attribution taxonomy migration invariants (ADR-0010)", () => {
   });
 });
 
+describe("nodename driver subject correction migration invariants (Issue #649)", () => {
+  it("reclassifies legacy nodetype subjects without dropping their identity history", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0121_classify_nodename_driver_subjects.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("insert into node_type_definitions");
+    expect(migration).toContain("delete from driver_registration_placements");
+    expect(migration).toContain("delete from driver_registrations");
+    expect(migration).toContain("set subject_kind = 'node-type-definition'");
+    expect(migration).toContain("lower(asub.source_key) like 'nodetype:%'");
+    expect(migration).toContain("wiseeff_assert_active_dts_property_spec");
+    expect(migration).toContain("subject_kind = 'node-type-definition'");
+    expect(migration).not.toContain("drop table");
+  });
+});
+
 describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
   it("removes structural definitions after full FK preflight and prevents re-entry", () => {
     const migration = readFileSync(

@@ -1119,10 +1119,10 @@ export async function listDriverRegistry(
       pm.id as module_id,
       dr.driver_nature,
       dr.instance_cardinality,
-      coalesce(
-        placement.default_business_category_module_id,
-        dr.default_business_category_module_id
-      ) as default_business_category_module_id
+      case
+        when placement.organization_id is not null then placement.default_business_category_module_id
+        else dr.default_business_category_module_id
+      end as default_business_category_module_id
     from parameter_modules pm
     inner join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
     left join driver_registration_placements placement

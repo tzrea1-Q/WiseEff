@@ -1042,18 +1042,36 @@ export async function listParameterSpecRows(
         ds.attribution_subject_id as driver_schema_subject_id,
         dr.attribution_subject_id as driver_registration_id,
         drp.id as declared_placement_id,
-        dgm.id as declared_module_id,
-        dgm.name as declared_module_name,
-        category.id as declared_category_id,
-        category.name as declared_category_name,
+        coalesce(dgm.id, node_type_module.id) as declared_module_id,
+        coalesce(dgm.name, node_type_module.name) as declared_module_name,
+        coalesce(category.id, node_type_category.id) as declared_category_id,
+        coalesce(category.name, node_type_category.name) as declared_category_name,
         case
           -- Legacy/manual policy rows are not driver definitions and therefore
           -- do not participate in the driver-placement invariant. DTS rows do.
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is null then true
-          when asub.subject_kind = 'node-type-definition' then true
-          when coalesce(lower(asub.source_key), '') like 'nodetype:%' then true
+          when asub.subject_kind = 'node-type-definition'
+            and node_type_module.id is not null
+            and exists (
+              select 1
+              from node_type_definitions node_type_definition
+              where node_type_definition.attribution_subject_id = ps.attribution_subject_id
+            )
+            and (
+              ps.source_kind <> 'dts'
+              or (
+                dps.driver_schema_id is not null
+                and ds.attribution_subject_id = ps.attribution_subject_id
+                and exists (
+                  select 1
+                  from driver_schema_versions active_schema_version
+                  where active_schema_version.driver_schema_id = dps.driver_schema_id
+                    and active_schema_version.lifecycle = 'active'
+                )
+              )
+            ) then true
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is not null
@@ -1068,7 +1086,14 @@ export async function listParameterSpecRows(
               or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
             ) then true
           when dps.driver_schema_id is not null
+            and asub.subject_kind = 'driver-registration'
             and ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+            and exists (
+              select 1
+              from driver_schema_versions active_schema_version
+              where active_schema_version.driver_schema_id = dps.driver_schema_id
+                and active_schema_version.lifecycle = 'active'
+            )
             and dr.attribution_subject_id is not null
             and drp.id is not null
             and dgm.id is not null
@@ -1087,7 +1112,7 @@ export async function listParameterSpecRows(
             where observed_binding.organization_id = $1
               and observed_binding.parameter_spec_id = ps.id
           ) then 'observed'
-          when drp.id is not null then 'not-yet-observed'
+          when drp.id is not null or node_type_module.id is not null then 'not-yet-observed'
           else 'unclassified'
         end as observation_state,
         psv.display_name
@@ -1096,14 +1121,15 @@ export async function listParameterSpecRows(
       left join lateral (
         select
           psv.*,
-          count(*) filter (where psv.version_status = 'active') over () as active_version_count
+          count(*) filter (where psv.version_status = 'active' and psv.lifecycle = 'active') over () as active_version_count
         from parameter_spec_versions psv
         where psv.parameter_spec_id = ps.id
         order by
-          case psv.version_status
-            when 'active' then 0
-            when 'superseded' then 1
-            else 2
+          case
+            when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+            when psv.version_status = 'active' then 1
+            when psv.version_status = 'superseded' then 2
+            else 3
           end,
           psv.version desc
         limit 1
@@ -1117,6 +1143,16 @@ export async function listParameterSpecRows(
        and drp.attribution_subject_id = ps.attribution_subject_id
       left join parameter_modules dgm on dgm.id = drp.driver_group_module_id
       left join parameter_modules category on category.id = drp.default_business_category_module_id
+      left join parameter_modules node_type_module
+        on node_type_module.organization_id = $1
+       and node_type_module.kind = 'node-type'
+       and (
+         node_type_module.attribution_subject_id = ps.attribution_subject_id
+         or lower(coalesce(node_type_module.source_key, '')) = lower(coalesce(asub.source_key, ''))
+       )
+      left join parameter_modules node_type_category
+        on node_type_category.id = node_type_module.parent_id
+       and node_type_category.kind = 'business'
       where (ps.organization_id = $1 or ps.organization_id is null)
         and not exists (
           select 1 from driver_schemas driver_root
@@ -1150,7 +1186,6 @@ export async function listParameterSpecRows(
       where c.lifecycle = 'active'
         and c.version_status = 'active'
         and c.version_lifecycle = 'active'
-        and c.active_version_count = 1
     ),
     visible as (
       select
@@ -1195,7 +1230,7 @@ export async function listParameterSpecRows(
           )
           else null
         end as override_of_spec_id,
-        case when c.declared_placement_id is null then null else jsonb_build_object(
+        case when c.declared_module_id is null then null else jsonb_build_object(
           'moduleId', c.declared_module_id,
           'moduleName', c.declared_module_name,
           'categoryId', c.declared_category_id,
@@ -1206,6 +1241,15 @@ export async function listParameterSpecRows(
       where c.effective_rank = 1
         and c.organization_active_count <= 1
         and c.platform_active_count <= 1
+        and c.active_version_count = 1
+        and not exists (
+          select 1
+          from ranked organization_candidate
+          where organization_candidate.organization_id = $1
+            and organization_candidate.driver_identity_key = c.driver_identity_key
+            and organization_candidate.property_key = c.property_key
+            and organization_candidate.active_version_count <> 1
+        )
         and c.placement_ready
         and $${values.length + 1} = 'effective'
       union all
@@ -1225,7 +1269,7 @@ export async function listParameterSpecRows(
         c.compatible_patterns,
         'governance' as effective_scope,
         null as override_of_spec_id,
-        case when c.declared_placement_id is null then null else jsonb_build_object(
+        case when c.declared_module_id is null then null else jsonb_build_object(
           'moduleId', c.declared_module_id,
           'moduleName', c.declared_module_name,
           'categoryId', c.declared_category_id,
@@ -1401,10 +1445,11 @@ export async function findParameterSpecByIdentity(
       from parameter_spec_versions
       where parameter_spec_id = ps.id
       order by
-        case version_status
-          when 'active' then 0
-          when 'superseded' then 1
-          else 2
+        case
+          when version_status = 'active' and lifecycle = 'active' then 0
+          when version_status = 'active' then 1
+          when version_status = 'superseded' then 2
+          else 3
         end,
         version desc
       limit 1
@@ -1473,8 +1518,28 @@ export async function getParameterSpecRow(
             (ps.source_kind <> 'dts'
               and dps.driver_schema_id is null
               and ps.attribution_subject_id is null)
-            or asub.subject_kind = 'node-type-definition'
-            or coalesce(lower(asub.source_key), '') like 'nodetype:%'
+            or (
+              asub.subject_kind = 'node-type-definition'
+              and node_type_module.id is not null
+              and exists (
+                select 1
+                from node_type_definitions node_type_definition
+                where node_type_definition.attribution_subject_id = ps.attribution_subject_id
+              )
+              and (
+                ps.source_kind <> 'dts'
+                or (
+                  dps.driver_schema_id is not null
+                  and property_ds.attribution_subject_id = ps.attribution_subject_id
+                  and exists (
+                    select 1
+                    from driver_schema_versions active_schema_version
+                    where active_schema_version.driver_schema_id = dps.driver_schema_id
+                      and active_schema_version.lifecycle = 'active'
+                  )
+                )
+              )
+            )
             or (
               ps.source_kind <> 'dts'
               and dps.driver_schema_id is null
@@ -1492,7 +1557,14 @@ export async function getParameterSpecRow(
             )
             or (
               dps.driver_schema_id is not null
+              and asub.subject_kind = 'driver-registration'
               and property_ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+              and exists (
+                select 1
+                from driver_schema_versions active_schema_version
+                where active_schema_version.driver_schema_id = dps.driver_schema_id
+                  and active_schema_version.lifecycle = 'active'
+              )
               and property_dr.attribution_subject_id is not null
               and drp.id is not null
               and dgm.id is not null
@@ -1508,11 +1580,11 @@ export async function getParameterSpecRow(
           then case when ps.organization_id = $1 then 'organization' else 'platform' end
         else 'governance'
       end as effective_scope,
-      case when drp.id is null then null else jsonb_build_object(
-        'moduleId', dgm.id,
-        'moduleName', dgm.name,
-        'categoryId', category.id,
-        'categoryName', category.name
+      case when coalesce(dgm.id, node_type_module.id) is null then null else jsonb_build_object(
+        'moduleId', coalesce(dgm.id, node_type_module.id),
+        'moduleName', coalesce(dgm.name, node_type_module.name),
+        'categoryId', coalesce(category.id, node_type_category.id),
+        'categoryName', coalesce(category.name, node_type_category.name)
       ) end as declared_placement,
       case
         when exists (
@@ -1520,7 +1592,7 @@ export async function getParameterSpecRow(
           where observed_binding.organization_id = $1
             and observed_binding.parameter_spec_id = ps.id
         ) then 'observed'
-        when drp.id is not null then 'not-yet-observed'
+        when drp.id is not null or node_type_module.id is not null then 'not-yet-observed'
         else 'unclassified'
       end as observation_state
     from parameter_specs ps
@@ -1528,14 +1600,15 @@ export async function getParameterSpecRow(
     left join lateral (
       select
         psv.*,
-        count(*) filter (where psv.version_status = 'active') over () as active_version_count
+        count(*) filter (where psv.version_status = 'active' and psv.lifecycle = 'active') over () as active_version_count
       from parameter_spec_versions psv
       where psv.parameter_spec_id = ps.id
       order by
-        case psv.version_status
-          when 'active' then 0
-          when 'superseded' then 1
-          else 2
+        case
+          when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+          when psv.version_status = 'active' then 1
+          when psv.version_status = 'superseded' then 2
+          else 3
         end,
         psv.version desc
       limit 1
@@ -1556,6 +1629,16 @@ export async function getParameterSpecRow(
      and drp.attribution_subject_id = ps.attribution_subject_id
     left join parameter_modules dgm on dgm.id = drp.driver_group_module_id
     left join parameter_modules category on category.id = drp.default_business_category_module_id
+    left join parameter_modules node_type_module
+      on node_type_module.organization_id = $1
+     and node_type_module.kind = 'node-type'
+     and (
+       node_type_module.attribution_subject_id = ps.attribution_subject_id
+       or lower(coalesce(node_type_module.source_key, '')) = lower(coalesce(asub.source_key, ''))
+     )
+    left join parameter_modules node_type_category
+      on node_type_category.id = node_type_module.parent_id
+     and node_type_category.kind = 'business'
     left join lateral (
       select target_value
       from parameter_policy_targets

@@ -52,6 +52,7 @@ function toSpecDetailView(
       usageCount,
       attributionModules: libraryRow?.attributionModules ?? detail.attributionModules ?? [],
       attributionSubjectId: detail.attributionSubjectId ?? libraryRow?.attributionSubjectId ?? null,
+      declaredPlacement: detail.declaredPlacement ?? libraryRow?.declaredPlacement ?? null,
     }),
     displayName: detail.displayName,
     description: detail.description,
@@ -193,6 +194,7 @@ export function OrganizationSpecGovernancePanel({
             valueShape: item.valueShape,
             attributionModules: item.attributionModules,
             attributionSubjectId: item.attributionSubjectId ?? null,
+            declaredPlacement: item.declaredPlacement ?? null,
             usageCount: item.referenceCount ?? 0
           })
         )

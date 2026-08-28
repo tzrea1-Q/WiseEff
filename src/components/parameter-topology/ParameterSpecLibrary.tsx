@@ -28,6 +28,14 @@ export type ParameterSpecLibraryRow = {
   attributionSubjectId: string | null;
   /** Distinct attribution units from project bindings; empty = not yet observed. */
   attributionModules: SpecAttributionModule[];
+  /** Server-declared taxonomy placement; authoritative even before observation. */
+  declaredPlacement?: {
+    moduleId: string;
+    moduleName: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    path?: string[];
+  } | null;
   driverModule: string | null;
   compatible: string | null;
   valueType: string;
@@ -58,6 +66,7 @@ export function mapParameterSpecToLibraryRow(input: {
   reviewState?: string | null;
   attributionModules?: SpecAttributionModule[] | null;
   attributionSubjectId?: string | null;
+  declaredPlacement?: ParameterSpecLibraryRow["declaredPlacement"];
 }): ParameterSpecLibraryRow {
   const propertyKey =
     input.propertyKey?.trim() ||
@@ -87,6 +96,7 @@ export function mapParameterSpecToLibraryRow(input: {
     propertyKey,
     attributionSubjectId: input.attributionSubjectId ?? null,
     attributionModules: input.attributionModules ?? [],
+    declaredPlacement: input.declaredPlacement ?? null,
     driverModule: input.driverModule ?? null,
     compatible: input.compatiblePatterns?.[0] ?? null,
     valueType,
@@ -101,6 +111,9 @@ export function mapParameterSpecToLibraryRow(input: {
 
 /** Filter/search labels for the attribution column. */
 export function specAttributionFilterValues(spec: ParameterSpecLibraryRow): string[] {
+  if (spec.declaredPlacement?.moduleName?.trim()) {
+    return [spec.declaredPlacement.moduleName.trim(), ...spec.attributionModules.map((module) => module.name)];
+  }
   if (spec.attributionModules.length > 0) {
     return spec.attributionModules.map((module) => module.name);
   }
@@ -111,6 +124,19 @@ export function specAttributionFilterValues(spec: ParameterSpecLibraryRow): stri
 }
 
 export function specAttributionFilterPaths(spec: ParameterSpecLibraryRow): string[] {
+  if (spec.declaredPlacement?.moduleName?.trim()) {
+    const declaredPath = spec.declaredPlacement.path?.map((segment) => segment.trim()).filter(Boolean) ?? [];
+    const declaredName = spec.declaredPlacement.moduleName.trim();
+    if (declaredName && declaredPath.at(-1) !== declaredName) declaredPath.push(declaredName);
+    const observedPaths = spec.attributionModules.map((module) => {
+      const path = (module.path ?? []).map((segment) => segment.trim()).filter(Boolean);
+      const name = module.name.trim();
+      if (path.length === 0) return name;
+      if (name && path.at(-1) !== name) path.push(name);
+      return path.join(" / ");
+    });
+    return [declaredPath.join(" / ") || declaredName, ...observedPaths];
+  }
   if (spec.attributionModules.length > 0) {
     return spec.attributionModules.map((module) => {
       const path = (module.path ?? []).map((segment) => segment.trim()).filter(Boolean);
@@ -136,6 +162,13 @@ function modulePathMatchesSelection(path: string, selected: string): boolean {
 
 /** User-facing attribution cell / detail text (full tree path when available). */
 export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): string {
+  if (spec.declaredPlacement?.moduleName?.trim()) {
+    const declaredName = spec.declaredPlacement.moduleName.trim();
+    const observed = spec.attributionModules
+      .filter((module) => module.name.trim() !== declaredName)
+      .map((module) => (module.path && module.path.length > 0 ? module.path.join(" / ") : module.name));
+    return observed.length > 0 ? [declaredName, ...observed].join("、") : declaredName;
+  }
   if (spec.attributionModules.length > 0) {
     return spec.attributionModules
       .map((module) =>

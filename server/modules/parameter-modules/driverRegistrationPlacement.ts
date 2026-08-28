@@ -10,6 +10,13 @@ export type DriverRegistrationPlacement = {
   defaultBusinessCategoryModuleId: string | null;
 };
 
+export type NodeTypeDefinitionPlacement = {
+  moduleId: string;
+  moduleName: string;
+  categoryId: string | null;
+  categoryName: string | null;
+};
+
 type PlacementRow = {
   id: string;
   organization_id: string;
@@ -63,6 +70,56 @@ export async function getDriverRegistrationPlacement(
     [input.organizationId, input.attributionSubjectId],
   );
   return result.rows[0] ? toPlacement(result.rows[0]) : null;
+}
+
+/**
+ * Resolve the organization taxonomy module for a NodeTypeDefinition. Platform
+ * schemas are shared, so the subject id may differ from the organization
+ * module's subject id; the stable nodetype source key is the cross-scope link.
+ */
+export async function getNodeTypeDefinitionPlacement(
+  db: Queryable,
+  input: { organizationId: string; attributionSubjectId: string; sourceKey: string },
+): Promise<NodeTypeDefinitionPlacement | null> {
+  const result = await db.query<{
+    module_id: string;
+    module_name: string;
+    category_id: string | null;
+    category_name: string | null;
+  }>(
+    `
+    select node_type.id as module_id,
+           node_type.name as module_name,
+           case when parent.kind = 'business' then parent.id else null end as category_id,
+           case when parent.kind = 'business' then parent.name else null end as category_name
+    from parameter_modules node_type
+    left join parameter_modules parent on parent.id = node_type.parent_id
+    where node_type.organization_id = $1
+      and node_type.kind = 'node-type'
+      and exists (
+        select 1
+        from node_type_definitions ntd
+        where ntd.attribution_subject_id = $2
+      )
+      and (
+        node_type.attribution_subject_id = $2
+        or lower(coalesce(node_type.source_key, '')) = lower($3)
+      )
+    order by case when node_type.attribution_subject_id = $2 then 0 else 1 end,
+             node_type.id
+    limit 1
+    `,
+    [input.organizationId, input.attributionSubjectId, input.sourceKey],
+  );
+  const row = result.rows[0];
+  return row
+    ? {
+        moduleId: row.module_id,
+        moduleName: row.module_name,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+      }
+    : null;
 }
 
 /**

@@ -22,7 +22,8 @@
 `0118_effective_driver_parameter_catalog_contract.sql` 守住新的 DTS 身份写入，
 `0119_effective_driver_parameter_catalog_finalize.sql` 完成安全图回填并拒绝未来重复
 active 版本；`0120_effective_driver_parameter_catalog_legacy_write_compat.sql` 保留旧版
-未链接暂存写入兼容，但不会让其生效。运维必须先做 PostgreSQL 与对象存储快照，执行对账 dry-run，按组织单事务
+未链接暂存写入兼容，但不会让其生效；`0121_classify_nodename_driver_subjects.sql` 将此前错误的 nodename-only
+主体/模块修正为 node-type taxonomy。运维必须先做 PostgreSQL 与对象存储快照，执行对账 dry-run，按组织单事务
 apply，最后运行 `npm run parameter-definitions:check`；任何 blocker 都保持发布失败关闭。
 恢复流程和证据字段见[生效目录运行手册](runbooks/effective-driver-parameter-catalog-reconciliation.md)。
 - DTS 重载部署为**进程内请求**（ADR-0020）：挂载、推送、触发、内核日志采集与行为核对均在持有桥接 WebSocket 的 API 进程上执行，不走 BullMQ。仓库提供的自托管拓扑只支持一个 API 副本；对于 `up --scale api=...`、`up --scale=api=...` 和独立的 `scale api=...` 命令，`ops/self-hosted/scripts/compose` 只允许精确的 `api=1`，其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务扩容仍正常透传。直接调用 Compose 只会绕过保护，并不会让多 API 变成受支持拓扑；orchestrator 或外部部署若没有让 WebSocket 与后续 bridge-backed 请求落到同一 API 进程的 bridge-aware routing，同样不受支持。自定义亲和拓扑不属于仓库 stock 契约，必须另取目标环境证据；本文不声称 HA 或多副本就绪。证据与 UI 在 `/dts-reload`，勿与已下线的 `/debugging` 混淆。

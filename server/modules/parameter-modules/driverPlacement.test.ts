@@ -52,7 +52,7 @@ function createPlacementDb(seed: {
 
   const db: Queryable = {
     query: vi.fn(async (text, values = []) => {
-      if (text.includes("from driver_registrations") && text.includes("select default_business_category")) {
+      if (text.includes("from driver_registrations") && text.includes("default_business_category_module_id")) {
         const [subjectId] = values as [string];
         return {
           rows: [{ default_business_category_module_id: defaults.get(subjectId) ?? null }],

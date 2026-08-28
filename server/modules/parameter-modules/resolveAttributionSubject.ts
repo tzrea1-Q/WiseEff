@@ -142,10 +142,79 @@ export async function ensureAttributionSubjectForCompatible(
   return finalId;
 }
 
+async function ensureNodeTypeDefinitionSubject(
+  db: Queryable,
+  input: { organizationId: string | null; nodename: string; displayName?: string },
+): Promise<string> {
+  const sourceKey = `nodetype:${input.nodename.toLowerCase()}`;
+  const existing = await db.query<{ id: string; subject_kind: string }>(
+    `
+    select id, subject_kind
+    from attribution_subjects
+    where organization_id is not distinct from $1
+      and source_key = $2
+    limit 1
+    `,
+    [input.organizationId, sourceKey],
+  );
+  const subjectId =
+    existing.rows[0]?.id ??
+    `asub:node-type-definition:nodename:${createHash("sha256")
+      .update(`${input.organizationId ?? "platform"}\u001f${sourceKey}`)
+      .digest("hex")
+      .slice(0, 24)}`;
+
+  // Older expand migrations incorrectly classified nodename-backed schemas as
+  // driver registrations. Correct that durable discriminant before a new
+  // schema/property write can reuse the subject.
+  if (existing.rows[0]?.subject_kind === "driver-registration") {
+    // Placements are intentionally not foreign-keyed to driver_registrations,
+    // so deleting the child row alone would leave a stale driver placement
+    // that could be mistaken for a node-type declaration by catalog queries.
+    await db.query(`delete from driver_registration_placements where attribution_subject_id = $1`, [subjectId]);
+    await db.query(`delete from driver_registrations where attribution_subject_id = $1`, [subjectId]);
+    await db.query(
+      `update parameter_modules
+       set kind = 'node-type', updated_at = now()
+       where attribution_subject_id = $1 and source_key = $2 and kind = 'driver-group'`,
+      [subjectId, sourceKey],
+    );
+    await db.query(
+      `update attribution_subjects set subject_kind = 'node-type-definition', updated_at = now() where id = $1`,
+      [subjectId],
+    );
+  } else {
+    await db.query(
+      `
+      insert into attribution_subjects (
+        id, organization_id, subject_kind, display_name, origin, source_key
+      ) values ($1, $2, 'node-type-definition', $3, 'auto', $4)
+      on conflict (organization_id, source_key) do nothing
+      `,
+      [subjectId, input.organizationId, input.displayName?.trim() || input.nodename, sourceKey],
+    );
+  }
+
+  const resolved = await findAttributionSubjectBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey,
+  });
+  const finalId = resolved ?? subjectId;
+  await db.query(
+    `
+    insert into node_type_definitions (attribution_subject_id, bare_node_name)
+    values ($1, $2)
+    on conflict (attribution_subject_id) do nothing
+    `,
+    [finalId, input.nodename],
+  );
+  return finalId;
+}
+
 /**
- * Resolve a schema's stable registration identity. Compatible evidence is the
- * preferred source; nodename-only schemas receive a namespaced node-type-like
- * source key so they still cannot materialize as subjectless definitions.
+ * Resolve a schema's stable attribution identity. Compatible evidence maps to
+ * DriverRegistration; nodename-only schemas are NodeTypeDefinition entities,
+ * not drivers that may bypass the organization placement invariant.
  */
 export async function ensureAttributionSubjectForDriverSchema(
   db: Queryable,
@@ -173,50 +242,11 @@ export async function ensureAttributionSubjectForDriverSchema(
     );
   }
 
-  const sourceKey = `nodetype:${nodename.toLowerCase()}`;
-  const existing = await findAttributionSubjectBySourceKey(db, {
+  return ensureNodeTypeDefinitionSubject(db, {
     organizationId: input.organizationId,
-    sourceKey,
+    nodename,
+    displayName: input.displayName,
   });
-  if (existing) {
-    await db.query(
-      `
-      insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
-      values ($1, 'physical-device', 'multiple', '')
-      on conflict (attribution_subject_id) do nothing
-      `,
-      [existing],
-    );
-    return existing;
-  }
-
-  const subjectId = `asub:driver-registration:nodename:${createHash("sha256")
-    .update(`${input.organizationId ?? "platform"}\u001f${sourceKey}`)
-    .digest("hex")
-    .slice(0, 24)}`;
-  await db.query(
-    `
-    insert into attribution_subjects (
-      id, organization_id, subject_kind, display_name, origin, source_key
-    ) values ($1, $2, 'driver-registration', $3, 'auto', $4)
-    on conflict (organization_id, source_key) do nothing
-    `,
-    [subjectId, input.organizationId, input.displayName?.trim() || nodename, sourceKey],
-  );
-  const resolved = await findAttributionSubjectBySourceKey(db, {
-    organizationId: input.organizationId,
-    sourceKey,
-  });
-  const finalId = resolved ?? subjectId;
-  await db.query(
-    `
-    insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
-    values ($1, 'physical-device', 'multiple', '')
-    on conflict (attribution_subject_id) do nothing
-    `,
-    [finalId],
-  );
-  return finalId;
 }
 
 /**
