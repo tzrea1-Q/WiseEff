@@ -2455,6 +2455,13 @@ body {
   box-sizing: border-box;
 }
 
+.node-debugging-page .node-row-warning {
+  color: color-mix(in srgb, var(--warning) 72%, var(--text));
+  display: block;
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+}
+
 .debugging-page .page-header {
   align-items: center;
   flex-wrap: wrap;

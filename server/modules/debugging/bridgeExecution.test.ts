@@ -86,7 +86,66 @@ describe("bridgeExecution", () => {
 
     expect(result.ok).toBe(false);
     expect(result.verified).toBe(false);
+    expect(result.writeOutcome).toBe("unknown");
+    expect(result.readbackOutcome).toBe("unknown");
     expect(result.error).toContain("Bridge disconnected.");
     expect(result.writeResult.ok).toBe(false);
+  });
+
+  it("infers independent outcomes from legacy nested Bridge results", async () => {
+    const rpc = {
+      call: vi.fn().mockResolvedValue({
+        ok: false,
+        verified: false,
+        error: "Readback mismatch after write.",
+        writeResult: { ok: true, value: "1", durationMs: 7 },
+        readResult: { ok: true, value: "0x1", durationMs: 8 }
+      })
+    };
+
+    await expect(
+      writeNodeViaBridge({
+        rpc: rpc as never,
+        bridgeId: "br-1",
+        protocol: "hdc",
+        targetRef: "target-1",
+        nodePath: "/sys/value",
+        value: "1",
+        readBack: true,
+        preserveExactRead: false,
+        timeoutMs: 1000
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      verified: false,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      value: "0x1",
+      error: undefined
+    });
+  });
+
+  it("does not fabricate outcomes from a legacy top-level-only Bridge result", async () => {
+    const rpc = { call: vi.fn().mockResolvedValue({ ok: true, verified: true, value: "1" }) };
+
+    await expect(
+      writeNodeViaBridge({
+        rpc: rpc as never,
+        bridgeId: "br-old",
+        protocol: "adb",
+        targetRef: "serial-1",
+        nodePath: "/sys/value",
+        value: "1",
+        readBack: true,
+        preserveExactRead: false,
+        timeoutMs: 1000
+      })
+    ).resolves.toMatchObject({
+      ok: false,
+      verified: false,
+      writeOutcome: "unknown",
+      readbackOutcome: "unknown",
+      error: expect.stringContaining("upgrade")
+    });
   });
 });

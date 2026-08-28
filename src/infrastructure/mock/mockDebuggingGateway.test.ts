@@ -107,7 +107,13 @@ describe("createMockDebuggingGateway (DebuggingGateway contract)", () => {
       operation?: { snapshotId?: string; previousValue?: string };
       snapshot?: { id: string; status: string };
     };
-    expect(written).toMatchObject({ ok: true, value: "3700", verified: true });
+    expect(written).toMatchObject({
+      ok: true,
+      value: "3700",
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "observed"
+    });
     expect(written.operation?.previousValue).toBe("3651");
     expect(written.snapshot?.status).toBe("valid");
     expect(written.operation?.snapshotId).toBe(written.snapshot?.id);
@@ -121,21 +127,20 @@ describe("createMockDebuggingGateway (DebuggingGateway contract)", () => {
     // Low-risk RW writes need no token; RO writes fail honestly.
     await expect(
       gateway.writeNode({ sessionId: session.id, nodeId: "dbg-thermal-foldback", value: "78", readBack: true })
-    ).resolves.toMatchObject({ ok: true, verified: true });
+    ).resolves.toMatchObject({ ok: true, verified: null, writeOutcome: "executed", readbackOutcome: "observed" });
     await expect(
       gateway.writeNode({ sessionId: session.id, nodeId: "dbg-battery-impedance", value: "70", readBack: false })
     ).rejects.toThrow("只读");
 
-    // Write-only writes succeed without readback and without a rollback snapshot.
-    const woWrite = (await gateway.writeNode({
-      sessionId: session.id,
-      nodeId: "dbg-trickle-start",
-      value: "95",
-      readBack: false
-    })) as Awaited<ReturnType<DebuggingGateway["writeNode"]>> & { snapshot?: unknown; operation?: { snapshotId?: string } };
-    expect(woWrite.ok).toBe(true);
-    expect(woWrite.snapshot).toBeUndefined();
-    expect(woWrite.operation?.snapshotId).toBeUndefined();
+    // Write-only writes are rejected because the safety contract requires a pre-write rollback snapshot.
+    await expect(
+      gateway.writeNode({
+        sessionId: session.id,
+        nodeId: "dbg-trickle-start",
+        value: "95",
+        readBack: false
+      })
+    ).rejects.toThrow("无法取得写前快照");
   });
 
   it("rolls back a write snapshot with confirm-rollback, restoring the pre-write value exactly once", async () => {

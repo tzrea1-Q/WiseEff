@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
-import { notifyDebugNodeWriteFailed, notifyDebugSnapshotRollback } from "../notifications/producers";
+import { notifyDebugNodeReadbackFailed, notifyDebugNodeWriteFailed, notifyDebugSnapshotRollback } from "../notifications/producers";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -11,7 +11,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import { listBridgesForUser } from "../deviceBridge/repository";
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
-import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
+import type { DebugDeviceGateway, DebugReadbackOutcome, DebugWriteOutcome, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry, type DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import {
   detectTargetsAcrossBridges,
@@ -38,6 +38,7 @@ import {
   getDebugDevice,
   getDebugParameter,
   getDebugParameterNodeBinding,
+  getNodeOperation,
   getDebugSession as getDebugSessionRecord,
   getDebugSnapshot,
   getDebugTarget,
@@ -277,6 +278,7 @@ type ReadNodeInput = {
   parameterId?: string;
   nodeId?: string;
   nodePath?: string;
+  relatedOperationId?: string;
 };
 
 type WriteNodeInput = {
@@ -430,7 +432,10 @@ function ensureWritable(
     throw new ApiError("NOT_FOUND", "Debug parameter was not found.");
   }
   ensureParameterRuntimeAvailable(parameter);
-  if (accessMode !== "WO" && accessMode !== "RW") {
+  if (accessMode === "WO") {
+    throw new ApiError("VALIDATION_FAILED", "Write-only parameters cannot be written safely because a rollback snapshot is unavailable.");
+  }
+  if (accessMode !== "RW") {
     throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.");
   }
 
@@ -472,18 +477,54 @@ function writeStatus(result: GatewayWriteResult) {
   return result.verified ? ("succeeded" as const) : ("readback_mismatch" as const);
 }
 
+function resolveWriteOutcome(result: GatewayWriteResult): DebugWriteOutcome {
+  if (result.writeOutcome) return result.writeOutcome;
+  if (result.writeResult) return result.writeResult.ok ? "executed" : "failed";
+  return "unknown";
+}
+
+function resolveReadbackOutcome(result: GatewayWriteResult, writeOutcome: DebugWriteOutcome): DebugReadbackOutcome {
+  if (result.readbackOutcome) return result.readbackOutcome;
+  if (result.readResult) return result.readResult.ok ? "observed" : "failed";
+  return writeOutcome === "executed" ? "unknown" : "not_requested";
+}
+
+function ordinaryWriteStatus(writeOutcome: DebugWriteOutcome) {
+  if (writeOutcome === "executed") return "succeeded" as const;
+  if (writeOutcome === "unknown") return "unknown" as const;
+  return "failed" as const;
+}
+
 async function maybeNotifyDebugWriteFailed(
   db: Queryable,
   auth: AuthContext,
   session: { id: string },
   parameterName: string,
-  operation: { id: string; status: string; failureReason?: string | null }
+  operation: { id: string; writeOutcome?: DebugWriteOutcome | null; failureReason?: string | null }
 ) {
-  if (operation.status === "succeeded") {
+  if (operation.writeOutcome !== "failed") {
     return;
   }
 
   await notifyDebugNodeWriteFailed(db, {
+    organizationId: auth.organization.id,
+    sessionId: session.id,
+    operationId: operation.id,
+    recipientUserId: auth.user.id,
+    parameterName,
+    failureReason: operation.failureReason ?? undefined
+  });
+}
+
+async function maybeNotifyDebugReadbackFailed(
+  db: Queryable,
+  auth: AuthContext,
+  session: { id: string },
+  parameterName: string,
+  operation: { id: string; writeOutcome?: DebugWriteOutcome | null; readbackOutcome?: DebugReadbackOutcome | null; failureReason?: string | null }
+) {
+  if (operation.writeOutcome !== "executed" || operation.readbackOutcome !== "failed") return;
+  await notifyDebugNodeReadbackFailed(db, {
     organizationId: auth.organization.id,
     sessionId: session.id,
     operationId: operation.id,
@@ -1964,6 +2005,20 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!nodePath) {
           throw new ApiError("VALIDATION_FAILED", "nodeId, parameterId, or nodePath is required.");
         }
+        if (input.relatedOperationId) {
+          const relatedOperation = await getNodeOperation(tx, {
+            organizationId,
+            operationId: input.relatedOperationId
+          });
+          if (
+            !relatedOperation ||
+            relatedOperation.sessionId !== session.id ||
+            relatedOperation.operationType !== "write" ||
+            relatedOperation.nodePath !== nodePath
+          ) {
+            throw new ApiError("VALIDATION_FAILED", "Related operation is not a write for this session and node.");
+          }
+        }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.");
@@ -2019,6 +2074,7 @@ export function createDebuggingService(options: ServiceOptions) {
           status: result.ok ? "succeeded" : "failed",
           readValue: readValue ?? undefined,
           verified: result.ok,
+          relatedOperationId: input.relatedOperationId,
           failureReason: result.ok ? undefined : failureReason(result.error ?? result.stderr, "Node read failed."),
           durationMs: result.durationMs,
           ...operationMetadata,
@@ -2126,8 +2182,6 @@ export function createDebuggingService(options: ServiceOptions) {
         await requireDeviceLease(tx, auth, session);
         const metadata = resolveDebugValueMetadata(parameter);
         const preserveExactRead = requiresExactRead(metadata);
-        const compareReadback = (written: string, read: string) => compareDebugValues(written, read, metadata);
-
         const previous = await withGatewaySpan("read", { hasParameterId: true, protocol }, async (spanAttributes) => {
           try {
             const gatewayResult =
@@ -2164,6 +2218,9 @@ export function createDebuggingService(options: ServiceOptions) {
             operationType,
             status: "failed",
             requestedValue: input.value,
+            verified: null,
+            writeOutcome: "failed",
+            readbackOutcome: "not_requested",
             failureReason: failureReason(previous.error ?? previous.stderr, "Pre-write read failed."),
             durationMs: previous.durationMs,
             approvalId: input.approvalId,
@@ -2187,6 +2244,8 @@ export function createDebuggingService(options: ServiceOptions) {
                   protocol,
                   nodePath,
                   ...valueAuditMetadata(input.value, metadata),
+                  writeOutcome: operation.writeOutcome,
+                  readbackOutcome: operation.readbackOutcome,
                   failureReason: operation.failureReason
                 }
               },
@@ -2220,7 +2279,6 @@ export function createDebuggingService(options: ServiceOptions) {
                     value: input.value,
                     readBack: true,
                     preserveExactRead,
-                    compareReadback,
                     timeoutMs: BRIDGE_NODE_TIMEOUT_MS
                   })
                 : await gateway!.writeNode({
@@ -2228,10 +2286,9 @@ export function createDebuggingService(options: ServiceOptions) {
                     nodePath,
                     value: input.value,
                     readBack: true,
-                    preserveExactRead,
-                    compareReadback
+                    preserveExactRead
                   });
-            spanAttributes.status = writeStatus(gatewayResult);
+            spanAttributes.status = ordinaryWriteStatus(resolveWriteOutcome(gatewayResult));
             return gatewayResult;
           } catch (error) {
             spanAttributes.status = "failed";
@@ -2239,9 +2296,14 @@ export function createDebuggingService(options: ServiceOptions) {
             throw error;
           }
         });
-        const status = writeStatus(result);
+        const writeOutcome = resolveWriteOutcome(result);
+        const readbackOutcome = resolveReadbackOutcome(result, writeOutcome);
+        const status = ordinaryWriteStatus(writeOutcome);
         recordGatewayOperation("write", status);
-        const readbackValue = result.readResult?.value ?? result.readResult?.stdout ?? result.value ?? null;
+        const readbackValue =
+          readbackOutcome === "observed"
+            ? result.readResult?.value ?? result.readResult?.stdout ?? result.value ?? null
+            : null;
         const operationMetadata = operationValueMetadata(metadata, {
           requestedValue: input.value,
           previousValue,
@@ -2261,8 +2323,17 @@ export function createDebuggingService(options: ServiceOptions) {
           previousValue,
           readValue: previousValue,
           readbackValue: readbackValue ?? undefined,
-          verified: result.ok && result.verified,
-          failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Node write failed."),
+          verified: null,
+          writeOutcome,
+          readbackOutcome,
+          failureReason:
+            writeOutcome === "failed"
+              ? failureReason(result.error ?? result.writeResult.error ?? result.writeResult.stderr, "Node write failed.")
+              : readbackOutcome === "failed"
+                ? failureReason(result.readResult?.error ?? result.readResult?.stderr, "Post-write readback failed.")
+                : writeOutcome === "unknown" || readbackOutcome === "unknown"
+                  ? "Device Bridge result did not include outcome details; upgrade the Bridge and read the node again."
+                  : undefined,
           durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
           approvalId: input.approvalId,
           snapshotId: snapshot.id,
@@ -2271,11 +2342,11 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         await linkOperationSnapshot(tx, { organizationId, operationId: operation.id, snapshotId: snapshot.id });
 
-        if (result.ok && result.verified && parameterId) {
+        if (writeOutcome === "executed" && parameterId) {
           await updateDebugParameterValues(tx, {
             organizationId,
             parameterId,
-            currentValue: input.value,
+            currentValue: readbackOutcome === "observed" ? readbackValue : null,
             targetValue: input.value
           });
         }
@@ -2288,7 +2359,7 @@ export function createDebuggingService(options: ServiceOptions) {
               projectId: null,
               kind: "debug-node-write",
               action: "write",
-              severity: status === "succeeded" ? "Medium" : "High",
+              severity: writeOutcome === "failed" ? "High" : "Medium",
               targetType: "debug-node",
               targetId: parameter.id,
               metadata: {
@@ -2299,7 +2370,8 @@ export function createDebuggingService(options: ServiceOptions) {
                 ...valueAuditMetadata(input.value, metadata),
                 previous: valueAuditMetadata(previousValue, metadata),
                 readback: readbackValue ? valueAuditMetadata(readbackValue, metadata) : undefined,
-                verified: operation.verified,
+                writeOutcome: operation.writeOutcome,
+                readbackOutcome: operation.readbackOutcome,
                 failureReason: operation.failureReason,
                 snapshotId: snapshot.id
               }
@@ -2309,6 +2381,7 @@ export function createDebuggingService(options: ServiceOptions) {
         );
 
         await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
+        await maybeNotifyDebugReadbackFailed(tx, auth, session, parameter.name, operation);
         return operation;
       });
     },

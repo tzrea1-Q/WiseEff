@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：runbook。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 设备网关反复出现 timeout、stderr、offline、写命令失败、回读技术失败、旧 Bridge 未知结果或严格回滚失败时进入回滚评估；仅返回值表示不同不构成回滚触发条件。
 
 ## 同类中文文档
 

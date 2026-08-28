@@ -232,7 +232,7 @@ function writeSnapshotSummaryFromOperation(
   if (!operation?.snapshotId || operation.operationType !== "write") {
     return undefined;
   }
-  if (operation.status !== "succeeded" && operation.status !== "readback_mismatch") {
+  if (operation.status !== "succeeded" && operation.status !== "unknown" && operation.status !== "readback_mismatch") {
     return undefined;
   }
   const parameterId = operation.parameterId ?? operation.nodeId;
@@ -396,7 +396,13 @@ export function createDebuggingRuntimeActions({
     async writeNode(input) {
       if (!gateway) {
         dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: input.parameterId ? [input.parameterId] : [] });
-        return { ok: true, value: input.value, verified: true };
+        return {
+          ok: true,
+          value: input.value,
+          verified: null,
+          writeOutcome: "executed",
+          readbackOutcome: input.readBack ? "observed" : "not_requested"
+        };
       }
 
       return runApi(dispatch, async () => {

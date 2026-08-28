@@ -49,6 +49,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
 
+**普通调试节点写入安全：** 运行时节点仅允许 RW 写入，因为 WiseEff 必须在触碰设备前取得旧值并创建回滚快照；真正 WO 节点一律拒绝，不能绕过恢复证据直接写。对于已接受写入，写命令执行与写后回读是两个独立事实；不同表示既不是授权/成功证据，也不判失败。回读技术失败产生 warning 并把当前值标记为陈旧。快照回滚仍是独立、严格的恢复校验操作。
+
 **节点级敏感规则（P3）：** `dts_sensitive_node_rules` 按组织/可选项目匹配 `path` 或 `compatible` 模式，映射到 `high`/`critical` 与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力的提交/合入/回写返回 `403`。Agent（`actorType=agent`，含小择 `action.submitParameterChange`）对 `critical` 一律拒绝，写审计 `parameter-sensitive-node-denied`（`requireHuman: true`），须由人工完成变更。
 
 **DTS 重载敏感节点扩展（#284）：** 启动重载运行时，对每个选中参数按同样规则（path / compatible）匹配。命中后除 `debugging:dts-reload` 外还须 `parameter:edit-critical`。critical 层级另须请求体 `confirmationToken: "confirm-sensitive-reload"`，并以 severity `High` 写审计且点名命中规则——在能力与确认都具备时仍允许重载（非一律拒绝）。Agent 在 DTS 重载的全部 mutating 路径上一律拒绝——start、deploy、restore，以及 Admin 重载配置写入（`PUT` 组织配置）——且发生在敏感判定之前，审计 `dts-reload-agent-refused`（`requireHuman: true`），返回 `403` 且 `details.code: "dts-reload-agent-refused"`（#301 / #304）。#280 对重载调试的 Agent 一律拒绝包含配置面；#301 更窄的 start/deploy/restore AC 只是补特定缺口，并非为配置开豁免。更窄的敏感命中拒绝（`dts-reload-sensitive-node-denied`，同样 `requireHuman: true`）保留作纵深防御。拒绝响应为 `403`，`details.code: "sensitive-node-reload-denied"`（含 binding、规则、层级），可与普通缺权限区分。候选列表由服务端返回 `sensitiveMatch`，UI 在启动前即可标记抬升要求。设备部署确认（`confirm-dts-reload`）由 UI 在部署步骤收集（#285），在本闸门之后组合；runtime 不得静默注入任一令牌。

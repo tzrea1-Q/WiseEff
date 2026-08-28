@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { DebugSessionSnapshot, DeviceTarget } from "@/application/ports/DebuggingGateway";
+import type { DebugSessionSnapshot, DeviceTarget, NodeOperationSnapshot } from "@/application/ports/DebuggingGateway";
 import type { DebugParameter } from "@/domain/prototype/types";
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
 
@@ -46,7 +46,7 @@ function parameter(overrides: Partial<DebugParameter> = {}): DebugParameter {
     risk: "Low",
     status: "已同步",
     nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
-    accessMode: "WO",
+    accessMode: "RW",
     ...overrides
   };
 }
@@ -56,8 +56,31 @@ function createActions(overrides: Partial<NodeDebuggingSessionActions> = {}): No
     refresh: vi.fn().mockResolvedValue(undefined),
     detectAndStartSession: vi.fn().mockResolvedValue({ session: sessionSnapshot, target: deviceTarget }),
     readNode: vi.fn().mockResolvedValue({ ok: true, value: "3600" }),
-    writeNode: vi.fn().mockResolvedValue({ ok: true, verified: true, value: "3700" }),
+    writeNode: vi.fn().mockResolvedValue({
+      ok: true,
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      value: "3700"
+    }),
     rollbackSnapshot: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
+function operation(overrides: Partial<NodeOperationSnapshot> = {}): NodeOperationSnapshot {
+  return {
+    id: "operation-write-1",
+    sessionId: "session-1",
+    nodeId: "dbg-charge-input-current",
+    nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+    operationType: "write",
+    status: "succeeded",
+    verified: null,
+    writeOutcome: "executed",
+    readbackOutcome: "observed",
+    durationMs: 10,
+    createdAt: "2026-05-27T09:01:00.000Z",
     ...overrides
   };
 }
@@ -157,5 +180,161 @@ describe("nodeDebuggingSession", () => {
         confirmationToken: NODE_DEBUGGING_HIGH_RISK_WRITE_TOKEN
       })
     );
+  });
+
+  it("treats 1 to 0x1 as an executed write with an observed value", async () => {
+    const actions = createActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        value: "0x1",
+        operation: operation({ requestedValue: "1", readbackValue: "0x1" })
+      })
+    });
+    const session = createNodeDebuggingSession({
+      initialParameters: [parameter()],
+      readProtocol: () => "hdc",
+      writeProtocol: () => undefined
+    });
+
+    await session.detect(actions, offlineProbe);
+    session.setDraftValue("dbg-charge-input-current", "1");
+    await expect(session.requestWrite("dbg-charge-input-current", actions)).resolves.toBe(true);
+
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeStatus: "写入已执行",
+      runtimeCurrentValue: "0x1",
+      lastReadValue: "0x1",
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      currentValueStale: false,
+      error: undefined
+    });
+    expect(session.getSnapshot().events.at(-1)?.status).toBe("已回读");
+  });
+
+  it("preserves the previous current value after readback failure and retries with a linked read only", async () => {
+    const readNode = vi.fn()
+      .mockResolvedValueOnce({ ok: true, value: "3600" })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: "0x1",
+        operation: operation({
+          id: "operation-read-2",
+          operationType: "read",
+          readValue: "0x1",
+          relatedOperationId: "operation-write-1",
+          writeOutcome: undefined,
+          readbackOutcome: undefined,
+          verified: true
+        })
+      });
+    const writeNode = vi.fn().mockResolvedValue({
+      ok: true,
+      verified: null,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      error: "read timed out",
+      operation: operation({ readbackOutcome: "failed", failureReason: "read timed out" })
+    });
+    const actions = createActions({ readNode, writeNode });
+    const session = createNodeDebuggingSession({
+      initialParameters: [parameter()],
+      readProtocol: () => "hdc",
+      writeProtocol: () => undefined
+    });
+
+    await session.detect(actions, offlineProbe);
+    await vi.waitFor(() => expect(readNode).toHaveBeenCalledOnce());
+    session.setDraftValue("dbg-charge-input-current", "1");
+    await session.requestWrite("dbg-charge-input-current", actions);
+
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeStatus: "写入已执行",
+      runtimeCurrentValue: "3600",
+      lastReadValue: "3600",
+      readbackOutcome: "failed",
+      currentValueStale: true,
+      lastWriteOperationId: "operation-write-1"
+    });
+
+    await session.retryRead("dbg-charge-input-current", actions);
+
+    expect(readNode).toHaveBeenLastCalledWith(expect.objectContaining({ relatedOperationId: "operation-write-1" }));
+    expect(writeNode).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeCurrentValue: "0x1",
+      currentValueStale: false,
+      readbackOutcome: "observed"
+    });
+  });
+
+  it("keeps unknown writes distinct from failures and marks the current value stale", async () => {
+    const actions = createActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: false,
+        verified: null,
+        writeOutcome: "unknown",
+        readbackOutcome: "unknown",
+        error: "Device Bridge result did not include outcome details; upgrade the Bridge and read the node again.",
+        operation: operation({
+          status: "unknown",
+          writeOutcome: "unknown",
+          readbackOutcome: "unknown",
+          failureReason: "Device Bridge result did not include outcome details; upgrade the Bridge and read the node again."
+        })
+      })
+    });
+    const session = createNodeDebuggingSession({
+      initialParameters: [parameter()],
+      readProtocol: () => "hdc",
+      writeProtocol: () => undefined
+    });
+
+    await session.detect(actions, offlineProbe);
+    await session.requestWrite("dbg-charge-input-current", actions);
+
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeStatus: "写入结果未知",
+      writeOutcome: "unknown",
+      readbackOutcome: "unknown",
+      currentValueStale: true,
+      error: "写入结果未知，请升级 Device Bridge 后重新读取节点"
+    });
+    expect(session.getSnapshot().events.at(-1)).toMatchObject({
+      status: "写入结果未知",
+      stderr: "写入结果未知，请升级 Device Bridge 后重新读取节点"
+    });
+  });
+
+  it("surfaces unsupported readback without turning the executed write into a failure", async () => {
+    const actions = createActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "unsupported",
+        operation: operation({ readbackOutcome: "unsupported" })
+      })
+    });
+    const session = createNodeDebuggingSession({
+      initialParameters: [parameter()],
+      readProtocol: () => "hdc",
+      writeProtocol: () => undefined
+    });
+
+    await session.detect(actions, offlineProbe);
+    await session.requestWrite("dbg-charge-input-current", actions);
+
+    expect(session.getSnapshot().rows[0]).toMatchObject({
+      runtimeStatus: "写入已执行",
+      writeOutcome: "executed",
+      readbackOutcome: "unsupported",
+      currentValueStale: true,
+      error: undefined
+    });
+    expect(session.getSnapshot().events.at(-1)?.status).toBe("不支持回读");
   });
 });

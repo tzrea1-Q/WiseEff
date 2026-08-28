@@ -484,14 +484,14 @@ Checklist:
 - [ ] Readback confirms the new value.
 - [ ] `Cycle count` is displayed as read-only and cannot be written from the UI.
 - [ ] Write `Readback mismatch probe` with value `2`.
-- [ ] UI reports readback mismatch.
+- [ ] UI reports the write command as executed, displays the observed value `1`, and does not report a mismatch or write failure.
 - [ ] Roll back the fast-charge snapshot through `/debugging` if surfaced; otherwise verify rollback through the backend API and record the UI gap.
 - [ ] Reopen `/node-debugging?project=aurora` and confirm `Fast charge current` returns to `3000`.
 - [ ] Confirm debugging write and rollback audit events are visible through `/parameter-admin?audit=open`.
 
 Pass criteria:
 
-- Simulator read/write/readback/mismatch/rollback behavior is safe and traceable.
+- Simulator read/write/readback-observation/rollback behavior is safe and traceable.
 - Read-only parameters cannot be written.
 - Every successful write or rollback creates audit evidence.
 
@@ -522,7 +522,7 @@ Checklist:
 - [ ] Node read succeeds and returns the expected pattern if configured.
 - [ ] Node write succeeds with readback.
 - [ ] Snapshot rollback restores the previous value.
-- [ ] Timeout/offline, stderr/nonzero, and readback mismatch behavior are either exercised or recorded as open device-lab evidence.
+- [ ] Timeout/offline, stderr/nonzero, write-command failure, readback failure, alternate readback representation, and linked read-only retry behavior are either exercised or recorded as open device-lab evidence.
 
 Pass criteria:
 

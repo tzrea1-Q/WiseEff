@@ -15610,6 +15610,7 @@
                     "pending",
                     "succeeded",
                     "failed",
+                    "unknown",
                     "readback_mismatch"
                   ]
                 },
@@ -15638,7 +15639,40 @@
                   ]
                 },
                 "verified": {
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "writeOutcome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "executed",
+                    "failed",
+                    "unknown"
+                  ]
+                },
+                "readbackOutcome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "observed",
+                    "failed",
+                    "unsupported",
+                    "not_requested",
+                    "unknown"
+                  ]
+                },
+                "relatedOperationId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "failureReason": {
                   "type": [
@@ -15796,6 +15830,7 @@
                   "pending",
                   "succeeded",
                   "failed",
+                  "unknown",
                   "readback_mismatch"
                 ]
               },
@@ -15824,7 +15859,40 @@
                 ]
               },
               "verified": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "writeOutcome": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "executed",
+                  "failed",
+                  "unknown"
+                ]
+              },
+              "readbackOutcome": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "observed",
+                  "failed",
+                  "unsupported",
+                  "not_requested",
+                  "unknown"
+                ]
+              },
+              "relatedOperationId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "failureReason": {
                 "type": [
@@ -16065,6 +16133,7 @@
                     "pending",
                     "succeeded",
                     "failed",
+                    "unknown",
                     "readback_mismatch"
                   ]
                 },
@@ -16093,7 +16162,40 @@
                   ]
                 },
                 "verified": {
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "writeOutcome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "executed",
+                    "failed",
+                    "unknown"
+                  ]
+                },
+                "readbackOutcome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "observed",
+                    "failed",
+                    "unsupported",
+                    "not_requested",
+                    "unknown"
+                  ]
+                },
+                "relatedOperationId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "failureReason": {
                   "type": [

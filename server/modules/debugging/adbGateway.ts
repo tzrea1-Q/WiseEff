@@ -165,6 +165,8 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
         return {
           ok: false,
           verified: false,
+          writeOutcome: "failed",
+          readbackOutcome: "not_requested",
           error: writeResult.error,
           writeResult
         };
@@ -175,6 +177,8 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
           ok: true,
           value: input.value,
           verified: true,
+          writeOutcome: "executed",
+          readbackOutcome: "not_requested",
           writeResult
         };
       }
@@ -183,24 +187,25 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
 
       if (!readResult.ok) {
         return {
-          ok: false,
-          value: input.value,
+          ok: input.compareReadback ? false : true,
           verified: false,
+          writeOutcome: "executed",
+          readbackOutcome: "failed",
           error: readResult.error,
           writeResult,
           readResult
         };
       }
 
-      const readbackMatches = input.compareReadback
-        ? input.compareReadback(input.value, readResult.value ?? "")
-        : readResult.value === input.value;
+      const readbackMatches = input.compareReadback?.(input.value, readResult.value ?? "");
 
-      if (!readbackMatches) {
+      if (readbackMatches === false) {
         return {
           ok: false,
           value: input.value,
           verified: false,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
           error: "Read-back mismatch after ADB write.",
           writeResult,
           readResult
@@ -210,7 +215,9 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
       return {
         ok: true,
         value: input.value,
-        verified: true,
+        verified: readbackMatches === true,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
         writeResult,
         readResult
       };

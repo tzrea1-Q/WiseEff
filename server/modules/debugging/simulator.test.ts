@@ -66,6 +66,8 @@ describe("simulator debugging gateway", () => {
 
     expect(result.ok).toBe(true);
     expect(result.verified).toBe(true);
+    expect(result.writeOutcome).toBe("executed");
+    expect(result.readbackOutcome).toBe("observed");
   });
 
   it("blocks writes to read-only nodes", async () => {
@@ -83,7 +85,7 @@ describe("simulator debugging gateway", () => {
     expect(result.error).toBe("Node is read-only.");
   });
 
-  it("writes a writable node, verifies readback, and persists the new value", async () => {
+  it("writes a writable node, observes readback, and persists the new value", async () => {
     const gateway = createSimulatorDebugDeviceGateway();
     const nodePath = "/sys/class/power_supply/battery/input_current_limit";
 
@@ -99,7 +101,9 @@ describe("simulator debugging gateway", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.verified).toBe(true);
+    expect(result.verified).toBe(false);
+    expect(result.writeOutcome).toBe("executed");
+    expect(result.readbackOutcome).toBe("observed");
     expect(result.value).toBe("3100");
     expect(result.readResult?.value).toBe("3100");
     expect(result.readResult?.stdout).toBe("3100");
@@ -166,7 +170,7 @@ describe("simulator debugging gateway", () => {
     expect(writeResult.readResult?.durationMs).toBe(10);
   });
 
-  it("reports readback mismatch for configured mismatch nodes", async () => {
+  it("reports configured alternate readback as an observation, not a mismatch", async () => {
     const gateway = createSimulatorDebugDeviceGateway();
 
     const result = await gateway.writeNode({
@@ -178,6 +182,9 @@ describe("simulator debugging gateway", () => {
 
     expect(result.ok).toBe(true);
     expect(result.verified).toBe(false);
+    expect(result.writeOutcome).toBe("executed");
+    expect(result.readbackOutcome).toBe("observed");
+    expect(result.error).toBeUndefined();
     expect(result.readResult?.stdout).not.toBe("2");
   });
 

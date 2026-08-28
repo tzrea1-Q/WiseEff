@@ -70,7 +70,8 @@ export const readNodeBodySchema = z
     sessionId: nonEmptyString,
     parameterId: nonEmptyString.optional(),
     nodeId: nonEmptyString.optional(),
-    nodePath: nodePathSchema.optional()
+    nodePath: nodePathSchema.optional(),
+    relatedOperationId: nonEmptyString.optional()
   })
   .refine((value) => Boolean(value.parameterId ?? value.nodeId ?? value.nodePath), {
     message: "Either nodeId, parameterId, or nodePath is required.",

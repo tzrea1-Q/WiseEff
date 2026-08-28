@@ -370,6 +370,35 @@ export async function notifyDebugNodeWriteFailed(
   });
 }
 
+export async function notifyDebugNodeReadbackFailed(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    sessionId: string;
+    operationId: string;
+    recipientUserId: string;
+    parameterName: string;
+    failureReason?: string;
+  }
+) {
+  const reason = input.failureReason?.trim() || "写入命令已执行，但未能取得写后回读值";
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: [input.recipientUserId],
+    category: "debug.node.readback.failed",
+    title: `写入已执行，回读失败 · ${input.parameterName}`,
+    body: reason,
+    severity: "warning",
+    actionUrl: nodeDebuggingUrl(),
+    sourceKind: "debug-node-operation",
+    sourceId: input.operationId,
+    metadata: {
+      sessionId: input.sessionId,
+      parameterName: input.parameterName
+    }
+  });
+}
+
 function uniqueRecipients(userIds: string[]) {
   return [...new Set(userIds.map((id) => id.trim()).filter(Boolean))];
 }

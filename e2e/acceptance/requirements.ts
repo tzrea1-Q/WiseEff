@@ -452,7 +452,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DEBUG-SIM-001",
     workflow: "E",
-    title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",
+    title: "Simulator read, write with independently displayed readback, strict rollback, and audit path work, including complex JSON value metadata.",
     required: true
   },
   {
@@ -524,13 +524,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "HDC-LAB-001",
     workflow: "F",
-    title: "Real HDC device lab read/write smoke runs when explicitly enabled.",
+    title: "Real HDC device lab read/write smoke records write execution and post-write observation independently when explicitly enabled.",
     required: false
   },
   {
     id: "ADB-LAB-001",
     workflow: "F",
-    title: "Real ADB device lab read-only smoke runs when explicitly enabled, with optional write and rollback.",
+    title: "Real ADB device lab read-only smoke runs when explicitly enabled, with optional independently observed write and strict rollback.",
     required: false
   },
   {

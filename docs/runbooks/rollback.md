@@ -13,7 +13,7 @@ For M6.6 self-hosted release candidates, use [Self-Hosted Release And Rollback](
 - Parameter writes fail or miss audit evidence.
 - Log worker dead letters grow without recovery.
 - Object-store readiness fails.
-- Device gateway reports repeated timeout, stderr, offline, or readback mismatch failures.
+- Device gateway reports repeated timeout, stderr, offline, write-command failures, technical readback failures, unknown legacy Bridge outcomes, or strict rollback failures. An alternate observed representation alone is not a rollback trigger.
 - Agent provider health becomes unsafe or unavailable without expected fallback behavior.
 - Capacity thresholds breach during a release window.
 - Target synthetic acceptance fails after deployment.

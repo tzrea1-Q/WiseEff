@@ -414,8 +414,10 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
   await closeParameterSheet(page);
 
   await setTargetAndWrite(page, "Readback mismatch probe", "2");
-  const mismatchRow = parameterRow(page, "Readback mismatch probe");
-  await expect(mismatchRow).toContainText(/Readback mismatch|readback mismatch/i, { timeout: 30_000 });
+  const alternateReadbackRow = parameterRow(page, "Readback mismatch probe");
+  await expect(alternateReadbackRow).toContainText("写入已执行", { timeout: 30_000 });
+  await expect(alternateReadbackRow).toContainText("1", { timeout: 30_000 });
+  await expect(alternateReadbackRow).not.toContainText(/Readback mismatch|readback mismatch|回读不一致/i);
 
   const fastChargeSnapshotId = await latestSnapshotId(page, fastChargeParameterId);
 

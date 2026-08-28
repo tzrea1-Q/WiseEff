@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Queryable } from "../../shared/database/client";
 import * as service from "./service";
 import {
+  notifyDebugNodeReadbackFailed,
   notifyDebugSnapshotRollback,
   notifyLogAnalysisCompleted,
   notifyLogAnalysisFailed,
@@ -105,5 +106,30 @@ describe("notification producers", () => {
     });
     expect(notifyUsers.mock.calls[1]?.[1]).toMatchObject({ category: "user.role.changed" });
     expect(notifyUsers.mock.calls[2]?.[1]).toMatchObject({ category: "user.deactivated" });
+  });
+
+  it("warns when a write executed but its post-write readback failed", async () => {
+    const notifyUsers = vi.spyOn(service, "notifyUsers").mockResolvedValue(undefined);
+    const db = {} as Queryable;
+
+    await notifyDebugNodeReadbackFailed(db, {
+      organizationId: "org-1",
+      sessionId: "session-1",
+      operationId: "operation-1",
+      recipientUserId: "u-operator",
+      parameterName: "Cycle count",
+      failureReason: "read timed out"
+    });
+
+    expect(notifyUsers).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        category: "debug.node.readback.failed",
+        severity: "warning",
+        title: "写入已执行，回读失败 · Cycle count",
+        body: "read timed out",
+        actionUrl: "/node-debugging"
+      })
+    );
   });
 });

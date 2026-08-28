@@ -1514,6 +1514,18 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
+    it("rejects true write-only parameters because a rollback snapshot cannot be prepared", async () => {
+      const { parameter, session } = await seedRuntime({ bindingAccessMode: "WO" });
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+      await expect(
+        service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Write-only parameters cannot be written safely because a rollback snapshot is unavailable."));
+      expect(gateway.readNode).not.toHaveBeenCalled();
+      expect(gateway.writeNode).not.toHaveBeenCalled();
+    });
+
     it("rejects disabled parameters before gateway call", async () => {
       const { parameter, session } = await seedRuntime({ parameter: { enabled: false } });
       const gateway = makeGateway();
@@ -1668,7 +1680,13 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         approvalId
       });
 
-      expect(operation).toMatchObject({ status: "succeeded", approvalId });
+      expect(operation).toMatchObject({
+        status: "succeeded",
+        approvalId,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed"
+      });
       expect(gateway.writeNode).toHaveBeenCalledOnce();
     });
 
@@ -1748,7 +1766,12 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         expect.objectContaining({ targetRef: "serial-1", nodePath: "/sys/adb/current", value: "3200", protocol: "adb" }),
         { timeoutMs: 10000 }
       );
-      expect(operation).toMatchObject({ status: "succeeded", verified: true });
+      expect(operation).toMatchObject({
+        status: "succeeded",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed"
+      });
       expect(gateway.readNode).not.toHaveBeenCalled();
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
@@ -1867,15 +1890,16 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
-    it("stores readback_mismatch when gateway verified=false", async () => {
+    it("records an executed write and observed value without judging representation equality", async () => {
       const { parameter, session } = await seedRuntime();
       const gatewayResult: GatewayWriteResult = {
         ok: true,
-        value: "3200",
+        value: "1",
         verified: false,
-        error: "Readback mismatch.",
-        writeResult: { ok: true, value: "3200", stdout: "3200", durationMs: 7 },
-        readResult: { ok: true, value: "3100", stdout: "3100", durationMs: 8 }
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        writeResult: { ok: true, value: "1", stdout: "1", durationMs: 7 },
+        readResult: { ok: true, value: "0x1", stdout: "0x1", durationMs: 8 }
       };
       const service = createDebuggingService({
         db,
@@ -1885,19 +1909,129 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       const operation = await service.writeNode(
         writeAuth,
-        { sessionId: session.id, parameterId: parameter.id, value: "3200" },
+        { sessionId: session.id, parameterId: parameter.id, value: "1" },
         { requestId: "request-debug-write-1" }
       );
 
       expect(operation).toMatchObject({
         operationType: "write",
-        status: "readback_mismatch",
-        readbackValue: "3100",
-        verified: false,
-        failureReason: "Readback mismatch."
+        status: "succeeded",
+        requestedValue: "1",
+        readbackValue: "0x1",
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        verified: null,
+        failureReason: null
       });
       const stored = await nodeOperationRows(session.id);
-      expect(stored).toEqual([expect.objectContaining({ status: "readback_mismatch" })]);
+      expect(stored).toEqual([expect.objectContaining({ status: "succeeded" })]);
+      await expect(
+        db.query<{ current_value: string; target_value: string }>(
+          `select current_value, target_value from debugging_parameters where id = $1`,
+          [parameter.id]
+        )
+      ).resolves.toMatchObject({ rows: [{ current_value: "0x1", target_value: "1" }] });
+    });
+
+    it("keeps the write successful and snapshot valid when post-write readback fails", async () => {
+      const { parameter, session } = await seedRuntime();
+      const gatewayResult: GatewayWriteResult = {
+        ok: true,
+        verified: false,
+        writeOutcome: "executed",
+        readbackOutcome: "failed",
+        writeResult: { ok: true, value: "1", stdout: "1", durationMs: 7 },
+        readResult: { ok: false, error: "read timed out", stderr: "read timed out", durationMs: 30 }
+      };
+      const service = createDebuggingService({
+        db,
+        gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
+        createAuditEvent: createAuditSpy().createAuditEvent
+      });
+
+      const operation = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "1"
+      });
+
+      expect(operation).toMatchObject({
+        status: "succeeded",
+        writeOutcome: "executed",
+        readbackOutcome: "failed",
+        readbackValue: null,
+        verified: null,
+        failureReason: "read timed out",
+        snapshotId: expect.any(String)
+      });
+      await expect(snapshotRows()).resolves.toEqual([expect.objectContaining({ status: "valid" })]);
+      await expect(
+        db.query<{ current_value: string; target_value: string }>(
+          `select current_value, target_value from debugging_parameters where id = $1`,
+          [parameter.id]
+        )
+      ).resolves.toMatchObject({ rows: [{ current_value: "3000", target_value: "1" }] });
+    });
+
+    it("stores an unknown write outcome without reporting a write failure", async () => {
+      const { parameter, session } = await seedRuntime();
+      const gatewayResult: GatewayWriteResult = {
+        ok: false,
+        verified: false,
+        writeOutcome: "unknown",
+        readbackOutcome: "unknown",
+        error: "Bridge response omitted outcome details.",
+        writeResult: { ok: false, durationMs: 7 }
+      };
+      const service = createDebuggingService({
+        db,
+        gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
+        createAuditEvent: createAuditSpy().createAuditEvent
+      });
+
+      const operation = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "1"
+      });
+
+      expect(operation).toMatchObject({
+        status: "unknown",
+        writeOutcome: "unknown",
+        readbackOutcome: "unknown",
+        verified: null
+      });
+      await expect(
+        db.query<{ category: string }>(
+          `select category from user_notifications where source_id = $1`,
+          [operation.id]
+        )
+      ).resolves.toMatchObject({ rows: [] });
+    });
+
+    it("records explicit outcomes when the required pre-write read fails", async () => {
+      const { parameter, session } = await seedRuntime();
+      const service = createDebuggingService({
+        db,
+        gateway: makeGateway({
+          readNode: vi.fn(async () => ({ ok: false, error: "read denied", durationMs: 5 }))
+        }),
+        createAuditEvent: createAuditSpy().createAuditEvent
+      });
+
+      const operation = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "1"
+      });
+
+      expect(operation).toMatchObject({
+        status: "failed",
+        verified: null,
+        writeOutcome: "failed",
+        readbackOutcome: "not_requested",
+        failureReason: "read denied"
+      });
     });
 
     it("stores failed status when gateway write fails", async () => {
@@ -1925,7 +2059,9 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         operationType: "write",
         status: "failed",
         readbackValue: null,
-        verified: false,
+        verified: null,
+        writeOutcome: "failed",
+        readbackOutcome: "not_requested",
         failureReason: "Write failed."
       });
       expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({ mode: "hdc", action: "read", status: "succeeded" });
@@ -1993,7 +2129,8 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           digest: expect.any(String),
           preview: "3200",
           bytes: 4,
-          verified: true,
+          writeOutcome: "executed",
+          readbackOutcome: "observed",
           snapshotId: expect.any(String)
         })
       });
@@ -2036,7 +2173,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
-    it("succeeds for complex JSON with metadata-aware readback comparison", async () => {
+    it("records complex JSON write execution and the independently observed representation", async () => {
       const jsonValue = '{"enabled":true,"limit":42}';
       const { parameter, session } = await seedRuntime({
         parameter: {
@@ -2067,16 +2204,23 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.writeNode).toHaveBeenCalledWith(
         expect.objectContaining({
           value: jsonValue,
-          preserveExactRead: false,
-          compareReadback: expect.any(Function)
+          preserveExactRead: false
         })
       );
-      expect(operation).toMatchObject({ status: "succeeded", verified: true, valueKind: "complex", valueFormat: "json" });
+      expect(gateway.writeNode).toHaveBeenCalledWith(expect.not.objectContaining({ compareReadback: expect.anything() }));
+      expect(operation).toMatchObject({
+        status: "succeeded",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        valueKind: "complex",
+        valueFormat: "json"
+      });
       const stored = await db.query<{ current_value: string }>(
         `select current_value from debugging_parameters where id = $1`,
         [parameter.id]
       );
-      expect(stored.rows).toEqual([{ current_value: jsonValue }]);
+      expect(stored.rows).toEqual([{ current_value: '{"limit":42,"enabled":true}' }]);
       expect(audit.events[0].metadata).toMatchObject({
         valueKind: "complex",
         valueFormat: "json",
@@ -2085,7 +2229,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       });
     });
 
-    it("stores readback_mismatch for complex values after normalization-aware comparison", async () => {
+    it("does not classify a different complex readback as a write mismatch", async () => {
       const jsonValue = '{"enabled":true}';
       const { parameter, session } = await seedRuntime({
         parameter: {
@@ -2114,7 +2258,15 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       const operation = await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: jsonValue });
 
-      expect(operation).toMatchObject({ status: "readback_mismatch", verified: false, valueKind: "complex" });
+      expect(operation).toMatchObject({
+        status: "succeeded",
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: "observed",
+        readbackValue: '{"enabled":false}',
+        failureReason: null,
+        valueKind: "complex"
+      });
     });
 
     it("audit metadata uses digest and preview instead of full raw payload for large complex values", async () => {
@@ -2261,6 +2413,39 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(parameterEntries).toEqual([
         expect.objectContaining({ parameterId: parameter.id, nodeId: coveringNode.id, nodePath: "/sys/current" })
       ]);
+    });
+  });
+
+  describe("read-only retry", () => {
+    it("creates a separate read operation linked to the original write without writing again", async () => {
+      const { parameter, session } = await seedRuntime();
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const write = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "1"
+      });
+
+      const retry = await service.readNode(readAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        relatedOperationId: write.id
+      });
+
+      expect(retry).toMatchObject({
+        operationType: "read",
+        status: "succeeded",
+        relatedOperationId: write.id
+      });
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+      expect(gateway.readNode).toHaveBeenCalledTimes(2);
+      await expect(service.listSessionEvents(readAuth, { sessionId: session.id })).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: write.id, relatedOperationId: null }),
+          expect.objectContaining({ id: retry.id, relatedOperationId: write.id })
+        ])
+      );
     });
   });
 

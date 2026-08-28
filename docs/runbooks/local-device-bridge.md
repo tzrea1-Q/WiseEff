@@ -140,9 +140,9 @@ Notes:
 
 The bridge CLI executes `adb` and `hdc` locally using the same argv, timeout, and shell-quoting rules as the server gateway adapters.
 
-- `bridge.getCapabilities` reports whether `adb` and `hdc` binaries are available on the bridge host.
+- `bridge.getCapabilities` reports whether `adb` and `hdc` binaries are available on the bridge host and advertises `debugWriteOutcomeVersion: 2` when `debug.writeNode` returns independent `writeOutcome` and `readbackOutcome` fields.
 - `debug.detectTargets` accepts `protocol=adb` or `protocol=hdc` and returns targets from the selected protocol.
-- `debug.readNode` / `debug.writeNode` route through the same protocol and target ref as server-hosted debugging.
+- `debug.readNode` / `debug.writeNode` route through the same protocol and target ref as server-hosted debugging. Version 2 does not compare an ordinary readback with the requested representation. Older nested write/read results are inferred conservatively; a top-level-only legacy result is `unknown` and requires a Bridge upgrade rather than an invented success/failure.
 - DTS reload deploy additionally requires bridge capabilities for `debug.mountTarget`, `debug.pushFile`, and `debug.readKernelLog` (see `DTS_RELOAD_BRIDGE_RPC_METHODS`). Trigger reuses `debug.writeNode` with `readBack: false`. Deploy is in-request on the API process holding the bridge socket (ADR-0020).
 
 Operator checks:

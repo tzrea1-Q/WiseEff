@@ -4,7 +4,7 @@ export const debugDeviceStatuses = ["online", "offline", "unknown"] as const;
 export const debugTargetStatuses = ["detected", "lost"] as const;
 export const debugSessionStatuses = ["active", "closed"] as const;
 export const debugOperationTypes = ["detect", "read", "write", "reload", "rollback"] as const;
-export const debugOperationStatuses = ["pending", "succeeded", "failed", "readback_mismatch"] as const;
+export const debugOperationStatuses = ["pending", "succeeded", "failed", "unknown", "readback_mismatch"] as const;
 export const debugSnapshotStatuses = ["valid", "rollback_pending", "consumed", "invalid"] as const;
 
 export type DebugAccessMode = (typeof debugAccessModes)[number];

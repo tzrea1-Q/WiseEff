@@ -26,7 +26,7 @@ Users upload logs — optionally bound to an Admin-registered log domain (busine
 
 ### Debugging
 
-**Node debugging** (`/node-debugging`) connects to simulator or HDC/ADB-backed targets, reads safe nodes, prepares writes with range/risk checks, captures undoable snapshots, verifies readback, and records operation history. Device writes remain human-approved and audited.
+**Node debugging** (`/node-debugging`) connects to simulator or HDC/ADB-backed targets, reads safe nodes, prepares writes with range/risk checks, captures undoable snapshots, performs a write-following read, and records operation history. Ordinary writes report the write command outcome separately from the readback observation: a representation difference such as requested `1` and observed `0x1` is displayed, not judged as a write failure. A technical readback failure leaves the last known current value marked stale and offers a read-only retry. Device writes remain human-approved and audited; rollback keeps its strict restore verification.
 
 **Parameter debugging** (`/dts-reload`, shell title/nav **Parameter debugging**) validates candidate library parameter values on a real device by generating, compiling, and deploying a debug overlay through the local device bridge, then capturing a reload snapshot (baselines, artifact integrity, optional kernel log, behavioural verification). Debug values never mutate the parameter library. Sensitive-node rules and `confirm-dts-reload` / `confirm-sensitive-reload` gate privileged steps. Admins govern reload configuration on `/debugging-admin` (parameter-debug scope; node catalog at `/debugging-admin/nodes`). The technical capability remains DTS overlay reload and must not be confused with the retired M1-era parameter-reload surface.
 

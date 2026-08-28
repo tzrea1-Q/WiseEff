@@ -99,7 +99,7 @@ Key fields: `id`, `app`, `kind`, `action`, `severity`, `actor`, `actorType`, `cr
 | `parameter-merge` | `fromStatus`, `toStatus`, optional `note` |
 | `parameter-review-advance` / `parameter-review-reject` | status transition, `note` |
 | `batch-import` | `summary` (`added`, `updated`, `skipped`), `batchId` |
-| `debug-node-write` | `previousValue`, `readbackValue`, `nodePath`, `snapshotId`, `verified` |
+| `debug-node-write` | `previousValue`, `readbackValue`, `nodePath`, `snapshotId`, `writeOutcome`, `readbackOutcome`; nullable `verified` remains legacy evidence |
 | `user-role-replace` | `roles` or role diff |
 | Mock `parameter-update` | `previousValue`, `newValue` |
 

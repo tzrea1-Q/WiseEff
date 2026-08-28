@@ -223,7 +223,7 @@ describe("ADB debug device gateway", () => {
     ]);
   });
 
-  it("reports readback mismatch after a successful ADB write", async () => {
+  it("reports an executed ADB write and observed readback without comparing representations", async () => {
     const { runCommand } = makeRunner([
       { code: 0, stdout: "", stderr: "", durationMs: 8 },
       { code: 0, stdout: "old\n", stderr: "", durationMs: 9 }
@@ -231,11 +231,36 @@ describe("ADB debug device gateway", () => {
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
     await expect(gateway.writeNode({ targetRef: "emulator-5554", nodePath: "/sys/node", value: "new", readBack: true })).resolves.toMatchObject({
-      ok: false,
+      ok: true,
       value: "new",
       verified: false,
-      error: "Read-back mismatch after ADB write."
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      readResult: expect.objectContaining({ value: "old" })
     });
+  });
+
+  it("does not fabricate a readback value when the ADB readback fails", async () => {
+    const { runCommand } = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 8 },
+      { code: 1, stdout: "", stderr: "device offline", durationMs: 9 }
+    ]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+
+    const result = await gateway.writeNode({
+      targetRef: "emulator-5554",
+      nodePath: "/sys/node",
+      value: "new",
+      readBack: true
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      writeOutcome: "executed",
+      readbackOutcome: "failed",
+      readResult: expect.objectContaining({ ok: false })
+    });
+    expect(result).not.toHaveProperty("value");
   });
 
   it("returns verified write results after successful ADB readback", async () => {
@@ -248,7 +273,9 @@ describe("ADB debug device gateway", () => {
     await expect(gateway.writeNode({ targetRef: "emulator-5554", nodePath: "/sys/node", value: "new", readBack: true })).resolves.toEqual({
       ok: true,
       value: "new",
-      verified: true,
+      verified: false,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
       writeResult: {
         ok: true,
         value: "new",

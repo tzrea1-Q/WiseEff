@@ -39,6 +39,7 @@ describe("device bridge rpc handlers", () => {
       adb: { available: true, version: "Android Debug Bridge version 1.0.41" },
       hdc: { available: true, version: "hdc version 2.0.0" }
     });
+    expect(capabilities.debugWriteOutcomeVersion).toBe(2);
     expect(adb.calls).toEqual([["version"]]);
     expect(hdc.calls).toEqual([["version"]]);
   });
@@ -197,10 +198,10 @@ describe("device bridge rpc handlers", () => {
     });
   });
 
-  it("writes nodes with optional readback for hdc", async () => {
+  it("reports write execution and readback observation independently for hdc", async () => {
     const hdc = makeRunner([
       { code: 0, stdout: "", stderr: "", durationMs: 10 },
-      { code: 0, stdout: "updated\n", stderr: "", durationMs: 11 }
+      { code: 0, stdout: "0x1\n", stderr: "", durationMs: 11 }
     ]);
     const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
 
@@ -208,17 +209,19 @@ describe("device bridge rpc handlers", () => {
       protocol: "hdc",
       targetRef: "AURORA-001",
       nodePath: "/sys/node",
-      value: "updated",
+      value: "1",
       readBack: true
     });
 
     expect(result).toMatchObject({
       ok: true,
-      verified: true,
-      value: "updated"
+      verified: false,
+      writeOutcome: "executed",
+      readbackOutcome: "observed",
+      value: "0x1"
     });
     expect(hdc.calls).toEqual([
-      ["-t", "AURORA-001", "shell", "printf %s 'updated' > '/sys/node'"],
+      ["-t", "AURORA-001", "shell", "printf %s '1' > '/sys/node'"],
       ["-t", "AURORA-001", "shell", "cat '/sys/node'"]
     ]);
   });

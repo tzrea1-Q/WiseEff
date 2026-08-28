@@ -289,6 +289,7 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
         status: "succeeded",
         readValue: value,
         verified: true,
+        relatedOperationId: input.relatedOperationId,
         durationMs: 12,
         createdAt: nextTimestamp(),
         ...complexValueMetadata(parameter, value)
@@ -309,19 +310,23 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
       if (!parameter) {
         throw mockApiError("NOT_FOUND", `未找到调试节点：${input.nodeId ?? input.parameterId ?? input.nodePath ?? "unknown"}`, { nodeId: input.nodeId, parameterId: input.parameterId, nodePath: input.nodePath });
       }
-      if (parameter.accessMode === "RO") {
-        throw mockApiError("INTERNAL_ERROR", "该节点为只读，不支持写入。");
+      if (parameter.accessMode !== "RW") {
+        throw mockApiError(
+          "VALIDATION_FAILED",
+          parameter.accessMode === "WO"
+            ? "只写节点无法取得写前快照，不能安全写入。"
+            : "该节点为只读，不支持写入。"
+        );
       }
       // Same gate as the server: High-risk writes need the explicit confirmation token.
       if (parameter.risk === "High" && input.confirmationToken !== "confirm-high-risk-write" && !input.approvalId?.trim()) {
         throw mockApiError("VALIDATION_FAILED", "高风险节点写入需要确认令牌 confirm-high-risk-write。");
       }
 
-      const readBack = input.readBack && parameter.accessMode === "RW";
-      const previousValue = parameter.accessMode === "RW" ? deviceValueFor(parameter) : undefined;
+      const readBack = input.readBack;
+      const previousValue = deviceValueFor(parameter);
       deviceValues.set(parameter.id, input.value);
       const readbackValue = readBack ? deviceValues.get(parameter.id) : undefined;
-      const verified = readBack ? readbackValue === input.value : undefined;
 
       let snapshot: DebugSnapshotSummary | undefined;
       operationCounter += 1;
@@ -360,7 +365,9 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
         requestedValue: input.value,
         previousValue,
         readbackValue,
-        verified: verified ?? false,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: readBack ? "observed" : "not_requested",
         durationMs: 18,
         snapshotId: snapshot?.id,
         createdAt,
@@ -371,7 +378,9 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
       return {
         ok: true,
         value: readbackValue,
-        verified,
+        verified: null,
+        writeOutcome: "executed",
+        readbackOutcome: readBack ? "observed" : "not_requested",
         writeResult: { ok: true, stdout: "write ok\n", durationMs: 9 },
         ...(readBack
           ? { readResult: { ok: true, value: readbackValue, stdout: `${readbackValue}\n`, durationMs: 9 } }

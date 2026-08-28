@@ -8,6 +8,7 @@ import type {
   DebugSnapshotStatus,
   DebugTargetStatus
 } from "./status";
+import type { DebugReadbackOutcome, DebugWriteOutcome } from "./gateway";
 import type { DebugConnectionProtocol } from "./protocol";
 
 export const DEBUG_SESSION_KINDS = ["node", "parameter_reload"] as const;
@@ -203,7 +204,10 @@ export type NodeOperationRecord = {
   previousValue: string | null;
   readValue: string | null;
   readbackValue: string | null;
-  verified: boolean;
+  verified: boolean | null;
+  writeOutcome: DebugWriteOutcome | null;
+  readbackOutcome: DebugReadbackOutcome | null;
+  relatedOperationId: string | null;
   failureReason: string | null;
   durationMs: number;
   approvalId: string | null;
