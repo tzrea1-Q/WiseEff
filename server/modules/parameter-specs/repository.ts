@@ -1858,16 +1858,41 @@ export async function upsertMatchedPropertySpec(
     }
   }
 
-  const existingVersion = await db.query<{ id: string }>(
-    `
-    select id
-    from parameter_spec_versions
-    where parameter_spec_id = $1 and version = $2
-    limit 1
-    `,
+  // Migration 0120 enforces one active ParameterSpecVersion per definition.
+  // Property catalog sync can advance an existing definition from vN to vN+1,
+  // so serialize the transition and retire the previous active version before
+  // inserting/promoting the successor. Replaying the same active version is
+  // idempotent; draft/deprecated syncs never demote an already active version.
+  await db.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+    parameterSpecId,
+  ]);
+  const existingVersion = await db.query<{
+    id: string;
+    version_status: string;
+    lifecycle: string;
+  }>(
+    `select id, version_status, lifecycle
+     from parameter_spec_versions
+     where parameter_spec_id = $1 and version = $2
+     limit 1`,
     [parameterSpecId, property.version ?? 1],
   );
-  let parameterSpecVersionId = existingVersion.rows[0]?.id ?? property.id;
+  const existingVersionRow = existingVersion.rows[0];
+  if (property.lifecycle === "active") {
+    const sameVersionIsActive =
+      existingVersionRow?.version_status === "active" &&
+      existingVersionRow?.lifecycle === "active";
+    if (!sameVersionIsActive) {
+      await db.query(
+        `update parameter_spec_versions
+         set version_status = 'superseded', lifecycle = 'deprecated'
+         where parameter_spec_id = $1
+           and version_status = 'active'`,
+        [parameterSpecId],
+      );
+    }
+  }
+  let parameterSpecVersionId = existingVersionRow?.id ?? property.id;
   const conflictingVersion = await db.query<{ parameter_spec_id: string }>(
     `select parameter_spec_id from parameter_spec_versions where id = $1 limit 1`,
     [parameterSpecVersionId],

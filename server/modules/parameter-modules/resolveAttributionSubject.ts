@@ -168,11 +168,9 @@ async function ensureNodeTypeDefinitionSubject(
   // driver registrations. Correct that durable discriminant before a new
   // schema/property write can reuse the subject.
   if (existing.rows[0]?.subject_kind === "driver-registration") {
-    // Placements are intentionally not foreign-keyed to driver_registrations,
-    // so deleting the child row alone would leave a stale driver placement
-    // that could be mistaken for a node-type declaration by catalog queries.
-    await db.query(`delete from driver_registration_placements where attribution_subject_id = $1`, [subjectId]);
-    await db.query(`delete from driver_registrations where attribution_subject_id = $1`, [subjectId]);
+    // Keep the old registration/placement rows as migration evidence. Every
+    // driver-registry/placement query filters the corrected subject kind, so
+    // these immutable legacy rows cannot make a node type look like a driver.
     await db.query(
       `update parameter_modules
        set kind = 'node-type', updated_at = now()

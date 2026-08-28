@@ -646,5 +646,38 @@ describe.skipIf(!databaseAvailable)(
         parameter_spec_version_id: "psv:driver:vendor/effective:v2",
       });
     });
+
+    it("retires the previous active property version before promoting v2", async () => {
+      const materialized = await upsertMatchedPropertySpec(db!, {
+        id: "propspec:vendor/effective:effective_limit:v2",
+        parameterSpecId: "pspec:vendor/effective:effective_limit",
+        driverSchemaId: `${DRIVER_SCHEMA}:v2`,
+        propertyKey: PROPERTY_KEY,
+        schemaNamespace: "vendor/effective",
+        source: "vendor",
+        lifecycle: "active",
+        version: 2,
+        valueShape: { kind: "u32-array" },
+        constraints: {},
+        documentation: "effective v2 property",
+      });
+
+      expect(materialized.parameterSpecId).toBe(PLATFORM_SPEC);
+      const versions = await db!.query<{
+        version: number;
+        version_status: string;
+        lifecycle: string;
+      }>(
+        `select version, version_status, lifecycle
+         from parameter_spec_versions
+         where parameter_spec_id = $1
+         order by version`,
+        [PLATFORM_SPEC],
+      );
+      expect(versions.rows).toEqual([
+        { version: 1, version_status: "superseded", lifecycle: "deprecated" },
+        { version: 2, version_status: "active", lifecycle: "active" },
+      ]);
+    });
   },
 );
