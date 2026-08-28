@@ -1345,7 +1345,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "permissions",
     route: "/organization/members",
     roles: ["Admin"],
-    action: "Admin can create or update a non-self user's role through backend governance APIs while non-Admin cannot access the same operation.",
+    action: "Admin can create, update, or permanently delete a non-self user through backend governance APIs; deletion removes account-owned data, nulls retained-history user references, and non-Admin access is denied.",
     coverage: "automated",
     acceptanceIds: ["PERM-USER-MGMT-001"],
     specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
