@@ -695,6 +695,7 @@ export function ParameterModuleMappingPanel({
                 setRegistry(await client.updateModule(moduleId, patch));
               } catch (updateError) {
                 setError(presentError(updateError, "更新模块失败，请稍后重试。"));
+                throw updateError;
               } finally {
                 setBusy(false);
               }
@@ -708,6 +709,7 @@ export function ParameterModuleMappingPanel({
                 setRegistry(await client.getRegistry());
               } catch (updateError) {
                 setError(presentError(updateError, "更新驱动登记失败，请稍后重试。"));
+                throw updateError;
               } finally {
                 setBusy(false);
               }

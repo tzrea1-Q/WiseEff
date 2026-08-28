@@ -680,7 +680,15 @@ export function ModuleAttributionTree({
                 setDialogMutationError(null);
                 setDeleteModuleId(id);
               }}
-              onReorder={canAdmin ? (id, direction) => void handleReorder(id, direction) : undefined}
+              onReorder={
+                canAdmin
+                  ? (id, direction) => {
+                      // The panel already presents the safe page-level error; close this
+                      // fire-and-forget boundary so a failed reorder is not unhandled.
+                      void handleReorder(id, direction).catch(() => undefined);
+                    }
+                  : undefined
+              }
             />
           ))}
         </ul>
