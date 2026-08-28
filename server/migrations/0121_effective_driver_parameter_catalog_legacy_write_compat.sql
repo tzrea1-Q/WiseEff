@@ -1,7 +1,7 @@
 -- Issue #649: preserve the legacy two-step import boundary.
 --
 -- Older importers insert an active ParameterSpec and its DTS property row
--- before the matching DriverSchema has been resolved.  0117's expand trigger
+-- before the matching DriverSchema has been resolved.  0118's expand trigger
 -- was intentionally strict for linked rows, but rejecting this transient
 -- unlinked row breaks those transactional imports.  The effective projection
 -- and the independent reconciliation verifier still keep it out of product

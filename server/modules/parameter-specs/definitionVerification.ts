@@ -32,10 +32,13 @@ export async function verifyEffectiveDriverParameterDefinitions(
   const values = input.organizationId ? [input.organizationId] : [];
   const bindingValues: unknown[] = [...values];
   const bindingScopeParts: string[] = [];
-  if (input.organizationId) bindingScopeParts.push("and b.organization_id = $1");
+  if (input.organizationId)
+    bindingScopeParts.push("and b.organization_id = $1");
   if (input.configRevisionId) {
     bindingValues.push(input.configRevisionId);
-    bindingScopeParts.push(`and br.config_revision_id = $${bindingValues.length}`);
+    bindingScopeParts.push(
+      `and br.config_revision_id = $${bindingValues.length}`,
+    );
   }
   const bindingScope = bindingScopeParts.join("\n        ");
   const checks: Array<{ code: string; count: number }> = [];
@@ -60,8 +63,13 @@ export async function verifyEffectiveDriverParameterDefinitions(
         order by psv.version desc
         limit 1
       ) active_version on true
-      where (
+        where (
           (
+            ps.source_kind = 'dts'
+            and ps.attribution_subject_id is null
+            and dps.parameter_spec_id is not null
+          )
+          or (
             ps.source_kind = 'dts'
             and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
@@ -198,6 +206,103 @@ export async function verifyEffectiveDriverParameterDefinitions(
   });
 
   checks.push({
+    code: "active-driver-identity-owner-mismatch",
+    count: await count(
+      db,
+      `
+      select count(*)::text as count
+      from parameter_specs ps
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join attribution_subjects asub on asub.id = ps.attribution_subject_id
+      left join driver_schemas ds on ds.id = dps.driver_schema_id
+      where ps.attribution_subject_id is not null
+        and ps.definition_lifecycle = 'active'
+        and exists (
+          select 1
+          from parameter_spec_versions psv
+          where psv.parameter_spec_id = ps.id
+            and psv.version_status = 'active'
+            and psv.lifecycle = 'active'
+        )
+        and (
+          (
+            ps.attribution_subject_id is not null
+            and asub.organization_id is not null
+            and asub.organization_id is distinct from ps.organization_id
+          )
+          or (
+            dps.driver_schema_id is not null
+            and (
+              (ds.organization_id is not null and ds.organization_id is distinct from ps.organization_id)
+              or ds.attribution_subject_id is distinct from ps.attribution_subject_id
+            )
+          )
+        )
+        ${scope}
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
+    code: "active-property-key-mismatch",
+    count: await count(
+      db,
+      `
+      select count(*)::text as count
+      from parameter_specs ps
+      inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      where ps.source_kind = 'dts'
+        and ps.definition_lifecycle = 'active'
+        and ps.property_key is distinct from dps.property_key
+        and exists (
+          select 1
+          from parameter_spec_versions psv
+          where psv.parameter_spec_id = ps.id
+            and psv.version_status = 'active'
+            and psv.lifecycle = 'active'
+        )
+        ${scope}
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
+    code: "active-node-type-identity-duplicate",
+    count: await count(
+      db,
+      `
+      select count(*)::text as count
+      from (
+        select ps.organization_id,
+               nullif(lower(trim(asub.source_key)), '') as node_type_identity_key,
+               coalesce(ps.property_key, dps.property_key) as property_key
+        from parameter_specs ps
+        left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+        inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
+        where asub.subject_kind = 'node-type-definition'
+          and ps.definition_lifecycle = 'active'
+          and exists (
+            select 1 from parameter_spec_versions psv
+            where psv.parameter_spec_id = ps.id
+              and psv.version_status = 'active'
+              and psv.lifecycle = 'active'
+          )
+          and nullif(lower(trim(asub.source_key)), '') is not null
+          and coalesce(ps.property_key, dps.property_key) is not null
+          ${scope}
+        group by ps.organization_id,
+                 nullif(lower(trim(asub.source_key)), ''),
+                 coalesce(ps.property_key, dps.property_key)
+        having count(*) > 1
+      ) duplicates
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
     code: "active-driver-placement-missing",
     count: await count(
       db,
@@ -298,12 +403,6 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is not null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
-          and exists (
-            select 1 from parameter_spec_versions psv
-            where psv.parameter_spec_id = ps.id
-              and psv.version_status = 'active'
-              and psv.lifecycle = 'active'
-          )
           ${input.organizationId ? "and ps.organization_id = $1" : ""}
         union all
         select org.id,
@@ -316,12 +415,6 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
-          and exists (
-            select 1 from parameter_spec_versions psv
-            where psv.parameter_spec_id = ps.id
-              and psv.version_status = 'active'
-              and psv.lifecycle = 'active'
-          )
           ${input.organizationId ? "and org.id = $1" : ""}
       ) target
       where not exists (
@@ -360,12 +453,6 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is not null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
-          and exists (
-            select 1 from parameter_spec_versions psv
-            where psv.parameter_spec_id = ps.id
-              and psv.version_status = 'active'
-              and psv.lifecycle = 'active'
-          )
           ${input.organizationId ? "and ps.organization_id = $1" : ""}
         union all
         select org.id,
@@ -383,12 +470,6 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
-          and exists (
-            select 1 from parameter_spec_versions psv
-            where psv.parameter_spec_id = ps.id
-              and psv.version_status = 'active'
-              and psv.lifecycle = 'active'
-          )
           ${input.organizationId ? "and org.id = $1" : ""}
       ) target
       where not exists (
@@ -449,13 +530,60 @@ export async function verifyEffectiveDriverParameterDefinitions(
   });
 
   checks.push({
+    code: "active-node-type-version-missing",
+    count: await count(
+      db,
+      `
+      select count(*)::text as count
+      from parameter_specs ps
+      inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
+      where asub.subject_kind = 'node-type-definition'
+        and ps.definition_lifecycle = 'active'
+        ${scope}
+        and not exists (
+          select 1
+          from parameter_spec_versions psv
+          where psv.parameter_spec_id = ps.id
+            and psv.version_status = 'active'
+            and psv.lifecycle = 'active'
+        )
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
     code: "recognized-binding-definition-incomplete",
     count: await count(
       db,
       `
       select count(distinct b.id)::text as count
-      from project_parameter_binding_revisions br
-      inner join project_parameter_bindings b on b.id = br.binding_id
+      from project_parameter_bindings b
+      inner join lateral (
+        select br.*
+        from project_parameter_binding_revisions br
+        inner join dts_config_revisions cr on cr.id = br.config_revision_id
+        left join dts_logical_nodes binding_node on binding_node.id = b.logical_node_id
+        where br.binding_id = b.id
+          and cr.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.status <> 'resolving'
+          and (
+            binding_node.config_set_id is null
+            or (
+              cr.config_set_id = binding_node.config_set_id
+              and exists (
+                select 1
+                from dts_logical_node_revisions binding_node_revision
+                where binding_node_revision.config_revision_id = cr.id
+                  and binding_node_revision.logical_node_id = b.logical_node_id
+              )
+            )
+          )
+          ${input.configRevisionId ? `and br.config_revision_id = $${bindingValues.length}` : ""}
+        order by cr.revision_number desc, br.created_at desc, br.id desc
+        limit 1
+      ) br on true
       inner join parameter_specs ps on ps.id = b.parameter_spec_id
       inner join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
@@ -472,6 +600,11 @@ export async function verifyEffectiveDriverParameterDefinitions(
         on placement_category.id = binding_placement.default_business_category_module_id
       where (
           (
+            ps.source_kind = 'dts'
+            and ps.attribution_subject_id is null
+            and dps.parameter_spec_id is not null
+          )
+          or (
             ps.source_kind = 'dts'
             and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
@@ -495,6 +628,20 @@ export async function verifyEffectiveDriverParameterDefinitions(
           or psv.version_status <> 'active'
           or psv.lifecycle <> 'active'
           or ps.attribution_subject_id is null
+          or (
+            ps.attribution_subject_id is not null
+            and (
+              asub.organization_id is not null
+              and asub.organization_id is distinct from ps.organization_id
+              or (
+                dps.driver_schema_id is not null
+                and (
+                  (ds.organization_id is not null and ds.organization_id is distinct from ps.organization_id)
+                  or ds.attribution_subject_id is distinct from ps.attribution_subject_id
+                )
+              )
+            )
+          )
           or dr.attribution_subject_id is null
           or (
             ps.source_kind = 'dts'
@@ -549,8 +696,32 @@ export async function verifyEffectiveDriverParameterDefinitions(
       db,
       `
       select count(distinct b.id)::text as count
-      from project_parameter_binding_revisions br
-      inner join project_parameter_bindings b on b.id = br.binding_id
+      from project_parameter_bindings b
+      inner join lateral (
+        select br.*
+        from project_parameter_binding_revisions br
+        inner join dts_config_revisions cr on cr.id = br.config_revision_id
+        left join dts_logical_nodes binding_node on binding_node.id = b.logical_node_id
+        where br.binding_id = b.id
+          and cr.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.status <> 'resolving'
+          and (
+            binding_node.config_set_id is null
+            or (
+              cr.config_set_id = binding_node.config_set_id
+              and exists (
+                select 1
+                from dts_logical_node_revisions binding_node_revision
+                where binding_node_revision.config_revision_id = cr.id
+                  and binding_node_revision.logical_node_id = b.logical_node_id
+              )
+            )
+          )
+          ${input.configRevisionId ? `and br.config_revision_id = $${bindingValues.length}` : ""}
+        order by cr.revision_number desc, br.created_at desc, br.id desc
+        limit 1
+      ) br on true
       inner join parameter_specs ps on ps.id = b.parameter_spec_id
       inner join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
       inner join attribution_subjects asub on asub.id = ps.attribution_subject_id
@@ -565,6 +736,14 @@ export async function verifyEffectiveDriverParameterDefinitions(
         and (
           b.module_id is null
           or binding_module.id is null
+          or (asub.organization_id is not null and asub.organization_id is distinct from ps.organization_id)
+          or (
+            dps.driver_schema_id is not null
+            and (
+              (ds.organization_id is not null and ds.organization_id is distinct from ps.organization_id)
+              or ds.attribution_subject_id is distinct from ps.attribution_subject_id
+            )
+          )
           or binding_module.organization_id is distinct from b.organization_id
           or binding_module.kind <> 'node-type'
           or not (
@@ -596,8 +775,32 @@ export async function verifyEffectiveDriverParameterDefinitions(
       db,
       `
       select count(distinct br.binding_id)::text as count
-      from project_parameter_binding_revisions br
-      inner join project_parameter_bindings b on b.id = br.binding_id
+      from project_parameter_bindings b
+      inner join lateral (
+        select br.*
+        from project_parameter_binding_revisions br
+        inner join dts_config_revisions cr on cr.id = br.config_revision_id
+        left join dts_logical_nodes binding_node on binding_node.id = b.logical_node_id
+        where br.binding_id = b.id
+          and cr.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.status <> 'resolving'
+          and (
+            binding_node.config_set_id is null
+            or (
+              cr.config_set_id = binding_node.config_set_id
+              and exists (
+                select 1
+                from dts_logical_node_revisions binding_node_revision
+                where binding_node_revision.config_revision_id = cr.id
+                  and binding_node_revision.logical_node_id = b.logical_node_id
+              )
+            )
+          )
+          ${input.configRevisionId ? `and br.config_revision_id = $${bindingValues.length}` : ""}
+        order by cr.revision_number desc, br.created_at desc, br.id desc
+        limit 1
+      ) br on true
       inner join parameter_specs ps on ps.id = b.parameter_spec_id
         left join dts_property_specs dps on dps.parameter_spec_id = ps.id
         left join driver_schemas ds on ds.id = dps.driver_schema_id
@@ -606,6 +809,25 @@ export async function verifyEffectiveDriverParameterDefinitions(
       where coalesce(br.schema_state, 'unreviewed') = 'unreviewed'
         and (
           (
+            ps.attribution_subject_id is not null
+            and (
+          (asub.organization_id is not null and asub.organization_id is distinct from ps.organization_id)
+              or (
+                dps.driver_schema_id is not null
+                and (
+              (ds.organization_id is not null and ds.organization_id is distinct from ps.organization_id)
+                  or ds.attribution_subject_id is distinct from ps.attribution_subject_id
+                )
+              )
+            )
+          )
+          or (
+          (
+            ps.source_kind = 'dts'
+            and ps.attribution_subject_id is null
+            and dps.parameter_spec_id is not null
+          )
+          or (
             ps.source_kind = 'dts'
             and asub.subject_kind is distinct from 'node-type-definition'
             and not exists (
@@ -621,6 +843,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
               select 1 from driver_schemas driver_root
               where driver_root.parameter_spec_id = ps.id
             )
+          )
           )
         )
         ${bindingScope}

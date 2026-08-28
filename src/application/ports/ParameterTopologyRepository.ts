@@ -18,7 +18,7 @@ import type {
   TopologyTree,
   TopologyView,
   ValidationRun,
-  DtsValue
+  DtsValue,
 } from "@/domain/parameter-topology/types";
 
 export type {
@@ -38,7 +38,7 @@ export type {
   ConfigRevisionSummary,
   TopologyTree,
   TopologyView,
-  ValidationRun
+  ValidationRun,
 };
 
 export type CreateBindingDraftInput = {
@@ -161,23 +161,48 @@ export type RenameParameterSpecPropertyKeyInput = {
 
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
-  getSpec(specId: string): Promise<ParameterSpecDetail>;
-  createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
-  activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
-  updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
-  reattributeParameterSpec(specId: string, input: ReattributeParameterSpecInput): Promise<ParameterSpecDetail>;
+  getSpec(
+    specId: string,
+    options?: { view?: NonNullable<SpecQuery["view"]> },
+  ): Promise<ParameterSpecDetail>;
+  createParameterSpec(
+    input: CreateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  activateParameterSpec(
+    specId: string,
+    input: ActivateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  updateParameterSpec(
+    specId: string,
+    input: UpdateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(
+    specId: string,
+    input: DeprecateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(
+    specId: string,
+    input: RestoreParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  reattributeParameterSpec(
+    specId: string,
+    input: ReattributeParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
   renameParameterSpecPropertyKey(
     specId: string,
     input: RenameParameterSpecPropertyKeyInput,
   ): Promise<ParameterSpecDetail>;
-  getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
+  getSpecVersionCutoverImpact(
+    specId: string,
+  ): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,
-    input?: { reason?: string }
+    input?: { reason?: string },
   ): Promise<ParameterSpecDetail>;
-  finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  finalizeSpecVersionCutover(
+    specId: string,
+    input: { reason: string },
+  ): Promise<ParameterSpecDetail>;
   previewPropertyKeyCutover?(
     specId: string,
     input: { propertyKey: string },
@@ -195,31 +220,51 @@ export interface ParameterTopologyRepository {
     input: { reason: string },
   ): Promise<PropertyKeyCutoverRun>;
   getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
-  listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
-  resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
-  listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;
+  listSpecReviewTasks(
+    query?: SpecReviewTaskQuery,
+  ): Promise<SpecReviewTaskListResult>;
+  resolveSpecReviewTask(
+    taskId: string,
+    input: ResolveSpecReviewInput,
+  ): Promise<void>;
+  listBindings(
+    projectId: string,
+    revisionId: string,
+  ): Promise<ProjectParameterBinding[]>;
   /** Optional: per-binding revision history (Task 6). Absent implementations degrade to no history. */
-  listBindingHistory?(projectId: string, bindingId: string): Promise<BindingHistoryEntry[]>;
+  listBindingHistory?(
+    projectId: string,
+    bindingId: string,
+  ): Promise<BindingHistoryEntry[]>;
   /** Optional: cross-project compare peers (Task 7). Absent implementations degrade to no compare. */
-  listBindingCompare?(projectId: string, bindingId: string): Promise<BindingCompareEntry[]>;
-  listConfigRevisions(projectId: string, configSetId: string): Promise<ConfigRevisionSummary[]>;
+  listBindingCompare?(
+    projectId: string,
+    bindingId: string,
+  ): Promise<BindingCompareEntry[]>;
+  listConfigRevisions(
+    projectId: string,
+    configSetId: string,
+  ): Promise<ConfigRevisionSummary[]>;
   getTopology(
     projectId: string,
     configSetId: string,
     revisionId: string,
-    view: TopologyView
+    view: TopologyView,
   ): Promise<TopologyTree>;
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
   reopenMapping?(taskId: string, input: ReopenMappingInput): Promise<void>;
-  validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
+  validateRevision(
+    projectId: string,
+    revisionId: string,
+  ): Promise<ValidationRun>;
   createBindingDraft(
     projectId: string,
     bindingId: string,
-    input: CreateBindingDraftInput
+    input: CreateBindingDraftInput,
   ): Promise<BindingDraftResult>;
   createNodeEnablementDraft(
     projectId: string,
-    input: CreateNodeEnablementDraftInput
+    input: CreateNodeEnablementDraftInput,
   ): Promise<NodeEnablementDraftResult>;
 }

@@ -16,21 +16,9 @@ where asub.subject_kind = 'driver-registration'
   and lower(asub.source_key) like 'nodetype:%'
 on conflict (attribution_subject_id) do nothing;
 
-delete from driver_registration_placements
-where attribution_subject_id in (
-  select id
-  from attribution_subjects
-  where subject_kind = 'driver-registration'
-    and lower(source_key) like 'nodetype:%'
-);
-
-delete from driver_registrations
-where attribution_subject_id in (
-  select id
-  from attribution_subjects
-  where subject_kind = 'driver-registration'
-    and lower(source_key) like 'nodetype:%'
-);
+-- Keep the old registration and placement rows as immutable migration evidence.
+-- They are no longer considered by effective queries after the subject kind is
+-- corrected, and retaining them avoids silently destroying operator history.
 
 update parameter_modules pm
 set kind = 'node-type',

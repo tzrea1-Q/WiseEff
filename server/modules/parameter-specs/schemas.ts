@@ -8,14 +8,14 @@ export const specAttributionModuleKindSchema = z.enum([
   "business",
   "driver-group",
   "node-type",
-  "unclassified"
+  "unclassified",
 ]);
 
 export const specAttributionModuleDtoSchema = z.object({
   id: nonEmptyString,
   name: nonEmptyString,
   kind: specAttributionModuleKindSchema,
-  path: z.array(z.string()).optional()
+  path: z.array(z.string()).optional(),
 });
 
 export const parameterSpecSummaryDtoSchema = z.object({
@@ -46,37 +46,40 @@ export const parameterSpecSummaryDtoSchema = z.object({
     })
     .nullable()
     .optional(),
-  observationState: z.enum(["observed", "not-yet-observed", "unclassified"]).optional()
-});
-
-export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
-  displayName: z.string().nullable(),
-  description: z.string().nullable(),
-  schemaDefault: z.unknown().nullable(),
-  exampleValue: z.unknown().nullable(),
-  schemaNamespace: z.string().nullable(),
-  units: z.string().nullable(),
-  constraints: z.record(z.string(), z.unknown()).nullable(),
-  documentation: z.string().nullable(),
-  policyTarget: z.unknown().nullable(),
-  cutover: z
-    .object({
-      runId: nonEmptyString,
-      status: z.enum(["preparing", "ready"]),
-      fromVersionId: nonEmptyString,
-      toVersionId: nonEmptyString,
-      fromVersion: z.number().int(),
-      toVersion: z.number().int(),
-      impact: z.object({
-        pending: z.number().int(),
-        ready: z.number().int(),
-        incompatible: z.number().int(),
-        skipped: z.number().int(),
-        total: z.number().int(),
-      }),
-    })
+  observationState: z
+    .enum(["observed", "not-yet-observed", "unclassified"])
     .optional(),
 });
+
+export const parameterSpecDetailDtoSchema =
+  parameterSpecSummaryDtoSchema.extend({
+    displayName: z.string().nullable(),
+    description: z.string().nullable(),
+    schemaDefault: z.unknown().nullable(),
+    exampleValue: z.unknown().nullable(),
+    schemaNamespace: z.string().nullable(),
+    units: z.string().nullable(),
+    constraints: z.record(z.string(), z.unknown()).nullable(),
+    documentation: z.string().nullable(),
+    policyTarget: z.unknown().nullable(),
+    cutover: z
+      .object({
+        runId: nonEmptyString,
+        status: z.enum(["preparing", "ready"]),
+        fromVersionId: nonEmptyString,
+        toVersionId: nonEmptyString,
+        fromVersion: z.number().int(),
+        toVersion: z.number().int(),
+        impact: z.object({
+          pending: z.number().int(),
+          ready: z.number().int(),
+          incompatible: z.number().int(),
+          skipped: z.number().int(),
+          total: z.number().int(),
+        }),
+      })
+      .optional(),
+  });
 
 export const parameterSpecCutoverSummaryDtoSchema = z.object({
   runId: nonEmptyString,
@@ -101,32 +104,41 @@ export const listParameterSpecsQuerySchema = z.object({
   attributionSubjectId: z.string().optional(),
   propertyKey: z.string().optional(),
   /** Effective is the safe product view; governance exposes raw/history rows. */
-  view: z.enum(["effective", "governance"]).optional()
+  view: z.enum(["effective", "governance"]).optional(),
 });
 
 export const parameterSpecParamsSchema = z.object({
-  specId: nonEmptyString
+  specId: nonEmptyString,
+});
+
+/** Detail reads default to the safe effective projection; governance is an explicit raw/history view. */
+export const parameterSpecDetailQuerySchema = z.object({
+  view: z.enum(["effective", "governance"]).optional(),
 });
 
 export const parameterSpecReviewTaskParamsSchema = z.object({
-  taskId: nonEmptyString
+  taskId: nonEmptyString,
 });
 
-export const specReviewTaskStatusSchema = z.enum(["open", "resolved", "dismissed"]);
+export const specReviewTaskStatusSchema = z.enum([
+  "open",
+  "resolved",
+  "dismissed",
+]);
 
 export const listSpecReviewTasksQuerySchema = z.object({
   status: specReviewTaskStatusSchema.optional(),
   projectId: z.string().optional(),
   configRevisionId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  cursor: z.string().optional()
+  cursor: z.string().optional(),
 });
 
 export const parameterSpecReviewCandidateDtoSchema = z.object({
   id: nonEmptyString,
   label: nonEmptyString,
   propertyKey: z.string().nullable().optional(),
-  driverModule: z.string().nullable().optional()
+  driverModule: z.string().nullable().optional(),
 });
 
 export const parameterSpecReviewTaskDtoSchema = z.object({
@@ -141,7 +153,7 @@ export const parameterSpecReviewTaskDtoSchema = z.object({
   projectCount: z.number().int(),
   createdAt: nonEmptyString,
   resolvedAt: z.string().nullable().optional(),
-  reason: z.string().nullable().optional()
+  reason: z.string().nullable().optional(),
 });
 
 export const resolveSpecReviewTaskBodySchema = z
@@ -150,22 +162,23 @@ export const resolveSpecReviewTaskBodySchema = z
     parameterSpecId: nonEmptyString.optional(),
     reason: nonEmptyString,
     confirmPropertyMismatch: z.boolean().optional(),
-    createSpec: z.boolean().optional()
+    createSpec: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.decision === "resolved") {
       if (!value.parameterSpecId && !value.createSpec) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "parameterSpecId or createSpec is required when resolving a review task.",
-          path: ["parameterSpecId"]
+          message:
+            "parameterSpecId or createSpec is required when resolving a review task.",
+          path: ["parameterSpecId"],
         });
       }
       if (value.parameterSpecId && value.createSpec) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Provide parameterSpecId or createSpec, not both.",
-          path: ["createSpec"]
+          path: ["createSpec"],
         });
       }
     }
@@ -266,7 +279,11 @@ export const propertyKeyCutoverLocationStatusSchema = z.enum([
 ]);
 
 export const propertyKeyCutoverStartBlockerSchema = z.object({
-  code: z.enum(["triple-collision", "open-version-cutover", "open-property-key-cutover"]),
+  code: z.enum([
+    "triple-collision",
+    "open-version-cutover",
+    "open-property-key-cutover",
+  ]),
   message: nonEmptyString,
   details: z.record(z.string(), z.unknown()).optional(),
 });
@@ -375,30 +392,79 @@ export const resolveSpecReviewTaskResultSchema = z.object({
   message: z.string().optional(),
 });
 
-export type ParameterSpecSummaryDto = z.infer<typeof parameterSpecSummaryDtoSchema>;
-export type ParameterSpecDetailDto = z.infer<typeof parameterSpecDetailDtoSchema>;
-export type ParameterSpecCutoverSummaryDto = z.infer<typeof parameterSpecCutoverSummaryDtoSchema>;
-export type ListParameterSpecsQuery = z.infer<typeof listParameterSpecsQuerySchema>;
-export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySchema>;
-export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
-export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
-export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
-export type CreateParameterSpecBody = z.infer<typeof createParameterSpecBodySchema>;
-export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
-export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
-export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
-export type ReattributeParameterSpecBody = z.infer<typeof reattributeParameterSpecBodySchema>;
-export type RenameParameterSpecPropertyKeyBody = z.infer<typeof renameParameterSpecPropertyKeyBodySchema>;
-export type PreviewPropertyKeyCutoverBody = z.infer<typeof previewPropertyKeyCutoverBodySchema>;
-export type StartPropertyKeyCutoverBody = z.infer<typeof startPropertyKeyCutoverBodySchema>;
-export type PreparePropertyKeyCutoverBody = z.infer<typeof preparePropertyKeyCutoverBodySchema>;
-export type FinalizePropertyKeyCutoverBody = z.infer<typeof finalizePropertyKeyCutoverBodySchema>;
-export type PropertyKeyCutoverPreviewDto = z.infer<typeof propertyKeyCutoverPreviewDtoSchema>;
-export type PropertyKeyCutoverRunDto = z.infer<typeof propertyKeyCutoverRunDtoSchema>;
-export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
-export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
+export type ParameterSpecSummaryDto = z.infer<
+  typeof parameterSpecSummaryDtoSchema
+>;
+export type ParameterSpecDetailDto = z.infer<
+  typeof parameterSpecDetailDtoSchema
+>;
+export type ParameterSpecCutoverSummaryDto = z.infer<
+  typeof parameterSpecCutoverSummaryDtoSchema
+>;
+export type ListParameterSpecsQuery = z.infer<
+  typeof listParameterSpecsQuerySchema
+>;
+export type ParameterSpecDetailQuery = z.infer<
+  typeof parameterSpecDetailQuerySchema
+>;
+export type ListSpecReviewTasksQuery = z.infer<
+  typeof listSpecReviewTasksQuerySchema
+>;
+export type ParameterSpecReviewTaskDto = z.infer<
+  typeof parameterSpecReviewTaskDtoSchema
+>;
+export type ResolveSpecReviewTaskBody = z.infer<
+  typeof resolveSpecReviewTaskBodySchema
+>;
+export type ActivateParameterSpecBody = z.infer<
+  typeof activateParameterSpecBodySchema
+>;
+export type CreateParameterSpecBody = z.infer<
+  typeof createParameterSpecBodySchema
+>;
+export type UpdateParameterSpecBody = z.infer<
+  typeof updateParameterSpecBodySchema
+>;
+export type DeprecateParameterSpecBody = z.infer<
+  typeof deprecateParameterSpecBodySchema
+>;
+export type RestoreParameterSpecBody = z.infer<
+  typeof restoreParameterSpecBodySchema
+>;
+export type ReattributeParameterSpecBody = z.infer<
+  typeof reattributeParameterSpecBodySchema
+>;
+export type RenameParameterSpecPropertyKeyBody = z.infer<
+  typeof renameParameterSpecPropertyKeyBodySchema
+>;
+export type PreviewPropertyKeyCutoverBody = z.infer<
+  typeof previewPropertyKeyCutoverBodySchema
+>;
+export type StartPropertyKeyCutoverBody = z.infer<
+  typeof startPropertyKeyCutoverBodySchema
+>;
+export type PreparePropertyKeyCutoverBody = z.infer<
+  typeof preparePropertyKeyCutoverBodySchema
+>;
+export type FinalizePropertyKeyCutoverBody = z.infer<
+  typeof finalizePropertyKeyCutoverBodySchema
+>;
+export type PropertyKeyCutoverPreviewDto = z.infer<
+  typeof propertyKeyCutoverPreviewDtoSchema
+>;
+export type PropertyKeyCutoverRunDto = z.infer<
+  typeof propertyKeyCutoverRunDtoSchema
+>;
+export type PrepareParameterSpecCutoverBody = z.infer<
+  typeof prepareParameterSpecCutoverBodySchema
+>;
+export type FinalizeParameterSpecCutoverBody = z.infer<
+  typeof finalizeParameterSpecCutoverBodySchema
+>;
 
-export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
+export type ResolveSpecReviewTaskResultDto = z.infer<
+  typeof resolveSpecReviewTaskResultSchema
+>;
 
 // Layout fields the value-shape model carries per kind (see DraftValueShape in
 // valueShapeInference.ts). A bare `z.object({ kind })` strips these, so declare
@@ -418,7 +484,12 @@ const propertyValueShapeSchema = z.union([
   z.object({ kind: z.literal("cells"), ...cellLayoutFields }),
   z.object({ kind: z.literal("bytes"), length: z.number() }),
   z.object({ kind: z.literal("phandle-list"), ...cellLayoutFields }),
-  z.object({ kind: z.literal("u32-array"), bits: z.literal(32), groups: z.number(), cellsPerGroup: z.number() }),
+  z.object({
+    kind: z.literal("u32-array"),
+    bits: z.literal(32),
+    groups: z.number(),
+    cellsPerGroup: z.number(),
+  }),
   z.object({ kind: z.literal("mixed") }),
   z.object({ kind: z.literal("unknown") }),
   z.record(z.string(), z.unknown()),
@@ -450,7 +521,10 @@ export const createOrganizationDriverSchemaBodySchema = z.object({
 export const updateOrganizationDriverSchemaBodySchema = z.object({
   displayName: z.string().min(1).optional(),
   notes: z.string().optional(),
-  properties: z.array(organizationDriverSchemaPropertyBodySchema).min(1).optional(),
+  properties: z
+    .array(organizationDriverSchemaPropertyBodySchema)
+    .min(1)
+    .optional(),
 });
 
 export const organizationDriverSchemaParamsSchema = z.object({
@@ -472,5 +546,9 @@ export const driverSchemaPromotionParamsSchema = z.object({
   promotionId: nonEmptyString,
 });
 
-export type CreateOrganizationDriverSchemaBody = z.infer<typeof createOrganizationDriverSchemaBodySchema>;
-export type UpdateOrganizationDriverSchemaBody = z.infer<typeof updateOrganizationDriverSchemaBodySchema>;
+export type CreateOrganizationDriverSchemaBody = z.infer<
+  typeof createOrganizationDriverSchemaBodySchema
+>;
+export type UpdateOrganizationDriverSchemaBody = z.infer<
+  typeof updateOrganizationDriverSchemaBodySchema
+>;

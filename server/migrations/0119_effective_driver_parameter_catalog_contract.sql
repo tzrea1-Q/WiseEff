@@ -1,6 +1,6 @@
 -- Issue #649: close the write boundary after the expand migration.
 --
--- 0117 intentionally retains existing dirty rows so the audited reconciliation
+-- 0118 intentionally retains existing dirty rows so the audited reconciliation
 -- job can classify them. These triggers make the invariant hold for every new
 -- activation/update while that data migration is being run: an active DTS
 -- property row must have a subject-bearing driver schema whose subject agrees

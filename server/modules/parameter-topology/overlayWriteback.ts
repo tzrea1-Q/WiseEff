@@ -7,14 +7,17 @@
 
 import { createHash, randomUUID } from "node:crypto";
 
-import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
+import {
+  parseDts,
+  serializeDts,
+  type DtsNodeCst,
+  type DtsPropertyCst,
+} from "../dts";
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import { parseDtsValue } from "../dts/valueAst";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import {
-  type DtsToolchainRunner,
-} from "../parameter-files/dtsToolchain";
+import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
@@ -34,8 +37,14 @@ import {
 } from "./configRevisionManifest";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
 import { listStructuralPropertyKeys } from "./parameterSurface";
-import { getConfigRevisionById, updateConfigRevisionStatus } from "./repository";
-import type { ConfigRevisionManifest, ConfigRevisionManifestMember } from "./types";
+import {
+  getConfigRevisionById,
+  updateConfigRevisionStatus,
+} from "./repository";
+import type {
+  ConfigRevisionManifest,
+  ConfigRevisionManifestMember,
+} from "./types";
 import {
   verifyBindingWriteLock,
   verifyEnablementWriteLock,
@@ -55,7 +64,10 @@ export type CreateBindingDraftDeps = {
   skipSemanticGates?: boolean;
 };
 
-export function throwIfManifestNeedsReview(revision: { id: string; manifestState?: string }): void {
+export function throwIfManifestNeedsReview(revision: {
+  id: string;
+  manifestState?: string;
+}): void {
   const gate = assertManifestStateReady(
     revision.manifestState as "complete" | "needs_review" | undefined,
   );
@@ -97,7 +109,11 @@ export async function loadFileContentFromVersion(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "File version was not found for binding edit.", { fileVersionId });
+    throw new ApiError(
+      "NOT_FOUND",
+      "File version was not found for binding edit.",
+      { fileVersionId },
+    );
   }
 
   if (objectStore) {
@@ -109,18 +125,29 @@ export async function loadFileContentFromVersion(
     }
   }
 
-  if (row.parsed_index && typeof row.parsed_index === "object" && !Array.isArray(row.parsed_index)) {
+  if (
+    row.parsed_index &&
+    typeof row.parsed_index === "object" &&
+    !Array.isArray(row.parsed_index)
+  ) {
     const source = (row.parsed_index as Record<string, unknown>).sourceText;
     if (typeof source === "string") return source;
   }
 
-  throw new ApiError("CONFLICT", "File version content is unavailable for binding edit.", {
-    fileVersionId,
-    storageKey: row.storage_key,
-  });
+  throw new ApiError(
+    "CONFLICT",
+    "File version content is unavailable for binding edit.",
+    {
+      fileVersionId,
+      storageKey: row.storage_key,
+    },
+  );
 }
 
-function findAllOverlayNodesByRef(nodes: DtsNodeCst[], refName: string): DtsNodeCst[] {
+function findAllOverlayNodesByRef(
+  nodes: DtsNodeCst[],
+  refName: string,
+): DtsNodeCst[] {
   const matches: DtsNodeCst[] = [];
   const walk = (node: DtsNodeCst) => {
     if (node.refTarget === refName) matches.push(node);
@@ -154,9 +181,13 @@ function findPropertyByExactSpan(
   return null;
 }
 
-function findNodeByExactSpan(nodes: DtsNodeCst[], span: { start: number; end: number }): DtsNodeCst | null {
+function findNodeByExactSpan(
+  nodes: DtsNodeCst[],
+  span: { start: number; end: number },
+): DtsNodeCst | null {
   for (const node of nodes) {
-    if (node.span.start === span.start && node.span.end === span.end) return node;
+    if (node.span.start === span.start && node.span.end === span.end)
+      return node;
     for (const child of node.children) {
       if (child.kind === "node") {
         const found = findNodeByExactSpan([child], span);
@@ -176,46 +207,73 @@ function propertyStatementSpan(
   const searchFrom = Math.max(parent.span.start, 0);
   const nameStart = content.lastIndexOf(propertyKey, property.span.start);
   if (nameStart < searchFrom) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
-      reason: "stale-span",
-      propertyKey,
-      span: property.span,
-    });
-  }
-  const between = content.slice(nameStart + propertyKey.length, property.span.start);
-  if (property.rawText.length > 0) {
-    if (!/^\s*=\s*$/.test(between)) {
-      throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
+    throw new ApiError(
+      "CONFLICT",
+      "Occurrence property statement span is stale.",
+      {
         reason: "stale-span",
         propertyKey,
         span: property.span,
-      });
+      },
+    );
+  }
+  const between = content.slice(
+    nameStart + propertyKey.length,
+    property.span.start,
+  );
+  if (property.rawText.length > 0) {
+    if (!/^\s*=\s*$/.test(between)) {
+      throw new ApiError(
+        "CONFLICT",
+        "Occurrence property statement span is stale.",
+        {
+          reason: "stale-span",
+          propertyKey,
+          span: property.span,
+        },
+      );
     }
   } else if (!/^\s*$/.test(between)) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
-      reason: "stale-span",
-      propertyKey,
-      span: property.span,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Occurrence property statement span is stale.",
+      {
+        reason: "stale-span",
+        propertyKey,
+        span: property.span,
+      },
+    );
   }
   const semi = content.indexOf(";", property.span.end);
   if (semi < 0 || semi > parent.span.end) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
-      reason: "stale-span",
-      propertyKey,
-      span: property.span,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Occurrence property statement span is stale.",
+      {
+        reason: "stale-span",
+        propertyKey,
+        span: property.span,
+      },
+    );
   }
   return { start: nameStart, end: semi + 1 };
 }
 
-function insertAfterNodeOpenBrace(content: string, node: DtsNodeCst, insertion: string): string {
+function insertAfterNodeOpenBrace(
+  content: string,
+  node: DtsNodeCst,
+  insertion: string,
+): string {
   const openBrace = content.indexOf("{", node.span.start);
   if (openBrace < 0 || openBrace >= node.span.end) {
-    throw new ApiError("CONFLICT", "Unable to locate overlay node body for write.", {
-      reason: "stale-span",
-      nodeSpan: node.span,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Unable to locate overlay node body for write.",
+      {
+        reason: "stale-span",
+        nodeSpan: node.span,
+      },
+    );
   }
   return `${content.slice(0, openBrace + 1)}\n${insertion}${content.slice(openBrace + 1)}`;
 }
@@ -237,11 +295,15 @@ function resolveInsertTargetNode(
   }
   const matches = findAllOverlayNodesByRef(docRoots, input.targetRef);
   if (matches.length > 1) {
-    throw new ApiError("CONFLICT", "Ambiguous overlay target ref for binding edit.", {
-      reason: "ambiguous-overlay-target",
-      targetRef: input.targetRef,
-      matchCount: matches.length,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Ambiguous overlay target ref for binding edit.",
+      {
+        reason: "ambiguous-overlay-target",
+        targetRef: input.targetRef,
+        matchCount: matches.length,
+      },
+    );
   }
   return matches[0] ?? null;
 }
@@ -265,44 +327,68 @@ export function ensureOverlayProperty(
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
   if (!targetRef.trim()) {
-    throw new ApiError("CONFLICT", "Overlay write requires an explicit target ref.", {
-      reason: "missing-overlay-target-ref",
-      propertyKey,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Overlay write requires an explicit target ref.",
+      {
+        reason: "missing-overlay-target-ref",
+        propertyKey,
+      },
+    );
   }
 
   if (checksumOf(content) !== input.expectedChecksum) {
-    throw new ApiError("CONFLICT", "Overlay file checksum is stale for binding edit.", {
-      reason: "stale-checksum",
-      propertyKey,
-      expectedChecksum: input.expectedChecksum,
-      actualChecksum: checksumOf(content),
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Overlay file checksum is stale for binding edit.",
+      {
+        reason: "stale-checksum",
+        propertyKey,
+        expectedChecksum: input.expectedChecksum,
+        actualChecksum: checksumOf(content),
+      },
+    );
   }
 
   const doc = parseDts(content);
 
   if (input.occurrenceSpan) {
-    const slice = content.slice(input.occurrenceSpan.start, input.occurrenceSpan.end);
+    const slice = content.slice(
+      input.occurrenceSpan.start,
+      input.occurrenceSpan.end,
+    );
     if (input.expectedRawText != null && slice !== input.expectedRawText) {
-      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", {
-        reason: "stale-span",
-        propertyKey,
-        occurrenceSpan: input.occurrenceSpan,
-      });
+      throw new ApiError(
+        "CONFLICT",
+        "Occurrence CST span is stale for binding edit.",
+        {
+          reason: "stale-span",
+          propertyKey,
+          occurrenceSpan: input.occurrenceSpan,
+        },
+      );
     }
 
     const located = findPropertyByExactSpan(doc.topLevel, input.occurrenceSpan);
     if (!located || located.property.name !== propertyKey) {
-      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", {
-        reason: "stale-span",
-        propertyKey,
-        occurrenceSpan: input.occurrenceSpan,
-      });
+      throw new ApiError(
+        "CONFLICT",
+        "Occurrence CST span is stale for binding edit.",
+        {
+          reason: "stale-span",
+          propertyKey,
+          occurrenceSpan: input.occurrenceSpan,
+        },
+      );
     }
 
     if (action === "delete") {
-      const statement = propertyStatementSpan(content, located.property, propertyKey, located.parent);
+      const statement = propertyStatementSpan(
+        content,
+        located.property,
+        propertyKey,
+        located.parent,
+      );
       return (
         content.slice(0, statement.start) +
         `/delete-property/ ${propertyKey};` +
@@ -314,7 +400,7 @@ export function ensureOverlayProperty(
       rawText ?? "",
       content,
       located.property.span.start,
-      content.slice(located.property.span.start, located.property.span.end)
+      content.slice(located.property.span.start, located.property.span.end),
     );
     return serializeDts(doc);
   }
@@ -328,10 +414,15 @@ export function ensureOverlayProperty(
   if (action === "delete") {
     if (target) {
       const existingDelete = target.children.find(
-        (child) => child.kind === "delete-property" && child.name === propertyKey,
+        (child) =>
+          child.kind === "delete-property" && child.name === propertyKey,
       );
       if (existingDelete) return content;
-      return insertAfterNodeOpenBrace(content, target, `\t/delete-property/ ${propertyKey};`);
+      return insertAfterNodeOpenBrace(
+        content,
+        target,
+        `\t/delete-property/ ${propertyKey};`,
+      );
     }
     return `${content.trimEnd()}\n&${targetRef} {\n\t/delete-property/ ${propertyKey};\n};\n`;
   }
@@ -339,14 +430,15 @@ export function ensureOverlayProperty(
   const assignment = `\t${propertyKey} = ${rawText};`;
   if (target) {
     const existing = target.children.find(
-      (child): child is DtsPropertyCst => child.kind === "property" && child.name === propertyKey,
+      (child): child is DtsPropertyCst =>
+        child.kind === "property" && child.name === propertyKey,
     );
     if (existing) {
       existing.rawText = indentDtsRawValueForWriteback(
         rawText ?? "",
         content,
         existing.span.start,
-        content.slice(existing.span.start, existing.span.end)
+        content.slice(existing.span.start, existing.span.end),
       );
       return serializeDts(doc);
     }
@@ -357,7 +449,11 @@ export function ensureOverlayProperty(
 
 export async function loadCandidateSemanticGateCounts(
   db: Queryable,
-  input: { organizationId: string; projectId: string; configRevisionId: string },
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+  },
 ): Promise<{
   openIdentityMappings: number;
   openSpecReviews: number;
@@ -366,7 +462,8 @@ export async function loadCandidateSemanticGateCounts(
   resolverErrorDiagnostics: number;
 }> {
   await syncSingletonCardinalityBlockingTasks(db, input);
-  const openIdentityMappings = await countBlockingIdentityMappingTasksForRevision(db, input);
+  const openIdentityMappings =
+    await countBlockingIdentityMappingTasksForRevision(db, input);
 
   // Structural DTS keys are not parameter-spec review material; exclude from candidate gates.
   const structuralKeys = listStructuralPropertyKeys();
@@ -417,7 +514,10 @@ export async function ensureCandidateKeepStatus(
     return;
   }
   // Never promote blocked statuses upward; only move resolved → invalid/needs_mapping when needed.
-  if (current.rows[0]?.status === "needs_mapping" || current.rows[0]?.status === "invalid") {
+  if (
+    current.rows[0]?.status === "needs_mapping" ||
+    current.rows[0]?.status === "invalid"
+  ) {
     return;
   }
   await updateConfigRevisionStatus(db, {
@@ -499,38 +599,59 @@ export async function applyLockedOverlayWriteback(
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", {
-      reason: "stale-revision",
-      baseConfigRevisionId: input.lock.baseConfigRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Base config revision is stale for writeback.",
+      {
+        reason: "stale-revision",
+        baseConfigRevisionId: input.lock.baseConfigRevisionId,
+      },
+    );
   }
 
   throwIfManifestNeedsReview(revision);
 
-  const members = await loadRevisionMembers(db, input.lock.baseConfigRevisionId);
+  const members = await loadRevisionMembers(
+    db,
+    input.lock.baseConfigRevisionId,
+  );
   const baseMember = members.find((member) => member.role === "base");
-  const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
+  const overlayMember = members.find(
+    (member) => member.file_id === input.lock.overlayFileId,
+  );
   if (!baseMember || !overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", {
-      reason: "missing-members",
-      baseConfigRevisionId: input.lock.baseConfigRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision members missing for locked writeback.",
+      {
+        reason: "missing-members",
+        baseConfigRevisionId: input.lock.baseConfigRevisionId,
+      },
+    );
   }
 
   const memberContents = new Map<string, string>();
   for (const member of members) {
     memberContents.set(
       member.file_version_id,
-      await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore),
+      await loadFileContentFromVersion(
+        db,
+        member.file_version_id,
+        deps.objectStore,
+      ),
     );
   }
 
   const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
   if (overlayContent === undefined) {
-    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", {
-      reason: "stale-file-version",
-      sourceFileVersionId: input.lock.sourceFileVersionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Locked overlay file version is not part of the base revision.",
+      {
+        reason: "stale-file-version",
+        sourceFileVersionId: input.lock.sourceFileVersionId,
+      },
+    );
   }
 
   const action: BindingEditAction = input.action ?? "set";
@@ -599,23 +720,30 @@ export async function applyLockedOverlayWriteback(
 
   const overlayOrderFromMembers = members
     .filter((member) => member.role === "overlay")
-    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .sort(
+      (a, b) =>
+        a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name),
+    )
     .map((member) => member.file_name);
 
-  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
-    const isEditedOverlay = member.file_id === overlayMember.file_id;
-    const content = isEditedOverlay
-      ? candidateOverlayContent
-      : memberContents.get(member.file_version_id)!;
-    return {
-      fileId: member.file_id,
-      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
-      fileName: member.file_name,
-      role: member.role,
-      sortOrder: member.sort_order,
-      content,
-    };
-  });
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map(
+    (member) => {
+      const isEditedOverlay = member.file_id === overlayMember.file_id;
+      const content = isEditedOverlay
+        ? candidateOverlayContent
+        : memberContents.get(member.file_version_id)!;
+      return {
+        fileId: member.file_id,
+        fileVersionId: isEditedOverlay
+          ? candidateOverlayVersionId
+          : member.file_version_id,
+        fileName: member.file_name,
+        role: member.role,
+        sortOrder: member.sort_order,
+        content,
+      };
+    },
+  );
 
   const normalizedManifest = normalizePersistedManifest({
     entryFile: revision.entryFile ?? baseMember.file_name,
@@ -627,9 +755,13 @@ export async function applyLockedOverlayWriteback(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
-      reason: normalizedManifest.failure.code,
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      normalizedManifest.failure.message,
+      {
+        reason: normalizedManifest.failure.code,
+      },
+    );
   }
 
   const manifest: ConfigRevisionManifest = {
@@ -642,7 +774,12 @@ export async function applyLockedOverlayWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
+    // Writeback may stage an unresolved legacy surface, but ingestService marks
+    // it unreviewed and does not resolve its occurrence, so it cannot become
+    // an effective/recognized definition.
+    allowLegacyProvisionalSurface: true,
+  });
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
@@ -650,7 +787,10 @@ export async function applyLockedOverlayWriteback(
         ? "Writeback candidate revision has unresolved identity mapping."
         : "Writeback candidate revision failed resolve.",
       {
-        reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
+        reason:
+          ingested.status === "needs_mapping"
+            ? "unresolved-mapping"
+            : "resolve-failure",
         candidateRevisionId: ingested.id,
         candidateStatus: ingested.status,
       },
@@ -671,7 +811,11 @@ export async function applyLockedOverlayWriteback(
     });
     if (!earlyGate.ok) {
       await ensureCandidateKeepStatus(db, ingested.id, earlyGate.keepStatus);
-      throw candidateGateError(ingested.id, earlyGate.reason, earlyGate.keepStatus);
+      throw candidateGateError(
+        ingested.id,
+        earlyGate.reason,
+        earlyGate.keepStatus,
+      );
     }
   }
 
@@ -684,7 +828,11 @@ export async function applyLockedOverlayWriteback(
     });
     if (!finalGate.ok) {
       await ensureCandidateKeepStatus(db, ingested.id, finalGate.keepStatus);
-      throw candidateGateError(ingested.id, finalGate.reason, finalGate.keepStatus);
+      throw candidateGateError(
+        ingested.id,
+        finalGate.reason,
+        finalGate.keepStatus,
+      );
     }
   }
 
@@ -695,7 +843,10 @@ export async function applyLockedOverlayWriteback(
 
   let bindingRevisionId: string | undefined;
   if (action === "set") {
-    const mergedTypedValue = parseDtsValue(input.lock.propertyKey, input.mergedValue).value;
+    const mergedTypedValue = parseDtsValue(
+      input.lock.propertyKey,
+      input.mergedValue,
+    ).value;
     const bindingRevision = await upsertBindingRevisionValues(db, {
       bindingId: input.bindingId,
       configRevisionId: ingested.id,
@@ -737,38 +888,59 @@ export async function applyLockedEnablementWriteback(
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", {
-      reason: "stale-revision",
-      baseConfigRevisionId: input.lock.baseConfigRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Base config revision is stale for writeback.",
+      {
+        reason: "stale-revision",
+        baseConfigRevisionId: input.lock.baseConfigRevisionId,
+      },
+    );
   }
 
   throwIfManifestNeedsReview(revision);
 
-  const members = await loadRevisionMembers(db, input.lock.baseConfigRevisionId);
+  const members = await loadRevisionMembers(
+    db,
+    input.lock.baseConfigRevisionId,
+  );
   const baseMember = members.find((member) => member.role === "base");
-  const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
+  const overlayMember = members.find(
+    (member) => member.file_id === input.lock.overlayFileId,
+  );
   if (!baseMember || !overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", {
-      reason: "missing-members",
-      baseConfigRevisionId: input.lock.baseConfigRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision members missing for locked writeback.",
+      {
+        reason: "missing-members",
+        baseConfigRevisionId: input.lock.baseConfigRevisionId,
+      },
+    );
   }
 
   const memberContents = new Map<string, string>();
   for (const member of members) {
     memberContents.set(
       member.file_version_id,
-      await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore),
+      await loadFileContentFromVersion(
+        db,
+        member.file_version_id,
+        deps.objectStore,
+      ),
     );
   }
 
   const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
   if (overlayContent === undefined) {
-    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", {
-      reason: "stale-file-version",
-      sourceFileVersionId: input.lock.sourceFileVersionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Locked overlay file version is not part of the base revision.",
+      {
+        reason: "stale-file-version",
+        sourceFileVersionId: input.lock.sourceFileVersionId,
+      },
+    );
   }
 
   const action: BindingEditAction = input.action ?? "set";
@@ -837,23 +1009,30 @@ export async function applyLockedEnablementWriteback(
 
   const overlayOrderFromMembers = members
     .filter((member) => member.role === "overlay")
-    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .sort(
+      (a, b) =>
+        a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name),
+    )
     .map((member) => member.file_name);
 
-  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
-    const isEditedOverlay = member.file_id === overlayMember.file_id;
-    const content = isEditedOverlay
-      ? candidateOverlayContent
-      : memberContents.get(member.file_version_id)!;
-    return {
-      fileId: member.file_id,
-      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
-      fileName: member.file_name,
-      role: member.role,
-      sortOrder: member.sort_order,
-      content,
-    };
-  });
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map(
+    (member) => {
+      const isEditedOverlay = member.file_id === overlayMember.file_id;
+      const content = isEditedOverlay
+        ? candidateOverlayContent
+        : memberContents.get(member.file_version_id)!;
+      return {
+        fileId: member.file_id,
+        fileVersionId: isEditedOverlay
+          ? candidateOverlayVersionId
+          : member.file_version_id,
+        fileName: member.file_name,
+        role: member.role,
+        sortOrder: member.sort_order,
+        content,
+      };
+    },
+  );
 
   const normalizedManifest = normalizePersistedManifest({
     entryFile: revision.entryFile ?? baseMember.file_name,
@@ -865,9 +1044,13 @@ export async function applyLockedEnablementWriteback(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
-      reason: normalizedManifest.failure.code,
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      normalizedManifest.failure.message,
+      {
+        reason: normalizedManifest.failure.code,
+      },
+    );
   }
 
   const manifest: ConfigRevisionManifest = {
@@ -880,7 +1063,11 @@ export async function applyLockedEnablementWriteback(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
+    // Keep unresolved writeback review-only; the effective catalog excludes its
+    // unreviewed binding revision until a canonical match is supplied.
+    allowLegacyProvisionalSurface: true,
+  });
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
@@ -888,7 +1075,10 @@ export async function applyLockedEnablementWriteback(
         ? "Writeback candidate revision has unresolved identity mapping."
         : "Writeback candidate revision failed resolve.",
       {
-        reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
+        reason:
+          ingested.status === "needs_mapping"
+            ? "unresolved-mapping"
+            : "resolve-failure",
         candidateRevisionId: ingested.id,
         candidateStatus: ingested.status,
       },
@@ -909,7 +1099,11 @@ export async function applyLockedEnablementWriteback(
     });
     if (!earlyGate.ok) {
       await ensureCandidateKeepStatus(db, ingested.id, earlyGate.keepStatus);
-      throw candidateGateError(ingested.id, earlyGate.reason, earlyGate.keepStatus);
+      throw candidateGateError(
+        ingested.id,
+        earlyGate.reason,
+        earlyGate.keepStatus,
+      );
     }
   }
 
@@ -922,7 +1116,11 @@ export async function applyLockedEnablementWriteback(
     });
     if (!finalGate.ok) {
       await ensureCandidateKeepStatus(db, ingested.id, finalGate.keepStatus);
-      throw candidateGateError(ingested.id, finalGate.reason, finalGate.keepStatus);
+      throw candidateGateError(
+        ingested.id,
+        finalGate.reason,
+        finalGate.keepStatus,
+      );
     }
   }
 

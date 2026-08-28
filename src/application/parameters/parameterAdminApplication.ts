@@ -9,7 +9,7 @@ import type {
   ResolveMappingInput,
   ResolveSpecReviewInput,
   RestoreParameterSpecInput,
-  UpdateParameterSpecInput
+  UpdateParameterSpecInput,
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   CreateModuleMappingInput,
@@ -18,18 +18,18 @@ import type {
   ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
   RecomputeBindingModulesResult,
-  UpdateParameterModuleInput
+  UpdateParameterModuleInput,
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ApplyParameterImportBatchInput,
   DtsImportParseResult,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
-  ParseDtsImportInput
+  ParseDtsImportInput,
 } from "@/application/ports/ParameterRepository";
 import type {
   ParameterRuntimeActionFailure,
-  ParameterRuntimeVoidResult
+  ParameterRuntimeVoidResult,
 } from "@/application/parameters/parameterRuntime";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
@@ -45,15 +45,17 @@ import type {
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
-  ValidationRun
+  ValidationRun,
 } from "@/domain/parameter-topology/types";
 
 /** Import actions the admin facade exposes so panels do not hold separate clients. */
 export type ParameterAdminImportActions = {
   createImportPreview(
-    input: ParameterImportPreviewInput
+    input: ParameterImportPreviewInput,
   ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
-  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  applyImportBatch(
+    input: ApplyParameterImportBatchInput,
+  ): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh?(): Promise<unknown>;
 };
@@ -64,25 +66,55 @@ export type ParameterAdminImportActions = {
  */
 export type ParameterAdminApplication = {
   listSpecs(query?: SpecQuery): Promise<ParameterSpecSummary[]>;
-  getSpec(specId: string): Promise<ParameterSpecDetail>;
-  createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
-  listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
-  resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
-  activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
-  updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
-  reattributeParameterSpec(specId: string, input: ReattributeParameterSpecInput): Promise<ParameterSpecDetail>;
+  getSpec(
+    specId: string,
+    options?: { view?: "effective" | "governance" },
+  ): Promise<ParameterSpecDetail>;
+  createParameterSpec(
+    input: CreateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  listSpecReviewTasks(
+    query?: SpecReviewTaskQuery,
+  ): Promise<SpecReviewTaskListResult>;
+  resolveSpecReviewTask(
+    taskId: string,
+    input: ResolveSpecReviewInput,
+  ): Promise<void>;
+  activateParameterSpec(
+    specId: string,
+    input: ActivateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  updateParameterSpec(
+    specId: string,
+    input: UpdateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(
+    specId: string,
+    input: DeprecateParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(
+    specId: string,
+    input: RestoreParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
+  reattributeParameterSpec(
+    specId: string,
+    input: ReattributeParameterSpecInput,
+  ): Promise<ParameterSpecDetail>;
   renameParameterSpecPropertyKey(
     specId: string,
     input: RenameParameterSpecPropertyKeyInput,
   ): Promise<ParameterSpecDetail>;
-  getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
+  getSpecVersionCutoverImpact(
+    specId: string,
+  ): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,
-    input?: { reason?: string }
+    input?: { reason?: string },
   ): Promise<ParameterSpecDetail>;
-  finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  finalizeSpecVersionCutover(
+    specId: string,
+    input: { reason: string },
+  ): Promise<ParameterSpecDetail>;
   previewPropertyKeyCutover?(
     specId: string,
     input: { propertyKey: string },
@@ -103,25 +135,42 @@ export type ParameterAdminApplication = {
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
-  createModule(input: CreateParameterModuleInput): Promise<ParameterModuleRegistry>;
-  updateModule(moduleId: string, input: UpdateParameterModuleInput): Promise<ParameterModuleRegistry>;
+  createModule(
+    input: CreateParameterModuleInput,
+  ): Promise<ParameterModuleRegistry>;
+  updateModule(
+    moduleId: string,
+    input: UpdateParameterModuleInput,
+  ): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;
-  createModuleMapping(input: CreateModuleMappingInput): Promise<MappingMutationResult>;
+  createModuleMapping(
+    input: CreateModuleMappingInput,
+  ): Promise<MappingMutationResult>;
   deleteModuleMapping(mappingId: string): Promise<MappingMutationResult>;
-  recomputeBindingModules(input?: { projectId?: string }): Promise<RecomputeBindingModulesResult>;
+  recomputeBindingModules(input?: {
+    projectId?: string;
+  }): Promise<RecomputeBindingModulesResult>;
   asModuleRegistryRepository(): ParameterModuleRegistryRepository;
 
   createImportPreview(
-    input: ParameterImportPreviewInput
+    input: ParameterImportPreviewInput,
   ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
-  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  applyImportBatch(
+    input: ApplyParameterImportBatchInput,
+  ): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
   reopenMapping(taskId: string, input: ReopenMappingInput): Promise<void>;
-  listConfigRevisions(projectId: string, configSetId: string): Promise<ConfigRevisionSummary[]>;
-  validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
+  listConfigRevisions(
+    projectId: string,
+    configSetId: string,
+  ): Promise<ConfigRevisionSummary[]>;
+  validateRevision(
+    projectId: string,
+    revisionId: string,
+  ): Promise<ValidationRun>;
 
   asDtsStructuredRepository(): DtsStructuredRepository | null;
   asParameterFileRepository(): ParameterFileRepository | null;
@@ -144,7 +193,7 @@ export function createParameterAdminApplication({
   moduleRegistry,
   importActions,
   dtsStructured,
-  parameterFiles
+  parameterFiles,
 }: CreateParameterAdminApplicationOptions): ParameterAdminApplication {
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
@@ -153,21 +202,26 @@ export function createParameterAdminApplication({
     restoreDismissedCompatible: (compatible) =>
       moduleRegistry.restoreDismissedCompatible(compatible),
     createModule: (input) => moduleRegistry.createModule(input),
-    updateModule: (moduleId, input) => moduleRegistry.updateModule(moduleId, input),
+    updateModule: (moduleId, input) =>
+      moduleRegistry.updateModule(moduleId, input),
     deleteModule: (moduleId) => moduleRegistry.deleteModule(moduleId),
     previewMapping: (input) => moduleRegistry.previewMapping(input),
     createMapping: (input) => moduleRegistry.createMapping(input),
     deleteMapping: (mappingId) => moduleRegistry.deleteMapping(mappingId),
     recomputeBindings: (input) => moduleRegistry.recomputeBindings(input),
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
-    registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
+    registerOrClaimDriver: (input) =>
+      moduleRegistry.registerOrClaimDriver(input),
     updateDriverRegistration: (moduleId, input) =>
       moduleRegistry.updateDriverRegistration(moduleId, input),
     updateDriverRegistrationDefault: (moduleId, input) =>
       moduleRegistry.updateDriverRegistrationDefault(moduleId, input),
-    replayDriverPlacement: (moduleId) => moduleRegistry.replayDriverPlacement(moduleId),
-    createOrganizationDriverSchema: (input) => moduleRegistry.createOrganizationDriverSchema(input),
-    listOrganizationDriverSchemas: () => moduleRegistry.listOrganizationDriverSchemas(),
+    replayDriverPlacement: (moduleId) =>
+      moduleRegistry.replayDriverPlacement(moduleId),
+    createOrganizationDriverSchema: (input) =>
+      moduleRegistry.createOrganizationDriverSchema(input),
+    listOrganizationDriverSchemas: () =>
+      moduleRegistry.listOrganizationDriverSchemas(),
     updateOrganizationDriverSchema: (schemaId, input) =>
       moduleRegistry.updateOrganizationDriverSchema(schemaId, input),
     activateOrganizationDriverSchema: (schemaId) =>
@@ -177,15 +231,15 @@ export function createParameterAdminApplication({
       Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
     deprecateOrganizationDriverSchema: (schemaId, input) =>
       moduleRegistry.deprecateOrganizationDriverSchema?.(schemaId, input) ??
-      Promise.reject(new Error("Overlay deprecation is unavailable."))
+      Promise.reject(new Error("Overlay deprecation is unavailable.")),
   });
 
   return {
     listSpecs(query = {}) {
       return topology.listSpecs(query);
     },
-    getSpec(specId) {
-      return topology.getSpec(specId);
+    getSpec(specId, options) {
+      return topology.getSpec(specId, options);
     },
     createParameterSpec(input) {
       return topology.createParameterSpec(input);
@@ -292,7 +346,9 @@ export function createParameterAdminApplication({
     },
     reopenMapping(taskId, input) {
       if (!topology.reopenMapping) {
-        throw new Error("Identity mapping reopen is unavailable in this runtime.");
+        throw new Error(
+          "Identity mapping reopen is unavailable in this runtime.",
+        );
       }
       return topology.reopenMapping(taskId, input);
     },
@@ -308,6 +364,6 @@ export function createParameterAdminApplication({
     },
     asParameterFileRepository() {
       return parameterFiles ?? null;
-    }
+    },
   };
 }

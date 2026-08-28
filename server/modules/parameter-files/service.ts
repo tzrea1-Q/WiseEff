@@ -1,17 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 
-import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
+import {
+  asAuditTx,
+  writeAuditEventInTx,
+  type AuditTx,
+} from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
-import type { ConfigRevisionManifest, ConfigRevisionManifestMember } from "../parameter-topology/types";
+import type {
+  ConfigRevisionManifest,
+  ConfigRevisionManifestMember,
+} from "../parameter-topology/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
-import { getConfigSetById, getFileConfigSetMembership } from "./configSetRepository";
+import {
+  getConfigSetById,
+  getFileConfigSetMembership,
+} from "./configSetRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { syncFileVersion } from "./syncService";
 import {
@@ -21,16 +31,19 @@ import {
   insertFileVersion,
   insertProjectParameterFile,
   listProjectParameterFiles,
-  setCurrentVersion
+  setCurrentVersion,
 } from "./repository";
-import { uploadProjectParameterFileInputSchema, type UploadProjectParameterFileInput } from "./schemas";
+import {
+  uploadProjectParameterFileInputSchema,
+  type UploadProjectParameterFileInput,
+} from "./schemas";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import type {
   ConfigSetRole,
   ParameterFileFormat,
   ProjectParameterFileDto,
-  ProjectParameterFileVersionDto
+  ProjectParameterFileVersionDto,
 } from "./types";
 import { OVERLAY_ROLES } from "./types";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
@@ -63,7 +76,9 @@ type StoredVersionRef = {
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", {
+      permission: "admin:access",
+    });
   }
 }
 
@@ -71,22 +86,32 @@ export function detectFormat(fileName: string): ParameterFileFormat {
   const extension = extname(fileName).toLowerCase();
   if (extension === ".json") return "json";
   if (extension === ".dts" || extension === ".dtsi") return "dts";
-  throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", {
-    fileName,
-    supportedExtensions: [".json", ".dts", ".dtsi"]
-  });
+  throw new ApiError(
+    "VALIDATION_FAILED",
+    "Unsupported parameter file extension.",
+    {
+      fileName,
+      supportedExtensions: [".json", ".dts", ".dtsi"],
+    },
+  );
 }
 
 function contentTypeForFormat(format: ParameterFileFormat) {
   return format === "json" ? "application/json" : "text/plain";
 }
 
-function parseUploadInput(input: UploadProjectParameterFileInput): UploadProjectParameterFileInput {
+function parseUploadInput(
+  input: UploadProjectParameterFileInput,
+): UploadProjectParameterFileInput {
   const parsed = uploadProjectParameterFileInputSchema.safeParse(input);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", "Invalid project parameter file upload input.", {
-      issues: parsed.error.issues
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Invalid project parameter file upload input.",
+      {
+        issues: parsed.error.issues,
+      },
+    );
   }
   return parsed.data;
 }
@@ -94,11 +119,17 @@ function parseUploadInput(input: UploadProjectParameterFileInput): UploadProject
 function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
   const source = bytes.toString("utf8");
   try {
-    return format === "json" ? buildJsonParsedIndex(source) : buildDtsParsedIndex(source);
+    return format === "json"
+      ? buildJsonParsedIndex(source)
+      : buildDtsParsedIndex(source);
   } catch {
-    throw new ApiError("VALIDATION_FAILED", "Failed to parse project parameter file content.", {
-      format
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Failed to parse project parameter file content.",
+      {
+        format,
+      },
+    );
   }
 }
 
@@ -110,24 +141,29 @@ async function createParameterFileUploadAudit(
     file: ProjectParameterFileDto;
     version: ProjectParameterFileVersionDto;
   },
-  context: ParameterFileServiceContext = {}
+  context: ParameterFileServiceContext = {},
 ) {
   // requestId fallback survives only until upload contexts become mandatory (ADR-0027).
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
-    app: "parameters",
-    kind: "parameter-file-upload",
-    action: "upload",
-    severity: "Medium",
-    projectId: input.projectId,
-    targetType: "project-parameter-file",
-    targetId: input.file.id,
-    metadata: {
-      fileName: input.file.fileName,
-      format: input.file.format,
-      versionNumber: input.version.versionNumber,
-      sizeBytes: input.version.sizeBytes
-    }
-  });
+  await writeAuditEventInTx(
+    tx,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    {
+      app: "parameters",
+      kind: "parameter-file-upload",
+      action: "upload",
+      severity: "Medium",
+      projectId: input.projectId,
+      targetType: "project-parameter-file",
+      targetId: input.file.id,
+      metadata: {
+        fileName: input.file.fileName,
+        format: input.file.format,
+        versionNumber: input.version.versionNumber,
+        sizeBytes: input.version.sizeBytes,
+      },
+    },
+  );
 }
 
 /**
@@ -143,11 +179,11 @@ export async function maybeIngestSemanticConfigRevision(
     fileId: string;
     frozenVersionId: string;
     frozenSource: string;
-  }
+  },
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
-    fileId: input.fileId
+    fileId: input.fileId,
   });
   if (!membership?.configSetId) {
     return;
@@ -155,14 +191,20 @@ export async function maybeIngestSemanticConfigRevision(
 
   const configSet = await getConfigSetById(db, {
     organizationId: auth.organization.id,
-    configSetId: membership.configSetId
+    configSetId: membership.configSetId,
   });
   if (!configSet) {
     return;
   }
 
-  const memberFiles = await listConfigSetMemberFiles(db, membership.configSetId);
-  if (memberFiles.length === 0 || memberFiles.some((member) => !member.currentVersionId)) {
+  const memberFiles = await listConfigSetMemberFiles(
+    db,
+    membership.configSetId,
+  );
+  if (
+    memberFiles.length === 0 ||
+    memberFiles.some((member) => !member.currentVersionId)
+  ) {
     return;
   }
 
@@ -170,7 +212,7 @@ export async function maybeIngestSemanticConfigRevision(
   for (const member of memberFiles) {
     const file = await getProjectParameterFileById(db, {
       organizationId: auth.organization.id,
-      fileId: member.fileId
+      fileId: member.fileId,
     });
     if (!file || file.format !== "dts") {
       continue;
@@ -178,7 +220,7 @@ export async function maybeIngestSemanticConfigRevision(
 
     const fileMembership = await getFileConfigSetMembership(db, {
       organizationId: auth.organization.id,
-      fileId: member.fileId
+      fileId: member.fileId,
     });
     const role = fileMembership?.configSetRole ?? "misc";
     const versionId = member.currentVersionId as string;
@@ -198,13 +240,16 @@ export async function maybeIngestSemanticConfigRevision(
       fileName: member.fileName,
       role,
       sortOrder: fileMembership?.configSetSortOrder ?? 0,
-      content
+      content,
     });
   }
 
   const baseMembers = members
     .filter((member) => member.role === "base")
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName));
+    .sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName),
+    );
   if (baseMembers.length === 0) {
     // Incomplete manifest: overlays/includes without a base entry are not ingestible alone.
     return;
@@ -212,7 +257,10 @@ export async function maybeIngestSemanticConfigRevision(
 
   const overlayOrder = members
     .filter((member) => OVERLAY_ROLES.has(member.role as ConfigSetRole))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName))
+    .sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName),
+    )
     .map((member) => member.fileName);
 
   const manifest: ConfigRevisionManifest = {
@@ -222,10 +270,12 @@ export async function maybeIngestSemanticConfigRevision(
     entryFile: baseMembers[0].fileName,
     includeSearchPaths: ["."],
     overlayOrder,
-    members
+    members,
   };
 
-  await ingestConfigRevisionInTransaction(db, manifest, auth);
+  await ingestConfigRevisionInTransaction(db, manifest, auth, {
+    allowLegacyProvisionalSurface: false,
+  });
 }
 
 export async function uploadProjectParameterFile(
@@ -233,7 +283,7 @@ export async function uploadProjectParameterFile(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: UploadProjectParameterFileInput,
-  context: ParameterFileServiceContext = {}
+  context: ParameterFileServiceContext = {},
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
@@ -244,10 +294,14 @@ export async function uploadProjectParameterFile(
   const format = detectFormat(normalized.fileName);
   const sizeBytes = normalized.bytes.byteLength;
   if (sizeBytes > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", {
-      maxBytes: MAX_FILE_BYTES,
-      sizeBytes
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Project parameter file exceeds the 2MB limit.",
+      {
+        maxBytes: MAX_FILE_BYTES,
+        sizeBytes,
+      },
+    );
   }
 
   const source = normalized.bytes.toString("utf8");
@@ -257,13 +311,13 @@ export async function uploadProjectParameterFile(
     const existing = await getProjectParameterFileByName(tx, {
       organizationId: auth.organization.id,
       projectId: normalized.projectId,
-      fileName: normalized.fileName
+      fileName: normalized.fileName,
     });
     const stored = await objectStore.put({
       organizationId: auth.organization.id,
       fileName: normalized.fileName,
       contentType: contentTypeForFormat(format),
-      bytes: normalized.bytes
+      bytes: normalized.bytes,
     });
 
     const file =
@@ -273,7 +327,7 @@ export async function uploadProjectParameterFile(
         organizationId: auth.organization.id,
         projectId: normalized.projectId,
         fileName: normalized.fileName,
-        format
+        format,
       }));
 
     const version = await insertFileVersion(tx, {
@@ -285,7 +339,7 @@ export async function uploadProjectParameterFile(
       sizeBytes: stored.fileSizeBytes,
       parsedIndex,
       origin: "upload",
-      createdByUserId: auth.user.id
+      createdByUserId: auth.user.id,
     });
 
     await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
@@ -296,26 +350,36 @@ export async function uploadProjectParameterFile(
       await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
         fileId: file.id,
         frozenVersionId: version.id,
-        frozenSource: source
+        frozenSource: source,
       });
     }
     if (version.origin === "upload") {
-      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
+      await syncFileVersion(asAuditTx(tx), auth, {
+        fileId: file.id,
+        versionId: version.id,
+      });
     }
     await createParameterFileUploadAudit(
       asAuditTx(tx),
       auth,
       {
         projectId: normalized.projectId,
-        file: { ...file, currentVersionId: version.id, currentVersionNumber: version.versionNumber },
-        version
+        file: {
+          ...file,
+          currentVersionId: version.id,
+          currentVersionNumber: version.versionNumber,
+        },
+        version,
       },
-      context
+      context,
     );
 
     let driverSummary: IngestDriverSummary | undefined;
     if (format === "dts") {
-      const registered = await listRegisteredCompatibles(tx, auth.organization.id);
+      const registered = await listRegisteredCompatibles(
+        tx,
+        auth.organization.id,
+      );
       driverSummary = buildIngestDriverSummary({
         observedCompatibles: extractCompatiblesFromDtsSource(source),
         registeredCompatibles: new Set(registered),
@@ -323,26 +387,33 @@ export async function uploadProjectParameterFile(
     }
 
     return {
-      file: { ...file, currentVersionId: version.id, currentVersionNumber: version.versionNumber },
+      file: {
+        ...file,
+        currentVersionId: version.id,
+        currentVersionNumber: version.versionNumber,
+      },
       version,
       ...(driverSummary ? { driverSummary } : {}),
     };
   });
 }
 
-export function getProjectParameterFileContent(objectStore: ObjectStore, version: StoredVersionRef) {
+export function getProjectParameterFileContent(
+  objectStore: ObjectStore,
+  version: StoredVersionRef,
+) {
   return objectStore.get(version.storageKey);
 }
 
 export async function listProjectParameterFilesForAuth(
   db: Queryable,
   auth: AuthContext,
-  projectId: string
+  projectId: string,
 ) {
   requireParameterFileAdmin(auth);
   return listProjectParameterFiles(db, {
     organizationId: auth.organization.id,
-    projectId
+    projectId,
   });
 }
 
@@ -355,23 +426,28 @@ async function writeParameterFileRollbackAudit(
     version: ProjectParameterFileVersionDto;
     restoredVersionId: string;
   },
-  context: ParameterFileServiceContext = {}
+  context: ParameterFileServiceContext = {},
 ) {
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
-    app: "parameters",
-    kind: "parameter-file-rollback",
-    action: "rollback",
-    severity: "Medium",
-    projectId: input.projectId,
-    targetType: "project-parameter-file",
-    targetId: input.file.id,
-    metadata: {
-      fileName: input.file.fileName,
-      restoredVersionId: input.restoredVersionId,
-      newVersionId: input.version.id,
-      newVersionNumber: input.version.versionNumber
-    }
-  });
+  await writeAuditEventInTx(
+    tx,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    {
+      app: "parameters",
+      kind: "parameter-file-rollback",
+      action: "rollback",
+      severity: "Medium",
+      projectId: input.projectId,
+      targetType: "project-parameter-file",
+      targetId: input.file.id,
+      metadata: {
+        fileName: input.file.fileName,
+        restoredVersionId: input.restoredVersionId,
+        newVersionId: input.version.id,
+        newVersionNumber: input.version.versionNumber,
+      },
+    },
+  );
 }
 
 /**
@@ -383,7 +459,7 @@ export async function rollbackProjectParameterFileVersion(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: { projectId: string; fileId: string; versionId: string },
-  context: ParameterFileServiceContext = {}
+  context: ParameterFileServiceContext = {},
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
@@ -393,27 +469,33 @@ export async function rollbackProjectParameterFileVersion(
   return db.transaction(async (tx) => {
     const file = await getProjectParameterFileById(tx, {
       organizationId: auth.organization.id,
-      fileId: input.fileId
+      fileId: input.fileId,
     });
     if (!file || file.projectId !== input.projectId) {
       throw new ApiError("NOT_FOUND", "Project parameter file was not found.", {
         fileId: input.fileId,
-        projectId: input.projectId
+        projectId: input.projectId,
       });
     }
 
-    const targetVersion = await getFileVersionById(tx, { versionId: input.versionId });
+    const targetVersion = await getFileVersionById(tx, {
+      versionId: input.versionId,
+    });
     if (!targetVersion || targetVersion.fileId !== file.id) {
-      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", {
-        fileId: input.fileId,
-        versionId: input.versionId
-      });
+      throw new ApiError(
+        "NOT_FOUND",
+        "Project parameter file version was not found.",
+        {
+          fileId: input.fileId,
+          versionId: input.versionId,
+        },
+      );
     }
 
     if (file.currentVersionId === targetVersion.id) {
       throw new ApiError("CONFLICT", "The chosen version is already current.", {
         fileId: file.id,
-        versionId: targetVersion.id
+        versionId: targetVersion.id,
       });
     }
 
@@ -426,24 +508,31 @@ export async function rollbackProjectParameterFileVersion(
       sizeBytes: targetVersion.sizeBytes,
       parsedIndex: targetVersion.parsedIndex,
       origin: "rollback",
-      createdByUserId: auth.user.id
+      createdByUserId: auth.user.id,
     });
 
-    await setCurrentVersion(tx, { fileId: file.id, versionId: rollbackVersion.id });
+    await setCurrentVersion(tx, {
+      fileId: file.id,
+      versionId: rollbackVersion.id,
+    });
 
     if (file.format === "dts" && isDtsStructuralIngestEnabled()) {
       const pinnedBytes = await objectStore.get(targetVersion.storageKey);
-      await ingestDtsFileVersion(tx, rollbackVersion.id, pinnedBytes.toString("utf8"));
+      await ingestDtsFileVersion(
+        tx,
+        rollbackVersion.id,
+        pinnedBytes.toString("utf8"),
+      );
     }
 
     const updatedFile: ProjectParameterFileDto = {
       ...file,
       currentVersionId: rollbackVersion.id,
-      currentVersionNumber: rollbackVersion.versionNumber
+      currentVersionNumber: rollbackVersion.versionNumber,
     };
     const version: ProjectParameterFileVersionDto = {
       ...rollbackVersion,
-      createdByDisplayName: auth.user.name
+      createdByDisplayName: auth.user.name,
     };
 
     await writeParameterFileRollbackAudit(
@@ -453,9 +542,9 @@ export async function rollbackProjectParameterFileVersion(
         projectId: input.projectId,
         file: updatedFile,
         version,
-        restoredVersionId: targetVersion.id
+        restoredVersionId: targetVersion.id,
       },
-      context
+      context,
     );
 
     return { file: updatedFile, version };

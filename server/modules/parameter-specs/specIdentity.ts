@@ -4,7 +4,13 @@ import { stableSemanticId } from "../parameter-topology/migration";
 
 /** Display-only sanitize. Never feed this into unique identity hashes. */
 export function sanitizeSpecSegment(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9_.@+-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_.@+-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "unknown"
+  );
 }
 
 /**
@@ -15,7 +21,10 @@ export function canonicalIdentityPart(field: string, value: string): string {
   return `${field}:${value.length}:${value}`;
 }
 
-function manualSpecificationKeyDigest(input: { propertyKey: string; driverModule: string }): string {
+function manualSpecificationKeyDigest(input: {
+  propertyKey: string;
+  driverModule: string;
+}): string {
   return createHash("sha256")
     .update(
       [
@@ -48,8 +57,14 @@ export function buildLegacyManualSpecIds(input: {
     schemaNamespace,
     propertySegment,
   ]);
-  const parameterSpecVersionId = stableSemanticId("parameter_spec_version", [parameterSpecId, "1"]);
-  const dtsPropertySpecId = stableSemanticId("dts_property_spec", [parameterSpecId, propertySegment]);
+  const parameterSpecVersionId = stableSemanticId("parameter_spec_version", [
+    parameterSpecId,
+    "1",
+  ]);
+  const dtsPropertySpecId = stableSemanticId("dts_property_spec", [
+    parameterSpecId,
+    propertySegment,
+  ]);
   return {
     schemaNamespace,
     specificationKey,
@@ -77,10 +92,12 @@ export function buildManualSpecIds(input: {
   const rawDriver = input.driverModule ?? "";
   const schemaNamespace = sanitizeSpecSegment(input.driverModule ?? "manual");
   const propertySegment = sanitizeSpecSegment(input.propertyKey);
-  const specificationKey = `${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest({
-    driverModule: rawDriver,
-    propertyKey: input.propertyKey,
-  })}`;
+  const specificationKey = `${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest(
+    {
+      driverModule: rawDriver,
+      propertyKey: input.propertyKey,
+    },
+  )}`;
   const parameterSpecId = stableSemanticId("parameter_spec", [
     canonicalIdentityPart("organizationId", input.organizationId),
     "manual",
@@ -128,7 +145,10 @@ export function buildSubjectScopedManualSpecIds(input: {
     .update(
       [
         ownerPart,
-        canonicalIdentityPart("attributionSubjectId", input.attributionSubjectId),
+        canonicalIdentityPart(
+          "attributionSubjectId",
+          input.attributionSubjectId,
+        ),
         canonicalIdentityPart("propertyKey", input.propertyKey),
       ].join("\u001f"),
     )
@@ -176,10 +196,12 @@ export function buildPlatformManualSpecIds(input: {
   const rawDriver = input.driverModule ?? "";
   const schemaNamespace = sanitizeSpecSegment(input.driverModule ?? "manual");
   const propertySegment = sanitizeSpecSegment(input.propertyKey);
-  const specificationKey = `platform/${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest({
-    driverModule: rawDriver,
-    propertyKey: input.propertyKey,
-  })}`;
+  const specificationKey = `platform/${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest(
+    {
+      driverModule: rawDriver,
+      propertyKey: input.propertyKey,
+    },
+  )}`;
   const parameterSpecId = stableSemanticId("parameter_spec", [
     canonicalIdentityPart("scope", "platform"),
     "manual",
@@ -216,9 +238,20 @@ export type ManualSpecIdentityCollision = {
  * Does not rewrite any stored IDs.
  */
 export function findLegacyManualSpecIdentityCollisions(
-  candidates: Array<{ propertyKey: string; driverModule: string | null; organizationId: string }>,
+  candidates: Array<{
+    propertyKey: string;
+    driverModule: string | null;
+    organizationId: string;
+  }>,
 ): ManualSpecIdentityCollision[] {
-  const byLegacyId = new Map<string, Array<{ propertyKey: string; driverModule: string | null; organizationId: string }>>();
+  const byLegacyId = new Map<
+    string,
+    Array<{
+      propertyKey: string;
+      driverModule: string | null;
+      organizationId: string;
+    }>
+  >();
   for (const candidate of candidates) {
     const legacy = buildLegacyManualSpecIds(candidate);
     const list = byLegacyId.get(legacy.parameterSpecId) ?? [];
@@ -232,12 +265,21 @@ export function findLegacyManualSpecIdentityCollisions(
       for (let j = i + 1; j < group.length; j += 1) {
         const left = group[i];
         const right = group[j];
-        if (left.propertyKey === right.propertyKey && (left.driverModule ?? "") === (right.driverModule ?? "")) {
+        if (
+          left.propertyKey === right.propertyKey &&
+          (left.driverModule ?? "") === (right.driverModule ?? "")
+        ) {
           continue;
         }
         collisions.push({
-          left: { propertyKey: left.propertyKey, driverModule: left.driverModule },
-          right: { propertyKey: right.propertyKey, driverModule: right.driverModule },
+          left: {
+            propertyKey: left.propertyKey,
+            driverModule: left.driverModule,
+          },
+          right: {
+            propertyKey: right.propertyKey,
+            driverModule: right.driverModule,
+          },
           legacyParameterSpecId,
           losslessLeftId: buildManualSpecIds(left).parameterSpecId,
           losslessRightId: buildManualSpecIds(right).parameterSpecId,
@@ -249,7 +291,9 @@ export function findLegacyManualSpecIdentityCollisions(
 }
 
 /** Stable fingerprint for audit reports (not an entity id). */
-export function collisionReportFingerprint(collision: ManualSpecIdentityCollision): string {
+export function collisionReportFingerprint(
+  collision: ManualSpecIdentityCollision,
+): string {
   return createHash("sha256")
     .update(
       [

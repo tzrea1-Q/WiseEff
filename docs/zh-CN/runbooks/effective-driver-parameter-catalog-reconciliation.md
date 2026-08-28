@@ -7,12 +7,16 @@ Issue #649 的维护窗口流程。修复组织 draft / 平台 active 成对行�
 
 ## 前置条件与停止规则
 
-- 随应用部署迁移 `0117_effective_driver_parameter_catalog.sql`、
-  `0118_effective_driver_parameter_catalog_contract.sql`、
-  `0119_effective_driver_parameter_catalog_finalize.sql`，随后部署
-  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql` 与
-  `0121_classify_nodename_driver_subjects.sql`。后两个迁移保留旧暂存兼容边界，并把仅有
-  nodename 的主体/模块修正为 `NodeTypeDefinition`；不会让未链接定义进入 effective 视图。
+- 保持既有的 `0117_user_account_deletion.sql` 原样不变，随后随应用部署 Issue #649 迁移
+  `0118_effective_driver_parameter_catalog.sql`、
+  `0119_effective_driver_parameter_catalog_contract.sql`、
+  `0120_effective_driver_parameter_catalog_finalize.sql`，随后部署
+  `0121_effective_driver_parameter_catalog_legacy_write_compat.sql`、
+  `0122_classify_nodename_driver_subjects.sql` 与
+  `0123_harden_node_type_identity.sql` 及
+  `0124_harden_driver_identity_owner.sql`。后四个迁移保留旧暂存兼容边界，把仅有 nodename
+  的主体/模块修正为 `NodeTypeDefinition`，并拒绝空的 node-type taxonomy 名称；不会让未链接定义进入
+  effective 视图，并阻断跨租户身份写入。
 - 先做 PostgreSQL 与对象存储快照；验证及上线观察期间保持写冻结。
 - 任意命令非零、报告存在 blocker 或验证失败都立即停止。不得删除脏行、修改已应用迁移，
   也不得在数据库已变化后重试 apply。
@@ -26,7 +30,8 @@ npm run parameter-definitions:reconcile -- --dry-run --organization-id '<org-id>
 ```
 
 运行/条目表是持久化证据。检查 blocker、候选主体、放置模块、形状兼容性和 binding 实测模块证据。
-未知证据、多 platform active 候选、缺少驱动证据、curated 身份变化、多 active 版本、驱动放置歧义和身份冲突都必须人工审核；不会自动去重。
+未知证据、多 platform active 候选、缺少驱动证据、curated 身份变化、多 active 版本、驱动放置歧义、空的
+node-type taxonomy 名称，以及身份冲突（包括重复的 node-type source/property 身份）都必须人工审核；不会自动去重。
 
 Dry-run 审批后执行：
 

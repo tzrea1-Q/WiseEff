@@ -82,17 +82,24 @@ function driver(input: {
 }
 
 /** In-memory multi-tier registry — no on-disk linux YAML required. */
-function syntheticRegistry(drivers: DriverSchema[], properties: PropertySpec[]): SchemaRegistry {
+function syntheticRegistry(
+  drivers: DriverSchema[],
+  properties: PropertySpec[],
+): SchemaRegistry {
   return {
     catalog: emptyCatalog,
     drivers,
     properties,
-    propertiesById: new Map(properties.map((property) => [property.id, property])),
+    propertiesById: new Map(
+      properties.map((property) => [property.id, property]),
+    ),
     driversById: new Map(drivers.map((entry) => [entry.id, entry])),
   };
 }
 
-function crossTierNode(properties: MatchableNode["properties"] = {}): MatchableNode {
+function crossTierNode(
+  properties: MatchableNode["properties"] = {},
+): MatchableNode {
   return {
     nodeLocator: "/test/cross-tier",
     name: "cross-tier",
@@ -102,24 +109,38 @@ function crossTierNode(properties: MatchableNode["properties"] = {}): MatchableN
 }
 
 function nodeFromResolved(pathSuffix: string): MatchableNode {
-  const overlay = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
+  const overlay = readFileSync(
+    join(seedDir, "aurora-power-overlay.dts"),
+    "utf8",
+  );
   const resolved = resolveDts(overlay);
   const found = resolved.nodes.find((node) => node.nodePath === pathSuffix);
   if (!found) throw new Error(`missing node ${pathSuffix}`);
   return {
-    nodeLocator: found.nodePath.startsWith("/") ? found.nodePath : `/${found.nodePath}`,
+    nodeLocator: found.nodePath.startsWith("/")
+      ? found.nodePath
+      : `/${found.nodePath}`,
     name: found.name,
     unitAddress: found.unitAddress,
     compatible: found.compatible ? [found.compatible] : [],
     properties: Object.fromEntries(
-      found.properties.map((property) => [property.name, { rawText: property.rawText }]),
+      found.properties.map((property) => [
+        property.name,
+        { rawText: property.rawText },
+      ]),
     ),
   };
 }
 
 function effectiveOverlayNodes(): MatchableNode[] {
-  const base = readFileSync(join(root, "server/modules/dts/fixtures/synthetic-power-base.dts"), "utf8");
-  const overlay = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
+  const base = readFileSync(
+    join(root, "server/modules/dts/fixtures/synthetic-power-base.dts"),
+    "utf8",
+  );
+  const overlay = readFileSync(
+    join(seedDir, "aurora-power-overlay.dts"),
+    "utf8",
+  );
   const result = resolveDtsConfigSet({
     entryFile: "base.dts",
     includeSearchPaths: [],
@@ -135,7 +156,9 @@ function effectiveOverlayNodes(): MatchableNode[] {
     const compatibleProp = node.properties.get("compatible");
     const compatible =
       compatibleProp && !compatibleProp.deleted
-        ? [...compatibleProp.rawText.matchAll(/"([^"]+)"/g)].map((match) => match[1])
+        ? [...compatibleProp.rawText.matchAll(/"([^"]+)"/g)].map(
+            (match) => match[1],
+          )
         : [];
     const properties: MatchableNode["properties"] = {};
     for (const [key, property] of node.properties) {
@@ -163,7 +186,10 @@ describe("schema registry matcher", () => {
     const sc8562Node = nodeFromResolved("amba/i2c@FDF5E000/sc8562@6E");
     expect(matchDriver(sc8562Node, registry())).toEqual({
       kind: "matched",
-      value: expect.objectContaining({ compatible: "sc8562", source: "vendor" }),
+      value: expect.objectContaining({
+        compatible: "sc8562",
+        source: "vendor",
+      }),
       evidence: expect.arrayContaining(["compatible=sc8562"]),
     });
   });
@@ -177,6 +203,48 @@ describe("schema registry matcher", () => {
       properties: {},
     };
     expect(matchDriver(ambiguousNode, reg).kind).toBe("ambiguous");
+  });
+
+  it("keeps an ambiguous driver review-only even when only one candidate defines the property", () => {
+    const onlyA = prop({
+      id: "prop:ambiguous:a-only",
+      driverSchemaId: "driver:ambiguous:a",
+      propertyKey: "only_a",
+      source: "linux",
+    });
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:ambiguous:a",
+          compatible: "wiseeff,ambiguous-property",
+          source: "linux",
+          propertyIds: [onlyA.id],
+        }),
+        driver({
+          id: "driver:ambiguous:b",
+          compatible: "wiseeff,ambiguous-property",
+          source: "linux",
+          propertyIds: [],
+        }),
+      ],
+      [onlyA],
+    );
+    const decision = matchProperty(
+      {
+        nodeLocator: "/test/ambiguous-property",
+        name: "ambiguous-property",
+        compatible: ["wiseeff,ambiguous-property"],
+        properties: { only_a: { rawText: "<1>" } },
+      },
+      "only_a",
+      reg,
+    );
+    expect(decision.kind).toBe("ambiguous");
+    expect(decision).toMatchObject({
+      evidence: expect.arrayContaining([
+        "property-only-driver-disambiguation-insufficient",
+      ]),
+    });
   });
 
   it("returns unmatched for unknown compatible values", () => {
@@ -263,8 +331,16 @@ describe("schema registry matcher", () => {
     expect(gpioSpecs).toHaveLength(2);
     expect(new Set(gpioSpecs).size).toBe(2);
 
-    const sc8562 = matchProperty(nodeFromResolved("amba/i2c@FDF5E000/sc8562@6E"), "gpio_int", reg);
-    const mt5788 = matchProperty(nodeFromResolved("amba/i2c@FF24E000/mt5788@2B"), "gpio_int", reg);
+    const sc8562 = matchProperty(
+      nodeFromResolved("amba/i2c@FDF5E000/sc8562@6E"),
+      "gpio_int",
+      reg,
+    );
+    const mt5788 = matchProperty(
+      nodeFromResolved("amba/i2c@FF24E000/mt5788@2B"),
+      "gpio_int",
+      reg,
+    );
     expect(sc8562.kind).toBe("matched");
     expect(mt5788.kind).toBe("matched");
     if (sc8562.kind === "matched" && mt5788.kind === "matched") {
@@ -308,7 +384,11 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
       ],
       [linuxProp, vendorProp],
     );
-    const decision = matchProperty(crossTierNode({ shared: { rawText: "<1>" } }), "shared", reg);
+    const decision = matchProperty(
+      crossTierNode({ shared: { rawText: "<1>" } }),
+      "shared",
+      reg,
+    );
     expect(decision).toMatchObject({
       kind: "matched",
       value: expect.objectContaining({ id: vendorProp.id, source: "vendor" }),
@@ -389,7 +469,10 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
     );
     expect(matchDriver(crossTierNode(), reg)).toMatchObject({
       kind: "matched",
-      value: expect.objectContaining({ id: "driver:vendor:cross", source: "vendor" }),
+      value: expect.objectContaining({
+        id: "driver:vendor:cross",
+        source: "vendor",
+      }),
     });
   });
 
@@ -434,7 +517,10 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
     const node = crossTierNode({ shared: { rawText: "<1>" } });
     expect(matchDriver(node, reg)).toMatchObject({
       kind: "matched",
-      value: expect.objectContaining({ id: "driver:vendor:cross", source: "vendor" }),
+      value: expect.objectContaining({
+        id: "driver:vendor:cross",
+        source: "vendor",
+      }),
     });
     expect(matchProperty(node, "shared", reg)).toMatchObject({
       kind: "matched",
@@ -476,7 +562,10 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
       nodeLocator: "/test/ambiguous",
       name: "ambiguous",
       compatible: ["wiseeff,test-ambiguous"],
-      properties: { shared_prop: { rawText: "<1>" }, mystery: { rawText: "<0>" } },
+      properties: {
+        shared_prop: { rawText: "<1>" },
+        mystery: { rawText: "<0>" },
+      },
     };
     const unmatchedOnly: MatchableNode = {
       nodeLocator: "/test/unknown",
@@ -488,9 +577,14 @@ describe("cross-tier schema precedence (synthetic registry)", () => {
     const drafts = collectOpenReviewTasks([ambiguousNode, unmatchedOnly], reg);
     expect(drafts.length).toBeGreaterThanOrEqual(2);
     expect(drafts.every((draft) => draft.status === "open")).toBe(true);
-    expect(drafts.some((draft) => draft.candidateSchemas.length > 1)).toBe(true);
+    expect(drafts.some((draft) => draft.candidateSchemas.length > 1)).toBe(
+      true,
+    );
     expect(
-      drafts.some((draft) => draft.candidateSchemas.length === 0 && draft.sourceEvidence.inferred),
+      drafts.some(
+        (draft) =>
+          draft.candidateSchemas.length === 0 && draft.sourceEvidence.inferred,
+      ),
     ).toBe(true);
 
     const inserted: unknown[] = [];

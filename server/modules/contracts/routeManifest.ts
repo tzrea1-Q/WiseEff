@@ -102,6 +102,13 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   {
+    id: "users.delete",
+    method: "DELETE",
+    path: "/api/v1/users/:userId",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
     id: "users.replaceRoles",
     method: "PUT",
     path: "/api/v1/users/:userId/roles",

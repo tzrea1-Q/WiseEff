@@ -1,6 +1,6 @@
 -- Issue #649: finish graph backfill and close the one-active-version boundary.
 --
--- 0117/0118 are the expand and identity contract migrations. This migration
+-- 0118/0119 are the expand and identity contract migrations. This migration
 -- is intentionally separate so applied migration files stay immutable while
 -- operators run the audited reconciliation job against already-dirty data.
 

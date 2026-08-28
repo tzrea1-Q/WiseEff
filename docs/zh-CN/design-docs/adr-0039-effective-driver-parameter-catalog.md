@@ -29,13 +29,17 @@ draft。
    `view=governance` 才用于修复和审计。
 4. ingest 只有在完整身份/放置元组通过检查后才能识别并创建 binding。未知或歧义节点/属性
    仍保留 occurrence 与审核证据，但不创建已识别规格、binding 或生效 occurrence。
-5. `0117` 是加法式 expand：回填主体链接和组织放置，不删除脏数据。`0118` 守住新的 DTS
-   active 写入，`0119` 只做安全图收尾并为未来写入增加单一 active 版本触发器；现存冲突仍交给
-   经审计的 `parameter-definitions:reconcile` 分类和修复。`0120` 是旧版 active DTS
-   表面写入的兼容边界：允许旧的未链接暂存行，但仍对已链接行失败关闭。`0121` 修正此前仅有 nodename
-   的错误分类，将 `nodetype:*` 主体/模块归入 `NodeTypeDefinition` taxonomy；保留 id 与历史，并要求组织的
-   node-type 模块存在后才能进入 effective。该命令支持 dry-run/apply，持久化运行/条目证据，按组织事务处理，
-   保留历史版本/修订，并记录可信 system 审计。独立的 `parameter-definitions:check` 是最终只读门禁。
+5. 既有的 `0117_user_account_deletion.sql` 保持原样。Issue #649 的 `0118` 是加法式
+   expand：回填主体链接和组织放置，不删除脏数据。`0119` 守住新的 DTS active 写入，
+   `0120` 只做安全图收尾并为未来写入增加单一 active 版本触发器；现存冲突仍交给经审计的
+   `parameter-definitions:reconcile` 分类和修复。`0121` 是旧版 active DTS 表面写入的兼容边界：
+   允许旧的未链接暂存行，但仍对已链接行失败关闭。`0122` 修正此前仅有 nodename 的错误分类，
+   将 `nodetype:*` 主体/模块归入 `NodeTypeDefinition` taxonomy；`0123` 从可信主体元数据修复空
+   taxonomy 名称，无法修复时失败关闭，并在此后强制名称非空；`0124` 关闭归属范围、主体/schema 与 DTS
+   属性键不一致的写入。上述迁移都保留 id 与历史，并要求组织的 node-type
+   模块存在后才能进入 effective；验证门禁同时阻断重复的 active node-type source/property 身份。该命令支持
+   dry-run/apply，持久化运行/条目证据，按组织事务处理，保留历史版本/修订，并记录可信 system 审计。独立的
+   `parameter-definitions:check` 是最终只读门禁。
 
 ## 影响
 

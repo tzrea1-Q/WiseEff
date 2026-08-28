@@ -1,11 +1,17 @@
 import { ApiError } from "../../shared/http/errors";
 import type { Queryable } from "../../shared/database/client";
-import { createOrReuseBinding, type ProjectParameterBinding } from "../parameter-topology/bindingService";
+import {
+  createOrReuseBinding,
+  type ProjectParameterBinding,
+} from "../parameter-topology/bindingService";
 import {
   getDriverRegistrationPlacement,
   getNodeTypeDefinitionPlacement,
 } from "../parameter-modules/driverRegistrationPlacement";
-import { selectEffectiveDefinition, type EffectiveDefinitionCandidate } from "./effectiveDefinition";
+import {
+  selectEffectiveDefinition,
+  type EffectiveDefinitionCandidate,
+} from "./effectiveDefinition";
 
 export type EffectiveDefinition = {
   parameterSpecId: string;
@@ -26,7 +32,8 @@ type CandidateRow = {
   parameter_spec_version_id: string | null;
   organization_id: string | null;
   attribution_subject_id: string | null;
-  attribution_subject_kind: "driver-registration" | "node-type-definition" | null;
+  attribution_subject_kind:
+    "driver-registration" | "node-type-definition" | null;
   property_key: string | null;
   source_kind: "dts" | "json" | "manual";
   definition_lifecycle: "draft" | "active" | "deprecated";
@@ -98,6 +105,7 @@ function candidateQuery(input: {
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null then true
           when asub.subject_kind = 'node-type-definition'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and node_type_module.id is not null
             and exists (
               select 1
@@ -109,6 +117,7 @@ function candidateQuery(input: {
               or (
                 dps.driver_schema_id is not null
                 and driver_schema.attribution_subject_id = ps.attribution_subject_id
+                and (driver_schema.organization_id is null or driver_schema.organization_id = ps.organization_id)
                 and exists (
                   select 1
                   from driver_schema_versions active_schema_version
@@ -120,6 +129,7 @@ function candidateQuery(input: {
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is not null
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and dr.attribution_subject_id is not null
             and drp.id is not null
             and dgm.id is not null
@@ -132,7 +142,9 @@ function candidateQuery(input: {
             ) then true
           when dps.driver_schema_id is not null
             and asub.subject_kind = 'driver-registration'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and driver_schema.attribution_subject_id is not distinct from ps.attribution_subject_id
+            and (driver_schema.organization_id is null or driver_schema.organization_id = ps.organization_id)
             and exists (
               select 1
               from driver_schema_versions active_schema_version
@@ -191,6 +203,7 @@ function candidateQuery(input: {
           select 1 from driver_schemas driver_root
           where driver_root.parameter_spec_id = ps.id
         )
+        and (ps.source_kind <> 'dts' or ps.property_key is not distinct from dps.property_key)
         ${identityPredicate}
         and ps.source_kind in ('dts', 'json', 'manual')
       order by ps.id
@@ -206,34 +219,52 @@ function candidateQuery(input: {
  */
 export async function resolveEffectiveDefinition(
   db: Queryable,
-  input: { organizationId: string; propertyKey: string; driverIdentityKey?: string },
+  input: {
+    organizationId: string;
+    propertyKey: string;
+    driverIdentityKey?: string;
+  },
 ): Promise<EffectiveDefinition | null> {
   const query = candidateQuery(input);
   const result = await db.query<CandidateRow>(query.text, query.values);
   const candidates = result.rows
-    .filter((row) => !input.driverIdentityKey || row.driver_identity_key === input.driverIdentityKey)
+    .filter(
+      (row) =>
+        !input.driverIdentityKey ||
+        row.driver_identity_key === input.driverIdentityKey,
+    )
     .map(toCandidate);
   const resolution = selectEffectiveDefinition(candidates);
   if (resolution.kind === "none") return null;
   if (resolution.kind === "needs-governance") {
-    throw new ApiError("CONFLICT", `The driver property has no unique effective definition (${resolution.reason}).`, {
-      reason: resolution.reason,
-      propertyKey: input.propertyKey,
-      candidates: resolution.candidates.map((candidate) => ({
-        id: candidate.id,
-        organizationId: candidate.organizationId,
-        subject: candidate.attributionSubjectId,
-        placementReady: candidate.placementReady,
-      })),
-    });
+    throw new ApiError(
+      "CONFLICT",
+      `The driver property has no unique effective definition (${resolution.reason}).`,
+      {
+        reason: resolution.reason,
+        propertyKey: input.propertyKey,
+        candidates: resolution.candidates.map((candidate) => ({
+          id: candidate.id,
+          organizationId: candidate.organizationId,
+          subject: candidate.attributionSubjectId,
+          placementReady: candidate.placementReady,
+        })),
+      },
+    );
   }
   const winner = resolution.winner;
-  const winnerRow = result.rows.find((row) => row.parameter_spec_id === winner.id);
+  const winnerRow = result.rows.find(
+    (row) => row.parameter_spec_id === winner.id,
+  );
   if (!winnerRow?.attribution_subject_id) {
-    throw new ApiError("CONFLICT", "An effective driver property is missing its canonical subject.", {
-      parameterSpecId: winner.id,
-      propertyKey: input.propertyKey,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "An effective driver property is missing its canonical subject.",
+      {
+        parameterSpecId: winner.id,
+        propertyKey: input.propertyKey,
+      },
+    );
   }
   const placement =
     winnerRow.attribution_subject_kind === "node-type-definition"
@@ -247,11 +278,15 @@ export async function resolveEffectiveDefinition(
           attributionSubjectId: winnerRow.attribution_subject_id,
         });
   if (!placement) {
-    throw new ApiError("CONFLICT", "An effective driver property is missing its organization placement.", {
-      parameterSpecId: winner.id,
-      attributionSubjectId: winnerRow.attribution_subject_id,
-      propertyKey: input.propertyKey,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "An effective driver property is missing its organization placement.",
+      {
+        parameterSpecId: winner.id,
+        attributionSubjectId: winnerRow.attribution_subject_id,
+        propertyKey: input.propertyKey,
+      },
+    );
   }
   return {
     parameterSpecId: winner.id,
@@ -262,9 +297,14 @@ export async function resolveEffectiveDefinition(
     propertyKey: winner.propertyKey,
     sourceKind: winner.sourceKind,
     declaredPlacement: {
-      moduleId: "driverGroupModuleId" in placement ? placement.driverGroupModuleId : placement.moduleId,
+      moduleId:
+        "driverGroupModuleId" in placement
+          ? placement.driverGroupModuleId
+          : placement.moduleId,
       categoryId:
-        "driverGroupModuleId" in placement ? placement.defaultBusinessCategoryModuleId : placement.categoryId,
+        "driverGroupModuleId" in placement
+          ? placement.defaultBusinessCategoryModuleId
+          : placement.categoryId,
     },
   };
 }
@@ -280,7 +320,10 @@ export async function requireRecognizedDefinitionForBinding(
   },
 ): Promise<EffectiveDefinition> {
   const rowResult = await db.query<CandidateRow>(
-    candidateQuery({ organizationId: input.organizationId, parameterSpecId: input.parameterSpecId }).text,
+    candidateQuery({
+      organizationId: input.organizationId,
+      parameterSpecId: input.parameterSpecId,
+    }).text,
     [input.organizationId, input.parameterSpecId],
   );
   const row = rowResult.rows[0];
@@ -292,10 +335,14 @@ export async function requireRecognizedDefinitionForBinding(
     row.version_lifecycle !== "active" ||
     Number(row.active_version_count ?? 0) !== 1
   ) {
-    throw new ApiError("CONFLICT", "A recognized binding must target the active current definition version.", {
-      parameterSpecId: input.parameterSpecId,
-      parameterSpecVersionId: input.parameterSpecVersionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "A recognized binding must target the active current definition version.",
+      {
+        parameterSpecId: input.parameterSpecId,
+        parameterSpecVersionId: input.parameterSpecVersionId,
+      },
+    );
   }
   // NodeTypeDefinition-only schemas and legacy/manual policy specs are
   // intentionally outside the driver-only placement invariant (ADR-0013).
@@ -312,9 +359,13 @@ export async function requireRecognizedDefinitionForBinding(
   ) {
     if (row.attribution_subject_kind === "node-type-definition") {
       if (!row.attribution_subject_id) {
-        throw new ApiError("CONFLICT", "A node-type definition is missing its canonical subject.", {
-          parameterSpecId: input.parameterSpecId,
-        });
+        throw new ApiError(
+          "CONFLICT",
+          "A node-type definition is missing its canonical subject.",
+          {
+            parameterSpecId: input.parameterSpecId,
+          },
+        );
       }
       // A DTS-backed node type is still a driver definition. Its taxonomy
       // module is necessary but not sufficient: the property must resolve
@@ -327,17 +378,25 @@ export async function requireRecognizedDefinitionForBinding(
           driverIdentityKey: row.driver_identity_key,
         });
         if (!effective || effective.parameterSpecId !== input.parameterSpecId) {
-          throw new ApiError("CONFLICT", "The requested node-type definition is not effective and active.", {
-            parameterSpecId: input.parameterSpecId,
-            propertyKey: row.property_key,
-          });
+          throw new ApiError(
+            "CONFLICT",
+            "The requested node-type definition is not effective and active.",
+            {
+              parameterSpecId: input.parameterSpecId,
+              propertyKey: row.property_key,
+            },
+          );
         }
         if (input.moduleId !== effective.declaredPlacement.moduleId) {
-          throw new ApiError("CONFLICT", "A recognized node-type binding must use its declared module.", {
-            parameterSpecId: input.parameterSpecId,
-            moduleId: input.moduleId,
-            declaredModuleId: effective.declaredPlacement.moduleId,
-          });
+          throw new ApiError(
+            "CONFLICT",
+            "A recognized node-type binding must use its declared module.",
+            {
+              parameterSpecId: input.parameterSpecId,
+              moduleId: input.moduleId,
+              declaredModuleId: effective.declaredPlacement.moduleId,
+            },
+          );
         }
         return effective;
       }
@@ -347,11 +406,15 @@ export async function requireRecognizedDefinitionForBinding(
         sourceKey: row.driver_identity_key,
       });
       if (!placement) {
-        throw new ApiError("CONFLICT", "A node-type definition is missing its organization module placement.", {
-          parameterSpecId: input.parameterSpecId,
-          attributionSubjectId: row.attribution_subject_id,
-          propertyKey: row.property_key,
-        });
+        throw new ApiError(
+          "CONFLICT",
+          "A node-type definition is missing its organization module placement.",
+          {
+            parameterSpecId: input.parameterSpecId,
+            attributionSubjectId: row.attribution_subject_id,
+            propertyKey: row.property_key,
+          },
+        );
       }
       if (input.moduleId !== placement.moduleId) {
         const moduleResult = await db.query<{ id: string }>(
@@ -365,11 +428,15 @@ export async function requireRecognizedDefinitionForBinding(
           [input.moduleId, input.organizationId, row.driver_identity_key],
         );
         if (!moduleResult.rows[0]) {
-          throw new ApiError("CONFLICT", "A recognized node-type binding must use its declared module.", {
-            parameterSpecId: input.parameterSpecId,
-            moduleId: input.moduleId,
-            declaredModuleId: placement.moduleId,
-          });
+          throw new ApiError(
+            "CONFLICT",
+            "A recognized node-type binding must use its declared module.",
+            {
+              parameterSpecId: input.parameterSpecId,
+              moduleId: input.moduleId,
+              declaredModuleId: placement.moduleId,
+            },
+          );
         }
       }
       return {
@@ -389,7 +456,8 @@ export async function requireRecognizedDefinitionForBinding(
     return {
       parameterSpecId: input.parameterSpecId,
       parameterSpecVersionId: input.parameterSpecVersionId,
-      attributionSubjectId: row.attribution_subject_id ?? `non-driver:${input.parameterSpecId}`,
+      attributionSubjectId:
+        row.attribution_subject_id ?? `non-driver:${input.parameterSpecId}`,
       driverSchemaId: row.driver_schema_id,
       organizationId: row.organization_id,
       propertyKey: row.property_key ?? "",
@@ -403,10 +471,14 @@ export async function requireRecognizedDefinitionForBinding(
     driverIdentityKey: row.driver_identity_key,
   });
   if (!effective || effective.parameterSpecId !== input.parameterSpecId) {
-    throw new ApiError("CONFLICT", "The requested definition is not the effective active driver property.", {
-      parameterSpecId: input.parameterSpecId,
-      propertyKey: row.property_key,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "The requested definition is not the effective active driver property.",
+      {
+        parameterSpecId: input.parameterSpecId,
+        propertyKey: row.property_key,
+      },
+    );
   }
   const moduleResult = await db.query<{
     organization_id: string;
@@ -421,17 +493,23 @@ export async function requireRecognizedDefinitionForBinding(
     !module ||
     module.organization_id !== input.organizationId ||
     (row.source_kind === "dts" && module.kind !== "driver-group") ||
-    (row.source_kind !== "dts" && module.kind !== "driver-group" && module.kind !== "node-type") ||
+    (row.source_kind !== "dts" &&
+      module.kind !== "driver-group" &&
+      module.kind !== "node-type") ||
     module.attribution_subject_id !== effective.attributionSubjectId
   ) {
-    throw new ApiError("CONFLICT", "A recognized binding module must belong to the effective driver subject.", {
-      parameterSpecId: input.parameterSpecId,
-      moduleId: input.moduleId,
-      attributionSubjectId: effective.attributionSubjectId,
-      moduleOrganizationId: module?.organization_id ?? null,
-      moduleKind: module?.kind ?? null,
-      moduleAttributionSubjectId: module?.attribution_subject_id ?? null,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "A recognized binding module must belong to the effective driver subject.",
+      {
+        parameterSpecId: input.parameterSpecId,
+        moduleId: input.moduleId,
+        attributionSubjectId: effective.attributionSubjectId,
+        moduleOrganizationId: module?.organization_id ?? null,
+        moduleKind: module?.kind ?? null,
+        moduleAttributionSubjectId: module?.attribution_subject_id ?? null,
+      },
+    );
   }
   return effective;
 }
@@ -447,7 +525,10 @@ export async function createRecognizedBinding(
     parameterSpecVersionId: string;
     moduleId: string;
   },
-): Promise<{ binding: ProjectParameterBinding; definition: EffectiveDefinition }> {
+): Promise<{
+  binding: ProjectParameterBinding;
+  definition: EffectiveDefinition;
+}> {
   const definition = await requireRecognizedDefinitionForBinding(db, input);
   const binding = await createOrReuseBinding(db, {
     organizationId: input.organizationId,

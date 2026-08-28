@@ -168,6 +168,41 @@ export async function getUserById(db: Queryable, input: { organizationId: string
   return result.rows[0] ? toDto(result.rows[0]) : null;
 }
 
+export async function lockUserById(db: Queryable, input: { organizationId: string; userId: string }) {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from users
+    where organization_id = $1 and id = $2
+    for update
+    `,
+    [input.organizationId, input.userId]
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+export async function deleteUserById(
+  db: Queryable,
+  input: { organizationId: string; userId: string; allowPlatformAdmin: boolean }
+) {
+  const result = await db.query(
+    `
+    delete from users
+    where organization_id = $1 and id = $2
+      and (
+        $3::boolean
+        or not exists (
+          select 1
+          from user_role_bindings
+          where user_id = users.id and role_id = 'platform-admin'
+        )
+      )
+    `,
+    [input.organizationId, input.userId, input.allowPlatformAdmin]
+  );
+  return result.rowCount;
+}
+
 export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string }) {
   const result = await db.query<UserGovernanceRow>(
     `

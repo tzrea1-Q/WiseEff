@@ -47,7 +47,9 @@ function toDto(row: ReviewTaskRow): PersistedSpecReviewTask {
     organizationId: row.organization_id,
     parameterSpecId: row.parameter_spec_id ?? undefined,
     sourceEvidence: (row.source_evidence ?? {}) as Record<string, unknown>,
-    candidateSchemas: Array.isArray(row.candidate_schemas) ? row.candidate_schemas : [],
+    candidateSchemas: Array.isArray(row.candidate_schemas)
+      ? row.candidate_schemas
+      : [],
     projectCount: Number(row.project_count),
     status: row.status,
     reviewerUserId: row.reviewer_user_id ?? undefined,
@@ -68,15 +70,19 @@ export async function insertSpecReviewTask(
   const evidence = input.draft.sourceEvidence ?? {};
   const projectId =
     input.draft.projectId ??
-    (typeof evidence.projectId === "string" && evidence.projectId.trim() ? evidence.projectId : null);
+    (typeof evidence.projectId === "string" && evidence.projectId.trim()
+      ? evidence.projectId
+      : null);
   const configRevisionId =
     input.draft.configRevisionId ??
-    (typeof evidence.configRevisionId === "string" && evidence.configRevisionId.trim()
+    (typeof evidence.configRevisionId === "string" &&
+    evidence.configRevisionId.trim()
       ? evidence.configRevisionId
       : null);
   const propertyOccurrenceId =
     input.draft.propertyOccurrenceId ??
-    (typeof evidence.propertyOccurrenceId === "string" && evidence.propertyOccurrenceId.trim()
+    (typeof evidence.propertyOccurrenceId === "string" &&
+    evidence.propertyOccurrenceId.trim()
       ? evidence.propertyOccurrenceId
       : null);
   const blockerScope = input.draft.blockerScope ?? "revision";
@@ -152,7 +158,10 @@ export async function listSpecReviewTaskRows(
     limit: number;
     cursor?: SpecReviewTaskListCursor | null;
   },
-): Promise<{ items: PersistedSpecReviewTask[]; nextCursor: SpecReviewTaskListCursor | null }> {
+): Promise<{
+  items: PersistedSpecReviewTask[];
+  nextCursor: SpecReviewTaskListCursor | null;
+}> {
   const values: unknown[] = [input.organizationId];
   const conditions = ["organization_id = $1"];
 
@@ -200,7 +209,8 @@ export async function listSpecReviewTaskRows(
   const last = items[items.length - 1];
   return {
     items,
-    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
+    nextCursor:
+      hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
   };
 }
 
@@ -318,12 +328,19 @@ function toMatcherOverride(row: MatcherOverrideRow): PersistedMatcherOverride {
 
 /** Stable fingerprint for compatible[] used by matcher override lookup. */
 export function compatibleFingerprint(compatible: string[]): string {
-  return [...compatible].map((item) => item.trim()).filter(Boolean).sort().join("\0");
+  return [...compatible]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort()
+    .join("\0");
 }
 
 /** Normalized node locator fingerprint for matcher override scope. */
 export function nodeLocatorFingerprint(nodeLocator?: string | null): string {
-  const normalized = (nodeLocator ?? "").trim().replace(/\/+/g, "/").replace(/\/$/, "");
+  const normalized = (nodeLocator ?? "")
+    .trim()
+    .replace(/\/+/g, "/")
+    .replace(/\/$/, "");
   return normalized;
 }
 
@@ -340,7 +357,9 @@ function matcherOverrideIndexKey(override: PersistedMatcherOverride): string {
   return `${override.compatibleFingerprint}\0${nodeLocatorFingerprint(override.nodeLocator)}\0${override.propertyKey}`;
 }
 
-export function persistedMatcherOverrideLookupKey(override: PersistedMatcherOverride): string {
+export function persistedMatcherOverrideLookupKey(
+  override: PersistedMatcherOverride,
+): string {
   return matcherOverrideIndexKey(override);
 }
 
@@ -474,9 +493,13 @@ export async function assertProjectBelongsToOrganization(
     [input.organizationId, input.projectId],
   );
   if (!result.rows[0]) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId,
-    });
+    throw new ApiError(
+      "NOT_FOUND",
+      "Project was not found for this organization.",
+      {
+        projectId: input.projectId,
+      },
+    );
   }
 }
 
@@ -672,7 +695,9 @@ export async function countOpenSpecReviewTasksForRevision(
       `coalesce(t.source_evidence->>'propertyKey', '') <> all($${values.length}::text[])`,
     );
     // Match isStructuralPropertyKey: any `#…` cells key is structural.
-    extraConditions.push(`coalesce(t.source_evidence->>'propertyKey', '') not like '#%'`);
+    extraConditions.push(
+      `coalesce(t.source_evidence->>'propertyKey', '') not like '#%'`,
+    );
   }
 
   if (input.unmatchedOnly) {
@@ -715,7 +740,9 @@ export async function countOpenSpecReviewTasksForRevision(
 }
 
 /** Backfill scoped columns on legacy review tasks from source_evidence (idempotent, tenant-validated). */
-export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<number> {
+export async function backfillReviewTaskScopeColumns(
+  db: Queryable,
+): Promise<number> {
   const result = await db.query<{ count: string }>(
     `
     with scoped as (
@@ -851,7 +878,11 @@ export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<num
  */
 export async function countDismissedSpecBlockersForRevision(
   db: Queryable,
-  input: { organizationId: string; projectId: string; configRevisionId: string },
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+  },
 ): Promise<number> {
   const result = await db.query<{ count: string }>(
     `
@@ -953,7 +984,8 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
     driverModule: row.driver_module,
     lifecycle: row.lifecycle ?? "draft",
     currentVersionId: row.current_version_id,
-    currentVersion: row.current_version == null ? null : Number(row.current_version),
+    currentVersion:
+      row.current_version == null ? null : Number(row.current_version),
     valueShape: row.value_shape ?? null,
     compatiblePatterns: Array.isArray(row.compatible_patterns)
       ? row.compatible_patterns.map(String)
@@ -1053,6 +1085,7 @@ export async function listParameterSpecRows(
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is null then true
           when asub.subject_kind = 'node-type-definition'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and node_type_module.id is not null
             and exists (
               select 1
@@ -1064,6 +1097,7 @@ export async function listParameterSpecRows(
               or (
                 dps.driver_schema_id is not null
                 and ds.attribution_subject_id = ps.attribution_subject_id
+                and (ds.organization_id is null or ds.organization_id = ps.organization_id)
                 and exists (
                   select 1
                   from driver_schema_versions active_schema_version
@@ -1075,6 +1109,7 @@ export async function listParameterSpecRows(
           when ps.source_kind <> 'dts'
             and dps.driver_schema_id is null
             and ps.attribution_subject_id is not null
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and dr.attribution_subject_id is not null
             and drp.id is not null
             and dgm.id is not null
@@ -1087,7 +1122,9 @@ export async function listParameterSpecRows(
             ) then true
           when dps.driver_schema_id is not null
             and asub.subject_kind = 'driver-registration'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+            and (ds.organization_id is null or ds.organization_id = ps.organization_id)
             and exists (
               select 1
               from driver_schema_versions active_schema_version
@@ -1115,6 +1152,8 @@ export async function listParameterSpecRows(
           when drp.id is not null or node_type_module.id is not null then 'not-yet-observed'
           else 'unclassified'
         end as observation_state,
+        (ps.source_kind <> 'dts' or ps.property_key is not distinct from dps.property_key)
+          as property_key_consistent,
         psv.display_name
       from parameter_specs ps
       left join attribution_subjects asub on asub.id = ps.attribution_subject_id
@@ -1213,6 +1252,7 @@ export async function listParameterSpecRows(
               and org.lifecycle = 'active'
               and org.version_status = 'active'
               and org.version_lifecycle = 'active'
+              and org.property_key_consistent
             order by org.id
             limit 1
           )
@@ -1225,6 +1265,7 @@ export async function listParameterSpecRows(
               and platform.lifecycle = 'active'
               and platform.version_status = 'active'
               and platform.version_lifecycle = 'active'
+              and platform.property_key_consistent
             order by platform.id
             limit 1
           )
@@ -1240,7 +1281,10 @@ export async function listParameterSpecRows(
       from ranked c
       where c.effective_rank = 1
         and c.organization_active_count <= 1
-        and c.platform_active_count <= 1
+        and (
+          c.organization_id = $1
+          or (c.organization_id is null and c.organization_active_count = 0 and c.platform_active_count <= 1)
+        )
         and c.active_version_count = 1
         and not exists (
           select 1
@@ -1250,6 +1294,7 @@ export async function listParameterSpecRows(
             and organization_candidate.property_key = c.property_key
             and organization_candidate.active_version_count <> 1
         )
+        and c.property_key_consistent
         and c.placement_ready
         and $${values.length + 1} = 'effective'
       union all
@@ -1318,7 +1363,10 @@ export async function loadReferenceCountsBySpecIds(
   if (input.specIds.length === 0) {
     return new Map();
   }
-  const result = await db.query<{ parameter_spec_id: string; reference_count: string | number }>(
+  const result = await db.query<{
+    parameter_spec_id: string;
+    reference_count: string | number;
+  }>(
     `
     select parameter_spec_id, count(*)::int as reference_count
     from project_parameter_bindings
@@ -1329,7 +1377,10 @@ export async function loadReferenceCountsBySpecIds(
     [input.organizationId, input.specIds],
   );
   return new Map(
-    result.rows.map((row) => [row.parameter_spec_id, Number(row.reference_count)]),
+    result.rows.map((row) => [
+      row.parameter_spec_id,
+      Number(row.reference_count),
+    ]),
   );
 }
 
@@ -1435,7 +1486,10 @@ export async function findParameterSpecByIdentity(
     attributionSubjectId: string;
     propertyKey: string;
   },
-): Promise<{ parameterSpecId: string; parameterSpecVersionId: string | null } | null> {
+): Promise<{
+  parameterSpecId: string;
+  parameterSpecVersionId: string | null;
+} | null> {
   const result = await db.query<{ id: string; version_id: string | null }>(
     `
     select ps.id, psv.id as version_id
@@ -1514,12 +1568,14 @@ export async function getParameterSpecRow(
           and psv.version_status = 'active'
           and psv.lifecycle = 'active'
           and psv.active_version_count = 1
+          and (ps.source_kind <> 'dts' or ps.property_key is not distinct from dps.property_key)
           and (
             (ps.source_kind <> 'dts'
               and dps.driver_schema_id is null
               and ps.attribution_subject_id is null)
             or (
               asub.subject_kind = 'node-type-definition'
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
               and node_type_module.id is not null
               and exists (
                 select 1
@@ -1531,6 +1587,7 @@ export async function getParameterSpecRow(
                 or (
                   dps.driver_schema_id is not null
                   and property_ds.attribution_subject_id = ps.attribution_subject_id
+                  and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
                   and exists (
                     select 1
                     from driver_schema_versions active_schema_version
@@ -1544,6 +1601,7 @@ export async function getParameterSpecRow(
               ps.source_kind <> 'dts'
               and dps.driver_schema_id is null
               and ps.attribution_subject_id is not null
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
               and property_dr.attribution_subject_id is not null
               and drp.id is not null
               and dgm.id is not null
@@ -1558,7 +1616,9 @@ export async function getParameterSpecRow(
             or (
               dps.driver_schema_id is not null
               and asub.subject_kind = 'driver-registration'
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
               and property_ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+              and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
               and exists (
                 select 1
                 from driver_schema_versions active_schema_version
@@ -1675,7 +1735,9 @@ export async function getParameterSpecRow(
     schemaNamespace: row.schema_namespace,
     units: row.units,
     constraints:
-      row.constraints && typeof row.constraints === "object" && !Array.isArray(row.constraints)
+      row.constraints &&
+      typeof row.constraints === "object" &&
+      !Array.isArray(row.constraints)
         ? (row.constraints as Record<string, unknown>)
         : null,
     documentation: row.documentation,
@@ -1688,12 +1750,16 @@ function driverSchemaRootId(driverSchemaId: string): string {
   return driverSchemaId.replace(/:v\d+$/, "");
 }
 
-function organizationIdFromOverlayNamespace(schemaNamespace: string): string | null {
+function organizationIdFromOverlayNamespace(
+  schemaNamespace: string,
+): string | null {
   const match = /^org\/([^/]+)\//.exec(schemaNamespace);
   return match?.[1] ?? null;
 }
 
-function compatibleFromOverlayNamespace(schemaNamespace: string): string | null {
+function compatibleFromOverlayNamespace(
+  schemaNamespace: string,
+): string | null {
   const match = /^org\/[^/]+\/(.+)$/.exec(schemaNamespace);
   return match?.[1] ?? null;
 }
@@ -1713,7 +1779,9 @@ export async function upsertMatchedPropertySpec(
   attributionSubjectId: string | null;
 }> {
   const overlayOrgId =
-    property.source === "manual" ? organizationIdFromOverlayNamespace(property.schemaNamespace) : null;
+    property.source === "manual"
+      ? organizationIdFromOverlayNamespace(property.schemaNamespace)
+      : null;
   const overlayCompatible = overlayOrgId
     ? compatibleFromOverlayNamespace(property.schemaNamespace)
     : null;
@@ -1750,7 +1818,8 @@ export async function upsertMatchedPropertySpec(
     schemaOrganizationId = schemaRow.organization_id;
   }
 
-  let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null = null;
+  let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null =
+    null;
   let parameterSpecId = property.parameterSpecId;
   if (!attributionSubjectId && overlayOrgId && overlayCompatible) {
     attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
@@ -1768,14 +1837,19 @@ export async function upsertMatchedPropertySpec(
     if (existing) {
       parameterSpecId = existing.parameterSpecId;
     } else {
-      if (schemaOrganizationId === null && property.source !== "manual") {
-        // Keep the pinned schema's stable materialized id for platform rows.
-        // Organization overlays use subject-scoped surrogate ids below so an
-        // intentional local override cannot collide with the platform row.
-        parameterSpecId = property.parameterSpecId;
-      } else {
+      // A matched property is owned by its canonical subject, regardless of
+      // whether the source is a platform DTS schema or an organization
+      // overlay. CommonRefs clones carry the common document's parameterSpecId;
+      // only retain the loader id when it is already scoped to this concrete
+      // driver namespace. Otherwise mint the durable owner+subject+property
+      // surrogate so two concrete drivers cannot merge on a shared shape.
+      const driverScopedLoaderId = `pspec:${property.schemaNamespace}:${property.propertyKey}`;
+      const commonShapeId =
+        property.parameterSpecId.startsWith("pspec:common/") ||
+        property.id.startsWith("propspec:common/");
+      if (commonShapeId || parameterSpecId !== driverScopedLoaderId) {
         manualIds = buildSubjectScopedManualSpecIds({
-          organizationId: schemaOrganizationId ?? overlayOrgId ?? "platform",
+          organizationId: schemaOrganizationId,
           attributionSubjectId,
           propertyKey: property.propertyKey,
         });
@@ -1810,7 +1884,9 @@ export async function upsertMatchedPropertySpec(
     [parameterSpecId],
   );
   const dtsPropertySpecId =
-    existingDtsPropertySpec.rows[0]?.id ?? manualIds?.dtsPropertySpecId ?? `dps:${parameterSpecId}`;
+    existingDtsPropertySpec.rows[0]?.id ??
+    manualIds?.dtsPropertySpecId ??
+    `dps:${parameterSpecId}`;
 
   await db.query(
     `
@@ -1826,8 +1902,13 @@ export async function upsertMatchedPropertySpec(
       parameterSpecId,
       schemaOrganizationId,
       schemaOrganizationId ? "manual" : "dts",
-      manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
-      property.lifecycle === "deprecated" ? "deprecated" : property.lifecycle === "active" ? "active" : "draft",
+      manualIds?.specificationKey ??
+        `${property.schemaNamespace}/${property.propertyKey}`,
+      property.lifecycle === "deprecated"
+        ? "deprecated"
+        : property.lifecycle === "active"
+          ? "active"
+          : "draft",
       attributionSubjectId,
       property.propertyKey,
     ],
@@ -1858,8 +1939,12 @@ export async function upsertMatchedPropertySpec(
       property.propertyKey,
       property.documentation ?? property.propertyKey,
       JSON.stringify(property.valueShape),
-      property.schemaDefault === undefined ? null : JSON.stringify(property.schemaDefault),
-      property.exampleValue === undefined ? null : JSON.stringify(property.exampleValue),
+      property.schemaDefault === undefined
+        ? null
+        : JSON.stringify(property.schemaDefault),
+      property.exampleValue === undefined
+        ? null
+        : JSON.stringify(property.exampleValue),
       property.lifecycle,
       property.lifecycle === "deprecated" ? "superseded" : property.lifecycle,
       property.units ?? null,
@@ -1887,7 +1972,9 @@ export async function upsertMatchedPropertySpec(
       parameterSpecId,
       driverSchemaId,
       property.propertyKey,
-      manualIds?.schemaNamespace ?? property.schemaNamespace,
+      property.driverSchemaId
+        ? property.schemaNamespace
+        : (manualIds?.schemaNamespace ?? property.schemaNamespace),
       property.units ?? null,
       JSON.stringify(property.constraints ?? {}),
       property.documentation ?? null,
@@ -1908,18 +1995,27 @@ export async function upsertMatchedPropertySpec(
 export async function upsertMatchedDriverSchema(
   db: Queryable,
   driver: DriverSchema,
-): Promise<{ driverSchemaId: string; driverSchemaVersionId: string; attributionSubjectId: string }> {
+): Promise<{
+  driverSchemaId: string;
+  driverSchemaVersionId: string;
+  attributionSubjectId: string;
+}> {
   const rootId = driverSchemaRootId(driver.id);
   const overlayOrgId =
-    driver.source === "manual" ? organizationIdFromOverlayNamespace(driver.schemaNamespace) : null;
+    driver.source === "manual"
+      ? organizationIdFromOverlayNamespace(driver.schemaNamespace)
+      : null;
   const driverParamSpecId = `pspec:driver:${driver.schemaNamespace}`;
-  const driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
-  const attributionSubjectId = await ensureAttributionSubjectForDriverSchema(db, {
-    organizationId: overlayOrgId,
-    compatible: driver.compatiblePatterns[0] ?? null,
-    nodename: driver.nodenamePatterns[0] ?? null,
-    displayName: driver.compatible,
-  });
+  let driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
+  const attributionSubjectId = await ensureAttributionSubjectForDriverSchema(
+    db,
+    {
+      organizationId: overlayOrgId,
+      compatible: driver.compatiblePatterns[0] ?? null,
+      nodename: driver.nodenamePatterns[0] ?? null,
+      displayName: driver.compatible,
+    },
+  );
 
   await db.query(
     `
@@ -1937,24 +2033,93 @@ export async function upsertMatchedDriverSchema(
       attributionSubjectId,
     ],
   );
-  await db.query(
-    `
-    insert into parameter_spec_versions (
-      id, parameter_spec_id, version, display_name, description, value_shape,
-      schema_default, example_value, lifecycle
-    ) values ($1, $2, $3, $4, $5, $6::jsonb, null, null, $7)
-    on conflict (id) do nothing
-    `,
-    [
-      driverParamVersionId,
-      driverParamSpecId,
-      driver.version,
-      driver.compatible,
-      `Driver schema ${driver.schemaNamespace}`,
-      JSON.stringify({ kind: "unknown" }),
-      driver.lifecycle,
-    ],
+
+  // Migration 0120 enforces one active ParameterSpecVersion per definition.
+  // Schema registry sync is allowed to advance a driver from vN to vN+1, so
+  // serialize that transition and retire the previous active version before
+  // inserting/promoting the new one. Replaying the same version is idempotent;
+  // draft/deprecated syncs never demote an already active version.
+  await db.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+    driverParamSpecId,
+  ]);
+  const existingVersion = await db.query<{
+    id: string;
+    version_status: string;
+    lifecycle: string;
+  }>(
+    `select id, version_status, lifecycle
+     from parameter_spec_versions
+     where parameter_spec_id = $1 and version = $2
+     limit 1`,
+    [driverParamSpecId, driver.version],
   );
+  const existingVersionRow = existingVersion.rows[0];
+  if (driver.lifecycle === "active") {
+    const sameVersionIsActive =
+      existingVersionRow?.version_status === "active" &&
+      existingVersionRow?.lifecycle === "active";
+    if (!sameVersionIsActive) {
+      await db.query(
+        `update parameter_spec_versions
+         set version_status = 'superseded', lifecycle = 'deprecated'
+         where parameter_spec_id = $1
+           and version_status = 'active'`,
+        [driverParamSpecId],
+      );
+    }
+  }
+
+  if (existingVersionRow) {
+    driverParamVersionId = existingVersionRow.id;
+    if (driver.lifecycle === "active") {
+      await db.query(
+        `update parameter_spec_versions
+         set display_name = $2,
+             description = $3,
+             value_shape = $4::jsonb,
+             lifecycle = 'active',
+             version_status = 'active'
+         where id = $1`,
+        [
+          existingVersionRow.id,
+          driver.compatible,
+          `Driver schema ${driver.schemaNamespace}`,
+          JSON.stringify({ kind: "unknown" }),
+        ],
+      );
+    }
+  } else {
+    await db.query(
+      `
+      insert into parameter_spec_versions (
+        id, parameter_spec_id, version, display_name, description, value_shape,
+        schema_default, example_value, lifecycle
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, null, null, $7)
+      on conflict (parameter_spec_id, version) do nothing
+      `,
+      [
+        driverParamVersionId,
+        driverParamSpecId,
+        driver.version,
+        driver.compatible,
+        `Driver schema ${driver.schemaNamespace}`,
+        JSON.stringify({ kind: "unknown" }),
+        driver.lifecycle,
+      ],
+    );
+  }
+  const persistedVersion = await db.query<{ id: string }>(
+    `select id from parameter_spec_versions where parameter_spec_id = $1 and version = $2 limit 1`,
+    [driverParamSpecId, driver.version],
+  );
+  if (!persistedVersion.rows[0]?.id) {
+    throw new ApiError(
+      "CONFLICT",
+      "Driver schema version could not be materialized.",
+      { driverSchemaId: rootId, version: driver.version },
+    );
+  }
+  driverParamVersionId = persistedVersion.rows[0].id;
   await db.query(
     `
     insert into driver_schemas (
@@ -1963,7 +2128,13 @@ export async function upsertMatchedDriverSchema(
     on conflict (id) do update set
       attribution_subject_id = coalesce(driver_schemas.attribution_subject_id, excluded.attribution_subject_id)
     `,
-    [rootId, driverParamSpecId, overlayOrgId, driver.schemaNamespace, attributionSubjectId],
+    [
+      rootId,
+      driverParamSpecId,
+      overlayOrgId,
+      driver.schemaNamespace,
+      attributionSubjectId,
+    ],
   );
   await db.query(
     `
@@ -1984,5 +2155,9 @@ export async function upsertMatchedDriverSchema(
     ],
   );
 
-  return { driverSchemaId: rootId, driverSchemaVersionId: driver.id, attributionSubjectId };
+  return {
+    driverSchemaId: rootId,
+    driverSchemaVersionId: driver.id,
+    attributionSubjectId,
+  };
 }

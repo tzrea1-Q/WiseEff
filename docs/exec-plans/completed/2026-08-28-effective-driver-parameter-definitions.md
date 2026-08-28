@@ -67,7 +67,7 @@ that preserves history and binding revision meaning.
 | Product specs | Reviewed; no change | `docs/product-specs/product-spec.md` — this repair tightens the existing parameter-governance contract and adds no new product workflow or scope. |
 | Architecture / domain / ADR | Update | `docs/design-docs/domain-model.md`, `docs/design-docs/api-contract.md`, new or amended `docs/adr/` decision. |
 | Quality / testing | Updated | `docs/design-docs/testing-strategy.md`; focused PostgreSQL seams and CLI gates are recorded below. `docs/developer/verification-matrix.md` receives the new commands. |
-| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document 0117→0121, snapshot, transaction, stop, and restore boundaries. |
+| Reliability / runbooks | Updated | `docs/RELIABILITY.md` and bilingual `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md` document the unchanged 0117 base migration, Issue #649 migrations 0118→0124, snapshot, transaction, stop, and restore boundaries. |
 | Security / governance | Updated | `docs/SECURITY.md` and Chinese companion document server-owned identity, trusted system audit, and fail-closed release checks; no separate `docs/security/` page needed. |
 | Frontend / design | Updated | `docs/FRONTEND.md` documents effective/governance API projection and server-owned DTO fields. No route, layout, styling, or interaction contract changed; browser requirement is recorded as data-projection coverage in the map. |
 | Generated artifacts | Updated | `docs/generated/db-schema.md` is regenerated from the migration set and checked with `npm run db:schema-doc:check`. |
@@ -94,7 +94,7 @@ affected acceptance requirement and operation IDs, or add them before completion
 ### Final verification evidence
 
 - A fresh PostgreSQL migration rehearsal applied all 119 migrations through
-  `0121_classify_nodename_driver_subjects.sql`; rerunning
+  `0124_harden_driver_identity_owner.sql`; rerunning
   `npm run db:migrate` on that rehearsal returned `Applied 0 migration(s): none`, confirming
   the recorded checksums are stable. `npm run db:schema-doc:check` reports the generated schema
   artifact current.

@@ -36,10 +36,17 @@ function driverMatchesNode(driver: DriverSchema, node: MatchableNode): boolean {
   return false;
 }
 
-function evidenceForDriver(driver: DriverSchema, node: MatchableNode): string[] {
+function evidenceForDriver(
+  driver: DriverSchema,
+  node: MatchableNode,
+): string[] {
   const evidence: string[] = [];
   for (const compatible of node.compatible) {
-    if (driver.compatiblePatterns.some((pattern) => patternMatches(pattern, compatible))) {
+    if (
+      driver.compatiblePatterns.some((pattern) =>
+        patternMatches(pattern, compatible),
+      )
+    ) {
       evidence.push(`compatible=${compatible}`);
     }
   }
@@ -55,7 +62,10 @@ function evidenceForDriver(driver: DriverSchema, node: MatchableNode): string[] 
   return evidence;
 }
 
-function matchingReleasableDrivers(node: MatchableNode, registry: SchemaRegistry): DriverSchema[] {
+function matchingReleasableDrivers(
+  node: MatchableNode,
+  registry: SchemaRegistry,
+): DriverSchema[] {
   return registry.drivers.filter(
     (driver) => isReleasableDriver(driver) && driverMatchesNode(driver, node),
   );
@@ -103,7 +113,12 @@ export function matchDriver(
   };
 
   // Same-tier multiplicity is always ambiguous.
-  for (const tier of ["linux", "vendor", "manualPlatform", "manualOrganization"] as const) {
+  for (const tier of [
+    "linux",
+    "vendor",
+    "manualPlatform",
+    "manualOrganization",
+  ] as const) {
     if (bySource[tier].length > 1) {
       return {
         kind: "ambiguous",
@@ -150,7 +165,10 @@ export function matchDriver(
   return {
     kind: "ambiguous",
     candidates,
-    evidence: [...evidenceBase, `candidates=${candidates.map((driver) => driver.id).join(",")}`],
+    evidence: [
+      ...evidenceBase,
+      `candidates=${candidates.map((driver) => driver.id).join(",")}`,
+    ],
   };
 }
 
@@ -172,7 +190,14 @@ function propertiesForDriver(
         // A common document is only a reusable shape. Once a concrete driver is
         // resolved, retain that driver context so the materializer can assign a
         // subject-scoped identity instead of emitting a subjectless definition.
-        fromCommon.push({ ...property, driverSchemaId: driver.id });
+        fromCommon.push({
+          ...property,
+          driverSchemaId: driver.id,
+          // A common document contributes shape only. Give the clone the
+          // concrete driver's namespace so materialization can distinguish
+          // two drivers that expose the same common property.
+          schemaNamespace: driver.schemaNamespace,
+        });
       }
     }
   }
@@ -203,17 +228,13 @@ export function matchProperty(
     const propertyCandidates: PropertySpec[] = [];
     for (const driver of driverDecision.candidates) {
       for (const property of propertiesForDriver(driver, registry)) {
-        if (property.propertyKey === propertyKey && isReleasableProperty(property)) {
+        if (
+          property.propertyKey === propertyKey &&
+          isReleasableProperty(property)
+        ) {
           propertyCandidates.push(property);
         }
       }
-    }
-    if (propertyCandidates.length === 1) {
-      return {
-        kind: "matched",
-        value: propertyCandidates[0],
-        evidence: [...driverDecision.evidence, `property=${propertyKey}`],
-      };
     }
     if (propertyCandidates.length > 1) {
       return {
@@ -222,16 +243,36 @@ export function matchProperty(
         evidence: [...driverDecision.evidence, `property=${propertyKey}`],
       };
     }
+    if (propertyCandidates.length === 1) {
+      // A property hit cannot disambiguate the driver itself. Keep the
+      // occurrence review-only until a human selects the canonical subject;
+      // otherwise an ambiguous node could create a recognized binding merely
+      // because one candidate happens to define this property.
+      return {
+        kind: "ambiguous",
+        candidates: propertyCandidates,
+        evidence: [
+          ...driverDecision.evidence,
+          `property=${propertyKey}`,
+          "property-only-driver-disambiguation-insufficient",
+        ],
+      };
+    }
     return {
       kind: "unmatched",
-      evidence: [...driverDecision.evidence, `property=${propertyKey}`, "no-property-on-candidates"],
+      evidence: [
+        ...driverDecision.evidence,
+        `property=${propertyKey}`,
+        "no-property-on-candidates",
+      ],
     };
   }
 
   // Compose across all matching drivers (linux base + vendor + manual), not only the effective one.
   const matchingDrivers = matchingReleasableDrivers(node, registry).sort(
     (left, right) =>
-      SCHEMA_SOURCE_PRECEDENCE[left.source] - SCHEMA_SOURCE_PRECEDENCE[right.source],
+      SCHEMA_SOURCE_PRECEDENCE[left.source] -
+      SCHEMA_SOURCE_PRECEDENCE[right.source],
   );
 
   const byKey: PropertySpec[] = [];
@@ -253,16 +294,20 @@ export function matchProperty(
   // Prefer driver-local specs over common $ref copies; vendor narrows linux; manual fills gaps.
   const linux = byKey.filter((property) => property.source === "linux");
   const vendorLocal = byKey.filter(
-    (property) => property.source === "vendor" && property.driverSchemaId !== null,
+    (property) =>
+      property.source === "vendor" && property.driverSchemaId !== null,
   );
   const vendorCommon = byKey.filter(
-    (property) => property.source === "vendor" && property.driverSchemaId === null,
+    (property) =>
+      property.source === "vendor" && property.driverSchemaId === null,
   );
   const manualPlatform = byKey.filter(
-    (property) => property.source === "manual" && property.scope !== "organization",
+    (property) =>
+      property.source === "manual" && property.scope !== "organization",
   );
   const manualOrganization = byKey.filter(
-    (property) => property.source === "manual" && property.scope === "organization",
+    (property) =>
+      property.source === "manual" && property.scope === "organization",
   );
 
   let chosen: PropertySpec[];
@@ -344,7 +389,9 @@ export function reviewTasksForDecision(
           propertyKey,
           evidence: decision.evidence,
           matcherCandidates: decision.candidates.map((candidate) =>
-            "parameterSpecId" in candidate ? candidate.parameterSpecId : candidate.id,
+            "parameterSpecId" in candidate
+              ? candidate.parameterSpecId
+              : candidate.id,
           ),
         },
         candidateSchemas: decision.candidates.map((candidate) =>

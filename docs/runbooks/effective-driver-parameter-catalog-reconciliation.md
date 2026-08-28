@@ -9,14 +9,17 @@ and exactly one organization driver-group placement.
 
 ## Preconditions and stop rules
 
-- Deploy migrations `0117_effective_driver_parameter_catalog.sql`,
-  `0118_effective_driver_parameter_catalog_contract.sql`,
-  `0119_effective_driver_parameter_catalog_finalize.sql`, followed by
-  `0120_effective_driver_parameter_catalog_legacy_write_compat.sql` and
-  `0121_classify_nodename_driver_subjects.sql`, with the application. The last
-  two migrations preserve the legacy staging boundary and correct nodename-only
-  subjects/modules to `NodeTypeDefinition`; they do not make an unlinked
-  definition effective.
+- Deploy the pre-existing `0117_user_account_deletion.sql` unchanged, then
+  deploy Issue #649 migrations `0118_effective_driver_parameter_catalog.sql`,
+  `0119_effective_driver_parameter_catalog_contract.sql`,
+  `0120_effective_driver_parameter_catalog_finalize.sql`, followed by
+  `0121_effective_driver_parameter_catalog_legacy_write_compat.sql`,
+  `0122_classify_nodename_driver_subjects.sql`, and
+  `0123_harden_node_type_identity.sql`, and
+  `0124_harden_driver_identity_owner.sql`, with the application. The last four
+  migrations preserve the legacy staging boundary, correct nodename-only
+  subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
+  names and close cross-tenant identity writes; they do not make an unlinked definition effective.
 - Take a PostgreSQL and object-store snapshot. Keep the write freeze through
   verification and post-deploy observation.
 - Stop on any non-zero command, a non-empty blocker report, or a failed verification.
@@ -35,7 +38,8 @@ Persisted run/item rows are the evidence record. Inspect `blockers`, candidate
 subjects, placement modules, shape compatibility, and the observed binding-module
 evidence. Unknown evidence, multiple active platform candidates, missing driver
 evidence, curated identity changes, multiple active versions, ambiguous driver
-placements, and identity collisions are blockers for human review; they are never
+placements, blank node-type taxonomy, and identity collisions (including duplicate
+node-type source/property identities) are blockers for human review; they are never
 auto-deduplicated.
 
 After the dry-run is approved:

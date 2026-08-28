@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
+import {
+  presentError,
+  presentErrorMessage,
+} from "@/infrastructure/http/presentError";
 import {
   sortParameterSpecRows,
-  toParameterAdminFilters
+  toParameterAdminFilters,
 } from "@/application/parameters/parameterAdminUrl";
 import {
   buildParameterSpecModuleTree,
-  filterParameterSpecsByModuleNode
+  filterParameterSpecsByModuleNode,
 } from "@/application/parameters/buildParameterSpecModuleTree";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import {
@@ -21,10 +24,11 @@ import {
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
-import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
 import {
-  SpecCreateDialog
-} from "@/components/parameter-topology/SpecCreateDialog";
+  SpecReviewQueue,
+  type SpecReviewTaskView,
+} from "@/components/parameter-topology/SpecReviewQueue";
+import { SpecCreateDialog } from "@/components/parameter-topology/SpecCreateDialog";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
@@ -34,7 +38,7 @@ import { useToast } from "@/components/common/toast/ToastProvider";
 function toSpecDetailView(
   detail: ParameterSpecDetail,
   usageCount = 0,
-  libraryRow?: ParameterSpecLibraryRow | null
+  libraryRow?: ParameterSpecLibraryRow | null,
 ): ParameterSpecDetailView {
   return {
     ...mapParameterSpecToLibraryRow({
@@ -50,9 +54,12 @@ function toSpecDetailView(
       exampleValue: detail.exampleValue,
       schemaNamespace: detail.schemaNamespace,
       usageCount,
-      attributionModules: libraryRow?.attributionModules ?? detail.attributionModules ?? [],
-      attributionSubjectId: detail.attributionSubjectId ?? libraryRow?.attributionSubjectId ?? null,
-      declaredPlacement: detail.declaredPlacement ?? libraryRow?.declaredPlacement ?? null,
+      attributionModules:
+        libraryRow?.attributionModules ?? detail.attributionModules ?? [],
+      attributionSubjectId:
+        detail.attributionSubjectId ?? libraryRow?.attributionSubjectId ?? null,
+      declaredPlacement:
+        detail.declaredPlacement ?? libraryRow?.declaredPlacement ?? null,
     }),
     displayName: detail.displayName,
     description: detail.description,
@@ -76,7 +83,10 @@ function formatReviewActionError(error: unknown): string {
       (error.details.code === "semantic-edit-requires-successor" ||
         error.details.reason === "semantic-edit-requires-successor")
     ) {
-      return presentError(error, "语义字段需通过激活后继版本修改，不能直接保存。");
+      return presentError(
+        error,
+        "语义字段需通过激活后继版本修改，不能直接保存。",
+      );
     }
     if (error.code === "CONFLICT" && error.details.confirmRequired === true) {
       return "所选规格属性键与任务不一致，请勾选确认后再批准。";
@@ -119,7 +129,7 @@ function toReviewTaskView(task: {
     evidence: task.evidence,
     candidates: task.candidates,
     ambiguous: task.ambiguous,
-    projectCount: task.projectCount
+    projectCount: task.projectCount,
   };
 }
 
@@ -144,7 +154,8 @@ export function OrganizationSpecGovernancePanel({
   identityMappingCountError = null,
   onNavigate,
 }: OrganizationSpecGovernancePanelProps) {
-  const { application, dispatch, state, relatedKnowledge } = useParameterAdmin();
+  const { application, dispatch, state, relatedKnowledge } =
+    useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
   const filters = useMemo(() => toParameterAdminFilters(urlState), [urlState]);
@@ -152,26 +163,37 @@ export function OrganizationSpecGovernancePanel({
   const [specRows, setSpecRows] = useState<ParameterSpecLibraryRow[]>([]);
   const [specLoading, setSpecLoading] = useState(false);
   const [specLoadError, setSpecLoadError] = useState<string | null>(null);
-  const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(null);
+  const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(
+    null,
+  );
   const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
   const [reviewCountKnown, setReviewCountKnown] = useState(false);
   const [reviewNextCursor, setReviewNextCursor] = useState<string | null>(null);
   const [reviewLoadingMore, setReviewLoadingMore] = useState(false);
-  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
-  const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(null);
-  const [reviewPendingAction, setReviewPendingAction] = useState<"approve" | "dismiss" | "create" | null>(
-    null
+  const [reviewActionError, setReviewActionError] = useState<string | null>(
+    null,
   );
-  const [activatePendingSpecId, setActivatePendingSpecId] = useState<string | null>(null);
+  const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(
+    null,
+  );
+  const [reviewPendingAction, setReviewPendingAction] = useState<
+    "approve" | "dismiss" | "create" | null
+  >(null);
+  const [activatePendingSpecId, setActivatePendingSpecId] = useState<
+    string | null
+  >(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createModules, setCreateModules] = useState<ParameterModule[]>([]);
   const [createSubjectsLoading, setCreateSubjectsLoading] = useState(false);
   const { toast } = useToast();
-  const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
+  const showToast = useCallback(
+    (message: string) => toast({ tone: "success", message }),
+    [toast],
+  );
 
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
@@ -195,9 +217,9 @@ export function OrganizationSpecGovernancePanel({
             attributionModules: item.attributionModules,
             attributionSubjectId: item.attributionSubjectId ?? null,
             declaredPlacement: item.declaredPlacement ?? null,
-            usageCount: item.referenceCount ?? 0
-          })
-        )
+            usageCount: item.referenceCount ?? 0,
+          }),
+        ),
       );
     } catch (error) {
       // A failed library load is an error state — keep the last known rows
@@ -212,12 +234,18 @@ export function OrganizationSpecGovernancePanel({
     setReviewLoading(true);
     setReviewLoadError(null);
     try {
-      const result = await application.listSpecReviewTasks({ status: "open", limit: 50 });
+      const result = await application.listSpecReviewTasks({
+        status: "open",
+        limit: 50,
+      });
       const views = result.items.map(toReviewTaskView);
       setReviewTasks(views);
       setReviewNextCursor(result.nextCursor);
       setReviewCountKnown(true);
-      dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: views.length } });
+      dispatch({
+        type: "SET_QUEUE_COUNTS",
+        counts: { specReview: views.length },
+      });
     } catch (error) {
       // IA-R2: do not treat a failed count load as an empty queue — keep the
       // last known tasks/count and surface an explicit error with retry.
@@ -236,12 +264,15 @@ export function OrganizationSpecGovernancePanel({
       const result = await application.listSpecReviewTasks({
         status: "open",
         limit: 50,
-        cursor: reviewNextCursor
+        cursor: reviewNextCursor,
       });
       const views = result.items.map(toReviewTaskView);
       setReviewTasks((current) => {
         const merged = [...current, ...views];
-        dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: merged.length } });
+        dispatch({
+          type: "SET_QUEUE_COUNTS",
+          counts: { specReview: merged.length },
+        });
         return merged;
       });
       setReviewNextCursor(result.nextCursor);
@@ -266,11 +297,18 @@ export function OrganizationSpecGovernancePanel({
 
     let cancelled = false;
     application
-      .getSpec(selectedId)
+      .getSpec(selectedId, { view: "governance" })
       .then((detail) => {
         if (!cancelled) {
-          const libraryRow = specRows.find((row) => row.id === selectedId) ?? null;
-          setSpecDetail(toSpecDetailView(detail, detail.referenceCount ?? libraryRow?.usageCount ?? 0, libraryRow));
+          const libraryRow =
+            specRows.find((row) => row.id === selectedId) ?? null;
+          setSpecDetail(
+            toSpecDetailView(
+              detail,
+              detail.referenceCount ?? libraryRow?.usageCount ?? 0,
+              libraryRow,
+            ),
+          );
         }
       })
       .catch(() => {
@@ -298,15 +336,20 @@ export function OrganizationSpecGovernancePanel({
 
   const sortedRows = useMemo(
     () => sortParameterSpecRows(specRows, urlState.sort),
-    [specRows, urlState.sort]
+    [specRows, urlState.sort],
   );
   const moduleTree = useMemo(
     () => buildParameterSpecModuleTree(sortedRows),
-    [sortedRows]
+    [sortedRows],
   );
   const moduleScopedRows = useMemo(
-    () => filterParameterSpecsByModuleNode(sortedRows, moduleTree, urlState.moduleNodeId),
-    [moduleTree, sortedRows, urlState.moduleNodeId]
+    () =>
+      filterParameterSpecsByModuleNode(
+        sortedRows,
+        moduleTree,
+        urlState.moduleNodeId,
+      ),
+    [moduleTree, sortedRows, urlState.moduleNodeId],
   );
 
   const handleFiltersChange = useCallback(
@@ -317,23 +360,22 @@ export function OrganizationSpecGovernancePanel({
         driverModules: next.driverModules,
         compatibles: next.compatibles,
         schemaSources: next.schemaSources,
-        moduleNames: next.moduleNames
+        moduleNames: next.moduleNames,
       });
     },
-    [updateUrl]
+    [updateUrl],
   );
 
   const handleSelectSpec = useCallback(
     (specId: string) => {
       updateUrl({ specId });
     },
-    [updateUrl]
+    [updateUrl],
   );
 
   const handleCloseSpec = useCallback(() => {
     updateUrl({ specId: null });
   }, [updateUrl]);
-
 
   const handleApproveReview = useCallback(
     async (input: {
@@ -350,7 +392,7 @@ export function OrganizationSpecGovernancePanel({
           decision: "resolved",
           parameterSpecId: input.parameterSpecId,
           reason: input.reason,
-          confirmPropertyMismatch: input.confirmPropertyMismatch
+          confirmPropertyMismatch: input.confirmPropertyMismatch,
         });
         await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
@@ -361,7 +403,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs],
   );
 
   const handleDismissReview = useCallback(
@@ -372,7 +414,7 @@ export function OrganizationSpecGovernancePanel({
       try {
         await application.resolveSpecReviewTask(input.taskId, {
           decision: "dismissed",
-          reason: input.reason
+          reason: input.reason,
         });
         await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
@@ -383,7 +425,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs],
   );
 
   const handleCreateSpecReview = useCallback(
@@ -400,7 +442,7 @@ export function OrganizationSpecGovernancePanel({
         await application.resolveSpecReviewTask(input.taskId, {
           decision: "resolved",
           createSpec: true,
-          reason: input.reason
+          reason: input.reason,
         });
         await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
@@ -411,7 +453,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs],
   );
 
   const handleSaveSpec = useCallback(
@@ -439,7 +481,7 @@ export function OrganizationSpecGovernancePanel({
             description: payload.description,
             units: payload.units,
             exampleValue: payload.exampleValue,
-            reason: payload.reason
+            reason: payload.reason,
           });
           showToast("已激活");
         } else {
@@ -451,7 +493,7 @@ export function OrganizationSpecGovernancePanel({
             description: payload.description,
             units: payload.units,
             exampleValue: payload.exampleValue,
-            reason: payload.reason
+            reason: payload.reason,
           });
         }
         await refreshRecentAudits();
@@ -465,7 +507,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl],
   );
 
   const handleDeprecateSpec = useCallback(
@@ -473,7 +515,9 @@ export function OrganizationSpecGovernancePanel({
       setReviewActionError(null);
       setActivatePendingSpecId(input.specId);
       try {
-        await application.deprecateParameterSpec(input.specId, { reason: input.reason });
+        await application.deprecateParameterSpec(input.specId, {
+          reason: input.reason,
+        });
         await refreshRecentAudits();
         showToast("已废弃（仍参与解析，默认库视图已隐藏）");
         await reloadSpecs();
@@ -485,7 +529,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl],
   );
 
   const handleRestoreSpec = useCallback(
@@ -493,7 +537,9 @@ export function OrganizationSpecGovernancePanel({
       setReviewActionError(null);
       setActivatePendingSpecId(input.specId);
       try {
-        await application.restoreParameterSpec(input.specId, { reason: input.reason });
+        await application.restoreParameterSpec(input.specId, {
+          reason: input.reason,
+        });
         await refreshRecentAudits();
         showToast("已恢复");
         await reloadSpecs();
@@ -505,22 +551,32 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl],
   );
 
   const handleReattributeSpec = useCallback(
-    async (input: { specId: string; attributionSubjectId: string; reason: string }) => {
+    async (input: {
+      specId: string;
+      attributionSubjectId: string;
+      reason: string;
+    }) => {
       setReviewActionError(null);
       setActivatePendingSpecId(input.specId);
       try {
-        const detail = await application.reattributeParameterSpec(input.specId, {
-          attributionSubjectId: input.attributionSubjectId,
-          reason: input.reason,
-        });
+        const detail = await application.reattributeParameterSpec(
+          input.specId,
+          {
+            attributionSubjectId: input.attributionSubjectId,
+            reason: input.reason,
+          },
+        );
         await refreshRecentAudits();
         showToast("已修正归属主体");
-        const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
-        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        const libraryRow =
+          specRows.find((row) => row.id === input.specId) ?? null;
+        setSpecDetail(
+          toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow),
+        );
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -529,7 +585,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, refreshRecentAudits, reloadSpecs, showToast, specRows]
+    [application, refreshRecentAudits, reloadSpecs, showToast, specRows],
   );
 
   const handleRenamePropertyKey = useCallback(
@@ -537,14 +593,20 @@ export function OrganizationSpecGovernancePanel({
       setReviewActionError(null);
       setActivatePendingSpecId(input.specId);
       try {
-        const detail = await application.renameParameterSpecPropertyKey(input.specId, {
-          propertyKey: input.propertyKey,
-          reason: input.reason,
-        });
+        const detail = await application.renameParameterSpecPropertyKey(
+          input.specId,
+          {
+            propertyKey: input.propertyKey,
+            reason: input.reason,
+          },
+        );
         await refreshRecentAudits();
         showToast("已修正属性键");
-        const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
-        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        const libraryRow =
+          specRows.find((row) => row.id === input.specId) ?? null;
+        setSpecDetail(
+          toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow),
+        );
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -553,7 +615,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, refreshRecentAudits, reloadSpecs, showToast, specRows]
+    [application, refreshRecentAudits, reloadSpecs, showToast, specRows],
   );
 
   const handlePrepareCutover = useCallback(
@@ -565,7 +627,9 @@ export function OrganizationSpecGovernancePanel({
           reason: "prepare version cutover",
         });
         const libraryRow = specRows.find((row) => row.id === specId) ?? null;
-        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        setSpecDetail(
+          toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow),
+        );
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -573,7 +637,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, specRows]
+    [application, reloadSpecs, specRows],
   );
 
   const handleFinalizeCutover = useCallback(
@@ -581,7 +645,9 @@ export function OrganizationSpecGovernancePanel({
       setReviewActionError(null);
       setActivatePendingSpecId(input.specId);
       try {
-        await application.finalizeSpecVersionCutover(input.specId, { reason: input.reason });
+        await application.finalizeSpecVersionCutover(input.specId, {
+          reason: input.reason,
+        });
         showToast("版本切换已完成");
         await reloadSpecs();
         updateUrl({ specId: null });
@@ -592,7 +658,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, showToast, updateUrl]
+    [application, reloadSpecs, showToast, updateUrl],
   );
 
   const reviewLibrarySpecs = useMemo(
@@ -610,11 +676,16 @@ export function OrganizationSpecGovernancePanel({
 
   const reviewCount = state.queueCounts.specReview;
   const reviewQueue = (
-    <details className="param-admin-review-queue" open={(reviewCount > 0 && reviewCount <= 5) || Boolean(reviewLoadError)}>
+    <details
+      className="param-admin-review-queue"
+      open={(reviewCount > 0 && reviewCount <= 5) || Boolean(reviewLoadError)}
+    >
       <summary className="param-admin-review-queue__summary">
         {PARAMETER_ADMIN_UI.specReviewQueueToggle}
         <span className="param-admin-review-queue__count" aria-live="polite">
-          {reviewLoadError && !reviewCountKnown ? "待审核 计数不可用" : `待审核 ${reviewCount}`}
+          {reviewLoadError && !reviewCountKnown
+            ? "待审核 计数不可用"
+            : `待审核 ${reviewCount}`}
         </span>
       </summary>
       <div className="param-admin-review-queue__body">
@@ -669,9 +740,15 @@ export function OrganizationSpecGovernancePanel({
         <div className="param-admin-queue-banner" role="status">
           <p>
             <strong>{PARAMETER_ADMIN_UI.identityMapping}</strong>
-            <span>待处理 {identityMappingOpenCount} 项。可在上方子导航或此处进入。</span>
+            <span>
+              待处理 {identityMappingOpenCount} 项。可在上方子导航或此处进入。
+            </span>
           </p>
-          <button type="button" className="button" onClick={onOpenIdentityMapping}>
+          <button
+            type="button"
+            className="button"
+            onClick={onOpenIdentityMapping}
+          >
             {PARAMETER_ADMIN_UI.identityMapping}
           </button>
         </div>
@@ -689,7 +766,9 @@ export function OrganizationSpecGovernancePanel({
             aria-label="模块导航"
           >
             <div className="dts-parameter-workbench__navigator-header">
-              <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
+              <h3 className="dts-parameter-workbench__navigator-title">
+                模块导航
+              </h3>
             </div>
             <DtsTopologyNavigator
               view="effective"
@@ -702,8 +781,9 @@ export function OrganizationSpecGovernancePanel({
               ariaLabel="参数定义模块树"
               onSelectNode={(nodeId) => {
                 updateUrl({
-                  moduleNodeId: urlState.moduleNodeId === nodeId ? null : nodeId,
-                  specId: null
+                  moduleNodeId:
+                    urlState.moduleNodeId === nodeId ? null : nodeId,
+                  specId: null,
                 });
               }}
             />
@@ -736,23 +816,34 @@ export function OrganizationSpecGovernancePanel({
                 application.finalizePropertyKeyCutover
                   ? {
                       preview: (input) =>
-                        application.previewPropertyKeyCutover!(urlState.specId!, input),
-                      start: (input) =>
-                        application.startPropertyKeyCutover!(urlState.specId!, input),
-                      prepare: (input) =>
-                        application.preparePropertyKeyCutover!(urlState.specId!, input),
-                      finalize: async (input) => {
-                        const result = await application.finalizePropertyKeyCutover!(
+                        application.previewPropertyKeyCutover!(
                           urlState.specId!,
-                          input
-                        );
+                          input,
+                        ),
+                      start: (input) =>
+                        application.startPropertyKeyCutover!(
+                          urlState.specId!,
+                          input,
+                        ),
+                      prepare: (input) =>
+                        application.preparePropertyKeyCutover!(
+                          urlState.specId!,
+                          input,
+                        ),
+                      finalize: async (input) => {
+                        const result =
+                          await application.finalizePropertyKeyCutover!(
+                            urlState.specId!,
+                            input,
+                          );
                         showToast("属性键切换已完成");
                         await reloadSpecs();
                         return result;
                       },
                       loadOpenRun: application.getPropertyKeyCutover
-                        ? async () => application.getPropertyKeyCutover!(urlState.specId!)
-                        : undefined
+                        ? async () =>
+                            application.getPropertyKeyCutover!(urlState.specId!)
+                        : undefined,
                     }
                   : undefined
               }
@@ -802,17 +893,24 @@ export function OrganizationSpecGovernancePanel({
             setCreateError(null);
             try {
               const { coverageCompatible, ...createInput } = input;
-              const created = await application.createParameterSpec(createInput);
+              const created =
+                await application.createParameterSpec(createInput);
               if (coverageCompatible) {
                 await application.activateParameterSpec(created.id, {
-                  valueShape: (created.valueShape as Record<string, unknown>) ?? {
+                  valueShape: (created.valueShape as Record<
+                    string,
+                    unknown
+                  >) ?? {
                     kind: "cells",
                     bits: 32,
                     groups: 1,
                     cellsPerGroup: 1,
                   },
                   constraints: created.constraints ?? { cells: 1 },
-                  documentation: created.documentation || createInput.documentation || "docs",
+                  documentation:
+                    created.documentation ||
+                    createInput.documentation ||
+                    "docs",
                   reason: "activate after library create",
                   coverageClaim: {
                     kind: "overlay-property",
