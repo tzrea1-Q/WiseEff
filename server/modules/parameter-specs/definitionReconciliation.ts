@@ -1033,6 +1033,21 @@ async function applyItem(
   ) {
     return "skipped";
   }
+
+  // Existing non-null subject/schema disagreements are deliberately retained
+  // as migration evidence, while 0124 rejects that tuple on ordinary writes.
+  // Clear only the transient property-to-schema link inside this locked,
+  // audited transaction; the next statement writes the canonical subject and
+  // the later upsert restores the verified schema/property tuple. The row is
+  // never externally visible between these statements, and any failure rolls
+  // the whole organization transaction back.
+  await tx.query(
+    `update dts_property_specs
+     set driver_schema_id = null
+     where parameter_spec_id = $1
+       and driver_schema_id is not null`,
+    [item.current_parameter_spec_id],
+  );
   await tx.query(
     `select id from parameter_spec_versions where id = $1 for update`,
     [expectedVersionId],
