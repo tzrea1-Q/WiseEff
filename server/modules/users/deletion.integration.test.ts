@@ -8,7 +8,7 @@ import {
 } from "../../testing/testDatabase";
 import { createDatabase, type Database, type Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
-import { deleteUser } from "./service";
+import { deleteUser, replaceUserRoles } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -42,6 +42,12 @@ const adminAuth: AuthContext = {
   organization: { id: "org-chargelab", name: "ChargeLab" },
   roles: [{ projectId: null, roleId: "admin" }],
   permissions: ["users:manage", "admin:access"]
+};
+
+const platformAdminAuth: AuthContext = {
+  ...adminAuth,
+  roles: [{ projectId: null, roleId: "platform-admin" }],
+  permissions: [...adminAuth.permissions, "platform:access", "platform:schema-promote"]
 };
 
 async function insertDeletionFixture(db: Queryable) {
@@ -275,6 +281,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     const controlClient = new pg.Client({ connectionString: ephemeral.url });
     const grantClient = new pg.Client({ connectionString: ephemeral.url });
     const deleteClient = new pg.Client({ connectionString: ephemeral.url });
+    let releaseGrantCommit: (() => void) | undefined;
     await Promise.all([controlClient.connect(), grantClient.connect(), deleteClient.connect()]);
 
     const databaseFor = (client: pg.Client): Database =>
@@ -287,11 +294,36 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
 
     try {
       await insertDeletionFixture(databaseFor(controlClient));
-      await grantClient.query("begin");
-      await grantClient.query(
-        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-         values ('urb-target-platform-race', 'u-target', 'org-chargelab', null, 'platform-admin')`
+      const grantDatabaseBase = databaseFor(grantClient);
+      const grantCommitReleased = new Promise<void>((resolve) => { releaseGrantCommit = resolve; });
+      let signalGrantApplied!: () => void;
+      const grantApplied = new Promise<void>((resolve) => { signalGrantApplied = resolve; });
+      let grantPaused = false;
+      const grantDatabase: Database = {
+        query: grantDatabaseBase.query,
+        transaction: (fn) => grantDatabaseBase.transaction((tx) =>
+          fn({
+            ...tx,
+            query: async (text, values = []) => {
+              const result = await tx.query(text, values);
+              if (!grantPaused && text.includes("insert into user_role_bindings")) {
+                grantPaused = true;
+                signalGrantApplied();
+                await grantCommitReleased;
+              }
+              return result;
+            }
+          })
+        )
+      };
+      const grantOutcome = replaceUserRoles(
+        grantDatabase,
+        platformAdminAuth,
+        "u-target",
+        { roles: [{ projectId: null, roleId: "platform-admin" }] },
+        { requestId: "grant-race" }
       );
+      await grantApplied;
 
       const deletePid = Number((await deleteClient.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid);
       const deletionOutcome = deleteUser(databaseFor(deleteClient), adminAuth, "u-target", {
@@ -316,7 +348,11 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       }
       expect(deleteWaitedForLock).toBe(true);
 
-      await grantClient.query("commit");
+      releaseGrantCommit?.();
+      await expect(grantOutcome).resolves.toMatchObject({
+        id: "u-target",
+        roles: [{ projectId: null, roleId: "platform-admin" }]
+      });
       const outcome = await deletionOutcome;
       expect(outcome.ok).toBe(false);
       expect(outcome.ok ? "" : String(outcome.error)).toContain(
@@ -325,13 +361,15 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
 
       expect((await controlClient.query("select id from users where id = 'u-target'")).rows).toHaveLength(1);
       expect(
-        (await controlClient.query("select id from user_role_bindings where id = 'urb-target-platform-race'")).rows
-      ).toHaveLength(1);
+        (await controlClient.query(
+          "select role_id from user_role_bindings where user_id = 'u-target' and role_id = 'platform-admin'"
+        )).rows
+      ).toEqual([{ role_id: "platform-admin" }]);
       expect(
         (await controlClient.query("select id from audit_events where kind = 'user-delete' and trace_id = 'delete-race'")).rows
       ).toEqual([]);
     } finally {
-      await grantClient.query("rollback").catch(() => undefined);
+      releaseGrantCommit?.();
       await Promise.all([
         controlClient.end().catch(() => undefined),
         grantClient.end().catch(() => undefined),

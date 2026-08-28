@@ -463,6 +463,10 @@ export async function replaceUserRoles(
   const roles = normalizeRoles(input.roles);
 
   return db.transaction(async (tx) => {
+    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!lockedUserId) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
     await assertNoSelfLockout(tx, auth, userId, { roles });
     const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
     if (!user) {

@@ -12,6 +12,7 @@ Let an authorized administrator permanently delete a non-self user from Organiza
 
 - `DELETE /api/v1/users/:userId` requires an active caller with `users:manage`, scopes the target to the caller's home Organization, and returns `204` only after a successful transaction.
 - The active caller cannot delete itself. An ordinary Admin cannot delete a platform super admin. Deleting a missing or cross-Organization user returns `404` without side effects.
+- User deletion and role replacement take the same user-row lock, so a concurrent platform-admin grant is committed and rechecked before an ordinary Admin can delete the account.
 - The user row, role bindings, password credential, auth sessions, pending local registration requests, personal notifications, active device leases, and unsubmitted parameter drafts are removed.
 - Durable audit and business rows remain, with every foreign key to the deleted user changed to `NULL` by `ON DELETE SET NULL`.
 - A High-severity `user-delete` audit event is committed in the same transaction. It retains the opaque target id and non-secret lifecycle facts, not the deleted user's name, username, email, password, or password hash.
@@ -80,12 +81,40 @@ playwright-cli --version
 
 Browser verification covers `/organization/members` at `1440x900`, `768x1024`, and `390x844`, with snapshot, screenshot, confirmation interaction, success removal, refusal behavior, console errors, and relevant network requests checked. The focused acceptance spec is `e2e/acceptance/permissions.acceptance.spec.ts` under requirement and operation `PERM-USER-MGMT-001`.
 
+The focused API-mode acceptance can be reproduced against a disposable pgvector PostgreSQL database as follows. The HMAC key and token are local test credentials only; this command does not constitute target OIDC evidence.
+
+```bash
+docker run --name wiseeff-user-delete-acceptance \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=wiseeff_user_delete_acceptance \
+  -p 50736:5432 -d pgvector/pgvector:pg16
+export DATABASE_URL='postgres://postgres:postgres@127.0.0.1:50736/wiseeff_user_delete_acceptance'
+export TEST_DATABASE_URL="$DATABASE_URL"
+export AUTH_TOKEN_ISSUER='wiseeff-acceptance-user-delete'
+export AUTH_TOKEN_HMAC_SECRET="$(openssl rand -hex 32)"
+export VITE_WISEEFF_API_AUTHORIZATION="$(node --input-type=module -e 'import { createHmac } from "node:crypto"; const payload = Buffer.from(JSON.stringify({ iss: process.env.AUTH_TOKEN_ISSUER, sub: "u-xu-yun", org: "org-chargelab", name: "Xu Yun", email: "xu@chargelab.cn", title: "Platform Owner", orgName: "ChargeLab", roles: [], permissions: [], isActive: true, nbf: 0, exp: 9999999999 })).toString("base64url"); process.stdout.write(`Bearer ${payload}.${createHmac("sha256", process.env.AUTH_TOKEN_HMAC_SECRET).update(payload).digest("base64url")}`);')"
+DATABASE_URL="$DATABASE_URL" npm run db:migrate
+DATABASE_URL="$DATABASE_URL" npm run db:seed:m0
+AUTH_MODE=production AUTH_PROVIDER=hmac \
+  WISEEFF_ACCEPTANCE_OWNED_RUNTIME=true \
+  WISEEFF_ACCEPTANCE_FRONTEND_URL=http://127.0.0.1:5188 \
+  VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8899 \
+  WISEEFF_ACCEPTANCE_EVIDENCE_ROOT=/tmp/wiseeff-user-delete-acceptance-evidence \
+  WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR=/tmp/wiseeff-user-delete-playwright \
+  WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR=/tmp/wiseeff-user-delete-report \
+  npm run acceptance:e2e -- \
+    e2e/acceptance/runtime-warmup.spec.ts \
+    e2e/acceptance/permissions.acceptance.spec.ts \
+    --grep 'warm vite entry graph|lets Admin manage a non-self user in UI while denying non-Admin access'
+docker rm -f wiseeff-user-delete-acceptance
+```
+
 Observed local evidence on 2026-08-28:
 
 - Focused final-tree user-deletion backend: 3 files, 49 tests passed, including a two-connection PostgreSQL lock barrier, account-owned lease/draft cleanup, platform-admin/missing/cross-organization route boundaries, and deletion audit behavior. Retained workflow/log null-adaptation tests are also included in the full server gate.
 - Full frontend at bounded concurrency: 420 files, 3153 tests passed. Full server: 362 files passed, 1 skipped; 2804 tests passed, 4 skipped. Scripts: 69 files passed (948 tests, 5 skipped). Bridge: 21 files / 138 tests passed.
 - `npm run build`, `npm run ui:check`, `npm run contract:check`, `npm run docs:check`, `npm run acceptance:coverage`, and `npm run acceptance:operations` passed. The schema doc was generated from a disposable pgvector PostgreSQL container migrated from scratch.
-- `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and visible disabled reasons, responsive table containment, mobile dialog/removal, and zero console errors. The focused `PERM-USER-MGMT-001` API-mode acceptance also passed against a disposable pgvector PostgreSQL database (runtime warmup plus one product case), proving HTTP `204`, database null adaptation, deletion audit, and non-Admin `403`. This is deterministic local HMAC evidence, not target OIDC evidence.
+- `playwright-cli` mock-runtime UI proof at the three required viewports passed: desktop confirmation and visible disabled reasons, responsive table containment, mobile dialog/removal, and zero console errors. The focused `PERM-USER-MGMT-001` API-mode acceptance also passed against a disposable pgvector PostgreSQL database (runtime warmup plus one product case), proving HTTP `204`, database null adaptation, deletion audit, and non-Admin `403`. Machine-readable results are at `/tmp/wiseeff-user-delete-playwright-final2/results.json`; the HTML report is `/tmp/wiseeff-user-delete-report-final2/index.html`. This is deterministic local HMAC evidence, not target OIDC evidence.
 
 ## Git & PR Workflow
 
@@ -98,16 +127,17 @@ Observed local evidence on 2026-08-28:
 | Area | Status | Files | Notes |
 | --- | --- | --- | --- |
 | Repository maps | Review | `ARCHITECTURE.md`, `docs/README.md` | Update only if navigation or module ownership changes. |
-| Planning docs | Update | `docs/PLANS.md`, this plan, Chinese companion | Track active scope and verification. |
+| Planning docs | Update | `docs/PLANS.md`, `docs/exec-plans/active/2026-08-28-user-account-deletion.md`, `docs/zh-CN/exec-plans/active/2026-08-28-user-account-deletion.md` | Track active scope and verification. |
 | Product specs | Update | `docs/product-specs/product-spec.md`, `docs/product-specs/prototype-functional-spec.md` | Replace the prior no-delete lifecycle boundary. |
 | Architecture/API | Update | `docs/design-docs/api-contract.md`, `docs/design-docs/full-stack-architecture.md`, `docs/api/authentication.md` | Document DELETE contract and data-retention behavior. |
 | Quality/testing | Update | `docs/design-docs/testing-strategy.md`, `docs/zh-CN/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md`, `docs/zh-CN/developer/verification-matrix.md`, `docs/developer/browser-acceptance-coverage-map.md`, `e2e/acceptance/operationMatrix.ts`, `docs/developer/user-operation-coverage-matrix.md`, `docs/zh-CN/developer/user-operation-coverage-matrix.md` | Record PostgreSQL and API-mode browser gates. |
-| Reliability/runbooks | Review | `docs/RELIABILITY.md`, `docs/runbooks/identity-provider.md` | Record unchanged or update operator consequences. |
+| Reliability overview | Review | `docs/RELIABILITY.md` | No deployment dependency or runtime-readiness boundary changed. |
+| Identity runbook | Update | `docs/runbooks/identity-provider.md` | Keep local HMAC and target OIDC evidence boundaries explicit. |
 | Security/governance | Update | `docs/SECURITY.md`, `docs/security/audit-retention.md` | Define delete authorization, audit, and PII retention boundary. |
 | Frontend/design | Update | `docs/FRONTEND.md`, `docs/design-docs/2026-08-19-organization-administration-design.md` | Add the members-page lifecycle action. |
-| Generated artifacts | Update | OpenAPI contract and database schema summary | Regenerate after route/migration changes. |
-| References | Review | `docs/references/` | Add no new compact reference unless needed. |
-| Chinese developer docs | Update | `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/frontend.md`, `docs/zh-CN/security-reliability.md`, Chinese design/plan companions | Keep developer-facing semantics bilingual. |
+| Generated artifacts | Update | `docs/generated/openapi.json`, `docs/generated/db-schema.md` | Regenerate after route/migration changes. |
+| References | Review | `docs/references/productization-api-contract-draft.md` | No compact-reference contract changed. |
+| Chinese developer docs | Update | `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/frontend.md`, `docs/zh-CN/security-reliability.md`, `docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md`, `docs/zh-CN/exec-plans/active/2026-08-28-user-account-deletion.md` | Keep developer-facing semantics bilingual. |
 
 Review disposition: repository maps, top-level architecture navigation, reliability overview, and compact references remain unchanged because no route ownership, module boundary, deployment dependency, or navigation entry changed. All `Update` rows landed; API/security/frontend/product/testing and Chinese companion docs were updated, and generated OpenAPI/database-schema artifacts were regenerated.
 
