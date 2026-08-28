@@ -1444,7 +1444,7 @@ describe("ProjectConfigurationWorkbench", () => {
     ensureInspectorOpen();
     expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
     expect(screen.getByText("操作人：Xu Yun")).toBeInTheDocument();
-    expect(screen.getByText("操作人：已注销用户")).toBeInTheDocument();
+    expect(screen.getByText("操作人：用户已注销或未记录")).toBeInTheDocument();
     expect(screen.queryByText("user-ops")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "将版本 12 恢复为当前" })).not.toBeInTheDocument();
 

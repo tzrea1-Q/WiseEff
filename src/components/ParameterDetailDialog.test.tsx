@@ -108,7 +108,7 @@ describe("ParameterDetailDialog", () => {
       />
     );
 
-    expect(screen.getByText(/yesterday \/ 已注销用户/)).toBeInTheDocument();
+    expect(screen.getByText(/yesterday \/ 用户已注销或未记录/)).toBeInTheDocument();
   });
 
   it("shows definition and all-project comparison for the selected parameter", () => {

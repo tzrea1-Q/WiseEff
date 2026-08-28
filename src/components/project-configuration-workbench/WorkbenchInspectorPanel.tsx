@@ -764,7 +764,7 @@ export function WorkbenchInspectorPanel({
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
                       <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
                       <span>
-                        操作人：{version.createdByDisplayName === null ? "已注销用户" : version.createdByDisplayName ?? "未记录"}
+                        操作人：{version.createdByDisplayName === null ? "用户已注销或未记录" : version.createdByDisplayName ?? "未记录"}
                       </span>
                     </div>
                     <div className="configuration-workbench__version-actions">

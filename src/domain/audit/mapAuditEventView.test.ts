@@ -45,7 +45,7 @@ describe("mapAuditEventView", () => {
       createdAt: "2026-08-28T08:00:00.000Z"
     });
 
-    expect(view.actor).toBe("已注销用户");
+    expect(view.actor).toBe("用户已注销或未记录");
   });
 
   it("maps mock audit events preserving relative labels when time is not ISO", () => {

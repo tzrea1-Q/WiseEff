@@ -90,6 +90,13 @@ describe("FeedbackAdminPage", () => {
     expect(screen.queryByText("内测用户")).not.toBeInTheDocument();
   });
 
+  it("keeps the mock-mode fallback for feedback without submitter provenance", async () => {
+    await renderPage(createRepository([feedback()]));
+
+    expect(screen.getByText("内测用户")).toBeInTheDocument();
+    expect(screen.queryByText("已注销用户")).not.toBeInTheDocument();
+  });
+
   it("filters by status", async () => {
     await renderPage(
       createRepository([

@@ -80,7 +80,7 @@ function HistoryEntryItem({ entry, isComplexParameterKind }: { entry: ParameterH
         {isComplexParameterKind ? <code tabIndex={0}>{entry.value || "-"}</code> : <span>{entry.value || "-"}</span>}
       </span>
       <small className="parameter-detail-history__meta">
-        {entry.changedAt} / {entry.changedBy ?? "已注销用户"}
+        {entry.changedAt} / {entry.changedBy ?? "用户已注销或未记录"}
       </small>
     </li>
   );
@@ -151,7 +151,7 @@ function ParameterHistoryDiffDialog({
                 <div>
                   <strong>{previous.version} → {current.version}</strong>
                   <span>
-                    {current.changedAt} / {current.changedBy ?? "已注销用户"}
+                    {current.changedAt} / {current.changedBy ?? "用户已注销或未记录"}
                   </span>
                 </div>
               </div>
