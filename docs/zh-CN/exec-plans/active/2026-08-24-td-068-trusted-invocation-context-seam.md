@@ -319,4 +319,10 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 - 最终 fetch 得到 `origin/main@551eec66c9ffacca668ba8c579857dddadf71e5d`。干净分支完成 rebase，没有生产语义冲突（仅合并 generated-schema 头部及一个无关 notification helper），最终为 `ebfbb2d61574f4dbeea58748655661ada04ef714`，`ahead 41 / behind 0`。
 - 该 main 提交新增 `server/migrations/0116_node_write_observation_outcomes.sql`，而既有 #614 历史必须保留 `0116_parameter_execution_provenance.sql`。rebase 后真实 migration 编号测试确定失败：前缀 `0116` 重复（1 failed / 3 passed）；因此完整 server 为 364 files、2,830 passed 且 1 failed。失败与 `src/**` 无关，直接复现稳定。
-- 任务明确禁止修改或重编号既有 `0116`–`0121`、禁止吸收无关 debugging/TD-123 migration、禁止削弱唯一性不变量。因此这是需要 owner 决定的 migration history blocker，不是可安全自行修复的 #614 范围。未声称最终双轴 review 或 Hosted CI 通过；需 owner 提供保持 applied checksum 的协调编号方案后才能继续。
+- 任务明确禁止修改或重编号既有 `0116`–`0121`、禁止吸收无关 debugging/TD-123 migration、禁止削弱唯一性不变量。因此这是需要 owner 决定的 migration history blocker，不是可安全自行修复的 #614 范围。在 owner 提供协调编号方案前，不声称完整本地绿色或 Hosted CI 通过；方案必须保持 applied checksum（例如仓库级重编号计划）。
+
+### 最终复审修复检查点（2026-08-28）
+
+- Standards 独立复审另发现一个 P3：未使用的 `trustedExecutionLabel` 会暴露 Agent correlation 和 System name，并绕过粗粒度公共 projection 边界。已在 `b0eb24b3c0c0fa4f0335a78fc07d4287e646402d` 以追加 commit 删除该 helper 及专属测试；公共执行标签只保留 `trustedPublicExecutionLabel`。
+- 在固定 HEAD `b0eb24b3c0c0fa4f0335a78fc07d4287e646402d` 上，受影响 PostgreSQL focused 矩阵为 15 files / 216 tests 通过，trusted invocation 切片为 1 file / 9 tests 通过，`npx tsc -b --pretty false` 通过，`git diff --check` 通过。直接运行完整 `npm run test:server` 为 363 files / 2,829 tests 通过，唯一失败为 migration 编号不变量（1 test）：两个 0116 文件同时存在。
+- 在该固定 HEAD 上重新执行的独立 Standards 与 Spec 复审均为 P0=0、P1=1（同一 0116 冲突）、P2=0、P3=0；未复用此前的 zero-finding 结论。分支仍等待 owner 协调 applied migration history；#615、TD-123、frontend、HDC、硬件、live-provider 与 Hosted CI 继续排除。
