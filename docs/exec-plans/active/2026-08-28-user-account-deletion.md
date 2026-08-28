@@ -64,7 +64,7 @@ Migration `0117` must convert every foreign key targeting `users(id)` to one of 
 - [x] Extend `PERM-USER-MGMT-001` browser operation evidence.
 - [x] Update documentation and generated contracts/schema.
 - [x] Run focused tests, full server/frontend gates, build, docs/contracts, and browser verification.
-- [ ] Review the final committed diff against `main` with the Standards/Spec review skill.
+- [x] Review the final committed diff against `main` with the Standards/Spec review skill.
 
 ## Verification
 
@@ -123,6 +123,7 @@ Observed local evidence on 2026-08-28:
 - API-mode retained-attribution browser proof covered `/knowledge-admin` and `/parameter-review` at `1440x900`, `768x1024`, and `390x844`. Both surfaces rendered `已注销用户`; relevant API reads returned `200`, console errors were zero, and each mobile document remained 390 px wide without page-level overflow. Screenshots are under `work/ui-checks/user-delete-null-{knowledge,review}-{desktop-1440x900,tablet-768x1024,mobile-390x844}.png`.
 - API-mode provenance-boundary proof covered `/audit`, `/feedback-admin`, and the configuration inspector at `/parameter-admin/projects/aurora/configuration` in all three viewports. Audit and immutable file-version history rendered `用户已注销或未记录`; feedback rendered `已注销用户`. Relevant API reads returned `200`, console errors were zero, and mobile documents remained 390 px wide. Screenshots are `work/ui-checks/user-delete-{audit,feedback,file-history}-{desktop-1440x900,tablet-768x1024,mobile-390x844}.png`.
 - `/parameters` was checked in API mode in all three viewports with its current DTS topology workspace (117 parameters and all relevant API reads `200`) and in mock mode by opening the real parameter-detail dialog. Console errors were zero and mobile documents remained 390 px wide. Screenshots are `work/ui-checks/user-delete-parameters-{desktop-1440x900,tablet-768x1024,mobile-390x844}.png` and `work/ui-checks/user-delete-parameter-detail-{desktop-1440x900,tablet-768x1024,mobile-390x844}.png`. The explicit-null `ParameterDetailDialog` copy is additionally asserted by its focused test because the seeded mock record has a named actor.
+- Final committed-diff review result: Standards P1=0/P2=0; Spec P1=0/P2=0.
 
 ## Git & PR Workflow
 
