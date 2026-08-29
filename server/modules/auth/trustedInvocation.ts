@@ -49,6 +49,8 @@ export type TrustedInvocationContext = UserInvocationContext | AgentInvocationCo
  */
 export type TrustedInvocationDomainAttribution = Readonly<{
   userId: string | null;
+  /** True only for a server-owned Agent row whose accountable user was deleted. */
+  principalDeleted: boolean;
   initiatorType: TrustedInvocationContext["initiator"];
   systemKind: SystemInvocationInput["kind"] | null;
   systemName: string | null;
@@ -63,8 +65,8 @@ export type TrustedInvocationDomainAttribution = Readonly<{
  * audit, and transaction code only.
  */
 export type TrustedInvocationDomainAttributionRow = Readonly<{
-  /** Opaque principal snapshot retained after an Agent user's account deletion. */
-  initiator_principal_user_id?: string | null;
+  /** Identity-free server-owned marker retained after an Agent user's deletion. */
+  initiator_principal_deleted?: boolean | null;
   initiator_type?: TrustedInvocationContext["initiator"] | "legacy" | null;
   initiator_system_kind?: SystemInvocationInput["kind"] | null;
   initiator_system_name?: string | null;
@@ -75,6 +77,7 @@ export type TrustedInvocationDomainAttributionRow = Readonly<{
 
 export type PersistedInvocationDomainAttribution = Readonly<{
   userId: string | null;
+  principalDeleted: boolean;
   initiatorType: TrustedInvocationContext["initiator"] | "legacy";
   systemKind: SystemInvocationInput["kind"] | null;
   systemName: string | null;
@@ -324,6 +327,7 @@ export function trustedDomainAttribution(value: TrustedInvocationContext): Trust
   if (invocation.initiator === "system") {
     return {
       userId: null,
+      principalDeleted: false,
       initiatorType: "system",
       systemKind: invocation.identity.kind,
       systemName: invocation.identity.name,
@@ -335,6 +339,7 @@ export function trustedDomainAttribution(value: TrustedInvocationContext): Trust
   if (invocation.initiator === "agent") {
     return {
       userId: invocation.principal.user.id,
+      principalDeleted: false,
       initiatorType: "agent",
       systemKind: null,
       systemName: null,
@@ -345,6 +350,7 @@ export function trustedDomainAttribution(value: TrustedInvocationContext): Trust
   }
   return {
     userId: invocation.principal.user.id,
+    principalDeleted: false,
     initiatorType: "user",
     systemKind: null,
     systemName: null,
@@ -359,8 +365,13 @@ export function trustedDomainAttributionFromRow(
   row: TrustedInvocationDomainAttributionRow,
   userId: string | null | undefined
 ): PersistedInvocationDomainAttribution {
+  const principalDeleted = row.initiator_principal_deleted === true;
   return {
-    userId: userId ?? row.initiator_principal_user_id ?? null,
+    // A deleted marker is deliberately identity-free. Never recover a user id
+    // from any snapshot or tombstone; the FK is the sole accountable-principal
+    // source and is null after permanent deletion.
+    userId: principalDeleted ? null : userId ?? null,
+    principalDeleted,
     initiatorType: row.initiator_type ?? "legacy",
     systemKind: row.initiator_system_kind ?? null,
     systemName: row.initiator_system_name ?? null,

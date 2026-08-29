@@ -394,12 +394,12 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     const retained = await db.query<{
       changed_by_user_id: string | null;
       initiator_type: string;
-      initiator_principal_user_id: string | null;
+      initiator_principal_deleted: boolean;
       initiator_session_id: string | null;
       initiator_tool_call_id: string | null;
       initiator_approval_id: string | null;
     }>(
-      `select changed_by_user_id, initiator_type, initiator_principal_user_id,
+      `select changed_by_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
        from parameter_history_entries
        where id = 'history-target'`
@@ -408,10 +408,76 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       {
         changed_by_user_id: null,
         initiator_type: "agent",
-        initiator_principal_user_id: "u-target",
+        initiator_principal_deleted: true,
         initiator_session_id: "delete-agent-session",
         initiator_tool_call_id: "delete-agent-tool",
         initiator_approval_id: "delete-agent-approval"
+      }
+    ]);
+  });
+
+  it("does not retain a deleted Agent principal user id", async () => {
+    await insertDeletionFixture(db);
+    await db.query(
+      `update parameter_history_entries
+       set initiator_type = 'agent',
+           initiator_session_id = 'identity-free-session',
+           initiator_tool_call_id = 'identity-free-tool',
+           initiator_approval_id = 'identity-free-approval',
+           initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'history-target'`
+    );
+
+    await expect(
+      deleteUser(db, adminAuth, "u-target", { requestId: "identity-free-delete" })
+    ).resolves.toBeUndefined();
+
+    const tombstoneTables = await db.query(
+      `select table_name
+       from information_schema.tables
+       where table_schema = 'public'
+         and table_name = 'parameter_execution_principal_tombstones'`
+    );
+    expect(tombstoneTables.rows).toEqual([]);
+
+    const rawIdColumns = await db.query(
+      `select table_name, column_name
+       from information_schema.columns
+       where table_schema = 'public'
+         and column_name = 'initiator_principal_user_id'`
+    );
+    expect(rawIdColumns.rows).toEqual([]);
+
+    const markerColumns = await db.query(
+      `select table_name, column_name
+       from information_schema.columns
+       where table_schema = 'public'
+         and column_name = 'initiator_principal_deleted'`
+    );
+    expect(markerColumns.rows.length).toBeGreaterThan(0);
+
+    const retained = await db.query<{
+      changed_by_user_id: string | null;
+      initiator_type: string;
+      initiator_principal_deleted: boolean;
+      initiator_session_id: string | null;
+      initiator_tool_call_id: string | null;
+      initiator_approval_id: string | null;
+    }>(
+      `select changed_by_user_id, initiator_type, initiator_principal_deleted,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       from parameter_history_entries
+       where id = 'history-target'`
+    );
+    expect(retained.rows).toEqual([
+      {
+        changed_by_user_id: null,
+        initiator_type: "agent",
+        initiator_principal_deleted: true,
+        initiator_session_id: "identity-free-session",
+        initiator_tool_call_id: "identity-free-tool",
+        initiator_approval_id: "identity-free-approval"
       }
     ]);
   });
@@ -503,41 +569,41 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       row_id: string;
       user_id: string | null;
       initiator_type: string;
-      initiator_principal_user_id: string | null;
+      initiator_principal_deleted: boolean;
       initiator_session_id: string | null;
       initiator_tool_call_id: string | null;
       initiator_approval_id: string | null;
     }>(
       `select 'history' as table_name, id as row_id, changed_by_user_id as user_id,
-              initiator_type, initiator_principal_user_id, initiator_session_id,
+              initiator_type, initiator_principal_deleted, initiator_session_id,
               initiator_tool_call_id, initiator_approval_id
          from parameter_history_entries where id = 'history-target'
        union all
-       select 'value', id, updated_by_user_id, initiator_type, initiator_principal_user_id,
+       select 'value', id, updated_by_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from project_parameter_values where id = 'value-delete'
        union all
-       select 'file-version', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+       select 'file-version', id, created_by_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from project_parameter_file_versions where id = 'file-version-target'
        union all
-       select 'candidate', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+       select 'candidate', id, created_by_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from project_parameter_file_candidates where id = 'candidate-delete-agent'
        union all
-       select 'config-revision', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+       select 'config-revision', id, created_by_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from dts_config_revisions where id = 'config-revision-delete-agent'
        union all
-       select 'submission-round', id, submitter_user_id, initiator_type, initiator_principal_user_id,
+       select 'submission-round', id, submitter_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from parameter_submission_rounds where id = 'round-delete-agent'
        union all
-       select 'change-request', id, submitter_user_id, initiator_type, initiator_principal_user_id,
+       select 'change-request', id, submitter_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from parameter_change_requests where id = 'request-delete-agent'
        union all
-       select 'review-decision', id, reviewer_user_id, initiator_type, initiator_principal_user_id,
+       select 'review-decision', id, reviewer_user_id, initiator_type, initiator_principal_deleted,
               initiator_session_id, initiator_tool_call_id, initiator_approval_id
          from parameter_review_decisions where id = 'decision-delete-agent'
        order by table_name`
@@ -546,43 +612,33 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     for (const row of retained.rows) {
       expect(row.user_id, row.table_name).toBeNull();
       expect(row.initiator_type, row.table_name).toBe("agent");
-      expect(row.initiator_principal_user_id, row.table_name).toBe("u-target");
+      expect(row.initiator_principal_deleted, row.table_name).toBe(true);
       expect(row.initiator_session_id, row.table_name).toBe("delete-agent-session");
       expect(row.initiator_tool_call_id, row.table_name).toBe("delete-agent-tool");
       expect(row.initiator_approval_id, row.table_name).toBe("delete-agent-approval");
     }
 
-    const tombstone = await db.query(
-      `select principal_user_id, organization_id
-       from parameter_execution_principal_tombstones
-       where principal_user_id = 'u-target'`
+    const rawIdColumns = await db.query(
+      `select table_name, column_name
+       from information_schema.columns
+       where table_schema = 'public'
+         and column_name = 'initiator_principal_user_id'`
     );
-    expect(tombstone.rows).toEqual([{ principal_user_id: "u-target", organization_id: "org-chargelab" }]);
+    expect(rawIdColumns.rows).toEqual([]);
+    const tombstoneTables = await db.query(
+      `select table_name
+       from information_schema.tables
+       where table_schema = 'public'
+         and table_name = 'parameter_execution_principal_tombstones'`
+    );
+    expect(tombstoneTables.rows).toEqual([]);
   });
 
-  it("rejects cross-organization file-version tombstone and file moves", async () => {
+  it("keeps deleted Agent marker server-owned and immutable", async () => {
     await insertDeletionFixture(db);
-    await db.query(
-      `insert into organizations (id, name) values ('org-other', 'Other Organization')`
-    );
-    await db.query(
-      `insert into projects (id, organization_id, name, code, status)
-       values ('project-other', 'org-other', 'Other project', 'OTHER', 'initialized')`
-    );
-    await db.query(
-      `insert into project_parameter_files (id, organization_id, project_id, file_name, format)
-       values ('file-other', 'org-other', 'project-other', 'other.dts', 'dts')`
-    );
-    await db.query(
-      `insert into parameter_execution_principal_tombstones (principal_user_id, organization_id)
-       values
-         ('deleted-agent-same', 'org-chargelab'),
-         ('deleted-agent-other', 'org-other')`
-    );
     await db.query(
       `update project_parameter_file_versions
        set initiator_type = 'agent',
-           initiator_principal_user_id = null,
            initiator_session_id = 'scope-session',
            initiator_tool_call_id = 'scope-tool',
            initiator_approval_id = 'scope-approval',
@@ -593,7 +649,6 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     await db.query(
       `update parameter_history_entries
        set initiator_type = 'agent',
-           initiator_principal_user_id = null,
            initiator_session_id = 'scope-history-session',
            initiator_tool_call_id = 'scope-history-tool',
            initiator_approval_id = 'scope-history-approval',
@@ -602,94 +657,69 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
        where id = 'history-target'`
     );
     await expect(
-      deleteUser(db, adminAuth, "u-target", { requestId: "scope-tombstone-request" })
-    ).resolves.toBeUndefined();
-
-    await expect(
-      db.transaction((tx) => tx.query(
-        `update project_parameter_file_versions
-         set initiator_principal_user_id = 'deleted-agent-other'
-         where id = 'file-version-target'`
-      ))
-    ).rejects.toMatchObject({ code: "23514" });
-
-    await expect(
-      db.transaction((tx) => tx.query(
-        `update project_parameter_file_versions
-         set initiator_principal_user_id = 'deleted-agent-same'
-         where id = 'file-version-target'`
-      ))
-    ).rejects.toMatchObject({ code: "23514" });
-
-    await expect(
-      db.transaction((tx) => tx.query(
-        `update parameter_history_entries
-         set initiator_principal_user_id = 'deleted-agent-same'
-         where id = 'history-target'`
-      ))
-    ).rejects.toMatchObject({ code: "23514" });
-
-    await expect(
       db.transaction((tx) => tx.query(
         `insert into parameter_history_entries (
            id, organization_id, project_id, parameter_definition_id,
            project_parameter_value_id, version, value, changed_by_user_id,
-           initiator_type, initiator_principal_user_id, initiator_session_id,
+           initiator_type, initiator_principal_deleted, initiator_session_id,
            initiator_tool_call_id, initiator_approval_id
          ) values (
-           'history-direct-agent', 'org-chargelab', 'project-delete',
-           'definition-delete', 'value-delete', 2, '1', null, 'agent',
-           'deleted-agent-same', 'direct-history-session', 'direct-history-tool',
-           'direct-history-approval'
+           'history-direct-deleted-agent', 'org-chargelab', 'project-delete',
+           'definition-delete', 'value-delete', 2, '1', null, 'agent', true,
+           'direct-history-session', 'direct-history-tool', 'direct-history-approval'
          )`
       ))
     ).rejects.toMatchObject({ code: "23514" });
 
     await expect(
       db.transaction((tx) => tx.query(
-        `update project_parameter_file_versions
-         set file_id = 'file-other'
-         where id = 'file-version-target'`
+        `update parameter_history_entries
+         set initiator_principal_deleted = true
+         where id = 'history-target'`
       ))
     ).rejects.toMatchObject({ code: "23514" });
 
     await expect(
-      db.transaction((tx) => tx.query(
-        `update parameter_execution_principal_tombstones
-         set organization_id = 'org-other'
-         where principal_user_id = 'u-target'`
-      ))
-    ).rejects.toMatchObject({ code: "23514" });
+      deleteUser(db, adminAuth, "u-target", { requestId: "marker-delete-request" })
+    ).resolves.toBeUndefined();
 
     await expect(
       db.transaction((tx) => tx.query(
-        `update project_parameter_files
-         set organization_id = 'org-other'
-         where id = 'file-target'`
+        `update parameter_history_entries
+         set initiator_principal_deleted = false
+         where id = 'history-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update parameter_history_entries
+         set initiator_type = 'user', changed_by_user_id = 'u-admin'
+         where id = 'history-target'`
       ))
     ).rejects.toMatchObject({ code: "23514" });
 
     const retained = await db.query<{
-      file_id: string;
-      initiator_principal_user_id: string | null;
-    }>(
-      `select file_id, initiator_principal_user_id
-       from project_parameter_file_versions
-       where id = 'file-version-target'`
-    );
-    expect(retained.rows).toEqual([
-      { file_id: "file-target", initiator_principal_user_id: "u-target" }
-    ]);
-    const retainedHistory = await db.query<{
       changed_by_user_id: string | null;
-      initiator_principal_user_id: string | null;
+      initiator_type: string;
+      initiator_principal_deleted: boolean;
+      initiator_session_id: string | null;
+      initiator_tool_call_id: string | null;
+      initiator_approval_id: string | null;
     }>(
-      `select changed_by_user_id, initiator_principal_user_id
+      `select changed_by_user_id, initiator_type, initiator_principal_deleted,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
        from parameter_history_entries
        where id = 'history-target'`
     );
-    expect(retainedHistory.rows).toEqual([
-      { changed_by_user_id: null, initiator_principal_user_id: "u-target" }
+    expect(retained.rows).toEqual([
+      {
+        changed_by_user_id: null,
+        initiator_type: "agent",
+        initiator_principal_deleted: true,
+        initiator_session_id: "scope-history-session",
+        initiator_tool_call_id: "scope-history-tool",
+        initiator_approval_id: "scope-history-approval"
+      }
     ]);
   });
 

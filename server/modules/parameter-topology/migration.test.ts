@@ -1371,6 +1371,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'user', ${row.userColumn} = $2,
+                 initiator_principal_deleted = false,
                  initiator_system_kind = null, initiator_system_name = null,
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1382,6 +1383,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'system', ${row.userColumn} = null,
+                 initiator_principal_deleted = false,
                  initiator_system_kind = 'job', initiator_system_name = 'mig-union-job',
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1393,6 +1395,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'legacy', ${row.userColumn} = null,
+                 initiator_principal_deleted = false,
                  initiator_system_kind = null, initiator_system_name = null,
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1406,6 +1409,14 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
 
         for (const row of userRows) {
           await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_principal_deleted = true
+               where id = $1`,
+              [row.id]
+            )
+          );
           await setSystem(row);
           const system = await db.query<{
             initiator_type: string;
@@ -1565,14 +1576,16 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         const bindingId = binding.rows[0]!.id;
         await db.query(
           `update project_parameter_binding_revisions
-           set initiator_type = 'user', initiator_system_kind = null, initiator_system_name = null,
+           set initiator_type = 'user', initiator_principal_deleted = false,
+               initiator_system_kind = null, initiator_system_name = null,
                initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
            where id = $1`,
           [bindingId]
         );
         await db.query(
           `update project_parameter_binding_revisions
-           set initiator_type = 'agent', initiator_session_id = 'binding-session',
+           set initiator_type = 'agent', initiator_principal_deleted = false,
+               initiator_session_id = 'binding-session',
                initiator_tool_call_id = 'binding-tool', initiator_approval_id = 'binding-approval',
                initiator_system_kind = null, initiator_system_name = null
            where id = $1`,
@@ -1602,14 +1615,15 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         }
         await db.query(
           `update project_parameter_binding_revisions
-           set initiator_type = 'system', initiator_system_kind = 'service',
+           set initiator_type = 'system', initiator_principal_deleted = false,
+               initiator_system_kind = 'service',
                initiator_system_name = 'binding-service', initiator_session_id = null,
                initiator_tool_call_id = null, initiator_approval_id = null
            where id = $1`,
           [bindingId]
         );
         await expectViolation(
-              () => db.query(
+          () => db.query(
             `update project_parameter_binding_revisions
              set initiator_type = 'system', initiator_system_kind = 'job',
                  initiator_system_name = 'binding-job', initiator_session_id = 'not-allowed'
@@ -1619,7 +1633,8 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         );
         await db.query(
           `update project_parameter_binding_revisions
-           set initiator_type = 'legacy', initiator_system_kind = null, initiator_system_name = null,
+           set initiator_type = 'legacy', initiator_principal_deleted = false,
+               initiator_system_kind = null, initiator_system_name = null,
                initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
            where id = $1`,
           [bindingId]
@@ -1650,20 +1665,11 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           [bindingId]
         );
 
-        await db.query(
-          `insert into organizations (id, name)
-           values ('org-mig-14-other', 'Other Migration Org')
-           on conflict (id) do nothing`
-        );
-        await db.query(
-          `insert into parameter_execution_principal_tombstones (principal_user_id, organization_id)
-           values ('foreign-deleted-principal', 'org-mig-14-other')`
-        );
         await expectViolation(
           () => db.query(
             `update project_parameter_file_versions
              set initiator_type = 'agent', created_by_user_id = null,
-                 initiator_principal_user_id = 'foreign-deleted-principal',
+                 initiator_principal_deleted = true,
                  initiator_session_id = 'foreign-session',
                  initiator_tool_call_id = 'foreign-tool',
                  initiator_approval_id = 'foreign-approval',
@@ -1673,11 +1679,26 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           )
         );
 
+        const bindingMarker = await db.query<{ id: string }>(
+          `select id from project_parameter_binding_revisions
+           where config_revision_id = $1 limit 1`,
+          [seeded.configRevisionId]
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_binding_revisions
+             set initiator_principal_deleted = true
+             where id = $1`,
+            [bindingMarker.rows[0]!.id]
+          )
+        );
+
         for (const table of ["parameter_submission_rounds", "parameter_change_requests"] as const) {
           const id = table === "parameter_submission_rounds" ? "round-mig-14" : seeded.openCrId;
           await db.query(
             `update ${table}
              set initiator_type = 'agent', submitter_user_id = $2,
+                 initiator_principal_deleted = false,
                  initiator_session_id = 'submission-session', initiator_tool_call_id = 'submission-tool',
                  initiator_approval_id = 'submission-approval', initiator_system_kind = null,
                  initiator_system_name = null
@@ -1685,7 +1706,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
             [id, USER]
           );
           await expectViolation(
-          () => db.query(
+            () => db.query(
               `update ${table}
                set initiator_type = 'agent', submitter_user_id = $2,
                    initiator_session_id = null, initiator_tool_call_id = 'submission-tool',
@@ -1697,6 +1718,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${table}
              set initiator_type = 'system', submitter_user_id = null,
+                 initiator_principal_deleted = false,
                  initiator_system_kind = 'service', initiator_system_name = 'submission-service',
                  initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
              where id = $1`,
@@ -1715,10 +1737,19 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${table}
              set initiator_type = 'legacy', submitter_user_id = null,
+                 initiator_principal_deleted = false,
                  initiator_system_kind = null, initiator_system_name = null,
                  initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
              where id = $1`,
             [id]
+          );
+          await expectViolation(
+            () => db.query(
+              `update ${table}
+               set initiator_principal_deleted = true
+               where id = $1`,
+              [id]
+            )
           );
         }
 

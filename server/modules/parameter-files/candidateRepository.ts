@@ -74,7 +74,7 @@ const candidateSelect = `
   id, organization_id, project_id, file_id, file_name, format, status,
   base_version_id, storage_key, checksum, size_bytes, parsed_index,
   diagnostics, impact, blockers, created_by_user_id,
-  initiator_type, initiator_system_kind, initiator_system_name,
+  initiator_type, initiator_principal_deleted, initiator_system_kind, initiator_system_name,
   initiator_session_id, initiator_tool_call_id, initiator_approval_id,
   created_at, updated_at,
   abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id

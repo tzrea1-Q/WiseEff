@@ -110,6 +110,7 @@ describe("trusted invocation context", () => {
       )
     ).toEqual({
       userId: null,
+      principalDeleted: false,
       initiatorType: "system",
       systemKind: "job",
       systemName: "private-job",
@@ -130,12 +131,12 @@ describe("trusted invocation context", () => {
     );
   });
 
-  it("uses an opaque principal tombstone when the live user FK is gone", () => {
+  it("keeps a deleted Agent principal identity-free when the live user FK is gone", () => {
     expect(
       trustedDomainAttributionFromRow(
         {
           initiator_type: "agent",
-          initiator_principal_user_id: "deleted-user-1",
+          initiator_principal_deleted: true,
           initiator_session_id: "session-1",
           initiator_tool_call_id: "tool-1",
           initiator_approval_id: "approval-1",
@@ -144,7 +145,19 @@ describe("trusted invocation context", () => {
         },
         null
       )
-    ).toMatchObject({ userId: "deleted-user-1", initiatorType: "agent" });
+      ).toMatchObject({ userId: null, initiatorType: "agent", principalDeleted: true });
+    expect(
+      trustedDomainAttributionFromRow(
+        {
+          initiator_type: "agent",
+          initiator_principal_deleted: true,
+          initiator_session_id: "session-1",
+          initiator_tool_call_id: "tool-1",
+          initiator_approval_id: "approval-1"
+        },
+        "deleted-user-1"
+      ).userId
+    ).toBeNull();
   });
 
   it("rejects malformed, anonymous, and incomplete provenance", () => {
