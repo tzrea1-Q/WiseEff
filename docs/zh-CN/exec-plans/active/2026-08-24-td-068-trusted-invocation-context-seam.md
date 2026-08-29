@@ -2,7 +2,17 @@
 
 > English: [English](../../../exec-plans/active/2026-08-24-td-068-trusted-invocation-context-seam.md)
 
-状态：#610 已在 `codex/td-068-trusted-invocation-context` 完成实现与最终树本地 CI；GitHub Actions 本月额度耗尽期间，按 owner 已记录的完整本地 CI 例外进入可合入状态。本文件继续作为共享迁移记录保持 active：本切片建立服务端内部上下文及策略/审计 seam，#611–#615 完成前 TD-068 仍保持 Open。
+状态：Active。本文件是共享 TD-068 迁移记录；#615 仍负责剩余 legacy ratchet，不能在此关闭 TD-068。本轮 #614 修复在 `/Users/tzrea1/Develop/WiseEff-td614` 的 `codex/td-068-parameter-governance-provenance` 分支上追加提交，不创建 PR，也不修改 Issue 状态。
+
+## 当前状态（2026-08-30）
+
+- 当前基线为 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）。本次文档提交前的修复代码 checkpoint 是 `8ef903c7d`；因为提交本节会推进分支 tip，最终文档提交与最终 HEAD 以交接报告为准。
+- 最终的分支级注销修复是 `0136_parameter_execution_principal_deleted_marker.sql`。它只引入无身份值、服务端拥有的 `initiator_principal_deleted` 布尔标记；没有 tombstone 表、被删除用户原始 id、snapshot 列、哈希或替代标识。永久删除后，保留的 Agent 行具有 NULL 可问责用户外键、`initiator_type = 'agent'`、完整且非空的 session/tool-call/approval 关联以及 `true` 标记；User/System/Legacy 行保持 `false` 标记和各自判别联合字段。
+- 迁移约束对历史行使用 `NOT VALID`，但会拒绝所有畸形的新建或更新。只有数据库嵌套外键 `SET NULL` 注销转换可以设置 Agent 标记；普通 insert/update 不能设置、清除或改写它。`trustedDomainAttributionFromRow` 永不重建已删除用户 id。
+- TDD Red→Green 证据记录在后文。全新 owned PostgreSQL 的 migration/deletion/trusted-attribution 测试已通过（最近聚焦运行：4 个文件 / 53 个测试）；修复代码 checkpoint 的完整 server 与本地门禁均已通过。不声称 Hosted CI、HDC、硬件或 live-provider 结果。原 dirty worktree 仅只读且未触碰。
+- System 的 high/no-match 操作仍成功，用户归属为 NULL 并保留明确 service/job identity；critical Agent/System 仍是可持久化的 human-required 拒绝。公共 DTO 与通知只暴露粗粒度执行标签，绝不暴露内部 correlation 或已删除标记。TD-068 仍为 active；排除 #615、TD-123 与无关 frontend 工作。
+
+本节之前的 checkpoint 均为历史证据。其旧的“final”措辞、commit SHA、迁移编号及本地 CI 计数仅描述当时的树，不代表当前状态。
 
 ## 目标
 
@@ -16,7 +26,7 @@
 - 聚焦测试覆盖构造不变量、策略结果、actor/审计投影、system 平台范围审计，以及查询前的 malformed-context 失败。
 - 现有可选 `actorType` 调用点留给后续迁移票据；不修改 request DTO、header、body、`/me` 或 OpenAPI 契约。
 
-## 验证
+## 历史验证（当前 #614 修复之前）
 
 - 可信上下文聚焦测试：3 个文件、15 个测试通过。
 - 重基到已修复的 main `a57a88806` 后，最终树完整矩阵通过：前端 408 个文件 / 3022 个测试；scripts 69 个文件 / 830 个通过 / 5 个跳过；bridge 21 个文件 / 138 个测试；server 355 个文件通过 / 1 个跳过，2739 个测试通过 / 4 个跳过。
@@ -354,7 +364,22 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - `0138_parameter_execution_principal_snapshot_guards.sql` 在九个带用户字段的治理表上重新安装 server-owned snapshot trigger。只有嵌套 live-user FK `SET NULL` 转换可以创建匹配 tombstone snapshot；直接插入、替换、删除 snapshot 或修改 initiator type 均被拒绝，包括同 Organization 替换。file-version trigger 保留 exact file/Organization 校验和 file-id scope 覆盖；正式生成 schema 现记录 136 个迁移至 `0138`。
 - 最终固定 HEAD 的完整本地验证为：server `370 files / 2,906 tests`、1 个 intentional skip；`npm run test:all` 的 frontend `421/3,169`、scripts `69 files / 949 passed / 5 skipped`、bridge `21/138`、server `370/2,906 passed / 1 skipped`。typecheck、build、contract、pgvector-backed docs、lint（0 errors / 301 inherited warnings）、self-host、acceptance 与 diff check 均通过。build 保留 5 个 browser-externalization warnings 与 large-chunk warning；scripts 有既有 `ps: process id too large: 999999999` informational 行。Hosted CI 因月度配额耗尽不可用且未声称通过。
 
-### 最终固定 HEAD 的复跑披露（2026-08-29）
+## #614 注重隐私的注销修复（当前，2026-08-30）
+
+这是当前修复记录，取代上方旧 checkpoint 的当前含义；旧段落仅保留历史 Red/Green 证据。
+
+- 父级审查发现早期 `0136`–`0138` tombstone/snapshot 设计违反隐私合同：它在 tombstone 中保留已删除的 `users.id`，并由 trusted row projection 恢复。Owner 合同要求永久删除后所有保留业务/审计行的用户外键及派生 `userId` 都是 `NULL`。本修复以代码 checkpoint `8ef903c7d` 追加，保持 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）不变。
+- 删除三个 raw-ID 分支迁移，替换为 `0136_parameter_execution_principal_deleted_marker.sql`。它只向九个带用户字段的治理表及 binding revisions 增加 `initiator_principal_deleted boolean not null default false`。没有 tombstone 表、raw-ID/snapshot/hash/替代列、身份映射或 alias。`trustedDomainAttributionFromRow` 只使用活动外键；标记为 true 时即使调用者传入旧 id 也强制返回 `userId: null`。
+- 数据库 trigger 是唯一标记写入者。只有 live Agent 行在数据库嵌套外键 `SET NULL` 注销转换时设置 true；用户历史行仍转换为无 metadata 的 `legacy`。普通 INSERT/UPDATE 不能设置、清除、改类型或重新挂接 deleted Agent 标记。重建的 `NOT VALID` 约束对所有新建/更新行执行完整 User/Agent/deleted-Agent/System/Legacy 判别联合，同时为 #615 后续 ratchet 保留历史行。
+- 真值表：User = 非空 user FK、marker false、无 correlation/system 字段；live Agent = 非空 user FK、marker false、非空 session/tool-call/approval；deleted Agent = 空 user FK、marker true、同样完整 Agent correlation；System = 空 user FK、marker false、`service|job` 加非空 name 且无 correlation；Legacy = 空 user FK、marker false 且 metadata-free。不存在 synthetic user 或 auth-user fallback。
+- 内部 repository 通过共享 `TrustedInvocationDomainAttributionRow` 读取/投影 marker。公共 DTO 与通知继续省略 marker 和全部 correlation；deleted Agent 不显示 deleted id。user-delete 审计可保留既有 opaque target id，但普通保留领域/审计行不保存该 id。
+- TDD Red 在全新 owned PostgreSQL 上真实发生：`TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff_td614_red_20260830_1 npm run test:server -- server/modules/users/deletion.integration.test.ts server/modules/auth/trustedInvocation.test.ts --run` 报告 `2 failed / 15 passed`。旧 trusted projection 缺少所需 identity-free marker，旧注销路径仍暴露 `parameter_execution_principal_tombstones`；没有弱化或伪造断言。
+- 全新 owned PostgreSQL Green：`server/modules/auth/trustedInvocation.test.ts`、`server/modules/users/deletion.integration.test.ts`、`server/modules/parameter-topology/migration.test.ts`、`server/shared/database/migrations.test.ts` 通过 `4 files / 53 tests`。扩展 #614 切片通过 `13 files / 204 tests`；完整 server 通过 `370 files / 2,907 tests`，1 个 intentional skip。`npm run test:all` 通过 frontend `421/3,169`、scripts `69 files / 953 passed / 5 skipped`、bridge `21/138`、server `370/2,907 passed / 1 skipped`。
+- 正式命令 `TEST_DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5433/wiseeff npm run db:schema-doc` 重新生成 `docs/generated/db-schema.md`，记录 134 个迁移至 `0136_parameter_execution_principal_deleted_marker.sql`；`npm run docs:check` 在 pgvector-backed 数据库上报告 governance 与 schema 均 current。typecheck、build、contract check、lint、self-host、acceptance 和 diff check 均通过。build 保留既有 5 个 browser externalization warning 与 large-chunk warning；lint 保留 301 个继承 frontend warning；测试只输出既有 jsdom navigation informational 与 `ps: process id too large: 999999999`。Hosted CI 因本月额度耗尽不可用，未声称通过。
+- 注销集成矩阵覆盖八种保留 Agent 行（history、value、file version、candidate、config revision、submission round、change request、review decision）：所有可问责用户 FK 为 `NULL`，`initiator_type='agent'`，marker true，session/tool-call/approval 精确保留。information-schema 查询证明不存在 tombstone 表和 `initiator_principal_user_id` 列。直接设置/清除/改类型/重新挂接 marker 均以 `23514` 失败；畸形 User/Agent/System/Legacy 与 binding-revision 行继续被拒绝。
+- 本次有界迁移/领域模型修复不改变用户注销产品合同、公开 request selector、frontend、audit architecture、#615 legacy ratchet、TD-123、DTS reload、HDC、硬件、live-provider 或共享/长期迁移历史。计划继续 Active，直到 #615 完成独立 legacy cleanup。
+
+### 历史固定 HEAD 的复跑披露（2026-08-29）
 
 - 在 evidence-only 文档提交 `b5a68c29b30e8d3717ebb0508c3a0b5e96b1b8e0` 之前的 code checkpoint `69affbfd9cfa4cb73e66472b4b57f459a81cfc38` 上直接重跑 `npm run test:all` 时，frontend 阶段在未修改的 `src/NodeDebuggingPage.test.tsx` 用例 `keeps the write observation when a stale API auto-read resolves later` 停止：`1 failed / 420 passed` files、`1 failed / 3,168 passed` tests（第二次完整 `npm test` 仍为同一 5 秒 timeout）。隔离重跑该文件通过 `1 file / 64 tests`；本分支没有 `src/**` diff，因此没有修复无关 frontend。scripts 阶段第一次出现无关的 `ops/self-hosted/scripts/provision-ip-lab.test.ts` hook timeout；隔离重跑通过 `2/2`，随后完整 scripts 重跑通过 `69 files / 949 tests`、5 个 skip。bridge 通过 `21/138`；独立重跑 server 通过 `370/2,906`、1 个 intentional skip。因此直接 `npm run test:all` 结果记录为失败，不能声称完整套件为 green。
 - migration invariant 通过 `9/9`，fresh owned PostgreSQL migration/topology/deletion 切片通过 `3 files / 42 tests`，扩展后的 #614 affected matrix 通过 `20 files / 257 tests`。build、contract、pgvector-backed docs、lint（`0 errors / 301 inherited warnings`）、self-host、acceptance 和 diff check 均通过。完整套件 timeout 与 scripts hook timeout 均发生在本分支未修改路径之外；`Not implemented: navigation to another Document` 和 `ps: process id too large: 999999999` 仍为 informational。Hosted CI 受本月额度耗尽不可用，未声称通过。
