@@ -1576,6 +1576,23 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "PARAM-SPEC-VIEW-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Admin"],
+    action: "Open the effective definition catalog by default, switch explicitly to governance history, and preserve that view in the URL.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-SPEC-VIEW-001"],
+    specFiles: [
+      "src/ParameterAdminNextPage.test.tsx",
+      "src/application/parameters/parameterAdminUrl.test.ts"
+    ],
+    assertions: ["ui", "api", "screenshot"],
+    deferralReason:
+      "Default/effective and explicit governance behavior is unit-covered and receives three-viewport playwright-cli evidence in this repair; a shared acceptance marker remains deferred."
+  },
+  {
     id: "PARAM-SPEC-EDIT-001",
     priority: "P1",
     area: "parameters",

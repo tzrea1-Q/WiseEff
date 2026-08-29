@@ -646,6 +646,40 @@ const diagnosticCanaries: Array<{ label: string; text: string; secret: string; c
 ];
 
 describe("upgrade.sh public interface", () => {
+  it("fails candidate readiness when the canonical driver catalog gate is blocked", () => {
+    const runDir = mkdtempSync(
+      join(tmpdir(), "wiseeff-upgrade-parameter-catalog-gate-"),
+    );
+    const result = runLibrary(
+      `
+      upgrade_run_dir="$1"
+      upgrade_run_id=parameter-catalog-gate
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_compose() {
+        printf '%s\n' "$*" >> "$upgrade_run_dir/compose.log"
+        return 2
+      }
+      if wiseeff_upgrade_verify_candidate_app_readiness; then
+        exit 0
+      else
+        exit $?
+      fi
+      `,
+      [runDir],
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "compose.log"), "utf8")).toContain(
+      "exec -T api npm run parameter-definitions:check -- --catalog-only",
+    );
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe(
+      "candidate-parameter-catalog\n",
+    );
+  });
+
   it("documents the small operator interface without touching the runtime", () => {
     const result = runUpgrade(["--help"]);
 

@@ -18,11 +18,19 @@ and exactly one organization driver-group placement.
   `0123_harden_node_type_identity.sql`, and
   `0124_harden_driver_identity_owner.sql`, and
   `0125_harden_driver_schema_owner_scope.sql`, and
-  `0126_guard_binding_spec_version_owner.sql`, with the application. The hardening
+  `0126_guard_binding_spec_version_owner.sql`, followed by append-only populated
+  repair `0127_repair_populated_effective_driver_catalog.sql`, with the application.
+  The hardening
   migrations preserve the legacy staging boundary, correct nodename-only
   subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
   names, close cross-tenant identity writes, and reject cross-spec binding versions;
   they do not make an unlinked definition effective.
+- `0127` is a deterministic upgrade repair, not a general identity matcher. It
+  repairs only uniquely proven driver roots, demotes unresolved active DTS surfaces
+  to draft governance evidence, and creates an uncategorized top-level driver group
+  and placement for each organization/canonical-driver pair. Source-key or name
+  collisions remain blocked. Maintenance triggers apply the same deterministic rule
+  when a later organization or active platform driver property is inserted.
 - If an existing database was briefly deployed from the pre-rebase Issue #649
   branch, its `schema_migrations` may contain the old `0117_effective...` through
   `0121_classify...` names. The runner accepts only the recorded, SHA-256-checked
@@ -72,6 +80,18 @@ placement, and records a trusted system audit event. A failed organization rolls
 back its catalog, binding, placement, and audit writes together.
 
 ## Contract and release gate
+
+The self-hosted upgrade runs the driver-catalog subset automatically after candidate
+API readiness and before public traffic:
+
+```bash
+npm run parameter-definitions:check -- --catalog-only
+```
+
+This subset proves canonical driver identity, one active version, aligned schema and
+property key, and organization placement. It intentionally excludes node-type
+taxonomy and project binding-tip governance so operators can enter the governance UI;
+config-revision release still uses the full gate below and remains fail-closed.
 
 Run the check again after application and before releasing any config revision:
 

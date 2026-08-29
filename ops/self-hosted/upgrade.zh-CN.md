@@ -75,7 +75,7 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 
 候选 `apply`/`resume` 恢复 queue 前，控制器会检查 API readiness、worker `http://127.0.0.1:8788/health/live` 及 Docker health、web 直连；worker 容器存在或镜像正确都不够。旧栈恢复时，控制器先验证数据平面、API live/ready、worker 健康、web 直连和旧 API/worker/web image identity，再恢复 queue；最后重建 proxy 并检查公网健康入口，全部通过后才写入 `old-stack-restored`。镜像身份同时比较记录的 image 引用和不可变的 Docker image ID。任一门禁失败都会写入 `recovery-required`，绝不写 `next_action=none`，并记录 proxy 与 queue/worker 隔离是否真实成功。
 
-`queue-resumed`、`starting-proxy` 和 `validating-public` 三个 advanced resume 阶段共用一条受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。因此 worker 不健康或任一 readiness 失败时，都不会启动候选 proxy，也不会执行公网探测。若 proxy 隔离失败，journal 会写入 `failure_service=proxy`、`failure_code=candidate-proxy-isolation`、`recovery_proxy_stopped=false`，且 `next_action` 以人工隔离 proxy 开头；只有这些检查通过后才重建 proxy 和探测公网，最后的 worker 复查仍用于发现健康漂移。
+`queue-resumed`、`starting-proxy` 和 `validating-public` 三个 advanced resume 阶段共用一条受保护顺序：先停止并隔离候选 proxy，再复查 API `/health/ready`、候选 API 内的规范驱动目录子门禁 `npm run parameter-definitions:check -- --catalog-only`、worker `127.0.0.1:8788/health/live` 及 Docker health、web 直连。目录阻断会记录 `candidate-parameter-catalog` 并进入恢复；目录阻断、worker 不健康或任一 readiness 失败时，都不会启动候选 proxy，也不会执行公网探测。若 proxy 隔离失败，journal 会写入 `failure_service=proxy`、`failure_code=candidate-proxy-isolation`、`recovery_proxy_stopped=false`，且 `next_action` 以人工隔离 proxy 开头；只有这些检查通过后才重建 proxy 和探测公网，最后的 worker 复查仍用于发现健康漂移。
 
 最终验证使用 Docker 支持的 `image inspect --format '{{.Id}}'` 接口解析候选镜像，并把 named-volume 映射按无序 `name=destination` 集合比较；Docker 返回 mount 的先后顺序不属于身份。镜像查询、容器缺失/未重建、应用镜像身份、Compose project、named-volume 和 `.env` 指纹失败都会分别持久化稳定的 service/code，不再统一退化成泛化恢复错误。
 

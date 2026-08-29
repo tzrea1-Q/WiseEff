@@ -595,7 +595,7 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 
 **ParameterSpec 身份（ADR-0013 / ADR-0014 / ADR-0017）：** 稳定目录身份为归属范围 + `attributionSubjectId`（驱动登记或节点类型定义）+ `property_key`。`parameter_specs.id` 是**代理键**；find-or-create 按上述列查找，哈希 id 只在即将插入新行时生成。`specification_key` 由三元组**派生**，身份纠错时在同一事务中重写（ID-R4），不要当作可独立编写的字段。列表/详情 DTO 的 `lifecycle` 反映定义层 `definition_lifecycle`（`draft` \| `active` \| `deprecated`）。版本化内容在 `parameter_spec_versions`（`version_status`：`draft` \| `active` \| `superseded`）；`currentVersionId` / `currentVersion` 在有活跃内容时指向当前版本行。同 subject + key 时组织定义覆盖平台定义。
 
-默认列表是生效目录投影（ADR-0039）。`view=effective`（省略 `view` 时的默认值）按规范驱动主体 + 属性键只返回一条启用且当前版本的定义，并执行组织 active > 平台 active 优先级；主体、驱动 schema 与组织驱动组放置不完整时不返回。`view=governance` 返回原始归属/生命周期/版本行，包含 draft、deprecated、被遮蔽成对行及不完整放置，用于修复与审计，不得用作 matcher override。每行还可带 `effectiveScope`、`overrideOfSpecId`、权威分类放置 `declaredPlacement` 与仅表示 binding 证据的 `observationState`。未匹配/歧义 ingest 只保留审核证据，不创建已识别 binding。扩展/收缩数据修复命令为 `npm run parameter-definitions:reconcile -- --dry-run|--apply`，独立只读门禁为 `npm run parameter-definitions:check`。
+默认列表是生效目录投影（ADR-0039）。`view=effective`（省略 `view` 时的默认值）按规范驱动主体 + 属性键只返回一条启用且当前版本的定义，并执行组织 active > 平台 active 优先级；主体、驱动 schema 与组织驱动组放置不完整时不返回。`view=governance` 返回原始归属/生命周期/版本行，包含 draft、deprecated、被遮蔽成对行及不完整放置，用于修复与审计，不得用作 matcher override。每行还可带 `effectiveScope`、`overrideOfSpecId`、权威分类放置 `declaredPlacement` 与仅表示 binding 证据的 `observationState`。未匹配/歧义 ingest 只保留审核证据，不创建已识别 binding。扩展/收缩数据修复命令为 `npm run parameter-definitions:reconcile -- --dry-run|--apply`，独立完整只读门禁为 `npm run parameter-definitions:check`。`--catalog-only` 只选择自托管候选就绪所需的驱动目录子集，排除 node-type taxonomy 和项目 binding tip 检查，不得替代配置发布的完整门禁。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |

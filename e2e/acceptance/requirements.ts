@@ -733,6 +733,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-SPEC-VIEW-001",
+    workflow: "C",
+    title: "The parameter definition library opens the unique effective catalog and exposes raw history only through an explicit URL-backed governance view.",
+    required: false
+  },
+  {
     id: "PARAM-SPEC-EDIT-001",
     workflow: "C",
     title: "Admin edits units, constraints, example value, and documentation on an active definition; save then reopen round-trips every value, including constraint-key removal and clearing units.",

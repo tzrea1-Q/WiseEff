@@ -200,7 +200,7 @@ export function OrganizationSpecGovernancePanel({
     setSpecLoadError(null);
     try {
       const [items] = await Promise.all([
-        application.listSpecs({ view: "governance" }),
+        application.listSpecs({ view: urlState.catalogView }),
       ]);
       setSpecRows(
         items.map((item) =>
@@ -228,7 +228,7 @@ export function OrganizationSpecGovernancePanel({
     } finally {
       setSpecLoading(false);
     }
-  }, [application]);
+  }, [application, urlState.catalogView]);
 
   const reloadReviewTasks = useCallback(async () => {
     setReviewLoading(true);
@@ -297,7 +297,7 @@ export function OrganizationSpecGovernancePanel({
 
     let cancelled = false;
     application
-      .getSpec(selectedId, { view: "governance" })
+      .getSpec(selectedId, { view: urlState.catalogView })
       .then((detail) => {
         if (!cancelled) {
           const libraryRow =
@@ -332,7 +332,13 @@ export function OrganizationSpecGovernancePanel({
     return () => {
       cancelled = true;
     };
-  }, [application, createModules.length, specRows, urlState.specId]);
+  }, [
+    application,
+    createModules.length,
+    specRows,
+    urlState.catalogView,
+    urlState.specId,
+  ]);
 
   const sortedRows = useMemo(
     () => sortParameterSpecRows(specRows, urlState.sort),
@@ -753,6 +759,40 @@ export function OrganizationSpecGovernancePanel({
           </button>
         </div>
       ) : null}
+
+      <nav
+        className="parameter-admin-specs-subnav"
+        aria-label={PARAMETER_ADMIN_UI.specCatalogViewAria}
+      >
+        <button
+          type="button"
+          className={`parameter-admin-specs-subnav__tab${
+            urlState.catalogView === "effective" ? " is-active" : ""
+          }`}
+          aria-current={
+            urlState.catalogView === "effective" ? "page" : undefined
+          }
+          onClick={() =>
+            updateUrl({ catalogView: "effective", specId: null })
+          }
+        >
+          {PARAMETER_ADMIN_UI.specEffectiveView}
+        </button>
+        <button
+          type="button"
+          className={`parameter-admin-specs-subnav__tab${
+            urlState.catalogView === "governance" ? " is-active" : ""
+          }`}
+          aria-current={
+            urlState.catalogView === "governance" ? "page" : undefined
+          }
+          onClick={() =>
+            updateUrl({ catalogView: "governance", specId: null })
+          }
+        >
+          {PARAMETER_ADMIN_UI.specGovernanceView}
+        </button>
+      </nav>
 
       <div
         className="dts-parameter-workbench parameter-admin-specs-workbench"

@@ -6,6 +6,16 @@ export type EffectiveDefinitionVerificationReport = {
   checks: Array<{ code: string; count: number }>;
 };
 
+const DRIVER_CATALOG_CHECK_CODES = new Set([
+  "active-driver-definition-incomplete",
+  "active-driver-schema-root-owner-mismatch",
+  "active-driver-identity-duplicate",
+  "active-driver-version-duplicate",
+  "active-driver-identity-owner-mismatch",
+  "active-property-key-mismatch",
+  "active-driver-placement-missing",
+]);
+
 async function count(
   db: Queryable,
   text: string,
@@ -22,7 +32,12 @@ async function count(
  */
 export async function verifyEffectiveDriverParameterDefinitions(
   db: Queryable,
-  input: { organizationId?: string; configRevisionId?: string },
+  input: {
+    organizationId?: string;
+    configRevisionId?: string;
+    /** Deployment/catalog gate; project bindings and NodeType taxonomy remain separate release governance. */
+    catalogOnly?: boolean;
+  },
 ): Promise<EffectiveDefinitionVerificationReport> {
   // Platform rows are part of every organization's fallback catalog, so the
   // catalog checks always include them alongside the requested tenant rows.
@@ -1010,10 +1025,13 @@ export async function verifyEffectiveDriverParameterDefinitions(
     ),
   });
 
-  const blockers = checks.filter((check) => check.count > 0);
+  const reportedChecks = input.catalogOnly
+    ? checks.filter((check) => DRIVER_CATALOG_CHECK_CODES.has(check.code))
+    : checks;
+  const blockers = reportedChecks.filter((check) => check.count > 0);
   return {
     status: blockers.length > 0 ? "blocked" : "ready",
     organizationId: input.organizationId ?? null,
-    checks,
+    checks: reportedChecks,
   };
 }

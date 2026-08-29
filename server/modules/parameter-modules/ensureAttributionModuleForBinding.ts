@@ -281,7 +281,7 @@ async function ensureNamedModule(
 async function ensureBusinessLeafModuleId(
   db: Queryable,
   input: { organizationId: string; businessCategory: string },
-): Promise<string> {
+): Promise<string | null> {
   const existing = await findBusinessModuleIdByName(db, {
     organizationId: input.organizationId,
     name: input.businessCategory,
@@ -296,12 +296,7 @@ async function ensureBusinessLeafModuleId(
     parentId: null,
   });
   if (rootNameTaken) {
-    return resolveModuleIdForBinding(db, {
-      organizationId: input.organizationId,
-      driverModule: null,
-      compatible: null,
-      nodeType: null,
-    });
+    return null;
   }
 
   try {
@@ -316,18 +311,16 @@ async function ensureBusinessLeafModuleId(
     });
     return created.id;
   } catch {
-    // Concurrent bootstrap or residual unique race — prefer existing business, else unclassified.
+    // Concurrent bootstrap or residual unique race — prefer an existing
+    // business module. Unclassified is not a valid registration default or
+    // taxonomy parent, so leave the driver group top-level when the name is
+    // still occupied by another kind.
     const raced = await findBusinessModuleIdByName(db, {
       organizationId: input.organizationId,
       name: input.businessCategory,
     });
     if (raced) return raced;
-    return resolveModuleIdForBinding(db, {
-      organizationId: input.organizationId,
-      driverModule: null,
-      compatible: null,
-      nodeType: null,
-    });
+    return null;
   }
 }
 
@@ -344,7 +337,7 @@ async function resolveDriverGroupBusinessParentId(
     nodePath: string;
     attributionSubjectId?: string | null;
   },
-): Promise<string> {
+): Promise<string | null> {
   const subjectId =
     input.attributionSubjectId ??
     (await findAttributionSubjectIdBySourceKey(db, {
@@ -375,7 +368,7 @@ async function resolveDriverGroupBusinessParentId(
     businessCategory,
   });
 
-  if (subjectId) {
+  if (subjectId && parentId) {
     await bootstrapDriverRegistrationDefaultIfNull(db, {
       attributionSubjectId: subjectId,
       defaultBusinessCategoryModuleId: parentId,

@@ -53,7 +53,16 @@ proven, or allow a later active row to hide a draft without a durable precedence
    an organization node-type module. The verification gate also blocks duplicate
    active node-type source/property identities. Migration `0126` prevents a binding
    revision from referencing a version owned by a different `ParameterSpec`; historical
-   disagreements remain visible to the independent verification gate.
+   disagreements remain visible to the independent verification gate. Append-only
+   migration `0127` repairs the populated-upgrade shape retained by the expand phase:
+   it attributes a subjectless driver root only when the complete `DriverSchema` graph
+   proves one canonical subject, demotes an unlinked subjectless DTS property to draft
+   governance evidence, and creates one deterministic top-level driver-group placement
+   for each organization/canonical-driver pair. It never infers a business category or
+   identifies a driver from `property_key`. The same migration installs transaction-local
+   maintenance triggers so a later organization insert or active platform DriverSchema
+   property materialization preserves that placement invariant instead of recreating the
+   populated-upgrade defect.
    The command supports dry-run/apply, persists run/item evidence, uses
    per-organization transactions, preserves historical versions/revisions, and
    records trusted system audit events. The independent `parameter-definitions:check`
@@ -67,6 +76,8 @@ proven, or allow a later active row to hide a draft without a durable precedence
   release until resolved; there is no silent key-only deduplication.
 - Platform definitions can remain reusable across organizations while each tenant
   declares its own driver-group placement.
+- The ordinary library opens the effective projection. Raw draft, deprecated,
+  shadowed, and incomplete rows require the explicit governance view.
 - Platform-overlay promotion copies keep a governance-only/deprecated `ParameterSpec`
   parent while their active version supplies the overlay shape. They are not exposed
   as effective catalog definitions merely because an overlay was promoted.

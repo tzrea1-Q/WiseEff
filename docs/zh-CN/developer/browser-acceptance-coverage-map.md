@@ -128,6 +128,7 @@
 - `PARAM-ADMIN-IA-001`：组织子导航仅「参数定义管理」「模块管理」；定义管理内嵌匹配审核；节点对应嵌套于 specs 且在有任务时出现；旧 `/spec-review`、`/identity-mapping` 重定向并保留 query（单测 `parameterAdminOrganizationPath.test.ts`、`ParameterAdminNextPage.test.tsx`）。
 - `PARAM-ADMIN-AUDIT-RECENT-001`：服务端已审计的 Admin 变更后，项目运营最近条带来自 `listAuditEvents` 的投影，不依赖本地 `PUSH_AUDIT_HINT`（单测 `parameterAdminRecentAudits.test.tsx`、`refreshParameterAdminRecentAudits.test.ts`；playwright-cli 证据见 `work/ui-checks/param-admin-audit-recent/`）。
 - `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-SPEC-VIEW-001`：`/parameter-admin/specs` 默认打开唯一生效目录；draft/deprecated/被遮蔽/不完整原始行必须显式切到 URL 驱动的「治理历史」，列表和详情共用所选投影（单测 `src/ParameterAdminNextPage.test.tsx`、`src/application/parameters/parameterAdminUrl.test.ts`；playwright-cli 证据 `work/ui-checks/issue-649-populated-upgrade/`）。
 - `PARAM-SPEC-EDIT-001`：Admin 在启用态定义上改单位、约束、示例值与说明，保存后再打开，各值往返；删除约束键即删除，清空单位即清空（组件往返测试 `ParameterSpecDetailDialog.test.tsx`、载荷单测 `ParameterSpecDetail.test.ts`；服务端 `specLifecycle.integration.test.ts`）。
 - `PARAM-SPEC-EDIT-002`：定义编辑器在 1440×900 / 768×1024 / 390×844 下动作可达（含小泽 FAB 时不被挡住）；打开时焦点进入弹窗，关闭后回到触发器（`ModalDialog.test.tsx`；playwright-cli 证据 `work/ui-checks/param-spec-editor-batch4/`）。mock 无 FAB，层叠由刻度 1100 < 1150 < 1200 闭合。
 - `PARAM-SPEC-IDENTITY-001`：管理员在库中纠正一条定义的归属主体，重新打开后声明主体已更新，生命周期与引用数保留，同一属性不会出现第二条定义（组件 `ParameterSpecDetailDialog.test.tsx`；mock/HTTP 接缝；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
