@@ -453,7 +453,7 @@ describe("DtsTopologyNavigator", () => {
   });
 
   it("preserves unrelated collapsed roots when selecting a descendant", () => {
-    function Harness() {
+    function ControlledSelectionHarness() {
       const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
       return (
         <DtsTopologyNavigator
@@ -465,7 +465,7 @@ describe("DtsTopologyNavigator", () => {
       );
     }
 
-    render(<Harness />);
+    render(<ControlledSelectionHarness />);
 
     const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
     const rootA = within(navigator).getByRole("treeitem", { name: /模块 A/ });
