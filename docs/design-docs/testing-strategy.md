@@ -42,7 +42,8 @@ tests organization override/platform fallback and the explicit raw governance vi
 idempotence, and the independent verification gate.
 `populatedUpgrade.integration.test.ts` starts from a real pre-`0127` populated
 PostgreSQL graph, proves the old effective view is empty/blocked, applies the public
-migration runner, and verifies canonical placement plus retained draft evidence. Run
+migration runner through `0128`, and verifies canonical placement, retained draft
+evidence, same-key auto-module subject cutover, binding rehome, and curated fail-closed. Run
 `npm run parameter-definitions:reconcile -- --dry-run` before `--apply`, then
 `npm run parameter-definitions:check`. Unknown or ambiguous evidence must remain
 review evidence without a recognized binding, and release validation fails closed

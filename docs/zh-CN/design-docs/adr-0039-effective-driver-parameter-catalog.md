@@ -43,7 +43,10 @@ draft。
    `DriverSchema` 图唯一证明规范主体时，才给无主体驱动根补归属；未链接且无主体的 DTS 属性退回
    draft 治理证据；每个组织/规范驱动组合创建一个确定的顶层驱动组放置。该 bootstrap 不推断业务分类，
    也绝不通过 `property_key` 猜驱动。同一迁移还安装事务内维护触发器，使后续新增组织或物化 active
-   平台 DriverSchema 属性时继续保持该放置不变量，不会重新制造存量升级缺陷。该命令支持
+   平台 DriverSchema 属性时继续保持该放置不变量，不会重新制造存量升级缺陷。追加式迁移 `0128`
+   关闭保留的 source-key 切换形态：当且仅当组织内唯一的自动发现驱动组具有相同 compatible source key、
+   但仍指向旧组织主体时，保留模块与 binding，并把模块及其 placement 原位切换到完整平台
+   DriverSchema 主体；curated、不同 key 或歧义模块继续阻断，不做猜测。该命令支持
    dry-run/apply，持久化运行/条目证据，按组织事务处理，保留历史版本/修订，并记录可信 system 审计。独立的
    `parameter-definitions:check` 是最终只读门禁。
 
