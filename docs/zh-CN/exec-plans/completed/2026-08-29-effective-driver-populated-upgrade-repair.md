@@ -50,6 +50,7 @@ effective/governance 投影，以及 self-hosted upgrade fail-closed 四个 seam
 
 - `0127` 在不删除历史行的前提下修复服务器存量形态，并安装确定性维护触发器，防止后续新增组织或平台属性时复发。
 - 真实 PostgreSQL 目录与 populated upgrade 测试 18/18，通过迁移前 blocked、迁移后 ready、幂等重放、binding rehome 及两种后续写入顺序；另一次全新库演练先迁移至 `0127`、再执行 M0/M1 seed，无需重放迁移即得到 `--catalog-only` ready 且七项检查全为零；迁移历史/不变量测试 77/77。
+- 修正旧 seed fallback 后，backend 全量 2,860/2,860：名称冲突时保持确定性 driver group 为顶层，不再尝试把 `unclassified` 模块写成业务默认分类。
 - 前端投影测试 45/45，自托管升级测试 183/183；文档/schema、acceptance coverage/operations、OpenAPI、self-hosted 配置、UI standards 与生产构建全部通过。
 - 浏览器在 `/parameter-admin/specs` 完成 `1440x900`、`768x1024`、`390x844` 验收：默认 effective 返回 53 条 active 且有 placement 的行，显式 `?catalogView=governance` 返回 114 条历史行，详情/编辑沿用同一投影；相关网络请求均为 200，console error 为 0。截图位于 `work/ui-checks/issue-649-populated-upgrade/`。
 - 原自托管服务器尚未应用本次追加迁移；再次执行 `upgrade.sh` 和目标机 `--catalog-only` 输出仍是外部验收边界，不计作本地通过。

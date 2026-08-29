@@ -73,6 +73,9 @@ The operator confirmed these TDD seams before implementation:
   future insertion orders. A fresh migrate-through-`0127` then M0/M1 seed rehearsal
   reached `--catalog-only` ready with all seven checks at zero, without replaying the
   migration. Migration/invariant suites passed 77/77.
+- The full backend suite passed 2,860/2,860 after correcting the legacy seed
+  fallback: a name collision now leaves the deterministic driver group top-level
+  instead of attempting to persist an `unclassified` module as a business default.
 - Frontend projection tests passed 45/45; self-hosted upgrade tests passed 183/183.
   Documentation/schema, acceptance coverage/operations, OpenAPI contract, self-hosted
   configuration, UI standards, and production build all passed.
