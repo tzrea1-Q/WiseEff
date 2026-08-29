@@ -79,7 +79,7 @@ Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中
 
 最终验证使用 Docker 支持的 `image inspect --format '{{.Id}}'` 接口解析候选镜像，并把 named-volume 映射按无序 `name=destination` 集合比较；Docker 返回 mount 的先后顺序不属于身份。镜像查询、容器缺失/未重建、应用镜像身份、Compose project、named-volume 和 `.env` 指纹失败都会分别持久化稳定的 service/code，不再统一退化成泛化恢复错误。
 
-通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。任一恢复动作失败（包括 stop、pause 或 queue resume）时，`recovery_failure_summary` 保存有长度限制且脱敏的动作/错误码/输出摘要，同一摘要也会打印并写入 journal。公网探测使用 `curl --noproxy '*'`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
+通过 `status` 或 `status --json` 查看 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。summary 有长度限制并经过脱敏，不会写入代理密码、访问凭据或完整敏感环境变量。任一恢复动作失败（包括 stop、pause 或 queue resume）时，`recovery_failure_summary` 保存有长度限制且脱敏的动作/错误码/输出摘要，同一摘要也会打印并写入 journal。公网探测使用 `curl --noproxy '*'`。代理重建后，apply、resume 和 rollback 会在正常健康探测预算内等待公网 live/ready 端点；Caddy 启动期间的瞬时 connection refused 会重试，预算耗尽仍进入 `recovery-required`。容器内使用 `Host: web:5173` 访问 Vite 得到 403，只说明 Host allowlist 校验，不代表 TCP 不通；直连探测应使用 loopback 或既有允许的 hostname。
 
 ## 一次性宿主机准备
 

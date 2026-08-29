@@ -257,7 +257,7 @@ chmod 600 .build-network.env
 
 最终验证使用 Docker 支持的格式化镜像查询，并按无序集合比较 named-volume 映射，不依赖 Docker 枚举顺序。真实不一致会分别记录 image/container/project/volume/environment 的 service 和 code，不再只留下泛化的 `service=recovery code=recovery-required`。
 
-使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。两个 summary 都有长度限制并脱敏；任一恢复动作（包括 stop、pause 或 queue resume）失败时，其脱敏诊断会打印、写入 journal，并暴露为 `recovery_failure_summary`。公网探测明确使用 `curl --noproxy '*'`；容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
+使用 `./scripts/upgrade.sh status --run-id <run-id> --json` 读取 `failed_phase`、`failure_service`、`failure_code`、`failure_summary`、`recovery_started`、`recovery_verified`、`recovery_failure_summary` 和 `next_action`。两个 summary 都有长度限制并脱敏；任一恢复动作（包括 stop、pause 或 queue resume）失败时，其脱敏诊断会打印、写入 journal，并暴露为 `recovery_failure_summary`。公网探测明确使用 `curl --noproxy '*'`。代理重建后会在正常健康预算内重试 live/ready 端点，Caddy 启动时的瞬时拒绝不会误判为恢复失败；预算耗尽仍会 fail closed。容器内 `Host: web:5173` 触发的 Vite 403 是 Host allowlist 结果，检查 TCP 连通性时应使用 loopback 或已允许的 hostname。
 
 常用命令：
 
