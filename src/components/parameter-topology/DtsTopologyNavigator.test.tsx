@@ -72,6 +72,59 @@ const tree: DtsWorkbenchTreeNode[] = [
   }
 ];
 
+const multiRootTree: DtsWorkbenchTreeNode[] = [
+  {
+    id: "module-root-a",
+    parentId: null,
+    label: "模块 A",
+    name: "模块 A",
+    unitAddress: null,
+    compatible: null,
+    bindingIds: [],
+    bindingCount: 1,
+    attentionCount: 0,
+    children: [
+      {
+        id: "module-child-a",
+        parentId: "module-root-a",
+        label: "节点 A",
+        name: "节点 A",
+        unitAddress: null,
+        compatible: null,
+        bindingIds: ["binding-a"],
+        bindingCount: 1,
+        attentionCount: 0,
+        children: []
+      }
+    ]
+  },
+  {
+    id: "module-root-b",
+    parentId: null,
+    label: "模块 B",
+    name: "模块 B",
+    unitAddress: null,
+    compatible: null,
+    bindingIds: [],
+    bindingCount: 1,
+    attentionCount: 0,
+    children: [
+      {
+        id: "module-child-b",
+        parentId: "module-root-b",
+        label: "节点 B",
+        name: "节点 B",
+        unitAddress: null,
+        compatible: null,
+        bindingIds: ["binding-b"],
+        bindingCount: 1,
+        attentionCount: 0,
+        children: []
+      }
+    ]
+  }
+];
+
 describe("DtsTopologyNavigator", () => {
   it("applies the default expansion depth when async tree data arrives", () => {
     const { rerender } = render(
@@ -397,6 +450,41 @@ describe("DtsTopologyNavigator", () => {
     expect(onSelectNode).toHaveBeenCalledWith("effective-i2c");
     expect(i2c).toHaveAttribute("aria-expanded", "true");
     expect(within(navigator).getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
+  });
+
+  it("preserves unrelated collapsed roots when selecting a descendant", () => {
+    function Harness() {
+      const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+      return (
+        <DtsTopologyNavigator
+          view="effective"
+          nodes={multiRootTree}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    const rootA = within(navigator).getByRole("treeitem", { name: /模块 A/ });
+    const rootB = within(navigator).getByRole("treeitem", { name: /模块 B/ });
+
+    fireEvent.click(within(rootA).getByRole("button", { name: "折叠 模块 A" }));
+    fireEvent.click(within(rootB).getByRole("button", { name: "折叠 模块 B" }));
+    expect(rootA).toHaveAttribute("aria-expanded", "false");
+    expect(rootB).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(within(rootA).getByRole("button", { name: "展开 模块 A" }));
+    fireEvent.click(within(navigator).getByRole("treeitem", { name: /节点 A/ }));
+
+    expect(rootA).toHaveAttribute("aria-expanded", "true");
+    expect(rootB).toHaveAttribute("aria-expanded", "false");
+    expect(within(navigator).getByRole("treeitem", { name: /节点 A/ })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
   });
 
   it("does not render a disclosure control on leaf nodes", () => {

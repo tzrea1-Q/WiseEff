@@ -60,8 +60,8 @@ function nearestVisibleNodeId(
   return null;
 }
 
-function expansionPath(index: TreeIndex, selectedNodeId: string | null): string[] {
-  const expanded = [...index.rootsWithChildren];
+function selectedNodeExpansionPath(index: TreeIndex, selectedNodeId: string | null): string[] {
+  const expanded: string[] = [];
   const seen = new Set<string>();
   let current = selectedNodeId ? index.byId.get(selectedNodeId) : undefined;
   while (current && !seen.has(current.id)) {
@@ -110,7 +110,8 @@ function initialExpandedIds(
     defaultExpandDepth != null && defaultExpandDepth > 0
       ? idsToExpandUpToDepth(nodes, defaultExpandDepth)
       : new Set<string>();
-  for (const id of expansionPath(index, selectedNodeId)) expanded.add(id);
+  for (const id of index.rootsWithChildren) expanded.add(id);
+  for (const id of selectedNodeExpansionPath(index, selectedNodeId)) expanded.add(id);
   return expanded;
 }
 
@@ -182,7 +183,7 @@ export function DtsTopologyNavigator({
           next.add(id);
         }
       }
-      for (const id of expansionPath(index, selectedNodeId)) next.add(id);
+      for (const id of selectedNodeExpansionPath(index, selectedNodeId)) next.add(id);
       return next;
     });
   }, [defaultExpandDepth, expandAllByDefault, hasNodes, index, nodes, selectedNodeId, shouldSeedInitialExpansion]);
