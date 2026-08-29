@@ -229,7 +229,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 | 安全与审计指引 | Review | `docs/SECURITY.md`、`server/modules/audit/auditedWrite.ts`；可信上下文及禁止 default-user 仍是部分迁移。 |
 | 质量与验证文档 | Review | `docs/QUALITY_SCORE.md`、`docs/developer/verification-matrix.md`；#614 增加五类 operation trusted-provenance、second-location preflight 与 audit-rollback PostgreSQL 覆盖，并明确 HDC 不在本证据边界内。 |
 | 中文开发文档 | Review | `docs/zh-CN/SECURITY.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/domain-model.md`、`docs/zh-CN/PLANS.md`。 |
-| 生成物、runbook、前端/设计、references | Updated generated artifact | `docs/generated/db-schema.md` 记录 owner 授权的 0128-0134 字段、约束及 enablement binding 可空身份；`docs/runbooks/`、`src/` 与 `docs/references/` 保持不变。 |
+| 生成物、runbook、前端/设计、references | Updated generated artifact | `docs/generated/db-schema.md` 记录 owner 授权的 0129-0135 字段/约束、0136 tombstone 投影及 enablement binding 可空身份；`docs/runbooks/`、`src/` 与 `docs/references/` 保持不变。 |
 
 ## 文档影响矩阵与更新门禁
 
@@ -343,3 +343,10 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 - Green 是迁移 `0135_parameter_execution_principal_tombstones.sql`：创建按 Organization 约束的不透明 principal tombstone，为九个带用户字段的 #614 表增加内部 `initiator_principal_user_id` 快照，并替换删除 trigger，使只有服务端生成的嵌套 `SET NULL` 转换才能创建 tombstone-backed Agent 行。判别约束允许 live Agent user 或 tombstone snapshot 二选一，要求完整且非空的 Agent correlation，并保持 User/System/legacy metadata 互斥。普通客户端/应用更新不能凭空使用 tombstone，仍受严格联合约束和 scoped FK 保护。
 - 内部 row attribution 会为已删除 Agent 的历史投影解析不透明 principal snapshot，但 nullable user-owned 字段仍为 NULL。System 仍是 NULL-user 加明确 service/job identity；不创建 synthetic user、不使用特殊 UUID/空字符串、不回填 `auth.user`。公共 DTO 和通知仍只显示 `WiseEff Agent` / `WiseEff System service|job` 粗粒度标签，从不返回 tombstone、session、tool-call、approval 或内部 System name。
 - Owned PostgreSQL Green：用户删除集成测试 `5/5`（含八种保留 Agent 行及 tombstone 查询），migration upgrade `27/27`，trusted attribution 单元测试通过。generated schema 当前为 133 个迁移至 0135。计划保持 active，继续排除 #615、TD-123、frontend、HDC、硬件、live-provider 与 Hosted CI。
+
+## #614 最终迁移竞争修复（2026-08-29）
+
+- 在前一轮修复后，最后一次 `git fetch --prune origin main` 观察到 `origin/main@425c041074af0787a14cadee99ca59605b05432c`，主线新增迁移 `0128_repair_driver_placement_subject_cutover.sql`。干净 feature 分支已 rebase 到该提交；只有生成 schema 头部发生冲突，并在最终迁移目录上重新生成。没有重写、重排、squash、删除既有提交，也没有生产 SQL 冲突。
+- 由于七个 #614 identity migration 与 0135 tombstone 修复均只存在于本分支，owner 授权在主线新 0128 之后再次进行一次保持内容不变的整体重编号。最终有序文件为 `0129_parameter_execution_provenance.sql`、`0130_parameter_system_user_attribution_guard.sql`、`0131_parameter_governance_execution_identity.sql`、`0132_parameter_draft_enablement_owner_index.sql`、`0133_parameter_execution_identity_checks.sql`、`0134_parameter_execution_identity_legacy_compatibility.sql`、`0135_parameter_execution_identity_discriminated_constraints.sql`、`0136_parameter_execution_principal_tombstones.sql`。主线 0116–0128 完全未修改；没有 alias 或 checksum 重写。
+- 重编号前 migration invariant 是真实 Red：分支 0128 与主线 0128 冲突，仓库测试无法接受重复前缀；旧共享数据库在缺少旧分支文件时也按设计拒绝继续（该数据库不作为 Green 证据）。重编号后，在全新 owned PostgreSQL 上唯一前缀不变量通过，完整迁移可应用至 0136；upgrade seam 更新为先 replay 至 0132，再应用严格的 0133–0136 链。
+- 最终重命名后，使用 owned pgvector PostgreSQL 正式运行 `npm run db:schema-doc`。`docs/generated/db-schema.md` 现记录实际 134 个迁移至 `0136_parameter_execution_principal_tombstones.sql`；没有手工伪造 schema artifact，也没有修改共享 `schema_migrations` 历史。计划继续保持 active，并继续排除 #615、TD-123、frontend、HDC、硬件、live-provider 与 Hosted CI 证据。

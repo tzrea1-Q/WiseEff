@@ -1,5 +1,5 @@
 -- Prevent System execution metadata from carrying a user-owned attribution.
--- Kept as a follow-up migration after the 0128 provenance projection so the
+-- Kept as a follow-up migration after the 0129 provenance projection so the
 -- ordered branch-only history remains explicit until it is merged.
 
 alter table parameter_drafts

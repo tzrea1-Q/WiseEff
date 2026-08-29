@@ -1151,7 +1151,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
       { prefix: "mig14-upgrade", migrate: false },
       async ({ db }) => {
         await applyMigrations(db, migrationsDir, {
-          through: "0131_parameter_draft_enablement_owner_index.sql"
+          through: "0132_parameter_draft_enablement_owner_index.sql"
         });
         const seeded = await seedLegacyGraph(db);
         await db.query(
@@ -1257,7 +1257,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
       { prefix: "mig14-red-constraints", migrate: false },
       async ({ db }) => {
         await applyMigrations(db, migrationsDir, {
-          through: "0131_parameter_draft_enablement_owner_index.sql"
+          through: "0132_parameter_draft_enablement_owner_index.sql"
         });
         const seeded = await seedLegacyGraph(db);
         await db.query(
@@ -1325,7 +1325,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
       { prefix: "mig14-provenance-matrix", migrate: false },
       async ({ db }) => {
         await applyMigrations(db, migrationsDir, {
-          through: "0131_parameter_draft_enablement_owner_index.sql"
+          through: "0132_parameter_draft_enablement_owner_index.sql"
         });
         const seeded = await seedLegacyGraph(db);
         await applyMigrations(db, migrationsDir);

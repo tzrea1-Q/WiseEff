@@ -1,5 +1,5 @@
 -- Tighten the #614 execution projection into a database-enforced
--- discriminated union.  0132/0133 intentionally left some correlation
+-- discriminated union.  0133/0134 intentionally left some correlation
 -- combinations open while preserving pre-TD-068 rows; this forward migration
 -- keeps those historical rows (NOT VALID) but rejects every malformed new or
 -- updated row.  #615 owns the eventual legacy backfill/ratchet.
@@ -176,7 +176,7 @@ alter table project_parameter_binding_revisions
     )
   ) not valid;
 
--- Submission rounds and change requests gained the same fields in 0130 but
+-- Submission rounds and change requests gained the same fields in 0131 but
 -- did not yet carry the legacy marker.  Install the narrow historical adapter
 -- used by the earlier identity-compatibility step: a legacy row with a creator remains an explicit User row;
 -- only a metadata-free row may remain legacy.  No malformed User/Agent/System

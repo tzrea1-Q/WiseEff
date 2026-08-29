@@ -5,7 +5,7 @@
 -- silently changing an Agent/System execution into a User row.
 --
 -- The constraints are deliberately NOT VALID. Existing rows created before
--- #614 can have no historical user attribution (the 0128 `user` default), but
+-- #614 can have no historical user attribution (the 0129 `user` default), but
 -- PostgreSQL still enforces the trusted User/Agent/System predicates for every
 -- new row and every update. The explicit `legacy` marker preserves unrelated
 -- pre-TD-068 writers until their own migration (#615); trusted #614 writers
