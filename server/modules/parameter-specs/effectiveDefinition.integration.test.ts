@@ -274,6 +274,39 @@ describe.skipIf(!databaseAvailable)(
         `insert into organizations (id, name) values ($1, 'Effective Catalog Second')`,
         [secondOrganizationId],
       );
+      await db!.query(
+        `insert into attribution_subjects
+           (id, organization_id, subject_kind, display_name, origin, source_key)
+         values ('asub-effective-late-legacy', $1, 'driver-registration',
+                 'effective late legacy', 'auto',
+                 'compatible:effective,late-driver')`,
+        [secondOrganizationId],
+      );
+      await db!.query(
+        `insert into driver_registrations
+           (attribution_subject_id, driver_nature, instance_cardinality, notes)
+         values ('asub-effective-late-legacy', 'physical-device', 'multiple',
+                 'retained organization subject')`,
+      );
+      await db!.query(
+        `insert into parameter_modules
+           (id, organization_id, parent_id, name, path, depth, kind, origin,
+            source_key, attribution_subject_id)
+         values ('module-effective-late-legacy', $1, null,
+                 'Effective late legacy', 'module-effective-late-legacy', 1,
+                 'driver-group', 'auto', 'compatible:effective,late-driver',
+                 'asub-effective-late-legacy')`,
+        [secondOrganizationId],
+      );
+      await db!.query(
+        `insert into driver_registration_placements
+           (id, organization_id, attribution_subject_id,
+            driver_group_module_id, default_business_category_module_id)
+         values ('placement-effective-late-legacy', $1,
+                 'asub-effective-late-legacy',
+                 'module-effective-late-legacy', null)`,
+        [secondOrganizationId],
+      );
 
       const driver = await upsertMatchedDriverSchema(db!, {
         id: "driver-effective-late:v1",
@@ -328,6 +361,15 @@ describe.skipIf(!databaseAvailable)(
           default_business_category_module_id: null,
         })),
       );
+      expect(
+        await getDriverRegistrationPlacement(db!, {
+          organizationId: secondOrganizationId,
+          attributionSubjectId: driver.attributionSubjectId,
+        }),
+      ).toMatchObject({
+        driverGroupModuleId: "module-effective-late-legacy",
+        defaultBusinessCategoryModuleId: null,
+      });
 
       const verification = await verifyEffectiveDriverParameterDefinitions(
         db!,

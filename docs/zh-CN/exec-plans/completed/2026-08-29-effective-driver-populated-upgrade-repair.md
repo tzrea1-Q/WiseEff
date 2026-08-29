@@ -53,7 +53,12 @@ effective/governance 投影，以及 self-hosted upgrade fail-closed 四个 seam
 - 修正旧 seed fallback 后，backend 全量 2,860/2,860：名称冲突时保持确定性 driver group 为顶层，不再尝试把 `unclassified` 模块写成业务默认分类。
 - 前端投影测试 45/45，自托管升级测试 183/183；文档/schema、acceptance coverage/operations、OpenAPI、self-hosted 配置、UI standards 与生产构建全部通过。
 - 浏览器在 `/parameter-admin/specs` 完成 `1440x900`、`768x1024`、`390x844` 验收：默认 effective 返回 53 条 active 且有 placement 的行，显式 `?catalogView=governance` 返回 114 条历史行，详情/编辑沿用同一投影；相关网络请求均为 200，console error 为 0。截图位于 `work/ui-checks/issue-649-populated-upgrade/`。
-- 原自托管服务器尚未应用本次追加迁移；再次执行 `upgrade.sh` 和目标机 `--catalog-only` 输出仍是外部验收边界，不计作本地通过。
+- 原自托管服务器已应用 `0127`，候选门禁在流量切换前正确停止；通过 `0128` 再次执行成功的
+  `upgrade.sh` 与目标机 `--catalog-only` 输出仍是外部验收边界，不计作本地通过。
+- 目标服务器应用 `0127` 后，除 `active-driver-placement-missing=22` 外其余目录检查均归零。只读证据确认
+  三个唯一自动驱动组对应 `4 + 9 + 9` 条属性，持有准确 canonical compatible source key，但仍引用旧组织主体。
+  追加式 `0128` 保留模块 id、名称、父级与 binding，把模块及可选 placement 原位切换到完整平台
+  DriverSchema 主体，并重新执行无碰撞 binding 归位；目标服务器再次升级仍属于外部验收证据。
 
 ## Git 与 PR 工作流
 
@@ -72,7 +77,7 @@ effective/governance 投影，以及 self-hosted upgrade fail-closed 四个 seam
 | 可靠性 / runbook | 已更新 | 参数对账与自托管升级 runbook 及中英文配对。 |
 | 安全 / 治理 | 无变更 | 未改变鉴权面，继续保持“不猜业务归属”不变量。 |
 | 前端 / 设计 | 已更新 | FRONTEND、API contract、acceptance/operation coverage。 |
-| 生成物 | 已更新 | 从 125 个迁移（截至 `0127`）重新生成数据库 schema 文档。 |
+| 生成物 | 已更新 | 从 126 个迁移（截至 `0128`）重新生成数据库 schema 文档。 |
 | 引用 / 双语 | 已更新 | 所有有配对的已改开发者文档均同步中英文。 |
 
 ## 文档更新门禁

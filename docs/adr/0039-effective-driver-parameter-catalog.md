@@ -62,7 +62,12 @@ proven, or allow a later active row to hide a draft without a durable precedence
    identifies a driver from `property_key`. The same migration installs transaction-local
    maintenance triggers so a later organization insert or active platform DriverSchema
    property materialization preserves that placement invariant instead of recreating the
-   populated-upgrade defect.
+   populated-upgrade defect. Append-only migration `0128` closes the retained source-key
+   cutover case: when exactly one auto-discovered organization driver-group has the same
+   compatible source key but still references the older organization subject, it preserves
+   the module/bindings and reattributes that module plus its placement to the complete
+   platform DriverSchema subject. Curated, differently keyed, or ambiguous modules remain
+   blocked rather than guessed.
    The command supports dry-run/apply, persists run/item evidence, uses
    per-organization transactions, preserves historical versions/revisions, and
    records trusted system audit events. The independent `parameter-definitions:check`

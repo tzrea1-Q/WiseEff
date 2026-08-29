@@ -84,9 +84,16 @@ The operator confirmed these TDD seams before implementation:
   `?catalogView=governance` returned 114 history rows and used the same projection for
   detail/edit. Relevant network requests were 200 and console errors were zero.
   Screenshots are under `work/ui-checks/issue-649-populated-upgrade/`.
-- The original self-hosted server has not yet received this follow-up migration. Its
-  successful `upgrade.sh` rerun and target `--catalog-only` output remain external
-  acceptance evidence, not a local pass.
+- The original self-hosted server received `0127`; its candidate gate correctly stopped
+  before traffic cutover. A successful `upgrade.sh` rerun through `0128` and target
+  `--catalog-only` output remain external acceptance evidence, not a local pass.
+- Target upgrade evidence after `0127` reduced every catalog check to zero except
+  `active-driver-placement-missing=22`. Read-only inspection proved three unique auto
+  driver-groups (`4 + 9 + 9` properties) retained older organization subjects under
+  the exact canonical compatible source keys. Append-only `0128` now preserves those
+  module ids/names/parents/bindings, cuts their subjects and optional placements over
+  to the complete platform DriverSchema subjects, and reruns collision-free binding
+  placement. Target re-upgrade remains external acceptance evidence.
 
 ## Git & PR Workflow
 
@@ -106,7 +113,7 @@ and local-main synchronization remain parent-agent responsibilities.
 | Reliability / runbooks | Updated | parameter reconciliation and self-hosted upgrade runbooks plus Chinese companions. |
 | Security / governance | No change | no auth surface changed; the existing no-guessed-ownership invariant is preserved. |
 | Frontend / design | Updated | `docs/FRONTEND.md`, API contract, acceptance and operation coverage. |
-| Generated artifacts | Updated | `docs/generated/db-schema.md` regenerated from all 125 migrations through `0127`. |
+| Generated artifacts | Updated | `docs/generated/db-schema.md` regenerated from all 126 migrations through `0128`. |
 | References / bilingual docs | Updated | every changed developer document with a companion was updated in both languages. |
 
 ## Documentation Update Gate

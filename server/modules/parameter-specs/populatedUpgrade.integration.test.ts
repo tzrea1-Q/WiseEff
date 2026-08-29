@@ -52,6 +52,9 @@ async function seedPopulatedPreRepairShape(db: Database) {
      values
        ('asub-populated-driver', null, 'driver-registration',
         'vendor,upgrade-driver', 'auto', 'compatible:vendor,upgrade-driver'),
+       ('asub-populated-legacy-driver', 'org-populated-upgrade',
+        'driver-registration', 'legacy upgrade driver', 'auto',
+        'compatible:vendor,upgrade-driver'),
        ('asub-populated-node-type', 'org-populated-upgrade',
         'node-type-definition', 'legacy-node', 'auto', 'nodetype:legacy-node')`,
   );
@@ -61,6 +64,12 @@ async function seedPopulatedPreRepairShape(db: Database) {
      values ('asub-populated-driver', 'physical-device', 'multiple', '')`,
   );
   await db.query(
+    `insert into driver_registrations
+       (attribution_subject_id, driver_nature, instance_cardinality, notes)
+     values ('asub-populated-legacy-driver', 'physical-device', 'multiple',
+             'legacy organization subject')`,
+  );
+  await db.query(
     `insert into node_type_definitions (attribution_subject_id, bare_node_name)
      values ('asub-populated-node-type', 'legacy-node')`,
   );
@@ -68,10 +77,23 @@ async function seedPopulatedPreRepairShape(db: Database) {
     `insert into parameter_modules
        (id, organization_id, parent_id, name, path, depth, kind, origin,
         source_key, attribution_subject_id)
-     values ('module-populated-node-type', 'org-populated-upgrade', null,
-             'legacy-node', 'module-populated-node-type', 1,
-             'node-type', 'auto', 'nodetype:legacy-node',
-             'asub-populated-node-type')`,
+     values
+       ('module-populated-node-type', 'org-populated-upgrade', null,
+        'legacy-node', 'module-populated-node-type', 1,
+        'node-type', 'auto', 'nodetype:legacy-node',
+        'asub-populated-node-type'),
+       ('module-populated-driver-collision', 'org-populated-upgrade', null,
+        'Legacy driver surface', 'module-populated-driver-collision', 1,
+        'driver-group', 'auto', 'compatible:vendor,upgrade-driver',
+        'asub-populated-legacy-driver')`,
+  );
+  await db.query(
+    `insert into driver_registration_placements
+       (id, organization_id, attribution_subject_id, driver_group_module_id,
+        default_business_category_module_id)
+     values ('placement-populated-legacy-driver', 'org-populated-upgrade',
+             'asub-populated-legacy-driver',
+             'module-populated-driver-collision', null)`,
   );
   await db.query(
     `insert into parameter_specs
@@ -178,10 +200,11 @@ describe.skipIf(!databaseAvailable)("populated effective-driver upgrade", () => 
     ).toEqual([]);
 
     const applied = await applyMigrations(connection!.db, migrationsDir, {
-      through: "0127_repair_populated_effective_driver_catalog.sql",
+      through: "0128_repair_driver_placement_subject_cutover.sql",
     });
     expect(applied).toEqual([
       "0127_repair_populated_effective_driver_catalog.sql",
+      "0128_repair_driver_placement_subject_cutover.sql",
     ]);
 
     const after = await verifyEffectiveDriverParameterDefinitions(connection!.db, {
@@ -202,9 +225,9 @@ describe.skipIf(!databaseAvailable)("populated effective-driver upgrade", () => 
       propertyKey: "limit",
       declaredPlacement: {
         categoryId: null,
+        moduleId: "module-populated-driver-collision",
       },
     });
-    expect(effective[0]?.declaredPlacement?.moduleId).toBeTruthy();
 
     const governance = await listParameterSpecRows(connection!.db, {
       organizationId: "org-populated-upgrade",
@@ -222,7 +245,7 @@ describe.skipIf(!databaseAvailable)("populated effective-driver upgrade", () => 
     const migrationSql = await readFile(
       path.join(
         migrationsDir,
-        "0127_repair_populated_effective_driver_catalog.sql",
+        "0128_repair_driver_placement_subject_cutover.sql",
       ),
       "utf8",
     );
@@ -278,7 +301,7 @@ describe.skipIf(!databaseAvailable)("populated effective-driver upgrade", () => 
     );
 
     await applyMigrations(connection!.db, migrationsDir, {
-      through: "0127_repair_populated_effective_driver_catalog.sql",
+      through: "0128_repair_driver_placement_subject_cutover.sql",
     });
 
     const verification = await verifyEffectiveDriverParameterDefinitions(
@@ -291,5 +314,39 @@ describe.skipIf(!databaseAvailable)("populated effective-driver upgrade", () => 
         (check) => check.code === "recognized-binding-definition-incomplete",
       )?.count,
     ).toBe(0);
+  });
+
+  it("leaves a curated same-key module blocked instead of guessing its subject", async () => {
+    await connection!.db.query(
+      `update parameter_modules
+       set origin = 'curated'
+       where id = 'module-populated-driver-collision'`,
+    );
+
+    await applyMigrations(connection!.db, migrationsDir, {
+      through: "0128_repair_driver_placement_subject_cutover.sql",
+    });
+
+    const verification = await verifyEffectiveDriverParameterDefinitions(
+      connection!.db,
+      { organizationId: "org-populated-upgrade", catalogOnly: true },
+    );
+    expect(verification.status).toBe("blocked");
+    expect(
+      verification.checks.find(
+        (check) => check.code === "active-driver-placement-missing",
+      )?.count,
+    ).toBe(1);
+
+    const retained = await connection!.db.query<{
+      attribution_subject_id: string | null;
+    }>(
+      `select attribution_subject_id
+       from parameter_modules
+       where id = 'module-populated-driver-collision'`,
+    );
+    expect(retained.rows[0]?.attribution_subject_id).toBe(
+      "asub-populated-legacy-driver",
+    );
   });
 });

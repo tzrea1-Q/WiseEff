@@ -19,7 +19,8 @@ and exactly one organization driver-group placement.
   `0124_harden_driver_identity_owner.sql`, and
   `0125_harden_driver_schema_owner_scope.sql`, and
   `0126_guard_binding_spec_version_owner.sql`, followed by append-only populated
-  repair `0127_repair_populated_effective_driver_catalog.sql`, with the application.
+  repairs `0127_repair_populated_effective_driver_catalog.sql` and
+  `0128_repair_driver_placement_subject_cutover.sql`, with the application.
   The hardening
   migrations preserve the legacy staging boundary, correct nodename-only
   subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
@@ -28,9 +29,12 @@ and exactly one organization driver-group placement.
 - `0127` is a deterministic upgrade repair, not a general identity matcher. It
   repairs only uniquely proven driver roots, demotes unresolved active DTS surfaces
   to draft governance evidence, and creates an uncategorized top-level driver group
-  and placement for each organization/canonical-driver pair. Source-key or name
-  collisions remain blocked. Maintenance triggers apply the same deterministic rule
-  when a later organization or active platform driver property is inserted.
+  and placement for each organization/canonical-driver pair. Maintenance triggers
+  apply the same deterministic rule when a later organization or active platform
+  driver property is inserted. `0128` preserves and reattributes a uniquely keyed
+  auto driver-group whose retained organization subject conflicts with the canonical
+  platform DriverSchema subject, then repairs its placement and eligible bindings.
+  Curated, differently keyed, or ambiguous modules remain blocked.
 - If an existing database was briefly deployed from the pre-rebase Issue #649
   branch, its `schema_migrations` may contain the old `0117_effective...` through
   `0121_classify...` names. The runner accepts only the recorded, SHA-256-checked
