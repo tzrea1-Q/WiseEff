@@ -263,6 +263,7 @@ describe("action.submitParameterChange", () => {
       organizationId: "org1",
       owner: {
         userId: "u1",
+        principalDeleted: false,
         initiatorType: "agent",
         systemKind: null,
         systemName: null,
