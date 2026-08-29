@@ -202,7 +202,11 @@ describe.skipIf(!databaseAvailable)(
       expect(rows[0]).toMatchObject({
         lifecycle: "active",
         effectiveScope: "platform",
-        declaredPlacement: { moduleId: PLATFORM_GROUP, categoryId: CATEGORY },
+        declaredPlacement: {
+          moduleId: PLATFORM_GROUP,
+          categoryId: CATEGORY,
+          path: ["Power", "Effective platform"],
+        },
       });
     });
 
@@ -504,6 +508,34 @@ describe.skipIf(!databaseAvailable)(
           [PLATFORM_SPEC],
         ),
       ).rejects.toThrow(/inconsistent property keys/i);
+    });
+
+    it("fails closed when a historical driver schema root disagrees with the schema owner", async () => {
+      await db!.query("set session_replication_role = 'replica'");
+      try {
+        await db!.query(
+          `update parameter_specs
+           set attribution_subject_id = $2
+           where id = $1`,
+          ["pspec:driver:vendor/effective", ORG_SUBJECT],
+        );
+      } finally {
+        await db!.query("set session_replication_role = 'origin'");
+      }
+
+      const rows = await listParameterSpecRows(db!, { organizationId: ORG_ID });
+      expect(rows.some((row) => row.id === PLATFORM_SPEC)).toBe(false);
+
+      const verification = await verifyEffectiveDriverParameterDefinitions(
+        db!,
+        { organizationId: ORG_ID },
+      );
+      expect(verification.status).toBe("blocked");
+      expect(
+        verification.checks.find(
+          (check) => check.code === "active-driver-schema-root-owner-mismatch",
+        )?.count,
+      ).toBe(1);
     });
 
     it("keeps a common property separate for each concrete driver subject", async () => {

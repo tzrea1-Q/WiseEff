@@ -25,7 +25,8 @@ active 版本；`0121_effective_driver_parameter_catalog_legacy_write_compat.sql
 未链接暂存写入兼容，但不会让其生效；`0122_classify_nodename_driver_subjects.sql` 将此前错误的 nodename-only
 主体/模块修正为 node-type taxonomy；`0123_harden_node_type_identity.sql` 从可信主体元数据修复空 taxonomy
 名称，无法修复时失败关闭，并增加非空约束；`0124_harden_driver_identity_owner.sql` 拒绝跨租户主体/schema
-或属性键不一致的身份写入，`0125_harden_driver_schema_owner_scope.sql` 对 DriverSchema 根施加对称 owner 边界。验证门禁也会阻断重复的 active node-type source/property 身份，
+或属性键不一致的身份写入，`0125_harden_driver_schema_owner_scope.sql` 对 DriverSchema 根施加对称 owner 边界；
+`0126_guard_binding_spec_version_owner.sql` 阻止 binding revision 指向其他 spec 所属版本。验证门禁也会阻断历史 owner/version 不一致及重复的 active node-type source/property 身份，
 因此 effective 查询为空不能被误判为可发布。运维必须先做 PostgreSQL 与对象存储快照，执行对账 dry-run，按组织单事务
 apply，最后运行 `npm run parameter-definitions:check`；任何 blocker 都保持发布失败关闭。
 恢复流程和证据字段见[生效目录运行手册](runbooks/effective-driver-parameter-catalog-reconciliation.md)。

@@ -164,10 +164,16 @@ function modulePathMatchesSelection(path: string, selected: string): boolean {
 export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): string {
   if (spec.declaredPlacement?.moduleName?.trim()) {
     const declaredName = spec.declaredPlacement.moduleName.trim();
+    const declaredPath =
+      spec.declaredPlacement.path
+        ?.map((segment) => segment.trim())
+        .filter(Boolean) ?? [];
+    if (declaredPath.at(-1) !== declaredName) declaredPath.push(declaredName);
+    const declaredLabel = declaredPath.join(" / ") || declaredName;
     const observed = spec.attributionModules
       .filter((module) => module.name.trim() !== declaredName)
       .map((module) => (module.path && module.path.length > 0 ? module.path.join(" / ") : module.name));
-    return observed.length > 0 ? [declaredName, ...observed].join("、") : declaredName;
+    return observed.length > 0 ? [declaredLabel, ...observed].join("、") : declaredLabel;
   }
   if (spec.attributionModules.length > 0) {
     return spec.attributionModules

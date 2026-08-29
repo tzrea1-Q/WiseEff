@@ -94,8 +94,8 @@ affected acceptance requirement and operation IDs, or add them before completion
 
 ### Final verification evidence
 
-- A fresh PostgreSQL migration rehearsal applied all 123 migrations through
-  `0125_harden_driver_schema_owner_scope.sql`; rerunning
+- A fresh PostgreSQL/pgvector schema rehearsal applied all 124 migrations through
+  `0126_guard_binding_spec_version_owner.sql`; rerunning
   `npm run db:migrate` on that rehearsal returned `Applied 0 migration(s): none`, confirming
   the recorded checksums are stable. `npm run db:schema-doc:check` reports the generated schema
   artifact current.

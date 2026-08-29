@@ -1128,6 +1128,13 @@ export async function listParameterSpecRows(
                 and (ds.organization_id is null or ds.organization_id = ps.organization_id)
                 and exists (
                   select 1
+                  from parameter_specs driver_schema_root
+                  where driver_schema_root.id = ds.parameter_spec_id
+                    and driver_schema_root.organization_id is not distinct from ds.organization_id
+                    and driver_schema_root.attribution_subject_id is not distinct from ds.attribution_subject_id
+                )
+                and exists (
+                  select 1
                   from driver_schema_versions active_schema_version
                   where active_schema_version.driver_schema_id = dps.driver_schema_id
                     and active_schema_version.lifecycle = 'active'
@@ -1153,6 +1160,13 @@ export async function listParameterSpecRows(
             and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and ds.attribution_subject_id is not distinct from ps.attribution_subject_id
             and (ds.organization_id is null or ds.organization_id = ps.organization_id)
+            and exists (
+              select 1
+              from parameter_specs driver_schema_root
+              where driver_schema_root.id = ds.parameter_spec_id
+                and driver_schema_root.organization_id is not distinct from ds.organization_id
+                and driver_schema_root.attribution_subject_id is not distinct from ds.attribution_subject_id
+            )
             and exists (
               select 1
               from driver_schema_versions active_schema_version
@@ -1304,7 +1318,11 @@ export async function listParameterSpecRows(
           'moduleId', c.declared_module_id,
           'moduleName', c.declared_module_name,
           'categoryId', c.declared_category_id,
-          'categoryName', c.declared_category_name
+          'categoryName', c.declared_category_name,
+          'path', case
+            when c.declared_category_name is null then jsonb_build_array(c.declared_module_name)
+            else jsonb_build_array(c.declared_category_name, c.declared_module_name)
+          end
         ) end as declared_placement,
         c.observation_state
       from ranked c
@@ -1347,7 +1365,11 @@ export async function listParameterSpecRows(
           'moduleId', c.declared_module_id,
           'moduleName', c.declared_module_name,
           'categoryId', c.declared_category_id,
-          'categoryName', c.declared_category_name
+          'categoryName', c.declared_category_name,
+          'path', case
+            when c.declared_category_name is null then jsonb_build_array(c.declared_module_name)
+            else jsonb_build_array(c.declared_category_name, c.declared_module_name)
+          end
         ) end as declared_placement,
         c.observation_state
       from candidate c
@@ -1619,6 +1641,13 @@ export async function getParameterSpecRow(
                   and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
                   and exists (
                     select 1
+                    from parameter_specs driver_schema_root
+                    where driver_schema_root.id = property_ds.parameter_spec_id
+                      and driver_schema_root.organization_id is not distinct from property_ds.organization_id
+                      and driver_schema_root.attribution_subject_id is not distinct from property_ds.attribution_subject_id
+                  )
+                  and exists (
+                    select 1
                     from driver_schema_versions active_schema_version
                     where active_schema_version.driver_schema_id = dps.driver_schema_id
                       and active_schema_version.lifecycle = 'active'
@@ -1650,6 +1679,13 @@ export async function getParameterSpecRow(
               and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
               and exists (
                 select 1
+                from parameter_specs driver_schema_root
+                where driver_schema_root.id = property_ds.parameter_spec_id
+                  and driver_schema_root.organization_id is not distinct from property_ds.organization_id
+                  and driver_schema_root.attribution_subject_id is not distinct from property_ds.attribution_subject_id
+              )
+              and exists (
+                select 1
                 from driver_schema_versions active_schema_version
                 where active_schema_version.driver_schema_id = dps.driver_schema_id
                   and active_schema_version.lifecycle = 'active'
@@ -1673,7 +1709,15 @@ export async function getParameterSpecRow(
         'moduleId', coalesce(dgm.id, node_type_module.id),
         'moduleName', coalesce(dgm.name, node_type_module.name),
         'categoryId', coalesce(category.id, node_type_category.id),
-        'categoryName', coalesce(category.name, node_type_category.name)
+        'categoryName', coalesce(category.name, node_type_category.name),
+        'path', case
+          when coalesce(category.name, node_type_category.name) is null
+            then jsonb_build_array(coalesce(dgm.name, node_type_module.name))
+          else jsonb_build_array(
+            coalesce(category.name, node_type_category.name),
+            coalesce(dgm.name, node_type_module.name)
+          )
+        end
       ) end as declared_placement,
       case
         when exists (

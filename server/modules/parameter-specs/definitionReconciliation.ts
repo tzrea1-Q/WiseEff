@@ -42,6 +42,8 @@ type SuspectRow = {
   current_dts_property_key: string | null;
   active_version_count: number | string | null;
   current_value_shape: unknown;
+  current_units: string | null;
+  current_binding_values: unknown;
   binding_modules: unknown;
   observed_compatibles: unknown;
 };
@@ -160,14 +162,121 @@ function shapeKind(value: unknown): string | null {
 function shapesCompatible(left: unknown, right: unknown): boolean {
   const leftKind = shapeKind(left);
   const rightKind = shapeKind(right);
-  if (
-    !leftKind ||
-    !rightKind ||
-    leftKind === "unknown" ||
-    rightKind === "unknown"
-  )
-    return true;
-  return leftKind === rightKind;
+  if (!leftKind || !rightKind) return false;
+  if (["unknown", "mixed"].includes(leftKind)) return false;
+  if (["unknown", "mixed"].includes(rightKind)) return false;
+  if (leftKind !== rightKind) return false;
+
+  const leftShape = asRecord(left);
+  const rightShape = asRecord(right);
+  if (["cells", "u32-array", "phandle-list"].includes(leftKind)) {
+    for (const key of ["bits", "groups", "cellsPerGroup"] as const) {
+      const leftValue = leftShape[key];
+      const rightValue = rightShape[key];
+      if (
+        typeof leftValue !== "number" ||
+        typeof rightValue !== "number" ||
+        leftValue !== rightValue
+      )
+        return false;
+    }
+  }
+  if (leftKind === "bytes") {
+    return (
+      typeof leftShape.length === "number" &&
+      leftShape.length === rightShape.length
+    );
+  }
+  return true;
+}
+
+function finiteConstraint(
+  constraints: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = constraints[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function currentValueCompatible(
+  value: unknown,
+  valueShape: unknown,
+  constraintsValue: unknown,
+): boolean {
+  const typed = asRecord(value);
+  const shape = asRecord(valueShape);
+  const constraints = asRecord(constraintsValue);
+  const kind = shapeKind(shape);
+  if (!kind || ["unknown", "mixed"].includes(kind)) return false;
+
+  if (["cells", "u32-array", "phandle-list"].includes(kind)) {
+    if (typed.kind !== "cells" || !Array.isArray(typed.groups)) return false;
+    if (typed.bits !== shape.bits) return false;
+    const expectedGroups = shape.groups;
+    const expectedCells =
+      finiteConstraint(constraints, "cells") ??
+      (typeof shape.cellsPerGroup === "number" ? shape.cellsPerGroup : null);
+    if (
+      typeof expectedGroups !== "number" ||
+      typed.groups.length !== expectedGroups ||
+      expectedCells === null
+    )
+      return false;
+    const numbers: number[] = [];
+    for (const group of typed.groups) {
+      if (!Array.isArray(group) || group.length !== expectedCells) return false;
+      for (const cell of group) {
+        const cellRecord = asRecord(cell);
+        if (cellRecord.kind === "integer") {
+          const parsed = Number(cellRecord.value);
+          if (!Number.isFinite(parsed)) return false;
+          numbers.push(parsed);
+        } else if (cellRecord.kind !== "phandle") {
+          return false;
+        }
+      }
+    }
+    const min = finiteConstraint(constraints, "min");
+    const max = finiteConstraint(constraints, "max");
+    return numbers.every(
+      (number) => (min === null || number >= min) && (max === null || number <= max),
+    );
+  }
+
+  if (kind === "bool") return typed.kind === "boolean";
+  if (kind === "empty") return typed.kind === "empty";
+  if (kind === "bytes") {
+    if (typed.kind !== "bytes" || !Array.isArray(typed.values)) return false;
+    const expectedLength =
+      finiteConstraint(constraints, "length") ??
+      (typeof shape.length === "number" ? shape.length : null);
+    const minLength = finiteConstraint(constraints, "minLength");
+    const maxLength = finiteConstraint(constraints, "maxLength");
+    return (
+      (expectedLength === null || typed.values.length === expectedLength) &&
+      (minLength === null || typed.values.length >= minLength) &&
+      (maxLength === null || typed.values.length <= maxLength)
+    );
+  }
+  if (kind === "string-list" || kind === "string") {
+    if (typed.kind !== "strings" || !Array.isArray(typed.values)) return false;
+    const minItems = finiteConstraint(constraints, "minItems");
+    const maxItems = finiteConstraint(constraints, "maxItems");
+    return (
+      (kind !== "string" || typed.values.length === 1) &&
+      (minItems === null || typed.values.length >= minItems) &&
+      (maxItems === null || typed.values.length <= maxItems)
+    );
+  }
+  return false;
+}
+
+function asCurrentBindingValues(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const row = asRecord(item);
+    return Object.hasOwn(row, "typedValue") ? [row.typedValue] : [];
+  });
 }
 
 function patternMatches(pattern: string, value: string): boolean {
@@ -217,6 +326,42 @@ async function listSuspects(
       ps.property_key as current_parameter_property_key,
       dps.property_key as current_dts_property_key,
       current_version.value_shape as current_value_shape,
+      current_version.units as current_units,
+      (
+        select jsonb_agg(jsonb_build_object(
+          'bindingId', value_binding.id,
+          'typedValue', value_revision.typed_value
+        ) order by value_binding.id)
+        from project_parameter_bindings value_binding
+        inner join lateral (
+          select value_br.typed_value
+          from project_parameter_binding_revisions value_br
+          inner join dts_config_revisions value_cr
+            on value_cr.id = value_br.config_revision_id
+           and value_cr.project_id = value_binding.project_id
+           and value_cr.organization_id = value_binding.organization_id
+           and value_cr.status <> 'resolving'
+          left join dts_logical_nodes value_node
+            on value_node.id = value_binding.logical_node_id
+          where value_br.binding_id = value_binding.id
+            and (
+              value_node.config_set_id is null
+              or (
+                value_cr.config_set_id = value_node.config_set_id
+                and exists (
+                  select 1
+                  from dts_logical_node_revisions value_node_revision
+                  where value_node_revision.config_revision_id = value_cr.id
+                    and value_node_revision.logical_node_id = value_binding.logical_node_id
+                )
+              )
+            )
+          order by value_cr.revision_number desc, value_br.created_at desc, value_br.id desc
+          limit 1
+        ) value_revision on true
+        where value_binding.parameter_spec_id = ps.id
+          and value_binding.organization_id = ps.organization_id
+      ) as current_binding_values,
       (
         select count(*)
         from parameter_spec_versions active_versions
@@ -296,6 +441,13 @@ async function listSuspects(
             or current_driver_schema.attribution_subject_id is distinct from ps.attribution_subject_id
             or not exists (
               select 1
+              from parameter_specs current_driver_root
+              where current_driver_root.id = current_driver_schema.parameter_spec_id
+                and current_driver_root.organization_id is not distinct from current_driver_schema.organization_id
+                and current_driver_root.attribution_subject_id is not distinct from current_driver_schema.attribution_subject_id
+            )
+            or not exists (
+              select 1
               from driver_schema_versions active_schema_version
               where active_schema_version.driver_schema_id = dps.driver_schema_id
                 and active_schema_version.lifecycle = 'active'
@@ -366,6 +518,7 @@ async function listSuspects(
       current_version.version_status,
       current_version.lifecycle,
       current_version.value_shape
+      ,current_version.units
       ,dps.driver_schema_id
       ,dps.property_key
       ,ps.property_key
@@ -415,6 +568,10 @@ async function listPlatformCandidates(
        ds.id = dps.driver_schema_id
        or (dps.driver_schema_id is null and ds.schema_namespace = dps.schema_namespace)
      )
+    inner join parameter_specs driver_schema_root
+      on driver_schema_root.id = ds.parameter_spec_id
+     and driver_schema_root.organization_id is not distinct from ds.organization_id
+     and driver_schema_root.attribution_subject_id is not distinct from ds.attribution_subject_id
     inner join lateral (
       select id, version, compatible_patterns, lifecycle,
              md5(compatible_patterns::text) as compatible_patterns_fingerprint
@@ -605,6 +762,44 @@ async function classifySuspect(
       evidence: {
         currentShapeKind: shapeKind(suspect.current_value_shape),
         candidateShapeKind: shapeKind(candidate.value_shape),
+        candidateSpecId: candidate.parameter_spec_id,
+      },
+      candidate: null,
+      nextSubjectId: null,
+      placementModuleId: null,
+      placementCategoryId: null,
+    };
+  }
+  if (
+    suspect.current_units?.trim() &&
+    suspect.current_units.trim() !== candidate.units?.trim()
+  ) {
+    return {
+      status: "blocked",
+      blockerCode: "incompatible-units",
+      evidence: {
+        currentUnits: suspect.current_units,
+        candidateUnits: candidate.units,
+        candidateSpecId: candidate.parameter_spec_id,
+      },
+      candidate: null,
+      nextSubjectId: null,
+      placementModuleId: null,
+      placementCategoryId: null,
+    };
+  }
+  const incompatibleCurrentValues = asCurrentBindingValues(
+    suspect.current_binding_values,
+  ).filter(
+    (value) =>
+      !currentValueCompatible(value, candidate.value_shape, candidate.constraints),
+  );
+  if (incompatibleCurrentValues.length > 0) {
+    return {
+      status: "blocked",
+      blockerCode: "current-value-violates-candidate",
+      evidence: {
+        incompatibleBindingValueCount: incompatibleCurrentValues.length,
         candidateSpecId: candidate.parameter_spec_id,
       },
       candidate: null,

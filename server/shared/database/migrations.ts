@@ -45,6 +45,15 @@ const LEGACY_MIGRATION_CHECKSUMS: Record<string, readonly string[]> = {
   ],
 };
 
+// This short-lived pre-rebase migration removed registration/placement rows
+// while reclassifying nodename subjects. Its checksum proves that the unsafe
+// SQL ran; it cannot prove that deleted tenant placement data was preserved.
+// Never normalize this history automatically — operators must restore/audit
+// the affected data first and record a dedicated recovery migration.
+const UNSAFE_LEGACY_MIGRATIONS = new Set([
+  "0121_classify_nodename_driver_subjects.sql",
+]);
+
 export function getPendingMigrations(allMigrations: string[], appliedMigrations: string[]) {
   const applied = new Set(appliedMigrations);
   return allMigrations.filter((migration) => !applied.has(migration));
@@ -104,6 +113,14 @@ export async function applyMigrations(
     throw new Error(
       `Applied migration files are missing from the repository: ${missingFiles.join(", ")}. ` +
         "Restore the immutable migration file before applying new migrations.",
+    );
+  }
+
+  for (const name of UNSAFE_LEGACY_MIGRATIONS) {
+    if (!appliedChecksums.has(name)) continue;
+    throw new Error(
+      `Unsafe historical migration ${name} was applied. ` +
+        "Stop deployment, restore the pre-migration database snapshot, and perform an audited data recovery before retrying migrations.",
     );
   }
 

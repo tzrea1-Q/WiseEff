@@ -79,8 +79,12 @@ async function seed(db: InMemoryTestDatabase) {
   await db.query(
     `insert into parameter_spec_versions
        (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
-     values ('psv-reconciliation-old', $1, 1, 'old', 'old', '{"kind":"cells"}'::jsonb, 'draft', 'draft', 'old'),
-            ('psv-reconciliation-platform', $2, 1, 'canonical', 'canonical', '{"kind":"cells"}'::jsonb, 'active', 'active', 'canonical'),
+     values ('psv-reconciliation-old', $1, 1, 'old', 'old',
+              '{"kind":"cells","bits":32,"groups":1,"cellsPerGroup":1}'::jsonb,
+              'draft', 'draft', 'old'),
+            ('psv-reconciliation-platform', $2, 1, 'canonical', 'canonical',
+              '{"kind":"cells","bits":32,"groups":1,"cellsPerGroup":1}'::jsonb,
+              'active', 'active', 'canonical'),
             ('psv-reconciliation-driver', $3, 1, 'driver', 'driver', '{"kind":"unknown"}'::jsonb, 'active', 'active', 'driver')`,
     [OLD_SPEC, PLATFORM_SPEC, DRIVER_ROOT_SPEC],
   );
@@ -110,8 +114,10 @@ async function seed(db: InMemoryTestDatabase) {
   );
   await db.query(
     `insert into project_parameter_binding_revisions
-       (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value, schema_state)
-     values ('binding-reconciliation:v1', 'binding-reconciliation', $1, 'psv-reconciliation-old', '{"kind":"cells"}'::jsonb, '<1>', 'unreviewed')`,
+     (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value, schema_state)
+     values ('binding-reconciliation:v1', 'binding-reconciliation', $1, 'psv-reconciliation-old',
+       '{"kind":"cells","bits":32,"groups":[[{"kind":"integer","raw":"1","value":"1"}]]}'::jsonb,
+       '<1>', 'unreviewed')`,
     [REVISION_ID],
   );
 }
@@ -231,6 +237,116 @@ describe.skipIf(!databaseAvailable)(
       expect(item.rows).toEqual([
         { status: "blocked", blocker_code: "property-key-mismatch" },
       ]);
+    });
+
+    it("fails closed when the current value shape is unknown", async () => {
+      await db!.query(
+        `update parameter_spec_versions
+         set value_shape = '{"kind":"unknown"}'::jsonb
+         where id = 'psv-reconciliation-old'`,
+      );
+
+      const dryRun = await reconcileDriverParameterDefinitions(db!, {
+        mode: "dry-run",
+        organizationId: ORG_ID,
+      });
+      expect(dryRun).toMatchObject({ candidates: 0, blocked: 1 });
+      const item = await db!.query<{ blocker_code: string }>(
+        `select blocker_code
+         from parameter_definition_reconciliation_items
+         where run_id = $1`,
+        [dryRun.runId],
+      );
+      expect(item.rows).toEqual([
+        { blocker_code: "incompatible-value-shape" },
+      ]);
+    });
+
+    it("blocks an automatic upgrade when a current binding tip violates the candidate constraints", async () => {
+      await db!.query(
+        `update parameter_spec_versions
+         set constraints = '{"cells":1,"min":2}'::jsonb
+         where id = 'psv-reconciliation-platform'`,
+      );
+
+      const dryRun = await reconcileDriverParameterDefinitions(db!, {
+        mode: "dry-run",
+        organizationId: ORG_ID,
+      });
+      expect(dryRun).toMatchObject({ candidates: 0, blocked: 1 });
+      const item = await db!.query<{ blocker_code: string }>(
+        `select blocker_code
+         from parameter_definition_reconciliation_items
+         where run_id = $1`,
+        [dryRun.runId],
+      );
+      expect(item.rows).toEqual([
+        { blocker_code: "current-value-violates-candidate" },
+      ]);
+    });
+
+    it("blocks an automatic upgrade that changes an established unit", async () => {
+      await db!.query(
+        `update parameter_spec_versions
+         set units = case
+           when id = 'psv-reconciliation-old' then 'mV'
+           when id = 'psv-reconciliation-platform' then 'V'
+           else units
+         end
+         where id in ('psv-reconciliation-old', 'psv-reconciliation-platform')`,
+      );
+
+      const dryRun = await reconcileDriverParameterDefinitions(db!, {
+        mode: "dry-run",
+        organizationId: ORG_ID,
+      });
+      expect(dryRun).toMatchObject({ candidates: 0, blocked: 1 });
+      const item = await db!.query<{ blocker_code: string }>(
+        `select blocker_code
+         from parameter_definition_reconciliation_items
+         where run_id = $1`,
+        [dryRun.runId],
+      );
+      expect(item.rows).toEqual([{ blocker_code: "incompatible-units" }]);
+    });
+
+    it("blocks verification when a binding tip references a version owned by another spec", async () => {
+      const applied = await reconcileDriverParameterDefinitions(db!, {
+        mode: "apply",
+        organizationId: ORG_ID,
+      });
+      expect(applied).toMatchObject({ applied: 1, blocked: 0 });
+      await db!.query("set session_replication_role = 'replica'");
+      try {
+        await db!.query(
+          `update project_parameter_binding_revisions
+           set parameter_spec_version_id = 'psv-reconciliation-platform'
+           where id = 'binding-reconciliation:v1'`,
+        );
+      } finally {
+        await db!.query("set session_replication_role = 'origin'");
+      }
+
+      const verification = await verifyEffectiveDriverParameterDefinitions(
+        db!,
+        { organizationId: ORG_ID },
+      );
+      expect(verification.status).toBe("blocked");
+      expect(
+        verification.checks.find(
+          (check) => check.code === "recognized-binding-version-mismatch",
+        )?.count,
+      ).toBe(1);
+    });
+
+    it("rejects a new cross-spec binding version at the database boundary", async () => {
+      await expect(
+        db!.query(
+          `update project_parameter_binding_revisions
+           set parameter_spec_version_id = 'psv-reconciliation-platform'
+           where id = 'binding-reconciliation:v1'`,
+        ),
+      ).rejects.toThrow(/must belong to the binding ParameterSpec/i);
     });
 
     it("preflights the dirty twin and applies an audited, idempotent correction", async () => {

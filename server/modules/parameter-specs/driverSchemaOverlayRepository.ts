@@ -163,7 +163,9 @@ async function loadProperties(
       select id, value_shape, lifecycle, example_value
       from parameter_spec_versions
       where parameter_spec_id = odp.parameter_spec_id
-      order by version desc
+      order by
+        case when version_status = 'active' and lifecycle = 'active' then 0 else 1 end,
+        version desc
       limit 1
     ) psv on true
     left join dts_property_specs dps on dps.parameter_spec_id = odp.parameter_spec_id
@@ -700,6 +702,7 @@ export async function listPromotionsForPlatformSchema(
 }
 
 type PromotionSourceVersionRow = {
+  id: string;
   version: number | string;
   display_name: string;
   description: string;
@@ -726,8 +729,10 @@ export async function materializePlatformParameterSpecs(
   db: Queryable,
   input: {
     compatible: string;
+    sourceOrganizationId: string;
     properties: ReadonlyArray<{
       parameterSpecId: string;
+      parameterSpecVersionId?: string | null;
       propertyKey: string;
     }>;
   },
@@ -742,10 +747,24 @@ export async function materializePlatformParameterSpecs(
   for (const property of input.properties) {
     const source = await db.query<{
       organization_id: string | null;
+      definition_lifecycle: string;
+      attribution_subject_id: string | null;
+      subject_organization_id: string | null;
+      subject_kind: string | null;
+      parameter_property_key: string | null;
+      dts_property_key: string | null;
     }>(
       `
-      select ps.organization_id
+      select ps.organization_id,
+             ps.definition_lifecycle,
+             ps.attribution_subject_id,
+             asub.organization_id as subject_organization_id,
+             asub.subject_kind,
+             ps.property_key as parameter_property_key,
+             dps.property_key as dts_property_key
       from parameter_specs ps
+      left join attribution_subjects asub on asub.id = ps.attribution_subject_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
       where ps.id = $1
       limit 1
       `,
@@ -762,16 +781,41 @@ export async function materializePlatformParameterSpecs(
         `Cannot promote platform ParameterSpec ${property.parameterSpecId} as an organization contributor.`,
       );
     }
+    if (sourceRow.organization_id !== input.sourceOrganizationId) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: it does not belong to contributor organization ${input.sourceOrganizationId}.`,
+      );
+    }
+    if (
+      sourceRow.definition_lifecycle !== "active" ||
+      !sourceRow.attribution_subject_id ||
+      sourceRow.subject_kind !== "driver-registration" ||
+      (sourceRow.subject_organization_id !== null &&
+        sourceRow.subject_organization_id !== input.sourceOrganizationId)
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: contributor identity is not active and owner-aligned.`,
+      );
+    }
     const propertyKey = property.propertyKey.trim();
     if (!propertyKey) {
       throw new Error(
         `Cannot promote ParameterSpec ${property.parameterSpecId} without a property key.`,
       );
     }
+    if (
+      sourceRow.parameter_property_key !== propertyKey ||
+      (sourceRow.dts_property_key !== null &&
+        sourceRow.dts_property_key !== propertyKey)
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: property key does not match the contributor definition.`,
+      );
+    }
 
     const versions = await db.query<PromotionSourceVersionRow>(
       `
-      select version, display_name, description, value_shape, schema_default,
+      select id, version, display_name, description, value_shape, schema_default,
              example_value, lifecycle, version_status, activated_at::text,
              units, constraints, documentation, reference_rules
       from parameter_spec_versions
@@ -789,26 +833,33 @@ export async function materializePlatformParameterSpecs(
         `Cannot promote ParameterSpec ${property.parameterSpecId}: expected one active version, found ${activeVersions.length}.`,
       );
     }
+    if (
+      property.parameterSpecVersionId &&
+      activeVersions[0]?.id !== property.parameterSpecVersionId
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: overlay does not reference its active version.`,
+      );
+    }
 
     const ids = buildSubjectScopedManualSpecIds({
       organizationId: null,
       attributionSubjectId: platformSubjectId,
       propertyKey,
     });
-    // Overlay contributors are materialized by the manual-overlay path. A
-    // copied DTS row would be an unlinked active DTS staging definition and
-    // would correctly trip the release gate; the platform overlay owns a
-    // manual copy instead of inheriting that source classification.
+    // The active version supplies the promoted overlay shape, while the
+    // ParameterSpec parent stays governance-only. Without organization
+    // placement this copy must not masquerade as an effective definition.
     await db.query(
       `
       insert into parameter_specs (
         id, organization_id, source_kind, specification_key,
         definition_lifecycle, attribution_subject_id, property_key
-      ) values ($1, null, $2, $3, 'active', $4, $5)
+      ) values ($1, null, $2, $3, 'deprecated', $4, $5)
       on conflict (id) do update set
         source_kind = excluded.source_kind,
         specification_key = excluded.specification_key,
-        definition_lifecycle = 'active',
+        definition_lifecycle = 'deprecated',
         attribution_subject_id = excluded.attribution_subject_id,
         property_key = excluded.property_key
       `,
@@ -907,6 +958,55 @@ export async function materializePlatformParameterSpecs(
     sourceToPlatform.set(property.parameterSpecId, ids.parameterSpecId);
   }
   return sourceToPlatform;
+}
+
+/**
+ * Retire platform-owned overlay support versions after the last active
+ * platform overlay stops referencing them. Contributor definitions are never
+ * touched; only platform copies linked from the target overlay are eligible.
+ */
+export async function retirePlatformParameterSpecsForOverlay(
+  db: Queryable,
+  platformSchemaId: string,
+): Promise<string[]> {
+  const targets = await db.query<{ parameter_spec_id: string }>(
+    `
+    select distinct property.parameter_spec_id
+    from driver_schema_overlay_properties property
+    inner join parameter_specs ps
+      on ps.id = property.parameter_spec_id
+     and ps.organization_id is null
+    where property.driver_schema_overlay_id = $1
+      and not exists (
+        select 1
+        from driver_schema_overlay_properties other_property
+        inner join driver_schema_overlays other_overlay
+          on other_overlay.id = other_property.driver_schema_overlay_id
+         and other_overlay.organization_id is null
+         and other_overlay.lifecycle = 'active'
+        where other_property.parameter_spec_id = property.parameter_spec_id
+          and other_property.driver_schema_overlay_id <> $1
+      )
+    order by property.parameter_spec_id
+    `,
+    [platformSchemaId],
+  );
+  const parameterSpecIds = targets.rows.map((row) => row.parameter_spec_id);
+  if (parameterSpecIds.length === 0) return [];
+  await db.query(
+    `update parameter_specs
+     set definition_lifecycle = 'deprecated'
+     where organization_id is null and id = any($1::text[])`,
+    [parameterSpecIds],
+  );
+  await db.query(
+    `update parameter_spec_versions
+     set version_status = 'superseded', lifecycle = 'deprecated'
+     where parameter_spec_id = any($1::text[])
+       and version_status = 'active'`,
+    [parameterSpecIds],
+  );
+  return parameterSpecIds;
 }
 
 /**

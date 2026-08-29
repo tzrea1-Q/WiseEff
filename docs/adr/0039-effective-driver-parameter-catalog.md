@@ -51,7 +51,9 @@ proven, or allow a later active row to hide a draft without a durable precedence
    node-type names; `0124` closes owner-scope, subject/schema, and DTS property-key
    write mismatches. These migrations preserve ids/history, and effective use still requires
    an organization node-type module. The verification gate also blocks duplicate
-   active node-type source/property identities.
+   active node-type source/property identities. Migration `0126` prevents a binding
+   revision from referencing a version owned by a different `ParameterSpec`; historical
+   disagreements remain visible to the independent verification gate.
    The command supports dry-run/apply, persists run/item evidence, uses
    per-organization transactions, preserves historical versions/revisions, and
    records trusted system audit events. The independent `parameter-definitions:check`
@@ -65,6 +67,9 @@ proven, or allow a later active row to hide a draft without a durable precedence
   release until resolved; there is no silent key-only deduplication.
 - Platform definitions can remain reusable across organizations while each tenant
   declares its own driver-group placement.
+- Platform-overlay promotion copies keep a governance-only/deprecated `ParameterSpec`
+  parent while their active version supplies the overlay shape. They are not exposed
+  as effective catalog definitions merely because an overlay was promoted.
 - Reconciliation can be rerun safely. Applied rows mint a successor active version
   and update only the latest binding revision; historical rows remain immutable.
 

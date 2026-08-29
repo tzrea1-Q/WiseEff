@@ -546,6 +546,27 @@ describe("symmetric DriverSchema owner hardening migration invariants (Issue #64
   });
 });
 
+describe("binding version owner hardening migration invariants (Issue #649)", () => {
+  it("guards inserts and updates against cross-spec versions", () => {
+    const migration = readFileSync(
+      path.join(
+        root,
+        "server",
+        "migrations",
+        "0126_guard_binding_spec_version_owner.sql",
+      ),
+      "utf8",
+    );
+    expect(migration).toContain("wiseeff_assert_binding_spec_version_owner");
+    expect(migration).toContain(
+      "before insert or update of binding_id, parameter_spec_version_id",
+    );
+    expect(migration).toContain(
+      "Binding ParameterSpecVersion must belong to the binding ParameterSpec",
+    );
+  });
+});
+
 describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
   it("removes structural definitions after full FK preflight and prevents re-entry", () => {
     const migration = readFileSync(

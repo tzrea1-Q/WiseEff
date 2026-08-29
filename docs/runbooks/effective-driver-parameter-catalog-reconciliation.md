@@ -17,15 +17,21 @@ and exactly one organization driver-group placement.
   `0122_classify_nodename_driver_subjects.sql`, and
   `0123_harden_node_type_identity.sql`, and
   `0124_harden_driver_identity_owner.sql`, and
-  `0125_harden_driver_schema_owner_scope.sql`, with the application. The last five
+  `0125_harden_driver_schema_owner_scope.sql`, and
+  `0126_guard_binding_spec_version_owner.sql`, with the application. The hardening
   migrations preserve the legacy staging boundary, correct nodename-only
   subjects/modules to `NodeTypeDefinition`, and reject blank node-type taxonomy
-  names and close cross-tenant identity writes; they do not make an unlinked definition effective.
+  names, close cross-tenant identity writes, and reject cross-spec binding versions;
+  they do not make an unlinked definition effective.
 - If an existing database was briefly deployed from the pre-rebase Issue #649
   branch, its `schema_migrations` may contain the old `0117_effective...` through
-  `0121_classify...` names. The migration runner accepts only the recorded,
-  SHA-256-checked historical aliases and never replays them; do not rename or
-  delete those rows. A NULL or unknown alias checksum is a hard stop: verify the
+  `0121_classify...` names. The runner accepts only the recorded, SHA-256-checked
+  `0117` through `0120` historical aliases and never replays them; do not rename
+  or delete those rows. The pre-rebase `0121_classify_nodename_driver_subjects.sql`
+  is always a hard stop, even with its known checksum, because that revision deleted
+  registration and placement rows. Restore the pre-migration snapshot, audit the
+  affected tenants, and ship an explicit recovery migration before continuing.
+  A NULL or unknown accepted-alias checksum is also a hard stop: verify the
   exact legacy SQL and repair that one `schema_migrations` row under an audited
   maintenance procedure before retrying. The runner then applies the current
   `0117_user_account_deletion` and pending `0118+` files normally. Any unknown

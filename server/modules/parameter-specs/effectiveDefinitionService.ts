@@ -120,6 +120,13 @@ function candidateQuery(input: {
                 and (driver_schema.organization_id is null or driver_schema.organization_id = ps.organization_id)
                 and exists (
                   select 1
+                  from parameter_specs driver_schema_root
+                  where driver_schema_root.id = driver_schema.parameter_spec_id
+                    and driver_schema_root.organization_id is not distinct from driver_schema.organization_id
+                    and driver_schema_root.attribution_subject_id is not distinct from driver_schema.attribution_subject_id
+                )
+                and exists (
+                  select 1
                   from driver_schema_versions active_schema_version
                   where active_schema_version.driver_schema_id = dps.driver_schema_id
                     and active_schema_version.lifecycle = 'active'
@@ -145,6 +152,13 @@ function candidateQuery(input: {
             and (asub.organization_id is null or asub.organization_id = ps.organization_id)
             and driver_schema.attribution_subject_id is not distinct from ps.attribution_subject_id
             and (driver_schema.organization_id is null or driver_schema.organization_id = ps.organization_id)
+            and exists (
+              select 1
+              from parameter_specs driver_schema_root
+              where driver_schema_root.id = driver_schema.parameter_spec_id
+                and driver_schema_root.organization_id is not distinct from driver_schema.organization_id
+                and driver_schema_root.attribution_subject_id is not distinct from driver_schema.attribution_subject_id
+            )
             and exists (
               select 1
               from driver_schema_versions active_schema_version

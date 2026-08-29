@@ -22,8 +22,10 @@ keeps legacy unlinked staging writes compatible without making them effective, w
 `0123_harden_node_type_identity.sql` repairs trusted blank taxonomy names or fails closed before enforcing the
 non-empty node-type name constraint, and `0124_harden_driver_identity_owner.sql` rejects cross-tenant subject/schema
 or property-key identity writes, and `0125_harden_driver_schema_owner_scope.sql` closes the symmetric
-DriverSchema-root owner boundary. The verification gate also blocks duplicate active node-type source/property
-identities, so an effective query that returns no row cannot be mistaken for a ready release.
+DriverSchema-root owner boundary. `0126_guard_binding_spec_version_owner.sql` prevents a binding revision
+from pointing at a version owned by another spec. The verification gate also blocks historical owner/version
+disagreements and duplicate active node-type source/property identities, so an effective query that returns no
+row cannot be mistaken for a ready release.
 Operators must snapshot PostgreSQL
 and object storage, run the reconciliation dry-run, apply one organization per transaction,
 and finish with `npm run parameter-definitions:check`; any blocker keeps release fail-closed.

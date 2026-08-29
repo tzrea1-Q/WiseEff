@@ -37,7 +37,8 @@ draft。
    将 `nodetype:*` 主体/模块归入 `NodeTypeDefinition` taxonomy；`0123` 从可信主体元数据修复空
    taxonomy 名称，无法修复时失败关闭，并在此后强制名称非空；`0124` 关闭归属范围、主体/schema 与 DTS
    属性键不一致的写入。上述迁移都保留 id 与历史，并要求组织的 node-type
-   模块存在后才能进入 effective；验证门禁同时阻断重复的 active node-type source/property 身份。该命令支持
+   模块存在后才能进入 effective；验证门禁同时阻断重复的 active node-type source/property 身份。迁移
+   `0126` 阻止 binding revision 引用其他 `ParameterSpec` 所属版本；历史不一致仍由独立验证门禁保留并阻断。该命令支持
    dry-run/apply，持久化运行/条目证据，按组织事务处理，保留历史版本/修订，并记录可信 system 审计。独立的
    `parameter-definitions:check` 是最终只读门禁。
 
@@ -46,6 +47,8 @@ draft。
 - 目录不再把未分类的实测模块当作驱动身份或放置证明。
 - 有意保留的 curated 或歧义案例继续显示在治理面，并在解决前阻断发布；不会静默按属性键去重。
 - 平台定义可以跨组织复用，但每个租户必须声明自己的驱动组放置。
+- 平台 overlay promotion 副本的 `ParameterSpec` 父记录保持 governance-only/deprecated，
+  active 版本只为 overlay 提供 shape；不能仅因 overlay 已提升就进入 effective 参数目录。
 - 对账可安全重复运行；应用行铸造 successor active 版本，只更新最新 binding revision，历史行保持不可变。
 
 ## 发布与回滚

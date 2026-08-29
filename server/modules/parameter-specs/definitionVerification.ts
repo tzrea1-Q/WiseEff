@@ -122,6 +122,30 @@ export async function verifyEffectiveDriverParameterDefinitions(
   });
 
   checks.push({
+    code: "active-driver-schema-root-owner-mismatch",
+    count: await count(
+      db,
+      `
+      select count(*)::text as count
+      from driver_schemas ds
+      inner join parameter_specs driver_root on driver_root.id = ds.parameter_spec_id
+      where exists (
+          select 1
+          from driver_schema_versions active_schema_version
+          where active_schema_version.driver_schema_id = ds.id
+            and active_schema_version.lifecycle = 'active'
+        )
+        ${input.organizationId ? "and (ds.organization_id = $1 or ds.organization_id is null)" : ""}
+        and (
+          driver_root.organization_id is distinct from ds.organization_id
+          or driver_root.attribution_subject_id is distinct from ds.attribution_subject_id
+        )
+      `,
+      values,
+    ),
+  });
+
+  checks.push({
     code: "active-driver-identity-duplicate",
     count: await count(
       db,
@@ -637,6 +661,47 @@ export async function verifyEffectiveDriverParameterDefinitions(
         )
       `,
       values,
+    ),
+  });
+
+  checks.push({
+    code: "recognized-binding-version-mismatch",
+    count: await count(
+      db,
+      `
+      select count(distinct b.id)::text as count
+      from project_parameter_bindings b
+      inner join lateral (
+        select br.*
+        from project_parameter_binding_revisions br
+        inner join dts_config_revisions cr on cr.id = br.config_revision_id
+        left join dts_logical_nodes binding_node on binding_node.id = b.logical_node_id
+        where br.binding_id = b.id
+          and cr.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.status <> 'resolving'
+          and (
+            binding_node.config_set_id is null
+            or (
+              cr.config_set_id = binding_node.config_set_id
+              and exists (
+                select 1
+                from dts_logical_node_revisions binding_node_revision
+                where binding_node_revision.config_revision_id = cr.id
+                  and binding_node_revision.logical_node_id = b.logical_node_id
+              )
+            )
+          )
+          ${input.configRevisionId ? `and br.config_revision_id = $${bindingValues.length}` : ""}
+        order by cr.revision_number desc, br.created_at desc, br.id desc
+        limit 1
+      ) br on true
+      inner join parameter_spec_versions psv
+        on psv.id = br.parameter_spec_version_id
+      where psv.parameter_spec_id is distinct from b.parameter_spec_id
+        ${bindingScope}
+      `,
+      bindingValues,
     ),
   });
 
