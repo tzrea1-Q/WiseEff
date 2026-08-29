@@ -170,7 +170,7 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
 
 function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
   const attribution = trustedDomainAttributionFromRow(row, row.changed_by);
-  const changedBy = trustedPublicExecutionLabelFromAttribution(
+  const changedByLabel = trustedPublicExecutionLabelFromAttribution(
     attribution,
     row.changed_by ?? ""
   );
@@ -178,7 +178,7 @@ function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
     version: String(row.version),
     value: row.value,
     changedAt: dateTimeToIso(row.changed_at),
-    changedBy,
+    changedBy: changedByLabel || null,
     requestId: row.request_id ?? undefined
   };
 }

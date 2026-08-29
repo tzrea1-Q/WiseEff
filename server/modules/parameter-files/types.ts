@@ -32,8 +32,8 @@ export type ProjectParameterFileVersionDto = {
   parsedIndex: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdAt: string;
-  createdByUserId?: string;
-  createdByDisplayName?: string;
+  createdByUserId?: string | null;
+  createdByDisplayName?: string | null;
 };
 
 export type InsertProjectParameterFileInput = {

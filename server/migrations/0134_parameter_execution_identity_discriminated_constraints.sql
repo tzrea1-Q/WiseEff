@@ -11,6 +11,23 @@ returns trigger
 language plpgsql
 as $$
 begin
+  -- A retained User row may lose its foreign-key principal when the account
+  -- is permanently deleted.  PostgreSQL performs the FK SET NULL action via
+  -- a nested trigger invocation; convert that historical attribution to the
+  -- explicit metadata-free legacy variant before the check constraint sees
+  -- the row.  Direct application updates remain strict because they run at
+  -- trigger depth one and therefore cannot use this deletion-only adapter.
+  if new.initiator_type = 'user'
+     and (to_jsonb(new)->>tg_argv[0]) is null
+     and (to_jsonb(old)->>tg_argv[0]) is not null
+     and pg_trigger_depth() > 1 then
+    new.initiator_type := 'legacy';
+    new.initiator_system_kind := null;
+    new.initiator_system_name := null;
+    new.initiator_session_id := null;
+    new.initiator_tool_call_id := null;
+    new.initiator_approval_id := null;
+  end if;
   if new.initiator_type = 'legacy'
      and (to_jsonb(new)->>tg_argv[0]) is not null then
     new.initiator_type := 'user';

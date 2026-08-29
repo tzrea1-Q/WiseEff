@@ -106,7 +106,7 @@ const TRUSTED_SUBMITTER_LABEL = (rowAlias: string, userAlias: string) => `
           concat('WiseEff System ', coalesce(${rowAlias}.initiator_system_kind, 'service'))
         when ${rowAlias}.initiator_type = 'agent' then
           'WiseEff Agent'
-        else ${userAlias}.name
+        else coalesce(${userAlias}.name, '已注销用户')
       end`;
 
 function userAttribution(
@@ -461,7 +461,7 @@ function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
   return {
     id: row.id,
     requestId: row.request_id,
-    reviewerUserId: row.reviewer_user_id,
+    reviewerUserId: row.reviewer_user_id ?? undefined,
     decision: row.decision,
     fromStatus: row.from_status,
     toStatus: row.to_status,

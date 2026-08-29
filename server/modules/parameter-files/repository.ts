@@ -66,7 +66,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
   const executionDisplayName = trustedPublicExecutionLabelFromAttribution(
     attribution,
     row.created_by_display_name ?? ""
-  ) || undefined;
+  ) || null;
   return {
     id: row.id,
     fileId: row.file_id,
@@ -77,7 +77,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     parsedIndex: row.parsed_index ?? {},
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
-    createdByUserId: row.created_by_user_id ?? undefined,
+    createdByUserId: row.created_by_user_id,
     createdByDisplayName: executionDisplayName,
   };
 }
@@ -189,6 +189,8 @@ export async function insertFileVersion(
   db: Queryable,
   input: InsertFileVersionInput
 ): Promise<ProjectParameterFileVersionDto> {
+  const accountableUserId = input.attribution ? input.attribution.userId : input.createdByUserId ?? null;
+  const initiatorType = input.attribution?.initiatorType ?? (accountableUserId ? "user" : "legacy");
   const result = await db.query<ProjectParameterFileVersionRow>(
     `
     insert into project_parameter_file_versions (
@@ -221,8 +223,8 @@ export async function insertFileVersion(
       input.sizeBytes,
       JSON.stringify(input.parsedIndex ?? {}),
       input.origin,
-      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
-      input.attribution?.initiatorType ?? "user",
+      accountableUserId,
+      initiatorType,
       input.attribution?.systemKind ?? null,
       input.attribution?.systemName ?? null,
       input.attribution?.sessionId ?? null,
