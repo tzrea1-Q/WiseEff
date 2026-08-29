@@ -10,6 +10,7 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import { makeTestAuthContext } from "../../testing/authContext";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
@@ -578,5 +579,82 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
       code: "VALIDATION_FAILED",
       details: expect.objectContaining({ reason: "missing-base" }),
     });
+  });
+
+  it("keeps unknown properties as review evidence without a definition or binding", async () => {
+    setParameterIdentityMode("semantic");
+    const content = `/dts-v1/;
+/ {
+	unknown_driver: unknown_driver {
+		compatible = "wiseeff,unknown-driver-649";
+		mystery_property_649 = <1>;
+	};
+};
+`;
+    await insertPinnedMember(db!, {
+      fileId: "unknown-driver-file",
+      fileName: "unknown-driver.dts",
+      versionId: "unknown-driver-version",
+      content,
+      role: "base",
+      sortOrder: 0,
+    });
+
+    const revision = await ingestConfigRevision(
+      db!,
+      {
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        configSetId: CONFIG_SET_ID,
+        entryFile: "unknown-driver.dts",
+        includeSearchPaths: ["."],
+        overlayOrder: [],
+        members: [
+          {
+            fileId: "unknown-driver-file",
+            fileVersionId: "unknown-driver-version",
+            fileName: "unknown-driver.dts",
+            role: "base",
+            sortOrder: 0,
+            content,
+          },
+        ],
+      },
+      auth,
+    );
+
+    expect(revision.status).toBe("resolved");
+    const review = await db!.query<{ count: string }>(
+      `
+      select count(*)::text as count
+      from parameter_spec_review_tasks
+      where organization_id = $1
+        and status = 'open'
+        and source_evidence->>'propertyKey' = 'mystery_property_649'
+      `,
+      [ORG_ID],
+    );
+    expect(Number(review.rows[0]?.count ?? 0)).toBe(1);
+
+    const bindings = await db!.query<{ count: string }>(
+      `
+      select count(*)::text as count
+      from project_parameter_binding_revisions br
+      inner join project_parameter_bindings b on b.id = br.binding_id
+      where b.organization_id = $1 and br.config_revision_id = $2
+      `,
+      [ORG_ID, revision.id],
+    );
+    expect(Number(bindings.rows[0]?.count ?? 0)).toBe(0);
+
+    const definitions = await db!.query<{ count: string }>(
+      `
+      select count(*)::text as count
+      from parameter_specs ps
+      where ps.organization_id = $1 and ps.property_key = 'mystery_property_649'
+      `,
+      [ORG_ID],
+    );
+    expect(Number(definitions.rows[0]?.count ?? 0)).toBe(0);
   });
 });

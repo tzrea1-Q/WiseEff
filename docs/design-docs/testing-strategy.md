@@ -32,6 +32,19 @@ The error-level ESLint rule `wiseeff/no-raw-css-text-assertions` prevents direct
 source-contract tests outside its scope. Rendered behavior and computed visual
 outcomes remain owned by Testing Library and the Playwright quality gates.
 
+## Backend/API Contract Checks
+
+Parameter catalog changes must cover effective selection and the data cutover on
+real PostgreSQL. `server/modules/parameter-specs/effectiveDefinition.test.ts`
+tests precedence and governance outcomes; `effectiveDefinition.integration.test.ts`
+tests organization override/platform fallback and the explicit raw governance view;
+`definitionReconciliation.integration.test.ts` tests dry-run, audited apply,
+idempotence, and the independent verification gate. Run
+`npm run parameter-definitions:reconcile -- --dry-run` before `--apply`, then
+`npm run parameter-definitions:check`. Unknown or ambiguous evidence must remain
+review evidence without a recognized binding, and release validation fails closed
+while any effective-definition check is blocked.
+
 ## Browser Acceptance
 
 Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.

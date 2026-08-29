@@ -61,6 +61,14 @@ npm run build
 - 高风险参数缺少审阅不能合入。
 - 过期版本合入返回 `CONFLICT`。
 - 合入成功写入历史和审计。
+- 有效驱动参数目录由 `server/modules/parameter-specs/effectiveDefinition.test.ts` 与
+  `effectiveDefinition.integration.test.ts` 覆盖：只从组织优先级/平台回退中选出一个唯一的
+  活跃版本；草稿、已废弃、缺少归属或重复候选必须进入治理结果。
+- PostgreSQL 数据修复由 `definitionReconciliation.integration.test.ts` 和
+  `definitionVerification.ts` 覆盖。先运行
+  `npm run parameter-definitions:reconcile -- --dry-run`，确认后再 `--apply`，最后运行
+  `npm run parameter-definitions:check`；未知/歧义证据只能保留为审核证据，不能创建已识别
+  binding，校验报告未 ready 时发布门禁必须失败关闭。
 
 日志分析必须测试：
 

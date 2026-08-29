@@ -1,4 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
+import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { OverlayLifecycle, PropertyValueShape } from "./types";
 
 export type DriverSchemaOverlayRow = {
@@ -161,7 +163,9 @@ async function loadProperties(
       select id, value_shape, lifecycle, example_value
       from parameter_spec_versions
       where parameter_spec_id = odp.parameter_spec_id
-      order by version desc
+      order by
+        case when version_status = 'active' and lifecycle = 'active' then 0 else 1 end,
+        version desc
       limit 1
     ) psv on true
     left join dts_property_specs dps on dps.parameter_spec_id = odp.parameter_spec_id
@@ -697,17 +701,327 @@ export async function listPromotionsForPlatformSchema(
   return result.rows;
 }
 
-export async function promoteParameterSpecsToPlatform(
+type PromotionSourceVersionRow = {
+  id: string;
+  version: number | string;
+  display_name: string;
+  description: string;
+  value_shape: unknown;
+  schema_default: unknown;
+  example_value: unknown;
+  lifecycle: OverlayLifecycle;
+  version_status: "draft" | "active" | "superseded";
+  activated_at: string | null;
+  units: string | null;
+  constraints: Record<string, unknown> | null;
+  documentation: string | null;
+  reference_rules: Record<string, unknown> | null;
+};
+
+/**
+ * Materialize platform-owned copies of organization definitions during an
+ * overlay promotion. An organization ParameterSpec is never re-owned in
+ * place: its owner + subject tuple is part of the durable identity and may be
+ * referenced by historical bindings. The returned map is used to link the new
+ * platform overlay to the copied definitions.
+ */
+export async function materializePlatformParameterSpecs(
   db: Queryable,
-  parameterSpecIds: readonly string[],
-): Promise<void> {
-  if (parameterSpecIds.length === 0) return;
-  await db.query(
+  input: {
+    compatible: string;
+    sourceOrganizationId: string;
+    properties: ReadonlyArray<{
+      parameterSpecId: string;
+      parameterSpecVersionId?: string | null;
+      propertyKey: string;
+    }>;
+  },
+): Promise<Map<string, string>> {
+  if (input.properties.length === 0) return new Map();
+  const platformSubjectId = await ensureAttributionSubjectForCompatible(db, {
+    organizationId: null,
+    compatible: input.compatible,
+  });
+  const sourceToPlatform = new Map<string, string>();
+
+  for (const property of input.properties) {
+    const source = await db.query<{
+      organization_id: string | null;
+      definition_lifecycle: string;
+      attribution_subject_id: string | null;
+      subject_organization_id: string | null;
+      subject_kind: string | null;
+      parameter_property_key: string | null;
+      dts_property_key: string | null;
+    }>(
+      `
+      select ps.organization_id,
+             ps.definition_lifecycle,
+             ps.attribution_subject_id,
+             asub.organization_id as subject_organization_id,
+             asub.subject_kind,
+             ps.property_key as parameter_property_key,
+             dps.property_key as dts_property_key
+      from parameter_specs ps
+      left join attribution_subjects asub on asub.id = ps.attribution_subject_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      where ps.id = $1
+      limit 1
+      `,
+      [property.parameterSpecId],
+    );
+    const sourceRow = source.rows[0];
+    if (!sourceRow) {
+      throw new Error(
+        `Cannot promote missing ParameterSpec ${property.parameterSpecId}.`,
+      );
+    }
+    if (sourceRow.organization_id == null) {
+      throw new Error(
+        `Cannot promote platform ParameterSpec ${property.parameterSpecId} as an organization contributor.`,
+      );
+    }
+    if (sourceRow.organization_id !== input.sourceOrganizationId) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: it does not belong to contributor organization ${input.sourceOrganizationId}.`,
+      );
+    }
+    if (
+      sourceRow.definition_lifecycle !== "active" ||
+      !sourceRow.attribution_subject_id ||
+      sourceRow.subject_kind !== "driver-registration" ||
+      (sourceRow.subject_organization_id !== null &&
+        sourceRow.subject_organization_id !== input.sourceOrganizationId)
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: contributor identity is not active and owner-aligned.`,
+      );
+    }
+    const propertyKey = property.propertyKey.trim();
+    if (!propertyKey) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId} without a property key.`,
+      );
+    }
+    if (
+      sourceRow.parameter_property_key !== propertyKey ||
+      (sourceRow.dts_property_key !== null &&
+        sourceRow.dts_property_key !== propertyKey)
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: property key does not match the contributor definition.`,
+      );
+    }
+
+    const versions = await db.query<PromotionSourceVersionRow>(
+      `
+      select id, version, display_name, description, value_shape, schema_default,
+             example_value, lifecycle, version_status, activated_at::text,
+             units, constraints, documentation, reference_rules
+      from parameter_spec_versions
+      where parameter_spec_id = $1
+      order by version asc
+      `,
+      [property.parameterSpecId],
+    );
+    const activeVersions = versions.rows.filter(
+      (version) =>
+        version.version_status === "active" && version.lifecycle === "active",
+    );
+    if (activeVersions.length !== 1) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: expected one active version, found ${activeVersions.length}.`,
+      );
+    }
+    if (
+      property.parameterSpecVersionId &&
+      activeVersions[0]?.id !== property.parameterSpecVersionId
+    ) {
+      throw new Error(
+        `Cannot promote ParameterSpec ${property.parameterSpecId}: overlay does not reference its active version.`,
+      );
+    }
+
+    const ids = buildSubjectScopedManualSpecIds({
+      organizationId: null,
+      attributionSubjectId: platformSubjectId,
+      propertyKey,
+    });
+    // The active version supplies the promoted overlay shape, while the
+    // ParameterSpec parent stays governance-only. Without organization
+    // placement this copy must not masquerade as an effective definition.
+    await db.query(
+      `
+      insert into parameter_specs (
+        id, organization_id, source_kind, specification_key,
+        definition_lifecycle, attribution_subject_id, property_key
+      ) values ($1, null, $2, $3, 'deprecated', $4, $5)
+      on conflict (id) do update set
+        source_kind = excluded.source_kind,
+        specification_key = excluded.specification_key,
+        definition_lifecycle = 'deprecated',
+        attribution_subject_id = excluded.attribution_subject_id,
+        property_key = excluded.property_key
+      `,
+      [
+        ids.parameterSpecId,
+        "manual",
+        ids.specificationKey,
+        platformSubjectId,
+        propertyKey,
+      ],
+    );
+
+    // Keep the one-active-version trigger happy when a failed/retried
+    // promotion already left a platform copy behind.
+    await db.query(
+      `
+      update parameter_spec_versions
+      set version_status = 'superseded', lifecycle = 'deprecated'
+      where parameter_spec_id = $1 and version_status = 'active'
+      `,
+      [ids.parameterSpecId],
+    );
+    for (const version of versions.rows) {
+      const numericVersion = Number(version.version);
+      const targetVersionId =
+        numericVersion === 1
+          ? ids.parameterSpecVersionId
+          : `${ids.parameterSpecId}:v${numericVersion}`;
+      await db.query(
+        `
+        insert into parameter_spec_versions (
+          id, parameter_spec_id, version, display_name, description, value_shape,
+          schema_default, example_value, lifecycle, version_status, activated_at,
+          units, constraints, documentation, reference_rules
+        ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb,
+                  $9, $10, $11::timestamptz, $12, $13::jsonb, $14, $15::jsonb)
+        on conflict (parameter_spec_id, version) do update set
+          display_name = excluded.display_name,
+          description = excluded.description,
+          value_shape = excluded.value_shape,
+          schema_default = excluded.schema_default,
+          example_value = excluded.example_value,
+          lifecycle = excluded.lifecycle,
+          version_status = excluded.version_status,
+          activated_at = excluded.activated_at,
+          units = excluded.units,
+          constraints = excluded.constraints,
+          documentation = excluded.documentation,
+          reference_rules = excluded.reference_rules
+        `,
+        [
+          targetVersionId,
+          ids.parameterSpecId,
+          numericVersion,
+          version.display_name,
+          version.description,
+          JSON.stringify(version.value_shape),
+          version.schema_default == null ? null : JSON.stringify(version.schema_default),
+          version.example_value == null ? null : JSON.stringify(version.example_value),
+          version.lifecycle,
+          version.version_status,
+          version.activated_at,
+          version.units,
+          JSON.stringify(version.constraints ?? {}),
+          version.documentation,
+          JSON.stringify(version.reference_rules ?? {}),
+        ],
+      );
+    }
+
+    await db.query(
+      `
+      insert into dts_property_specs (
+        id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
+        units, constraints, reference_rules, documentation
+      ) values ($1, $2, null, $3, $4, $5, $6::jsonb, $7::jsonb, $8)
+      on conflict (parameter_spec_id) do update set
+        property_key = excluded.property_key,
+        schema_namespace = excluded.schema_namespace,
+        units = excluded.units,
+        constraints = excluded.constraints,
+        reference_rules = excluded.reference_rules,
+        documentation = excluded.documentation
+      `,
+      [
+        ids.dtsPropertySpecId,
+        ids.parameterSpecId,
+        propertyKey,
+        `platform/${input.compatible}`,
+        activeVersions[0]?.units ?? null,
+        JSON.stringify(activeVersions[0]?.constraints ?? {}),
+        JSON.stringify(activeVersions[0]?.reference_rules ?? {}),
+        activeVersions[0]?.documentation ?? null,
+      ],
+    );
+    sourceToPlatform.set(property.parameterSpecId, ids.parameterSpecId);
+  }
+  return sourceToPlatform;
+}
+
+/**
+ * Retire platform-owned overlay support versions after the last active
+ * platform overlay stops referencing them. Contributor definitions are never
+ * touched; only platform copies linked from the target overlay are eligible.
+ */
+export async function retirePlatformParameterSpecsForOverlay(
+  db: Queryable,
+  platformSchemaId: string,
+): Promise<string[]> {
+  const targets = await db.query<{ parameter_spec_id: string }>(
     `
-    update parameter_specs
-    set organization_id = null
-    where id = any($1::text[])
+    select distinct property.parameter_spec_id
+    from driver_schema_overlay_properties property
+    inner join parameter_specs ps
+      on ps.id = property.parameter_spec_id
+     and ps.organization_id is null
+    where property.driver_schema_overlay_id = $1
+      and not exists (
+        select 1
+        from driver_schema_overlay_properties other_property
+        inner join driver_schema_overlays other_overlay
+          on other_overlay.id = other_property.driver_schema_overlay_id
+         and other_overlay.organization_id is null
+         and other_overlay.lifecycle = 'active'
+        where other_property.parameter_spec_id = property.parameter_spec_id
+          and other_property.driver_schema_overlay_id <> $1
+      )
+    order by property.parameter_spec_id
     `,
+    [platformSchemaId],
+  );
+  const parameterSpecIds = targets.rows.map((row) => row.parameter_spec_id);
+  if (parameterSpecIds.length === 0) return [];
+  await db.query(
+    `update parameter_specs
+     set definition_lifecycle = 'deprecated'
+     where organization_id is null and id = any($1::text[])`,
     [parameterSpecIds],
   );
+  await db.query(
+    `update parameter_spec_versions
+     set version_status = 'superseded', lifecycle = 'deprecated'
+     where parameter_spec_id = any($1::text[])
+       and version_status = 'active'`,
+    [parameterSpecIds],
+  );
+  return parameterSpecIds;
+}
+
+/**
+ * @deprecated Kept as an import-compatible guard for old callers. Platform
+ * promotion must provide the compatible/property shape and use
+ * materializePlatformParameterSpecs; silently changing organization ownership
+ * would corrupt identity history.
+ */
+export async function promoteParameterSpecsToPlatform(
+  _db: Queryable,
+  parameterSpecIds: readonly string[],
+): Promise<void> {
+  if (parameterSpecIds.length > 0) {
+    throw new Error(
+      "In-place ParameterSpec promotion is not supported; materialize platform-owned copies instead.",
+    );
+  }
 }

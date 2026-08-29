@@ -77,6 +77,18 @@ For M1 parameter management:
 - Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
 - Parameter module tree CRUD (`/api/v1/parameter-modules*`) requires `admin:access` (`canAdminParameters`). Non-admin users may still list modules when they have `parameter:view`. Deletes return `409` when child modules or assigned parameters remain; moves reject cycles with `409`. **Kind-scoped write guards (ADR-0010):** `node-type` modules may be renamed/moved and deleted only when empty (no bindings, no children); the org `unclassified` root is read-only (no rename/move/delete); `driver-group` delete routes through **disband** (drops subtree mappings, re-parks bindings, removes empty auto descendants); reclassify whitelist is `{business, node-type}`. v2 module-attribution routes (`/api/v2/parameter-modules/*` except registry/discovery-hints GET) require the same admin gate.
 
+Effective driver-definition identity is server-owned: canonical `AttributionSubject`, schema linkage,
+organization placement, lifecycle precedence, and active-version cardinality are never accepted from
+client display names, observed module names, or caller-selected precedence. Unknown or ambiguous DTS
+evidence remains review/occurrence evidence and cannot create a recognized binding. New active DTS
+property writes are rejected by migrations `0118`/`0119` (with `0121` defining the legacy staging
+compatibility boundary, `0122` correcting nodename-only subject taxonomy, `0124` closing owner/property-key
+identity writes, and `0125` enforcing symmetric DriverSchema-root owner scope); reconciliation corrections use a trusted
+system/job invocation and an audited transaction, while `parameter-definitions:check` independently
+blocks release on missing subjects, duplicate active definitions/versions, missing placement, or
+unreviewed binding tips. Operators must follow the snapshot and restore boundary in the [effective
+catalog runbook](runbooks/effective-driver-parameter-catalog-reconciliation.md).
+
 For project parameter governance (`/parameter-admin/projects/:projectId/*`):
 
 - Irreversible project governance actions require an explicit human confirmation step in the UI before the request is sent: baseline release, baseline rollback, config-set member removal, and both file-conflict arbitration sides. Each confirmation states the blast radius, and arbitration can record an operator reason that travels with the audit hint.

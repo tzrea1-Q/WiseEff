@@ -13,6 +13,7 @@ import {
   countDismissedSpecBlockersForRevision,
   countOpenSpecReviewTasksForRevision
 } from "../parameter-specs/repository";
+import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/definitionVerification";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -801,6 +802,8 @@ type ValidateFailureCode =
   | "open-review"
   | "dismissed-review"
   | "schema-policy-blocker"
+  | "unreviewed-driver-tip"
+  | "effective-driver-definition"
   | "resolve-failed"
   | "toolchain-unavailable"
   | "version-mismatch"
@@ -1399,6 +1402,77 @@ export async function validateConfigRevision(
         artifactHashes
       },
       context
+    );
+  }
+
+  // Catalog identity is the final release gate after syntax/toolchain checks.
+  // This preserves the existing failure precedence (for example a missing dtc
+  // remains `toolchain-unavailable`) while still refusing to mark a revision
+  // validated when any recognized driver definition is incomplete.
+  const catalogVerification = await verifyEffectiveDriverParameterDefinitions(db, {
+    organizationId: auth.organization.id,
+    configRevisionId: revision.id,
+  });
+  const unreviewedDriverTips =
+    catalogVerification.checks.find((check) => check.code === "unreviewed-driver-tip")?.count ?? 0;
+  if (unreviewedDriverTips > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "unreviewed-driver-tip",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "unreviewed-driver-tip",
+              severity: "error",
+              stage: "schema",
+              message: `Recognized vendor-backed parameter tips remain unreviewed (${unreviewedDriverTips}); validation fails closed.`,
+              fileName: "<parameter-catalog>",
+            },
+          ],
+          "schema",
+          "unreviewed-driver-tip",
+        ),
+      },
+      context,
+    );
+  }
+
+  const effectiveDefinitionBlockers = catalogVerification.checks.filter(
+    (check) => check.code !== "unreviewed-driver-tip" && check.count > 0,
+  );
+  if (effectiveDefinitionBlockers.length > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "effective-driver-definition",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "effective-driver-definition",
+              severity: "error",
+              stage: "catalog",
+              message: `Effective driver definition blockers remain: ${effectiveDefinitionBlockers
+                .map((check) => `${check.code}=${check.count}`)
+                .join(", ")}.`,
+              fileName: "<parameter-catalog>",
+            },
+          ],
+          "catalog",
+          "effective-driver-definition",
+        ),
+      },
+      context,
     );
   }
 

@@ -12,6 +12,25 @@ WiseEff reliability work should protect user trust in parameter changes, log ana
 - Deployment and operations design lives in `design-docs/deployment-operations.md`.
 - Testing strategy lives in `design-docs/testing-strategy.md`.
 
+The pre-existing `0117_user_account_deletion.sql` migration remains in place unchanged. Effective
+driver-parameter catalog rollout then uses migrations `0118_effective_driver_parameter_catalog.sql` to expand
+subject/placement and reconciliation evidence, `0119_effective_driver_parameter_catalog_contract.sql` to guard
+new DTS identity writes, and `0120_effective_driver_parameter_catalog_finalize.sql` to complete safe graph
+backfill and reject future duplicate active versions. `0121_effective_driver_parameter_catalog_legacy_write_compat.sql`
+keeps legacy unlinked staging writes compatible without making them effective, while
+`0122_classify_nodename_driver_subjects.sql` corrects nodename-only subjects/modules into the node-type taxonomy,
+`0123_harden_node_type_identity.sql` repairs trusted blank taxonomy names or fails closed before enforcing the
+non-empty node-type name constraint, and `0124_harden_driver_identity_owner.sql` rejects cross-tenant subject/schema
+or property-key identity writes, and `0125_harden_driver_schema_owner_scope.sql` closes the symmetric
+DriverSchema-root owner boundary. `0126_guard_binding_spec_version_owner.sql` prevents a binding revision
+from pointing at a version owned by another spec. The verification gate also blocks historical owner/version
+disagreements and duplicate active node-type source/property identities, so an effective query that returns no
+row cannot be mistaken for a ready release.
+Operators must snapshot PostgreSQL
+and object storage, run the reconciliation dry-run, apply one organization per transaction,
+and finish with `npm run parameter-definitions:check`; any blocker keeps release fail-closed.
+The recovery procedure and evidence fields are defined in the [effective catalog runbook](runbooks/effective-driver-parameter-catalog-reconciliation.md).
+
 ## Reliability Principles
 
 - Long-running work should report progress and failure reasons.

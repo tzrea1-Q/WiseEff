@@ -4,7 +4,10 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
-import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
+import {
+  ensureAttributionSubjectForCompatible,
+  ensureAttributionSubjectForDriverSchema,
+} from "../parameter-modules/resolveAttributionSubject";
 
 type ReviewTaskRow = {
   id: string;
@@ -44,7 +47,9 @@ function toDto(row: ReviewTaskRow): PersistedSpecReviewTask {
     organizationId: row.organization_id,
     parameterSpecId: row.parameter_spec_id ?? undefined,
     sourceEvidence: (row.source_evidence ?? {}) as Record<string, unknown>,
-    candidateSchemas: Array.isArray(row.candidate_schemas) ? row.candidate_schemas : [],
+    candidateSchemas: Array.isArray(row.candidate_schemas)
+      ? row.candidate_schemas
+      : [],
     projectCount: Number(row.project_count),
     status: row.status,
     reviewerUserId: row.reviewer_user_id ?? undefined,
@@ -65,15 +70,19 @@ export async function insertSpecReviewTask(
   const evidence = input.draft.sourceEvidence ?? {};
   const projectId =
     input.draft.projectId ??
-    (typeof evidence.projectId === "string" && evidence.projectId.trim() ? evidence.projectId : null);
+    (typeof evidence.projectId === "string" && evidence.projectId.trim()
+      ? evidence.projectId
+      : null);
   const configRevisionId =
     input.draft.configRevisionId ??
-    (typeof evidence.configRevisionId === "string" && evidence.configRevisionId.trim()
+    (typeof evidence.configRevisionId === "string" &&
+    evidence.configRevisionId.trim()
       ? evidence.configRevisionId
       : null);
   const propertyOccurrenceId =
     input.draft.propertyOccurrenceId ??
-    (typeof evidence.propertyOccurrenceId === "string" && evidence.propertyOccurrenceId.trim()
+    (typeof evidence.propertyOccurrenceId === "string" &&
+    evidence.propertyOccurrenceId.trim()
       ? evidence.propertyOccurrenceId
       : null);
   const blockerScope = input.draft.blockerScope ?? "revision";
@@ -149,7 +158,10 @@ export async function listSpecReviewTaskRows(
     limit: number;
     cursor?: SpecReviewTaskListCursor | null;
   },
-): Promise<{ items: PersistedSpecReviewTask[]; nextCursor: SpecReviewTaskListCursor | null }> {
+): Promise<{
+  items: PersistedSpecReviewTask[];
+  nextCursor: SpecReviewTaskListCursor | null;
+}> {
   const values: unknown[] = [input.organizationId];
   const conditions = ["organization_id = $1"];
 
@@ -197,7 +209,8 @@ export async function listSpecReviewTaskRows(
   const last = items[items.length - 1];
   return {
     items,
-    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
+    nextCursor:
+      hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
   };
 }
 
@@ -315,12 +328,19 @@ function toMatcherOverride(row: MatcherOverrideRow): PersistedMatcherOverride {
 
 /** Stable fingerprint for compatible[] used by matcher override lookup. */
 export function compatibleFingerprint(compatible: string[]): string {
-  return [...compatible].map((item) => item.trim()).filter(Boolean).sort().join("\0");
+  return [...compatible]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort()
+    .join("\0");
 }
 
 /** Normalized node locator fingerprint for matcher override scope. */
 export function nodeLocatorFingerprint(nodeLocator?: string | null): string {
-  const normalized = (nodeLocator ?? "").trim().replace(/\/+/g, "/").replace(/\/$/, "");
+  const normalized = (nodeLocator ?? "")
+    .trim()
+    .replace(/\/+/g, "/")
+    .replace(/\/$/, "");
   return normalized;
 }
 
@@ -337,7 +357,9 @@ function matcherOverrideIndexKey(override: PersistedMatcherOverride): string {
   return `${override.compatibleFingerprint}\0${nodeLocatorFingerprint(override.nodeLocator)}\0${override.propertyKey}`;
 }
 
-export function persistedMatcherOverrideLookupKey(override: PersistedMatcherOverride): string {
+export function persistedMatcherOverrideLookupKey(
+  override: PersistedMatcherOverride,
+): string {
   return matcherOverrideIndexKey(override);
 }
 
@@ -471,9 +493,13 @@ export async function assertProjectBelongsToOrganization(
     [input.organizationId, input.projectId],
   );
   if (!result.rows[0]) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
-      projectId: input.projectId,
-    });
+    throw new ApiError(
+      "NOT_FOUND",
+      "Project was not found for this organization.",
+      {
+        projectId: input.projectId,
+      },
+    );
   }
 }
 
@@ -654,6 +680,16 @@ export async function countOpenSpecReviewTasksForRevision(
     configRevisionId: string;
     excludePropertyKeys?: string[];
     unmatchedOnly?: boolean;
+    /**
+     * An explicit binding edit may carry an existing canonical binding even
+     * when the re-ingested surface itself is unmatched. Exclude only the
+     * matching *unmatched* task for that node/property; ambiguous tasks remain
+     * release blockers and no new identity is created by this exception.
+     */
+    excludeUnmatchedIdentities?: ReadonlyArray<{
+      nodeLocator: string;
+      propertyKey: string;
+    }>;
   },
 ): Promise<number> {
   const values: unknown[] = [
@@ -669,7 +705,9 @@ export async function countOpenSpecReviewTasksForRevision(
       `coalesce(t.source_evidence->>'propertyKey', '') <> all($${values.length}::text[])`,
     );
     // Match isStructuralPropertyKey: any `#…` cells key is structural.
-    extraConditions.push(`coalesce(t.source_evidence->>'propertyKey', '') not like '#%'`);
+    extraConditions.push(
+      `coalesce(t.source_evidence->>'propertyKey', '') not like '#%'`,
+    );
   }
 
   if (input.unmatchedOnly) {
@@ -679,6 +717,24 @@ export async function countOpenSpecReviewTasksForRevision(
         or coalesce(t.source_evidence->>'inferred', '') = 'true'
       )`,
     );
+  }
+
+  for (const identity of input.excludeUnmatchedIdentities ?? []) {
+    values.push(identity.nodeLocator, identity.propertyKey);
+    const nodeLocatorParam = values.length - 1;
+    const propertyKeyParam = values.length;
+    extraConditions.push(`not (
+      coalesce(t.source_evidence->>'nodeLocator', '') = $${nodeLocatorParam}
+      and coalesce(t.source_evidence->>'propertyKey', '') = $${propertyKeyParam}
+      and (
+        coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+        or coalesce(t.source_evidence->>'inferred', '') = 'true'
+      )
+      and (
+        t.config_revision_id = $3
+        or coalesce(t.source_evidence->>'configRevisionId', '') = $3
+      )
+    )`);
   }
 
   const result = await db.query<{ count: string }>(
@@ -712,7 +768,9 @@ export async function countOpenSpecReviewTasksForRevision(
 }
 
 /** Backfill scoped columns on legacy review tasks from source_evidence (idempotent, tenant-validated). */
-export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<number> {
+export async function backfillReviewTaskScopeColumns(
+  db: Queryable,
+): Promise<number> {
   const result = await db.query<{ count: string }>(
     `
     with scoped as (
@@ -848,7 +906,11 @@ export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<num
  */
 export async function countDismissedSpecBlockersForRevision(
   db: Queryable,
-  input: { organizationId: string; projectId: string; configRevisionId: string },
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+  },
 ): Promise<number> {
   const result = await db.query<{ count: string }>(
     `
@@ -878,6 +940,17 @@ type SpecListRow = {
   value_shape: unknown;
   compatible_patterns: unknown;
   attribution_subject_id: string | null;
+  active_version_count?: number | string | null;
+  effective_scope?: "organization" | "platform" | "governance";
+  override_of_spec_id?: string | null;
+  declared_placement?: {
+    moduleId: string;
+    moduleName: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    path?: string[];
+  } | null;
+  observation_state?: "observed" | "not-yet-observed" | "unclassified";
 };
 
 export type SpecAttributionModuleRow = {
@@ -903,6 +976,16 @@ export type ParameterSpecListRow = {
   attributionModules: SpecAttributionModuleRow[];
   attributionSubjectId: string | null;
   referenceCount: number;
+  effectiveScope?: "organization" | "platform" | "governance";
+  overrideOfSpecId?: string | null;
+  declaredPlacement?: {
+    moduleId: string;
+    moduleName: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    path?: string[];
+  } | null;
+  observationState?: "observed" | "not-yet-observed" | "unclassified";
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
@@ -929,7 +1012,8 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
     driverModule: row.driver_module,
     lifecycle: row.lifecycle ?? "draft",
     currentVersionId: row.current_version_id,
-    currentVersion: row.current_version == null ? null : Number(row.current_version),
+    currentVersion:
+      row.current_version == null ? null : Number(row.current_version),
     valueShape: row.value_shape ?? null,
     compatiblePatterns: Array.isArray(row.compatible_patterns)
       ? row.compatible_patterns.map(String)
@@ -937,6 +1021,10 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
     attributionModules: [],
     attributionSubjectId: row.attribution_subject_id ?? null,
     referenceCount: 0,
+    effectiveScope: row.effective_scope,
+    overrideOfSpecId: row.override_of_spec_id ?? null,
+    declaredPlacement: row.declared_placement ?? null,
+    observationState: row.observation_state,
   };
 }
 
@@ -949,81 +1037,350 @@ export async function listParameterSpecRows(
     lifecycle?: "draft" | "active" | "deprecated";
     attributionSubjectId?: string;
     propertyKey?: string;
+    view?: "effective" | "governance";
   },
 ): Promise<ParameterSpecListRow[]> {
+  // The product/read API is always the effective projection by default. Admin
+  // surfaces that need drafts/history must opt into `view=governance` explicitly.
+  const view = input.view ?? "effective";
   const values: unknown[] = [input.organizationId];
-  const conditions = ["(ps.organization_id = $1 or ps.organization_id is null)"];
+  const conditions = ["(c.organization_id = $1 or c.organization_id is null)"];
 
   if (input.sourceKind) {
     values.push(input.sourceKind);
-    conditions.push(`ps.source_kind = $${values.length}`);
+    conditions.push(`c.source_kind = $${values.length}`);
   }
   if (input.lifecycle) {
     values.push(input.lifecycle);
-    conditions.push(`ps.definition_lifecycle = $${values.length}`);
+    conditions.push(`c.lifecycle = $${values.length}`);
   }
   if (input.attributionSubjectId) {
     values.push(input.attributionSubjectId);
-    conditions.push(`ps.attribution_subject_id = $${values.length}`);
+    conditions.push(`c.attribution_subject_id = $${values.length}`);
   }
   if (input.propertyKey) {
     values.push(input.propertyKey);
-    conditions.push(`coalesce(
-      ps.property_key,
-      dps.property_key,
-      (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))]
-    ) = $${values.length}`);
+    conditions.push(`c.property_key = $${values.length}`);
   }
   if (input.q) {
     values.push(`%${input.q}%`);
     conditions.push(
-      `(ps.specification_key ilike $${values.length} or coalesce(ps.property_key, dps.property_key, '') ilike $${values.length} or coalesce(psv.display_name, '') ilike $${values.length} or coalesce(asub.display_name, '') ilike $${values.length})`,
+      `(c.specification_key ilike $${values.length} or coalesce(c.property_key, '') ilike $${values.length} or coalesce(c.display_name, '') ilike $${values.length} or coalesce(c.driver_module, '') ilike $${values.length})`,
     );
   }
 
   const result = await db.query<SpecListRow>(
     `
-    select
-      ps.id,
-      ps.organization_id,
-      ps.source_kind,
-      ps.specification_key,
-      coalesce(
-        ps.property_key,
-        dps.property_key,
-        nullif(
-          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
-          ''
+    with candidate as (
+      select
+        ps.id,
+        ps.organization_id,
+        ps.source_kind,
+        ps.specification_key,
+        coalesce(
+          ps.property_key,
+          dps.property_key,
+          nullif(
+            (string_to_array(ps.specification_key, '/'))[
+              cardinality(string_to_array(ps.specification_key, '/'))
+            ],
+            ''
+          )
+        ) as property_key,
+        asub.display_name as driver_module,
+        ps.definition_lifecycle as lifecycle,
+        ps.attribution_subject_id,
+        coalesce(lower(asub.source_key), 'subject:' || coalesce(ps.attribution_subject_id, ps.id))
+          as driver_identity_key,
+        psv.id as current_version_id,
+        psv.version as current_version,
+        psv.version_status,
+        psv.lifecycle as version_lifecycle,
+        psv.active_version_count,
+        psv.value_shape,
+        dsv.compatible_patterns,
+        ds.attribution_subject_id as driver_schema_subject_id,
+        dr.attribution_subject_id as driver_registration_id,
+        drp.id as declared_placement_id,
+        coalesce(dgm.id, node_type_module.id) as declared_module_id,
+        coalesce(dgm.name, node_type_module.name) as declared_module_name,
+        coalesce(category.id, node_type_category.id) as declared_category_id,
+        coalesce(category.name, node_type_category.name) as declared_category_name,
+        case
+          -- Legacy/manual policy rows are not driver definitions and therefore
+          -- do not participate in the driver-placement invariant. DTS rows do.
+          when ps.source_kind <> 'dts'
+            and dps.driver_schema_id is null
+            and ps.attribution_subject_id is null then true
+          when asub.subject_kind = 'node-type-definition'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+            and node_type_module.id is not null
+            and exists (
+              select 1
+              from node_type_definitions node_type_definition
+              where node_type_definition.attribution_subject_id = ps.attribution_subject_id
+            )
+            and (
+              ps.source_kind <> 'dts'
+              or (
+                dps.driver_schema_id is not null
+                and ds.attribution_subject_id = ps.attribution_subject_id
+                and (ds.organization_id is null or ds.organization_id = ps.organization_id)
+                and exists (
+                  select 1
+                  from parameter_specs driver_schema_root
+                  where driver_schema_root.id = ds.parameter_spec_id
+                    and driver_schema_root.organization_id is not distinct from ds.organization_id
+                    and driver_schema_root.attribution_subject_id is not distinct from ds.attribution_subject_id
+                )
+                and exists (
+                  select 1
+                  from driver_schema_versions active_schema_version
+                  where active_schema_version.driver_schema_id = dps.driver_schema_id
+                    and active_schema_version.lifecycle = 'active'
+                )
+              )
+            ) then true
+          when ps.source_kind <> 'dts'
+            and dps.driver_schema_id is null
+            and ps.attribution_subject_id is not null
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+            and dr.attribution_subject_id is not null
+            and drp.id is not null
+            and dgm.id is not null
+            and dgm.organization_id = $1
+            and dgm.kind = 'driver-group'
+            and dgm.attribution_subject_id = ps.attribution_subject_id
+            and (
+              drp.default_business_category_module_id is null
+              or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
+            ) then true
+          when dps.driver_schema_id is not null
+            and asub.subject_kind = 'driver-registration'
+            and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+            and ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+            and (ds.organization_id is null or ds.organization_id = ps.organization_id)
+            and exists (
+              select 1
+              from parameter_specs driver_schema_root
+              where driver_schema_root.id = ds.parameter_spec_id
+                and driver_schema_root.organization_id is not distinct from ds.organization_id
+                and driver_schema_root.attribution_subject_id is not distinct from ds.attribution_subject_id
+            )
+            and exists (
+              select 1
+              from driver_schema_versions active_schema_version
+              where active_schema_version.driver_schema_id = dps.driver_schema_id
+                and active_schema_version.lifecycle = 'active'
+            )
+            and dr.attribution_subject_id is not null
+            and drp.id is not null
+            and dgm.id is not null
+            and dgm.organization_id = $1
+            and dgm.kind = 'driver-group'
+            and dgm.attribution_subject_id = ps.attribution_subject_id
+            and (
+              drp.default_business_category_module_id is null
+              or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
+            ) then true
+          else false
+        end as placement_ready,
+        case
+          when exists (
+            select 1 from project_parameter_bindings observed_binding
+            where observed_binding.organization_id = $1
+              and observed_binding.parameter_spec_id = ps.id
+          ) then 'observed'
+          when drp.id is not null or node_type_module.id is not null then 'not-yet-observed'
+          else 'unclassified'
+        end as observation_state,
+        (ps.source_kind <> 'dts' or ps.property_key is not distinct from dps.property_key)
+          as property_key_consistent,
+        psv.display_name
+      from parameter_specs ps
+      left join attribution_subjects asub on asub.id = ps.attribution_subject_id
+      left join lateral (
+        select
+          psv.*,
+          count(*) filter (where psv.version_status = 'active' and psv.lifecycle = 'active') over () as active_version_count
+        from parameter_spec_versions psv
+        where psv.parameter_spec_id = ps.id
+        order by
+          case
+            when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+            when psv.version_status = 'active' then 1
+            when psv.version_status = 'superseded' then 2
+            else 3
+          end,
+          psv.version desc
+        limit 1
+      ) psv on true
+      left join driver_schema_versions dsv on dsv.parameter_spec_version_id = psv.id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join driver_schemas ds on ds.id = dps.driver_schema_id
+      left join driver_registrations dr on dr.attribution_subject_id = ps.attribution_subject_id
+      left join driver_registration_placements drp
+        on drp.organization_id = $1
+       and drp.attribution_subject_id = ps.attribution_subject_id
+      left join parameter_modules dgm on dgm.id = drp.driver_group_module_id
+      left join parameter_modules category on category.id = drp.default_business_category_module_id
+      left join parameter_modules node_type_module
+        on node_type_module.organization_id = $1
+       and node_type_module.kind = 'node-type'
+       and (
+         node_type_module.attribution_subject_id = ps.attribution_subject_id
+         or lower(coalesce(node_type_module.source_key, '')) = lower(coalesce(asub.source_key, ''))
+       )
+      left join parameter_modules node_type_category
+        on node_type_category.id = node_type_module.parent_id
+       and node_type_category.organization_id = node_type_module.organization_id
+       and node_type_category.kind = 'business'
+      where (ps.organization_id = $1 or ps.organization_id is null)
+        and not exists (
+          select 1 from driver_schemas driver_root
+          where driver_root.parameter_spec_id = ps.id
         )
-      ) as property_key,
-      asub.display_name as driver_module,
-      ps.definition_lifecycle as lifecycle,
-      ps.attribution_subject_id,
-      psv.id as current_version_id,
-      psv.version as current_version,
-      psv.value_shape,
-      dsv.compatible_patterns
-    from parameter_specs ps
-    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
-    left join lateral (
-      select *
-      from parameter_spec_versions
-      where parameter_spec_id = ps.id
-      order by
-        case version_status
-          when 'active' then 0
-          when 'superseded' then 1
-          else 2
-        end,
-        version desc
-      limit 1
-    ) psv on true
-    left join driver_schema_versions dsv on dsv.parameter_spec_version_id = psv.id
-    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+        and coalesce(
+          ps.property_key,
+          dps.property_key,
+          nullif(
+            (string_to_array(ps.specification_key, '/'))[
+              cardinality(string_to_array(ps.specification_key, '/'))
+            ],
+            ''
+          )
+        ) is not null
+    ),
+    ranked as (
+      select
+        c.*,
+        row_number() over (
+          partition by c.driver_identity_key, c.property_key
+          order by
+            case when c.organization_id = $1 then 0 else 1 end,
+            c.id
+        ) as effective_rank,
+        count(*) filter (where c.organization_id = $1)
+          over (partition by c.driver_identity_key, c.property_key) as organization_active_count,
+        count(*) filter (where c.organization_id is null)
+          over (partition by c.driver_identity_key, c.property_key) as platform_active_count
+      from candidate c
+      where c.lifecycle = 'active'
+        and c.version_status = 'active'
+        and c.version_lifecycle = 'active'
+    ),
+    visible as (
+      select
+        c.id,
+        c.organization_id,
+        c.source_kind,
+        c.specification_key,
+        c.property_key,
+        c.driver_module,
+        c.display_name,
+        c.lifecycle,
+        c.attribution_subject_id,
+        c.current_version_id,
+        c.current_version,
+        c.value_shape,
+        c.compatible_patterns,
+        case when c.organization_id = $1 then 'organization' else 'platform' end as effective_scope,
+        case
+          when c.organization_id is null and c.organization_active_count > 0 then (
+            select org.id
+            from candidate org
+            where org.organization_id = $1
+              and org.driver_identity_key = c.driver_identity_key
+              and org.property_key = c.property_key
+              and org.lifecycle = 'active'
+              and org.version_status = 'active'
+              and org.version_lifecycle = 'active'
+              and org.property_key_consistent
+            order by org.id
+            limit 1
+          )
+          when c.organization_id = $1 and c.platform_active_count > 0 then (
+            select platform.id
+            from candidate platform
+            where platform.organization_id is null
+              and platform.driver_identity_key = c.driver_identity_key
+              and platform.property_key = c.property_key
+              and platform.lifecycle = 'active'
+              and platform.version_status = 'active'
+              and platform.version_lifecycle = 'active'
+              and platform.property_key_consistent
+            order by platform.id
+            limit 1
+          )
+          else null
+        end as override_of_spec_id,
+        case when c.declared_module_id is null then null else jsonb_build_object(
+          'moduleId', c.declared_module_id,
+          'moduleName', c.declared_module_name,
+          'categoryId', c.declared_category_id,
+          'categoryName', c.declared_category_name,
+          'path', case
+            when c.declared_category_name is null then jsonb_build_array(c.declared_module_name)
+            else jsonb_build_array(c.declared_category_name, c.declared_module_name)
+          end
+        ) end as declared_placement,
+        c.observation_state
+      from ranked c
+      where c.effective_rank = 1
+        and c.organization_active_count <= 1
+        and (
+          c.organization_id = $1
+          or (c.organization_id is null and c.organization_active_count = 0 and c.platform_active_count <= 1)
+        )
+        and c.active_version_count = 1
+        and not exists (
+          select 1
+          from ranked organization_candidate
+          where organization_candidate.organization_id = $1
+            and organization_candidate.driver_identity_key = c.driver_identity_key
+            and organization_candidate.property_key = c.property_key
+            and organization_candidate.active_version_count <> 1
+        )
+        and c.property_key_consistent
+        and c.placement_ready
+        and $${values.length + 1} = 'effective'
+      union all
+      select
+        c.id,
+        c.organization_id,
+        c.source_kind,
+        c.specification_key,
+        c.property_key,
+        c.driver_module,
+        c.display_name,
+        c.lifecycle,
+        c.attribution_subject_id,
+        c.current_version_id,
+        c.current_version,
+        c.value_shape,
+        c.compatible_patterns,
+        'governance' as effective_scope,
+        null as override_of_spec_id,
+        case when c.declared_module_id is null then null else jsonb_build_object(
+          'moduleId', c.declared_module_id,
+          'moduleName', c.declared_module_name,
+          'categoryId', c.declared_category_id,
+          'categoryName', c.declared_category_name,
+          'path', case
+            when c.declared_category_name is null then jsonb_build_array(c.declared_module_name)
+            else jsonb_build_array(c.declared_category_name, c.declared_module_name)
+          end
+        ) end as declared_placement,
+        c.observation_state
+      from candidate c
+      where $${values.length + 1} = 'governance'
+    )
+    select *
+    from visible c
     where ${conditions.join(" and ")}
-    order by ps.specification_key asc
+    order by c.specification_key asc, c.id asc
     `,
-    values,
+    [...values, view],
   );
   const rows = result.rows.map(toListRow);
   const attributionBySpec = await loadAttributionModulesBySpecIds(db, {
@@ -1057,7 +1414,10 @@ export async function loadReferenceCountsBySpecIds(
   if (input.specIds.length === 0) {
     return new Map();
   }
-  const result = await db.query<{ parameter_spec_id: string; reference_count: string | number }>(
+  const result = await db.query<{
+    parameter_spec_id: string;
+    reference_count: string | number;
+  }>(
     `
     select parameter_spec_id, count(*)::int as reference_count
     from project_parameter_bindings
@@ -1068,7 +1428,10 @@ export async function loadReferenceCountsBySpecIds(
     [input.organizationId, input.specIds],
   );
   return new Map(
-    result.rows.map((row) => [row.parameter_spec_id, Number(row.reference_count)]),
+    result.rows.map((row) => [
+      row.parameter_spec_id,
+      Number(row.reference_count),
+    ]),
   );
 }
 
@@ -1174,7 +1537,10 @@ export async function findParameterSpecByIdentity(
     attributionSubjectId: string;
     propertyKey: string;
   },
-): Promise<{ parameterSpecId: string; parameterSpecVersionId: string | null } | null> {
+): Promise<{
+  parameterSpecId: string;
+  parameterSpecVersionId: string | null;
+} | null> {
   const result = await db.query<{ id: string; version_id: string | null }>(
     `
     select ps.id, psv.id as version_id
@@ -1184,10 +1550,11 @@ export async function findParameterSpecByIdentity(
       from parameter_spec_versions
       where parameter_spec_id = ps.id
       order by
-        case version_status
-          when 'active' then 0
-          when 'superseded' then 1
-          else 2
+        case
+          when version_status = 'active' and lifecycle = 'active' then 0
+          when version_status = 'active' then 1
+          when version_status = 'superseded' then 2
+          else 3
         end,
         version desc
       limit 1
@@ -1235,6 +1602,7 @@ export async function getParameterSpecRow(
       psv.id as current_version_id,
       psv.version as current_version,
       psv.version_status,
+      psv.lifecycle as version_lifecycle,
       psv.display_name,
       psv.description,
       psv.value_shape,
@@ -1245,23 +1613,142 @@ export async function getParameterSpecRow(
       coalesce(nullif(psv.constraints, '{}'::jsonb), dps.constraints) as constraints,
       coalesce(psv.documentation, dps.documentation) as documentation,
       dsv.compatible_patterns,
-      ppt.target_value as policy_target
+      ppt.target_value as policy_target,
+      case
+        when ps.definition_lifecycle = 'active'
+          and psv.version_status = 'active'
+          and psv.lifecycle = 'active'
+          and psv.active_version_count = 1
+          and (ps.source_kind <> 'dts' or ps.property_key is not distinct from dps.property_key)
+          and (
+            (ps.source_kind <> 'dts'
+              and dps.driver_schema_id is null
+              and ps.attribution_subject_id is null)
+            or (
+              asub.subject_kind = 'node-type-definition'
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+              and node_type_module.id is not null
+              and exists (
+                select 1
+                from node_type_definitions node_type_definition
+                where node_type_definition.attribution_subject_id = ps.attribution_subject_id
+              )
+              and (
+                ps.source_kind <> 'dts'
+                or (
+                  dps.driver_schema_id is not null
+                  and property_ds.attribution_subject_id = ps.attribution_subject_id
+                  and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
+                  and exists (
+                    select 1
+                    from parameter_specs driver_schema_root
+                    where driver_schema_root.id = property_ds.parameter_spec_id
+                      and driver_schema_root.organization_id is not distinct from property_ds.organization_id
+                      and driver_schema_root.attribution_subject_id is not distinct from property_ds.attribution_subject_id
+                  )
+                  and exists (
+                    select 1
+                    from driver_schema_versions active_schema_version
+                    where active_schema_version.driver_schema_id = dps.driver_schema_id
+                      and active_schema_version.lifecycle = 'active'
+                  )
+                )
+              )
+            )
+            or (
+              ps.source_kind <> 'dts'
+              and dps.driver_schema_id is null
+              and ps.attribution_subject_id is not null
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+              and property_dr.attribution_subject_id is not null
+              and drp.id is not null
+              and dgm.id is not null
+              and dgm.organization_id = $1
+              and dgm.kind = 'driver-group'
+              and dgm.attribution_subject_id = ps.attribution_subject_id
+              and (
+                drp.default_business_category_module_id is null
+                or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
+              )
+            )
+            or (
+              dps.driver_schema_id is not null
+              and asub.subject_kind = 'driver-registration'
+              and (asub.organization_id is null or asub.organization_id = ps.organization_id)
+              and property_ds.attribution_subject_id is not distinct from ps.attribution_subject_id
+              and (property_ds.organization_id is null or property_ds.organization_id = ps.organization_id)
+              and exists (
+                select 1
+                from parameter_specs driver_schema_root
+                where driver_schema_root.id = property_ds.parameter_spec_id
+                  and driver_schema_root.organization_id is not distinct from property_ds.organization_id
+                  and driver_schema_root.attribution_subject_id is not distinct from property_ds.attribution_subject_id
+              )
+              and exists (
+                select 1
+                from driver_schema_versions active_schema_version
+                where active_schema_version.driver_schema_id = dps.driver_schema_id
+                  and active_schema_version.lifecycle = 'active'
+              )
+              and property_dr.attribution_subject_id is not null
+              and drp.id is not null
+              and dgm.id is not null
+              and dgm.organization_id = $1
+              and dgm.kind = 'driver-group'
+              and dgm.attribution_subject_id = ps.attribution_subject_id
+              and (
+                drp.default_business_category_module_id is null
+                or (category.id is not null and category.organization_id = $1 and category.kind = 'business')
+              )
+            )
+          )
+          then case when ps.organization_id = $1 then 'organization' else 'platform' end
+        else 'governance'
+      end as effective_scope,
+      case when coalesce(dgm.id, node_type_module.id) is null then null else jsonb_build_object(
+        'moduleId', coalesce(dgm.id, node_type_module.id),
+        'moduleName', coalesce(dgm.name, node_type_module.name),
+        'categoryId', coalesce(category.id, node_type_category.id),
+        'categoryName', coalesce(category.name, node_type_category.name),
+        'path', case
+          when coalesce(category.name, node_type_category.name) is null
+            then jsonb_build_array(coalesce(dgm.name, node_type_module.name))
+          else jsonb_build_array(
+            coalesce(category.name, node_type_category.name),
+            coalesce(dgm.name, node_type_module.name)
+          )
+        end
+      ) end as declared_placement,
+      case
+        when exists (
+          select 1 from project_parameter_bindings observed_binding
+          where observed_binding.organization_id = $1
+            and observed_binding.parameter_spec_id = ps.id
+        ) then 'observed'
+        when drp.id is not null or node_type_module.id is not null then 'not-yet-observed'
+        else 'unclassified'
+      end as observation_state
     from parameter_specs ps
     left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join lateral (
-      select *
-      from parameter_spec_versions
-      where parameter_spec_id = ps.id
+      select
+        psv.*,
+        count(*) filter (where psv.version_status = 'active' and psv.lifecycle = 'active') over () as active_version_count
+      from parameter_spec_versions psv
+      where psv.parameter_spec_id = ps.id
       order by
-        case version_status
-          when 'active' then 0
-          when 'superseded' then 1
-          else 2
+        case
+          when psv.version_status = 'active' and psv.lifecycle = 'active' then 0
+          when psv.version_status = 'active' then 1
+          when psv.version_status = 'superseded' then 2
+          else 3
         end,
-        version desc
+        psv.version desc
       limit 1
     ) psv on true
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join driver_schemas property_ds on property_ds.id = dps.driver_schema_id
+    left join driver_registrations property_dr on property_dr.attribution_subject_id = ps.attribution_subject_id
     left join driver_schemas ds on ds.parameter_spec_id = ps.id
     left join lateral (
       select *
@@ -1270,6 +1757,22 @@ export async function getParameterSpecRow(
       order by version desc
       limit 1
     ) dsv on true
+    left join driver_registration_placements drp
+      on drp.organization_id = $1
+     and drp.attribution_subject_id = ps.attribution_subject_id
+    left join parameter_modules dgm on dgm.id = drp.driver_group_module_id
+    left join parameter_modules category on category.id = drp.default_business_category_module_id
+    left join parameter_modules node_type_module
+      on node_type_module.organization_id = $1
+     and node_type_module.kind = 'node-type'
+     and (
+       node_type_module.attribution_subject_id = ps.attribution_subject_id
+       or lower(coalesce(node_type_module.source_key, '')) = lower(coalesce(asub.source_key, ''))
+     )
+    left join parameter_modules node_type_category
+      on node_type_category.id = node_type_module.parent_id
+     and node_type_category.organization_id = node_type_module.organization_id
+     and node_type_category.kind = 'business'
     left join lateral (
       select target_value
       from parameter_policy_targets
@@ -1306,7 +1809,9 @@ export async function getParameterSpecRow(
     schemaNamespace: row.schema_namespace,
     units: row.units,
     constraints:
-      row.constraints && typeof row.constraints === "object" && !Array.isArray(row.constraints)
+      row.constraints &&
+      typeof row.constraints === "object" &&
+      !Array.isArray(row.constraints)
         ? (row.constraints as Record<string, unknown>)
         : null,
     documentation: row.documentation,
@@ -1319,12 +1824,16 @@ function driverSchemaRootId(driverSchemaId: string): string {
   return driverSchemaId.replace(/:v\d+$/, "");
 }
 
-function organizationIdFromOverlayNamespace(schemaNamespace: string): string | null {
+function organizationIdFromOverlayNamespace(
+  schemaNamespace: string,
+): string | null {
   const match = /^org\/([^/]+)\//.exec(schemaNamespace);
   return match?.[1] ?? null;
 }
 
-function compatibleFromOverlayNamespace(schemaNamespace: string): string | null {
+function compatibleFromOverlayNamespace(
+  schemaNamespace: string,
+): string | null {
   const match = /^org\/[^/]+\/(.+)$/.exec(schemaNamespace);
   return match?.[1] ?? null;
 }
@@ -1338,39 +1847,153 @@ function compatibleFromOverlayNamespace(schemaNamespace: string): string | null 
 export async function upsertMatchedPropertySpec(
   db: Queryable,
   property: PropertySpec,
-): Promise<{ parameterSpecId: string; parameterSpecVersionId: string }> {
+): Promise<{
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  attributionSubjectId: string | null;
+}> {
   const overlayOrgId =
-    property.source === "manual" ? organizationIdFromOverlayNamespace(property.schemaNamespace) : null;
+    property.source === "manual"
+      ? organizationIdFromOverlayNamespace(property.schemaNamespace)
+      : null;
   const overlayCompatible = overlayOrgId
     ? compatibleFromOverlayNamespace(property.schemaNamespace)
     : null;
 
   let attributionSubjectId: string | null = null;
-  let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null = null;
+  let driverSchemaId: string | null = property.driverSchemaId
+    ? driverSchemaRootId(property.driverSchemaId)
+    : null;
+  let schemaOrganizationId: string | null = overlayOrgId;
+
+  if (driverSchemaId) {
+    const driverSchema = await db.query<{
+      id: string;
+      organization_id: string | null;
+      attribution_subject_id: string | null;
+    }>(
+      `
+      select id, organization_id, attribution_subject_id
+      from driver_schemas
+      where id = $1
+      limit 1
+      `,
+      [driverSchemaId],
+    );
+    const schemaRow = driverSchema.rows[0];
+    if (!schemaRow?.attribution_subject_id) {
+      throw new ApiError(
+        "CONFLICT",
+        "Cannot materialize a property before its driver schema has a canonical attribution subject.",
+        { driverSchemaId, propertyKey: property.propertyKey },
+      );
+    }
+    attributionSubjectId = schemaRow.attribution_subject_id;
+    schemaOrganizationId = schemaRow.organization_id;
+  }
+
+  let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null =
+    null;
   let parameterSpecId = property.parameterSpecId;
-  if (overlayOrgId && overlayCompatible) {
+  if (!attributionSubjectId && overlayOrgId && overlayCompatible) {
     attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
       organizationId: overlayOrgId,
       compatible: overlayCompatible,
     });
+    schemaOrganizationId = overlayOrgId;
+  }
+  if (attributionSubjectId) {
     const existing = await findParameterSpecByIdentity(db, {
-      organizationId: overlayOrgId,
+      organizationId: schemaOrganizationId,
       attributionSubjectId,
       propertyKey: property.propertyKey,
     });
     if (existing) {
       parameterSpecId = existing.parameterSpecId;
     } else {
-      manualIds = buildSubjectScopedManualSpecIds({
-        organizationId: overlayOrgId,
-        attributionSubjectId,
-        propertyKey: property.propertyKey,
-      });
-      parameterSpecId = manualIds.parameterSpecId;
+      // A matched property is owned by its canonical subject, regardless of
+      // whether the source is a platform DTS schema or an organization
+      // overlay. CommonRefs clones carry the common document's parameterSpecId;
+      // only retain the loader id when it is already scoped to this concrete
+      // driver namespace. Otherwise mint the durable owner+subject+property
+      // surrogate so two concrete drivers cannot merge on a shared shape.
+      const driverScopedLoaderId = `pspec:${property.schemaNamespace}:${property.propertyKey}`;
+      const commonShapeId =
+        property.parameterSpecId.startsWith("pspec:common/") ||
+        property.id.startsWith("propspec:common/");
+      if (commonShapeId || parameterSpecId !== driverScopedLoaderId) {
+        manualIds = buildSubjectScopedManualSpecIds({
+          organizationId: schemaOrganizationId,
+          attributionSubjectId,
+          propertyKey: property.propertyKey,
+        });
+        parameterSpecId = manualIds.parameterSpecId;
+      }
     }
   }
 
-  const parameterSpecVersionId = property.id;
+  // Migration 0120 enforces one active ParameterSpecVersion per definition.
+  // Property catalog sync can advance an existing definition from vN to vN+1,
+  // so serialize the transition and retire the previous active version before
+  // inserting/promoting the successor. Replaying the same active version is
+  // idempotent; draft/deprecated syncs never demote an already active version.
+  await db.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+    parameterSpecId,
+  ]);
+  const existingVersion = await db.query<{
+    id: string;
+    version_status: string;
+    lifecycle: string;
+  }>(
+    `select id, version_status, lifecycle
+     from parameter_spec_versions
+     where parameter_spec_id = $1 and version = $2
+     limit 1`,
+    [parameterSpecId, property.version ?? 1],
+  );
+  const existingVersionRow = existingVersion.rows[0];
+  // A vendor catalog can replay a draft/deprecated source row after a newer
+  // active version is already installed. Never let that replay demote the
+  // active row for the same definition; explicit lifecycle transitions use
+  // the parameter-spec workflow instead.
+  const preserveExistingActiveVersion =
+    property.lifecycle !== "active" &&
+    existingVersionRow?.version_status === "active" &&
+    existingVersionRow.lifecycle === "active";
+  if (property.lifecycle === "active") {
+    const sameVersionIsActive =
+      existingVersionRow?.version_status === "active" &&
+      existingVersionRow?.lifecycle === "active";
+    if (!sameVersionIsActive) {
+      await db.query(
+        `update parameter_spec_versions
+         set version_status = 'superseded', lifecycle = 'deprecated'
+         where parameter_spec_id = $1
+           and version_status = 'active'`,
+        [parameterSpecId],
+      );
+    }
+  }
+  let parameterSpecVersionId = existingVersionRow?.id ?? property.id;
+  const conflictingVersion = await db.query<{ parameter_spec_id: string }>(
+    `select parameter_spec_id from parameter_spec_versions where id = $1 limit 1`,
+    [parameterSpecVersionId],
+  );
+  if (
+    conflictingVersion.rows[0] &&
+    conflictingVersion.rows[0].parameter_spec_id !== parameterSpecId
+  ) {
+    parameterSpecVersionId = `${property.id}:${parameterSpecId}`;
+  }
+
+  const existingDtsPropertySpec = await db.query<{ id: string }>(
+    `select id from dts_property_specs where parameter_spec_id = $1 limit 1`,
+    [parameterSpecId],
+  );
+  const dtsPropertySpecId =
+    existingDtsPropertySpec.rows[0]?.id ??
+    manualIds?.dtsPropertySpecId ??
+    `dps:${parameterSpecId}`;
 
   await db.query(
     `
@@ -1384,10 +2007,15 @@ export async function upsertMatchedPropertySpec(
     `,
     [
       parameterSpecId,
-      overlayOrgId,
-      overlayOrgId ? "manual" : "dts",
-      manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
-      property.lifecycle === "deprecated" ? "deprecated" : property.lifecycle === "active" ? "active" : "draft",
+      schemaOrganizationId,
+      schemaOrganizationId ? "manual" : "dts",
+      manualIds?.specificationKey ??
+        `${property.schemaNamespace}/${property.propertyKey}`,
+      property.lifecycle === "deprecated"
+        ? "deprecated"
+        : property.lifecycle === "active"
+          ? "active"
+          : "draft",
       attributionSubjectId,
       property.propertyKey,
     ],
@@ -1398,8 +2026,8 @@ export async function upsertMatchedPropertySpec(
       id, parameter_spec_id, version, display_name, description, value_shape,
       schema_default, example_value, lifecycle, version_status,
       units, constraints, documentation
-    ) values ($1, $2, 1, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10, $11::jsonb, $12)
-    on conflict (id) do update set
+    ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, $12::jsonb, $13)
+    on conflict (parameter_spec_id, version) do update set
       display_name = excluded.display_name,
       description = excluded.description,
       value_shape = excluded.value_shape,
@@ -1414,13 +2042,22 @@ export async function upsertMatchedPropertySpec(
     [
       parameterSpecVersionId,
       parameterSpecId,
+      property.version ?? 1,
       property.propertyKey,
       property.documentation ?? property.propertyKey,
       JSON.stringify(property.valueShape),
-      property.schemaDefault === undefined ? null : JSON.stringify(property.schemaDefault),
-      property.exampleValue === undefined ? null : JSON.stringify(property.exampleValue),
-      property.lifecycle,
-      property.lifecycle === "deprecated" ? "superseded" : property.lifecycle,
+      property.schemaDefault === undefined
+        ? null
+        : JSON.stringify(property.schemaDefault),
+      property.exampleValue === undefined
+        ? null
+        : JSON.stringify(property.exampleValue),
+      preserveExistingActiveVersion ? "active" : property.lifecycle,
+      preserveExistingActiveVersion
+        ? "active"
+        : property.lifecycle === "deprecated"
+          ? "superseded"
+          : property.lifecycle,
       property.units ?? null,
       JSON.stringify(property.constraints ?? {}),
       property.documentation ?? null,
@@ -1438,16 +2075,17 @@ export async function upsertMatchedPropertySpec(
       schema_namespace = excluded.schema_namespace,
       units = excluded.units,
       constraints = excluded.constraints,
-      documentation = excluded.documentation
+      documentation = excluded.documentation,
+      driver_schema_id = coalesce(dts_property_specs.driver_schema_id, excluded.driver_schema_id)
     `,
     [
-      manualIds?.dtsPropertySpecId ?? `dps:${parameterSpecId}`,
+      dtsPropertySpecId,
       parameterSpecId,
-      // Prefer null here; callers upsert drivers first and may patch later.
-      // Avoid FK failures when driver_schemas row is not yet present.
-      null,
+      driverSchemaId,
       property.propertyKey,
-      manualIds?.schemaNamespace ?? property.schemaNamespace,
+      property.driverSchemaId
+        ? property.schemaNamespace
+        : (manualIds?.schemaNamespace ?? property.schemaNamespace),
       property.units ?? null,
       JSON.stringify(property.constraints ?? {}),
       property.documentation ?? null,
@@ -1457,6 +2095,7 @@ export async function upsertMatchedPropertySpec(
   return {
     parameterSpecId,
     parameterSpecVersionId,
+    attributionSubjectId,
   };
 }
 
@@ -1467,51 +2106,146 @@ export async function upsertMatchedPropertySpec(
 export async function upsertMatchedDriverSchema(
   db: Queryable,
   driver: DriverSchema,
-): Promise<{ driverSchemaId: string; driverSchemaVersionId: string }> {
+): Promise<{
+  driverSchemaId: string;
+  driverSchemaVersionId: string;
+  attributionSubjectId: string;
+}> {
   const rootId = driverSchemaRootId(driver.id);
   const overlayOrgId =
-    driver.source === "manual" ? organizationIdFromOverlayNamespace(driver.schemaNamespace) : null;
+    driver.source === "manual"
+      ? organizationIdFromOverlayNamespace(driver.schemaNamespace)
+      : null;
   const driverParamSpecId = `pspec:driver:${driver.schemaNamespace}`;
-  const driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
+  let driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
+  const attributionSubjectId = await ensureAttributionSubjectForDriverSchema(
+    db,
+    {
+      organizationId: overlayOrgId,
+      compatible: driver.compatiblePatterns[0] ?? null,
+      nodename: driver.nodenamePatterns[0] ?? null,
+      displayName: driver.compatible,
+    },
+  );
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, $2, $3, $4)
-    on conflict (id) do nothing
+    insert into parameter_specs (
+      id, organization_id, source_kind, specification_key, attribution_subject_id
+    ) values ($1, $2, $3, $4, $5)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
     `,
     [
       driverParamSpecId,
       overlayOrgId,
       overlayOrgId ? "manual" : "dts",
       `driver/${driver.schemaNamespace}`,
+      attributionSubjectId,
     ],
   );
+
+  // Migration 0120 enforces one active ParameterSpecVersion per definition.
+  // Schema registry sync is allowed to advance a driver from vN to vN+1, so
+  // serialize that transition and retire the previous active version before
+  // inserting/promoting the new one. Replaying the same version is idempotent;
+  // draft/deprecated syncs never demote an already active version.
+  await db.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+    driverParamSpecId,
+  ]);
+  const existingVersion = await db.query<{
+    id: string;
+    version_status: string;
+    lifecycle: string;
+  }>(
+    `select id, version_status, lifecycle
+     from parameter_spec_versions
+     where parameter_spec_id = $1 and version = $2
+     limit 1`,
+    [driverParamSpecId, driver.version],
+  );
+  const existingVersionRow = existingVersion.rows[0];
+  if (driver.lifecycle === "active") {
+    const sameVersionIsActive =
+      existingVersionRow?.version_status === "active" &&
+      existingVersionRow?.lifecycle === "active";
+    if (!sameVersionIsActive) {
+      await db.query(
+        `update parameter_spec_versions
+         set version_status = 'superseded', lifecycle = 'deprecated'
+         where parameter_spec_id = $1
+           and version_status = 'active'`,
+        [driverParamSpecId],
+      );
+    }
+  }
+
+  if (existingVersionRow) {
+    driverParamVersionId = existingVersionRow.id;
+    if (driver.lifecycle === "active") {
+      await db.query(
+        `update parameter_spec_versions
+         set display_name = $2,
+             description = $3,
+             value_shape = $4::jsonb,
+             lifecycle = 'active',
+             version_status = 'active'
+         where id = $1`,
+        [
+          existingVersionRow.id,
+          driver.compatible,
+          `Driver schema ${driver.schemaNamespace}`,
+          JSON.stringify({ kind: "unknown" }),
+        ],
+      );
+    }
+  } else {
+    await db.query(
+      `
+      insert into parameter_spec_versions (
+        id, parameter_spec_id, version, display_name, description, value_shape,
+        schema_default, example_value, lifecycle
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, null, null, $7)
+      on conflict (parameter_spec_id, version) do nothing
+      `,
+      [
+        driverParamVersionId,
+        driverParamSpecId,
+        driver.version,
+        driver.compatible,
+        `Driver schema ${driver.schemaNamespace}`,
+        JSON.stringify({ kind: "unknown" }),
+        driver.lifecycle,
+      ],
+    );
+  }
+  const persistedVersion = await db.query<{ id: string }>(
+    `select id from parameter_spec_versions where parameter_spec_id = $1 and version = $2 limit 1`,
+    [driverParamSpecId, driver.version],
+  );
+  if (!persistedVersion.rows[0]?.id) {
+    throw new ApiError(
+      "CONFLICT",
+      "Driver schema version could not be materialized.",
+      { driverSchemaId: rootId, version: driver.version },
+    );
+  }
+  driverParamVersionId = persistedVersion.rows[0].id;
   await db.query(
     `
-    insert into parameter_spec_versions (
-      id, parameter_spec_id, version, display_name, description, value_shape,
-      schema_default, example_value, lifecycle
-    ) values ($1, $2, $3, $4, $5, $6::jsonb, null, null, $7)
-    on conflict (id) do nothing
+    insert into driver_schemas (
+      id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id
+    ) values ($1, $2, $3, $4, $5)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(driver_schemas.attribution_subject_id, excluded.attribution_subject_id)
     `,
     [
-      driverParamVersionId,
+      rootId,
       driverParamSpecId,
-      driver.version,
-      driver.compatible,
-      `Driver schema ${driver.schemaNamespace}`,
-      JSON.stringify({ kind: "unknown" }),
-      driver.lifecycle,
+      overlayOrgId,
+      driver.schemaNamespace,
+      attributionSubjectId,
     ],
-  );
-  await db.query(
-    `
-    insert into driver_schemas (id, parameter_spec_id, organization_id, schema_namespace)
-    values ($1, $2, $3, $4)
-    on conflict (id) do nothing
-    `,
-    [rootId, driverParamSpecId, overlayOrgId, driver.schemaNamespace],
   );
   await db.query(
     `
@@ -1532,5 +2266,9 @@ export async function upsertMatchedDriverSchema(
     ],
   );
 
-  return { driverSchemaId: rootId, driverSchemaVersionId: driver.id };
+  return {
+    driverSchemaId: rootId,
+    driverSchemaVersionId: driver.id,
+    attributionSubjectId,
+  };
 }

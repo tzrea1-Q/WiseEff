@@ -52,6 +52,8 @@ export type DriverSchema = {
   schemaNamespace: string;
   version: number;
   lifecycle: SpecLifecycle;
+  /** Durable catalog subject assigned when this schema is materialized. */
+  attributionSubjectId?: string;
   propertyIds: string[];
   /** Referenced common schema ids loaded alongside this driver. */
   commonRefs: string[];
@@ -67,6 +69,8 @@ export type PropertySpec = {
   /** Optional until materialization emits it; mirrors DriverSchema.scope. */
   scope?: SchemaScope;
   lifecycle: SpecLifecycle;
+  /** Schema document version; used for idempotent version materialization. */
+  version?: number;
   valueShape: PropertyValueShape;
   units?: string;
   constraints: Record<string, unknown>;

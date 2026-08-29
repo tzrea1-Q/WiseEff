@@ -304,6 +304,7 @@ export type RecomputeBindingRow = {
   projectId: string;
   logicalNodeId: string | null;
   parameterSpecId: string;
+  attributionSubjectId: string | null;
   moduleId: string;
   driverModule: string | null;
   compatible: string | null;
@@ -328,6 +329,7 @@ type RecomputeBindingDbRow = {
   project_id: string;
   logical_node_id: string | null;
   parameter_spec_id: string;
+  attribution_subject_id: string | null;
   module_id: string;
   driver_module: string | null;
   compatible: string | null;
@@ -352,6 +354,7 @@ export async function listBindingsForModuleRecompute(
       b.project_id,
       b.logical_node_id,
       b.parameter_spec_id,
+      ps.attribution_subject_id,
       b.module_id,
       nullif(
         case
@@ -387,6 +390,7 @@ export async function listBindingsForModuleRecompute(
     projectId: row.project_id,
     logicalNodeId: row.logical_node_id,
     parameterSpecId: row.parameter_spec_id,
+    attributionSubjectId: row.attribution_subject_id,
     moduleId: row.module_id,
     driverModule: row.driver_module,
     compatible: row.compatible,

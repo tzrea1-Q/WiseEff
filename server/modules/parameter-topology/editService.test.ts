@@ -1760,6 +1760,44 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
 `;
     const fixture = await seedConfigAndBinding(db!, auth, { overlayContent, baseContent });
 
+    // Both same-key nodes are already canonical bindings in this scenario. The
+    // edit must remain scoped to the selected binding while unrelated unknown
+    // nodes (covered by the semantic-gate test below) still block a draft.
+    const otherLogical = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1 and node_locator = '/charger_a'
+      limit 1
+      `,
+      [fixture.revision.id],
+    );
+    expect(otherLogical.rows[0]?.logical_node_id).toBeTruthy();
+    const otherBinding = await createOrReuseBinding(db!, {
+      organizationId: ORG_ID,
+      key: {
+        projectId: PROJECT_ID,
+        logicalNodeId: otherLogical.rows[0]!.logical_node_id,
+        parameterSpecId: SPEC_ID,
+        moduleId: await unclassifiedModuleId(db!),
+      },
+    });
+    await upsertBindingRevisionValues(db!, {
+      bindingId: otherBinding.id,
+      configRevisionId: fixture.revision.id,
+      parameterSpecVersionId: SPEC_VERSION_ID,
+      values: {
+        typedValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "1111", value: "1111" }]],
+        },
+        rawValue: "<1111>",
+        schemaState: "valid",
+        policyState: "pass",
+      },
+    });
+
     const draft = await createBindingDraft(
       db!,
       auth,

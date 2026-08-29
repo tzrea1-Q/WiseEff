@@ -9,7 +9,7 @@ export async function insertAttributionSubjectForNewModule(
   db: Queryable,
   input: {
     moduleId: string;
-    organizationId: string;
+    organizationId: string | null;
     kind: "driver-group" | "node-type";
     displayName: string;
     origin: "curated" | "auto";
@@ -28,8 +28,8 @@ export async function insertAttributionSubjectForNewModule(
       ? `compatible:legacy:${input.moduleId}`
       : `nodetype:legacy:${input.moduleId}`);
 
-  // Prefer an existing catalog subject for this org+source_key so seeds and
-  // shared-DB fixtures stay idempotent when module row ids drift.
+  // Prefer an existing catalog subject for this owner scope + source_key so
+  // seeds and shared-DB fixtures stay idempotent when module row ids drift.
   const existingBySource = await db.query<{ id: string }>(
     `
     select id

@@ -515,6 +515,19 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
       `
       insert into parameter_modules (
         id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
+        kind, origin
+      ) values (
+        'pmod-' || $1 || '-' || md5('未分类'), $1, null, '未分类',
+        'pmod-' || $1 || '-' || md5('未分类'), 1, 0, '', '', 'unclassified', 'auto'
+      )
+      on conflict (id) do nothing
+      `,
+      [ORG_ID],
+    );
+    await db!.query(
+      `
+      insert into parameter_modules (
+        id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
         kind, origin, attribution_subject_id
       ) values (
         'module-singleton', $1, 'pmod-' || $1 || '-' || md5('未分类'),
@@ -600,6 +613,80 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     expect(run).toMatchObject({ status: "passed", stage: "toolchain" });
     expect(run?.toolchain).toMatchObject({ dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" });
     expect(run?.artifact_hashes).toMatchObject({ effectiveDtbSha256: "b".repeat(64) });
+  });
+
+  it("blocks a dirty unreviewed driver binding even when its review row was removed", async () => {
+    const revision = await seedRevision(db!, auth);
+    await clearOpenReviews(db!);
+    await db!.query(`update dts_config_revisions set status = 'resolved' where id = $1`, [revision.id]);
+
+    const subjectId = "asub-validate-dirty-driver";
+    const specId = "pspec-validate-dirty-driver";
+    const versionId = "psv-validate-dirty-driver";
+    const businessId = "module-validate-dirty-business";
+    const groupId = "module-validate-dirty-driver";
+    await db!.query(
+      `
+      insert into attribution_subjects (id, organization_id, subject_kind, display_name, origin, source_key)
+      values ($1, $2, 'driver-registration', 'Dirty driver', 'auto', 'compatible:dirty-driver-649')
+      `,
+      [subjectId, ORG_ID],
+    );
+    await db!.query(
+      `insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality, notes)
+       values ($1, 'physical-device', 'multiple', '')`,
+      [subjectId],
+    );
+    await db!.query(
+      `insert into parameter_modules (id, organization_id, name, path, depth, kind, origin, attribution_subject_id)
+       values ($1, $2, 'Dirty business', $1, 1, 'business', 'curated', null)`,
+      [businessId, ORG_ID],
+    );
+    await db!.query(
+      `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, attribution_subject_id)
+       values ($1, $2, $3, 'Dirty driver', $1, 2, 'driver-group', 'auto', $4)`,
+      [groupId, ORG_ID, businessId, subjectId],
+    );
+    await db!.query(
+      `insert into driver_registration_placements
+       (id, organization_id, attribution_subject_id, driver_group_module_id, default_business_category_module_id)
+       values ($1, $2, $3, $4, $5)`,
+      [`drp-${subjectId}`, ORG_ID, subjectId, groupId, businessId],
+    );
+    await db!.query(
+      `insert into parameter_specs
+       (id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id, property_key)
+       values ($1, $2, 'manual', 'dirty/driver/property', 'draft', $3, 'dirty_property_649')`,
+      [specId, ORG_ID, subjectId],
+    );
+    await db!.query(
+      `insert into parameter_spec_versions
+       (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status, documentation)
+       values ($1, $2, 1, 'Dirty', 'Dirty', '{"kind":"cells"}'::jsonb, 'draft', 'draft', 'dirty')`,
+      [versionId, specId],
+    );
+    await db!.query(
+      `insert into project_parameter_bindings
+       (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+       values ($1, $2, $3, null, $4, $5)`,
+      ["binding-validate-dirty-driver", ORG_ID, PROJECT_ID, specId, groupId],
+    );
+    await db!.query(
+      `insert into project_parameter_binding_revisions
+       (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value, schema_state)
+       values ($1, $2, $3, $4, '{"kind":"cells"}'::jsonb, '<1>', 'unreviewed')`,
+      ["binding-validate-dirty-driver:v1", "binding-validate-dirty-driver", revision.id, versionId],
+    );
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      { toolchain: makeToolchain(toolchainResult()) },
+    );
+
+    expect(result).toMatchObject({ status: "failed", failureCode: "unreviewed-driver-tip" });
   });
 
   it("revokes validated publishability when re-validation fails", async () => {

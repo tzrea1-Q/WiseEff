@@ -2,8 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import { createAuditEvent, writePlatformAuditEvent } from "../audit/repository";
-import { asAuditTx, withAuditedWrite, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
-import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
+import {
+  asAuditTx,
+  withAuditedWrite,
+  writeAuditEventInTx,
+  type AuditTx,
+} from "../audit/auditedWrite";
+import {
+  canAdminParameters,
+  canViewParameters,
+} from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { syncSingletonCardinalityBlockingTasks } from "../parameter-topology/bindingService";
@@ -39,22 +47,37 @@ import {
   updateParameterModule,
 } from "../parameters/parameterModuleRepository";
 import type { ParameterModuleDto } from "../parameters/types";
-import { isScaffoldingDriverLabel, nodeTypeKeyForNode, normalizeMatchToken } from "./modulePlacement";
+import {
+  isScaffoldingDriverLabel,
+  nodeTypeKeyForNode,
+  normalizeMatchToken,
+} from "./modulePlacement";
 import type { CreateModuleMappingBody } from "./schemas";
-import type { ModuleMatchKind, ModuleOrigin, ParameterModuleRegistryDto } from "./types";
+import type {
+  ModuleMatchKind,
+  ModuleOrigin,
+  ParameterModuleRegistryDto,
+} from "./types";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import { listOrganizationDriverSchemas } from "../parameter-specs/driverSchemaOverlayRepository";
-import { lookupParseCoverage, type ParseCoverage } from "../parameter-specs/parseCoverage";
+import {
+  lookupParseCoverage,
+  type ParseCoverage,
+} from "../parameter-specs/parseCoverage";
 import type { DriverNature, InstanceCardinality } from "./attributionSubjects";
 import {
   replayAutoDriverGroupToRegistrationDefault,
   setDriverRegistrationDefaultBusinessCategoryId,
   type DriverPlacementReplayCounts,
 } from "./driverPlacement";
+import { ensureDriverRegistrationPlacement } from "./driverRegistrationPlacement";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
+const schemasRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../schemas/dts",
+);
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
@@ -89,23 +112,30 @@ async function writeModuleAttributionAudit(
 ) {
   // requestId fallback survives only until attribution contexts become mandatory
   // (ADR-0027); previously the traceId was always a fresh random UUID.
-  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
-    app: "parameter-management",
-    kind: input.kind,
-    action: input.action,
-    severity: "Low",
-    projectId: null,
-    targetType: "parameter-module-mapping",
-    targetId: input.targetId,
-    metadata: input.metadata ?? {},
-  });
+  await writeAuditEventInTx(
+    tx,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    {
+      app: "parameter-management",
+      kind: input.kind,
+      action: input.action,
+      severity: "Low",
+      projectId: null,
+      targetType: "parameter-module-mapping",
+      targetId: input.targetId,
+      metadata: input.metadata ?? {},
+    },
+  );
 }
 
 function normalizeMatch(value: string | null | undefined): string | null {
   return normalizeMatchToken(value);
 }
 
-function nodeTypeFromInstanceName(instanceName: string | null | undefined): string | null {
+function nodeTypeFromInstanceName(
+  instanceName: string | null | undefined,
+): string | null {
   if (!instanceName) return null;
   const at = instanceName.indexOf("@");
   const name = at >= 0 ? instanceName.slice(0, at) : instanceName;
@@ -146,7 +176,9 @@ async function planMovesForModuleIds(
     organizationId: input.organizationId,
     projectId: null,
   });
-  const scoped = bindings.filter((binding) => input.moduleIds.has(binding.moduleId));
+  const scoped = bindings.filter((binding) =>
+    input.moduleIds.has(binding.moduleId),
+  );
   const moves: PlannedMove[] = [];
   const conflicts: string[] = [];
 
@@ -157,6 +189,8 @@ async function planMovesForModuleIds(
       compatible: binding.compatible,
       instanceName: binding.instanceName,
       nodeLocator: binding.nodeLocator,
+      attributionSubjectId: binding.attributionSubjectId,
+      preferExplicitMapping: true,
     });
     if (nextModuleId === binding.moduleId) continue;
 
@@ -239,7 +273,10 @@ export async function disbandDriverGroupModule(
       rootModuleId: input.moduleId,
       subtreeModuleIds: subtreeIds,
     });
-    const emptiedBuckets = await collectEmptyUnclassifiedBuckets(tx, organizationId);
+    const emptiedBuckets = await collectEmptyUnclassifiedBuckets(
+      tx,
+      organizationId,
+    );
 
     // After reparking, the group itself must be empty of bindings and children.
     const remainingChildren = await tx.query<{ count: string }>(
@@ -267,9 +304,13 @@ export async function disbandDriverGroupModule(
     } catch (error) {
       if (
         error instanceof Error &&
-        /child modules|referenced by parameters|device-instance|unclassified root/i.test(error.message)
+        /child modules|referenced by parameters|device-instance|unclassified root/i.test(
+          error.message,
+        )
       ) {
-        throw new ApiError("CONFLICT", error.message, { moduleId: input.moduleId });
+        throw new ApiError("CONFLICT", error.message, {
+          moduleId: input.moduleId,
+        });
       }
       throw error;
     }
@@ -285,7 +326,9 @@ export async function disbandDriverGroupModule(
       targetId: input.moduleId,
       metadata: {
         name: current.name,
-        removedMappings: removedMappings.map((row) => `${row.matchKind}:${row.matchValue}`),
+        removedMappings: removedMappings.map(
+          (row) => `${row.matchKind}:${row.matchValue}`,
+        ),
         reparkedBindings: moves.length,
         deletedDescendants,
         emptiedBuckets,
@@ -333,6 +376,8 @@ async function planScopedMoves(
       compatible: binding.compatible,
       instanceName: binding.instanceName,
       nodeLocator: binding.nodeLocator,
+      attributionSubjectId: binding.attributionSubjectId,
+      preferExplicitMapping: true,
     });
     if (nextModuleId === binding.moduleId) continue;
 
@@ -366,8 +411,14 @@ async function summarizeMoves(
   const toIds = new Set<string>();
 
   for (const move of moves) {
-    byProjectMap.set(move.binding.projectId, (byProjectMap.get(move.binding.projectId) ?? 0) + 1);
-    fromModuleMap.set(move.binding.moduleId, (fromModuleMap.get(move.binding.moduleId) ?? 0) + 1);
+    byProjectMap.set(
+      move.binding.projectId,
+      (byProjectMap.get(move.binding.projectId) ?? 0) + 1,
+    );
+    fromModuleMap.set(
+      move.binding.moduleId,
+      (fromModuleMap.get(move.binding.moduleId) ?? 0) + 1,
+    );
     toIds.add(move.nextModuleId);
   }
 
@@ -378,7 +429,10 @@ async function summarizeMoves(
 
   return {
     affectedBindings: moves.length,
-    byProject: [...byProjectMap.entries()].map(([projectId, count]) => ({ projectId, count })),
+    byProject: [...byProjectMap.entries()].map(([projectId, count]) => ({
+      projectId,
+      count,
+    })),
     fromModules: [...fromModuleMap.entries()].map(([moduleId, count]) => ({
       moduleId,
       moduleName: names.get(moduleId) ?? moduleId,
@@ -406,7 +460,7 @@ async function applyPlannedMoves(
 
 export async function getParameterModuleRegistry(
   db: Database,
-  auth: AuthContext
+  auth: AuthContext,
 ): Promise<{ item: ParameterModuleRegistryDto }> {
   requireCanView(auth);
   const item = await readRegistry(db, auth.organization.id);
@@ -444,7 +498,9 @@ export async function getModuleDiscoveryHints(
       organizationId: auth.organization.id,
     }),
   ]);
-  return { item: { compatibles: page.items, dismissedCompatibles, total: page.total } };
+  return {
+    item: { compatibles: page.items, dismissedCompatibles, total: page.total },
+  };
 }
 
 export async function dismissCompatible(
@@ -455,28 +511,39 @@ export async function dismissCompatible(
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
   const compatible =
-    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
+    normalizeMatchToken(input.compatible) ??
+    input.compatible.trim().toLowerCase();
   if (!compatible) {
     throw new ApiError("VALIDATION_FAILED", "compatible is required.");
   }
   // Insert and audit commit together (ADR-0027); previously the insert
   // auto-committed and the audit could be lost after it.
-  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
-    await insertDismissedCompatible(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      compatible,
-      reason: input.reason?.trim() ?? "",
-      dismissedByUserId: auth.user.id,
-    });
-    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
-      kind: "parameter-module-compatible-dismissed",
-      action: "dismiss",
-      targetId: compatible,
-      metadata: { compatible, reason: input.reason?.trim() ?? "" },
-    }, context);
-    return { result: undefined, audit: null };
-  });
+  await withAuditedWrite(
+    db,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    async (tx) => {
+      await insertDismissedCompatible(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        compatible,
+        reason: input.reason?.trim() ?? "",
+        dismissedByUserId: auth.user.id,
+      });
+      await writeModuleAttributionAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          kind: "parameter-module-compatible-dismissed",
+          action: "dismiss",
+          targetId: compatible,
+          metadata: { compatible, reason: input.reason?.trim() ?? "" },
+        },
+        context,
+      );
+      return { result: undefined, audit: null };
+    },
+  );
   return getModuleDiscoveryHints(db, auth);
 }
 
@@ -488,24 +555,35 @@ export async function restoreDismissedCompatible(
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
   const compatible =
-    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
+    normalizeMatchToken(input.compatible) ??
+    input.compatible.trim().toLowerCase();
   // Delete and audit commit together (ADR-0027).
-  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
-    const removed = await deleteDismissedCompatible(tx, {
-      organizationId: auth.organization.id,
-      compatible,
-    });
-    if (removed === 0) {
-      throw new ApiError("NOT_FOUND", "Dismissed compatible not found.");
-    }
-    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
-      kind: "parameter-module-compatible-restored",
-      action: "restore",
-      targetId: input.compatible,
-      metadata: { compatible: input.compatible },
-    }, context);
-    return { result: undefined, audit: null };
-  });
+  await withAuditedWrite(
+    db,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    async (tx) => {
+      const removed = await deleteDismissedCompatible(tx, {
+        organizationId: auth.organization.id,
+        compatible,
+      });
+      if (removed === 0) {
+        throw new ApiError("NOT_FOUND", "Dismissed compatible not found.");
+      }
+      await writeModuleAttributionAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          kind: "parameter-module-compatible-restored",
+          action: "restore",
+          targetId: input.compatible,
+          metadata: { compatible: input.compatible },
+        },
+        context,
+      );
+      return { result: undefined, audit: null };
+    },
+  );
   return getModuleDiscoveryHints(db, auth);
 }
 
@@ -529,7 +607,10 @@ export async function previewModuleMapping(
         moduleId: input.moduleId,
       });
       if (!moduleOk) {
-        throw new ApiError("VALIDATION_FAILED", "Target module does not exist.");
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Target module does not exist.",
+        );
       }
       await insertMapping(tx, {
         id: randomUUID(),
@@ -544,10 +625,18 @@ export async function previewModuleMapping(
         matchKind: input.matchKind,
         matchValue: input.matchValue,
       });
-      const preview = await summarizeMoves(tx, auth.organization.id, moves, conflicts);
+      const preview = await summarizeMoves(
+        tx,
+        auth.organization.id,
+        moves,
+        conflicts,
+      );
       throw new PreviewRollbackError(preview);
     });
-    throw new ApiError("INTERNAL_ERROR", "Preview transaction completed unexpectedly.");
+    throw new ApiError(
+      "INTERNAL_ERROR",
+      "Preview transaction completed unexpectedly.",
+    );
   } catch (error) {
     if (error instanceof PreviewRollbackError) {
       return { item: error.preview };
@@ -559,13 +648,13 @@ export async function previewModuleMapping(
 export async function createModuleMapping(
   db: Database,
   auth: AuthContext,
-  input: CreateModuleMappingBody
+  input: CreateModuleMappingBody,
 ): Promise<{ item: ParameterModuleRegistryDto; apply: MappingApplyPreview }> {
   requireCanAdmin(auth);
   return db.transaction(async (tx) => {
     const moduleOk = await moduleExists(tx, {
       organizationId: auth.organization.id,
-      moduleId: input.moduleId
+      moduleId: input.moduleId,
     });
     if (!moduleOk) {
       throw new ApiError("VALIDATION_FAILED", "Target module does not exist.");
@@ -576,7 +665,7 @@ export async function createModuleMapping(
       moduleId: input.moduleId,
       matchKind: input.matchKind,
       matchValue: input.matchValue,
-      priority: input.priority ?? 0
+      priority: input.priority ?? 0,
     });
 
     const { moves, conflicts } = await planScopedMoves(tx, {
@@ -592,8 +681,17 @@ export async function createModuleMapping(
       );
     }
     await applyPlannedMoves(tx, auth.organization.id, moves);
-    const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
-    const apply = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
+    const emptiedModules = await collectEmptyUnclassifiedBuckets(
+      tx,
+      auth.organization.id,
+    );
+    const apply = await summarizeMoves(
+      tx,
+      auth.organization.id,
+      moves,
+      [],
+      emptiedModules,
+    );
     const item = await readRegistry(tx, auth.organization.id);
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-created",
@@ -635,7 +733,7 @@ class RecomputeDryRunRollback extends Error {
 export async function recomputeBindingModules(
   db: Database,
   auth: AuthContext,
-  input: { projectId?: string; dryRun?: boolean }
+  input: { projectId?: string; dryRun?: boolean },
 ): Promise<RecomputeBindingModulesResult> {
   requireCanAdmin(auth);
 
@@ -649,7 +747,12 @@ export async function recomputeBindingModules(
           organizationId: auth.organization.id,
           projectId: input.projectId ?? null,
         });
-        const preview = await summarizeMoves(tx, auth.organization.id, moves, conflicts);
+        const preview = await summarizeMoves(
+          tx,
+          auth.organization.id,
+          moves,
+          conflicts,
+        );
         throw new RecomputeDryRunRollback({
           updated: preview.affectedBindings,
           conflicts,
@@ -657,7 +760,10 @@ export async function recomputeBindingModules(
           preview,
         });
       });
-      throw new ApiError("INTERNAL_ERROR", "Recompute dry-run transaction completed unexpectedly.");
+      throw new ApiError(
+        "INTERNAL_ERROR",
+        "Recompute dry-run transaction completed unexpectedly.",
+      );
     } catch (error) {
       if (error instanceof RecomputeDryRunRollback) {
         return error.result;
@@ -676,13 +782,22 @@ export async function recomputeBindingModules(
       throw new ApiError(
         "CONFLICT",
         "Recompute would collide with existing bindings under the module unique key.",
-        { conflicts }
+        { conflicts },
       );
     }
 
     await applyPlannedMoves(tx, auth.organization.id, moves);
-    const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
-    const preview = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
+    const emptiedModules = await collectEmptyUnclassifiedBuckets(
+      tx,
+      auth.organization.id,
+    );
+    const preview = await summarizeMoves(
+      tx,
+      auth.organization.id,
+      moves,
+      [],
+      emptiedModules,
+    );
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-bindings-recomputed",
       action: "recompute",
@@ -704,15 +819,17 @@ export async function recomputeBindingModules(
 export async function deleteModuleMapping(
   db: Database,
   auth: AuthContext,
-  input: { mappingId: string }
+  input: { mappingId: string },
 ): Promise<{ item: ParameterModuleRegistryDto; apply: MappingApplyPreview }> {
   requireCanAdmin(auth);
   return db.transaction(async (tx) => {
     const registryBefore = await readRegistry(tx, auth.organization.id);
-    const mapping = registryBefore.mappings.find((item) => item.id === input.mappingId);
+    const mapping = registryBefore.mappings.find(
+      (item) => item.id === input.mappingId,
+    );
     const removed = await deleteMappingRow(tx, {
       organizationId: auth.organization.id,
-      mappingId: input.mappingId
+      mappingId: input.mappingId,
     });
     if (removed === 0) {
       throw new ApiError("NOT_FOUND", "Mapping not found.");
@@ -731,8 +848,17 @@ export async function deleteModuleMapping(
       );
     }
     await applyPlannedMoves(tx, auth.organization.id, moves);
-    const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
-    const apply = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
+    const emptiedModules = await collectEmptyUnclassifiedBuckets(
+      tx,
+      auth.organization.id,
+    );
+    const apply = await summarizeMoves(
+      tx,
+      auth.organization.id,
+      moves,
+      [],
+      emptiedModules,
+    );
     const item = await readRegistry(tx, auth.organization.id);
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-deleted",
@@ -777,12 +903,17 @@ export async function registerOrClaimDriver(
   const compatibles = [
     ...new Set(
       input.compatibles
-        .map((value) => normalizeMatchToken(value) ?? value.trim().toLowerCase())
+        .map(
+          (value) => normalizeMatchToken(value) ?? value.trim().toLowerCase(),
+        )
         .filter((value) => value.length > 0),
     ),
   ];
   if (compatibles.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one exact compatible is required.");
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "At least one exact compatible is required.",
+    );
   }
 
   return db.transaction(async (tx) => {
@@ -793,11 +924,14 @@ export async function registerOrClaimDriver(
     if (!business || business.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Target must be an existing business-category module."
+        "Target must be an existing business-category module.",
       );
     }
 
-    const existingByCompatible: Array<{ compatible: string; moduleId: string }> = [];
+    const existingByCompatible: Array<{
+      compatible: string;
+      moduleId: string;
+    }> = [];
     for (const compatible of compatibles) {
       const mapping = await findCompatibleMapping(tx, {
         organizationId: auth.organization.id,
@@ -808,7 +942,9 @@ export async function registerOrClaimDriver(
       }
     }
 
-    const distinctModuleIds = [...new Set(existingByCompatible.map((row) => row.moduleId))];
+    const distinctModuleIds = [
+      ...new Set(existingByCompatible.map((row) => row.moduleId)),
+    ];
     if (distinctModuleIds.length > 1) {
       throw new ApiError(
         "CONFLICT",
@@ -830,7 +966,7 @@ export async function registerOrClaimDriver(
       if (!existing || existing.kind !== "driver-group") {
         throw new ApiError(
           "CONFLICT",
-          "Existing compatible mapping does not target a driver-group module."
+          "Existing compatible mapping does not target a driver-group module.",
         );
       }
 
@@ -896,8 +1032,17 @@ export async function registerOrClaimDriver(
       appliedMoves.push(...moves);
     }
 
-    const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
-    const apply = await summarizeMoves(tx, auth.organization.id, appliedMoves, [], emptiedModules);
+    const emptiedModules = await collectEmptyUnclassifiedBuckets(
+      tx,
+      auth.organization.id,
+    );
+    const apply = await summarizeMoves(
+      tx,
+      auth.organization.id,
+      appliedMoves,
+      [],
+      emptiedModules,
+    );
 
     // Persist registration default business category (authoritative placement).
     const fresh = await getParameterModuleById(tx, {
@@ -905,9 +1050,16 @@ export async function registerOrClaimDriver(
       moduleId: module.id,
     });
     if (fresh?.attributionSubjectId) {
+      await ensureDriverRegistrationPlacement(tx, {
+        organizationId: auth.organization.id,
+        attributionSubjectId: fresh.attributionSubjectId,
+        driverGroupModuleId: fresh.id,
+        defaultBusinessCategoryModuleId: input.businessCategoryId,
+      });
       await setDriverRegistrationDefaultBusinessCategoryId(tx, {
         attributionSubjectId: fresh.attributionSubjectId,
         defaultBusinessCategoryModuleId: input.businessCategoryId,
+        organizationId: auth.organization.id,
       });
     }
 
@@ -964,7 +1116,7 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
     if (!module.attributionSubjectId) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Driver-group module has no attribution subject / registration."
+        "Driver-group module has no attribution subject / registration.",
       );
     }
 
@@ -975,13 +1127,14 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
     if (!business || business.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Target must be an existing business-category module."
+        "Target must be an existing business-category module.",
       );
     }
 
     await setDriverRegistrationDefaultBusinessCategoryId(tx, {
       attributionSubjectId: module.attributionSubjectId,
       defaultBusinessCategoryModuleId: input.defaultBusinessCategoryId,
+      organizationId: auth.organization.id,
     });
 
     const replay = await replayAutoDriverGroupToRegistrationDefault(tx, {
@@ -1106,9 +1259,19 @@ export async function listDriverRegistry(
       pm.id as module_id,
       dr.driver_nature,
       dr.instance_cardinality,
-      dr.default_business_category_module_id
+      case
+        when placement.organization_id is not null then placement.default_business_category_module_id
+        else dr.default_business_category_module_id
+      end as default_business_category_module_id
     from parameter_modules pm
+    inner join attribution_subjects asub
+      on asub.id = pm.attribution_subject_id
+     and asub.subject_kind = 'driver-registration'
+     and (asub.organization_id is null or asub.organization_id = pm.organization_id)
     inner join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
+    left join driver_registration_placements placement
+      on placement.organization_id = pm.organization_id
+     and placement.attribution_subject_id = pm.attribution_subject_id
     where pm.organization_id = $1
       and pm.kind = 'driver-group'
       and pm.attribution_subject_id is not null
@@ -1149,9 +1312,12 @@ export async function listDriverRegistry(
       moduleId: module.id,
       name: module.name,
       origin: module.origin,
-      businessCategoryId: parent?.kind === "business" ? parent.id : module.parentId,
-      businessCategoryName: parent?.kind === "business" ? parent.name : parent?.name ?? null,
-      defaultBusinessCategoryId: registration?.defaultBusinessCategoryId ?? null,
+      businessCategoryId:
+        parent?.kind === "business" ? parent.id : module.parentId,
+      businessCategoryName:
+        parent?.kind === "business" ? parent.name : (parent?.name ?? null),
+      defaultBusinessCategoryId:
+        registration?.defaultBusinessCategoryId ?? null,
       compatibles,
       parameterCount: module.parameterCount,
       observed,
@@ -1196,10 +1362,13 @@ export async function updateDriverRegistration(
 ): Promise<UpdateDriverRegistrationResult> {
   requireCanAdmin(auth);
 
-  if (input.driverNature === undefined && input.instanceCardinality === undefined) {
+  if (
+    input.driverNature === undefined &&
+    input.instanceCardinality === undefined
+  ) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "At least one of driverNature or instanceCardinality is required."
+      "At least one of driverNature or instanceCardinality is required.",
     );
   }
 
@@ -1243,7 +1412,7 @@ export async function updateDriverRegistration(
     if (!isPlatformSuperAdmin(auth)) {
       throw new ApiError(
         "FORBIDDEN",
-        "Only platform-admin may edit platform-tier driver registrations."
+        "Only platform-admin may edit platform-tier driver registrations.",
       );
     }
   } else if (subjectOrganizationId !== auth.organization.id) {
@@ -1351,5 +1520,3 @@ export async function updateDriverRegistration(
     };
   });
 }
-
-

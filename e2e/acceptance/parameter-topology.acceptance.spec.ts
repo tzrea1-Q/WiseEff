@@ -631,7 +631,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(specMt).toBeTruthy();
     expect(specSc!.id).not.toBe(specMt!.id);
 
-    // 2/3) Surface MVP: unmatched properties mint provisional ledger rows without review tasks.
+    // 2/3) Unknown properties remain explicit review evidence and never become recognized bindings.
     const reviewSuffix = runSuffix;
     const reviewCsName = `acceptance-review-${reviewSuffix}`;
     createdConfigSetNames.push(reviewCsName);
@@ -682,7 +682,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const mysteryReview = openReviewBody.items.find(
       (item) => item.propertyKey === mysteryProp || item.sourceEvidence?.propertyKey === mysteryProp
     );
-    expect(mysteryReview, "surface MVP must not open a review task for unmatched mystery properties").toBeUndefined();
+    expect(mysteryReview, "unmatched mystery properties must remain governance work").toBeTruthy();
 
     const mysteryBindings = await request.get(
       apiRoute(
@@ -695,25 +695,24 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       items: Array<{ id: string; propertyKey?: string | null; schemaState?: string | null }>;
     };
     const mysteryBinding = mysteryBindingsBody.items.find((item) => item.propertyKey === mysteryProp);
-    expect(mysteryBinding, `expected provisional binding for ${mysteryProp}`).toBeTruthy();
+    expect(mysteryBinding, `unmatched ${mysteryProp} must not create a recognized binding`).toBeUndefined();
 
     const provisionalDb = await withPgClient(async (client) => {
-      const result = await client.query<{ schema_state: string | null; property_key: string }>(
-        `select br.schema_state, dps.property_key
+      const result = await client.query<{ binding_count: number }>(
+        `select count(*)::int as binding_count
          from project_parameter_bindings b
          join project_parameter_binding_revisions br
            on br.binding_id = b.id and br.config_revision_id = $2
-         join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-         where b.project_id = $1 and dps.property_key = $3
-         limit 1`,
+         join parameter_specs ps on ps.id = b.parameter_spec_id
+         left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+         where b.project_id = $1
+           and coalesce(ps.property_key, dps.property_key) = $3`,
         [projectId, reviewRevision.id, mysteryProp]
       );
       return {
-        table: "project_parameter_binding_revisions",
+        table: "project_parameter_bindings",
         predicate: `project=${projectId}; revision=${reviewRevision.id}; property=${mysteryProp}`,
-        observed: result.rows[0]
-          ? `schema_state=${result.rows[0].schema_state ?? "null"}; property=${result.rows[0].property_key}`
-          : "missing",
+        observed: `binding_count=${result.rows[0]?.binding_count ?? 0}`,
         rowCount: result.rowCount ?? result.rows.length
       };
     });
@@ -737,7 +736,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
-      title: "spec search with provisional unmatched surface",
+      title: "spec search with governed unmatched surface",
       status: "passed",
       role: "Admin",
       route: "/parameter-admin",
@@ -753,16 +752,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         summarizeApiResponse(openReviews, {
           method: "GET",
           path: "/api/v2/parameter-spec-review-tasks",
-          responseSummary: `open tasks=${openReviewBody.items.length}; mystery review absent`
+          responseSummary: `open tasks=${openReviewBody.items.length}; mystery review=${mysteryReview!.id}`
         }),
         summarizeApiResponse(mysteryBindings, {
           method: "GET",
           path: `/api/v2/projects/${projectId}/parameter-bindings`,
-          responseSummary: `provisional mystery binding=${mysteryBinding!.id}`
+          responseSummary: "mystery binding absent"
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property is provisional on surface (no review task); UI lists distinct gpio_int specs.`
+      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; UI lists distinct effective gpio_int specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).

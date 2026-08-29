@@ -17,9 +17,7 @@ import {
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
-import {
-  type DtsToolchainRunner,
-} from "../parameter-files/dtsToolchain";
+import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameter-kernel/policy";
@@ -42,7 +40,11 @@ import {
   insertValidationRun,
   updateConfigRevisionStatus,
 } from "./repository";
-import type { ConfigRevisionManifest, ConfigRevisionManifestMember, PersistedValidationDiagnostic } from "./types";
+import type {
+  ConfigRevisionManifest,
+  ConfigRevisionManifestMember,
+  PersistedValidationDiagnostic,
+} from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -131,10 +133,20 @@ function requireCanEdit(auth: AuthContext) {
   }
 }
 
-function asConstraintNumber(constraints: unknown, key: "min" | "max"): number | undefined {
-  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) return undefined;
+function asConstraintNumber(
+  constraints: unknown,
+  key: "min" | "max",
+): number | undefined {
+  if (
+    !constraints ||
+    typeof constraints !== "object" ||
+    Array.isArray(constraints)
+  )
+    return undefined;
   const value = (constraints as Record<string, unknown>)[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function cellIntegerValues(value: DtsValue): number[] {
@@ -157,9 +169,16 @@ function cellGroupSizes(value: DtsValue): number[] {
 }
 
 function asConstraintCells(constraints: unknown): number | undefined {
-  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) return undefined;
+  if (
+    !constraints ||
+    typeof constraints !== "object" ||
+    Array.isArray(constraints)
+  )
+    return undefined;
   const value = (constraints as Record<string, unknown>).cells;
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
@@ -167,12 +186,16 @@ function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
   if (expectedCells !== undefined) {
     const sizes = cellGroupSizes(value);
     if (sizes.length === 0 || sizes.some((size) => size !== expectedCells)) {
-      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, {
-        reason: "schema-failure",
-        code: "SCHEMA_CELL_COUNT",
-        expectedCells,
-        actualCells: sizes,
-      });
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `cell count must be ${expectedCells}`,
+        {
+          reason: "schema-failure",
+          code: "SCHEMA_CELL_COUNT",
+          expectedCells,
+          actualCells: sizes,
+        },
+      );
     }
   }
 
@@ -182,11 +205,15 @@ function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
 
   for (const numeric of cellIntegerValues(value)) {
     if (min !== undefined && numeric < min) {
-      throw new ApiError("VALIDATION_FAILED", "Value is below schema minimum.", {
-        reason: "schema-failure",
-        min,
-        value: numeric,
-      });
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Value is below schema minimum.",
+        {
+          reason: "schema-failure",
+          min,
+          value: numeric,
+        },
+      );
     }
     if (max !== undefined && numeric > max) {
       throw new ApiError("VALIDATION_FAILED", "Value exceeds schema maximum.", {
@@ -236,13 +263,22 @@ export function resolveInitializationSuggestion(input: {
   };
 }
 
-export async function unchangedSourceBytes(draft: BindingDraftResult): Promise<boolean> {
-  return draft.baseChecksumBefore === draft.baseChecksumAfter && draft.baseChecksumAfter === checksumOf(draft.baseContent);
+export async function unchangedSourceBytes(
+  draft: BindingDraftResult,
+): Promise<boolean> {
+  return (
+    draft.baseChecksumBefore === draft.baseChecksumAfter &&
+    draft.baseChecksumAfter === checksumOf(draft.baseContent)
+  );
 }
 
 async function carryForwardBindingRevisions(
   db: Queryable,
-  input: { baseRevisionId: string; candidateRevisionId: string; excludeBindingId?: string },
+  input: {
+    baseRevisionId: string;
+    candidateRevisionId: string;
+    excludeBindingId?: string;
+  },
 ): Promise<void> {
   const rows = await db.query<{
     binding_id: string;
@@ -272,7 +308,11 @@ async function carryForwardBindingRevisions(
           and existing.config_revision_id = $2
       )
     `,
-    [input.baseRevisionId, input.candidateRevisionId, input.excludeBindingId ?? null],
+    [
+      input.baseRevisionId,
+      input.candidateRevisionId,
+      input.excludeBindingId ?? null,
+    ],
   );
 
   for (const row of rows.rows) {
@@ -316,7 +356,10 @@ export async function createBindingDraft(
 
   const action: BindingEditAction = input.action ?? "set";
   if (action === "set" && !input.targetValue) {
-    throw new ApiError("VALIDATION_FAILED", "targetValue is required for set action.");
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "targetValue is required for set action.",
+    );
   }
 
   const binding = await loadBindingContext(db, auth, input.bindingId);
@@ -352,16 +395,12 @@ export async function createBindingDraft(
     if (sameBindingOpenDraft) {
       effectiveBaseRevisionId = resolvedWorkingTip;
     } else {
-      throw new ApiError(
-        "CONFLICT",
-        "请刷新后基于本轮最新工作版本继续编辑。",
-        {
-          reason: "stale-working-tip",
-          bindingId: input.bindingId,
-          baseRevisionId: input.baseRevisionId,
-          workingCandidateRevisionId: resolvedWorkingTip,
-        },
-      );
+      throw new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
+        reason: "stale-working-tip",
+        bindingId: input.bindingId,
+        baseRevisionId: input.baseRevisionId,
+        workingCandidateRevisionId: resolvedWorkingTip,
+      });
     }
   }
 
@@ -371,11 +410,15 @@ export async function createBindingDraft(
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
-      reason: "stale-revision",
-      bindingId: input.bindingId,
-      baseRevisionId: input.baseRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Base config revision is stale or missing.",
+      {
+        reason: "stale-revision",
+        bindingId: input.bindingId,
+        baseRevisionId: input.baseRevisionId,
+      },
+    );
   }
 
   throwIfManifestNeedsReview(revision);
@@ -389,24 +432,36 @@ export async function createBindingDraft(
     [input.bindingId, effectiveBaseRevisionId],
   );
   if (!bindingRevision.rows[0]) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", {
-      reason: "stale-revision",
-      bindingId: input.bindingId,
-      baseRevisionId: input.baseRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Base config revision is stale for this binding.",
+      {
+        reason: "stale-revision",
+        bindingId: input.bindingId,
+        baseRevisionId: input.baseRevisionId,
+      },
+    );
   }
 
   if (revision.status === "needs_mapping") {
-    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", {
-      reason: "unresolved-mapping",
-      configRevisionId: revision.id,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision has unresolved identity mapping.",
+      {
+        reason: "unresolved-mapping",
+        configRevisionId: revision.id,
+      },
+    );
   }
   if (revision.status === "invalid") {
-    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", {
-      reason: "invalid-revision",
-      configRevisionId: revision.id,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision is invalid and cannot accept edits.",
+      {
+        reason: "invalid-revision",
+        configRevisionId: revision.id,
+      },
+    );
   }
 
   // Schema enforcement is ON by default; callers cannot turn it off for the normal path.
@@ -433,22 +488,31 @@ export async function createBindingDraft(
   const memberContents = new Map<string, string>();
   for (const member of members) {
     try {
-      const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
+      const content = await loadFileContentFromVersion(
+        db,
+        member.file_version_id,
+        deps.objectStore,
+      );
       memberContents.set(member.file_version_id, content);
     } catch (error) {
-      throw new ApiError("CONFLICT", "Config set source text unavailable for typed edit.", {
-        reason: "missing-source-text",
-        fileVersionId: member.file_version_id,
-        fileName: member.file_name,
-        cause: error instanceof Error ? error.message : String(error),
-      });
+      throw new ApiError(
+        "CONFLICT",
+        "Config set source text unavailable for typed edit.",
+        {
+          reason: "missing-source-text",
+          fileVersionId: member.file_version_id,
+          fileName: member.file_name,
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
   const baseContent = memberContents.get(baseMember.file_version_id)!;
   const overlayContent = memberContents.get(overlayMember.file_version_id)!;
   const baseChecksumBefore = checksumOf(baseContent);
-  const rawText = action === "delete" ? "" : renderDtsValue(input.targetValue!, undefined);
+  const rawText =
+    action === "delete" ? "" : renderDtsValue(input.targetValue!, undefined);
 
   const candidateOverlayContent = ensureOverlayProperty(overlayContent, {
     propertyKey: binding.property_key,
@@ -497,23 +561,30 @@ export async function createBindingDraft(
 
   const overlayOrderFromMembers = members
     .filter((m) => m.role === "overlay")
-    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .sort(
+      (a, b) =>
+        a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name),
+    )
     .map((m) => m.file_name);
 
-  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
-    const isEditedOverlay = member.file_id === overlayMember.file_id;
-    const content = isEditedOverlay
-      ? candidateOverlayContent
-      : memberContents.get(member.file_version_id)!;
-    return {
-      fileId: member.file_id,
-      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
-      fileName: member.file_name,
-      role: member.role,
-      sortOrder: member.sort_order,
-      content,
-    };
-  });
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map(
+    (member) => {
+      const isEditedOverlay = member.file_id === overlayMember.file_id;
+      const content = isEditedOverlay
+        ? candidateOverlayContent
+        : memberContents.get(member.file_version_id)!;
+      return {
+        fileId: member.file_id,
+        fileVersionId: isEditedOverlay
+          ? candidateOverlayVersionId
+          : member.file_version_id,
+        fileName: member.file_name,
+        role: member.role,
+        sortOrder: member.sort_order,
+        content,
+      };
+    },
+  );
 
   // Reload persisted base revision manifest — never invent includeSearchPaths=["."] alone.
   const persistedIncludes = revision.includeSearchPaths;
@@ -523,13 +594,19 @@ export async function createBindingDraft(
     entryFile: persistedEntry,
     includeSearchPaths: persistedIncludes ?? ["."],
     overlayOrder:
-      persistedOverlays && persistedOverlays.length > 0 ? persistedOverlays : overlayOrderFromMembers,
+      persistedOverlays && persistedOverlays.length > 0
+        ? persistedOverlays
+        : overlayOrderFromMembers,
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
-      reason: normalizedManifest.failure.code,
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      normalizedManifest.failure.message,
+      {
+        reason: normalizedManifest.failure.code,
+      },
+    );
   }
 
   const manifest: ConfigRevisionManifest = {
@@ -554,7 +631,9 @@ export async function createBindingDraft(
   });
 
   if (action === "set") {
-    const baseBindingRevision = await db.query<{ parameter_spec_version_id: string }>(
+    const baseBindingRevision = await db.query<{
+      parameter_spec_version_id: string;
+    }>(
       `
       select parameter_spec_version_id
       from project_parameter_binding_revisions
@@ -563,13 +642,18 @@ export async function createBindingDraft(
       `,
       [bindingRevision.rows[0]!.id],
     );
-    const parameterSpecVersionId = baseBindingRevision.rows[0]?.parameter_spec_version_id;
+    const parameterSpecVersionId =
+      baseBindingRevision.rows[0]?.parameter_spec_version_id;
     if (!parameterSpecVersionId) {
-      throw new ApiError("CONFLICT", "Base binding revision is missing a parameter spec version.", {
-        reason: "missing-spec-version",
-        bindingId: binding.binding_id,
-        bindingRevisionId: bindingRevision.rows[0]!.id,
-      });
+      throw new ApiError(
+        "CONFLICT",
+        "Base binding revision is missing a parameter spec version.",
+        {
+          reason: "missing-spec-version",
+          bindingId: binding.binding_id,
+          bindingRevisionId: bindingRevision.rows[0]!.id,
+        },
+      );
     }
     await upsertBindingRevisionValues(db, {
       bindingId: binding.binding_id,
@@ -590,7 +674,9 @@ export async function createBindingDraft(
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     const diagnostics = await loadRevisionDiagnostics(db, candidateRevisionId);
     const reason =
-      ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure";
+      ingested.status === "needs_mapping"
+        ? "unresolved-mapping"
+        : "resolve-failure";
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
       ingested.status === "needs_mapping"
@@ -605,12 +691,57 @@ export async function createBindingDraft(
     );
   }
 
+  const existingBindingIdentities = await db.query<{
+    node_locator: string;
+    property_key: string;
+  }>(
+    `
+    select lnr.node_locator,
+           coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = b.logical_node_id
+     and lnr.config_revision_id = $2
+    inner join project_parameter_binding_revisions br
+      on br.binding_id = b.id
+     and br.config_revision_id = $2
+     and br.schema_state = 'valid'
+    where b.organization_id = $1
+      and b.project_id = $3
+    `,
+    [auth.organization.id, revision.id, binding.project_id],
+  );
+  const existingBindingIdentityRows = existingBindingIdentities.rows.map(
+    ({ node_locator: nodeLocator, property_key: propertyKey }) => ({
+      nodeLocator,
+      propertyKey,
+    }),
+  );
+  // Continuity may assign a fresh logical-node id on the candidate revision
+  // while the binding's persisted locator remains the exact write target. Keep
+  // that one server-owned locator as a narrow fallback for the edited binding.
+  if (
+    binding.node_locator &&
+    !existingBindingIdentityRows.some(
+      (identity) =>
+        identity.nodeLocator === binding.node_locator &&
+        identity.propertyKey === binding.property_key,
+    )
+  ) {
+    existingBindingIdentityRows.push({
+      nodeLocator: binding.node_locator,
+      propertyKey: binding.property_key,
+    });
+  }
+
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     configRevisionId: candidateRevisionId,
+    excludeUnmatchedIdentities: existingBindingIdentityRows,
   });
-
   const earlyGate = assertCanPromoteCandidateToDraft({
     status: ingested.status,
     ...semanticCounts,
@@ -618,8 +749,16 @@ export async function createBindingDraft(
     toolchainFailureCode: null,
   });
   if (!earlyGate.ok) {
-    await ensureCandidateKeepStatus(db, candidateRevisionId, earlyGate.keepStatus);
-    throw candidateGateError(candidateRevisionId, earlyGate.reason, earlyGate.keepStatus);
+    await ensureCandidateKeepStatus(
+      db,
+      candidateRevisionId,
+      earlyGate.keepStatus,
+    );
+    throw candidateGateError(
+      candidateRevisionId,
+      earlyGate.reason,
+      earlyGate.keepStatus,
+    );
   }
 
   const finalGate = assertCanPromoteCandidateToDraft({
@@ -629,8 +768,16 @@ export async function createBindingDraft(
     toolchainFailureCode: null,
   });
   if (!finalGate.ok) {
-    await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);
-    throw candidateGateError(candidateRevisionId, finalGate.reason, finalGate.keepStatus);
+    await ensureCandidateKeepStatus(
+      db,
+      candidateRevisionId,
+      finalGate.keepStatus,
+    );
+    throw candidateGateError(
+      candidateRevisionId,
+      finalGate.reason,
+      finalGate.keepStatus,
+    );
   }
 
   await updateConfigRevisionStatus(db, {
@@ -692,22 +839,30 @@ export async function createBindingDraft(
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(asAuditTx(tx), auth, {
-        action: "binding-edited",
-        projectId: binding.project_id,
-        targetType: "project-parameter-binding",
-        targetId: binding.binding_id,
-        metadata: {
-          draftId: persistedDraft.id,
-          candidateRevisionId,
-          propertyKey: binding.property_key,
-          writeTargetRole: writeTarget.role,
-          targetRef,
-          action,
+      await writeGovernanceAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          action: "binding-edited",
+          projectId: binding.project_id,
+          targetType: "project-parameter-binding",
+          targetId: binding.binding_id,
+          metadata: {
+            draftId: persistedDraft.id,
+            candidateRevisionId,
+            propertyKey: binding.property_key,
+            writeTargetRole: writeTarget.role,
+            targetRef,
+            action,
+          },
         },
-      }, context);
-      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
-    }
+        context,
+      );
+      return {
+        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
+        audit: null,
+      };
+    },
   );
 
   const baseChecksumAfter = checksumOf(baseContent);
@@ -794,16 +949,12 @@ export async function createNodeEnablementDraft(
     if (sameEnablementOpenDraft) {
       effectiveBaseRevisionId = resolvedWorkingTip;
     } else {
-      throw new ApiError(
-        "CONFLICT",
-        "请刷新后基于本轮最新工作版本继续编辑。",
-        {
-          reason: "stale-working-tip",
-          logicalNodeId: input.logicalNodeId,
-          baseRevisionId: input.baseRevisionId,
-          workingCandidateRevisionId: resolvedWorkingTip,
-        },
-      );
+      throw new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
+        reason: "stale-working-tip",
+        logicalNodeId: input.logicalNodeId,
+        baseRevisionId: input.baseRevisionId,
+        workingCandidateRevisionId: resolvedWorkingTip,
+      });
     }
   }
 
@@ -813,26 +964,38 @@ export async function createNodeEnablementDraft(
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
-      reason: "stale-revision",
-      logicalNodeId: input.logicalNodeId,
-      baseRevisionId: input.baseRevisionId,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Base config revision is stale or missing.",
+      {
+        reason: "stale-revision",
+        logicalNodeId: input.logicalNodeId,
+        baseRevisionId: input.baseRevisionId,
+      },
+    );
   }
 
   throwIfManifestNeedsReview(revision);
 
   if (revision.status === "needs_mapping") {
-    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", {
-      reason: "unresolved-mapping",
-      configRevisionId: revision.id,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision has unresolved identity mapping.",
+      {
+        reason: "unresolved-mapping",
+        configRevisionId: revision.id,
+      },
+    );
   }
   if (revision.status === "invalid") {
-    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", {
-      reason: "invalid-revision",
-      configRevisionId: revision.id,
-    });
+    throw new ApiError(
+      "CONFLICT",
+      "Config revision is invalid and cannot accept edits.",
+      {
+        reason: "invalid-revision",
+        configRevisionId: revision.id,
+      },
+    );
   }
 
   const nodeContext = await loadLogicalNodeEnablementContext(db, {
@@ -893,15 +1056,23 @@ export async function createNodeEnablementDraft(
   const memberContents = new Map<string, string>();
   for (const member of members) {
     try {
-      const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
+      const content = await loadFileContentFromVersion(
+        db,
+        member.file_version_id,
+        deps.objectStore,
+      );
       memberContents.set(member.file_version_id, content);
     } catch (error) {
-      throw new ApiError("CONFLICT", "Config set source text unavailable for enablement edit.", {
-        reason: "missing-source-text",
-        fileVersionId: member.file_version_id,
-        fileName: member.file_name,
-        cause: error instanceof Error ? error.message : String(error),
-      });
+      throw new ApiError(
+        "CONFLICT",
+        "Config set source text unavailable for enablement edit.",
+        {
+          reason: "missing-source-text",
+          fileVersionId: member.file_version_id,
+          fileName: member.file_name,
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -955,23 +1126,30 @@ export async function createNodeEnablementDraft(
 
   const overlayOrderFromMembers = members
     .filter((m) => m.role === "overlay")
-    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .sort(
+      (a, b) =>
+        a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name),
+    )
     .map((m) => m.file_name);
 
-  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
-    const isEditedOverlay = member.file_id === overlayMember.file_id;
-    const content = isEditedOverlay
-      ? candidateOverlayContent
-      : memberContents.get(member.file_version_id)!;
-    return {
-      fileId: member.file_id,
-      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
-      fileName: member.file_name,
-      role: member.role,
-      sortOrder: member.sort_order,
-      content,
-    };
-  });
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map(
+    (member) => {
+      const isEditedOverlay = member.file_id === overlayMember.file_id;
+      const content = isEditedOverlay
+        ? candidateOverlayContent
+        : memberContents.get(member.file_version_id)!;
+      return {
+        fileId: member.file_id,
+        fileVersionId: isEditedOverlay
+          ? candidateOverlayVersionId
+          : member.file_version_id,
+        fileName: member.file_name,
+        role: member.role,
+        sortOrder: member.sort_order,
+        content,
+      };
+    },
+  );
 
   const persistedIncludes = revision.includeSearchPaths;
   const persistedOverlays = revision.overlayOrder;
@@ -980,13 +1158,19 @@ export async function createNodeEnablementDraft(
     entryFile: persistedEntry,
     includeSearchPaths: persistedIncludes ?? ["."],
     overlayOrder:
-      persistedOverlays && persistedOverlays.length > 0 ? persistedOverlays : overlayOrderFromMembers,
+      persistedOverlays && persistedOverlays.length > 0
+        ? persistedOverlays
+        : overlayOrderFromMembers,
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
-      reason: normalizedManifest.failure.code,
-    });
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      normalizedManifest.failure.message,
+      {
+        reason: normalizedManifest.failure.code,
+      },
+    );
   }
 
   const manifest: ConfigRevisionManifest = {
@@ -1010,7 +1194,9 @@ export async function createNodeEnablementDraft(
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     const diagnostics = await loadRevisionDiagnostics(db, candidateRevisionId);
     const reason =
-      ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure";
+      ingested.status === "needs_mapping"
+        ? "unresolved-mapping"
+        : "resolve-failure";
     throw new ApiError(
       ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
       ingested.status === "needs_mapping"
@@ -1025,10 +1211,38 @@ export async function createNodeEnablementDraft(
     );
   }
 
+  const bindingIdentities = await db.query<{
+    node_locator: string;
+    property_key: string;
+  }>(
+    `
+    select lnr.node_locator,
+           coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = b.logical_node_id
+     and lnr.config_revision_id = $2
+    inner join project_parameter_binding_revisions br
+      on br.binding_id = b.id and br.config_revision_id = $2
+    where b.organization_id = $1
+      and b.project_id = $3
+      and b.logical_node_id = $4
+    `,
+    [auth.organization.id, revision.id, input.projectId, input.logicalNodeId],
+  );
+
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     configRevisionId: candidateRevisionId,
+    excludeUnmatchedIdentities: bindingIdentities.rows.map(
+      ({ node_locator: nodeLocator, property_key: propertyKey }) => ({
+        nodeLocator,
+        propertyKey,
+      }),
+    ),
   });
 
   const earlyGate = assertCanPromoteCandidateToDraft({
@@ -1038,8 +1252,16 @@ export async function createNodeEnablementDraft(
     toolchainFailureCode: null,
   });
   if (!earlyGate.ok) {
-    await ensureCandidateKeepStatus(db, candidateRevisionId, earlyGate.keepStatus);
-    throw candidateGateError(candidateRevisionId, earlyGate.reason, earlyGate.keepStatus);
+    await ensureCandidateKeepStatus(
+      db,
+      candidateRevisionId,
+      earlyGate.keepStatus,
+    );
+    throw candidateGateError(
+      candidateRevisionId,
+      earlyGate.reason,
+      earlyGate.keepStatus,
+    );
   }
 
   const finalGate = assertCanPromoteCandidateToDraft({
@@ -1049,8 +1271,16 @@ export async function createNodeEnablementDraft(
     toolchainFailureCode: null,
   });
   if (!finalGate.ok) {
-    await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);
-    throw candidateGateError(candidateRevisionId, finalGate.reason, finalGate.keepStatus);
+    await ensureCandidateKeepStatus(
+      db,
+      candidateRevisionId,
+      finalGate.keepStatus,
+    );
+    throw candidateGateError(
+      candidateRevisionId,
+      finalGate.reason,
+      finalGate.keepStatus,
+    );
   }
 
   await updateConfigRevisionStatus(db, {
@@ -1092,25 +1322,33 @@ export async function createNodeEnablementDraft(
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(asAuditTx(tx), auth, {
-        action: "enablement-changed",
-        projectId: input.projectId,
-        targetType: "dts-logical-node",
-        targetId: input.logicalNodeId,
-        metadata: {
-          draftId: persistedDraft.id,
-          candidateRevisionId,
-          previousRaw: nodeContext.currentRaw,
-          nextRaw: writePlan.rawText,
-          target: input.target,
-          reason: input.reason,
-          writeTargetRole: writeTarget.role,
-          targetRef,
-          action: writePlan.action,
+      await writeGovernanceAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          action: "enablement-changed",
+          projectId: input.projectId,
+          targetType: "dts-logical-node",
+          targetId: input.logicalNodeId,
+          metadata: {
+            draftId: persistedDraft.id,
+            candidateRevisionId,
+            previousRaw: nodeContext.currentRaw,
+            nextRaw: writePlan.rawText,
+            target: input.target,
+            reason: input.reason,
+            writeTargetRole: writeTarget.role,
+            targetRef,
+            action: writePlan.action,
+          },
         },
-      }, context);
-      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
-    }
+        context,
+      );
+      return {
+        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
+        audit: null,
+      };
+    },
   );
 
   return {
@@ -1198,15 +1436,18 @@ export async function assertCandidateToolchainRelease(
     status: toolchainResult.ok ? "passed" : "failed",
   });
 
-  const persisted: PersistedValidationDiagnostic[] = toolchainResult.diagnostics.map((diagnostic) => ({
-    id: randomUUID(),
-    code: (diagnostic.code ?? toolchainResult.failureCode ?? "compile-failed") as PersistedValidationDiagnostic["code"],
-    severity: "error" as const,
-    stage: diagnostic.stage ?? "toolchain",
-    message: diagnostic.message,
-    fileName: diagnostic.file,
-    startLine: diagnostic.line,
-  }));
+  const persisted: PersistedValidationDiagnostic[] =
+    toolchainResult.diagnostics.map((diagnostic) => ({
+      id: randomUUID(),
+      code: (diagnostic.code ??
+        toolchainResult.failureCode ??
+        "compile-failed") as PersistedValidationDiagnostic["code"],
+      severity: "error" as const,
+      stage: diagnostic.stage ?? "toolchain",
+      message: diagnostic.message,
+      fileName: diagnostic.file,
+      startLine: diagnostic.line,
+    }));
   if (persisted.length > 0) {
     await insertValidationDiagnostics(db, runId, persisted);
   }
@@ -1221,11 +1462,15 @@ export async function assertCandidateToolchainRelease(
     resolvedAt: new Date().toISOString(),
   });
 
-  throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed toolchain validation.", {
-    reason: "toolchain-failure",
-    candidateRevisionId: input.candidateRevisionId,
-    failureCode: toolchainResult.failureCode,
-    candidateStatus: "invalid",
-    diagnostics: toolchainResult.diagnostics,
-  });
+  throw new ApiError(
+    "VALIDATION_FAILED",
+    "Candidate config revision failed toolchain validation.",
+    {
+      reason: "toolchain-failure",
+      candidateRevisionId: input.candidateRevisionId,
+      failureCode: toolchainResult.failureCode,
+      candidateStatus: "invalid",
+      diagnostics: toolchainResult.diagnostics,
+    },
+  );
 }

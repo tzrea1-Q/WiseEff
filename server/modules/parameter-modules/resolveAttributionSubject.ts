@@ -142,6 +142,111 @@ export async function ensureAttributionSubjectForCompatible(
   return finalId;
 }
 
+async function ensureNodeTypeDefinitionSubject(
+  db: Queryable,
+  input: { organizationId: string | null; nodename: string; displayName?: string },
+): Promise<string> {
+  const sourceKey = `nodetype:${input.nodename.toLowerCase()}`;
+  const existing = await db.query<{ id: string; subject_kind: string }>(
+    `
+    select id, subject_kind
+    from attribution_subjects
+    where organization_id is not distinct from $1
+      and source_key = $2
+    limit 1
+    `,
+    [input.organizationId, sourceKey],
+  );
+  const subjectId =
+    existing.rows[0]?.id ??
+    `asub:node-type-definition:nodename:${createHash("sha256")
+      .update(`${input.organizationId ?? "platform"}\u001f${sourceKey}`)
+      .digest("hex")
+      .slice(0, 24)}`;
+
+  // Older expand migrations incorrectly classified nodename-backed schemas as
+  // driver registrations. Correct that durable discriminant before a new
+  // schema/property write can reuse the subject.
+  if (existing.rows[0]?.subject_kind === "driver-registration") {
+    // Keep the old registration/placement rows as migration evidence. Every
+    // driver-registry/placement query filters the corrected subject kind, so
+    // these immutable legacy rows cannot make a node type look like a driver.
+    await db.query(
+      `update parameter_modules
+       set kind = 'node-type', updated_at = now()
+       where attribution_subject_id = $1 and source_key = $2 and kind = 'driver-group'`,
+      [subjectId, sourceKey],
+    );
+    await db.query(
+      `update attribution_subjects set subject_kind = 'node-type-definition', updated_at = now() where id = $1`,
+      [subjectId],
+    );
+  } else {
+    await db.query(
+      `
+      insert into attribution_subjects (
+        id, organization_id, subject_kind, display_name, origin, source_key
+      ) values ($1, $2, 'node-type-definition', $3, 'auto', $4)
+      on conflict (organization_id, source_key) do nothing
+      `,
+      [subjectId, input.organizationId, input.displayName?.trim() || input.nodename, sourceKey],
+    );
+  }
+
+  const resolved = await findAttributionSubjectBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey,
+  });
+  const finalId = resolved ?? subjectId;
+  await db.query(
+    `
+    insert into node_type_definitions (attribution_subject_id, bare_node_name)
+    values ($1, $2)
+    on conflict (attribution_subject_id) do nothing
+    `,
+    [finalId, input.nodename],
+  );
+  return finalId;
+}
+
+/**
+ * Resolve a schema's stable attribution identity. Compatible evidence maps to
+ * DriverRegistration; nodename-only schemas are NodeTypeDefinition entities,
+ * not drivers that may bypass the organization placement invariant.
+ */
+export async function ensureAttributionSubjectForDriverSchema(
+  db: Queryable,
+  input: {
+    organizationId: string | null;
+    compatible?: string | null;
+    nodename?: string | null;
+    displayName?: string;
+  },
+): Promise<string> {
+  const compatible = input.compatible?.trim();
+  if (compatible) {
+    return ensureAttributionSubjectForCompatible(db, {
+      organizationId: input.organizationId,
+      compatible,
+      displayName: input.displayName,
+    });
+  }
+
+  const nodename = input.nodename?.trim();
+  if (!nodename) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "A driver schema requires compatible or nodename evidence to resolve its attribution subject.",
+    );
+  }
+
+  return ensureNodeTypeDefinitionSubject(db, {
+    organizationId: input.organizationId,
+    nodename,
+    displayName: input.displayName,
+  });
+}
+
 /**
  * Fail-closed resolve for product write paths. No silent driverModule fallback.
  */

@@ -16,6 +16,20 @@
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - `/metrics` 现含 DTS 解析/编译延迟与失败、工具链就绪、身份映射/规格审核积压、发布绕过与参数身份 cutover 状态；告警与切换步骤见 `docs/runbooks/parameter-identity-cutover.md`。失败 apply 后禁止部分继续，只能整快照恢复。
+
+既有的 `0117_user_account_deletion.sql` 迁移保持原样不变。之后生效驱动参数目录使用迁移
+`0118_effective_driver_parameter_catalog.sql` 扩展主体/放置和对账证据，
+`0119_effective_driver_parameter_catalog_contract.sql` 守住新的 DTS 身份写入，
+`0120_effective_driver_parameter_catalog_finalize.sql` 完成安全图回填并拒绝未来重复
+active 版本；`0121_effective_driver_parameter_catalog_legacy_write_compat.sql` 保留旧版
+未链接暂存写入兼容，但不会让其生效；`0122_classify_nodename_driver_subjects.sql` 将此前错误的 nodename-only
+主体/模块修正为 node-type taxonomy；`0123_harden_node_type_identity.sql` 从可信主体元数据修复空 taxonomy
+名称，无法修复时失败关闭，并增加非空约束；`0124_harden_driver_identity_owner.sql` 拒绝跨租户主体/schema
+或属性键不一致的身份写入，`0125_harden_driver_schema_owner_scope.sql` 对 DriverSchema 根施加对称 owner 边界；
+`0126_guard_binding_spec_version_owner.sql` 阻止 binding revision 指向其他 spec 所属版本。验证门禁也会阻断历史 owner/version 不一致及重复的 active node-type source/property 身份，
+因此 effective 查询为空不能被误判为可发布。运维必须先做 PostgreSQL 与对象存储快照，执行对账 dry-run，按组织单事务
+apply，最后运行 `npm run parameter-definitions:check`；任何 blocker 都保持发布失败关闭。
+恢复流程和证据字段见[生效目录运行手册](runbooks/effective-driver-parameter-catalog-reconciliation.md)。
 - DTS 重载部署为**进程内请求**（ADR-0020）：挂载、推送、触发、内核日志采集与行为核对均在持有桥接 WebSocket 的 API 进程上执行，不走 BullMQ。仓库提供的自托管拓扑只支持一个 API 副本；对于 `up --scale api=...`、`up --scale=api=...` 和独立的 `scale api=...` 命令，`ops/self-hosted/scripts/compose` 只允许精确的 `api=1`，其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务扩容仍正常透传。直接调用 Compose 只会绕过保护，并不会让多 API 变成受支持拓扑；orchestrator 或外部部署若没有让 WebSocket 与后续 bridge-backed 请求落到同一 API 进程的 bridge-aware routing，同样不受支持。自定义亲和拓扑不属于仓库 stock 契约，必须另取目标环境证据；本文不声称 HA 或多副本就绪。证据与 UI 在 `/dts-reload`，勿与已下线的 `/debugging` 混淆。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 普通节点写入的写命令与回读观测是两个独立结果：不同表示属于 `executed + observed`；回读技术失败保留旧当前值并通过关联只读重试恢复观测。旧 Bridge 仅有顶层结果时记为 `unknown` 并提示升级；快照回滚仍严格比较恢复值。真机证据须分别覆盖写命令失败、回读失败、不同表示、只读重试与严格回滚。

@@ -3,7 +3,7 @@ import type {
   CreateBindingDraftInput,
   CreateNodeEnablementDraftInput,
   NodeEnablementDraftResult,
-  ParameterTopologyRepository
+  ParameterTopologyRepository,
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   BindingCompareEntry,
@@ -22,7 +22,7 @@ import type {
   SpecReviewTaskQuery,
   TopologyDiagnostic,
   TopologyTree,
-  ValidationRun
+  ValidationRun,
 } from "@/domain/parameter-topology/types";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
@@ -99,8 +99,10 @@ function buildSpecsPath(query: SpecQuery = {}) {
   if (query.q) params.set("q", query.q);
   if (query.sourceKind) params.set("sourceKind", query.sourceKind);
   if (query.lifecycle) params.set("lifecycle", query.lifecycle);
-  if (query.attributionSubjectId) params.set("attributionSubjectId", query.attributionSubjectId);
+  if (query.attributionSubjectId)
+    params.set("attributionSubjectId", query.attributionSubjectId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
+  if (query.view) params.set("view", query.view);
   return appendQuery("/api/v2/parameter-specs", params);
 }
 
@@ -114,7 +116,10 @@ function buildSpecReviewTasksPath(query: SpecReviewTaskQuery = {}) {
 
 function buildBindingsPath(projectId: string, revisionId: string) {
   const params = new URLSearchParams({ revisionId });
-  return appendQuery(`/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`, params);
+  return appendQuery(
+    `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`,
+    params,
+  );
 }
 
 function buildBindingHistoryPath(projectId: string, bindingId: string) {
@@ -133,12 +138,12 @@ function buildTopologyPath(
   projectId: string,
   configSetId: string,
   revisionId: string,
-  view: "source" | "effective"
+  view: "source" | "effective",
 ) {
   const params = new URLSearchParams({ view });
   return appendQuery(
     `/api/v2/projects/${encodeURIComponent(projectId)}/config-sets/${encodeURIComponent(configSetId)}/revisions/${encodeURIComponent(revisionId)}/topology`,
-    params
+    params,
   );
 }
 
@@ -149,7 +154,9 @@ function buildMappingTasksPath(projectId?: string) {
 }
 
 /** Maps wire DTO → domain binding. Never invents recommendedValue or path identity. */
-export function bindingFromDto(dto: ProjectBindingDto): ProjectParameterBinding {
+export function bindingFromDto(
+  dto: ProjectBindingDto,
+): ProjectParameterBinding {
   return {
     id: dto.id,
     parameterSpecId: dto.parameterSpecId,
@@ -163,11 +170,13 @@ export function bindingFromDto(dto: ProjectBindingDto): ProjectParameterBinding 
     rawValue: dto.rawValue,
     schemaState: dto.schemaState,
     policyState: dto.policyState,
-    moduleId: dto.moduleId
+    moduleId: dto.moduleId,
   };
 }
 
-export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecSummary {
+export function specSummaryFromDto(
+  dto: ParameterSpecSummaryDto,
+): ParameterSpecSummary {
   return {
     id: dto.id,
     organizationId: dto.organizationId ?? null,
@@ -182,11 +191,17 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     compatiblePatterns: dto.compatiblePatterns ?? null,
     attributionModules: dto.attributionModules ?? [],
     attributionSubjectId: dto.attributionSubjectId ?? null,
+    effectiveScope: dto.effectiveScope,
+    overrideOfSpecId: dto.overrideOfSpecId ?? null,
+    declaredPlacement: dto.declaredPlacement ?? null,
+    observationState: dto.observationState,
   };
 }
 
 /** Keeps exampleValue / schemaDefault / policyTarget as distinct fields. */
-export function specDetailFromDto(dto: ParameterSpecDetailDto): ParameterSpecDetail {
+export function specDetailFromDto(
+  dto: ParameterSpecDetailDto,
+): ParameterSpecDetail {
   return {
     ...specSummaryFromDto(dto),
     displayName: dto.displayName,
@@ -210,12 +225,15 @@ export function specReviewTaskFromDto(dto: SpecReviewTaskDto): SpecReviewTask {
     propertyKey: dto.propertyKey,
     driverModule: dto.driverModule,
     evidence: dto.evidence,
-    candidates: dto.candidates.map((candidate) => ({ id: candidate.id, label: candidate.label })),
+    candidates: dto.candidates.map((candidate) => ({
+      id: candidate.id,
+      label: candidate.label,
+    })),
     ambiguous: dto.ambiguous,
     projectCount: dto.projectCount,
     createdAt: dto.createdAt,
     resolvedAt: dto.resolvedAt,
-    reason: dto.reason
+    reason: dto.reason,
   };
 }
 
@@ -231,7 +249,7 @@ function mappingTaskFromDto(dto: IdentityMappingTask): IdentityMappingTask {
     status: dto.status,
     reason: dto.reason,
     createdAt: dto.createdAt,
-    resolvedAt: dto.resolvedAt
+    resolvedAt: dto.resolvedAt,
   };
 }
 
@@ -240,19 +258,25 @@ function validationRunFromDto(dto: ValidationRun): ValidationRun {
     id: dto.id,
     status: dto.status,
     stage: dto.stage,
-    ...(dto.requiresConfirmation !== undefined ? { requiresConfirmation: dto.requiresConfirmation } : {}),
-    ...(dto.artifactHashes !== undefined ? { artifactHashes: dto.artifactHashes } : {}),
-    ...(dto.diagnostics !== undefined ? { diagnostics: dto.diagnostics } : {})
+    ...(dto.requiresConfirmation !== undefined
+      ? { requiresConfirmation: dto.requiresConfirmation }
+      : {}),
+    ...(dto.artifactHashes !== undefined
+      ? { artifactHashes: dto.artifactHashes }
+      : {}),
+    ...(dto.diagnostics !== undefined ? { diagnostics: dto.diagnostics } : {}),
   };
 }
 
-function configRevisionFromDto(dto: ConfigRevisionSummary): ConfigRevisionSummary {
+function configRevisionFromDto(
+  dto: ConfigRevisionSummary,
+): ConfigRevisionSummary {
   return {
     id: dto.id,
     configSetId: dto.configSetId,
     revisionNumber: dto.revisionNumber,
     status: dto.status,
-    createdAt: dto.createdAt
+    createdAt: dto.createdAt,
   };
 }
 
@@ -269,11 +293,13 @@ function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
     projectParameterBindingId: dto.projectParameterBindingId,
     writeTarget: dto.writeTarget,
     overlayFileId: dto.overlayFileId,
-    overlayFileName: dto.overlayFileName
+    overlayFileName: dto.overlayFileName,
   };
 }
 
-function nodeEnablementDraftFromDto(dto: NodeEnablementDraftResult): NodeEnablementDraftResult {
+function nodeEnablementDraftFromDto(
+  dto: NodeEnablementDraftResult,
+): NodeEnablementDraftResult {
   return {
     draftId: dto.draftId,
     candidateRevisionId: dto.candidateRevisionId,
@@ -286,18 +312,24 @@ function nodeEnablementDraftFromDto(dto: NodeEnablementDraftResult): NodeEnablem
     previousRaw: dto.previousRaw,
     writeTarget: dto.writeTarget,
     overlayFileId: dto.overlayFileId,
-    overlayFileName: dto.overlayFileName
+    overlayFileName: dto.overlayFileName,
   };
 }
 
 function isAbortError(error: unknown): boolean {
-  if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  ) {
     return true;
   }
   return error instanceof Error && error.name === "AbortError";
 }
 
-function readDiagnostics(details: Record<string, unknown>): TopologyDiagnostic[] | undefined {
+function readDiagnostics(
+  details: Record<string, unknown>,
+): TopologyDiagnostic[] | undefined {
   const diagnostics = details.diagnostics;
   if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
     return undefined;
@@ -305,7 +337,9 @@ function readDiagnostics(details: Record<string, unknown>): TopologyDiagnostic[]
   return diagnostics as TopologyDiagnostic[];
 }
 
-export function isParameterTopologyStaleRevisionError(error: unknown): error is WiseEffApiError {
+export function isParameterTopologyStaleRevisionError(
+  error: unknown,
+): error is WiseEffApiError {
   return (
     error instanceof WiseEffApiError &&
     error.code === "CONFLICT" &&
@@ -313,14 +347,19 @@ export function isParameterTopologyStaleRevisionError(error: unknown): error is 
   );
 }
 
-export function isParameterTopologyValidationError(error: unknown): error is WiseEffApiError {
+export function isParameterTopologyValidationError(
+  error: unknown,
+): error is WiseEffApiError {
   if (!(error instanceof WiseEffApiError)) {
     return false;
   }
   if (error.code === "VALIDATION_FAILED") {
     return true;
   }
-  return Array.isArray(error.details?.diagnostics) && error.details.diagnostics.length > 0;
+  return (
+    Array.isArray(error.details?.diagnostics) &&
+    error.details.diagnostics.length > 0
+  );
 }
 
 /**
@@ -329,26 +368,34 @@ export function isParameterTopologyValidationError(error: unknown): error is Wis
  */
 export function mapParameterTopologyError(
   error: unknown,
-  fallback: string = DEFAULT_TOPOLOGY_ERROR_FALLBACK
+  fallback: string = DEFAULT_TOPOLOGY_ERROR_FALLBACK,
 ): ParameterTopologyMappedError {
   if (isAbortError(error)) {
     return {
       kind: "cancelled",
       message: presentError(error, "请求已取消。"),
-      cause: error
+      cause: error,
     };
   }
 
   if (isParameterTopologyStaleRevisionError(error)) {
     return {
       kind: "stale-revision",
-      message: presentError(error, "配置修订已过期，请刷新拓扑后基于最新修订重试。"),
+      message: presentError(
+        error,
+        "配置修订已过期，请刷新拓扑后基于最新修订重试。",
+      ),
       reason: "stale-revision",
-      bindingId: typeof error.details.bindingId === "string" ? error.details.bindingId : undefined,
+      bindingId:
+        typeof error.details.bindingId === "string"
+          ? error.details.bindingId
+          : undefined,
       baseRevisionId:
-        typeof error.details.baseRevisionId === "string" ? error.details.baseRevisionId : undefined,
+        typeof error.details.baseRevisionId === "string"
+          ? error.details.baseRevisionId
+          : undefined,
       details: error.details,
-      cause: error
+      cause: error,
     };
   }
 
@@ -370,11 +417,11 @@ export function mapParameterTopologyError(
           error,
           error.code === "VALIDATION_FAILED"
             ? "校验未通过，请根据下方诊断信息修正后重试。"
-            : fallback
+            : fallback,
         ),
         diagnostics: preserved,
         details: error.details,
-        cause: error
+        cause: error,
       };
     }
     return {
@@ -382,147 +429,182 @@ export function mapParameterTopologyError(
       message: presentError(error, fallback),
       code: error.code,
       details: error.details,
-      cause: error
+      cause: error,
     };
   }
 
   return {
     kind: "unknown",
     message: presentError(error, fallback),
-    cause: error
+    cause: error,
   };
 }
 
 export function createHttpParameterTopologyRepository(
-  apiClient: ApiClient = createDefaultApiClient()
+  apiClient: ApiClient = createDefaultApiClient(),
 ): ParameterTopologyRepository {
   return {
     async listSpecs(query) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterSpecSummaryDto>>(buildSpecsPath(query));
+      const response = await apiClient.get<
+        ItemsEnvelope<ParameterSpecSummaryDto>
+      >(buildSpecsPath(query));
       return response.items.map(specSummaryFromDto);
     },
-    async getSpec(specId) {
-      const response = await apiClient.get<ItemEnvelope<ParameterSpecDetailDto>>(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}`
-      );
+    async getSpec(specId, options) {
+      const query = options?.view
+        ? `?view=${encodeURIComponent(options.view)}`
+        : "";
+      const response = await apiClient.get<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}${query}`);
       return specDetailFromDto(response.item);
     },
     async createParameterSpec(input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
-        "/api/v2/parameter-specs",
-        input
-      );
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >("/api/v2/parameter-specs", input);
       return specDetailFromDto(response.item);
     },
     async listSpecReviewTasks(query = {}) {
-      const response = await apiClient.get<{ items: SpecReviewTaskDto[]; nextCursor: string | null }>(
-        buildSpecReviewTasksPath(query)
-      );
+      const response = await apiClient.get<{
+        items: SpecReviewTaskDto[];
+        nextCursor: string | null;
+      }>(buildSpecReviewTasksPath(query));
       return {
         items: response.items.map(specReviewTaskFromDto),
-        nextCursor: response.nextCursor
+        nextCursor: response.nextCursor,
       } satisfies SpecReviewTaskListResult;
     },
     async resolveSpecReviewTask(taskId, input: ResolveSpecReviewInput) {
-      await apiClient.post<ItemEnvelope<{ id: string; status: string; draftCreated?: boolean; message?: string }>>(
+      await apiClient.post<
+        ItemEnvelope<{
+          id: string;
+          status: string;
+          draftCreated?: boolean;
+          message?: string;
+        }>
+      >(
         `/api/v2/parameter-spec-review-tasks/${encodeURIComponent(taskId)}/resolve`,
-        input
+        input,
       );
     },
     async activateParameterSpec(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/activate`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async updateParameterSpec(specId, input) {
-      const response = await apiClient.patch<ItemEnvelope<ParameterSpecDetailDto>>(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}`,
-        input
-      );
+      const response = await apiClient.patch<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}`, input);
       return specDetailFromDto(response.item);
     },
     async deprecateParameterSpec(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/deprecate`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async restoreParameterSpec(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`,
-        input
-      );
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`, input);
       return specDetailFromDto(response.item);
     },
     async reattributeParameterSpec(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/reattribute`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async renameParameterSpecPropertyKey(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/rename-property-key`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async getSpecVersionCutoverImpact(specId) {
-      const response = await apiClient.get<ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>>(
-        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`
-      );
+      const response = await apiClient.get<
+        ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>
+      >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`);
       return response.item;
     },
     async prepareSpecVersionCutover(specId, input = {}) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/prepare`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async finalizeSpecVersionCutover(specId, input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+      const response = await apiClient.post<
+        ItemEnvelope<ParameterSpecDetailDto>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/finalize`,
-        input
+        input,
       );
       return specDetailFromDto(response.item);
     },
     async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
-      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverPreview>>(
+      const response = await apiClient.post<
+        ItemEnvelope<PropertyKeyCutoverPreview>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/preview`,
-        input
+        input,
       );
       return response.item;
     },
-    async startPropertyKeyCutover(specId, input: { propertyKey: string; reason: string }) {
-      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+    async startPropertyKeyCutover(
+      specId,
+      input: { propertyKey: string; reason: string },
+    ) {
+      const response = await apiClient.post<
+        ItemEnvelope<PropertyKeyCutoverRun>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/start`,
-        input
+        input,
       );
       return response.item;
     },
     async preparePropertyKeyCutover(specId, input: { reason?: string } = {}) {
-      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+      const response = await apiClient.post<
+        ItemEnvelope<PropertyKeyCutoverRun>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/prepare`,
-        input
+        input,
       );
       return response.item;
     },
     async finalizePropertyKeyCutover(specId, input: { reason: string }) {
-      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+      const response = await apiClient.post<
+        ItemEnvelope<PropertyKeyCutoverRun>
+      >(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/finalize`,
-        input
+        input,
       );
       return response.item;
     },
     async getPropertyKeyCutover(specId) {
       try {
-        const response = await apiClient.get<ItemEnvelope<PropertyKeyCutoverRun>>(
-          `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover`
+        const response = await apiClient.get<
+          ItemEnvelope<PropertyKeyCutoverRun>
+        >(
+          `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover`,
         );
         return response.item;
       } catch (error) {
@@ -534,74 +616,85 @@ export function createHttpParameterTopologyRepository(
     },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(
-        buildBindingsPath(projectId, revisionId)
+        buildBindingsPath(projectId, revisionId),
       );
       return response.items.map(bindingFromDto);
     },
     async listBindingHistory(projectId, bindingId) {
       const response = await apiClient.get<ItemsEnvelope<BindingHistoryEntry>>(
-        buildBindingHistoryPath(projectId, bindingId)
+        buildBindingHistoryPath(projectId, bindingId),
       );
       return response.items.map((entry) => ({ ...entry }));
     },
     async listBindingCompare(projectId, bindingId) {
       const response = await apiClient.get<ItemsEnvelope<BindingCompareEntry>>(
-        buildBindingComparePath(projectId, bindingId)
+        buildBindingComparePath(projectId, bindingId),
       );
       return response.items.map((entry) => ({ ...entry }));
     },
     async listConfigRevisions(projectId, configSetId) {
-      const response = await apiClient.get<ItemsEnvelope<ConfigRevisionSummary>>(
-        buildConfigRevisionsPath(projectId, configSetId)
-      );
+      const response = await apiClient.get<
+        ItemsEnvelope<ConfigRevisionSummary>
+      >(buildConfigRevisionsPath(projectId, configSetId));
       return response.items.map(configRevisionFromDto);
     },
     async getTopology(projectId, configSetId, revisionId, view) {
       const response = await apiClient.get<ItemEnvelope<TopologyTree>>(
-        buildTopologyPath(projectId, configSetId, revisionId, view)
+        buildTopologyPath(projectId, configSetId, revisionId, view),
       );
       return response.item;
     },
     async listMappingTasks(projectId) {
       const response = await apiClient.get<ItemsEnvelope<IdentityMappingTask>>(
-        buildMappingTasksPath(projectId)
+        buildMappingTasksPath(projectId),
       );
       return response.items.map(mappingTaskFromDto);
     },
     async resolveMapping(taskId, input) {
       await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
         `/api/v2/identity-mapping-tasks/${encodeURIComponent(taskId)}/resolve`,
-        input
+        input,
       );
     },
     async reopenMapping(taskId, input) {
       await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
         `/api/v2/identity-mapping-tasks/${encodeURIComponent(taskId)}/reopen`,
-        input
+        input,
       );
     },
     async validateRevision(projectId, revisionId) {
       const response = await apiClient.post<ItemEnvelope<ValidationRun>>(
         `/api/v2/projects/${encodeURIComponent(projectId)}/config-revisions/${encodeURIComponent(revisionId)}/validate`,
-        {}
+        {},
       );
       return validationRunFromDto(response.item);
     },
-    async createBindingDraft(projectId, bindingId, input: CreateBindingDraftInput) {
+    async createBindingDraft(
+      projectId,
+      bindingId,
+      input: CreateBindingDraftInput,
+    ) {
       const response = await apiClient.post<ItemEnvelope<BindingDraftResult>>(
         `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings/${encodeURIComponent(bindingId)}/drafts`,
-        input
+        input,
       );
       return bindingDraftFromDto(response.item);
     },
-    async createNodeEnablementDraft(projectId, input: CreateNodeEnablementDraftInput) {
-      const response = await apiClient.post<ItemEnvelope<NodeEnablementDraftResult>>(
+    async createNodeEnablementDraft(
+      projectId,
+      input: CreateNodeEnablementDraftInput,
+    ) {
+      const response = await apiClient.post<
+        ItemEnvelope<NodeEnablementDraftResult>
+      >(
         `/api/v2/projects/${encodeURIComponent(projectId)}/node-enablement-drafts`,
-        input
+        input,
       );
       return nodeEnablementDraftFromDto(response.item);
-    }
+    },
   };
 }
 
-export type ParameterTopologyClient = ReturnType<typeof createHttpParameterTopologyRepository>;
+export type ParameterTopologyClient = ReturnType<
+  typeof createHttpParameterTopologyRepository
+>;

@@ -36,6 +36,11 @@ import {
   findAttributionSubjectIdBySourceKey,
   getDriverRegistrationDefaultBusinessCategoryId,
 } from "./driverPlacement";
+import {
+  ensureDriverRegistrationPlacement,
+  getDriverRegistrationPlacement,
+  getNodeTypeDefinitionPlacement,
+} from "./driverRegistrationPlacement";
 
 export function compatibleSourceKey(compatible: string): string {
   return `compatible:${normalizeMatchToken(compatible) ?? compatible.trim().toLowerCase()}`;
@@ -134,21 +139,24 @@ async function ensureLinkedAttributionSubjectForExistingModule(
     name: string;
     sourceKey: string;
     description?: string;
+    preferredAttributionSubjectId?: string | null;
   },
 ): Promise<void> {
   if (input.kind !== "driver-group" && input.kind !== "node-type") return;
 
-  let subjectId: string | null = null;
+  let subjectId: string | null = input.preferredAttributionSubjectId ?? null;
   if (input.kind === "driver-group") {
-    const { ensureAttributionSubjectForCompatible } = await import("./resolveAttributionSubject");
-    const compatibleToken = input.sourceKey.startsWith("compatible:")
-      ? input.sourceKey.slice("compatible:".length)
-      : input.name;
-    subjectId = await ensureAttributionSubjectForCompatible(db, {
-      organizationId: input.organizationId,
-      compatible: compatibleToken,
-      displayName: input.name,
-    });
+    if (!subjectId) {
+      const { ensureAttributionSubjectForCompatible } = await import("./resolveAttributionSubject");
+      const compatibleToken = input.sourceKey.startsWith("compatible:")
+        ? input.sourceKey.slice("compatible:".length)
+        : input.name;
+      subjectId = await ensureAttributionSubjectForCompatible(db, {
+        organizationId: input.organizationId,
+        compatible: compatibleToken,
+        displayName: input.name,
+      });
+    }
   } else {
     const { insertAttributionSubjectForNewModule } = await import("./attributionSubjectRepository");
     subjectId = await insertAttributionSubjectForNewModule(db, {
@@ -189,6 +197,7 @@ async function ensureNamedModule(
     description?: string;
     scope?: string;
     defaultBusinessCategoryModuleId?: string | null;
+    attributionSubjectId?: string | null;
   },
 ): Promise<string> {
   const byKey = await getParameterModuleBySourceKey(db, {
@@ -211,6 +220,7 @@ async function ensureNamedModule(
         name: input.name,
         sourceKey: input.sourceKey,
         description: input.description,
+        preferredAttributionSubjectId: input.attributionSubjectId,
       });
     }
     return byKey.id;
@@ -243,6 +253,7 @@ async function ensureNamedModule(
         name: input.name,
         sourceKey: input.sourceKey,
         description: input.description,
+        preferredAttributionSubjectId: input.attributionSubjectId,
       });
     }
     return existingId;
@@ -258,6 +269,7 @@ async function ensureNamedModule(
     origin: "auto",
     sourceKey: input.sourceKey,
     defaultBusinessCategoryModuleId: input.defaultBusinessCategoryModuleId ?? null,
+    attributionSubjectId: input.attributionSubjectId ?? null,
   });
   return created.id;
 }
@@ -330,16 +342,20 @@ async function resolveDriverGroupBusinessParentId(
     organizationId: string;
     sourceKey: string;
     nodePath: string;
+    attributionSubjectId?: string | null;
   },
 ): Promise<string> {
-  const subjectId = await findAttributionSubjectIdBySourceKey(db, {
-    organizationId: input.organizationId,
-    sourceKey: input.sourceKey,
-  });
+  const subjectId =
+    input.attributionSubjectId ??
+    (await findAttributionSubjectIdBySourceKey(db, {
+      organizationId: input.organizationId,
+      sourceKey: input.sourceKey,
+    }));
 
   if (subjectId) {
     const existingDefault = await getDriverRegistrationDefaultBusinessCategoryId(db, {
       attributionSubjectId: subjectId,
+      organizationId: input.organizationId,
     });
     if (existingDefault) {
       const parent = await getParameterModuleById(db, {
@@ -363,6 +379,7 @@ async function resolveDriverGroupBusinessParentId(
     await bootstrapDriverRegistrationDefaultIfNull(db, {
       attributionSubjectId: subjectId,
       defaultBusinessCategoryModuleId: parentId,
+      organizationId: input.organizationId,
     });
   }
 
@@ -375,6 +392,7 @@ async function ensureDriverGroupModuleForAutoDiscovery(
     organizationId: string;
     compatible: string;
     nodePath: string;
+    attributionSubjectId?: string | null;
   },
 ): Promise<void> {
   const compatibleKey = normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
@@ -394,6 +412,69 @@ async function ensureDriverGroupModuleForAutoDiscovery(
         kind: "driver-group",
       });
     }
+    if (
+      existing.origin === "auto" &&
+      input.attributionSubjectId &&
+      existing.attributionSubjectId !== input.attributionSubjectId
+    ) {
+      // A module may already be referenced by an organization placement. Move
+      // that placement together with the auto module, in trigger-safe order,
+      // instead of leaving a stale (org, old-subject) row behind. A curated
+      // placement for the target subject wins; in that collision case retain
+      // the old module and let the recognized-binding seam fail closed.
+      const placements = await db.query<{
+        id: string;
+        organization_id: string;
+        attribution_subject_id: string;
+      }>(
+        `
+        select id, organization_id, attribution_subject_id
+        from driver_registration_placements
+        where driver_group_module_id = $1
+        for update
+        `,
+        [existing.id],
+      );
+      const collision = await db.query<{ id: string }>(
+        `
+        select id
+        from driver_registration_placements
+        where attribution_subject_id = $1
+          and organization_id = $2
+          and driver_group_module_id <> $3
+        limit 1
+        `,
+        [input.attributionSubjectId, input.organizationId, existing.id],
+      );
+      if (collision.rows.length === 0) {
+        await db.query(
+          `update parameter_modules set attribution_subject_id = $2, updated_at = now() where id = $1`,
+          [existing.id, input.attributionSubjectId],
+        );
+        for (const placement of placements.rows) {
+          await db.query(
+            `
+            update driver_registration_placements
+            set attribution_subject_id = $2, updated_at = now()
+            where id = $1
+            `,
+            [placement.id, input.attributionSubjectId],
+          );
+        }
+      }
+    }
+    const refreshed = await getParameterModuleById(db, {
+      organizationId: input.organizationId,
+      moduleId: existing.id,
+    });
+    if (refreshed?.attributionSubjectId) {
+      await ensureDriverRegistrationPlacement(db, {
+        organizationId: input.organizationId,
+        attributionSubjectId: refreshed.attributionSubjectId,
+        driverGroupModuleId: refreshed.id,
+        defaultBusinessCategoryModuleId: refreshed.parentId,
+      });
+    }
     return;
   }
 
@@ -401,8 +482,9 @@ async function ensureDriverGroupModuleForAutoDiscovery(
     organizationId: input.organizationId,
     sourceKey,
     nodePath: input.nodePath,
+    attributionSubjectId: input.attributionSubjectId,
   });
-  await ensureNamedModule(db, {
+  const createdId = await ensureNamedModule(db, {
     organizationId: input.organizationId,
     name: groupName,
     parentId,
@@ -411,7 +493,20 @@ async function ensureDriverGroupModuleForAutoDiscovery(
     description: `${groupName} 驱动组（compatible: ${compatibleKey}）。`,
     scope: `共享 compatible ${compatibleKey} 的节点类型分组`,
     defaultBusinessCategoryModuleId: parentId,
+    attributionSubjectId: input.attributionSubjectId ?? null,
   });
+  const created = await getParameterModuleById(db, {
+    organizationId: input.organizationId,
+    moduleId: createdId,
+  });
+  if (created?.attributionSubjectId) {
+    await ensureDriverRegistrationPlacement(db, {
+      organizationId: input.organizationId,
+      attributionSubjectId: created.attributionSubjectId,
+      driverGroupModuleId: created.id,
+      defaultBusinessCategoryModuleId: parentId,
+    });
+  }
 }
 
 async function ensureNodeTypeModuleForAutoDiscovery(
@@ -484,6 +579,9 @@ export async function resolveAttributionModuleForBinding(
     compatible: string | null;
     instanceName: string | null;
     nodeLocator?: string | null;
+    attributionSubjectId?: string | null;
+    /** Admin remap/seed replay must honor an explicit curated mapping first. */
+    preferExplicitMapping?: boolean;
   },
 ): Promise<string> {
   const identity = parseNodeIdentity(input);
@@ -494,6 +592,30 @@ export async function resolveAttributionModuleForBinding(
     nodePath: identity.nodePath,
     unitAddress: identity.unitAddress,
   });
+
+  if (input.preferExplicitMapping) {
+    const mappedId = await resolveModuleIdForBinding(db, {
+      organizationId: input.organizationId,
+      driverModule: input.driverModule,
+      compatible: input.compatible,
+      nodeType,
+    });
+    const mapped = await getParameterModuleById(db, {
+      organizationId: input.organizationId,
+      moduleId: mappedId,
+    });
+    // A replay mapping is only authoritative for the same canonical subject.
+    // Never let a stale compatible/node-name mapping move a recognized
+    // definition into another driver's module (or into a subjectless business
+    // module) just because the display name still matches.
+    if (
+      mapped &&
+      mapped.kind !== "unclassified" &&
+      (!input.attributionSubjectId || mapped.attributionSubjectId === input.attributionSubjectId)
+    ) {
+      return mapped.id;
+    }
+  }
 
   if (!scaffolding) {
     const normalizedCompatible = normalizeMatchToken(input.compatible);
@@ -506,6 +628,7 @@ export async function resolveAttributionModuleForBinding(
         organizationId: input.organizationId,
         compatible: normalizedCompatible,
         nodePath: identity.nodePath,
+        attributionSubjectId: input.attributionSubjectId,
       });
     }
     if (nodeType) {
@@ -516,6 +639,30 @@ export async function resolveAttributionModuleForBinding(
         compatible: input.compatible,
       });
     }
+  }
+
+  // A matched driver definition has a declared driver-group placement. Use it
+  // as the binding fallback before the legacy compatible/node-type mapping
+  // resolver; this keeps recognized bindings subject-aligned instead of
+  // parking them in the subjectless unclassified bucket.
+  if (input.attributionSubjectId) {
+    const subjectKind = await db.query<{ subject_kind: "driver-registration" | "node-type-definition" }>(
+      `select subject_kind from attribution_subjects where id = $1 limit 1`,
+      [input.attributionSubjectId],
+    );
+    if (nodeType && subjectKind.rows[0]?.subject_kind === "node-type-definition") {
+      const nodeTypePlacement = await getNodeTypeDefinitionPlacement(db, {
+        organizationId: input.organizationId,
+        attributionSubjectId: input.attributionSubjectId,
+        sourceKey: nodeTypeSourceKey(nodeType),
+      });
+      if (nodeTypePlacement) return nodeTypePlacement.moduleId;
+    }
+    const placement = await getDriverRegistrationPlacement(db, {
+      organizationId: input.organizationId,
+      attributionSubjectId: input.attributionSubjectId,
+    });
+    if (placement) return placement.driverGroupModuleId;
   }
 
   return resolveModuleIdForBinding(db, {

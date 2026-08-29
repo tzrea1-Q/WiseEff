@@ -14,7 +14,8 @@ import {
   insertPlatformDriverSchemaOverlay,
   listActiveOrganizationDriverSchemaOverlays,
   listPromotionsForPlatformSchema,
-  promoteParameterSpecsToPlatform,
+  materializePlatformParameterSpecs,
+  retirePlatformParameterSpecsForOverlay,
   restoreSupersededContributors,
   setOrganizationDriverSchemaLifecycle,
   setPlatformDriverSchemaOverlayLifecycle,
@@ -251,6 +252,13 @@ export async function promoteDriverSchemaOverlayForAuth(
   }
 
   return db.transaction(async (tx) => {
+    await tx.query(
+      `select pg_advisory_xact_lock(
+         hashtext('driver-schema-overlay-promotion'),
+         hashtext(lower($1))
+       )`,
+      [compatible],
+    );
     const existingPlatform = await findActivePlatformDriverSchemaOverlayByCompatible(tx, compatible);
     if (existingPlatform) {
       throw new ApiError(
@@ -288,8 +296,20 @@ export async function promoteDriverSchemaOverlayForAuth(
       (overlay) => overlay.organizationId === documentationSourceOrgId,
     ) ?? overlays[0];
 
-    const parameterSpecIds = referenceOverlay.properties.map((property) => property.parameterSpecId);
-    await promoteParameterSpecsToPlatform(tx, parameterSpecIds);
+    const parameterSpecIdsBySource = await materializePlatformParameterSpecs(tx, {
+      compatible: referenceOverlay.compatible,
+      sourceOrganizationId: referenceOverlay.organizationId,
+      properties: referenceOverlay.properties,
+    });
+    const parameterSpecIds = referenceOverlay.properties.map((property) => {
+      const platformParameterSpecId = parameterSpecIdsBySource.get(property.parameterSpecId);
+      if (!platformParameterSpecId) {
+        throw new Error(
+          `Platform promotion did not materialize ${property.parameterSpecId}.`,
+        );
+      }
+      return platformParameterSpecId;
+    });
 
     const platformSchemaId = randomUUID();
     const platformOverlay = await insertPlatformDriverSchemaOverlay(tx, {
@@ -300,7 +320,7 @@ export async function promoteDriverSchemaOverlayForAuth(
       createdByUserId: auth.user.id,
       properties: referenceOverlay.properties.map((property, index) => ({
         id: randomUUID(),
-        parameterSpecId: property.parameterSpecId,
+        parameterSpecId: parameterSpecIds[index]!,
         propertyKey: property.propertyKey,
         sortOrder: index,
       })),
@@ -355,6 +375,9 @@ export async function promoteDriverSchemaOverlayForAuth(
         supersededSchemaIds,
         promotionIds,
         parameterSpecIds,
+        sourceParameterSpecIds: referenceOverlay.properties.map(
+          (property) => property.parameterSpecId,
+        ),
         contributorCount: overlays.length,
       },
       affectedOrganizationIds,
@@ -385,6 +408,13 @@ export async function revertDriverSchemaOverlayPromotionForAuth(
     if (!promotion) {
       throw new ApiError("NOT_FOUND", "Promotion record not found.");
     }
+    await tx.query(
+      `select pg_advisory_xact_lock(
+         hashtext('driver-schema-overlay-revert'),
+         hashtext($1)
+       )`,
+      [promotion.platform_schema_id],
+    );
 
     const platformSchema = await getDriverSchemaOverlay(tx, promotion.platform_schema_id);
     if (!platformSchema || platformSchema.organizationId != null) {
@@ -405,6 +435,9 @@ export async function revertDriverSchemaOverlayPromotionForAuth(
     if (!deprecated) {
       throw new ApiError("NOT_FOUND", "Platform overlay not found.");
     }
+
+    const retiredParameterSpecIds =
+      await retirePlatformParameterSpecsForOverlay(tx, platformSchema.id);
 
     const restored = await restoreSupersededContributors(tx, platformSchema.id);
     const restoredSchemaIds = restored.map((schema) => schema.id);
@@ -428,6 +461,7 @@ export async function revertDriverSchemaOverlayPromotionForAuth(
         compatible: platformSchema.compatible,
         restoredSchemaIds,
         promotionId,
+        retiredParameterSpecIds,
       },
       affectedOrganizationIds,
     });

@@ -13,6 +13,7 @@ import {
   reattributeParameterSpec,
   renameParameterSpecPropertyKey,
 } from "./service";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 
 const ORG_ID = "org-identity-correct";
 const USER_ID = "user-identity-correct";
@@ -22,6 +23,7 @@ const SUBJECT_C = "asub:driver-registration:identity-correct-c";
 const SPEC_ID = "pspec:identity-correct-main";
 const BLOCKER_ID = "pspec:identity-correct-blocker";
 const PROPERTY_KEY = "correct_me_prop";
+const LINKED_PROPERTY_KEY = "linked_property_limit";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -153,6 +155,112 @@ describe.skipIf(!databaseAvailable)("parameter definition identity correction (A
       propertyKey: PROPERTY_KEY,
     });
     expect(old).toBeNull();
+  });
+
+  it("reattributes an unassigned DTS driver root and updates its schema identity", async () => {
+    const dtsSpecId = "pspec:identity-correct-dts-root";
+    const dtsSchemaId = "driver-schema-identity-correct-root";
+    await db!.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key,
+          attribution_subject_id, property_key, definition_lifecycle)
+       values ($1, $2, 'dts', 'legacy/dts-root', null, $3, 'active')`,
+      [dtsSpecId, ORG_ID, PROPERTY_KEY],
+    );
+    await db!.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape,
+          lifecycle, version_status)
+       values ($1, $2, 1, 'DTS root', 'DTS root', '{"kind":"unknown"}'::jsonb,
+          'active', 'active')`,
+      [`${dtsSpecId}:v1`, dtsSpecId],
+    );
+    await db!.query(
+      `insert into driver_schemas
+         (id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id)
+       values ($1, $2, $3, 'legacy/dts-root', null)`,
+      [dtsSchemaId, dtsSpecId, ORG_ID],
+    );
+
+    const result = await reattributeParameterSpec(db!, makeAuth(), {
+      specId: dtsSpecId,
+      attributionSubjectId: SUBJECT_B,
+      reason: "complete the unassigned DTS root",
+    });
+    expect(result.item.attributionSubjectId).toBe(SUBJECT_B);
+
+    const persisted = await db!.query<{
+      spec_subject: string;
+      schema_subject: string;
+      specification_key: string;
+    }>(
+      `select ps.attribution_subject_id as spec_subject,
+              ds.attribution_subject_id as schema_subject,
+              ps.specification_key
+       from parameter_specs ps
+       inner join driver_schemas ds on ds.parameter_spec_id = ps.id
+       where ps.id = $1`,
+      [dtsSpecId],
+    );
+    expect(persisted.rows).toEqual([
+      {
+        spec_subject: SUBJECT_B,
+        schema_subject: SUBJECT_B,
+        specification_key: buildSubjectScopedManualSpecIds({
+          organizationId: ORG_ID,
+          attributionSubjectId: SUBJECT_B,
+          propertyKey: PROPERTY_KEY,
+        }).specificationKey,
+      },
+    ]);
+  });
+
+  it("refuses to reattribute a linked DTS property outside its DriverSchema identity", async () => {
+    const rootSpecId = "pspec:identity-correct-linked-root";
+    const propertySpecId = "pspec:identity-correct-linked-property";
+    const schemaId = "driver-schema-identity-correct-linked";
+    await db!.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key,
+          attribution_subject_id, property_key, definition_lifecycle)
+       values ($1, $2, 'dts', 'legacy/linked-root', $3, null, 'active'),
+              ($4, $2, 'dts', 'legacy/linked-property', $3, $5, 'active')`,
+      [rootSpecId, ORG_ID, SUBJECT_A, propertySpecId, LINKED_PROPERTY_KEY],
+    );
+    await db!.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape,
+          lifecycle, version_status)
+       values ($1, $2, 1, 'linked root', 'linked root', '{"kind":"unknown"}'::jsonb, 'active', 'active'),
+              ($3, $4, 1, 'linked property', 'linked property', '{"kind":"cells"}'::jsonb, 'active', 'active')`,
+      [`${rootSpecId}:v1`, rootSpecId, `${propertySpecId}:v1`, propertySpecId],
+    );
+    await db!.query(
+      `insert into driver_schemas
+         (id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id)
+       values ($1, $2, $3, 'legacy/linked-root', $4)`,
+      [schemaId, rootSpecId, ORG_ID, SUBJECT_A],
+    );
+    await db!.query(
+      `insert into dts_property_specs
+         (id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints, documentation)
+       values ($1, $2, $3, $4, 'legacy/linked-root', '{}'::jsonb, 'linked')`,
+      [`${propertySpecId}:dps`, propertySpecId, schemaId, LINKED_PROPERTY_KEY],
+    );
+
+    await expect(
+      reattributeParameterSpec(db!, makeAuth(), {
+        specId: propertySpecId,
+        attributionSubjectId: SUBJECT_B,
+        reason: "must use the reconciler for a linked DTS schema",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({
+        driverSchemaId: schemaId,
+        requestedSubjectId: SUBJECT_B,
+      }),
+    });
   });
 
   it("refuses reattribution that collides with a deprecated definition", async () => {

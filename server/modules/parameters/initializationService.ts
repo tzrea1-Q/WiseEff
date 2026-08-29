@@ -4,7 +4,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { getConfigSetByProjectAndName } from "../parameter-files/configSetRepository";
-import { createOrReuseBinding, upsertBindingRevisionValues } from "../parameter-topology/bindingService";
+import { upsertBindingRevisionValues } from "../parameter-topology/bindingService";
 import {
   getLatestConfigRevision,
   insertConfigRevision,
@@ -35,6 +35,7 @@ import type {
 } from "./initializationTypes";
 import { mergeInitializationBindingCandidates } from "./mergeInitializationBindings";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
+import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
 
 export type InitializationServiceContext = AuditCorrelationContext;
 
@@ -200,14 +201,13 @@ async function materializeSnapshots(
       bindingId: snapshot.sourceProjectParameterBindingId
     });
 
-    const binding = await createOrReuseBinding(db, {
+    const { binding } = await createRecognizedBinding(db, {
       organizationId: input.organizationId,
-      key: {
-        projectId: input.projectId,
-        logicalNodeId,
-        parameterSpecId: snapshot.parameterSpecId,
-        moduleId: snapshot.moduleId
-      }
+      projectId: input.projectId,
+      logicalNodeId,
+      parameterSpecId: snapshot.parameterSpecId,
+      parameterSpecVersionId: snapshot.parameterSpecVersionId,
+      moduleId: snapshot.moduleId,
     });
 
     const typedValue =

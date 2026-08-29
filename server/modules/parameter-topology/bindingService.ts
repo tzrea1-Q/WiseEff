@@ -605,6 +605,7 @@ export async function syncSingletonCardinalityBlockingTasks(
      and pm.attribution_subject_id is not null
     inner join attribution_subjects subject
       on subject.id = pm.attribution_subject_id
+     and subject.subject_kind = 'driver-registration'
     inner join driver_registrations registration
       on registration.attribution_subject_id = subject.id
      and registration.instance_cardinality = 'singleton-per-project'

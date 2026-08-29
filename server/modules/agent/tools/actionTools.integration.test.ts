@@ -56,6 +56,14 @@ const USER_ID = "user-agent-action";
 const CONFIG_SET_ID = "dcs-agent-action";
 const SPEC_ID = "spec-agent-iin-max";
 const SPEC_VERSION_ID = "specver-agent-iin-max-1";
+const SUBJECT_ID = "asub-agent-wiseeff-charging-core";
+const DRIVER_SCHEMA_SPEC_ID = "pspec:driver:platform/wiseeff,charging_core";
+const DRIVER_SCHEMA_VERSION_ID = "psv:driver:platform/wiseeff,charging_core:v1";
+const DRIVER_SCHEMA_ID = "driver:platform/wiseeff,charging_core";
+const DRIVER_SCHEMA_VERSION_ROW_ID = "driver:platform/wiseeff,charging_core:v1";
+const DRIVER_SCHEMA_OVERLAY_ID = "dso-agent-wiseeff-charging-core";
+const CATEGORY_MODULE_ID = "pmod-agent-power";
+const DRIVER_GROUP_MODULE_ID = "pmod-agent-wiseeff-charging-core";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -133,31 +141,117 @@ async function seedGraph(db: Database) {
      on conflict (id) do update set name = excluded.name`,
     [CONFIG_SET_ID, ORG_ID, PROJECT_ID]
   );
+  // API-mode ingest only recognizes a DTS property after the complete
+  // subject/schema/active-version/placement graph is present. This fixture
+  // therefore models a real platform driver definition instead of relying on
+  // the pre-cutover project/property continuity fallback.
   await db.query(
-    `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-     values ($1, $2, 'dts', 'charging_core/iin_max')
+    `insert into attribution_subjects (
+       id, organization_id, subject_kind, display_name, origin, source_key
+     ) values ($1, null, 'driver-registration', 'wiseeff,charging_core', 'curated', 'compatible:wiseeff,charging_core')
      on conflict (id) do nothing`,
-    [SPEC_ID, ORG_ID]
+    [SUBJECT_ID]
+  );
+  await db.query(
+    `insert into driver_registrations (
+       attribution_subject_id, driver_nature, instance_cardinality, notes
+     ) values ($1, 'physical-device', 'multiple', 'TD-078 semantic fixture')
+     on conflict (attribution_subject_id) do nothing`,
+    [SUBJECT_ID]
+  );
+  await db.query(
+    `insert into parameter_modules (
+       id, organization_id, parent_id, name, path, depth, sort_order,
+       description, scope, kind, origin, source_key, attribution_subject_id
+     ) values
+       ($1, $2, null, 'Power', $1, 1, 0, '', '', 'business', 'curated', null, null),
+       ($3, $2, $1, 'wiseeff,charging_core', $3, 2, 0, '', '', 'driver-group', 'curated',
+        'compatible:wiseeff,charging_core', $4)
+     on conflict (id) do nothing`,
+    [CATEGORY_MODULE_ID, ORG_ID, DRIVER_GROUP_MODULE_ID, SUBJECT_ID]
+  );
+  await db.query(
+    `insert into driver_registration_placements (
+       id, organization_id, attribution_subject_id, driver_group_module_id,
+       default_business_category_module_id
+     ) values ($1, $2, $3, $4, $5)
+     on conflict (organization_id, attribution_subject_id) do nothing`,
+    ["drp-agent-wiseeff-charging-core", ORG_ID, SUBJECT_ID, DRIVER_GROUP_MODULE_ID, CATEGORY_MODULE_ID]
+  );
+  await db.query(
+    `insert into parameter_specs (
+       id, organization_id, source_kind, specification_key, definition_lifecycle,
+       attribution_subject_id
+     ) values ($1, null, 'dts', 'driver/platform/wiseeff,charging_core', 'active', $2)
+     on conflict (id) do nothing`,
+    [DRIVER_SCHEMA_SPEC_ID, SUBJECT_ID]
   );
   await db.query(
     `insert into parameter_spec_versions (
        id, parameter_spec_id, version, display_name, description, value_shape,
-       schema_default, example_value, lifecycle
+       lifecycle, version_status, documentation
+     ) values ($1, $2, 1, 'wiseeff,charging_core', 'driver schema', '{"kind":"unknown"}'::jsonb,
+       'active', 'active', 'TD-078 semantic fixture')
+     on conflict (id) do nothing`,
+    [DRIVER_SCHEMA_VERSION_ID, DRIVER_SCHEMA_SPEC_ID]
+  );
+  await db.query(
+    `insert into driver_schemas (
+       id, parameter_spec_id, organization_id, schema_namespace, attribution_subject_id
+     ) values ($1, $2, null, 'platform/wiseeff,charging_core', $3)
+     on conflict (id) do nothing`,
+    [DRIVER_SCHEMA_ID, DRIVER_SCHEMA_SPEC_ID, SUBJECT_ID]
+  );
+  await db.query(
+    `insert into driver_schema_versions (
+       id, driver_schema_id, parameter_spec_version_id, version,
+       compatible_patterns, parent_bus_constraints, source, lifecycle
+     ) values ($1, $2, $3, 1, '["wiseeff,charging_core"]'::jsonb, '{}'::jsonb, 'manual', 'active')
+     on conflict (id) do nothing`,
+    [DRIVER_SCHEMA_VERSION_ROW_ID, DRIVER_SCHEMA_ID, DRIVER_SCHEMA_VERSION_ID]
+  );
+  await db.query(
+    `insert into parameter_specs (
+       id, organization_id, source_kind, specification_key, definition_lifecycle,
+       attribution_subject_id, property_key
+     ) values ($1, null, 'dts', 'platform/wiseeff,charging_core/iin_max', 'active', $2, 'iin_max')
+     on conflict (id) do nothing`,
+    [SPEC_ID, SUBJECT_ID]
+  );
+  await db.query(
+    `insert into parameter_spec_versions (
+       id, parameter_spec_id, version, display_name, description, value_shape,
+       schema_default, example_value, lifecycle, version_status
      ) values (
        $1, $2, 1, 'iin_max', 'Input current limit',
        '{"kind":"cells","bits":32}'::jsonb,
        '{"kind":"cells","bits":32,"groups":[[{"kind":"integer","raw":"2300","value":"2300"}]]}'::jsonb,
        '{"kind":"cells","bits":32,"groups":[[{"kind":"integer","raw":"3000","value":"3000"}]]}'::jsonb,
-       'active'
+       'active', 'active'
      )
      on conflict (id) do nothing`,
     [SPEC_VERSION_ID, SPEC_ID]
   );
   await db.query(
-    `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-     values ($1, $2, 'iin_max', 'vendor', '{"max":12000,"min":0}'::jsonb)
+    `insert into dts_property_specs (
+       id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, constraints
+     ) values ($1, $2, $3, 'iin_max', 'platform/wiseeff,charging_core', '{"max":12000,"min":0}'::jsonb)
      on conflict (id) do nothing`,
-    ["dps-agent-iin-max", SPEC_ID]
+    ["dps-agent-iin-max", SPEC_ID, DRIVER_SCHEMA_ID]
+  );
+  await db.query(
+    `insert into driver_schema_overlays (
+       id, organization_id, compatible, display_name, notes, lifecycle, version
+     ) values ($1, null, 'wiseeff,charging_core', 'wiseeff,charging_core', 'TD-078 semantic fixture', 'active', 1)
+     on conflict (id) do nothing`,
+    [DRIVER_SCHEMA_OVERLAY_ID]
+  );
+  await db.query(
+    `insert into driver_schema_overlay_properties (
+       id, driver_schema_overlay_id, parameter_spec_id, property_key, sort_order
+     ) values ($1, $2, $3, 'iin_max', 0)
+     on conflict (id) do nothing`,
+    ["dsop-agent-iin-max", DRIVER_SCHEMA_OVERLAY_ID, SPEC_ID]
   );
 
   // Mirror the workflow-column portion of the production identity cutover. This

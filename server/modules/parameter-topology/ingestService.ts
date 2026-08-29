@@ -13,7 +13,10 @@ import {
   type DtsSourceChainEntry,
 } from "../dts";
 import { offsetToLineColumn } from "../dts/offsetToLineColumn";
-import type { LogicalNodeCandidate, LogicalNodeSnapshot } from "../dts/identity";
+import type {
+  LogicalNodeCandidate,
+  LogicalNodeSnapshot,
+} from "../dts/identity";
 import {
   matchDriver,
   matchProperty,
@@ -31,19 +34,21 @@ import {
   type PersistedMatcherOverride,
 } from "../parameter-specs/repository";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
-import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
+import type {
+  MatchableNode,
+  SchemaRegistry,
+  SpecReviewTaskDraft,
+} from "../parameter-specs/types";
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
-import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
-import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
-import { ApiError } from "../../shared/http/errors";
 import {
-  ensureAttributionSubjectForCompatible,
-  getModuleAttributionSubjectId,
-} from "../parameter-modules/resolveAttributionSubject";
-import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
+  BOARD_INSTANCE_MODULE_NAME,
+  isModuleScaffoldingNode,
+  isScaffoldingDriverLabel,
+} from "../parameter-modules/modulePlacement";
+import { isStructuralPropertyKey } from "./parameterSurface";
+import { ApiError } from "../../shared/http/errors";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
-  createOrReuseBinding,
   persistAmbiguousIdentityMapping,
   applyReviewedContinuityToSnapshots,
   listReviewedContinuityDecisions,
@@ -52,6 +57,7 @@ import {
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
+import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
 import { normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
@@ -78,8 +84,10 @@ import type {
 
 export { offsetToLineColumn };
 
-const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
-
+const schemasRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../schemas/dts",
+);
 
 function contentHash(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
@@ -87,10 +95,19 @@ function contentHash(text: string): string {
 
 /** Locator with leading slash (`/` for root), matching `resolveDtsConfigSet` display paths. */
 function displayLocator(locator: string): string {
-  return locator === "" ? "/" : locator.startsWith("/") ? locator : `/${locator}`;
+  return locator === ""
+    ? "/"
+    : locator.startsWith("/")
+      ? locator
+      : `/${locator}`;
 }
 
-function segmentFor(node: Pick<DtsNodeCst, "name" | "unitAddress" | "refTarget" | "isOverlayRoot">): string {
+function segmentFor(
+  node: Pick<
+    DtsNodeCst,
+    "name" | "unitAddress" | "refTarget" | "isOverlayRoot"
+  >,
+): string {
   if (node.isOverlayRoot) return "";
   if (node.refTarget) return node.refTarget;
   if (node.unitAddress !== undefined) return `${node.name}@${node.unitAddress}`;
@@ -139,22 +156,32 @@ function uniqueKeysFromReg(reg?: string): Record<string, string> | undefined {
 }
 
 /** "diascope/sc8562" (namespace) → "sc8562"; single-segment namespaces pass through unchanged. */
-function driverModuleFromSchemaNamespace(schemaNamespace: string | null | undefined): string | null {
+function driverModuleFromSchemaNamespace(
+  schemaNamespace: string | null | undefined,
+): string | null {
   if (!schemaNamespace) return null;
-  const segments = schemaNamespace.split("/").filter((segment) => segment.length > 0);
+  const segments = schemaNamespace
+    .split("/")
+    .filter((segment) => segment.length > 0);
   return segments.length > 0 ? segments[segments.length - 1]! : null;
 }
 
-function instanceNameFor(matchable: Pick<MatchableNode, "name" | "unitAddress">): string | null {
+function instanceNameFor(
+  matchable: Pick<MatchableNode, "name" | "unitAddress">,
+): string | null {
   if (!matchable.name) return null;
   if (matchable.name === "/") return BOARD_INSTANCE_MODULE_NAME;
-  return matchable.unitAddress ? `${matchable.name}@${matchable.unitAddress}` : matchable.name;
+  return matchable.unitAddress
+    ? `${matchable.name}@${matchable.unitAddress}`
+    : matchable.name;
 }
 
 function toMatchableNode(node: DtsEffectiveNode): MatchableNode {
   const compatibleProp = node.properties.get("compatible");
   const compatible =
-    compatibleProp && !compatibleProp.deleted ? parseCompatibleList(compatibleProp.rawText) : [];
+    compatibleProp && !compatibleProp.deleted
+      ? parseCompatibleList(compatibleProp.rawText)
+      : [];
   const properties: MatchableNode["properties"] = {};
   for (const [key, property] of node.properties) {
     if (property.deleted) continue;
@@ -224,7 +251,11 @@ function collectFileOccurrences(
   let nodeOrder = 0;
   let propertyOrder = 0;
 
-  const walk = (cst: DtsNodeCst, parentLocatorNoSlash: string, parentOccurrenceId: string | null) => {
+  const walk = (
+    cst: DtsNodeCst,
+    parentLocatorNoSlash: string,
+    parentOccurrenceId: string | null,
+  ) => {
     const locatorNoSlash = cst.refTarget
       ? joinLocator(parentLocatorNoSlash, cst.refTarget)
       : joinLocator(parentLocatorNoSlash, segmentFor(cst));
@@ -272,7 +303,11 @@ function collectFileOccurrences(
     }
   };
 
-  function collectProperty(prop: DtsPropertyCst, nodeOccurrenceId: string, ownerPath: string) {
+  function collectProperty(
+    prop: DtsPropertyCst,
+    nodeOccurrenceId: string,
+    ownerPath: string,
+  ) {
     const propStart = offsetToLineColumn(content, prop.span.start);
     const propEnd = offsetToLineColumn(content, prop.span.end);
     const propId = randomUUID();
@@ -304,14 +339,25 @@ function collectFileOccurrences(
     walk(top, "", null);
   }
 
-  return { nodes, properties, propertyQueues, nodeByPathAndFile, nodeIdByPropertyId };
+  return {
+    nodes,
+    properties,
+    propertyQueues,
+    nodeByPathAndFile,
+    nodeIdByPropertyId,
+  };
 }
 
 function takePropertyOccurrenceId(
   queues: Map<PropertyMatchKey, string[]>,
   entry: DtsSourceChainEntry,
 ): string | null {
-  const key = propertyMatchKey(entry.fileName, entry.nodeLocator, entry.propertyName, entry.rawText);
+  const key = propertyMatchKey(
+    entry.fileName,
+    entry.nodeLocator,
+    entry.propertyName,
+    entry.rawText,
+  );
   const queue = queues.get(key);
   if (queue && queue.length > 0) {
     return queue.shift() ?? null;
@@ -348,7 +394,10 @@ type ContinuityBuildResult = {
   revisions: PersistedLogicalNodeRevision[];
   revisionByLocator: Map<string, PersistedLogicalNodeRevision>;
   stableLogicalIdByLocator: Map<string, string>;
-  ambiguous: Array<{ previous: LogicalNodeSnapshot; continuity: ContinuityAmbiguous }>;
+  ambiguous: Array<{
+    previous: LogicalNodeSnapshot;
+    continuity: ContinuityAmbiguous;
+  }>;
 };
 
 async function buildLogicalRevisionsWithContinuity(
@@ -384,7 +433,10 @@ async function buildLogicalRevisionsWithContinuity(
     const driverDecision = matchDriver(matchable, input.registry);
     let driverSchemaVersionId: string | null = null;
     if (driverDecision.kind === "matched") {
-      const upserted = await upsertMatchedDriverSchema(tx, driverDecision.value);
+      const upserted = await upsertMatchedDriverSchema(
+        tx,
+        driverDecision.value,
+      );
       driverSchemaVersionId = upserted.driverSchemaVersionId;
     }
     driverVersionByLocator.set(node.nodeLocator, driverSchemaVersionId);
@@ -411,7 +463,9 @@ async function buildLogicalRevisionsWithContinuity(
   const candidates = [...provisionalByLocator.values()];
   const reviewedDecisions = await listReviewedContinuityDecisions(tx, {
     configSetId: input.configSetId,
-    previousLogicalNodeIds: previousSnapshotsBase.map((row) => row.logicalNodeId),
+    previousLogicalNodeIds: previousSnapshotsBase.map(
+      (row) => row.logicalNodeId,
+    ),
   });
   const previousSnapshots = applyReviewedContinuityToSnapshots(
     previousSnapshotsBase,
@@ -429,12 +483,15 @@ async function buildLogicalRevisionsWithContinuity(
   );
 
   for (const previous of previousInDepthOrder) {
-    const available = candidates.filter((candidate) => !claimedProvisional.has(candidate.logicalNodeId));
+    const available = candidates.filter(
+      (candidate) => !claimedProvisional.has(candidate.logicalNodeId),
+    );
     // Prefer candidates whose parent already resolved to the previous parent's stable id.
     const withStableParents = available.map((candidate) => {
       const parentLoc = parentLocator(candidate.nodeLocator);
       if (!parentLoc) return candidate;
-      const provisionalParent = provisionalByLocator.get(parentLoc)?.logicalNodeId;
+      const provisionalParent =
+        provisionalByLocator.get(parentLoc)?.logicalNodeId;
       const stableParent =
         provisionalParent && stableByProvisional.has(provisionalParent)
           ? stableByProvisional.get(provisionalParent)!
@@ -445,19 +502,28 @@ async function buildLogicalRevisionsWithContinuity(
     const continuity = resolveLogicalContinuity(previous, withStableParents);
     if (continuity.kind === "matched") {
       claimedProvisional.add(continuity.candidateLogicalNodeId);
-      stableByProvisional.set(continuity.candidateLogicalNodeId, continuity.stableLogicalNodeId);
+      stableByProvisional.set(
+        continuity.candidateLogicalNodeId,
+        continuity.stableLogicalNodeId,
+      );
     } else if (continuity.kind === "ambiguous") {
       for (const candidate of continuity.candidates) {
         claimedProvisional.add(candidate.logicalNodeId);
         // Keep provisional ids as the candidate identities exposed to mapping review.
-        stableByProvisional.set(candidate.logicalNodeId, candidate.logicalNodeId);
+        stableByProvisional.set(
+          candidate.logicalNodeId,
+          candidate.logicalNodeId,
+        );
       }
       ambiguous.push({ previous, continuity });
     }
   }
 
-  const previousIds = new Set(previousSnapshots.map((row) => row.logicalNodeId));
-  const logicalNodesToInsert: ContinuityBuildResult["logicalNodesToInsert"] = [];
+  const previousIds = new Set(
+    previousSnapshots.map((row) => row.logicalNodeId),
+  );
+  const logicalNodesToInsert: ContinuityBuildResult["logicalNodesToInsert"] =
+    [];
   const insertedLogicalIds = new Set<string>();
   const revisions: PersistedLogicalNodeRevision[] = [];
   const revisionByLocator = new Map<string, PersistedLogicalNodeRevision>();
@@ -466,7 +532,8 @@ async function buildLogicalRevisionsWithContinuity(
   for (const node of sorted) {
     const provisional = provisionalByLocator.get(node.nodeLocator)!;
     const stableId =
-      stableByProvisional.get(provisional.logicalNodeId) ?? provisional.logicalNodeId;
+      stableByProvisional.get(provisional.logicalNodeId) ??
+      provisional.logicalNodeId;
     stableLogicalIdByLocator.set(node.nodeLocator, stableId);
 
     if (!previousIds.has(stableId) && !insertedLogicalIds.has(stableId)) {
@@ -480,7 +547,9 @@ async function buildLogicalRevisionsWithContinuity(
     }
 
     const parentLoc = parentLocator(node.nodeLocator);
-    const parentStable = parentLoc ? (stableLogicalIdByLocator.get(parentLoc) ?? null) : null;
+    const parentStable = parentLoc
+      ? (stableLogicalIdByLocator.get(parentLoc) ?? null)
+      : null;
     const compatibleProp = node.properties.get("compatible");
     const revision: PersistedLogicalNodeRevision = {
       id: randomUUID(),
@@ -492,7 +561,8 @@ async function buildLogicalRevisionsWithContinuity(
         compatibleProp && !compatibleProp.deleted
           ? compatibleProp.normalizedValue || compatibleProp.rawText
           : undefined,
-      driverSchemaVersionId: driverVersionByLocator.get(node.nodeLocator) ?? null,
+      driverSchemaVersionId:
+        driverVersionByLocator.get(node.nodeLocator) ?? null,
       parentLogicalNodeId: parentStable,
     };
     revisions.push(revision);
@@ -508,7 +578,9 @@ async function buildLogicalRevisionsWithContinuity(
   };
 }
 
-function buildOverrideIndex(overrides: PersistedMatcherOverride[]): Map<string, PersistedMatcherOverride> {
+function buildOverrideIndex(
+  overrides: PersistedMatcherOverride[],
+): Map<string, PersistedMatcherOverride> {
   const index = new Map<string, PersistedMatcherOverride>();
   for (const override of overrides) {
     index.set(persistedMatcherOverrideLookupKey(override), override);
@@ -552,7 +624,9 @@ async function matchBindAndQueueReviews(
       // metadata — never specs, bindings, or review tasks (ADR-0003).
       if (isStructuralPropertyKey(propertyKey)) continue;
       const propertyOccurrenceId =
-        input.propertyOccurrenceByKey.get(`${node.nodeLocator}\0${propertyKey}`) ?? null;
+        input.propertyOccurrenceByKey.get(
+          `${node.nodeLocator}\0${propertyKey}`,
+        ) ?? null;
       const locate = {
         organizationId: input.organizationId,
         projectId: input.projectId,
@@ -598,22 +672,25 @@ async function matchBindAndQueueReviews(
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
+          attributionSubjectId: spec.attributionSubjectId,
         });
-        const binding = await createOrReuseBinding(tx, {
+        const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId: override.parameterSpecId,
-            moduleId: overrideModuleId,
-          },
+          projectId: input.projectId,
+          logicalNodeId,
+          parameterSpecId: override.parameterSpecId,
+          parameterSpecVersionId: spec.currentVersionId,
+          moduleId: overrideModuleId,
         });
         await upsertBindingRevisionValues(tx, {
           bindingId: binding.id,
           configRevisionId: input.configRevisionId,
           parameterSpecVersionId: spec.currentVersionId,
           values: {
-            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            typedValue: property.value ?? {
+              kind: "raw",
+              rawText: property.rawText,
+            },
             canonicalValue: property.value ?? property.normalizedValue,
             rawValue: property.rawText,
             schemaState: "valid",
@@ -638,121 +715,60 @@ async function matchBindAndQueueReviews(
 
       const decision = matchProperty(matchable, propertyKey, input.registry);
       if (decision.kind === "matched") {
-        const { parameterSpecId, parameterSpecVersionId } = await upsertMatchedPropertySpec(
-          tx,
-          decision.value,
-        );
+        // A schema attached to a bus/interconnect scaffolding driver (for
+        // example `interrupt-parent` on `arm,amba-bus`) is topology metadata,
+        // not a product parameter. Keep its occurrence in the immutable DTS
+        // record, but do not create an unclassified binding/module. Unknown
+        // properties still reach review, even when their node name resembles
+        // a scaffolding segment.
+        if (
+          isScaffoldingDriverLabel(
+            driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
+          ) ||
+          isModuleScaffoldingNode({
+            name: matchable.name,
+            compatible: matchable.compatible[0] ?? null,
+            nodePath: matchable.nodeLocator,
+            unitAddress: matchable.unitAddress,
+          })
+        ) {
+          continue;
+        }
+        const {
+          parameterSpecId,
+          parameterSpecVersionId,
+          attributionSubjectId,
+        } = await upsertMatchedPropertySpec(tx, decision.value);
         const matchedModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
-          driverModule: driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
+          driverModule: driverModuleFromSchemaNamespace(
+            decision.value.schemaNamespace,
+          ),
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
+          attributionSubjectId,
         });
-        const binding = await createOrReuseBinding(tx, {
+        const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId,
-            moduleId: matchedModuleId,
-          },
+          projectId: input.projectId,
+          logicalNodeId,
+          parameterSpecId,
+          parameterSpecVersionId,
+          moduleId: matchedModuleId,
         });
         await upsertBindingRevisionValues(tx, {
           bindingId: binding.id,
           configRevisionId: input.configRevisionId,
           parameterSpecVersionId,
           values: {
-            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            typedValue: property.value ?? {
+              kind: "raw",
+              rawText: property.rawText,
+            },
             canonicalValue: property.value ?? property.normalizedValue,
             rawValue: property.rawText,
             schemaState: "valid",
-          },
-        });
-        continue;
-      }
-
-      if (
-        decision.kind === "unmatched" &&
-        isParameterSurfaceRow({
-          propertyKey,
-          locator: matchable.nodeLocator,
-          compatible: matchable.compatible[0] ?? null,
-        })
-      ) {
-        const driverModule =
-          driverModuleFromSchemaNamespace(matchable.compatible[0]?.split(",").pop() ?? null) ??
-          matchable.name;
-        const surfaceModuleId = await resolveAttributionModuleForBinding(tx, {
-          organizationId: input.organizationId,
-          driverModule,
-          compatible: matchable.compatible[0] ?? null,
-          instanceName: instanceNameFor(matchable),
-          nodeLocator: matchable.nodeLocator,
-        });
-        let attributionSubjectId = await getModuleAttributionSubjectId(tx, surfaceModuleId);
-        if (!attributionSubjectId) {
-          const compatibleToken = matchable.compatible[0]?.trim() || null;
-          const ensureToken = compatibleToken || driverModule?.trim() || null;
-          if (ensureToken) {
-            attributionSubjectId = await ensureAttributionSubjectForCompatible(tx, {
-              organizationId: input.organizationId,
-              compatible: ensureToken,
-            });
-            // business/unclassified modules must keep attribution_subject_id null
-            // (parameter_modules_subject_kind_check); only catalog kinds may link.
-            await tx.query(
-              `
-              update parameter_modules
-              set attribution_subject_id = coalesce(attribution_subject_id, $2),
-                  updated_at = now()
-              where id = $1
-                and kind in ('driver-group', 'node-type')
-              `,
-              [surfaceModuleId, attributionSubjectId],
-            );
-          }
-        }
-        if (!attributionSubjectId) {
-          throw new ApiError(
-            "CONFLICT",
-            "Cannot resolve attribution subject for provisional surface binding.",
-            {
-              organizationId: input.organizationId,
-              moduleId: surfaceModuleId,
-              propertyKey,
-              compatible: matchable.compatible[0] ?? null,
-            },
-          );
-        }
-        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
-          tx,
-          {
-            organizationId: input.organizationId,
-            propertyKey,
-            attributionSubjectId,
-            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
-            occurrenceRawText: property.rawText,
-          },
-        );
-        const binding = await createOrReuseBinding(tx, {
-          organizationId: input.organizationId,
-          key: {
-            projectId: input.projectId,
-            logicalNodeId,
-            parameterSpecId,
-            moduleId: surfaceModuleId,
-          },
-        });
-        await upsertBindingRevisionValues(tx, {
-          bindingId: binding.id,
-          configRevisionId: input.configRevisionId,
-          parameterSpecVersionId,
-          values: {
-            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
-            canonicalValue: property.value ?? property.normalizedValue,
-            rawValue: property.rawText,
-            schemaState: "unreviewed",
           },
         });
         if (propertyOccurrenceId) {
@@ -772,7 +788,14 @@ async function matchBindAndQueueReviews(
         continue;
       }
 
-      reviewDrafts.push(...reviewTasksForDecision(decision, matchable, propertyKey, locate));
+      // An unmatched property is never recognized from a historical binding.
+      // Continuity may carry logical-node identity, but it cannot prove the
+      // current canonical subject, unique active version, or authoritative
+      // placement. Keep this occurrence as review evidence until the current
+      // registry resolves it through the matched path above.
+      reviewDrafts.push(
+        ...reviewTasksForDecision(decision, matchable, propertyKey, locate),
+      );
     }
   }
 
@@ -789,7 +812,9 @@ export async function ingestConfigRevision(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
 ): Promise<DtsConfigRevisionDto> {
-  return db.transaction(async (tx) => ingestConfigRevisionInTransaction(tx, manifest, auth));
+  return db.transaction(async (tx) =>
+    ingestConfigRevisionInTransaction(tx, manifest, auth),
+  );
 }
 
 /** Same as `ingestConfigRevision` but for callers already inside a DB transaction. */
@@ -818,7 +843,10 @@ async function ingestConfigRevisionTx(
     });
   }
 
-  const revisionNumber = await nextConfigRevisionNumber(tx, manifest.configSetId);
+  const revisionNumber = await nextConfigRevisionNumber(
+    tx,
+    manifest.configSetId,
+  );
   let revision = await insertConfigRevision(tx, {
     id: randomUUID(),
     organizationId: manifest.organizationId,
@@ -852,7 +880,8 @@ async function ingestConfigRevisionTx(
       files,
     });
   } catch (error) {
-    const { defaultMetricsRegistry } = await import("../../observability/metrics");
+    const { defaultMetricsRegistry } =
+      await import("../../observability/metrics");
     defaultMetricsRegistry.recordDtsPipelineResult({
       stage: "parse",
       status: "failed",
@@ -861,8 +890,11 @@ async function ingestConfigRevisionTx(
     throw error;
   }
   {
-    const { defaultMetricsRegistry } = await import("../../observability/metrics");
-    const hasErrors = resolved.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+    const { defaultMetricsRegistry } =
+      await import("../../observability/metrics");
+    const hasErrors = resolved.diagnostics.some(
+      (diagnostic) => diagnostic.severity === "error",
+    );
     defaultMetricsRegistry.recordDtsPipelineResult({
       stage: "parse",
       status: hasErrors ? "failed" : "succeeded",
@@ -875,7 +907,9 @@ async function ingestConfigRevisionTx(
   // emitted as `severity: "warning"` (self-anchored to a synthetic node upstream), so they
   // are persisted and surfaced but never block ingest — the uploaded overlay stays fully
   // manageable without forcing the user to supply the missing definitions.
-  const hasErrors = resolved.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+  const hasErrors = resolved.diagnostics.some(
+    (diagnostic) => diagnostic.severity === "error",
+  );
   const runId = randomUUID();
   await insertValidationRun(tx, {
     id: runId,
@@ -908,7 +942,11 @@ async function ingestConfigRevisionTx(
   const nodeIdByPropertyId = new Map<string, string>();
 
   for (const member of manifest.members) {
-    const collected = collectFileOccurrences(member.fileName, member.fileVersionId, member.content);
+    const collected = collectFileOccurrences(
+      member.fileName,
+      member.fileVersionId,
+      member.content,
+    );
     for (const node of collected.nodes) {
       await insertNodeOccurrence(tx, revision.id, node);
     }
@@ -957,9 +995,14 @@ async function ingestConfigRevisionTx(
 
     for (const property of node.properties.values()) {
       for (const entry of property.sourceChain) {
-        const propertyOccurrenceId = takePropertyOccurrenceId(mergedQueues, entry);
+        const propertyOccurrenceId = takePropertyOccurrenceId(
+          mergedQueues,
+          entry,
+        );
         const nodeOccurrenceId =
-          (propertyOccurrenceId ? nodeIdByPropertyId.get(propertyOccurrenceId) : undefined) ??
+          (propertyOccurrenceId
+            ? nodeIdByPropertyId.get(propertyOccurrenceId)
+            : undefined) ??
           nodeByPathAndFile.get(`${entry.fileName}\0${entry.nodeLocator}`) ??
           null;
 
@@ -968,7 +1011,10 @@ async function ingestConfigRevisionTx(
           (entry.effect === "set" || entry.effect === "override") &&
           !property.deleted
         ) {
-          propertyOccurrenceByKey.set(`${node.nodeLocator}\0${entry.propertyName}`, propertyOccurrenceId);
+          propertyOccurrenceByKey.set(
+            `${node.nodeLocator}\0${entry.propertyName}`,
+            propertyOccurrenceId,
+          );
         }
 
         await insertOccurrenceEffect(tx, revision.id, {

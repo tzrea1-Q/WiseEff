@@ -5,6 +5,7 @@ import { ParameterSpecLibrary } from "./ParameterSpecLibrary";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
 import {
   filterParameterSpecLibrary,
+  formatSpecAttributionLabel,
   formatSpecPrimaryLabel,
   isSpecSelectableForReview,
   specAttributionFilterPaths,
@@ -83,6 +84,26 @@ const deprecatedLegacy: ParameterSpecLibraryRow = {
 };
 
 describe("ParameterSpecLibrary", () => {
+  it("renders the authoritative declared category and module path", () => {
+    const declared: ParameterSpecLibraryRow = {
+      ...gpioIntSc8562,
+      attributionModules: [],
+      declaredPlacement: {
+        moduleId: "module-sc8562",
+        moduleName: "SC8562",
+        categoryId: "category-power",
+        categoryName: "电源管理",
+        path: ["电源管理", "SC8562"],
+      },
+    };
+
+    expect(formatSpecAttributionLabel(declared)).toBe("电源管理 / SC8562");
+    render(
+      <ParameterSpecLibrary specs={[declared]} onSelectSpec={vi.fn()} />,
+    );
+    expect(screen.getByText("电源管理 / SC8562")).toBeInTheDocument();
+  });
+
   it("places create-spec as a primary button in the library heading", () => {
     const onCreateSpec = vi.fn();
     render(

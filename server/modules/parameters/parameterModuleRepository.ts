@@ -247,6 +247,8 @@ export async function createParameterModule(
     kind?: ParameterModuleDto["kind"];
     origin?: ParameterModuleDto["origin"];
     sourceKey?: string | null;
+    /** Reuse a schema-resolved canonical subject when materializing a placement. */
+    attributionSubjectId?: string | null;
     /** When creating a driver-group, seed registration default placement (D-AG-04). */
     defaultBusinessCategoryModuleId?: string | null;
   }
@@ -270,24 +272,26 @@ export async function createParameterModule(
   const path = buildPath(parentPath, id);
   const depth = depthOf(path);
 
-  let attributionSubjectId: string | null = null;
+  let attributionSubjectId: string | null = input.attributionSubjectId ?? null;
   if (kind === "driver-group" || kind === "node-type") {
-    const { insertAttributionSubjectForNewModule } = await import(
-      "../parameter-modules/attributionSubjectRepository"
-    );
-    attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
-      moduleId: id,
-      organizationId: input.organizationId,
-      kind,
-      displayName: name,
-      origin,
-      sourceKey: input.sourceKey ?? null,
-      notes: input.description ?? "",
-      defaultBusinessCategoryModuleId:
-        kind === "driver-group"
-          ? (input.defaultBusinessCategoryModuleId ?? input.parentId ?? null)
-          : null,
-    });
+    if (!attributionSubjectId) {
+      const { insertAttributionSubjectForNewModule } = await import(
+        "../parameter-modules/attributionSubjectRepository"
+      );
+      attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
+        moduleId: id,
+        organizationId: input.organizationId,
+        kind,
+        displayName: name,
+        origin,
+        sourceKey: input.sourceKey ?? null,
+        notes: input.description ?? "",
+        defaultBusinessCategoryModuleId:
+          kind === "driver-group"
+            ? (input.defaultBusinessCategoryModuleId ?? input.parentId ?? null)
+            : null,
+      });
+    }
   }
 
   const result = await db.query<ParameterModuleRow>(

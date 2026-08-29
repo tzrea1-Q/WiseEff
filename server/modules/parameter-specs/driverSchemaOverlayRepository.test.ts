@@ -12,6 +12,8 @@ import {
   getOrganizationDriverSchema,
   insertOrganizationDriverSchema,
   listOrganizationDriverSchemas,
+  materializePlatformParameterSpecs,
+  retirePlatformParameterSpecsForOverlay,
   setOrganizationDriverSchemaLifecycle
 } from "./driverSchemaOverlayRepository";
 
@@ -146,5 +148,157 @@ describe.skipIf(!databaseAvailable)("organizationDriverSchemaRepository", () => 
 
     const loser = await getOrganizationDriverSchema(db, { organizationId: "org-1", schemaId: "ods-draft-b" });
     expect(loser).toMatchObject({ lifecycle: "draft", version: 1 });
+  });
+
+  it("materializes platform-owned subject-scoped copies without re-owning contributors", async () => {
+    const sourceSubject = "asub:driver-registration:org-1-shared";
+    await db.query(
+      `insert into attribution_subjects
+         (id, organization_id, subject_kind, display_name, origin, source_key)
+       values ($1, 'org-1', 'driver-registration', 'Shared', 'curated', 'compatible:shared')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
+       values ($1, 'physical-device', 'multiple')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key, definition_lifecycle,
+          attribution_subject_id, property_key)
+       values ('pspec:org-1-shared', 'org-1', 'manual', 'org/shared-limit', 'active', $1, 'shared_limit')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape,
+          lifecycle, version_status, units, constraints, documentation)
+       values ('psv:org-1-shared:v1', 'pspec:org-1-shared', 1, 'shared_limit',
+         'Shared limit', '{"kind":"u32-array"}'::jsonb, 'active', 'active',
+         'mV', '{"min":0}'::jsonb, 'source docs')`,
+    );
+    await db.query(
+      `insert into dts_property_specs
+         (id, parameter_spec_id, property_key, schema_namespace, units, constraints, documentation)
+       values ('dps:org-1-shared', 'pspec:org-1-shared', 'shared_limit',
+         'org/org-1/shared', 'mV', '{"min":0}'::jsonb, 'source docs')`,
+    );
+
+    const mapped = await materializePlatformParameterSpecs(db, {
+      compatible: "vendor,shared",
+      sourceOrganizationId: "org-1",
+      properties: [{
+        parameterSpecId: "pspec:org-1-shared",
+        parameterSpecVersionId: "psv:org-1-shared:v1",
+        propertyKey: "shared_limit",
+      }],
+    });
+    const platformId = mapped.get("pspec:org-1-shared");
+    expect(platformId).toBeTruthy();
+    expect(platformId).not.toBe("pspec:org-1-shared");
+
+    const owners = await db.query<{
+      id: string;
+      organization_id: string | null;
+      source_kind: string;
+      definition_lifecycle: string;
+      attribution_subject_id: string | null;
+      property_key: string | null;
+    }>(
+      `select id, organization_id, source_kind, definition_lifecycle,
+              attribution_subject_id, property_key
+       from parameter_specs where id = any($1::text[]) order by id`,
+      [["pspec:org-1-shared", platformId]],
+    );
+    expect(owners.rows).toHaveLength(2);
+    expect(owners.rows.find((row) => row.id === "pspec:org-1-shared")).toMatchObject({
+      organization_id: "org-1",
+      source_kind: "manual",
+      attribution_subject_id: sourceSubject,
+      property_key: "shared_limit",
+    });
+    expect(owners.rows.find((row) => row.id === platformId)).toMatchObject({
+      organization_id: null,
+      source_kind: "manual",
+      definition_lifecycle: "deprecated",
+      property_key: "shared_limit",
+    });
+    expect(owners.rows.find((row) => row.id === platformId)?.attribution_subject_id).not.toBe(
+      sourceSubject,
+    );
+    const active = await db.query<{ count: string }>(
+      `select count(*)::text as count
+       from parameter_spec_versions
+       where parameter_spec_id = $1 and version_status = 'active' and lifecycle = 'active'`,
+      [platformId],
+    );
+    expect(active.rows[0]?.count).toBe("1");
+
+    await db.query(
+      `insert into driver_schema_overlays
+         (id, organization_id, compatible, display_name, lifecycle, version)
+       values ('platform-overlay-shared', null, 'vendor,shared', 'Shared', 'deprecated', 1)`,
+    );
+    await db.query(
+      `insert into driver_schema_overlay_properties
+         (id, driver_schema_overlay_id, parameter_spec_id, property_key, sort_order)
+       values ('platform-overlay-shared-property', 'platform-overlay-shared', $1, 'shared_limit', 0)`,
+      [platformId],
+    );
+    expect(
+      await retirePlatformParameterSpecsForOverlay(
+        db,
+        "platform-overlay-shared",
+      ),
+    ).toEqual([platformId]);
+    const retired = await db.query<{ count: string }>(
+      `select count(*)::text as count
+       from parameter_spec_versions
+       where parameter_spec_id = $1 and version_status = 'active'`,
+      [platformId],
+    );
+    expect(retired.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects a cross-tenant or stale contributor definition during platform materialization", async () => {
+    const sourceSubject = "asub:driver-registration:org-2-private";
+    await db.query(
+      `insert into attribution_subjects
+         (id, organization_id, subject_kind, display_name, origin, source_key)
+       values ($1, 'org-2', 'driver-registration', 'Private', 'curated', 'compatible:private')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
+       values ($1, 'physical-device', 'multiple')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into parameter_specs
+         (id, organization_id, source_kind, specification_key, definition_lifecycle,
+          attribution_subject_id, property_key)
+       values ('pspec:org-2-private', 'org-2', 'manual', 'org/private-limit', 'active', $1, 'private_limit')`,
+      [sourceSubject],
+    );
+    await db.query(
+      `insert into parameter_spec_versions
+         (id, parameter_spec_id, version, display_name, description, value_shape,
+          lifecycle, version_status, documentation)
+       values ('psv:org-2-private:v1', 'pspec:org-2-private', 1, 'private_limit',
+         'Private limit', '{"kind":"u32-array"}'::jsonb, 'active', 'active', 'private')`,
+    );
+
+    await expect(
+      materializePlatformParameterSpecs(db, {
+        compatible: "vendor,private",
+        sourceOrganizationId: "org-1",
+        properties: [{
+          parameterSpecId: "pspec:org-2-private",
+          parameterSpecVersionId: "psv:org-2-private:v1",
+          propertyKey: "private_limit",
+        }],
+      }),
+    ).rejects.toThrow(/does not belong to contributor organization/i);
   });
 });
