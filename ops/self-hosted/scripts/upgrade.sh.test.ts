@@ -149,9 +149,16 @@ function runDataPlaneSequenceFixture(
   });
 }
 
-function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: boolean, resumePhase = "api-ready", queueFailure = false) {
+function runCandidateWorkerFixture(
+  action: "apply" | "resume",
+  workerHealthy: boolean,
+  resumePhase = "api-ready",
+  queueFailure = false,
+  publicFailuresBeforeSuccess = 0
+) {
   const runDir = mkdtempSync(join(tmpdir(), `wiseeff-upgrade-candidate-${action}-`));
   writeFileSync(join(runDir, "trace.log"), "");
+  writeFileSync(join(runDir, "public-probe-count"), "0\n");
   if (action === "resume") {
     writeFileSync(join(runDir, "outcome"), "running\n");
     writeFileSync(join(runDir, "phase"), `${resumePhase}\n`);
@@ -163,6 +170,7 @@ function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: bo
     trace="$run_dir/trace.log"
     worker_healthy="$2"
     queue_failure="$4"
+    public_failures="$5"
     upgrade_run_dir="$run_dir"
     upgrade_backup_dir="$run_dir/backup"
     upgrade_run_id=candidate-${action}
@@ -235,8 +243,11 @@ function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: bo
     }
     wiseeff_upgrade_public_probe() {
       printf 'public-probe\\n' >> "$trace"
-      return 0
+      count="$(cat "$run_dir/public-probe-count")"
+      printf '%s\\n' "$((count + 1))" > "$run_dir/public-probe-count"
+      [ "$count" -ge "$public_failures" ]
     }
+    sleep() { :; }
     wiseeff_upgrade_verify_final_state() { return 0; }
     wiseeff_upgrade_status() { :; }
     wiseeff_upgrade_load_run() {
@@ -253,7 +264,10 @@ function runCandidateWorkerFixture(action: "apply" | "resume", workerHealthy: bo
     status=$?
     cat "$trace" 2>/dev/null || true
     exit "$status"
-  `, [runDir, String(workerHealthy), action, String(queueFailure)]);
+  `, [runDir, String(workerHealthy), action, String(queueFailure), String(publicFailuresBeforeSuccess)], {
+    WISEEFF_UPGRADE_HEALTH_ATTEMPTS: "3",
+    WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS: "0"
+  });
   return { result, runDir };
 }
 
@@ -1381,6 +1395,27 @@ describe("upgrade.sh public interface", () => {
     expect(queueIndex).toBeGreaterThan(workerIndex);
   });
 
+  it.each(["apply", "resume"] as const)("waits for the candidate public proxy to become reachable on %s", (action) => {
+    const { result, runDir } = runCandidateWorkerFixture(action, true, "api-ready", false, 1);
+    const trace = readFileSync(join(runDir, "trace.log"), "utf8");
+
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${trace}`).toBe(0);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("completed\n");
+    expect(Number(readFileSync(join(runDir, "public-probe-count"), "utf8"))).toBe(2);
+  });
+
+  it("keeps the candidate isolated when the public proxy stays unreachable", () => {
+    const { result, runDir } = runCandidateWorkerFixture("apply", true, "api-ready", false, 99);
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(70);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("recovery-required\n");
+    expect(readFileSync(join(runDir, "failure_service"), "utf8")).toBe("proxy\n");
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-proxy-public\n");
+    expect(readFileSync(join(runDir, "recovery_proxy_stopped"), "utf8")).toBe("true\n");
+    expect(readFileSync(join(runDir, "recovery_queue_paused"), "utf8")).toBe("true\n");
+    expect(Number(readFileSync(join(runDir, "public-probe-count"), "utf8"))).toBe(3);
+  });
+
   it.each(["apply", "resume"] as const)("sanitizes candidate queue resume diagnostics on %s", (action) => {
     const { result, runDir } = runCandidateWorkerFixture(action, true, "api-ready", true);
 
@@ -2119,6 +2154,64 @@ describe("upgrade.sh public interface", () => {
     expect(events.indexOf("queue-resume")).toBeGreaterThan(events.indexOf("images"));
     expect(events.indexOf("proxy")).toBeGreaterThan(events.indexOf("queue-resume"));
     expect(events.indexOf("public")).toBeGreaterThan(events.indexOf("proxy"));
+  });
+
+  it("waits for the restored public proxy to become reachable before completing rollback", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-rollback-public-readiness-"));
+    writeFileSync(join(runDir, "migration_started"), "true\n");
+    writeFileSync(join(runDir, "outcome"), "recovery-required\n");
+    writeFileSync(join(runDir, "phase"), "recovery-required\n");
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:previous-api\n");
+    writeFileSync(join(runDir, "previous_image_tag_worker"), "wiseeff-app:previous-worker\n");
+    writeFileSync(join(runDir, "previous_image_tag_web"), "wiseeff-app:previous-web\n");
+    writeFileSync(join(runDir, "public-probe-count"), "0\n");
+
+    const result = runLibrary(`
+      upgrade_run_dir="$1"
+      upgrade_run_id=rollback-public-readiness
+      upgrade_previous_sha=previous-sha
+      upgrade_env_file="$upgrade_run_dir/env"
+      upgrade_restore_data=true
+      upgrade_confirm=restore-rollback-public-readiness
+      upgrade_json=false
+      printf 'WISEEFF_PUBLIC_URL=http://100.103.240.126\n' > "$upgrade_env_file"
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_load_run() { :; }
+      wiseeff_upgrade_acquire_lock() { return 0; }
+      wiseeff_upgrade_release_lock() { :; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_run_recovery_action() { shift; "$@"; }
+      wiseeff_upgrade_compose() { return 0; }
+      wiseeff_upgrade_compose_for_image() { return 0; }
+      wiseeff_upgrade_queue_command_for_image() { return 0; }
+      wiseeff_upgrade_git() { return 0; }
+      wiseeff_upgrade_wait_data_plane_ready() { return 0; }
+      wiseeff_upgrade_verify_backup_manifest() { return 0; }
+      wiseeff_upgrade_restore_postgres() { return 0; }
+      wiseeff_upgrade_restore_objects() { return 0; }
+      wiseeff_upgrade_restore_redis() { return 0; }
+      wiseeff_upgrade_snapshot_manifest() { return 0; }
+      wiseeff_upgrade_recreate_previous_app_services() { return 0; }
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_verify_previous_app_images() { return 0; }
+      curl() {
+        count="$(cat "$upgrade_run_dir/public-probe-count")"
+        printf '%s\n' "$((count + 1))" > "$upgrade_run_dir/public-probe-count"
+        [ "$count" -gt 0 ]
+      }
+      sleep() { :; }
+      wiseeff_upgrade_mark_recovery_required() { return 70; }
+      wiseeff_upgrade_run_rollback
+    `, [runDir], {
+      WISEEFF_UPGRADE_HEALTH_ATTEMPTS: "3",
+      WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS: "0"
+    });
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(readFileSync(join(runDir, "outcome"), "utf8")).toBe("rolled-back\n");
+    expect(Number(readFileSync(join(runDir, "public-probe-count"), "utf8"))).toBe(3);
   });
 
   it.each([

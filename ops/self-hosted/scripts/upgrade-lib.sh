@@ -1797,7 +1797,7 @@ wiseeff_upgrade_verify_restored_stack() {
     wiseeff_upgrade_record_failure old-stack-restore proxy restore-proxy-recreate "The previous proxy could not be recreated."
     return 1
   fi
-  if ! wiseeff_upgrade_public_probe; then
+  if ! wiseeff_upgrade_wait_public_probe; then
     wiseeff_upgrade_record_failure old-stack-restore proxy restore-proxy-public "The restored proxy/public health probe failed."
     return 1
   fi
@@ -1887,7 +1887,7 @@ wiseeff_upgrade_complete_candidate() {
     completion_outcome=recovery-required
   fi
   wiseeff_upgrade_set_phase validating-public "$completion_outcome"
-  if ! wiseeff_upgrade_public_probe; then
+  if ! wiseeff_upgrade_wait_public_probe; then
     wiseeff_upgrade_mark_recovery_required proxy candidate-proxy-public "The candidate proxy/public health probe failed."
     return 70
   fi
@@ -2542,6 +2542,24 @@ wiseeff_upgrade_public_probe() {
   curl "${curl_flags[@]}" "${public_url%/}/health/ready" >/dev/null || return $?
 }
 
+wiseeff_upgrade_wait_public_probe() {
+  local attempt attempts interval_seconds
+  attempts="${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}"
+  [ "$attempts" -gt 0 ] || attempts=1
+  interval_seconds="${WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS:-2}"
+  for attempt in $(seq 1 "$attempts"); do
+    if [ "$attempt" -eq "$attempts" ]; then
+      wiseeff_upgrade_public_probe
+      return $?
+    fi
+    if wiseeff_upgrade_public_probe >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval_seconds"
+  done
+  return 1
+}
+
 wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
@@ -2665,7 +2683,7 @@ wiseeff_upgrade_run_apply() {
     return 70
   fi
   wiseeff_upgrade_set_phase validating-public running
-  if ! wiseeff_upgrade_public_probe; then
+  if ! wiseeff_upgrade_wait_public_probe; then
     wiseeff_upgrade_mark_recovery_required proxy candidate-proxy-public "The candidate proxy/public health probe failed."
     return 70
   fi
