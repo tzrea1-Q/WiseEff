@@ -231,7 +231,8 @@ type WorkflowAssigneesRow = {
 export type ReviewDecisionDto = {
   id: string;
   requestId: string;
-  reviewerUserId: string | null;
+  /** Absent when the retained reviewer was deleted or the initiator is System. */
+  reviewerUserId?: string;
   decision: ParameterReviewDecision;
   fromStatus: ParameterChangeRequestStatus;
   toStatus: ParameterChangeRequestStatus;
