@@ -575,13 +575,14 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     );
     await db.query(
       `insert into parameter_execution_principal_tombstones (principal_user_id, organization_id)
-       values ('deleted-agent-local', 'org-chargelab'), ('deleted-agent-other', 'org-other')`
+       values
+         ('deleted-agent-same', 'org-chargelab'),
+         ('deleted-agent-other', 'org-other')`
     );
     await db.query(
       `update project_parameter_file_versions
-       set created_by_user_id = null,
-           initiator_type = 'agent',
-           initiator_principal_user_id = 'deleted-agent-local',
+       set initiator_type = 'agent',
+           initiator_principal_user_id = null,
            initiator_session_id = 'scope-session',
            initiator_tool_call_id = 'scope-tool',
            initiator_approval_id = 'scope-approval',
@@ -589,12 +590,58 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
            initiator_system_name = null
        where id = 'file-version-target'`
     );
+    await db.query(
+      `update parameter_history_entries
+       set initiator_type = 'agent',
+           initiator_principal_user_id = null,
+           initiator_session_id = 'scope-history-session',
+           initiator_tool_call_id = 'scope-history-tool',
+           initiator_approval_id = 'scope-history-approval',
+           initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'history-target'`
+    );
+    await expect(
+      deleteUser(db, adminAuth, "u-target", { requestId: "scope-tombstone-request" })
+    ).resolves.toBeUndefined();
 
     await expect(
       db.transaction((tx) => tx.query(
         `update project_parameter_file_versions
          set initiator_principal_user_id = 'deleted-agent-other'
          where id = 'file-version-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update project_parameter_file_versions
+         set initiator_principal_user_id = 'deleted-agent-same'
+         where id = 'file-version-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update parameter_history_entries
+         set initiator_principal_user_id = 'deleted-agent-same'
+         where id = 'history-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `insert into parameter_history_entries (
+           id, organization_id, project_id, parameter_definition_id,
+           project_parameter_value_id, version, value, changed_by_user_id,
+           initiator_type, initiator_principal_user_id, initiator_session_id,
+           initiator_tool_call_id, initiator_approval_id
+         ) values (
+           'history-direct-agent', 'org-chargelab', 'project-delete',
+           'definition-delete', 'value-delete', 2, '1', null, 'agent',
+           'deleted-agent-same', 'direct-history-session', 'direct-history-tool',
+           'direct-history-approval'
+         )`
       ))
     ).rejects.toMatchObject({ code: "23514" });
 
@@ -610,7 +657,7 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
       db.transaction((tx) => tx.query(
         `update parameter_execution_principal_tombstones
          set organization_id = 'org-other'
-         where principal_user_id = 'deleted-agent-local'`
+         where principal_user_id = 'u-target'`
       ))
     ).rejects.toMatchObject({ code: "23514" });
 
@@ -631,7 +678,18 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
        where id = 'file-version-target'`
     );
     expect(retained.rows).toEqual([
-      { file_id: "file-target", initiator_principal_user_id: "deleted-agent-local" }
+      { file_id: "file-target", initiator_principal_user_id: "u-target" }
+    ]);
+    const retainedHistory = await db.query<{
+      changed_by_user_id: string | null;
+      initiator_principal_user_id: string | null;
+    }>(
+      `select changed_by_user_id, initiator_principal_user_id
+       from parameter_history_entries
+       where id = 'history-target'`
+    );
+    expect(retainedHistory.rows).toEqual([
+      { changed_by_user_id: null, initiator_principal_user_id: "u-target" }
     ]);
   });
 
