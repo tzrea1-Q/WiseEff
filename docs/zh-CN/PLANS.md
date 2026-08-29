@@ -49,6 +49,8 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/completed/2026-08-29-effective-driver-populated-upgrade-repair.md`：通过追加式修复迁移、默认 effective catalog projection 与升级 catalog readiness 门禁，补齐 Issue #649 的自托管存量数据库升级缺口。
+
 - `exec-plans/active/2026-08-28-node-write-observation-outcomes.md`：在服务、Bridge、API、mock 与 UI 中把普通节点写命令执行和写后观测拆开；保留快照/回滚，同时停止对新写入做基于相等性的 mismatch 判定。真实 HDC/ADB readiness 继续属于条件目标环境证据。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-075 / TD-097 仍为**部分**开放，TD-014 后续已在第四波经 #600 关闭。第一批确定性收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059，reload workflow sheet 不属于 TD-059；第二批经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114，TD-003/012 与 TD-075/076 仍 Open。第三批随后经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031，以及限定为 `/parameter-admin/projects` Admin list 的 TD-112。
 - **TD-068 交付图：** ADR-0038 与父规格 #609 已定义安全模型。#610 建立共享可信上下文、策略和审计 seam；#611–#615 依次重建 Xiaoze 持久溯源、迁移 DTS 重载、贯通参数提交/治理/回写溯源，并收紧 legacy actor label 与验收证据。上述迁移票据落地前，TD-068 继续 Open。相邻的 debugging device-write 审计缺陷仍由 TD-123 单列，避免本工作膨胀为平台级审计重构。

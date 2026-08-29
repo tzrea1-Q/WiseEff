@@ -65,7 +65,9 @@ npm run build
   `effectiveDefinition.integration.test.ts` 覆盖：只从组织优先级/平台回退中选出一个唯一的
   活跃版本；草稿、已废弃、缺少归属或重复候选必须进入治理结果。
 - PostgreSQL 数据修复由 `definitionReconciliation.integration.test.ts` 和
-  `definitionVerification.ts` 覆盖。先运行
+  `definitionVerification.ts` 覆盖；`populatedUpgrade.integration.test.ts` 从真实 pre-`0127`
+  存量 PostgreSQL 图开始，先证明旧生效视图为空且门禁阻断，再通过公开 migration runner 应用迁移，
+  验证规范放置和保留的 draft 证据。先运行
   `npm run parameter-definitions:reconcile -- --dry-run`，确认后再 `--apply`，最后运行
   `npm run parameter-definitions:check`；未知/歧义证据只能保留为审核证据，不能创建已识别
   binding，校验报告未 ready 时发布门禁必须失败关闭。

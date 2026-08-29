@@ -240,6 +240,102 @@ describe.skipIf(!databaseAvailable)(
       ).toMatchObject({ defaultBusinessCategoryModuleId: null });
     });
 
+    it("separates driver catalog readiness from node-type governance blockers", async () => {
+      await db!.query(`delete from parameter_modules where id = $1`, [
+        NODE_MODULE,
+      ]);
+
+      const full = await verifyEffectiveDriverParameterDefinitions(db!, {
+        organizationId: ORG_ID,
+      });
+      expect(full.status).toBe("blocked");
+      expect(
+        full.checks.find(
+          (check) => check.code === "active-node-type-placement-missing",
+        )?.count,
+      ).toBeGreaterThan(0);
+
+      const catalog = await verifyEffectiveDriverParameterDefinitions(db!, {
+        organizationId: ORG_ID,
+        catalogOnly: true,
+      });
+      expect(catalog.status).toBe("ready");
+      expect(
+        catalog.checks.some((check) => check.code.startsWith("active-node-type")),
+      ).toBe(false);
+      expect(
+        catalog.checks.some((check) => check.code.startsWith("recognized-")),
+      ).toBe(false);
+    });
+
+    it("keeps platform driver placements complete when organizations and active catalog rows are added later", async () => {
+      const secondOrganizationId = "org-effective-catalog-second";
+      await db!.query(
+        `insert into organizations (id, name) values ($1, 'Effective Catalog Second')`,
+        [secondOrganizationId],
+      );
+
+      const driver = await upsertMatchedDriverSchema(db!, {
+        id: "driver-effective-late:v1",
+        compatible: "effective,late-driver",
+        compatiblePatterns: ["effective,late-driver"],
+        nodenamePatterns: [],
+        source: "vendor",
+        schemaNamespace: "vendor/effective-late",
+        version: 1,
+        lifecycle: "active",
+        propertyIds: [],
+        commonRefs: [],
+      });
+      await upsertMatchedPropertySpec(db!, {
+        id: "propspec:vendor/effective-late:late_limit:v1",
+        parameterSpecId: "pspec:vendor/effective-late:late_limit",
+        driverSchemaId: "driver-effective-late:v1",
+        propertyKey: "late_limit",
+        schemaNamespace: "vendor/effective-late",
+        source: "vendor",
+        lifecycle: "active",
+        version: 1,
+        valueShape: { kind: "u32-array" },
+        constraints: {},
+        documentation: "late platform property",
+      });
+
+      const placements = await db!.query<{
+        organization_id: string;
+        attribution_subject_id: string;
+        default_business_category_module_id: string | null;
+      }>(
+        `select organization_id, attribution_subject_id, default_business_category_module_id
+         from driver_registration_placements
+         where attribution_subject_id in ($1, $2)
+         order by attribution_subject_id, organization_id`,
+        [PLATFORM_SUBJECT, driver.attributionSubjectId],
+      );
+      const organizations = await db!.query<{ id: string }>(
+        `select id from organizations order by id`,
+      );
+      expect(placements.rows).toHaveLength(organizations.rows.length * 2);
+      expect(
+        placements.rows.filter(
+          (placement) =>
+            placement.attribution_subject_id === driver.attributionSubjectId,
+        ),
+      ).toEqual(
+        organizations.rows.map((organization) => ({
+          organization_id: organization.id,
+          attribution_subject_id: driver.attributionSubjectId,
+          default_business_category_module_id: null,
+        })),
+      );
+
+      const verification = await verifyEffectiveDriverParameterDefinitions(
+        db!,
+        { catalogOnly: true },
+      );
+      expect(verification.status).toBe("ready");
+    });
+
     it("uses an active organization override and retains both rows in governance view", async () => {
       await db!.query(
         `update parameter_specs set definition_lifecycle = 'active' where id = $1`,

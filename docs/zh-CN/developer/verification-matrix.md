@@ -30,7 +30,9 @@
 | `npm run parameter-identities:check` | 语义身份迁移只读预检/后检 | 维护窗口前后；见 cutover runbook。 |
 | `npm run parameter-identities:migrate` | 默认 dry-run，或门禁后的 `--apply` 历史迁移 | 仅切换演练；生产禁止双写。 |
 | `npm run parameter-definitions:reconcile -- --dry-run` / `--apply --organization-id <id>` | 经审计的生效驱动定义对账；dry-run 分类 blocker，apply 按组织原子修复 | Issue #649 维护窗口；先做快照，遇 blocker 立即停止。 |
-| `npm run parameter-definitions:check [-- --organization-id <id>]` | 独立只读的生效目录/绑定一致性门禁 | 目录迁移前后及配置修订发布前。 |
+| `npm run parameter-definitions:check [-- --organization-id <id>]` | 独立完整只读的生效目录/绑定一致性门禁 | 目录迁移前后及配置修订发布前。 |
+| `npm run parameter-definitions:check -- --catalog-only` | 自托管候选就绪使用的规范驱动身份/版本/schema/属性/放置子门禁 | `upgrade.sh` 内自动运行；诊断存量升级时可手工运行。不能替代配置发布完整门禁。 |
+| `npm run test:server -- server/modules/parameter-specs/populatedUpgrade.integration.test.ts --run` | 真实 PostgreSQL pre-`0127` 存量升级，覆盖规范放置、未决证据保留与 binding 迁移 | 修改生效驱动迁移、验证或放置修复后。 |
 | `npm run test:server -- server/modules/parameter-topology/legacyDependencyGuard.test.ts --run` | Vitest **源码扫描**（非运行时中间件），禁止在 migrations/cutovers/adapters/scripts/tests 之外出现已退役扁平身份/shadow token | 修改 cutover 后工作流、可能重新引入遗留 SQL 或 shadow PPV helper 后。 |
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |

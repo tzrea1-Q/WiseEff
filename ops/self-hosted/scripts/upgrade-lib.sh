@@ -1604,9 +1604,20 @@ wiseeff_upgrade_probe_worker() {
   return 1
 }
 
+wiseeff_upgrade_verify_parameter_catalog() {
+  if wiseeff_upgrade_compose exec -T api npm run parameter-definitions:check -- --catalog-only; then
+    return 0
+  fi
+  wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-parameter-catalog "The canonical driver parameter catalog verification gate is blocked."
+  return 1
+}
+
 wiseeff_upgrade_verify_candidate_app_readiness() {
   if ! wiseeff_upgrade_probe_api /health/ready; then
     wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-api-ready "The candidate API readiness probe failed."
+    return 1
+  fi
+  if ! wiseeff_upgrade_verify_parameter_catalog; then
     return 1
   fi
   if ! wiseeff_upgrade_probe_worker; then

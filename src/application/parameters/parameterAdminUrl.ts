@@ -1,6 +1,7 @@
 import type { ParameterSpecLibraryFilters } from "@/components/parameter-topology/ParameterSpecLibrary";
 
 export type ParameterAdminUrlState = {
+  catalogView: "effective" | "governance";
   q: string;
   lifecycles: string[];
   driverModules: string[];
@@ -44,6 +45,10 @@ export function formatCsvQueryParam(values: readonly string[]): string | null {
 export function parseParameterAdminUrl(search: string): ParameterAdminUrlState {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
+    catalogView:
+      params.get("catalogView") === "governance"
+        ? "governance"
+        : "effective",
     q: params.get("q") ?? "",
     lifecycles: parseCsvQueryParam(params.get("lifecycle")),
     driverModules: parseCsvQueryParam(params.get("driver")),
@@ -75,6 +80,9 @@ export function buildParameterAdminSearch(patch: Partial<ParameterAdminUrlState>
     params.set(key, value);
   };
 
+  if (next.catalogView === "governance") {
+    params.set("catalogView", "governance");
+  }
   setOrDelete("q", next.q.trim() || null);
   setOrDelete("lifecycle", formatCsvQueryParam(next.lifecycles));
   setOrDelete("driver", formatCsvQueryParam(next.driverModules));

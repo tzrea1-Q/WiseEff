@@ -38,7 +38,12 @@ draft。
    taxonomy 名称，无法修复时失败关闭，并在此后强制名称非空；`0124` 关闭归属范围、主体/schema 与 DTS
    属性键不一致的写入。上述迁移都保留 id 与历史，并要求组织的 node-type
    模块存在后才能进入 effective；验证门禁同时阻断重复的 active node-type source/property 身份。迁移
-   `0126` 阻止 binding revision 引用其他 `ParameterSpec` 所属版本；历史不一致仍由独立验证门禁保留并阻断。该命令支持
+   `0126` 阻止 binding revision 引用其他 `ParameterSpec` 所属版本；历史不一致仍由独立验证门禁保留并阻断。
+   追加式迁移 `0127` 修复 expand 阶段保留、但会在存量库升级时出现的形态：仅当完整
+   `DriverSchema` 图唯一证明规范主体时，才给无主体驱动根补归属；未链接且无主体的 DTS 属性退回
+   draft 治理证据；每个组织/规范驱动组合创建一个确定的顶层驱动组放置。该 bootstrap 不推断业务分类，
+   也绝不通过 `property_key` 猜驱动。同一迁移还安装事务内维护触发器，使后续新增组织或物化 active
+   平台 DriverSchema 属性时继续保持该放置不变量，不会重新制造存量升级缺陷。该命令支持
    dry-run/apply，持久化运行/条目证据，按组织事务处理，保留历史版本/修订，并记录可信 system 审计。独立的
    `parameter-definitions:check` 是最终只读门禁。
 
@@ -47,6 +52,7 @@ draft。
 - 目录不再把未分类的实测模块当作驱动身份或放置证明。
 - 有意保留的 curated 或歧义案例继续显示在治理面，并在解决前阻断发布；不会静默按属性键去重。
 - 平台定义可以跨组织复用，但每个租户必须声明自己的驱动组放置。
+- 普通定义库默认打开生效投影；draft、deprecated、被遮蔽和不完整原始行只能通过显式治理视图查看。
 - 平台 overlay promotion 副本的 `ParameterSpec` 父记录保持 governance-only/deprecated，
   active 版本只为 overlay 提供 shape；不能仅因 overlay 已提升就进入 effective 参数目录。
 - 对账可安全重复运行；应用行铸造 successor active 版本，只更新最新 binding revision，历史行保持不可变。

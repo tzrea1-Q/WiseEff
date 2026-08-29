@@ -39,7 +39,10 @@ real PostgreSQL. `server/modules/parameter-specs/effectiveDefinition.test.ts`
 tests precedence and governance outcomes; `effectiveDefinition.integration.test.ts`
 tests organization override/platform fallback and the explicit raw governance view;
 `definitionReconciliation.integration.test.ts` tests dry-run, audited apply,
-idempotence, and the independent verification gate. Run
+idempotence, and the independent verification gate.
+`populatedUpgrade.integration.test.ts` starts from a real pre-`0127` populated
+PostgreSQL graph, proves the old effective view is empty/blocked, applies the public
+migration runner, and verifies canonical placement plus retained draft evidence. Run
 `npm run parameter-definitions:reconcile -- --dry-run` before `--apply`, then
 `npm run parameter-definitions:check`. Unknown or ambiguous evidence must remain
 review evidence without a recognized binding, and release validation fails closed

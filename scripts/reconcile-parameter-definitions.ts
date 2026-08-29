@@ -22,8 +22,12 @@ function resolveMode(args: string[]): DefinitionReconciliationMode {
 
 const args = process.argv.slice(2);
 const verify = args.includes("--verify");
+const catalogOnly = args.includes("--catalog-only");
 if (verify && (args.includes("--dry-run") || args.includes("--apply"))) {
   throw new Error("--verify cannot be combined with --dry-run or --apply.");
+}
+if (catalogOnly && !verify) {
+  throw new Error("--catalog-only requires --verify.");
 }
 const env = loadServerEnv(process.env);
 if (!env.DATABASE_URL) throw new Error("DATABASE_URL is required for definition reconciliation.");
@@ -32,7 +36,10 @@ const db = createPostgresDatabase(env.DATABASE_URL);
 try {
   const organizationId = readOption(args, "--organization-id")?.trim() || undefined;
   if (verify) {
-    const report = await verifyEffectiveDriverParameterDefinitions(db, { organizationId });
+    const report = await verifyEffectiveDriverParameterDefinitions(db, {
+      organizationId,
+      catalogOnly,
+    });
     console.log(JSON.stringify(report, null, 2));
     if (report.status === "blocked") process.exitCode = 2;
   } else {

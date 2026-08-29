@@ -290,9 +290,33 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数定义库" });
     expect(within(library).getByText("gpio_int")).toBeInTheDocument();
-    expect(repository.listSpecs).toHaveBeenCalled();
+    expect(repository.listSpecs).toHaveBeenCalledWith({ view: "effective" });
     expect(repository.listSpecReviewTasks).toHaveBeenCalledWith(
       expect.objectContaining({ status: "open", limit: 50 })
+    );
+  });
+
+  it("keeps governance history behind an explicit URL-backed view", async () => {
+    const repository = createRepository();
+    renderPage({ repository });
+
+    await screen.findByRole("region", { name: "参数定义库" });
+    const viewNavigation = screen.getByRole("navigation", {
+      name: "参数定义视图",
+    });
+    expect(
+      within(viewNavigation).getByRole("button", { name: "有效定义" }),
+    ).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(
+      within(viewNavigation).getByRole("button", { name: "治理历史" }),
+    );
+
+    await waitFor(() =>
+      expect(repository.listSpecs).toHaveBeenCalledWith({ view: "governance" }),
+    );
+    expect(new URL(window.location.href).searchParams.get("catalogView")).toBe(
+      "governance",
     );
   });
 
@@ -337,7 +361,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       /three-cell interrupt/
     );
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
-    expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int", { view: "governance" });
+    expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int", { view: "effective" });
     expect(screen.queryByRole("status", { name: "治理审计" })).not.toBeInTheDocument();
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));

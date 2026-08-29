@@ -12,6 +12,9 @@ export const PARAMETER_ADMIN_UI = {
   /** Organization peer nav label (ADR-0015). In-page library title stays `specLibrary`. */
   specDefinitionManagement: "参数定义管理",
   specLibrary: "参数定义库",
+  specCatalogViewAria: "参数定义视图",
+  specEffectiveView: "有效定义",
+  specGovernanceView: "治理历史",
   specLibrarySearch: "搜索参数定义",
   specLibraryEmpty: "没有匹配的参数定义。",
   specLibraryLoading: "正在加载参数定义…",
