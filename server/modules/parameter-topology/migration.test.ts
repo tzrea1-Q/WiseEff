@@ -1650,6 +1650,29 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           [bindingId]
         );
 
+        await db.query(
+          `insert into organizations (id, name)
+           values ('org-mig-14-other', 'Other Migration Org')
+           on conflict (id) do nothing`
+        );
+        await db.query(
+          `insert into parameter_execution_principal_tombstones (principal_user_id, organization_id)
+           values ('foreign-deleted-principal', 'org-mig-14-other')`
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_file_versions
+             set initiator_type = 'agent', created_by_user_id = null,
+                 initiator_principal_user_id = 'foreign-deleted-principal',
+                 initiator_session_id = 'foreign-session',
+                 initiator_tool_call_id = 'foreign-tool',
+                 initiator_approval_id = 'foreign-approval',
+                 initiator_system_kind = null, initiator_system_name = null
+             where id = $1`,
+            ["fv-mig-14"]
+          )
+        );
+
         for (const table of ["parameter_submission_rounds", "parameter_change_requests"] as const) {
           const id = table === "parameter_submission_rounds" ? "round-mig-14" : seeded.openCrId;
           await db.query(

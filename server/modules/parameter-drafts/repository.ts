@@ -728,7 +728,7 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
   const attribution = trustedDomainAttributionFromRow(row, row.user_id);
   return {
     id: row.id,
-    userId: row.user_id ?? null,
+    userId: attribution.userId,
     projectId: row.project_id,
     projectParameterValueId: row.project_parameter_value_id,
     targetValue: row.target_value,
@@ -779,6 +779,7 @@ export async function listDraftsForUser(
       d.logical_node_id,
       d.candidate_config_revision_id,
       d.initiator_type,
+      d.initiator_principal_user_id,
       d.initiator_system_kind,
       d.initiator_system_name,
       d.initiator_session_id,
@@ -821,6 +822,7 @@ export async function listDraftsForUser(
       d.logical_node_id,
       d.candidate_config_revision_id,
       d.initiator_type,
+      d.initiator_principal_user_id,
       d.initiator_system_kind,
       d.initiator_system_name,
       d.initiator_session_id,
@@ -882,6 +884,7 @@ export async function listDraftsForParameterValue(
       origin_file_version_id,
       updated_at,
       initiator_type,
+      initiator_principal_user_id,
       initiator_system_kind,
       initiator_system_name,
       initiator_session_id,
@@ -894,7 +897,8 @@ export async function listDraftsForParameterValue(
     `
       : `
     select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at,
-           project_parameter_binding_id, initiator_type, initiator_system_kind, initiator_system_name,
+           project_parameter_binding_id, initiator_type, initiator_principal_user_id,
+           initiator_system_kind, initiator_system_name,
            initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_drafts
     where project_parameter_value_id = $1

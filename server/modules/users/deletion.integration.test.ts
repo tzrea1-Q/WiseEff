@@ -374,6 +374,192 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target@example.com");
   });
 
+  it("retains Agent provenance when its accountable principal is deleted", async () => {
+    await insertDeletionFixture(db);
+    await db.query(
+      `update parameter_history_entries
+       set initiator_type = 'agent',
+           initiator_session_id = 'delete-agent-session',
+           initiator_tool_call_id = 'delete-agent-tool',
+           initiator_approval_id = 'delete-agent-approval',
+           initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'history-target'`,
+    );
+
+    await expect(
+      deleteUser(db, adminAuth, "u-target", { requestId: "delete-agent-request" })
+    ).resolves.toBeUndefined();
+
+    const retained = await db.query<{
+      changed_by_user_id: string | null;
+      initiator_type: string;
+      initiator_principal_user_id: string | null;
+      initiator_session_id: string | null;
+      initiator_tool_call_id: string | null;
+      initiator_approval_id: string | null;
+    }>(
+      `select changed_by_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       from parameter_history_entries
+       where id = 'history-target'`
+    );
+    expect(retained.rows).toEqual([
+      {
+        changed_by_user_id: null,
+        initiator_type: "agent",
+        initiator_principal_user_id: "u-target",
+        initiator_session_id: "delete-agent-session",
+        initiator_tool_call_id: "delete-agent-tool",
+        initiator_approval_id: "delete-agent-approval"
+      }
+    ]);
+  });
+
+  it("retains Agent provenance across every governed retained row on deletion", async () => {
+    await insertDeletionFixture(db);
+    await db.query(
+      `insert into project_parameter_file_candidates (
+         id, organization_id, project_id, file_name, format, status, created_by_user_id,
+         initiator_type, initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       ) values (
+         'candidate-delete-agent', 'org-chargelab', 'project-delete', 'delete-agent.dts', 'dts', 'ready', 'u-target',
+         'agent', 'delete-agent-session', 'delete-agent-tool', 'delete-agent-approval'
+       )`
+    );
+    await db.query(
+      `insert into dts_config_set (id, organization_id, project_id, name, description)
+       values ('config-set-delete-agent', 'org-chargelab', 'project-delete', 'agent-delete', 'Deletion fixture')`
+    );
+    await db.query(
+      `insert into dts_config_revisions (
+         id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+         initiator_type, initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       ) values (
+         'config-revision-delete-agent', 'org-chargelab', 'project-delete', 'config-set-delete-agent', 1,
+         'draft', 'u-target', 'agent', 'delete-agent-session', 'delete-agent-tool', 'delete-agent-approval'
+       )`
+    );
+    await db.query(
+      `insert into parameter_submission_rounds (
+         id, organization_id, project_id, submitter_user_id, status, summary,
+         initiator_type, initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       ) values (
+         'round-delete-agent', 'org-chargelab', 'project-delete', 'u-target', 'submitted', 'Deletion fixture',
+         'agent', 'delete-agent-session', 'delete-agent-tool', 'delete-agent-approval'
+       )`
+    );
+    await db.query(
+      `insert into parameter_change_requests (
+         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
+         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
+         initiator_type, initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       ) values (
+         'request-delete-agent', 'org-chargelab', 'round-delete-agent', 'project-delete', 'value-delete',
+         'definition-delete', 1, '0', '1', 'submitted', 'u-target',
+         'agent', 'delete-agent-session', 'delete-agent-tool', 'delete-agent-approval'
+       )`
+    );
+    await db.query(
+      `insert into parameter_review_decisions (
+         id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status,
+         initiator_type, initiator_session_id, initiator_tool_call_id, initiator_approval_id
+       ) values (
+         'decision-delete-agent', 'org-chargelab', 'request-delete-agent', 'u-target', 'advance',
+         'submitted', 'hardware_review', 'agent', 'delete-agent-session', 'delete-agent-tool', 'delete-agent-approval'
+       )`
+    );
+    await db.query(
+      `update project_parameter_values
+       set updated_by_user_id = 'u-target', initiator_type = 'agent',
+           initiator_session_id = 'delete-agent-session', initiator_tool_call_id = 'delete-agent-tool',
+           initiator_approval_id = 'delete-agent-approval', initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'value-delete'`
+    );
+    await db.query(
+      `update parameter_history_entries
+       set changed_by_user_id = 'u-target', initiator_type = 'agent',
+           initiator_session_id = 'delete-agent-session', initiator_tool_call_id = 'delete-agent-tool',
+           initiator_approval_id = 'delete-agent-approval', initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'history-target'`
+    );
+    await db.query(
+      `update project_parameter_file_versions
+       set created_by_user_id = 'u-target', initiator_type = 'agent',
+           initiator_session_id = 'delete-agent-session', initiator_tool_call_id = 'delete-agent-tool',
+           initiator_approval_id = 'delete-agent-approval', initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'file-version-target'`
+    );
+
+    await expect(
+      deleteUser(db, adminAuth, "u-target", { requestId: "delete-agent-matrix-request" })
+    ).resolves.toBeUndefined();
+
+    const retained = await db.query<{
+      table_name: string;
+      row_id: string;
+      user_id: string | null;
+      initiator_type: string;
+      initiator_principal_user_id: string | null;
+      initiator_session_id: string | null;
+      initiator_tool_call_id: string | null;
+      initiator_approval_id: string | null;
+    }>(
+      `select 'history' as table_name, id as row_id, changed_by_user_id as user_id,
+              initiator_type, initiator_principal_user_id, initiator_session_id,
+              initiator_tool_call_id, initiator_approval_id
+         from parameter_history_entries where id = 'history-target'
+       union all
+       select 'value', id, updated_by_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from project_parameter_values where id = 'value-delete'
+       union all
+       select 'file-version', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from project_parameter_file_versions where id = 'file-version-target'
+       union all
+       select 'candidate', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from project_parameter_file_candidates where id = 'candidate-delete-agent'
+       union all
+       select 'config-revision', id, created_by_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from dts_config_revisions where id = 'config-revision-delete-agent'
+       union all
+       select 'submission-round', id, submitter_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from parameter_submission_rounds where id = 'round-delete-agent'
+       union all
+       select 'change-request', id, submitter_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from parameter_change_requests where id = 'request-delete-agent'
+       union all
+       select 'review-decision', id, reviewer_user_id, initiator_type, initiator_principal_user_id,
+              initiator_session_id, initiator_tool_call_id, initiator_approval_id
+         from parameter_review_decisions where id = 'decision-delete-agent'
+       order by table_name`
+    );
+    expect(retained.rows).toHaveLength(8);
+    for (const row of retained.rows) {
+      expect(row.user_id, row.table_name).toBeNull();
+      expect(row.initiator_type, row.table_name).toBe("agent");
+      expect(row.initiator_principal_user_id, row.table_name).toBe("u-target");
+      expect(row.initiator_session_id, row.table_name).toBe("delete-agent-session");
+      expect(row.initiator_tool_call_id, row.table_name).toBe("delete-agent-tool");
+      expect(row.initiator_approval_id, row.table_name).toBe("delete-agent-approval");
+    }
+
+    const tombstone = await db.query(
+      `select principal_user_id, organization_id
+       from parameter_execution_principal_tombstones
+       where principal_user_id = 'u-target'`
+    );
+    expect(tombstone.rows).toEqual([{ principal_user_id: "u-target", organization_id: "org-chargelab" }]);
+  });
+
   it("waits for a concurrent platform-admin grant and then refuses deletion", async () => {
     const ephemeral = await createEphemeralTestDatabase("userdel");
     const controlClient = new pg.Client({ connectionString: ephemeral.url });

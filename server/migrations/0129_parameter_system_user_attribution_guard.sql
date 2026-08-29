@@ -1,5 +1,6 @@
 -- Prevent System execution metadata from carrying a user-owned attribution.
--- Kept as a follow-up migration so 0116 remains immutable after deployment.
+-- Kept as a follow-up migration after the 0128 provenance projection so the
+-- ordered branch-only history remains explicit until it is merged.
 
 alter table parameter_drafts
   add constraint parameter_drafts_system_user_null_check

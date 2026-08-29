@@ -2,7 +2,7 @@
 -- have the historical `initiator_type = 'user'` default but no attribution.
 -- Those rows carry no provenance metadata at all, so treating their nullable
 -- user column as an unknown legacy value does not invent a System principal.
--- 0120 installs the strict checks as NOT VALID so upgrades can retain those
+-- 0132 installs the strict checks as NOT VALID so upgrades can retain those
 -- rows without opening a write-time legacy-null escape hatch. Reassert the
 -- same predicate here; new and updated trusted rows remain bidirectionally
 -- checked, while the explicit `legacy` marker remains for non-migrated paths.

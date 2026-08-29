@@ -63,6 +63,8 @@ export type TrustedInvocationDomainAttribution = Readonly<{
  * audit, and transaction code only.
  */
 export type TrustedInvocationDomainAttributionRow = Readonly<{
+  /** Opaque principal snapshot retained after an Agent user's account deletion. */
+  initiator_principal_user_id?: string | null;
   initiator_type?: TrustedInvocationContext["initiator"] | "legacy" | null;
   initiator_system_kind?: SystemInvocationInput["kind"] | null;
   initiator_system_name?: string | null;
@@ -358,7 +360,7 @@ export function trustedDomainAttributionFromRow(
   userId: string | null | undefined
 ): PersistedInvocationDomainAttribution {
   return {
-    userId: userId ?? null,
+    userId: userId ?? row.initiator_principal_user_id ?? null,
     initiatorType: row.initiator_type ?? "legacy",
     systemKind: row.initiator_system_kind ?? null,
     systemName: row.initiator_system_name ?? null,

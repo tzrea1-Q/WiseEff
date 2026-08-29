@@ -130,6 +130,23 @@ describe("trusted invocation context", () => {
     );
   });
 
+  it("uses an opaque principal tombstone when the live user FK is gone", () => {
+    expect(
+      trustedDomainAttributionFromRow(
+        {
+          initiator_type: "agent",
+          initiator_principal_user_id: "deleted-user-1",
+          initiator_session_id: "session-1",
+          initiator_tool_call_id: "tool-1",
+          initiator_approval_id: "approval-1",
+          initiator_system_kind: null,
+          initiator_system_name: null
+        },
+        null
+      )
+    ).toMatchObject({ userId: "deleted-user-1", initiatorType: "agent" });
+  });
+
   it("rejects malformed, anonymous, and incomplete provenance", () => {
     expect(() =>
       createAgentInvocation(auth(), {

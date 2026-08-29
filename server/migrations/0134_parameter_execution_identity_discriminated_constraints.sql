@@ -1,11 +1,11 @@
 -- Tighten the #614 execution projection into a database-enforced
--- discriminated union.  0120/0121 intentionally left some correlation
+-- discriminated union.  0132/0133 intentionally left some correlation
 -- combinations open while preserving pre-TD-068 rows; this forward migration
 -- keeps those historical rows (NOT VALID) but rejects every malformed new or
 -- updated row.  #615 owns the eventual legacy backfill/ratchet.
 
--- Reassert the tiny historical adapter so an environment that applied 0120
--- before function ownership was recorded can still replay this migration.
+-- Reassert the tiny historical adapter so an environment that reached the
+-- earlier #614 identity checks can still replay this migration.
 create or replace function parameter_execution_identity_default_user()
 returns trigger
 language plpgsql
@@ -176,9 +176,9 @@ alter table project_parameter_binding_revisions
     )
   ) not valid;
 
--- Submission rounds and change requests gained the same fields in 0118 but
+-- Submission rounds and change requests gained the same fields in 0130 but
 -- did not yet carry the legacy marker.  Install the narrow historical adapter
--- used by 0120: a legacy row with a creator remains an explicit User row;
+-- used by the earlier identity-compatibility step: a legacy row with a creator remains an explicit User row;
 -- only a metadata-free row may remain legacy.  No malformed User/Agent/System
 -- row is rewritten into legacy.
 do $$
@@ -204,7 +204,7 @@ begin
     execute format('alter table %I add constraint %I check (
       initiator_type in (''user'', ''agent'', ''system'', ''legacy'')
     )', table_name, table_name || '_initiator_type_check');
-    -- The pre-0122 checks do not know the historical marker. Remove them
+    -- The earlier checks do not know the historical marker. Remove them
     -- before converting only metadata-free rows; malformed explicit
     -- User/Agent/System rows are never rewritten into legacy.
     execute format('update %I

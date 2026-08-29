@@ -1602,7 +1602,7 @@ export async function listReviewDecisions(
   const result = await db.query<ReviewDecisionRow>(
     `
     select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
-           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_type, initiator_principal_user_id, initiator_system_kind, initiator_system_name,
            initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
@@ -1623,7 +1623,7 @@ export async function listReviewDecisionsInternal(
   const result = await db.query<ReviewDecisionRow>(
     `
     select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
-           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_type, initiator_principal_user_id, initiator_system_kind, initiator_system_name,
            initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
@@ -1646,7 +1646,7 @@ export async function listReviewDecisionsForRequestIds(
   const result = await db.query<ReviewDecisionRow>(
     `
     select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
-           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_type, initiator_principal_user_id, initiator_system_kind, initiator_system_name,
            initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
@@ -1671,7 +1671,7 @@ export async function listReviewDecisionsForRequestIdsInternal(
   const result = await db.query<ReviewDecisionRow>(
     `
     select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
-           initiator_type, initiator_system_kind, initiator_system_name,
+           initiator_type, initiator_principal_user_id, initiator_system_kind, initiator_system_name,
            initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_review_decisions
     where organization_id = $1
@@ -1760,7 +1760,7 @@ export async function insertReviewDecision(
     )
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     returning id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at,
-      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_type, initiator_principal_user_id, initiator_system_kind, initiator_system_name,
       initiator_session_id, initiator_tool_call_id, initiator_approval_id
     `,
     [
