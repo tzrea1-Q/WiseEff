@@ -560,6 +560,81 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(tombstone.rows).toEqual([{ principal_user_id: "u-target", organization_id: "org-chargelab" }]);
   });
 
+  it("rejects cross-organization file-version tombstone and file moves", async () => {
+    await insertDeletionFixture(db);
+    await db.query(
+      `insert into organizations (id, name) values ('org-other', 'Other Organization')`
+    );
+    await db.query(
+      `insert into projects (id, organization_id, name, code, status)
+       values ('project-other', 'org-other', 'Other project', 'OTHER', 'initialized')`
+    );
+    await db.query(
+      `insert into project_parameter_files (id, organization_id, project_id, file_name, format)
+       values ('file-other', 'org-other', 'project-other', 'other.dts', 'dts')`
+    );
+    await db.query(
+      `insert into parameter_execution_principal_tombstones (principal_user_id, organization_id)
+       values ('deleted-agent-local', 'org-chargelab'), ('deleted-agent-other', 'org-other')`
+    );
+    await db.query(
+      `update project_parameter_file_versions
+       set created_by_user_id = null,
+           initiator_type = 'agent',
+           initiator_principal_user_id = 'deleted-agent-local',
+           initiator_session_id = 'scope-session',
+           initiator_tool_call_id = 'scope-tool',
+           initiator_approval_id = 'scope-approval',
+           initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'file-version-target'`
+    );
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update project_parameter_file_versions
+         set initiator_principal_user_id = 'deleted-agent-other'
+         where id = 'file-version-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update project_parameter_file_versions
+         set file_id = 'file-other'
+         where id = 'file-version-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update parameter_execution_principal_tombstones
+         set organization_id = 'org-other'
+         where principal_user_id = 'deleted-agent-local'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      db.transaction((tx) => tx.query(
+        `update project_parameter_files
+         set organization_id = 'org-other'
+         where id = 'file-target'`
+      ))
+    ).rejects.toMatchObject({ code: "23514" });
+
+    const retained = await db.query<{
+      file_id: string;
+      initiator_principal_user_id: string | null;
+    }>(
+      `select file_id, initiator_principal_user_id
+       from project_parameter_file_versions
+       where id = 'file-version-target'`
+    );
+    expect(retained.rows).toEqual([
+      { file_id: "file-target", initiator_principal_user_id: "deleted-agent-local" }
+    ]);
+  });
+
   it("waits for a concurrent platform-admin grant and then refuses deletion", async () => {
     const ephemeral = await createEphemeralTestDatabase("userdel");
     const controlClient = new pg.Client({ connectionString: ephemeral.url });
