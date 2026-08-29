@@ -396,7 +396,7 @@ export async function updateParameterModule(
     ]
   );
 
-  if (result.rows[0] && nextName !== existing.name) {
+  if (result.rows[0] && nextName !== existing.name && parameterIdentityMode() === "legacy") {
     await db.query(
       `
       update ${LEGACY_IDENTITY_SQL.definitionsTable}
