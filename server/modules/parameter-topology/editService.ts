@@ -466,22 +466,25 @@ export async function createBindingDraft(
     );
   }
 
-  // Re-resolve the locator from the exact base revision after the working tip
-  // has been selected.  The initial binding lookup is only for project-scoped
-  // draft ownership; its latest locator must not cross the sensitive guard.
-  const binding = await loadBindingContext(
-    db,
-    auth,
-    input.bindingId,
-    bindingHead.project_id,
-    revision.id,
-  );
-  if (binding.logical_node_id && !binding.node_locator) {
-    throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
-      reason: "missing-logical-node-revision",
-      bindingId: input.bindingId,
-      baseRevisionId: revision.id,
-    });
+  // The initial binding lookup is sufficient for legacy/non-sensitive callers.
+  // A trusted write must instead use a locator from the selected exact base
+  // revision; this prevents a newer head from changing the policy subject.
+  let binding = bindingHead;
+  if (trustedContext) {
+    binding = await loadBindingContext(
+      db,
+      auth,
+      input.bindingId,
+      bindingHead.project_id,
+      revision.id,
+    );
+    if (binding.logical_node_id && !binding.node_locator) {
+      throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
+        reason: "missing-logical-node-revision",
+        bindingId: input.bindingId,
+        baseRevisionId: revision.id,
+      });
+    }
   }
 
   throwIfManifestNeedsReview(revision);
