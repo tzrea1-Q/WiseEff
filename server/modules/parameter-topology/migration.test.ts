@@ -1331,13 +1331,13 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
         await applyMigrations(db, migrationsDir);
 
         const userRows = [
-          { table: "parameter_drafts", userColumn: "user_id", id: seeded.draftId },
-          { table: "parameter_review_decisions", userColumn: "reviewer_user_id", id: "decision-mig-14" },
-          { table: "parameter_history_entries", userColumn: "changed_by_user_id", id: seeded.historyId },
-          { table: "project_parameter_values", userColumn: "updated_by_user_id", id: PPV_ID },
-          { table: "project_parameter_file_versions", userColumn: "created_by_user_id", id: "fv-mig-14" },
-          { table: "project_parameter_file_candidates", userColumn: "created_by_user_id", id: "candidate-mig14-union" },
-          { table: "dts_config_revisions", userColumn: "created_by_user_id", id: seeded.configRevisionId }
+          { table: "parameter_drafts", userColumn: "user_id", id: seeded.draftId, retained: false },
+          { table: "parameter_review_decisions", userColumn: "reviewer_user_id", id: "decision-mig-14", retained: true },
+          { table: "parameter_history_entries", userColumn: "changed_by_user_id", id: seeded.historyId, retained: true },
+          { table: "project_parameter_values", userColumn: "updated_by_user_id", id: PPV_ID, retained: true },
+          { table: "project_parameter_file_versions", userColumn: "created_by_user_id", id: "fv-mig-14", retained: true },
+          { table: "project_parameter_file_candidates", userColumn: "created_by_user_id", id: "candidate-mig14-union", retained: true },
+          { table: "dts_config_revisions", userColumn: "created_by_user_id", id: seeded.configRevisionId, retained: true }
         ] as const;
 
         await db.query(
@@ -1371,7 +1371,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'user', ${row.userColumn} = $2,
-                 initiator_principal_deleted = false,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
                  initiator_system_kind = null, initiator_system_name = null,
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1383,7 +1383,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'system', ${row.userColumn} = null,
-                 initiator_principal_deleted = false,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
                  initiator_system_kind = 'job', initiator_system_name = 'mig-union-job',
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1395,7 +1395,7 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await db.query(
             `update ${row.table}
              set initiator_type = 'legacy', ${row.userColumn} = null,
-                 initiator_principal_deleted = false,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
                  initiator_system_kind = null, initiator_system_name = null,
                  initiator_session_id = null, initiator_tool_call_id = null,
                  initiator_approval_id = null
@@ -1407,16 +1407,27 @@ describe.skipIf(!databaseAvailable)("parameter execution identity migration upgr
           await expect(db.transaction(() => run())).rejects.toMatchObject({ code: "23514" });
         };
 
+        const draftMarkerColumns = await db.query(
+          `select column_name
+           from information_schema.columns
+           where table_schema = 'public'
+             and table_name = 'parameter_drafts'
+             and column_name = 'initiator_principal_deleted'`
+        );
+        expect(draftMarkerColumns.rows).toEqual([]);
+
         for (const row of userRows) {
           await setUser(row);
-          await expectViolation(
-            () => db.query(
-              `update ${row.table}
-               set initiator_principal_deleted = true
-               where id = $1`,
-              [row.id]
-            )
-          );
+          if (row.retained) {
+            await expectViolation(
+              () => db.query(
+                `update ${row.table}
+                 set initiator_principal_deleted = true
+                 where id = $1`,
+                [row.id]
+              )
+            );
+          }
           await setSystem(row);
           const system = await db.query<{
             initiator_type: string;

@@ -374,6 +374,53 @@ describe.skipIf(!databaseAvailable)("user account deletion PostgreSQL contract",
     expect(JSON.stringify(deletionAudit.rows)).not.toContain("target@example.com");
   });
 
+  it("cascades transient Agent drafts without installing retained-principal state", async () => {
+    await insertDeletionFixture(db);
+    await db.query(
+      `update parameter_drafts
+       set initiator_type = 'agent',
+           initiator_session_id = 'draft-delete-session',
+           initiator_tool_call_id = 'draft-delete-tool',
+           initiator_approval_id = 'draft-delete-approval',
+           initiator_system_kind = null,
+           initiator_system_name = null
+       where id = 'draft-target'`
+    );
+
+    const beforeDeletion = await db.query(
+      "select id from parameter_drafts where id = 'draft-target' and user_id = 'u-target'"
+    );
+    expect(beforeDeletion.rows).toEqual([{ id: "draft-target" }]);
+
+    await expect(
+      deleteUser(db, adminAuth, "u-target", { requestId: "draft-cascade-delete" })
+    ).resolves.toBeUndefined();
+
+    const afterDeletion = await db.query("select id from parameter_drafts where id = 'draft-target'");
+    expect(afterDeletion.rows).toEqual([]);
+
+    const markerColumns = await db.query(
+      `select column_name
+       from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'parameter_drafts'
+         and column_name = 'initiator_principal_deleted'`
+    );
+    expect(markerColumns.rows).toEqual([]);
+
+    const markerTriggers = await db.query<{ trigger_definition: string }>(
+      `select pg_get_triggerdef(trigger_row.oid) as trigger_definition
+       from pg_trigger trigger_row
+       join pg_class table_row on table_row.oid = trigger_row.tgrelid
+       join pg_namespace schema_row on schema_row.oid = table_row.relnamespace
+       where schema_row.nspname = 'public'
+         and table_row.relname = 'parameter_drafts'
+         and not trigger_row.tgisinternal
+         and pg_get_triggerdef(trigger_row.oid) like '%initiator_principal_deleted%'`
+    );
+    expect(markerTriggers.rows).toEqual([]);
+  });
+
   it("retains Agent provenance when its accountable principal is deleted", async () => {
     await insertDeletionFixture(db);
     await db.query(

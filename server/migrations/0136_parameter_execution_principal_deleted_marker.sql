@@ -10,7 +10,6 @@ declare
 begin
   for spec in
     select * from (values
-      ('parameter_drafts'::text, 'user_id'::text),
       ('parameter_review_decisions'::text, 'reviewer_user_id'::text),
       ('parameter_history_entries'::text, 'changed_by_user_id'::text),
       ('project_parameter_values'::text, 'updated_by_user_id'::text),
@@ -81,7 +80,10 @@ begin
   if nested_account_deletion then
     -- No value derived from old_accountable_user_id is persisted.  The marker
     -- records only that the Agent's accountable principal was deleted.
-    new.initiator_principal_deleted := true;
+    new := jsonb_populate_record(
+      new,
+      jsonb_build_object('initiator_principal_deleted', true)
+    );
   elsif new.initiator_type = 'user'
         and new_accountable_user_id is null
         and old_accountable_user_id is not null
@@ -89,7 +91,10 @@ begin
     -- Historical User rows become metadata-free legacy rows on account
     -- deletion, matching the pre-#614 deletion contract.
     new.initiator_type := 'legacy';
-    new.initiator_principal_deleted := false;
+    new := jsonb_populate_record(
+      new,
+      jsonb_build_object('initiator_principal_deleted', false)
+    );
     new.initiator_system_kind := null;
     new.initiator_system_name := null;
     new.initiator_session_id := null;
@@ -99,7 +104,10 @@ begin
         and new_accountable_user_id is not null then
     -- Preserve the narrow historical creator-bearing default adapter.
     new.initiator_type := 'user';
-    new.initiator_principal_deleted := false;
+    new := jsonb_populate_record(
+      new,
+      jsonb_build_object('initiator_principal_deleted', false)
+    );
   end if;
 
   return new;
@@ -112,7 +120,6 @@ declare
 begin
   for spec in
     select * from (values
-      ('parameter_drafts'::text, 'user_id'::text),
       ('parameter_review_decisions'::text, 'reviewer_user_id'::text),
       ('parameter_history_entries'::text, 'changed_by_user_id'::text),
       ('project_parameter_values'::text, 'updated_by_user_id'::text),
