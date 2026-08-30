@@ -6,7 +6,7 @@
 
 ## 当前状态（2026-08-30）
 
-- 当前基线为 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）。本次文档提交前的修复代码 checkpoint 是 `8ef903c7d`；因为提交本节会推进分支 tip，最终文档提交与最终 HEAD 以交接报告为准。
+- 当前基线为 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）。本次文档提交前最新隐私修复代码 checkpoint 是 `d57ae86f0`；提交本节会推进分支 tip，因此生成的文档 tip HEAD 以交接报告为准。
 - 最终的分支级注销修复是 `0136_parameter_execution_principal_deleted_marker.sql`。它只引入无身份值、服务端拥有的 `initiator_principal_deleted` 布尔标记；没有 tombstone 表、被删除用户原始 id、snapshot 列、哈希或替代标识。永久删除后，保留的 Agent 行具有 NULL 可问责用户外键、`initiator_type = 'agent'`、完整且非空的 session/tool-call/approval 关联以及 `true` 标记；User/System/Legacy 行保持 `false` 标记和各自判别联合字段。
 - 迁移约束对历史行使用 `NOT VALID`，但会拒绝所有畸形的新建或更新。只有数据库嵌套外键 `SET NULL` 注销转换可以设置 Agent 标记；普通 insert/update 不能设置、清除或改写它。`trustedDomainAttributionFromRow` 永不重建已删除用户 id。
 - TDD Red→Green 证据记录在后文。全新 owned PostgreSQL 的 migration/deletion/trusted-attribution 测试已通过（最近聚焦运行：4 个文件 / 53 个测试），完整 server 也通过（370 个文件 / 2,907 个测试，1 个 intentional skip）。在精确最终树上，串联的 `npm run test:all` 并非绿色：未修改的 frontend 阶段有 5 个超时文件 / 10 个超时测试（416 个文件 / 3,159 个测试通过），随后阶段未由该串联命令继续；隔离 frontend 重跑通过 5 个文件 / 147 个测试，scripts/bridge 已独立运行（scripts：2 个环境失败，67 个文件 / 951 通过 / 5 个 skip；bridge：21 个文件 / 138 通过）。不声称 Hosted CI、HDC、硬件或 live-provider 结果。原 dirty worktree 继续只读且未触碰。
@@ -368,7 +368,7 @@ PostgreSQL durable-resume 证明通过公开 AG-UI 输入由实例 A 创建 sess
 
 这是当前修复记录，取代上方旧 checkpoint 的当前含义；旧段落仅保留历史 Red/Green 证据。
 
-- 父级审查发现早期 `0136`–`0138` tombstone/snapshot 设计违反隐私合同：它在 tombstone 中保留已删除的 `users.id`，并由 trusted row projection 恢复。Owner 合同要求永久删除后所有保留业务/审计行的用户外键及派生 `userId` 都是 `NULL`。本修复以代码 checkpoint `8ef903c7d` 追加，保持 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）不变。
+- 父级审查发现早期 `0136`–`0138` tombstone/snapshot 设计违反隐私合同：它在 tombstone 中保留已删除的 `users.id`，并由 trusted row projection 恢复。Owner 合同要求永久删除后所有保留业务/审计行的用户外键及派生 `userId` 都是 `NULL`。本次追加修复现已达到代码 checkpoint `d57ae86f0`，保持 `origin/main@82344044b436a8dafecefbb85dfd724cecb05e3f`（主线最高迁移前缀 `0128`）不变。
 - 删除三个 raw-ID 分支迁移，替换为 `0136_parameter_execution_principal_deleted_marker.sql`。它只向九个带用户字段的治理表及 binding revisions 增加 `initiator_principal_deleted boolean not null default false`。没有 tombstone 表、raw-ID/snapshot/hash/替代列、身份映射或 alias。`trustedDomainAttributionFromRow` 只使用活动外键；标记为 true 时即使调用者传入旧 id 也强制返回 `userId: null`。
 - 数据库 trigger 是唯一标记写入者。只有 live Agent 行在数据库嵌套外键 `SET NULL` 注销转换时设置 true；用户历史行仍转换为无 metadata 的 `legacy`。普通 INSERT/UPDATE 不能设置、清除、改类型或重新挂接 deleted Agent 标记。重建的 `NOT VALID` 约束对所有新建/更新行执行完整 User/Agent/deleted-Agent/System/Legacy 判别联合，同时为 #615 后续 ratchet 保留历史行。
 - 真值表：User = 非空 user FK、marker false、无 correlation/system 字段；live Agent = 非空 user FK、marker false、非空 session/tool-call/approval；deleted Agent = 空 user FK、marker true、同样完整 Agent correlation；System = 空 user FK、marker false、`service|job` 加非空 name 且无 correlation；Legacy = 空 user FK、marker false 且 metadata-free。不存在 synthetic user 或 auth-user fallback。
