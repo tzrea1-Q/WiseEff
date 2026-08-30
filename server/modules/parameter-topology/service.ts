@@ -1605,18 +1605,26 @@ export async function createBindingDraft(
     });
   }
 
-  const draft = await createBindingDraftEdit(
-    db,
-    auth,
-    {
-      bindingId: input.bindingId,
-      baseRevisionId: input.baseRevisionId,
-      targetValue: input.targetValue,
-      action: input.action,
-      reason: input.reason
-    },
-    deps,
-    context
+  // The edit helper creates the immutable candidate file blob before it reaches
+  // its audited draft/rebase step. Keep every database write (file version,
+  // candidate revision, binding carry-forward, draft and success audit) inside
+  // one outer transaction so an audit failure cannot leave committed domain
+  // rows behind. The blob write does not participate in the database
+  // transaction and may remain as an unreachable orphan on rollback.
+  const draft = await db.transaction((tx) =>
+    createBindingDraftEdit(
+      tx,
+      auth,
+      {
+        bindingId: input.bindingId,
+        baseRevisionId: input.baseRevisionId,
+        targetValue: input.targetValue,
+        action: input.action,
+        reason: input.reason
+      },
+      deps,
+      context
+    )
   );
 
   return {

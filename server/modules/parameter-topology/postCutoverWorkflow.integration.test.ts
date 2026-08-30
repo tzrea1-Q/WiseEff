@@ -650,6 +650,136 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   );
 
   it(
+    "rolls back typed binding domain writes when the success audit fails",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-binding-audit-rollback-red",
+          objectSnapshotId: "obj-snap-pcw-binding-audit-rollback-red"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+
+        const auth = makeAuth();
+        const putCalls: string[] = [];
+        const objectStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          async put(input: { bytes: Buffer }) {
+            putCalls.push(input.bytes.toString("utf8"));
+            return {
+              storageKey: `${ORG}/binding-audit-rollback-${putCalls.length}.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
+            };
+          }
+        };
+        const state = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions
+                where file_id in ($1, $2) and origin = 'writeback') as versions,
+               (select count(*)::text from dts_config_revisions
+                where organization_id = $3 and project_id = $4 and status = 'draft') as candidates,
+               (select count(*)::text from dts_config_revision_members crm
+                inner join dts_config_revisions cr on cr.id = crm.config_revision_id
+                where cr.organization_id = $3 and cr.project_id = $4) as candidate_members,
+               (select count(*)::text from project_parameter_binding_revisions bpr
+                inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+                where cr.organization_id = $3 and cr.project_id = $4) as binding_revisions,
+               (select count(*)::text from parameter_drafts
+                where organization_id = $3 and project_id = $4) as drafts,
+               (select count(*)::text from audit_events
+                where organization_id = $3 and project_id = $4
+                  and kind = 'parameter-topology-governance'
+                  and action = 'binding-edited') as success_audits`,
+            [seeded.fileId, seeded.overlayFileId, ORG, PROJECT]
+          )
+        ).rows[0]!;
+        const before = await state();
+
+        await db.query(
+          `create or replace function fail_binding_draft_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-topology-governance' and new.action = 'binding-edited' then
+               raise exception 'injected binding draft audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_binding_draft_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_binding_draft_audit()`
+        );
+
+        try {
+          await withRefusalSink(connectionString, async (refusalSink) => {
+            await expect(
+              createBindingDraftService(
+                db,
+                auth,
+                {
+                  projectId: PROJECT,
+                  bindingId: seeded.bindingId,
+                  baseRevisionId: seeded.configRevisionId,
+                  targetValue: {
+                    kind: "cells",
+                    bits: 32,
+                    groups: [[{ kind: "integer", raw: "2", value: "2" }]]
+                  },
+                  reason: "Typed binding audit failure must roll back all domain writes"
+                },
+                { objectStore },
+                {
+                  invocation: createUserInvocation(auth),
+                  requestId: "trace-pcw-binding-audit-rollback",
+                  refusalSink
+                }
+              )
+            ).rejects.toThrow("injected binding draft audit failure");
+          });
+        } finally {
+          await db.query(`drop trigger fail_binding_draft_audit_trigger on audit_events`);
+          await db.query(`drop function fail_binding_draft_audit()`);
+        }
+
+        expect(await state()).toEqual(before);
+        // The immutable blob is written before the DB transaction. It may be an
+        // unreachable orphan, but no committed domain row may reference it.
+        expect(putCalls).toHaveLength(1);
+        const orphanReference = await db.query<{ count: string }>(
+          `select count(*)::text as count
+           from project_parameter_file_versions
+           where storage_key = $1`,
+          [`${ORG}/binding-audit-rollback-1.dts`]
+        );
+        expect(orphanReference.rows).toEqual([{ count: "0" }]);
+      });
+    },
+    120_000
+  );
+
+  it(
     "audits incapable critical Agent/System refusal before capability checks",
     async () => {
       await withTempDatabase(async (db, connectionString) => {
