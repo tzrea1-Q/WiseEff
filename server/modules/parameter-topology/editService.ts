@@ -407,11 +407,11 @@ export async function createBindingDraft(
     );
   }
 
-  const binding = await loadBindingContext(db, auth, input.bindingId);
+  const bindingHead = await loadBindingContext(db, auth, input.bindingId);
 
   const openDrafts = await listOpenBindingDraftsForUser(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
+    projectId: bindingHead.project_id,
     ...draftOwner,
   });
   const openWorkingTips = [
@@ -432,7 +432,7 @@ export async function createBindingDraft(
   const sameBindingOpenDraft = openDrafts.find(
     (draft) =>
       draft.editSubjectKind === "binding" &&
-      draft.projectParameterBindingId === binding.binding_id,
+      draft.projectParameterBindingId === bindingHead.binding_id,
   );
 
   let effectiveBaseRevisionId = input.baseRevisionId;
@@ -451,7 +451,7 @@ export async function createBindingDraft(
 
   const revision = await getConfigRevisionById(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
+    projectId: bindingHead.project_id,
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
@@ -464,6 +464,24 @@ export async function createBindingDraft(
         baseRevisionId: input.baseRevisionId,
       },
     );
+  }
+
+  // Re-resolve the locator from the exact base revision after the working tip
+  // has been selected.  The initial binding lookup is only for project-scoped
+  // draft ownership; its latest locator must not cross the sensitive guard.
+  const binding = await loadBindingContext(
+    db,
+    auth,
+    input.bindingId,
+    bindingHead.project_id,
+    revision.id,
+  );
+  if (binding.logical_node_id && !binding.node_locator) {
+    throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
+      reason: "missing-logical-node-revision",
+      bindingId: input.bindingId,
+      baseRevisionId: revision.id,
+    });
   }
 
   throwIfManifestNeedsReview(revision);

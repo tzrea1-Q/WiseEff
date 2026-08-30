@@ -43,6 +43,8 @@ const HW = "user-srw-hardware";
 const SWC = "user-srw-software-committer";
 const SWU = "user-srw-software-user";
 const OUTSIDER = "user-srw-outsider";
+const FOREIGN_ORG = "org-srw-foreign";
+const FOREIGN_USER = "user-srw-foreign-reviewer";
 
 const PD_HIGH = "pd-srw-high";
 const PPV_HIGH = "ppv-srw-high";
@@ -722,6 +724,45 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           trace_id: "request-parameter-review-1"
         })
       );
+    });
+
+    it("redacts an unresolved cross-organization reviewer id from public workflow projections", async () => {
+      await db!.query(
+        `insert into organizations (id, name) values ($1, 'SRW Foreign Org') on conflict (id) do nothing`,
+        [FOREIGN_ORG],
+      );
+      await db!.query(
+        `insert into users (id, organization_id, name, email, title, is_active)
+         values ($1, $2, 'Foreign Reviewer', $3, 'SRW', true)
+         on conflict (id) do update set organization_id = excluded.organization_id`,
+        [FOREIGN_USER, FOREIGN_ORG, `${FOREIGN_USER}@example.com`],
+      );
+
+      const { requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
+      await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Create a review decision for the projection boundary.",
+      });
+      await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Create a mapped workflow transition for the projection boundary.",
+      });
+
+      // Simulate a legacy/corrupt row whose reviewer FK points outside the
+      // request organization.  The public projection must not echo that ID.
+      await db!.query(
+        `update parameter_review_decisions
+         set reviewer_user_id = $1
+         where organization_id = $2 and request_id = $3`,
+        [FOREIGN_USER, ORG, requestId],
+      );
+
+      const rounds = await listSubmissionRounds(db!, editorAuth(), { projectId: PROJECT });
+      const serialized = JSON.stringify(rounds);
+      expect(serialized).not.toContain(FOREIGN_USER);
+      expect(serialized).toContain("未知用户");
     });
 
     it("software committer advances software review to software merge", async () => {

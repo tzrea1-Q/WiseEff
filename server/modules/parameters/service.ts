@@ -865,7 +865,10 @@ function reviewDecisionExecutionLabel(
     return "WiseEff Agent";
   }
   if (decision.reviewerUserId) {
-    return userNames.get(decision.reviewerUserId) ?? decision.reviewerUserId;
+    // A name lookup is deliberately organization-scoped.  If a malformed or
+    // cross-organization reviewer reference cannot be resolved, never expose
+    // the raw internal user id through the public workflow projection.
+    return userNames.get(decision.reviewerUserId) ?? "未知用户";
   }
   return "未指派";
 }
@@ -1945,7 +1948,9 @@ export async function listSubmissionRounds(db: Queryable, auth: AuthContext, que
     if (!userId) {
       return "未指派";
     }
-    return userNames.get(userId) ?? userId;
+    // Keep public workflow/history projections free of raw user identifiers
+    // when the organization-scoped display lookup has no match.
+    return userNames.get(userId) ?? "未知用户";
   };
 
   const workflowStateByRequestId = new Map(workflowStates.map((request) => [request.id, request]));

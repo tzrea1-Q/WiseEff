@@ -2338,6 +2338,64 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            )`,
           [expectedLogicalNodeId()]
         );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values ($1, $2, $3, 'path', $4, 'critical', 'parameter:edit-critical', true)`,
+          ["rule-pcw-exact-base-locator", ORG, PROJECT, NODE_LOCATOR]
+        );
+        const capableAuth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
+        const beforeTypedDraft = await db.query<{ drafts: string; candidates: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+             (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates`,
+          [PROJECT]
+        );
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          await expect(
+            createBindingDraftService(
+              db,
+              capableAuth,
+              {
+                projectId: PROJECT,
+                bindingId: seeded.bindingId,
+                baseRevisionId: seeded.configRevisionId,
+                targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "2", value: "2" }]] },
+                reason: "Exact base locator must govern typed binding policy"
+              },
+              { toolchain: passToolchain },
+              {
+                invocation: createAgentInvocation(capableAuth, {
+                  sessionId: "session-pcw-exact-base-locator",
+                  toolCallId: "tool-pcw-exact-base-locator",
+                  approval: { required: true, approvalId: "approval-pcw-exact-base-locator" }
+                }),
+                requestId: "trace-pcw-exact-base-locator",
+                refusalSink
+              }
+            )
+          ).rejects.toMatchObject({
+            code: "FORBIDDEN",
+            status: 403,
+            details: { code: "parameter-sensitive-node-human-required", requireHuman: true }
+          });
+        });
+        const afterTypedDraft = await db.query<{ drafts: string; candidates: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+             (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates`,
+          [PROJECT]
+        );
+        expect(afterTypedDraft.rows).toEqual(beforeTypedDraft.rows);
+        await db.query(`delete from dts_sensitive_node_rules where id = $1`, ["rule-pcw-exact-base-locator"]);
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
         expect(writeLock.baseConfigRevisionId).toBeTruthy();
         expect(writeLock.bindingRevisionId).toBeTruthy();

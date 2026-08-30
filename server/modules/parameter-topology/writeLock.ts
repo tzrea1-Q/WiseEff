@@ -108,6 +108,7 @@ export async function loadBindingContext(
   auth: AuthContext,
   bindingId: string,
   projectId?: string,
+  configRevisionId?: string,
 ): Promise<BindingContextRow> {
   const result = await db.query<BindingContextRow>(
     `
@@ -121,8 +122,18 @@ export async function loadBindingContext(
       (
         select lnr.node_locator
         from dts_logical_node_revisions lnr
+        inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
+        inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+        inner join dts_config_set cs on cs.id = cr.config_set_id
         where lnr.logical_node_id = b.logical_node_id
-        order by lnr.config_revision_id desc
+          and ln.organization_id = b.organization_id
+          and ln.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.project_id = b.project_id
+          and cs.organization_id = b.organization_id
+          and cs.project_id = b.project_id
+          and ($4::text is null or lnr.config_revision_id = $4)
+        order by cr.revision_number desc, lnr.id desc
         limit 1
       ) as node_locator,
       coalesce(dps.constraints, '{}'::jsonb) as constraints,
@@ -156,7 +167,7 @@ export async function loadBindingContext(
       and ($3::text is null or b.project_id = $3)
     limit 1
     `,
-    [bindingId, auth.organization.id, projectId ?? null],
+    [bindingId, auth.organization.id, projectId ?? null, configRevisionId ?? null],
   );
   const row = result.rows[0];
   if (!row) {
@@ -551,13 +562,13 @@ export async function resolveBindingWriteLock(
   auth: AuthContext,
   input: { bindingId: string; baseRevisionId?: string; projectId?: string },
 ): Promise<BindingWriteLockContext> {
-  const binding = await loadBindingContext(db, auth, input.bindingId, input.projectId);
+  const bindingHead = await loadBindingContext(db, auth, input.bindingId, input.projectId);
 
   const baseRevisionId =
     input.baseRevisionId ??
     (await resolveBindingHeadRevisionId(db, {
       organizationId: auth.organization.id,
-      projectId: binding.project_id,
+      projectId: bindingHead.project_id,
       bindingId: input.bindingId,
     }));
   if (!baseRevisionId) {
@@ -569,7 +580,7 @@ export async function resolveBindingWriteLock(
 
   const revision = await getConfigRevisionById(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
+    projectId: bindingHead.project_id,
     revisionId: baseRevisionId,
   });
   if (!revision) {
@@ -580,9 +591,28 @@ export async function resolveBindingWriteLock(
     });
   }
 
+  // Once the caller has supplied (or the server has resolved) the exact base
+  // revision, reload the binding locator from that revision.  The display/head
+  // lookup above is intentionally only for finding the binding's project; it
+  // must never provide a mutable latest locator to sensitive policy.
+  const binding = await loadBindingContext(
+    db,
+    auth,
+    input.bindingId,
+    input.projectId,
+    baseRevisionId,
+  );
+
   if (!binding.logical_node_id) {
     throw new ApiError("CONFLICT", "Binding has no logical node identity for write lock.", {
       reason: "missing-logical-node",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+  if (!binding.node_locator) {
+    throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
+      reason: "missing-logical-node-revision",
       bindingId: input.bindingId,
       baseRevisionId,
     });
