@@ -51,11 +51,14 @@ while any effective-definition check is blocked.
 
 Trusted parameter-execution identity also has a PostgreSQL deletion-retention gate. The
 `0136_parameter_execution_principal_deleted_marker.sql` migration adds only the
-identity-free, server-owned `initiator_principal_deleted` marker to the nine retained
-governance row types (and fixes the same marker to false on binding revisions). A real
+identity-free, server-owned `initiator_principal_deleted` marker to the eight retained
+governance row types (and fixes the same marker to false on binding revisions). The
+transient `parameter_drafts` table remains account-owned `ON DELETE CASCADE` state and
+does not receive this marker. A real
 `deleteUser` operation must leave every retained accountable-user FK and derived `userId`
 NULL while preserving `initiator_type = 'agent'` and non-empty session/tool-call/approval
-correlation; no tombstone, snapshot, hash, or replacement user id may exist. The marker may
+correlation, while deleting the user's unsubmitted drafts; no tombstone, snapshot, hash, or
+replacement user id may exist. The marker may
 be set only by the nested foreign-key `SET NULL` transition and direct insert/update/retype
 attempts must fail with PostgreSQL `23514`. The migration tests run the complete
 User/Agent/System/legacy truth table, reject blank Agent correlation and mixed metadata,

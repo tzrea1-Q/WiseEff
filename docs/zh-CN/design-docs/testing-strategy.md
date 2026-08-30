@@ -73,10 +73,11 @@ npm run build
   binding，校验报告未 ready 时发布门禁必须失败关闭。
 
 可信参数执行身份另有 PostgreSQL 注销保留门禁。迁移
-`0136_parameter_execution_principal_deleted_marker.sql` 只向九类保留治理行加入无身份值、服务端拥有的
-`initiator_principal_deleted` 标记（binding revision 上同样固定为 false）。真实
+`0136_parameter_execution_principal_deleted_marker.sql` 只向八类保留治理行加入无身份值、服务端拥有的
+`initiator_principal_deleted` 标记（binding revision 上同样固定为 false）。瞬态
+`parameter_drafts` 继续属于账号自有的 `ON DELETE CASCADE` 状态，不增加该标记。真实
 `deleteUser` 操作必须让所有保留行的可问责用户外键及派生 `userId` 都是 NULL，同时保留
-`initiator_type = 'agent'` 以及非空 session/tool-call/approval 关联；不得存在 tombstone、snapshot、哈希或替代用户 id。
+`initiator_type = 'agent'` 以及非空 session/tool-call/approval 关联，并删除该用户未提交的 draft；不得存在 tombstone、snapshot、哈希或替代用户 id。
 标记只能由嵌套外键 `SET NULL` 转换设置，直接 insert/update/改写 initiator 必须由 PostgreSQL
 以 `23514` 拒绝。migration 测试覆盖完整 User/Agent/System/legacy 判别联合，拒绝空白 Agent
 关联及混合 metadata，并证明全新数据库升级失败会回滚。领域读取统一使用
