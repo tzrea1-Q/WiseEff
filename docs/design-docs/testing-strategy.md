@@ -49,6 +49,25 @@ evidence, same-key auto-module subject cutover, binding rehome, and curated fail
 review evidence without a recognized binding, and release validation fails closed
 while any effective-definition check is blocked.
 
+Trusted parameter-execution identity also has a PostgreSQL deletion-retention gate. The
+`0136_parameter_execution_principal_deleted_marker.sql` migration adds only the
+identity-free, server-owned `initiator_principal_deleted` marker to the eight retained
+governance row types (and fixes the same marker to false on binding revisions). The
+transient `parameter_drafts` table remains account-owned `ON DELETE CASCADE` state and
+does not receive this marker. A real
+`deleteUser` operation must leave every retained accountable-user FK and derived `userId`
+NULL while preserving `initiator_type = 'agent'` and non-empty session/tool-call/approval
+correlation, while deleting the user's unsubmitted drafts; no tombstone, snapshot, hash, or
+replacement user id may exist. The marker may
+be set only by the nested foreign-key `SET NULL` transition and direct insert/update/retype
+attempts must fail with PostgreSQL `23514`. The migration tests run the complete
+User/Agent/System/legacy truth table, reject blank Agent correlation and mixed metadata,
+and prove fresh-database upgrade rollback. Domain readers use
+`trustedDomainAttributionFromRow`, which never restores a deleted principal id; public DTOs
+and notifications remain coarse display projections and do not expose the marker or
+internal correlation. The account-deletion contract in `docs/exec-plans/active/2026-08-28-user-account-deletion.md`
+remains authoritative.
+
 ## Browser Acceptance
 
 Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.

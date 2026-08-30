@@ -5,12 +5,79 @@
  */
 
 import type { Queryable } from "../../shared/database/client";
+import {
+  trustedDomainAttributionFromRow,
+  type TrustedInvocationDomainAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction, ParameterDraftDto } from "./types";
 import { upsertSemanticDraft } from "./semanticDraftUpsert";
 // Identity mode lives in the parameter kernel (ADR-0029); this is the
 // module's only import outside shared/.
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
+import { ApiError } from "../../shared/http/errors";
+
+/**
+ * Stable owner key for a draft working tip.  The principal user identifies
+ * who is accountable for User/Agent executions; initiator type and explicit
+ * System identity keep those executions from sharing a user-owned draft.
+ */
+export type ParameterDraftOwner = Pick<
+  TrustedInvocationDomainAttribution,
+  "userId" | "initiatorType" | "systemKind" | "systemName"
+>;
+
+type DraftOwnerInput = { owner: ParameterDraftOwner } | { userId: string };
+
+function normalizeDraftOwner(input: DraftOwnerInput): ParameterDraftOwner {
+  if ("owner" in input) return input.owner;
+  return {
+    userId: input.userId,
+    initiatorType: "user",
+    systemKind: null,
+    systemName: null,
+  };
+}
+
+function draftOwnerWhere(
+  alias: string,
+  firstPlaceholder: number,
+  options: { allowAgentLegacyUserOwner?: boolean; allowAnyOwnerById?: boolean; draftIdPlaceholder?: number } = {},
+) {
+  const exact = [
+    `${alias}.initiator_type = $${firstPlaceholder}`,
+    `${alias}.user_id is not distinct from $${firstPlaceholder + 1}`,
+    `${alias}.initiator_system_kind is not distinct from $${firstPlaceholder + 2}`,
+    `${alias}.initiator_system_name is not distinct from $${firstPlaceholder + 3}`,
+  ].join("\n        and ");
+  const compatibility: string[] = [];
+  if (options.allowAgentLegacyUserOwner) {
+    // A pre-existing user draft may be explicitly handed to an Agent whose
+    // validated principal is that same user.  Keep newly-created drafts
+    // initiator-separated; this compatibility read preserves the old typed
+    // action flow without allowing a different principal to borrow it.
+    compatibility.push(`(${alias}.initiator_type = 'user'
+        and ${alias}.user_id is not distinct from $${firstPlaceholder + 1}
+        and ${alias}.initiator_system_kind is null
+        and ${alias}.initiator_system_name is null)`);
+  }
+  if (options.allowAnyOwnerById && options.draftIdPlaceholder) {
+    // System may inspect an explicitly named legacy draft long enough for the
+    // sensitive guard to produce its truthful refusal.  The service rejects
+    // the owner mismatch after preflight, so this never authorizes a write.
+    compatibility.push(`${alias}.id = $${options.draftIdPlaceholder}`);
+  }
+  if (compatibility.length === 0) return [exact];
+
+  return [
+    `(${exact}\n        or ${compatibility.join("\n        or ")})`,
+  ];
+}
+
+function draftOwnerValues(owner: ParameterDraftOwner): unknown[] {
+  return [owner.initiatorType, owner.userId, owner.systemKind, owner.systemName];
+}
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;
@@ -46,9 +113,9 @@ export async function getDraftWriteLock(
     organizationId: string;
     projectId: string;
     bindingId: string;
-    userId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<BindingWriteLockFields | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<ParameterWriteLockRow>(
     `
     select
@@ -62,10 +129,10 @@ export async function getDraftWriteLock(
     where organization_id = $1
       and project_id = $2
       and project_parameter_binding_id = $3
-      and user_id = $4
+      and ${draftOwnerWhere("parameter_drafts", 4).join("\n      and ")}
     limit 1
     `,
-    [input.organizationId, input.projectId, input.bindingId, input.userId]
+    [input.organizationId, input.projectId, input.bindingId, ...draftOwnerValues(owner)]
   );
   const row = result.rows[0];
   return row ? toWriteLockFields(row) : null;
@@ -88,6 +155,11 @@ export type BindingDraftForSubmission = {
   reason: string;
   writeLock: BindingWriteLockFields | null;
   writeLockMatchesBinding: boolean;
+  draftOwnerUserId: string | null;
+  draftOwnerInitiatorType: "user" | "agent" | "system" | "legacy";
+  draftOwnerSystemKind: "service" | "job" | null;
+  draftOwnerSystemName: string | null;
+  ownerMatches: boolean;
 };
 
 export async function getBindingDraftForSubmission(
@@ -95,10 +167,10 @@ export async function getBindingDraftForSubmission(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     draftId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<BindingDraftForSubmission | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<
     ParameterWriteLockRow & {
       id: string;
@@ -113,6 +185,10 @@ export async function getBindingDraftForSubmission(
       candidate_delete_tombstone: boolean;
       candidate_action_proven: boolean;
       write_lock_matches_binding: boolean;
+      draft_owner_user_id: string | null;
+      draft_owner_initiator_type: "user" | "agent" | "system" | "legacy";
+      draft_owner_system_kind: "service" | "job" | null;
+      draft_owner_system_name: string | null;
       target_value: string;
       action: ParameterChangeAction;
       reason: string;
@@ -128,8 +204,12 @@ export async function getBindingDraftForSubmission(
        and b.project_id = d.project_id
       where d.organization_id = $1
         and d.project_id = $2
-        and d.user_id = $3
-        and d.id = $4
+        and ${draftOwnerWhere("d", 3, {
+          allowAgentLegacyUserOwner: owner.initiatorType === "agent",
+          allowAnyOwnerById: owner.initiatorType === "system",
+          draftIdPlaceholder: 7,
+        }).join("\n        and ")}
+        and d.id = $7
       limit 1
       for update of d
     ),
@@ -214,6 +294,10 @@ export async function getBindingDraftForSubmission(
       d.target_value,
       d.action,
       d.reason,
+      d.user_id as draft_owner_user_id,
+      d.initiator_type as draft_owner_initiator_type,
+      d.initiator_system_kind as draft_owner_system_kind,
+      d.initiator_system_name as draft_owner_system_name,
       d.base_config_revision_id,
       d.binding_revision_id,
       d.property_occurrence_id,
@@ -223,7 +307,7 @@ export async function getBindingDraftForSubmission(
     from locked_draft d
     left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
     `,
-    [input.organizationId, input.projectId, input.userId, input.draftId]
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner), input.draftId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -243,7 +327,16 @@ export async function getBindingDraftForSubmission(
     action: row.action,
     reason: row.reason,
     writeLock: toWriteLockFields(row),
-    writeLockMatchesBinding: row.write_lock_matches_binding
+    writeLockMatchesBinding: row.write_lock_matches_binding,
+    draftOwnerUserId: row.draft_owner_user_id,
+    draftOwnerInitiatorType: row.draft_owner_initiator_type,
+    draftOwnerSystemKind: row.draft_owner_system_kind,
+    draftOwnerSystemName: row.draft_owner_system_name,
+    ownerMatches:
+      row.draft_owner_user_id === owner.userId &&
+      row.draft_owner_initiator_type === owner.initiatorType &&
+      row.draft_owner_system_kind === owner.systemKind &&
+      row.draft_owner_system_name === owner.systemName
   };
 }
 
@@ -277,6 +370,11 @@ export type EnablementDraftForSubmission = {
   reason: string;
   writeLock: EnablementWriteLockFields | null;
   writeLockMatchesRevision: boolean;
+  draftOwnerUserId: string | null;
+  draftOwnerInitiatorType: "user" | "agent" | "system" | "legacy";
+  draftOwnerSystemKind: "service" | "job" | null;
+  draftOwnerSystemName: string | null;
+  ownerMatches: boolean;
 };
 
 /**
@@ -289,10 +387,10 @@ export async function getEnablementDraftForSubmission(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     draftId: string;
-  }
+  } & DraftOwnerInput
 ): Promise<EnablementDraftForSubmission | null> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<
     ParameterWriteLockRow & {
       id: string;
@@ -305,6 +403,10 @@ export async function getEnablementDraftForSubmission(
       candidate_delete_tombstone: boolean;
       candidate_action_proven: boolean;
       write_lock_matches_revision: boolean;
+      draft_owner_user_id: string | null;
+      draft_owner_initiator_type: "user" | "agent" | "system" | "legacy";
+      draft_owner_system_kind: "service" | "job" | null;
+      draft_owner_system_name: string | null;
       target_value: string;
       action: ParameterChangeAction;
       reason: string;
@@ -325,8 +427,12 @@ export async function getEnablementDraftForSubmission(
        and base_lnr.config_revision_id = d.base_config_revision_id
       where d.organization_id = $1
         and d.project_id = $2
-        and d.user_id = $3
-        and d.id = $4
+        and ${draftOwnerWhere("d", 3, {
+          allowAgentLegacyUserOwner: owner.initiatorType === "agent",
+          allowAnyOwnerById: owner.initiatorType === "system",
+          draftIdPlaceholder: 7,
+        }).join("\n        and ")}
+        and d.id = $7
         and d.edit_subject_kind = 'node-enablement'
       limit 1
       for update of d
@@ -410,6 +516,10 @@ export async function getEnablementDraftForSubmission(
       d.target_value,
       d.action,
       d.reason,
+      d.user_id as draft_owner_user_id,
+      d.initiator_type as draft_owner_initiator_type,
+      d.initiator_system_kind as draft_owner_system_kind,
+      d.initiator_system_name as draft_owner_system_name,
       d.base_config_revision_id,
       d.binding_revision_id,
       d.property_occurrence_id,
@@ -419,7 +529,7 @@ export async function getEnablementDraftForSubmission(
     from locked_draft d
     left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
     `,
-    [input.organizationId, input.projectId, input.userId, input.draftId]
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner), input.draftId]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -437,7 +547,16 @@ export async function getEnablementDraftForSubmission(
     action: row.action,
     reason: row.reason,
     writeLock: toEnablementWriteLockFields(row),
-    writeLockMatchesRevision: row.write_lock_matches_revision
+    writeLockMatchesRevision: row.write_lock_matches_revision,
+    draftOwnerUserId: row.draft_owner_user_id,
+    draftOwnerInitiatorType: row.draft_owner_initiator_type,
+    draftOwnerSystemKind: row.draft_owner_system_kind,
+    draftOwnerSystemName: row.draft_owner_system_name,
+    ownerMatches:
+      row.draft_owner_user_id === owner.userId &&
+      row.draft_owner_initiator_type === owner.initiatorType &&
+      row.draft_owner_system_kind === owner.systemKind &&
+      row.draft_owner_system_name === owner.systemName
   };
 }
 
@@ -525,11 +644,11 @@ export async function getChangeRequestEnablementWriteLock(
   return row ? toEnablementWriteLockFields(row) : null;
 }
 
-type DraftRow = {
+type DraftRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   project_id: string;
-  project_parameter_value_id: string;
-  user_id?: string;
+  project_parameter_value_id: string | null;
+  user_id?: string | null;
   target_value: string;
   action?: ParameterChangeAction;
   reason: string;
@@ -537,6 +656,8 @@ type DraftRow = {
   origin_file_version_id?: string | null;
   updated_at: string | Date;
   project_parameter_binding_id?: string | null;
+  edit_subject_kind?: "binding" | "node-enablement" | null;
+  logical_node_id?: string | null;
   candidate_config_revision_id?: string | null;
   parameter_spec_id?: string | null;
   base_raw_value?: string | null;
@@ -546,7 +667,8 @@ type DraftRow = {
 
 export type ParameterDraftWithOrigin = {
   id: string;
-  userId: string;
+  /** Accountable user principal; System drafts deliberately have no user. */
+  userId: string | null;
   projectId: string;
   projectParameterValueId: string;
   targetValue: string;
@@ -554,12 +676,23 @@ export type ParameterDraftWithOrigin = {
   origin: "manual" | "file_sync";
   originFileVersionId?: string;
   updatedAt: string;
+  initiatorType?: "user" | "agent" | "system" | "legacy";
+  initiatorSystemKind?: "service" | "job";
+  initiatorSystemName?: string;
+  initiatorSessionId?: string;
+  initiatorToolCallId?: string;
+  initiatorApprovalId?: string;
 };
 
 function toDraftDto(row: DraftRow): ParameterDraftDto {
   const bindingId = row.project_parameter_binding_id ?? undefined;
   // Post-cutover: parameterId DTO field carries the semantic binding id.
-  const parameterId = bindingId ?? row.project_parameter_value_id;
+  const parameterId = bindingId || row.project_parameter_value_id?.trim() || row.logical_node_id;
+  if (!parameterId) {
+    throw new ApiError("CONFLICT", "Parameter draft has no persisted parameter identity.", {
+      draftId: row.id,
+    });
+  }
   const currentValue = row.base_raw_value ?? undefined;
   const name = row.property_name?.trim() || undefined;
   const module = row.driver_module?.trim() || undefined;
@@ -573,35 +706,56 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     action: row.action ?? "set",
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at),
+    ...(row.edit_subject_kind && row.edit_subject_kind !== "binding"
+      ? { editSubjectKind: row.edit_subject_kind }
+      : {}),
+    ...(row.logical_node_id ? { logicalNodeId: row.logical_node_id } : {}),
     ...(bindingId ? { projectParameterBindingId: bindingId } : {}),
     ...(candidateConfigRevisionId ? { candidateConfigRevisionId } : {}),
     ...(parameterSpecId ? { parameterSpecId } : {}),
     ...(name ? { name } : {}),
     ...(module ? { module } : {}),
-    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {})
+    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {}),
   };
 }
 
 function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
+  if (!row.project_parameter_value_id) {
+    throw new ApiError("CONFLICT", "Parameter draft has no persisted parameter identity.", {
+      draftId: row.id,
+    });
+  }
+  const attribution = trustedDomainAttributionFromRow(row, row.user_id);
   return {
     id: row.id,
-    userId: row.user_id ?? "",
+    userId: attribution.userId,
     projectId: row.project_id,
     projectParameterValueId: row.project_parameter_value_id,
     targetValue: row.target_value,
     action: row.action ?? "set",
     origin: row.origin ?? "manual",
     originFileVersionId: row.origin_file_version_id ?? undefined,
-    updatedAt: dateTimeToIso(row.updated_at)
+    updatedAt: dateTimeToIso(row.updated_at),
+    ...((attribution.initiatorType === "agent" || attribution.initiatorType === "system")
+      ? {
+          initiatorType: attribution.initiatorType,
+          initiatorSystemKind: attribution.systemKind ?? undefined,
+          initiatorSystemName: attribution.systemName ?? undefined,
+          initiatorSessionId: attribution.sessionId ?? undefined,
+          initiatorToolCallId: attribution.toolCallId ?? undefined,
+          initiatorApprovalId: attribution.approvalId ?? undefined,
+        }
+      : {})
   };
 }
 
 export async function listDraftsForUser(
   db: Queryable,
-  query: { organizationId: string; userId: string; projectId?: string }
+  query: { organizationId: string; projectId?: string } & DraftOwnerInput
 ) {
-  const values: unknown[] = [query.organizationId, query.userId];
-  const where = ["d.organization_id = $1", "d.user_id = $2"];
+  const owner = normalizeDraftOwner(query);
+  const values: unknown[] = [query.organizationId, ...draftOwnerValues(owner)];
+  const where = ["d.organization_id = $1", ...draftOwnerWhere("d", 2)];
 
   if (query.projectId) {
     addCondition(where, values, (placeholder) => `d.project_id = ${placeholder}`, query.projectId);
@@ -614,13 +768,23 @@ export async function listDraftsForUser(
     select
       d.id,
       d.project_id,
+      d.user_id,
       coalesce(d.project_parameter_binding_id, '') as project_parameter_value_id,
       d.target_value,
       d.action,
       d.reason,
       d.updated_at,
       d.project_parameter_binding_id,
+      d.edit_subject_kind,
+      d.logical_node_id,
       d.candidate_config_revision_id,
+      d.initiator_type,
+      false as initiator_principal_deleted,
+      d.initiator_system_kind,
+      d.initiator_system_name,
+      d.initiator_session_id,
+      d.initiator_tool_call_id,
+      d.initiator_approval_id,
       b.parameter_spec_id,
       locked_bpr.raw_value as base_raw_value,
       coalesce(
@@ -647,13 +811,23 @@ export async function listDraftsForUser(
     select
       d.id,
       d.project_id,
+      d.user_id,
       d.project_parameter_value_id,
       d.target_value,
       d.action,
       d.reason,
       d.updated_at,
       d.project_parameter_binding_id,
+      d.edit_subject_kind,
+      d.logical_node_id,
       d.candidate_config_revision_id,
+      d.initiator_type,
+      false as initiator_principal_deleted,
+      d.initiator_system_kind,
+      d.initiator_system_name,
+      d.initiator_session_id,
+      d.initiator_tool_call_id,
+      d.initiator_approval_id,
       coalesce(b.parameter_spec_id, null) as parameter_spec_id,
       coalesce(locked_bpr.raw_value, ppv.current_value) as base_raw_value,
       coalesce(
@@ -709,13 +883,23 @@ export async function listDraftsForParameterValue(
       origin,
       origin_file_version_id,
       updated_at,
+      initiator_type,
+      false as initiator_principal_deleted,
+      initiator_system_kind,
+      initiator_system_name,
+      initiator_session_id,
+      initiator_tool_call_id,
+      initiator_approval_id,
       project_parameter_binding_id
     from parameter_drafts
     where project_parameter_binding_id = $1
     order by updated_at desc, id asc
     `
       : `
-    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at, project_parameter_binding_id
+    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at,
+           project_parameter_binding_id, initiator_type, false as initiator_principal_deleted,
+           initiator_system_kind, initiator_system_name,
+           initiator_session_id, initiator_tool_call_id, initiator_approval_id
     from parameter_drafts
     where project_parameter_value_id = $1
     order by updated_at desc, id asc
@@ -728,7 +912,7 @@ export async function listDraftsForParameterValue(
 
 export async function listOpenBindingDraftsForUser(
   db: Queryable,
-  input: { organizationId: string; projectId: string; userId: string },
+  input: { organizationId: string; projectId: string } & DraftOwnerInput,
 ): Promise<
   Array<{
     id: string;
@@ -739,6 +923,7 @@ export async function listOpenBindingDraftsForUser(
     updatedAt: string;
   }>
 > {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<{
     id: string;
     candidate_config_revision_id: string | null;
@@ -753,10 +938,10 @@ export async function listOpenBindingDraftsForUser(
     from parameter_drafts
     where organization_id = $1
       and project_id = $2
-      and user_id = $3
+      and ${draftOwnerWhere("parameter_drafts", 3).join("\n      and ")}
     order by updated_at desc, id asc
     `,
-    [input.organizationId, input.projectId, input.userId],
+    [input.organizationId, input.projectId, ...draftOwnerValues(owner)],
   );
   return result.rows.map((row) => ({
     id: row.id,
@@ -774,27 +959,27 @@ export async function rebaseOpenBindingDraftCandidates(
   input: {
     organizationId: string;
     projectId: string;
-    userId: string;
     candidateConfigRevisionId: string;
     excludeDraftId?: string;
-  },
+  } & DraftOwnerInput,
 ): Promise<string[]> {
+  const owner = normalizeDraftOwner(input);
   const result = await db.query<{ id: string }>(
     `
     update parameter_drafts
-    set candidate_config_revision_id = $4,
+    set candidate_config_revision_id = $7,
         updated_at = now()
     where organization_id = $1
       and project_id = $2
-      and user_id = $3
-      and candidate_config_revision_id is distinct from $4
-      and ($5::text is null or id <> $5)
+      and ${draftOwnerWhere("parameter_drafts", 3).join("\n      and ")}
+      and candidate_config_revision_id is distinct from $7
+      and ($8::text is null or id <> $8)
     returning id
     `,
     [
       input.organizationId,
       input.projectId,
-      input.userId,
+      ...draftOwnerValues(owner),
       input.candidateConfigRevisionId,
       input.excludeDraftId ?? null,
     ],
@@ -803,7 +988,7 @@ export async function rebaseOpenBindingDraftCandidates(
 }
 
 /**
- * Upsert an open node-enablement draft for (project, logical node, user).
+ * Upsert an open node-enablement draft for (project, logical node, trusted owner).
  * Uses select-then-update/insert so binding drafts' partial unique index is untouched.
  */
 export async function upsertEnablementDraft(
@@ -813,7 +998,8 @@ export async function upsertEnablementDraft(
     organizationId: string;
     projectId: string;
     logicalNodeId: string;
-    userId: string;
+    userId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     targetValue: string;
     action?: ParameterChangeAction;
     reason: string;
@@ -829,17 +1015,27 @@ export async function upsertEnablementDraft(
     candidateConfigRevisionId?: string;
   },
 ): Promise<{ id: string; projectId: string; targetValue: string; action: ParameterChangeAction; reason: string; updatedAt: string }> {
+  const attribution = input.attribution;
+  const userId = attribution ? attribution.userId : input.userId;
+  const initiatorType = attribution?.initiatorType ?? "user";
+  const systemKind = attribution?.systemKind ?? null;
+  const systemName = attribution?.systemName ?? null;
   const existing = await db.query<{ id: string }>(
     `
     select id
     from parameter_drafts
-    where project_id = $1
-      and user_id = $2
-      and logical_node_id = $3
+    where organization_id = $1
+      and project_id = $2
+      and user_id is not distinct from $3
+      and logical_node_id = $4
       and edit_subject_kind = 'node-enablement'
+      and initiator_type = $5
+      and initiator_system_kind is not distinct from $6
+      and initiator_system_name is not distinct from $7
     limit 1
+    for update
     `,
-    [input.projectId, input.userId, input.logicalNodeId],
+    [input.organizationId, input.projectId, userId, input.logicalNodeId, initiatorType, systemKind, systemName],
   );
 
   const draftId = existing.rows[0]?.id ?? input.id;
@@ -871,6 +1067,13 @@ export async function upsertEnablementDraft(
           expected_checksum = coalesce($10, expected_checksum),
           occurrence_span = coalesce($11::jsonb, occurrence_span),
           candidate_config_revision_id = coalesce($12, candidate_config_revision_id),
+          user_id = $13,
+          initiator_type = $14,
+          initiator_system_kind = $15,
+          initiator_system_name = $16,
+          initiator_session_id = $17,
+          initiator_tool_call_id = $18,
+          initiator_approval_id = $19,
           updated_at = now()
       where id = $1
       returning id, project_id, target_value, action, reason, updated_at
@@ -888,6 +1091,13 @@ export async function upsertEnablementDraft(
         input.writeLock?.expectedChecksum ?? null,
         occurrenceSpanJson,
         input.candidateConfigRevisionId ?? null,
+        userId,
+        initiatorType,
+        systemKind,
+        systemName,
+        attribution?.sessionId ?? null,
+        attribution?.toolCallId ?? null,
+        attribution?.approvalId ?? null,
       ],
     );
     const row = updated.rows[0]!;
@@ -916,11 +1126,14 @@ export async function upsertEnablementDraft(
       action, edit_subject_kind, logical_node_id, project_parameter_binding_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
       source_file_version_id, expected_checksum, occurrence_span,
-      candidate_config_revision_id
+      candidate_config_revision_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, 'node-enablement', $10, null,
-      $11, null, $12, $13, $14, $15::jsonb, $16
+      $11, null, $12, $13, $14, $15::jsonb, $16,
+      $17, $18, $19, $20, $21, $22
     )
     returning id, project_id, target_value, action, reason, updated_at
     `,
@@ -928,7 +1141,7 @@ export async function upsertEnablementDraft(
       draftId,
       input.organizationId,
       input.projectId,
-      input.userId,
+      userId,
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
@@ -941,6 +1154,12 @@ export async function upsertEnablementDraft(
       input.writeLock?.expectedChecksum ?? null,
       occurrenceSpanJson,
       input.candidateConfigRevisionId ?? null,
+      initiatorType,
+      systemKind,
+      systemName,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null,
     ],
   );
   const row = inserted.rows[0]!;
@@ -961,7 +1180,8 @@ export async function upsertDraft(
     organizationId: string;
     projectId: string;
     parameterId: string;
-    userId: string;
+    userId: string | null;
+    attribution?: TrustedInvocationDomainAttribution;
     targetValue: string;
     action?: ParameterChangeAction;
     reason: string;
@@ -974,6 +1194,7 @@ export async function upsertDraft(
     candidateConfigRevisionId?: string;
   }
 ) {
+  const attribution = input.attribution;
   if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const row = await upsertSemanticDraft(db, {
@@ -981,7 +1202,7 @@ export async function upsertDraft(
       organizationId: input.organizationId,
       projectId: input.projectId,
       bindingId,
-      userId: input.userId,
+      userId: attribution ? attribution.userId : input.userId,
       targetValue: input.targetValue,
       action: input.action,
       reason: input.reason,
@@ -994,6 +1215,7 @@ export async function upsertDraft(
       expectedChecksum: input.writeLock?.expectedChecksum,
       occurrenceSpan: input.writeLock?.occurrenceSpan,
       candidateConfigRevisionId: input.candidateConfigRevisionId,
+      attribution,
     });
     void input.parameterSpecId;
     if (!row) {
@@ -1007,7 +1229,13 @@ export async function upsertDraft(
       action: row.action,
       reason: row.reason,
       updated_at: row.updated_at,
-      project_parameter_binding_id: row.project_parameter_binding_id
+      project_parameter_binding_id: row.project_parameter_binding_id,
+      initiator_type: attribution?.initiatorType ?? "user",
+      initiator_system_kind: attribution?.systemKind ?? null,
+      initiator_system_name: attribution?.systemName ?? null,
+      initiator_session_id: attribution?.sessionId ?? null,
+      initiator_tool_call_id: attribution?.toolCallId ?? null,
+      initiator_approval_id: attribution?.approvalId ?? null
     });
   }
 
@@ -1018,11 +1246,13 @@ export async function upsertDraft(
       target_value, reason, origin, origin_file_version_id,
       action, project_parameter_binding_id, candidate_config_revision_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
-      source_file_version_id, expected_checksum, occurrence_span
+      source_file_version_id, expected_checksum, occurrence_span,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-      $13, $14, $15, $16, $17, $18::jsonb
+      $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, $24
     )
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
@@ -1063,6 +1293,12 @@ export async function upsertDraft(
         excluded.occurrence_span,
         parameter_drafts.occurrence_span
       ),
+      initiator_type = excluded.initiator_type,
+      initiator_system_kind = excluded.initiator_system_kind,
+      initiator_system_name = excluded.initiator_system_name,
+      initiator_session_id = excluded.initiator_session_id,
+      initiator_tool_call_id = excluded.initiator_tool_call_id,
+      initiator_approval_id = excluded.initiator_approval_id,
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, action, reason, updated_at
     `,
@@ -1071,7 +1307,7 @@ export async function upsertDraft(
       input.organizationId,
       input.projectId,
       input.parameterId,
-      input.userId,
+      attribution ? attribution.userId : input.userId,
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
@@ -1084,7 +1320,13 @@ export async function upsertDraft(
       input.writeLock?.propertyOccurrenceId ?? null,
       input.writeLock?.sourceFileVersionId ?? null,
       input.writeLock?.expectedChecksum ?? null,
-      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
+      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
+      attribution?.initiatorType ?? "user",
+      attribution?.systemKind ?? null,
+      attribution?.systemName ?? null,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null
     ]
   );
 
@@ -1121,45 +1363,50 @@ export async function upsertFileSyncDraft(
 
 export async function deleteDraft(
   db: Queryable,
-  input: { organizationId: string; userId: string; draftId: string }
+  input: { organizationId: string; draftId: string } & DraftOwnerInput
 ) {
+  const owner = normalizeDraftOwner(input);
+  const legacyUserOwner = !("owner" in input);
   await db.query(
     `
     delete from parameter_drafts
     where organization_id = $1
-      and user_id = $2
-      and id = $3
+      and ${draftOwnerWhere("parameter_drafts", 2, {
+        allowAgentLegacyUserOwner: legacyUserOwner,
+      }).join("\n      and ")}
+      and id = $6
     `,
-    [input.organizationId, input.userId, input.draftId]
+    [input.organizationId, ...draftOwnerValues(owner), input.draftId]
   );
 }
 
 export async function deleteDraftForParameter(
   db: Queryable,
-  input: { organizationId: string; userId: string; projectId: string; parameterId: string }
+  input: { organizationId: string; projectId: string; parameterId: string } & DraftOwnerInput
 ) {
+  const owner = normalizeDraftOwner(input);
   if (parameterIdentityMode() === "semantic") {
     await db.query(
       `
       delete from parameter_drafts
       where organization_id = $1
-        and user_id = $2
-        and project_id = $3
-        and project_parameter_binding_id = $4
+        and ${draftOwnerWhere("parameter_drafts", 2).join("\n        and ")}
+        and project_id = $6
+        and project_parameter_binding_id = $7
       `,
-      [input.organizationId, input.userId, input.projectId, input.parameterId]
+      [input.organizationId, ...draftOwnerValues(owner), input.projectId, input.parameterId]
     );
     return;
   }
 
   await db.query(
     `
-    delete from parameter_drafts
-    where organization_id = $1
-      and user_id = $2
-      and project_id = $3
-      and project_parameter_value_id = $4
-    `,
-    [input.organizationId, input.userId, input.projectId, input.parameterId]
+      delete from parameter_drafts
+      where organization_id = $1
+        and ${draftOwnerWhere("parameter_drafts", 2).join("\n        and ")}
+        and project_id = $6
+        and project_parameter_value_id = $7
+      `,
+    [input.organizationId, ...draftOwnerValues(owner), input.projectId, input.parameterId]
   );
 }

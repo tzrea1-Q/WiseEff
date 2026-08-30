@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
-import type { Queryable } from "../../shared/database/client";
+import { createUserInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createPostgresDatabase, type Queryable } from "../../shared/database/client";
+import { withTempDatabase } from "../../testing/tempDatabase";
 import { ApiError } from "../../shared/http/errors";
-import { assertSensitiveNodeWriteAllowed, matchSensitiveRules, type SensitiveNodeRule } from "./sensitiveNode";
+import {
+  assertSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteAllowed,
+  matchSensitiveRules,
+  resolveDtsNodeCompatible,
+  type SensitiveNodeRule
+} from "./sensitiveNode";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn().mockResolvedValue(undefined)
@@ -11,7 +20,6 @@ vi.mock("../audit/repository", () => ({
 import { createAuditEvent } from "../audit/repository";
 
 const mockedCreateAuditEvent = vi.mocked(createAuditEvent);
-
 function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
     user: {
@@ -55,6 +63,32 @@ describe("matchSensitiveRules", () => {
       requiredCapability: "parameter:edit-critical",
       matchType: "path"
     });
+  });
+
+  it("does not inherit a parent path rule for a complete node locator", () => {
+    const matched = matchSensitiveRules(
+      [rule({ pattern: "soc/safety@100", riskTier: "critical" })],
+      {
+        nodePath: "soc/safety@100/status",
+        projectId: "project-1",
+        sourcePathKind: "node-locator"
+      }
+    );
+
+    expect(matched).toBeNull();
+  });
+
+  it("allows an explicit property path to match its owning node", () => {
+    const matched = matchSensitiveRules(
+      [rule({ pattern: "soc/safety@*", riskTier: "critical" })],
+      {
+        nodePath: "soc/safety@100/status",
+        projectId: "project-1",
+        sourcePathKind: "property-path"
+      }
+    );
+
+    expect(matched?.riskTier).toBe("critical");
   });
 
   it("matches compatible patterns", () => {
@@ -288,5 +322,257 @@ describe("assertSensitiveNodeWriteAllowed", () => {
       expect.stringMatching(/dts_nodes/),
       expect.arrayContaining(["project-1", "board.dts"])
     );
+  });
+});
+
+describe("assertTrustedSensitiveNodeWriteAllowed", () => {
+  it("resolves compatible only from the exact server-owned file version when provided", async () => {
+    let call = 0;
+    const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
+      call += 1;
+      expect(text).not.toContain("f.current_version_id");
+      expect(text).toContain("f.organization_id = $1");
+      expect(text).toContain("v.id = $4");
+      if (call === 1) {
+        expect(text).not.toContain("dts_nodes n");
+        expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
+      }
+      expect(text).toContain("n.node_path = $5");
+      expect(text).not.toContain("or n.node_path");
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", "amba/wdt@0"]);
+      return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
+    });
+
+    await expect(resolveDtsNodeCompatible({ query }, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
+    })).resolves.toBe("vendor,locked-critical");
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when the exact file version has no matching file and node identity", async () => {
+    const db: Queryable = {
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 }))
+    };
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-substituted",
+      sourcePath: { kind: "property-path", value: "/amba/wdt@0/status" }
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ code: "parameter-sensitive-source-version-mismatch" })
+    });
+  });
+
+  it("fails closed when an exact node locator is absent instead of inheriting its parent", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async () => {
+        call += 1;
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0/missing" }
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ code: "parameter-sensitive-node-identity-mismatch" })
+    });
+    expect(call).toBe(2);
+  });
+
+  it("preserves a persisted exact node with compatible NULL as a no-compatible result", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async () => {
+        call += 1;
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
+          : { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
+    })).resolves.toBeNull();
+    expect(call).toBe(2);
+  });
+
+  it("ignores a caller compatible value when an exact source version is supplied", async () => {
+    let call = 0;
+    const db: Queryable = {
+      query: vi.fn(async (text: string) => {
+        call += 1;
+        expect(text).not.toContain("f.current_version_id");
+        return call === 1
+          ? { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 }
+          : { rows: [{ node_id: "node-1", compatible: "vendor,locked" }], rowCount: 1 };
+      })
+    };
+
+    await expect(resolveDtsNodeCompatible(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "node-locator", value: "amba/wdt@0" }
+    })).resolves.toBe("vendor,locked");
+    expect(call).toBe(2);
+  });
+
+  it("does not fall back to the mutable current version for a trusted file write", async () => {
+    await withTempDatabase({ prefix: "senswriteexact" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+        const db: Queryable = { query };
+        const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+        const refusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+
+        await expect(assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+          organizationId: "org-1",
+          projectId: "project-1",
+          nodePath: "amba/wdt@0/status",
+          sourceFileName: "board.dts",
+          invocation: createUserInvocation(principal),
+          requestId: "trusted-write-missing-version",
+          refusalSink,
+        })).rejects.toMatchObject({
+          name: "ApiError",
+          code: "CONFLICT",
+          details: { code: "parameter-sensitive-source-version-mismatch" },
+        });
+        expect(query).not.toHaveBeenCalled();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
+  });
+
+  it("rejects a caller-supplied compatible without an exact server-owned source", async () => {
+    await withTempDatabase({ prefix: "senswritecompatible" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+        const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+        const refusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+
+        await expect(assertTrustedSensitiveNodeWriteAllowed({ query }, principal, {
+          organizationId: "org-1",
+          projectId: "project-1",
+          nodePath: "amba/wdt@0",
+          compatible: "vendor,client-supplied",
+          invocation: createUserInvocation(principal),
+          requestId: "trusted-write-client-compatible",
+          refusalSink,
+        })).rejects.toMatchObject({
+          name: "ApiError",
+          code: "CONFLICT",
+          details: { code: "parameter-sensitive-source-version-mismatch" },
+        });
+        expect(query).not.toHaveBeenCalled();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
+  });
+
+  it("allows a capable direct User invocation through the shared trusted write guard", async () => {
+    await withTempDatabase({ prefix: "senswriteunit" }, async ({ connectionString }) => {
+      const trustedRefusalRoot = createPostgresDatabase(connectionString);
+      let primaryError: unknown;
+      try {
+        const trustedRefusalSink = createTrustedRefusalAuditSink(trustedRefusalRoot);
+        const principal = auth({
+          permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"]
+        });
+        const db: Queryable = {
+          query: vi.fn(async () => ({
+            rows: [
+              {
+                id: "rule-1",
+                organization_id: "org-1",
+                project_id: null,
+                match_type: "path",
+                pattern: "safety/*",
+                risk_tier: "critical",
+                required_capability: "parameter:edit-critical",
+                enabled: true
+              }
+            ],
+            rowCount: 1
+          }))
+        };
+
+        await expect(
+          assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+            organizationId: "org-1",
+            projectId: "project-1",
+            nodePath: "safety/cutover/status",
+            invocation: createUserInvocation(principal),
+            requestId: "request-trusted-write-user",
+            refusalSink: trustedRefusalSink
+          })
+        ).resolves.toBeUndefined();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        try {
+          await trustedRefusalRoot.close();
+        } catch (cleanupError) {
+          if (primaryError === undefined) throw cleanupError;
+        }
+      }
+    });
+  });
+
+  it("rejects a mismatched organization scope before sensitive rule lookup", async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+    const db: Queryable = { query };
+    const principal = auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] });
+
+    await expect(assertTrustedSensitiveNodeWriteAllowed(db, principal, {
+      organizationId: "other-org",
+      projectId: "project-1",
+      nodePath: "amba/wdt@0/status",
+      invocation: createUserInvocation(principal),
+      requestId: "request-cross-org",
+      refusalSink: { write: vi.fn() } as never
+    })).rejects.toMatchObject({ name: "TrustedInvocationContextError" });
+    expect(query).not.toHaveBeenCalled();
   });
 });

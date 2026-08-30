@@ -6,6 +6,10 @@ import {
   createAgentInvocation,
   createSystemInvocation,
   createUserInvocation,
+  trustedAccountableUser,
+  trustedDomainAttributionFromRow,
+  trustedPublicExecutionLabel,
+  assertTrustedMutationInvocation,
   TrustedInvocationContextError
 } from "./trustedInvocation";
 
@@ -74,6 +78,85 @@ describe("trusted invocation context", () => {
       identity: { kind: "job", name: "nightly-reconciliation" }
     });
     expect(context).not.toHaveProperty("principal");
+    expect(trustedAccountableUser(context)).toBeNull();
+  });
+
+  it("projects public execution labels without internal correlation", () => {
+    const agent = createAgentInvocation(auth(), {
+      sessionId: "public-session",
+      toolCallId: "public-tool",
+      approval: { required: true, approvalId: "public-approval" }
+    });
+    const system = createSystemInvocation({ kind: "service", name: "private-service-name" });
+    expect(trustedPublicExecutionLabel(createUserInvocation(auth()))).toBe("Riley Chen");
+    expect(trustedPublicExecutionLabel(agent)).toBe("WiseEff Agent");
+    expect(trustedPublicExecutionLabel(system)).toBe("WiseEff System service");
+    expect(trustedPublicExecutionLabel(agent)).not.toContain("public-session");
+    expect(trustedPublicExecutionLabel(system)).not.toContain("private-service-name");
+  });
+
+  it("uses the shared SQL-row projection for durable attribution", () => {
+    const systemAttribution = trustedDomainAttributionFromRow(
+      {
+        initiator_type: "system",
+        initiator_system_kind: "job",
+        initiator_system_name: "private-job",
+        initiator_session_id: null,
+        initiator_tool_call_id: null,
+        initiator_approval_id: null
+      },
+      "unrelated-user"
+    );
+    expect(systemAttribution).toEqual({
+      userId: null,
+      principalDeleted: false,
+      initiatorType: "system",
+      systemKind: "job",
+      systemName: "private-job",
+      sessionId: null,
+      toolCallId: null,
+      approvalId: null
+    });
+  });
+
+  it("requires approval correlation at trusted mutation boundaries", () => {
+    const readOnlyAgent = createAgentInvocation(auth(), {
+      sessionId: "read-session",
+      toolCallId: "read-tool",
+      approval: { required: false }
+    });
+    expect(() => assertTrustedMutationInvocation(readOnlyAgent, "parameter write")).toThrow(
+      TrustedInvocationContextError
+    );
+  });
+
+  it("keeps a deleted Agent principal identity-free when the live user FK is gone", () => {
+    expect(
+      trustedDomainAttributionFromRow(
+        {
+          initiator_type: "agent",
+          initiator_principal_deleted: true,
+          initiator_session_id: "session-1",
+          initiator_tool_call_id: "tool-1",
+          initiator_approval_id: "approval-1",
+          initiator_system_kind: null,
+          initiator_system_name: null
+        },
+        null
+      )
+      ).toMatchObject({ userId: null, initiatorType: "agent", principalDeleted: true });
+    expect(
+      trustedDomainAttributionFromRow(
+        {
+          initiator_type: "agent",
+          initiator_principal_deleted: true,
+          initiator_session_id: "session-1",
+          initiator_tool_call_id: "tool-1",
+          initiator_approval_id: "approval-1"
+        },
+        "deleted-user-1"
+      ).userId
+    ).toBeNull();
   });
 
   it("rejects malformed, anonymous, and incomplete provenance", () => {

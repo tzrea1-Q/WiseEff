@@ -27,6 +27,11 @@ import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";
+import {
+  trustedDomainAttributionFromRow,
+  trustedPublicExecutionLabelFromAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 
 type ParameterRow = {
   id: string;
@@ -62,6 +67,8 @@ export type ProjectParameterForUpdate = {
   valueVersion: number;
   sourceFileName?: string;
   sourceNodePath?: string;
+  /** Server-resolved current version for legacy source-bound submissions. */
+  sourceFileVersionId?: string;
 };
 
 export type ProjectParameterValueMatch = {
@@ -86,6 +93,7 @@ type ProjectParameterForUpdateRow = {
   value_version: number | string;
   source_file_name?: string | null;
   source_node_path?: string | null;
+  source_file_version_id?: string | null;
 };
 
 type ProjectParameterValueMatchRow = {
@@ -97,7 +105,7 @@ type ProjectParameterValueMatchRow = {
   current_value: string;
 };
 
-type ParameterHistoryRow = {
+type ParameterHistoryRow = TrustedInvocationDomainAttributionRow & {
   version: number | string;
   value: string;
   changed_at: string | Date;
@@ -161,11 +169,16 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
 }
 
 function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
+  const attribution = trustedDomainAttributionFromRow(row, row.changed_by);
+  const changedByLabel = trustedPublicExecutionLabelFromAttribution(
+    attribution,
+    row.changed_by ?? ""
+  );
   return {
     version: String(row.version),
     value: row.value,
     changedAt: dateTimeToIso(row.changed_at),
-    changedBy: row.changed_by,
+    changedBy: changedByLabel || null,
     requestId: row.request_id ?? undefined
   };
 }
@@ -183,7 +196,8 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     recommendedValue: row.initSuggestionText,
     valueVersion: Number(row.value_version),
     sourceFileName: row.source_file_name ?? undefined,
-    sourceNodePath: row.source_node_path ?? undefined
+    sourceNodePath: row.source_node_path ?? undefined,
+    sourceFileVersionId: row.source_file_version_id ?? undefined
   };
 }
 
@@ -387,7 +401,14 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
         phe.value,
         phe.changed_at,
         users.name as changed_by,
-        phe.request_id
+        phe.request_id,
+        phe.initiator_type,
+        phe.initiator_principal_deleted,
+        phe.initiator_system_kind,
+        phe.initiator_system_name,
+        phe.initiator_session_id,
+        phe.initiator_tool_call_id,
+        phe.initiator_approval_id
       from parameter_history_entries phe
       left join users on users.id = phe.changed_by_user_id
       where phe.organization_id = $1
@@ -404,9 +425,16 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
     select
       phe.version,
       phe.value,
-      phe.changed_at,
-      users.name as changed_by,
-      phe.request_id
+        phe.changed_at,
+        users.name as changed_by,
+        phe.request_id,
+        phe.initiator_type,
+        phe.initiator_principal_deleted,
+        phe.initiator_system_kind,
+        phe.initiator_system_name,
+        phe.initiator_session_id,
+        phe.initiator_tool_call_id,
+        phe.initiator_approval_id
     from parameter_history_entries phe
     inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = phe.project_parameter_value_id
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = phe.parameter_definition_id
@@ -489,14 +517,19 @@ export async function getProjectParameterForUpdate(
       ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version,
       ppv.source_file_name,
-      ppv.source_node_path
+      ppv.source_node_path,
+      files.current_version_id as source_file_version_id
     from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
     inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
+    left join project_parameter_files files
+      on files.organization_id = ppv.organization_id
+     and files.project_id = ppv.project_id
+     and files.file_name = ppv.source_file_name
     where ppv.organization_id = $1
       and pd.organization_id = $1
       and ppv.project_id = $2
       and ppv.id = $3
-    for update
+    for update of ppv
     `,
     [query.organizationId, query.projectId, query.parameterId]
   );

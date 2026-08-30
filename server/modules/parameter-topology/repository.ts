@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
+import type {
+  TrustedInvocationDomainAttribution,
+  TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 import {
   withEffectiveEnablement,
   withSourceEnablement,
@@ -18,7 +22,7 @@ import type {
 } from "./types";
 import type { TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
 
-type RevisionRow = {
+type RevisionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   organization_id: string;
   project_id: string;
@@ -91,18 +95,21 @@ export async function insertConfigRevision(
     configSetId: string;
     revisionNumber: number;
     status: ConfigRevisionStatus;
-    createdByUserId?: string;
+    createdByUserId?: string | null;
     entryFile?: string;
     includeSearchPaths?: string[];
     overlayOrder?: string[];
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<DtsConfigRevisionDto> {
   const result = await db.query<RevisionRow>(
     `
     insert into dts_config_revisions (
       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id,
       entry_file, include_search_paths, overlay_order, manifest_state
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'complete')
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, 'complete')
     returning *
     `,
     [
@@ -112,7 +119,13 @@ export async function insertConfigRevision(
       input.configSetId,
       input.revisionNumber,
       input.status,
-      input.createdByUserId ?? null,
+      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null,
       input.entryFile ?? null,
       JSON.stringify(input.includeSearchPaths ?? []),
       JSON.stringify(input.overlayOrder ?? []),

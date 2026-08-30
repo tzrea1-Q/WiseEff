@@ -10,8 +10,9 @@ import type {
   ProjectParameterFileCandidateDto,
   UpdateParameterFileCandidateParseResultInput
 } from "./types";
+import type { TrustedInvocationDomainAttributionRow } from "../auth/trustedInvocation";
 
-type CandidateRow = {
+type CandidateRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   organization_id: string;
   project_id: string;
@@ -72,7 +73,10 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
 const candidateSelect = `
   id, organization_id, project_id, file_id, file_name, format, status,
   base_version_id, storage_key, checksum, size_bytes, parsed_index,
-  diagnostics, impact, blockers, created_by_user_id, created_at, updated_at,
+  diagnostics, impact, blockers, created_by_user_id,
+  initiator_type, initiator_principal_deleted, initiator_system_kind, initiator_system_name,
+  initiator_session_id, initiator_tool_call_id, initiator_approval_id,
+  created_at, updated_at,
   abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id
 `;
 
@@ -85,12 +89,15 @@ export async function insertParameterFileCandidate(
     insert into project_parameter_file_candidates (
       id, organization_id, project_id, file_id, file_name, format, status,
       base_version_id, storage_key, checksum, size_bytes, parsed_index,
-      diagnostics, impact, blockers, created_by_user_id
+      diagnostics, impact, blockers, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1, $2, $3, $4, $5, $6, $7,
       $8, $9, $10, $11, $12::jsonb,
-      $13::jsonb, $14::jsonb, $15::jsonb, $16
+      $13::jsonb, $14::jsonb, $15::jsonb, $16,
+      $17, $18, $19, $20, $21, $22
     )
     returning ${candidateSelect}
     `,
@@ -110,7 +117,13 @@ export async function insertParameterFileCandidate(
       JSON.stringify(input.diagnostics ?? []),
       JSON.stringify(input.impact ?? {}),
       JSON.stringify(input.blockers ?? []),
-      input.createdByUserId ?? null
+      input.attribution ? input.attribution.userId : input.createdByUserId ?? null,
+      input.attribution?.initiatorType ?? "user",
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null
     ]
   );
 

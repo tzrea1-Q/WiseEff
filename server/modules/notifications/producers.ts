@@ -1,4 +1,8 @@
 import type { Queryable } from "../../shared/database/client";
+import {
+  trustedPublicExecutionLabel,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
 import { notifyUsers } from "./service";
 
 function reviewQueueUrl(projectId: string) {
@@ -73,7 +77,8 @@ export async function notifyParameterReviewRejected(
     projectName?: string;
     requestId: string;
     parameterName: string;
-    submitterUserId: string;
+    /** Nullable for a System-owned submission; reviewers/assignees still receive the event. */
+    submitterUserId?: string | null;
     reviewerName: string;
     note?: string;
   }
@@ -82,7 +87,7 @@ export async function notifyParameterReviewRejected(
   const noteSuffix = input.note?.trim() ? `：${input.note.trim()}` : "";
   await notifyUsers(db, {
     organizationId: input.organizationId,
-    recipientUserIds: [input.submitterUserId],
+    recipientUserIds: input.submitterUserId ? [input.submitterUserId] : [],
     category: "parameter.review.rejected",
     title: `审阅打回 · ${input.parameterName}`,
     body: `${input.reviewerName} 打回了 ${projectLabel} 的参数变更${noteSuffix}`,
@@ -172,19 +177,21 @@ export async function notifyParameterMergeCompleted(
     projectName?: string;
     requestId: string;
     parameterName: string;
-    submitterUserId: string;
-    mergerName: string;
+    submitterUserId: string | null;
     reviewerUserIds: string[];
+    /** The one trusted invocation used for domain, audit, and notification projection. */
+    execution: TrustedInvocationContext;
   }
 ) {
   const projectLabel = input.projectName?.trim() || input.projectId;
-  const recipients = uniqueRecipients([input.submitterUserId, ...input.reviewerUserIds]);
+  const recipients = uniqueRecipients([input.submitterUserId ?? "", ...input.reviewerUserIds]);
+  const displayMergerName = trustedPublicExecutionLabel(input.execution);
   await notifyUsers(db, {
     organizationId: input.organizationId,
     recipientUserIds: recipients,
     category: "parameter.merge.completed",
     title: `参数已合入 · ${input.parameterName}`,
-    body: `${input.mergerName} 已将 ${projectLabel} 的参数变更合入基线。`,
+    body: `${displayMergerName} 已将 ${projectLabel} 的参数变更合入基线。`,
     severity: "success",
     actionUrl: parameterAdminUrl(input.projectId),
     sourceKind: "parameter-change-request",
@@ -192,7 +199,9 @@ export async function notifyParameterMergeCompleted(
     metadata: {
       projectId: input.projectId,
       parameterName: input.parameterName,
-      mergerName: input.mergerName
+      mergerName: displayMergerName,
+      initiatorType: input.execution.initiator,
+      executionLabel: displayMergerName,
     }
   });
 }
@@ -399,6 +408,6 @@ export async function notifyDebugNodeReadbackFailed(
   });
 }
 
-function uniqueRecipients(userIds: string[]) {
-  return [...new Set(userIds.map((id) => id.trim()).filter(Boolean))];
+function uniqueRecipients(userIds: Array<string | null | undefined>) {
+  return [...new Set(userIds.map((id) => id?.trim() ?? "").filter(Boolean))];
 }

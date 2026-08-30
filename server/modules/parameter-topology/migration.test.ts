@@ -12,8 +12,10 @@ import {
 } from "../../testing/testDatabase";
 import {
   openDatabaseConnection,
+  migrationsDir,
   withTempDatabase as withSharedTempDatabase
 } from "../../testing/tempDatabase";
+import { applyMigrations } from "../../shared/database/migrations";
 import {
   applyParameterIdentityCutover,
   checkParameterIdentityCutover,
@@ -580,6 +582,120 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     expect(afterBindings.rows[0]?.c).toBe(beforeBindings.rows[0]?.c);
   });
 
+  it("enforces bidirectional trusted execution identity on governed rows", async () => {
+    const seeded = await seedLegacyGraph(db!);
+    await db!.query(
+      `insert into parameter_modules (
+         id, organization_id, name, path, depth, description, scope
+       ) values ($1, $2, 'mig-identity', 'mig-identity', 1, '', '')`,
+      ["module-mig-identity", ORG]
+    );
+    await db!.query(
+      `insert into project_parameter_bindings (
+         id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+       ) values ($1, $2, $3, $4, $5, $6)`,
+      [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig-identity"]
+    );
+    await db!.query(
+      `insert into project_parameter_binding_revisions (
+         id, binding_id, config_revision_id, parameter_spec_version_id,
+         typed_value, canonical_value, raw_value, schema_state
+       ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                 '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid')`,
+      ["bpr-mig-identity", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+    );
+    await db!.query(
+      `insert into parameter_review_decisions (
+         id, organization_id, request_id, reviewer_user_id,
+         decision, from_status, to_status, note
+       ) values ($1, $2, $3, $4, 'approve', 'pending_review', 'merged', 'identity checks')`,
+      ["decision-mig-identity", ORG, seeded.openCrId, USER]
+    );
+    await db!.query(
+      `insert into project_parameter_file_candidates (
+         id, organization_id, project_id, file_id, file_name, format, status,
+         created_by_user_id
+       ) values ($1, $2, $3, $4, 'mig-base.dts', 'dts', 'ready', $5)`,
+      ["candidate-mig-identity", ORG, PROJECT, "file-mig-14", USER]
+    );
+
+    const userRows = [
+      { table: "parameter_drafts", userColumn: "user_id", id: seeded.draftId },
+      { table: "parameter_review_decisions", userColumn: "reviewer_user_id", id: "decision-mig-identity" },
+      { table: "parameter_history_entries", userColumn: "changed_by_user_id", id: seeded.historyId },
+      { table: "project_parameter_values", userColumn: "updated_by_user_id", id: PPV_ID },
+      { table: "project_parameter_file_versions", userColumn: "created_by_user_id", id: "fv-mig-14" },
+      { table: "project_parameter_file_candidates", userColumn: "created_by_user_id", id: "candidate-mig-identity" },
+      { table: "dts_config_revisions", userColumn: "created_by_user_id", id: seeded.configRevisionId }
+    ] as const;
+
+    for (const row of userRows) {
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'agent', ${row.userColumn} = null
+             where id = $1`,
+            [row.id]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'user', initiator_system_kind = 'job',
+                 initiator_system_name = 'forbidden-system-field'
+             where id = $1`,
+            [row.id]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+
+      await expect(
+        db!.transaction(async (tx) => {
+          await tx.query(
+            `update ${row.table}
+             set initiator_type = 'system', ${row.userColumn} = $2,
+                 initiator_system_kind = 'job', initiator_system_name = 'system-must-be-user-null'
+             where id = $1`,
+            [row.id, USER]
+          );
+        })
+      ).rejects.toMatchObject({ code: "23514" });
+    }
+
+    const binding = await db!.query<{ id: string }>(
+      `select id from project_parameter_binding_revisions
+       where config_revision_id = $1 limit 1`,
+      [seeded.configRevisionId]
+    );
+    expect(binding.rows[0]?.id).toBeTruthy();
+    await expect(
+      db!.transaction(async (tx) => {
+        await tx.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'agent', initiator_system_kind = 'job',
+               initiator_system_name = 'agent-cannot-carry-system-fields'
+           where id = $1`,
+          [binding.rows[0]!.id]
+        );
+      })
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      db!.transaction(async (tx) => {
+        await tx.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'system', initiator_system_kind = null,
+               initiator_system_name = null
+           where id = $1`,
+          [binding.rows[0]!.id]
+        );
+      })
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("checker surfaces SQL failures instead of swallowing them as zero", async () => {
     const brokenDb = {
       query: async (text: string) => {
@@ -1029,6 +1145,644 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
   });
 });
 
+describe.skipIf(!databaseAvailable)("parameter execution identity migration upgrades", () => {
+  it("preserves legacy null rows while rejecting new unprojected rows", async () => {
+    await withSharedTempDatabase(
+      { prefix: "mig14-upgrade", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0132_parameter_draft_enablement_owner_index.sql"
+        });
+        const seeded = await seedLegacyGraph(db);
+        await db.query(
+          `insert into parameter_modules (
+             id, organization_id, name, path, depth, description, scope
+           ) values ($1, $2, 'mig-upgrade', 'mig-upgrade', 1, '', '')`,
+          ["module-mig14-upgrade", ORG]
+        );
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, $4, $5, $6)`,
+          [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig14-upgrade"]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                     '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid', 'not_applicable')`,
+          ["bpr-mig14-upgrade", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+        );
+        await db.query(
+          `update parameter_history_entries
+           set changed_by_user_id = null,
+               initiator_type = 'user',
+               initiator_system_kind = null,
+               initiator_system_name = null,
+               initiator_session_id = null,
+               initiator_tool_call_id = null,
+               initiator_approval_id = null
+           where id = $1`,
+          [seeded.historyId]
+        );
+
+        await applyMigrations(db, migrationsDir);
+
+        const legacy = await db.query<{
+          changed_by_user_id: string | null;
+          initiator_type: string;
+        }>(
+          `select changed_by_user_id, initiator_type
+           from parameter_history_entries
+           where id = $1`,
+          [seeded.historyId]
+        );
+        expect(legacy.rows[0]?.changed_by_user_id).toBeNull();
+        expect(legacy.rows[0]?.initiator_type).toBe("legacy");
+
+        const legacyBinding = await db.query<{
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select initiator_type, initiator_system_kind, initiator_system_name
+           from project_parameter_binding_revisions
+           where id = $1`,
+          ["bpr-mig14-upgrade"]
+        );
+        expect(legacyBinding.rows[0]).toEqual({
+          initiator_type: "legacy",
+          initiator_system_kind: null,
+          initiator_system_name: null,
+        });
+
+        const attributed = await db.query<{
+          created_by_user_id: string | null;
+          initiator_type: string;
+        }>(
+          `select created_by_user_id, initiator_type
+           from project_parameter_file_versions
+           where id = $1`,
+          ["fv-mig-14"]
+        );
+        expect(attributed.rows[0]).toMatchObject({
+          created_by_user_id: USER,
+          initiator_type: "user"
+        });
+
+        await expect(
+          db.query(
+            `insert into parameter_history_entries (
+               id, organization_id, project_id, parameter_definition_id,
+               project_parameter_value_id, version, value, changed_by_user_id,
+               request_id, initiator_type
+             ) values ($1, $2, $3, $4, $5, 99, '<99>', null, $6, 'user')`,
+            [
+              "hist-mig14-new-unprojected",
+              ORG,
+              PROJECT,
+              DEF_ID,
+              PPV_ID,
+              seeded.openCrId
+            ]
+          )
+        ).rejects.toMatchObject({ code: "23514" });
+      }
+    );
+  });
+
+  it("rejects malformed Agent correlation on user-owned and binding rows", async () => {
+    await withSharedTempDatabase(
+      { prefix: "mig14-red-constraints", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0132_parameter_draft_enablement_owner_index.sql"
+        });
+        const seeded = await seedLegacyGraph(db);
+        await db.query(
+          `insert into parameter_modules (id, organization_id, name, path, depth, description, scope)
+           values ($1, $2, 'mig-red', 'mig-red', 1, '', '')`,
+          ["module-mig14-red", ORG]
+        );
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, $4, $5, $6)`,
+          [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig14-red"]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                     '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid', 'not_applicable')`,
+          ["bpr-mig14-red", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+        );
+        await applyMigrations(db, migrationsDir);
+
+        await expect(
+          db.query(
+            `insert into parameter_history_entries (
+               id, organization_id, project_id, parameter_definition_id,
+               project_parameter_value_id, version, value, changed_by_user_id,
+               request_id, initiator_type
+             ) values ($1, $2, $3, $4, $5, 98, '<98>', $6, $7, 'agent')`,
+            [
+              "hist-mig14-red-agent-missing-correlation",
+              ORG,
+              PROJECT,
+              DEF_ID,
+              PPV_ID,
+              USER,
+              seeded.openCrId
+            ]
+          )
+        ).rejects.toMatchObject({ code: "23514" });
+
+        await expect(
+          db.query(
+            `insert into project_parameter_binding_revisions (
+               id, binding_id, config_revision_id, parameter_spec_version_id,
+               typed_value, canonical_value, raw_value, schema_state, policy_state,
+               initiator_type
+             ) values ($1, $2, $3, $4, '{"kind":"integer","value":"2"}'::jsonb,
+                       '{"kind":"integer","value":"2"}'::jsonb, '<2>', 'valid', 'not_applicable', 'agent')`,
+            [
+              "bpr-mig14-red-agent-missing-correlation-new",
+              seeded.bindingId,
+              seeded.configRevisionId,
+              seeded.specVersionId
+            ]
+          )
+        ).rejects.toMatchObject({ code: "23514" });
+      }
+    );
+  });
+
+  it("enforces the complete User/Agent/System/legacy union on every governed table", async () => {
+    await withSharedTempDatabase(
+      { prefix: "mig14-provenance-matrix", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, {
+          through: "0132_parameter_draft_enablement_owner_index.sql"
+        });
+        const seeded = await seedLegacyGraph(db);
+        await applyMigrations(db, migrationsDir);
+
+        const userRows = [
+          { table: "parameter_drafts", userColumn: "user_id", id: seeded.draftId, retained: false },
+          { table: "parameter_review_decisions", userColumn: "reviewer_user_id", id: "decision-mig-14", retained: true },
+          { table: "parameter_history_entries", userColumn: "changed_by_user_id", id: seeded.historyId, retained: true },
+          { table: "project_parameter_values", userColumn: "updated_by_user_id", id: PPV_ID, retained: true },
+          { table: "project_parameter_file_versions", userColumn: "created_by_user_id", id: "fv-mig-14", retained: true },
+          { table: "project_parameter_file_candidates", userColumn: "created_by_user_id", id: "candidate-mig14-union", retained: true },
+          { table: "dts_config_revisions", userColumn: "created_by_user_id", id: seeded.configRevisionId, retained: true }
+        ] as const;
+
+        await db.query(
+          `insert into project_parameter_file_candidates (
+             id, organization_id, project_id, file_name, format, status, created_by_user_id
+           ) values ($1, $2, $3, 'mig-union.dts', 'dts', 'ready', $4)`,
+          ["candidate-mig14-union", ORG, PROJECT, USER]
+        );
+        await db.query(
+          `insert into parameter_modules (
+             id, organization_id, name, path, depth, description, scope
+           ) values ($1, $2, 'mig-union', 'mig-union', 1, '', '')`,
+          ["module-mig14-union", ORG]
+        );
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, $4, $5, $6)`,
+          [seeded.bindingId, ORG, PROJECT, seeded.logicalNodeId, seeded.specId, "module-mig14-union"]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"1"}'::jsonb,
+                     '{"kind":"integer","value":"1"}'::jsonb, '<1>', 'valid', 'not_applicable')`,
+          ["bpr-mig14-union", seeded.bindingId, seeded.configRevisionId, seeded.specVersionId]
+        );
+
+        const setUser = async (row: (typeof userRows)[number]) => {
+          await db.query(
+            `update ${row.table}
+             set initiator_type = 'user', ${row.userColumn} = $2,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
+                 initiator_system_kind = null, initiator_system_name = null,
+                 initiator_session_id = null, initiator_tool_call_id = null,
+                 initiator_approval_id = null
+             where id = $1`,
+            [row.id, USER]
+          );
+        };
+        const setSystem = async (row: (typeof userRows)[number]) => {
+          await db.query(
+            `update ${row.table}
+             set initiator_type = 'system', ${row.userColumn} = null,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
+                 initiator_system_kind = 'job', initiator_system_name = 'mig-union-job',
+                 initiator_session_id = null, initiator_tool_call_id = null,
+                 initiator_approval_id = null
+             where id = $1`,
+            [row.id]
+          );
+        };
+        const setLegacy = async (row: (typeof userRows)[number]) => {
+          await db.query(
+            `update ${row.table}
+             set initiator_type = 'legacy', ${row.userColumn} = null,
+                 ${row.retained ? "initiator_principal_deleted = false," : ""}
+                 initiator_system_kind = null, initiator_system_name = null,
+                 initiator_session_id = null, initiator_tool_call_id = null,
+                 initiator_approval_id = null
+             where id = $1`,
+            [row.id]
+          );
+        };
+        const expectViolation = async (run: () => Promise<unknown>) => {
+          await expect(db.transaction(() => run())).rejects.toMatchObject({ code: "23514" });
+        };
+
+        const draftMarkerColumns = await db.query(
+          `select column_name
+           from information_schema.columns
+           where table_schema = 'public'
+             and table_name = 'parameter_drafts'
+             and column_name = 'initiator_principal_deleted'`
+        );
+        expect(draftMarkerColumns.rows).toEqual([]);
+
+        for (const row of userRows) {
+          await setUser(row);
+          if (row.retained) {
+            await expectViolation(
+              () => db.query(
+                `update ${row.table}
+                 set initiator_principal_deleted = true
+                 where id = $1`,
+                [row.id]
+              )
+            );
+          }
+          await setSystem(row);
+          const system = await db.query<{
+            initiator_type: string;
+            user_id: string | null;
+            initiator_system_kind: string | null;
+            initiator_system_name: string | null;
+            initiator_session_id: string | null;
+            initiator_tool_call_id: string | null;
+            initiator_approval_id: string | null;
+          }>(
+            `select initiator_type, ${row.userColumn} as user_id,
+                    initiator_system_kind, initiator_system_name,
+                    initiator_session_id, initiator_tool_call_id, initiator_approval_id
+             from ${row.table} where id = $1`,
+            [row.id]
+          );
+          expect(system.rows[0]).toEqual({
+            initiator_type: "system",
+            user_id: null,
+            initiator_system_kind: "job",
+            initiator_system_name: "mig-union-job",
+            initiator_session_id: null,
+            initiator_tool_call_id: null,
+            initiator_approval_id: null
+          });
+
+          await setUser(row);
+          await db.query(
+            `update ${row.table}
+             set initiator_type = 'agent', ${row.userColumn} = $2,
+                 initiator_session_id = 'mig-session', initiator_tool_call_id = 'mig-tool',
+                 initiator_approval_id = 'mig-approval',
+                 initiator_system_kind = null, initiator_system_name = null
+             where id = $1`,
+            [row.id, USER]
+          );
+          const agent = await db.query<{
+            initiator_type: string;
+            user_id: string | null;
+            initiator_session_id: string | null;
+            initiator_tool_call_id: string | null;
+            initiator_approval_id: string | null;
+          }>(
+            `select initiator_type, ${row.userColumn} as user_id,
+                    initiator_session_id, initiator_tool_call_id, initiator_approval_id
+             from ${row.table} where id = $1`,
+            [row.id]
+          );
+          expect(agent.rows[0]).toEqual({
+            initiator_type: "agent",
+            user_id: USER,
+            initiator_session_id: "mig-session",
+            initiator_tool_call_id: "mig-tool",
+            initiator_approval_id: "mig-approval"
+          });
+
+          for (const missing of ["initiator_session_id", "initiator_tool_call_id", "initiator_approval_id"] as const) {
+            await setUser(row);
+            await expectViolation(
+              () => db.query(
+                `update ${row.table}
+                 set initiator_type = 'agent', ${row.userColumn} = $2,
+                     initiator_session_id = $3, initiator_tool_call_id = $4,
+                     initiator_approval_id = $5
+                 where id = $1`,
+                [
+                  row.id,
+                  USER,
+                  missing === "initiator_session_id" ? " " : "mig-session",
+                  missing === "initiator_tool_call_id" ? "" : "mig-tool",
+                  missing === "initiator_approval_id" ? null : "mig-approval"
+                ]
+              )
+            );
+          }
+
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'agent', ${row.userColumn} = $2,
+                   initiator_session_id = 'mig-session', initiator_tool_call_id = 'mig-tool',
+                   initiator_approval_id = 'mig-approval',
+                   initiator_system_kind = 'job', initiator_system_name = 'agent-system-field'
+               where id = $1`,
+              [row.id, USER]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'user', ${row.userColumn} = $2,
+                   initiator_session_id = 'user-session'
+               where id = $1`,
+              [row.id, USER]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'system', ${row.userColumn} = $2,
+                   initiator_system_kind = 'job', initiator_system_name = 'system-user-field'
+               where id = $1`,
+              [row.id, USER]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'system', ${row.userColumn} = null,
+                   initiator_system_kind = ' ', initiator_system_name = 'system-blank-kind'
+               where id = $1`,
+              [row.id]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'system', ${row.userColumn} = null,
+                   initiator_system_kind = null, initiator_system_name = 'system-missing-kind'
+               where id = $1`,
+              [row.id]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'system', ${row.userColumn} = null,
+                   initiator_system_kind = 'service', initiator_system_name = null
+               where id = $1`,
+              [row.id]
+            )
+          );
+          await setUser(row);
+          await expectViolation(
+            () => db.query(
+              `update ${row.table}
+               set initiator_type = 'legacy', ${row.userColumn} = null,
+                   initiator_session_id = 'legacy-correlation'
+               where id = $1`,
+              [row.id]
+            )
+          );
+          await setLegacy(row);
+        }
+
+        const binding = await db.query<{ id: string }>(
+          `select id from project_parameter_binding_revisions
+           where config_revision_id = $1 limit 1`,
+          [seeded.configRevisionId]
+        );
+        const bindingId = binding.rows[0]!.id;
+        await db.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'user', initiator_principal_deleted = false,
+               initiator_system_kind = null, initiator_system_name = null,
+               initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+           where id = $1`,
+          [bindingId]
+        );
+        await db.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'agent', initiator_principal_deleted = false,
+               initiator_session_id = 'binding-session',
+               initiator_tool_call_id = 'binding-tool', initiator_approval_id = 'binding-approval',
+               initiator_system_kind = null, initiator_system_name = null
+           where id = $1`,
+          [bindingId]
+        );
+        for (const [field, value] of [
+          ["initiator_session_id", " "],
+          ["initiator_tool_call_id", ""],
+          ["initiator_approval_id", null]
+        ] as const) {
+          await db.query(
+            `update project_parameter_binding_revisions
+             set initiator_type = 'user', initiator_system_kind = null, initiator_system_name = null,
+                 initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+             where id = $1`,
+            [bindingId]
+          );
+          await expectViolation(
+            () => db.query(
+              `update project_parameter_binding_revisions
+               set initiator_type = 'agent', initiator_session_id = $2,
+                   initiator_tool_call_id = $3, initiator_approval_id = $4
+               where id = $1`,
+              [bindingId, field === "initiator_session_id" ? value : "binding-session", field === "initiator_tool_call_id" ? value : "binding-tool", field === "initiator_approval_id" ? value : "binding-approval"]
+            )
+          );
+        }
+        await db.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'system', initiator_principal_deleted = false,
+               initiator_system_kind = 'service',
+               initiator_system_name = 'binding-service', initiator_session_id = null,
+               initiator_tool_call_id = null, initiator_approval_id = null
+           where id = $1`,
+          [bindingId]
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_binding_revisions
+             set initiator_type = 'system', initiator_system_kind = 'job',
+                 initiator_system_name = 'binding-job', initiator_session_id = 'not-allowed'
+             where id = $1`,
+            [bindingId]
+          )
+        );
+        await db.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'legacy', initiator_principal_deleted = false,
+               initiator_system_kind = null, initiator_system_name = null,
+               initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+           where id = $1`,
+          [bindingId]
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_binding_revisions
+             set initiator_type = 'system', initiator_system_kind = null,
+                 initiator_system_name = 'binding-missing-kind'
+             where id = $1`,
+            [bindingId]
+          )
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_binding_revisions
+             set initiator_type = 'system', initiator_system_kind = 'service',
+                 initiator_system_name = null
+             where id = $1`,
+            [bindingId]
+          )
+        );
+        await db.query(
+          `update project_parameter_binding_revisions
+           set initiator_type = 'legacy', initiator_system_kind = null, initiator_system_name = null,
+               initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+           where id = $1`,
+          [bindingId]
+        );
+
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_file_versions
+             set initiator_type = 'agent', created_by_user_id = null,
+                 initiator_principal_deleted = true,
+                 initiator_session_id = 'foreign-session',
+                 initiator_tool_call_id = 'foreign-tool',
+                 initiator_approval_id = 'foreign-approval',
+                 initiator_system_kind = null, initiator_system_name = null
+             where id = $1`,
+            ["fv-mig-14"]
+          )
+        );
+
+        const bindingMarker = await db.query<{ id: string }>(
+          `select id from project_parameter_binding_revisions
+           where config_revision_id = $1 limit 1`,
+          [seeded.configRevisionId]
+        );
+        await expectViolation(
+          () => db.query(
+            `update project_parameter_binding_revisions
+             set initiator_principal_deleted = true
+             where id = $1`,
+            [bindingMarker.rows[0]!.id]
+          )
+        );
+
+        for (const table of ["parameter_submission_rounds", "parameter_change_requests"] as const) {
+          const id = table === "parameter_submission_rounds" ? "round-mig-14" : seeded.openCrId;
+          await db.query(
+            `update ${table}
+             set initiator_type = 'agent', submitter_user_id = $2,
+                 initiator_principal_deleted = false,
+                 initiator_session_id = 'submission-session', initiator_tool_call_id = 'submission-tool',
+                 initiator_approval_id = 'submission-approval', initiator_system_kind = null,
+                 initiator_system_name = null
+             where id = $1`,
+            [id, USER]
+          );
+          await expectViolation(
+            () => db.query(
+              `update ${table}
+               set initiator_type = 'agent', submitter_user_id = $2,
+                   initiator_session_id = null, initiator_tool_call_id = 'submission-tool',
+                   initiator_approval_id = 'submission-approval'
+               where id = $1`,
+              [id, USER]
+            )
+          );
+          await db.query(
+            `update ${table}
+             set initiator_type = 'system', submitter_user_id = null,
+                 initiator_principal_deleted = false,
+                 initiator_system_kind = 'service', initiator_system_name = 'submission-service',
+                 initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+             where id = $1`,
+            [id]
+          );
+          await expectViolation(
+            () => db.query(
+              `update ${table}
+               set initiator_type = 'legacy', submitter_user_id = null,
+                   initiator_system_kind = null, initiator_system_name = null,
+                   initiator_session_id = 'legacy-submission'
+               where id = $1`,
+              [id]
+            )
+          );
+          await db.query(
+            `update ${table}
+             set initiator_type = 'legacy', submitter_user_id = null,
+                 initiator_principal_deleted = false,
+                 initiator_system_kind = null, initiator_system_name = null,
+                 initiator_session_id = null, initiator_tool_call_id = null, initiator_approval_id = null
+             where id = $1`,
+            [id]
+          );
+          await expectViolation(
+            () => db.query(
+              `update ${table}
+               set initiator_principal_deleted = true
+               where id = $1`,
+              [id]
+            )
+          );
+        }
+
+        // The migration runner wraps one file in one transaction.  An injected
+        // failure after the first DDL statement leaves no partial constraint.
+        await expect(
+          db.transaction(async (tx) => {
+            await tx.query(
+              `alter table parameter_history_entries add constraint mig14_injected_partial check (version > 0)`
+            );
+            throw new Error("mig14 injected migration failure");
+          })
+        ).rejects.toThrow("mig14 injected migration failure");
+        const partial = await db.query<{ count: string }>(
+          `select count(*)::text as count from pg_constraint where conname = 'mig14_injected_partial'`
+        );
+        expect(partial.rows[0]?.count).toBe("0");
+      }
+    );
+  });
+});
+
 describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () => {
   it(
     "two fresh restores produce identical binding ids and counts",
@@ -1179,7 +1933,7 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(active.rows).toHaveLength(0);
 
-      const draftsNotNull = await tempDb.query<{ is_nullable: string }>(
+      const draftsBindingNullable = await tempDb.query<{ is_nullable: string }>(
         `
         select is_nullable
         from information_schema.columns
@@ -1188,7 +1942,18 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
           and column_name = 'project_parameter_binding_id'
         `
       );
-      expect(draftsNotNull.rows[0]?.is_nullable).toBe("NO");
+      // Enablement drafts have a logical-node identity and intentionally no
+      // binding id; binding rows remain protected by the cutover invariant.
+      expect(draftsBindingNullable.rows[0]?.is_nullable).toBe("YES");
+      const bindingDraftsWithoutBinding = await tempDb.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from parameter_drafts
+        where edit_subject_kind = 'binding'
+          and project_parameter_binding_id is null
+        `
+      );
+      expect(Number(bindingDraftsWithoutBinding.rows[0]?.c ?? 0)).toBe(0);
 
       const conflictsNotNull = await tempDb.query<{ is_nullable: string }>(
         `

@@ -30,6 +30,10 @@ export type BindingDraftWriteTarget = {
 export type BindingWriteLockContext = BindingWriteLockFields & {
   propertyKey: string;
   targetRef: string;
+  /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
+  sourceNodePath: string;
+  /** Compatible from the exact logical-node revision pinned by baseConfigRevisionId. */
+  compatible: string | null;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -40,6 +44,10 @@ export type BindingWriteLockContext = BindingWriteLockFields & {
 export type EnablementWriteLockContext = EnablementWriteLockFields & {
   propertyKey: "status";
   targetRef: string;
+  /** Server-resolved logical node locator used for exact sensitive-rule lookup. */
+  sourceNodePath: string;
+  /** Compatible from the exact logical-node revision pinned by baseConfigRevisionId. */
+  compatible: string | null;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
   overlayFileId: string;
@@ -99,6 +107,8 @@ export async function loadBindingContext(
   db: Queryable,
   auth: AuthContext,
   bindingId: string,
+  projectId?: string,
+  configRevisionId?: string,
 ): Promise<BindingContextRow> {
   const result = await db.query<BindingContextRow>(
     `
@@ -112,8 +122,18 @@ export async function loadBindingContext(
       (
         select lnr.node_locator
         from dts_logical_node_revisions lnr
+        inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
+        inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+        inner join dts_config_set cs on cs.id = cr.config_set_id
         where lnr.logical_node_id = b.logical_node_id
-        order by lnr.config_revision_id desc
+          and ln.organization_id = b.organization_id
+          and ln.project_id = b.project_id
+          and cr.organization_id = b.organization_id
+          and cr.project_id = b.project_id
+          and cs.organization_id = b.organization_id
+          and cs.project_id = b.project_id
+          and ($4::text is null or lnr.config_revision_id = $4)
+        order by cr.revision_number desc, lnr.id desc
         limit 1
       ) as node_locator,
       coalesce(dps.constraints, '{}'::jsonb) as constraints,
@@ -142,10 +162,12 @@ export async function loadBindingContext(
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
-    where b.id = $1 and b.organization_id = $2
+    where b.id = $1
+      and b.organization_id = $2
+      and ($3::text is null or b.project_id = $3)
     limit 1
     `,
-    [bindingId, auth.organization.id],
+    [bindingId, auth.organization.id, projectId ?? null, configRevisionId ?? null],
   );
   const row = result.rows[0];
   if (!row) {
@@ -403,10 +425,15 @@ export async function loadLogicalNodeEnablementContext(
     `
     select lnr.id as logical_node_revision_id, lnr.node_locator, lnr.compatible
     from dts_logical_node_revisions lnr
+    inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
     inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
     inner join dts_config_set cs on cs.id = cr.config_set_id
     where lnr.config_revision_id = $1
       and lnr.logical_node_id = $2
+      and ln.organization_id = $3
+      and ln.project_id = $4
+      and cr.organization_id = $3
+      and cr.project_id = $4
       and cs.organization_id = $3
       and cs.project_id = $4
     limit 1
@@ -471,10 +498,15 @@ export async function loadLogicalNodeSubmissionContext(
     `
     select lnr.node_locator, lnr.compatible
     from dts_logical_node_revisions lnr
+    inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
     inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
     inner join dts_config_set cs on cs.id = cr.config_set_id
     where lnr.config_revision_id = $1
       and lnr.logical_node_id = $2
+      and ln.organization_id = $3
+      and ln.project_id = $4
+      and cr.organization_id = $3
+      and cr.project_id = $4
       and cs.organization_id = $3
       and cs.project_id = $4
     limit 1
@@ -528,15 +560,15 @@ export async function resolveBindingHeadRevisionId(
 export async function resolveBindingWriteLock(
   db: Queryable,
   auth: AuthContext,
-  input: { bindingId: string; baseRevisionId?: string },
+  input: { bindingId: string; baseRevisionId?: string; projectId?: string },
 ): Promise<BindingWriteLockContext> {
-  const binding = await loadBindingContext(db, auth, input.bindingId);
+  const bindingHead = await loadBindingContext(db, auth, input.bindingId, input.projectId);
 
   const baseRevisionId =
     input.baseRevisionId ??
     (await resolveBindingHeadRevisionId(db, {
       organizationId: auth.organization.id,
-      projectId: binding.project_id,
+      projectId: bindingHead.project_id,
       bindingId: input.bindingId,
     }));
   if (!baseRevisionId) {
@@ -548,7 +580,7 @@ export async function resolveBindingWriteLock(
 
   const revision = await getConfigRevisionById(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
+    projectId: bindingHead.project_id,
     revisionId: baseRevisionId,
   });
   if (!revision) {
@@ -558,6 +590,39 @@ export async function resolveBindingWriteLock(
       baseRevisionId,
     });
   }
+
+  // Once the caller has supplied (or the server has resolved) the exact base
+  // revision, reload the binding locator from that revision.  The display/head
+  // lookup above is intentionally only for finding the binding's project; it
+  // must never provide a mutable latest locator to sensitive policy.
+  const binding = await loadBindingContext(
+    db,
+    auth,
+    input.bindingId,
+    input.projectId,
+    baseRevisionId,
+  );
+
+  if (!binding.logical_node_id) {
+    throw new ApiError("CONFLICT", "Binding has no logical node identity for write lock.", {
+      reason: "missing-logical-node",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+  if (!binding.node_locator) {
+    throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
+      reason: "missing-logical-node-revision",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+  const logicalNode = await loadLogicalNodeSubmissionContext(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    configRevisionId: baseRevisionId,
+    logicalNodeId: binding.logical_node_id,
+  });
 
   const bindingRevision = await db.query<{ id: string }>(
     `
@@ -586,7 +651,7 @@ export async function resolveBindingWriteLock(
     configRevisionId: baseRevisionId,
     logicalNodeId: binding.logical_node_id,
     propertyKey: binding.property_key,
-    nodeLocator: binding.node_locator,
+    nodeLocator: logicalNode.nodeLocator,
   });
 
   if (!writeTarget.fileVersionId || !writeTarget.checksum) {
@@ -605,6 +670,8 @@ export async function resolveBindingWriteLock(
     occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
     propertyKey: binding.property_key,
     targetRef,
+    sourceNodePath: logicalNode.nodeLocator,
+    compatible: logicalNode.compatible,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,
@@ -762,16 +829,18 @@ export async function verifyEnablementWriteLock(
 export async function resolveEnablementWriteLock(
   db: Queryable,
   auth: AuthContext,
-  input: { logicalNodeId: string; baseRevisionId?: string },
+  input: { logicalNodeId: string; baseRevisionId?: string; projectId?: string },
 ): Promise<EnablementWriteLockContext> {
   const node = await db.query<{ project_id: string }>(
     `
     select project_id
     from dts_logical_nodes
-    where id = $1 and organization_id = $2
+    where id = $1
+      and organization_id = $2
+      and ($3::text is null or project_id = $3)
     limit 1
     `,
-    [input.logicalNodeId, auth.organization.id],
+    [input.logicalNodeId, auth.organization.id, input.projectId ?? null],
   );
   const projectId = node.rows[0]?.project_id;
   if (!projectId) {
@@ -854,6 +923,8 @@ export async function resolveEnablementWriteLock(
     occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
     propertyKey: "status",
     targetRef,
+    sourceNodePath: nodeContext.nodeLocator,
+    compatible: nodeContext.compatible,
     expectedRawText,
     nodeSpan,
     overlayFileId: overlayMember.file_id,

@@ -15,6 +15,7 @@ import {
 } from "../parameter-specs/repository";
 import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/definitionVerification";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
+import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -1574,7 +1575,7 @@ export async function createBindingDraft(
     bindingId: string;
   } & CreateBindingDraftBody,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {}
+  context: TrustedSensitiveNodeWriteContext
 ): Promise<CreateBindingDraftServiceResult> {
   requireCanEdit(auth);
 
@@ -1604,18 +1605,26 @@ export async function createBindingDraft(
     });
   }
 
-  const draft = await createBindingDraftEdit(
-    db,
-    auth,
-    {
-      bindingId: input.bindingId,
-      baseRevisionId: input.baseRevisionId,
-      targetValue: input.targetValue,
-      action: input.action,
-      reason: input.reason
-    },
-    deps,
-    context
+  // The edit helper creates the immutable candidate file blob before it reaches
+  // its audited draft/rebase step. Keep every database write (file version,
+  // candidate revision, binding carry-forward, draft and success audit) inside
+  // one outer transaction so an audit failure cannot leave committed domain
+  // rows behind. The blob write does not participate in the database
+  // transaction and may remain as an unreachable orphan on rollback.
+  const draft = await db.transaction((tx) =>
+    createBindingDraftEdit(
+      tx,
+      auth,
+      {
+        bindingId: input.bindingId,
+        baseRevisionId: input.baseRevisionId,
+        targetValue: input.targetValue,
+        action: input.action,
+        reason: input.reason
+      },
+      deps,
+      context
+    )
   );
 
   return {
@@ -1646,7 +1655,7 @@ export async function createNodeEnablementDraft(
     projectId: string;
   } & CreateNodeEnablementDraftBody,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {}
+  context: TrustedSensitiveNodeWriteContext
 ): Promise<CreateNodeEnablementDraftServiceResult> {
   requireCanEdit(auth);
 

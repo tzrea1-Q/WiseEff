@@ -8,6 +8,11 @@ import type {
   ProjectParameterFileDto,
   ProjectParameterFileVersionDto
 } from "./types";
+import {
+  trustedDomainAttributionFromRow,
+  trustedPublicExecutionLabelFromAttribution,
+  type TrustedInvocationDomainAttributionRow
+} from "../auth/trustedInvocation";
 
 type ProjectParameterFileRow = {
   id: string;
@@ -23,7 +28,7 @@ type ProjectParameterFileRow = {
   current_version_number?: number | string | null;
 };
 
-type ProjectParameterFileVersionRow = {
+type ProjectParameterFileVersionRow = TrustedInvocationDomainAttributionRow & {
   id: string;
   file_id: string;
   version_number: number | string;
@@ -57,6 +62,11 @@ function toFileDto(row: ProjectParameterFileRow): ProjectParameterFileDto {
 }
 
 function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFileVersionDto {
+  const attribution = trustedDomainAttributionFromRow(row, row.created_by_user_id);
+  const executionDisplayName = trustedPublicExecutionLabelFromAttribution(
+    attribution,
+    row.created_by_display_name ?? ""
+  ) || null;
   return {
     id: row.id,
     fileId: row.file_id,
@@ -68,7 +78,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
     createdByUserId: row.created_by_user_id,
-    createdByDisplayName: row.created_by_display_name ?? null
+    createdByDisplayName: executionDisplayName,
   };
 }
 
@@ -179,10 +189,14 @@ export async function insertFileVersion(
   db: Queryable,
   input: InsertFileVersionInput
 ): Promise<ProjectParameterFileVersionDto> {
+  const accountableUserId = input.attribution ? input.attribution.userId : input.createdByUserId ?? null;
+  const initiatorType = input.attribution?.initiatorType ?? (accountableUserId ? "user" : "legacy");
   const result = await db.query<ProjectParameterFileVersionRow>(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
     values (
       $1,
@@ -196,7 +210,8 @@ export async function insertFileVersion(
       $5,
       $6::jsonb,
       $7,
-      $8
+      $8,
+      $9, $10, $11, $12, $13, $14
     )
     returning *
     `,
@@ -208,7 +223,13 @@ export async function insertFileVersion(
       input.sizeBytes,
       JSON.stringify(input.parsedIndex ?? {}),
       input.origin,
-      input.createdByUserId ?? null
+      accountableUserId,
+      initiatorType,
+      input.attribution?.systemKind ?? null,
+      input.attribution?.systemName ?? null,
+      input.attribution?.sessionId ?? null,
+      input.attribution?.toolCallId ?? null,
+      input.attribution?.approvalId ?? null
     ]
   );
 

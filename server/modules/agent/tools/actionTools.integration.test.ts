@@ -333,6 +333,15 @@ async function seedConfigAndBinding(db: Database, auth: AuthContext) {
     role: "overlay",
     sortOrder: 1
   });
+  // The trusted typed-draft guard resolves the compatible token from the
+  // exact locked overlay version. Keep this fixture's structural identity in
+  // sync with production structural-ingest rows (the overlay itself has no
+  // compatible property).
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'charging_core', '/charging_core', null)`,
+    [`dts-node-overlay-${randomUUID().slice(0, 8)}`, overlayVersionId]
+  );
 
   const manifest: ConfigRevisionManifest = {
     organizationId: ORG_ID,
@@ -520,7 +529,11 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
         await seedGraph(ownedDb);
         await resolveParameterIdentityMode(ownedDb);
         const fixture = await seedConfigAndBinding(ownedDb, auth);
-        const context = contextFor(auth);
+        const capableAuth: AuthContext = {
+          ...auth,
+          permissions: [...auth.permissions, "parameter:edit-critical"]
+        };
+        const context = contextFor(capableAuth);
         await seedAgentAuditLineage(ownedDb, context);
         await ownedDb.query(
       `insert into dts_sensitive_node_rules (
@@ -736,6 +749,10 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           targetValue: draft.rawText,
           reason: "Central compatible guard"
         };
+        const capableAuth: AuthContext = {
+          ...auth,
+          permissions: [...auth.permissions, "parameter:edit-critical"]
+        };
         const snapshot = async () => {
           const result = await ownedDb.query<{
             drafts: string;
@@ -772,14 +789,14 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           successAudits: "0"
         });
 
-        const agentContext = contextFor(auth);
+        const agentContext = contextFor(capableAuth);
         await seedAgentAuditLineage(ownedDb, agentContext);
         const refusalSink = createTrustedRefusalAuditSink(root);
         await expect(
           root.transaction((tx) =>
             submitParameterChanges(
               tx,
-              auth,
+              capableAuth,
               { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: agentContext.invocation,
@@ -799,7 +816,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           root.transaction((tx) =>
             submitParameterChanges(
               tx,
-              auth,
+              capableAuth,
               { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: createSystemInvocation({ kind: "job", name: "central-compatible-test" }),
@@ -825,10 +842,6 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
         ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
         expect(await snapshot()).toEqual(before);
 
-        const capableAuth: AuthContext = {
-          ...auth,
-          permissions: [...auth.permissions, "parameter:edit-critical"]
-        };
         const submitted = await submitParameterChanges(
           root,
           capableAuth,
@@ -904,6 +917,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           ...auth,
           permissions: [...auth.permissions, "parameter:edit-critical"]
         };
+        const refusalSink = createTrustedRefusalAuditSink(root);
         const draft = await createNodeEnablementDraft(
           ownedDb,
           capableAuth,
@@ -915,7 +929,11 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             reason: "Exact compatible enablement guard"
           },
           { toolchain: passToolchain },
-          { requestId: "req-enablement-draft" }
+          {
+            invocation: createUserInvocation(capableAuth),
+            requestId: "req-enablement-draft",
+            refusalSink
+          }
         );
         const item = {
           draftId: draft.draftId,
@@ -961,14 +979,13 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           successAudits: "0"
         });
 
-        const agentContext = contextFor(auth);
+        const agentContext = contextFor(capableAuth);
         await seedAgentAuditLineage(ownedDb, agentContext);
-        const refusalSink = createTrustedRefusalAuditSink(root);
         await expect(
           root.transaction((tx) =>
             submitParameterChanges(
               tx,
-              auth,
+              capableAuth,
               { projectId: PROJECT_ID, items: [item] },
               { invocation: agentContext.invocation, requestId: "req-enablement-agent", refusalSink }
             )
@@ -984,7 +1001,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           root.transaction((tx) =>
             submitParameterChanges(
               tx,
-              auth,
+              capableAuth,
               { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: createSystemInvocation({ kind: "job", name: "enablement-compatible-test" }),

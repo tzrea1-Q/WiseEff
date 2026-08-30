@@ -5,6 +5,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { createAgentInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
 import {
   getFileVersionById,
   getProjectParameterFileById,
@@ -237,5 +238,61 @@ describe.skipIf(!databaseAvailable)("parameter-files repository", () => {
       createdByUserId: null,
       createdByDisplayName: null
     });
+  });
+
+  it("keeps trusted Agent correlation out of the public file-version DTO", async () => {
+    await insertProjectParameterFile(db, {
+      id: "file-agent-public",
+      organizationId: "org-1",
+      projectId: "proj-1",
+      fileName: "agent-public.dtsi",
+      format: "dts"
+    });
+    const attribution = trustedDomainAttribution(
+      createAgentInvocation(
+        {
+          user: {
+            id: "user-1",
+            organizationId: "org-1",
+            name: "Riley Chen",
+            email: "riley@example.com",
+            title: "Engineer",
+            isActive: true
+          },
+          organization: { id: "org-1", name: "ChargeLab" },
+          roles: [],
+          permissions: ["parameter:view"]
+        },
+        {
+          sessionId: "version-public-session",
+          toolCallId: "version-public-tool",
+          approval: { required: true, approvalId: "version-public-approval" }
+        }
+      )
+    );
+    const version = await insertFileVersion(db, {
+      id: "version-agent-public",
+      fileId: "file-agent-public",
+      versionNumber: 1,
+      storageKey: "org-1/files/agent-public.dtsi",
+      checksum: "agent-public-checksum",
+      sizeBytes: 10,
+      parsedIndex: {},
+      origin: "writeback",
+      attribution
+    });
+
+    expect(version).toMatchObject({
+      id: "version-agent-public",
+      createdByUserId: "user-1",
+      createdByDisplayName: "WiseEff Agent"
+    });
+    expect(version).not.toHaveProperty("initiatorType");
+    expect(version).not.toHaveProperty("initiatorSessionId");
+    expect(version).not.toHaveProperty("initiatorToolCallId");
+    expect(version).not.toHaveProperty("initiatorApprovalId");
+    expect(JSON.stringify(version)).not.toContain("version-public-session");
+    expect(JSON.stringify(version)).not.toContain("version-public-tool");
+    expect(JSON.stringify(version)).not.toContain("version-public-approval");
   });
 });

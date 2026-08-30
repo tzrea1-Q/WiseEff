@@ -3,7 +3,8 @@ import { createAuditEvent } from "../audit/repository";
 import { writeRefusalAudit } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import {
-  assertTrustedInvocationContext,
+  assertTrustedMutationInvocation,
+  assertTrustedInvocationMatchesAuth,
   TrustedInvocationContextError,
   type TrustedInvocationContext
 } from "../auth/trustedInvocation";
@@ -18,6 +19,24 @@ export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";
 export type SensitiveWriteActorType = "user" | "agent" | "system";
 export const PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE = "parameter-sensitive-node-human-required" as const;
+export const PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE =
+  "parameter-sensitive-node-identity-mismatch" as const;
+
+/**
+ * The source path's meaning is part of the trusted server contract. A node
+ * locator names the complete structural node and must match exactly. A
+ * property path names a property below a node and may explicitly resolve its
+ * owning node by removing the property segment.
+ */
+export type SensitiveNodeSourcePath =
+  | { kind: "node-locator"; value: string }
+  | { kind: "property-path"; value: string };
+
+export type TrustedSensitiveNodeWriteContext = {
+  invocation: TrustedInvocationContext;
+  requestId: string;
+  refusalSink: TrustedRefusalAuditSink;
+};
 
 export type SensitiveNodeRule = {
   id: string;
@@ -74,16 +93,27 @@ function toRule(row: SensitiveNodeRuleRow): SensitiveNodeRule {
 
 export function matchSensitiveRules(
   rules: SensitiveNodeRule[],
-  input: { nodePath: string; compatible?: string | null; projectId: string }
+  input: {
+    nodePath: string;
+    compatible?: string | null;
+    projectId: string;
+    /**
+     * A complete node locator is matched exactly. Only a property path may
+     * explicitly resolve a rule on its owning node.
+     */
+    sourcePathKind?: SensitiveNodeSourcePath["kind"];
+  }
 ): SensitiveNodeRule | null {
   const nodePath = input.nodePath.trim();
   const parentNodePath = nodePathFromSourceNodePath(nodePath);
+  const allowParentMatch = input.sourcePathKind !== "node-locator";
   const candidates = rules.filter((rule) => {
     if (!rule.enabled) return false;
     if (rule.projectId != null && rule.projectId !== input.projectId) return false;
 
     if (rule.matchType === "path") {
-      return matchesPattern(rule.pattern, nodePath) || matchesPattern(rule.pattern, parentNodePath);
+      return matchesPattern(rule.pattern, nodePath) ||
+        (allowParentMatch && matchesPattern(rule.pattern, parentNodePath));
     }
 
     const compatible = input.compatible?.trim();
@@ -131,6 +161,7 @@ export async function resolveSensitiveNodeMatch(
     projectId: string;
     nodePath: string;
     compatible?: string | null;
+    sourcePathKind?: SensitiveNodeSourcePath["kind"];
   }
 ): Promise<SensitiveNodeRule | null> {
   const nodePath = input.nodePath.trim();
@@ -143,29 +174,118 @@ export async function resolveSensitiveNodeMatch(
   return matchSensitiveRules(rules, {
     nodePath,
     compatible: input.compatible,
-    projectId: input.projectId
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePathKind ?? "property-path"
   });
 }
 
 /** Resolve dts_nodes.compatible for a parameter source when structural model is available. */
 export async function resolveDtsNodeCompatible(
   db: Queryable,
-  input: { projectId: string; sourceFileName: string; sourceNodePath: string }
+  input: {
+    organizationId: string;
+    projectId: string;
+    sourceFileName: string;
+    sourcePath: SensitiveNodeSourcePath;
+    sourceFileVersionId?: string | null;
+  }
 ): Promise<string | null> {
-  const nodePath = nodePathFromSourceNodePath(input.sourceNodePath.trim());
+  const sourcePathValue = input.sourcePath.value.trim();
+  const sourceFileName = input.sourceFileName.trim();
+  const nodePath =
+    input.sourcePath.kind === "property-path"
+      ? nodePathFromSourceNodePath(sourcePathValue)
+      : sourcePathValue;
+  if (!nodePath) {
+    throw new ApiError("CONFLICT", "Exact source node identity is empty.", {
+      code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
+      projectId: input.projectId,
+      sourceFileName,
+      sourceFileVersionId: input.sourceFileVersionId ?? null,
+      sourcePath: sourcePathValue,
+    });
+  }
+  const sourceFileVersionId = input.sourceFileVersionId?.trim() || null;
+  if (sourceFileVersionId) {
+    const scope = await db.query<{ file_id: string; file_version_id: string; format: "dts" | "json" }>(
+      `
+      select f.id as file_id, v.id as file_version_id, f.format
+      from project_parameter_files f
+      inner join project_parameter_file_versions v
+        on v.file_id = f.id
+       and v.id = $4
+      where f.organization_id = $1
+        and f.project_id = $2
+        and f.file_name = $3
+      limit 1
+      `,
+      [
+        input.organizationId,
+        input.projectId,
+        sourceFileName,
+        sourceFileVersionId,
+      ]
+    );
+    const scoped = scope.rows[0];
+    if (!scoped) {
+      throw new ApiError("CONFLICT", "Exact source file version does not belong to the requested file scope.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: input.projectId,
+        sourceFileName,
+        sourceFileVersionId,
+        nodePath
+      });
+    }
+    // JSON sources have no DTS structural node table.  Their path-only rules
+    // remain governed by the persisted source path, while DTS sources require
+    // an exact structural identity before compatible matching is attempted.
+    if (scoped.format !== "dts") return null;
+    const exact = await db.query<{ node_id: string; compatible: string | null }>(
+      `
+      select n.id as node_id, n.compatible
+      from project_parameter_files f
+      inner join project_parameter_file_versions v
+        on v.file_id = f.id
+       and v.id = $4
+      inner join dts_nodes n
+        on n.file_version_id = v.id
+       and n.node_path = $5
+      where f.organization_id = $1
+        and f.project_id = $2
+        and f.file_name = $3
+      limit 1
+      `,
+      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, nodePath]
+    );
+    if (!exact.rows[0]) {
+      throw new ApiError("CONFLICT", "Exact source node identity was not found in the locked file version.", {
+        code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
+        projectId: input.projectId,
+        sourceFileName,
+        sourceFileVersionId,
+        nodePath,
+        sourcePathKind: input.sourcePath.kind,
+      });
+    }
+    // A persisted node with compatible NULL is a valid no-compatible result;
+    // only a missing node identity is a conflict.
+    return exact.rows[0].compatible;
+  }
+
+  const lookupPath = input.sourcePath.kind === "node-locator" ? sourcePathValue : nodePath;
   const result = await db.query<{ compatible: string | null }>(
     `
     select n.compatible
     from project_parameter_files f
     inner join project_parameter_file_versions v on v.id = f.current_version_id
     inner join dts_nodes n on n.file_version_id = v.id
-    where f.project_id = $1
-      and f.file_name = $2
-      and (n.node_path = $3 or n.node_path = $4)
-    order by case when n.node_path = $3 then 0 else 1 end
+    where f.organization_id = $1
+      and f.project_id = $2
+      and f.file_name = $3
+      and n.node_path = $4
     limit 1
     `,
-    [input.projectId, input.sourceFileName, nodePath, input.sourceNodePath.trim()]
+    [input.organizationId, input.projectId, sourceFileName, lookupPath]
   );
   return result.rows[0]?.compatible ?? null;
 }
@@ -184,30 +304,84 @@ async function resolveTrustedSensitiveNodeMatch(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
+    sourcePath?: SensitiveNodeSourcePath;
     compatible?: string | null;
+    /** True when compatible (including null) came from an exact server-owned logical-node revision. */
+    compatibleIsAuthoritative?: boolean;
   }
 ) {
   const nodePath = input.nodePath.trim();
   if (!nodePath) return null;
   let compatible = input.compatible?.trim() || null;
+  const hasSourceFileName = input.sourceFileName !== undefined && input.sourceFileName !== null;
   const sourceFileName = input.sourceFileName?.trim() || null;
-  if (!compatible && sourceFileName) {
+  const sourceFileVersionId = input.sourceFileVersionId?.trim() || null;
+  if (!input.compatibleIsAuthoritative && (hasSourceFileName || sourceFileVersionId)) {
+    if (!sourceFileName || !sourceFileVersionId) {
+      throw new ApiError("CONFLICT", "Trusted sensitive-node writes require an exact source file version.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: input.projectId,
+        sourceFileName,
+        sourceFileVersionId,
+        nodePath,
+      });
+    }
+  }
+  if (!input.compatibleIsAuthoritative && input.compatible !== undefined && !sourceFileName && !sourceFileVersionId) {
+    throw new ApiError("CONFLICT", "Trusted sensitive-node writes cannot accept caller-supplied compatible values.", {
+      code: "parameter-sensitive-source-version-mismatch",
+      projectId: input.projectId,
+      nodePath,
+    });
+  }
+  // A source file/version held by a server-side lock is the only compatible
+  // authority for writeback.  Ignore any caller-supplied compatible value and
+  // resolve it from that exact persisted version; only topology revision
+  // callers may explicitly mark their persisted compatible as authoritative.
+  if (!input.compatibleIsAuthoritative && sourceFileName && sourceFileVersionId) {
     compatible = await resolveDtsNodeCompatible(db, {
+      organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
-      sourceNodePath: nodePath
+      // Ambiguous trusted callers must fail closed to the stricter complete
+      // locator semantics; only an explicit property-path input may resolve
+      // its owning node.
+      sourcePath: input.sourcePath ?? { kind: "node-locator", value: nodePath },
+      sourceFileVersionId
     });
   }
   const rules = await listSensitiveNodeRules(db, {
     organizationId: input.organizationId,
     projectId: input.projectId
   });
-  const matched = matchSensitiveRules(rules, { nodePath, compatible, projectId: input.projectId });
+  const matched = matchSensitiveRules(rules, {
+    nodePath,
+    compatible,
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePath?.kind ?? "node-locator"
+  });
   return matched ? { matched, nodePath } : null;
 }
 
-/** #613 submission-only guard. Other sensitive write callers migrate under #614. */
-export async function assertTrustedSensitiveNodeSubmissionAllowed(
+export function assertTrustedSensitiveNodeWriteContext<T extends TrustedSensitiveNodeWriteContext>(
+  auth: AuthContext,
+  context: T | undefined,
+  operation: string
+): T {
+  if (!context || typeof context.requestId !== "string" || context.requestId.trim().length === 0) {
+    throw new TrustedInvocationContextError(
+      `${operation} requires a requestId, server-owned refusal audit sink, and trusted invocation context`
+    );
+  }
+  assertTrustedRefusalAuditSink(context.refusalSink);
+  const invocation = assertTrustedInvocationMatchesAuth(auth, context.invocation, operation);
+  assertTrustedMutationInvocation(invocation, operation);
+  return { ...context, invocation, requestId: context.requestId.trim() };
+}
+
+/** Shared trusted-provenance guard for parameter-sensitive production writes. */
+export async function assertTrustedSensitiveNodeWriteAllowed(
   db: Queryable,
   auth: AuthContext,
   input: {
@@ -215,24 +389,22 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
+    sourcePath?: SensitiveNodeSourcePath;
     compatible?: string | null;
+    compatibleIsAuthoritative?: boolean;
     invocation: TrustedInvocationContext;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
   }
 ) {
-  assertTrustedRefusalAuditSink(input.refusalSink);
-  const invocation = assertTrustedInvocationContext(input.invocation);
-  if (
-    invocation.initiator !== "system" &&
-    (invocation.principal.user.id !== auth.user.id ||
-      invocation.principal.organization.id !== auth.organization.id ||
-      invocation.principal.user.organizationId !== auth.organization.id)
-  ) {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, input, "parameter sensitive-node write");
+  if (input.organizationId.trim() !== auth.organization.id) {
     throw new TrustedInvocationContextError(
-      "parameter sensitive-node invocation principal does not match the authenticated principal"
+      "parameter sensitive-node write organization does not match the authenticated target scope"
     );
   }
+  const invocation = trustedContext.invocation;
   const resolved = await resolveTrustedSensitiveNodeMatch(db, input);
   if (!resolved) return;
   const { matched, nodePath } = resolved;
@@ -257,7 +429,7 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
         pattern: matched.pattern,
         requiredCapability: matched.requiredCapability
       },
-      traceId: input.requestId
+      traceId: trustedContext.requestId
     });
     throw new ApiError("FORBIDDEN", "Critical sensitive-node submissions require a user-initiated invocation.", {
       code: PARAMETER_SENSITIVE_NODE_HUMAN_REQUIRED_CODE,
@@ -276,7 +448,11 @@ export async function assertTrustedSensitiveNodeSubmissionAllowed(
       requiredCapability: matched.requiredCapability
     });
   }
+
 }
+
+/** #613 compatibility name; #615 owns final legacy API cleanup. */
+export const assertTrustedSensitiveNodeSubmissionAllowed = assertTrustedSensitiveNodeWriteAllowed;
 
 export async function assertSensitiveNodeWriteAllowed(
   db: Queryable,
@@ -286,6 +462,8 @@ export async function assertSensitiveNodeWriteAllowed(
     projectId: string;
     nodePath: string;
     sourceFileName?: string | null;
+    sourceFileVersionId?: string | null;
+    sourcePath?: SensitiveNodeSourcePath;
     compatible?: string | null;
     actorType: SensitiveWriteActorType;
     requestId?: string;
@@ -309,9 +487,11 @@ export async function assertSensitiveNodeWriteAllowed(
   const sourceFileName = input.sourceFileName?.trim() || null;
   if (!compatible && sourceFileName) {
     compatible = await resolveDtsNodeCompatible(db, {
+      organizationId: input.organizationId,
       projectId: input.projectId,
       sourceFileName,
-      sourceNodePath: nodePath
+      sourcePath: input.sourcePath ?? { kind: "property-path", value: nodePath },
+      sourceFileVersionId: input.sourceFileVersionId
     });
   }
 
@@ -322,7 +502,8 @@ export async function assertSensitiveNodeWriteAllowed(
   const matched = matchSensitiveRules(rules, {
     nodePath,
     compatible,
-    projectId: input.projectId
+    projectId: input.projectId,
+    sourcePathKind: input.sourcePath?.kind ?? "property-path"
   });
   if (!matched) return;
 

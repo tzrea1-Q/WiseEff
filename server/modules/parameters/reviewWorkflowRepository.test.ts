@@ -21,6 +21,7 @@ import {
 import type { ParameterSubmissionRoundStatus } from "./status";
 import type { ParameterChangeRequestStatus } from "../parameter-kernel/workflowStatus";
 import { getProjectParameterForUpdate } from "./repository";
+import { createSystemInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
 import {
   createChangeRequest,
   createSubmissionItem,
@@ -32,6 +33,7 @@ import {
   listChangeRequests,
   listEligibleWorkflowAssignees,
   listReviewDecisions,
+  listReviewDecisionsInternal,
   listSubmissionRounds,
   mergeChangeRequest,
   updateChangeRequestStatus,
@@ -561,6 +563,43 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
       reviewerUserId: undefined,
       note: "Hardware reviewed."
     });
+  });
+
+  it("keeps full trusted decision attribution internal to workflow consumers", async () => {
+    await createRound({ id: "round-public-decision" });
+    await createRequest({ id: "request-public-decision", roundId: "round-public-decision", status: "software_merge" });
+    const attribution = trustedDomainAttribution(
+      createSystemInvocation({ kind: "job", name: "review-public-system-name" })
+    );
+    const publicDecision = await insertReviewDecision(db, {
+      id: "decision-public-system",
+      organizationId: ORG,
+      requestId: "request-public-decision",
+      reviewerUserId: null,
+      attribution,
+      decision: "advance",
+      fromStatus: "software_merge",
+      toStatus: "merged",
+      note: "System merge"
+    });
+
+    expect(publicDecision).not.toHaveProperty("initiatorType");
+    expect(publicDecision).not.toHaveProperty("initiatorSystemName");
+    expect(publicDecision).not.toHaveProperty("initiatorSessionId");
+    expect(publicDecision).not.toHaveProperty("initiatorToolCallId");
+    expect(publicDecision).not.toHaveProperty("initiatorApprovalId");
+
+    const internal = await listReviewDecisionsInternal(db, {
+      organizationId: ORG,
+      requestId: "request-public-decision"
+    });
+    expect(internal).toEqual([
+      expect.objectContaining({
+        initiatorType: "system",
+        initiatorSystemKind: "job",
+        initiatorSystemName: "review-public-system-name"
+      })
+    ]);
   });
 
   it("updates request status with reviewer note and persists it for later reads", async () => {

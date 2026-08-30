@@ -8,17 +8,20 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
+import { createDatabase, createPostgresDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDatabase";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { asAuditTx } from "../audit/auditedWrite";
 import { insertNodeOperation } from "../debugging/repository";
 import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
-import { writebackMergedParameterValue } from "../parameter-files/writebackService";
+import { writebackMergedEnablementValue, writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   listParameterHistory,
@@ -37,15 +40,17 @@ import {
   mergeChangeRequest,
   updateChangeRequestStatus
 } from "../parameters/reviewWorkflowRepository";
-import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
+import { reviewChange as reviewChangeService, saveDraft, submitParameterChanges } from "../parameters/service";
+import type { ParameterReviewContext } from "../parameters/service";
 import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
-import { resolveBindingWriteLock } from "./writeLock";
+import { resolveBindingWriteLock, resolveEnablementWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
   stableSemanticId
 } from "./migration";
 import { createNodeEnablementDraft } from "./editService";
+import { createBindingDraft as createBindingDraftService } from "./service";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -53,6 +58,18 @@ const ORG = "org-pcw-t1t2";
 const PROJECT = "project-pcw-t1t2";
 const USER = "user-pcw-t1t2";
 const CONFIG_SET = "dcs-pcw-t1t2";
+
+function reviewChange(
+  db: Parameters<typeof reviewChangeService>[0],
+  auth: AuthContext,
+  input: Parameters<typeof reviewChangeService>[2],
+  context: ParameterReviewContext = {}
+) {
+  return reviewChangeService(db, auth, input, {
+    ...createTestParameterSubmissionContext(auth, `review-${input.requestId}`),
+    ...context
+  });
+}
 const DEF_ID = "pd-pcw-gpio-int";
 const PPV_ID = "ppv-pcw-gpio-int";
 const SCHEMA_NS = "vendor";
@@ -112,6 +129,26 @@ async function withTempDatabase(fn: (db: Database, connectionString: string) => 
   await withSharedTempDatabase({ prefix: "pcw" }, ({ db, connectionString }) =>
     fn(db, connectionString)
   );
+}
+
+async function withRefusalSink<T>(
+  connectionString: string,
+  fn: (sink: TrustedRefusalAuditSink) => Promise<T>
+): Promise<T> {
+  const root = createPostgresDatabase(connectionString);
+  let primaryError: unknown;
+  try {
+    return await fn(createTrustedRefusalAuditSink(root));
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    try {
+      await root.close();
+    } catch (cleanupError) {
+      if (primaryError === undefined) throw cleanupError;
+    }
+  }
 }
 
 function makeAuth(): AuthContext {
@@ -270,6 +307,11 @@ async function seedPreCutoverGraph(db: Database) {
     ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)`,
     [fileVersionId, fileId, `${ORG}/${checksum}-pcw-base.dts`, checksum, Buffer.byteLength(content), USER]
   );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'sc8562', $3, 'vendor,sc8562')`,
+    [`node-${fileVersionId}-sc8562`, fileVersionId, NODE_LOCATOR]
+  );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     fileVersionId,
     fileId
@@ -294,6 +336,11 @@ async function seedPreCutoverGraph(db: Database) {
       JSON.stringify({ sourceText: overlayContent }),
       USER
     ]
+  );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'sc8562', $3, 'vendor,sc8562')`,
+    [`node-${overlayVersionId}-sc8562`, overlayVersionId, NODE_LOCATOR]
   );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     overlayVersionId,
@@ -493,9 +540,336 @@ async function seedPendingDeleteCandidate(
 
 describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", () => {
   it(
+    "preserves System attribution for typed binding drafts",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-system-binding-red",
+          objectSnapshotId: "obj-snap-pcw-system-binding-red"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+
+        const auth = makeAuth();
+        const putCalls: string[] = [];
+        const objectStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          async put(input: { bytes: Buffer }) {
+            putCalls.push(input.bytes.toString("utf8"));
+            return {
+              storageKey: `${ORG}/system-binding-red-${putCalls.length}.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
+            };
+          }
+        };
+
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          await expect(
+            createBindingDraftService(
+              db,
+              auth,
+              {
+                projectId: PROJECT,
+                bindingId: seeded.bindingId,
+                baseRevisionId: seeded.configRevisionId,
+                targetValue: {
+                  kind: "cells",
+                  bits: 32,
+                  groups: [[{ kind: "integer", raw: "2", value: "2" }]]
+                },
+                reason: "System typed binding attribution Red"
+              },
+              { objectStore },
+              {
+                invocation: createSystemInvocation({ kind: "job", name: "typed-binding-red-job" }),
+                requestId: "typed-binding-system-red",
+                refusalSink
+              }
+            )
+          ).resolves.toMatchObject({ projectParameterBindingId: seeded.bindingId });
+        });
+
+        expect(putCalls).toHaveLength(1);
+        const attribution = await db.query<{
+          draft_user_id: string | null;
+          draft_initiator_type: string;
+          file_creator_user_id: string | null;
+          file_initiator_type: string;
+          file_system_kind: string | null;
+          file_system_name: string | null;
+        }>(
+          `select
+             d.user_id as draft_user_id,
+             d.initiator_type as draft_initiator_type,
+             fv.created_by_user_id as file_creator_user_id,
+             fv.initiator_type as file_initiator_type,
+             fv.initiator_system_kind as file_system_kind,
+             fv.initiator_system_name as file_system_name
+           from parameter_drafts d
+           inner join dts_config_revision_members crm on crm.config_revision_id = d.candidate_config_revision_id
+             and crm.role = 'overlay'
+           inner join project_parameter_file_versions fv on fv.id = crm.file_version_id
+           where d.project_id = $1 and d.initiator_type = 'system'
+           order by d.updated_at desc
+           limit 1`,
+          [PROJECT]
+        );
+        expect(attribution.rows).toEqual([
+          {
+            draft_user_id: null,
+            draft_initiator_type: "system",
+            file_creator_user_id: null,
+            file_initiator_type: "system",
+            file_system_kind: "job",
+            file_system_name: "typed-binding-red-job"
+          }
+        ]);
+      });
+    },
+    120_000
+  );
+
+  it(
+    "rolls back typed binding domain writes when the success audit fails",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-binding-audit-rollback-red",
+          objectSnapshotId: "obj-snap-pcw-binding-audit-rollback-red"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+
+        const auth = makeAuth();
+        const putCalls: string[] = [];
+        const objectStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          async put(input: { bytes: Buffer }) {
+            putCalls.push(input.bytes.toString("utf8"));
+            return {
+              storageKey: `${ORG}/binding-audit-rollback-${putCalls.length}.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
+            };
+          }
+        };
+        const state = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions
+                where file_id in ($1, $2) and origin = 'writeback') as versions,
+               (select count(*)::text from dts_config_revisions
+                where organization_id = $3 and project_id = $4 and status = 'draft') as candidates,
+               (select count(*)::text from dts_config_revision_members crm
+                inner join dts_config_revisions cr on cr.id = crm.config_revision_id
+                where cr.organization_id = $3 and cr.project_id = $4) as candidate_members,
+               (select count(*)::text from project_parameter_binding_revisions bpr
+                inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+                where cr.organization_id = $3 and cr.project_id = $4) as binding_revisions,
+               (select count(*)::text from parameter_drafts
+                where organization_id = $3 and project_id = $4) as drafts,
+               (select count(*)::text from audit_events
+                where organization_id = $3 and project_id = $4
+                  and kind = 'parameter-topology-governance'
+                  and action = 'binding-edited') as success_audits`,
+            [seeded.fileId, seeded.overlayFileId, ORG, PROJECT]
+          )
+        ).rows[0]!;
+        const before = await state();
+
+        await db.query(
+          `create or replace function fail_binding_draft_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-topology-governance' and new.action = 'binding-edited' then
+               raise exception 'injected binding draft audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_binding_draft_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_binding_draft_audit()`
+        );
+
+        try {
+          await withRefusalSink(connectionString, async (refusalSink) => {
+            await expect(
+              createBindingDraftService(
+                db,
+                auth,
+                {
+                  projectId: PROJECT,
+                  bindingId: seeded.bindingId,
+                  baseRevisionId: seeded.configRevisionId,
+                  targetValue: {
+                    kind: "cells",
+                    bits: 32,
+                    groups: [[{ kind: "integer", raw: "2", value: "2" }]]
+                  },
+                  reason: "Typed binding audit failure must roll back all domain writes"
+                },
+                { objectStore },
+                {
+                  invocation: createUserInvocation(auth),
+                  requestId: "trace-pcw-binding-audit-rollback",
+                  refusalSink
+                }
+              )
+            ).rejects.toThrow("injected binding draft audit failure");
+          });
+        } finally {
+          await db.query(`drop trigger fail_binding_draft_audit_trigger on audit_events`);
+          await db.query(`drop function fail_binding_draft_audit()`);
+        }
+
+        expect(await state()).toEqual(before);
+        // The immutable blob is written before the DB transaction. It may be an
+        // unreachable orphan, but no committed domain row may reference it.
+        expect(putCalls).toHaveLength(1);
+        const orphanReference = await db.query<{ count: string }>(
+          `select count(*)::text as count
+           from project_parameter_file_versions
+           where storage_key = $1`,
+          [`${ORG}/binding-audit-rollback-1.dts`]
+        );
+        expect(orphanReference.rows).toEqual([{ count: "0" }]);
+      });
+    },
+    120_000
+  );
+
+  it(
+    "audits incapable critical Agent/System refusal before capability checks",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-refusal-order-red",
+          objectSnapshotId: "obj-snap-pcw-refusal-order-red"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+        await db.query(
+          `update dts_logical_node_revisions
+           set compatible = 'vendor,critical-refusal-order'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [seeded.configRevisionId, expectedLogicalNodeId()]
+        );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values ($1, $2, $3, 'compatible', 'vendor,critical-refusal-order',
+                    'critical', 'parameter:edit-critical', true)`,
+          ["rule-pcw-refusal-order-red", ORG, PROJECT]
+        );
+        const auth = makeAuth();
+        const before = await db.query<{ drafts: string; candidates: string; refusals: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+             (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates,
+             (select count(*)::text from audit_events where project_id = $1 and kind = 'parameter-sensitive-node-denied') as refusals`,
+          [PROJECT]
+        );
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          for (const [requestId, invocation] of [
+            [
+              "refusal-order-incapable-agent",
+              createAgentInvocation(auth, {
+                sessionId: "session-refusal-order-agent",
+                toolCallId: "tool-refusal-order-agent",
+                approval: { required: true, approvalId: "approval-refusal-order-agent" }
+              })
+            ],
+            ["refusal-order-incapable-system", createSystemInvocation({ kind: "service", name: "refusal-order-service" })]
+          ] as const) {
+            await expect(
+              createNodeEnablementDraft(
+                db,
+                auth,
+                {
+                  projectId: PROJECT,
+                  logicalNodeId: expectedLogicalNodeId(),
+                  baseRevisionId: seeded.configRevisionId,
+                  target: "force-enabled",
+                  reason: "Incapable critical initiator must be audited"
+                },
+                { toolchain: passToolchain },
+                { invocation, requestId, refusalSink }
+              )
+            ).rejects.toMatchObject({
+              code: "FORBIDDEN",
+              status: 403,
+              details: { code: "parameter-sensitive-node-human-required", requireHuman: true }
+            });
+          }
+        });
+        expect(
+          await db.query<{ drafts: string; candidates: string; refusals: string }>(
+            `select
+               (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+               (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates,
+               (select count(*)::text from audit_events where project_id = $1 and kind = 'parameter-sensitive-node-denied') as refusals`,
+            [PROJECT]
+          )
+        ).toEqual({
+          rows: [{ ...before.rows[0], refusals: "2" }],
+          rowCount: before.rowCount
+        });
+      });
+    },
+    120_000
+  );
+
+  it(
     "matches quoted exact-revision compatible before topology enablement capability checks",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         await db.query(
           `delete from parameter_drafts
@@ -600,7 +974,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               target: "force-disabled",
               reason: "Verify quoted compatible capability gate"
             },
-            { toolchain: passToolchain }
+            { toolchain: passToolchain },
+            createTestParameterSubmissionContext(incapableAuth, "enablement-capability-denied")
           )
         ).rejects.toMatchObject({
           code: "FORBIDDEN",
@@ -620,6 +995,107 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           organizationName: "PCW Org",
           permissions: [...incapableAuth.permissions, "parameter:edit-critical"]
         });
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agentInvocation = createAgentInvocation(capableAuth, {
+            sessionId: "session-topology-enablement",
+            toolCallId: "tool-topology-enablement",
+            approval: { required: true, approvalId: "approval-topology-enablement" }
+          });
+          const systemInvocation = createSystemInvocation({ kind: "job", name: "topology-enablement-job" });
+          for (const [requestId, invocation] of [
+            ["enablement-agent-refusal", agentInvocation],
+            ["enablement-system-refusal", systemInvocation]
+          ] as const) {
+            await expect(
+              createNodeEnablementDraft(
+                db,
+                capableAuth,
+                {
+                  projectId: PROJECT,
+                  logicalNodeId: exactNode.rows[0]!.logical_node_id,
+                  baseRevisionId: seeded.configRevisionId,
+                  target: "force-disabled",
+                  reason: "Critical topology enablement must preserve initiator"
+                },
+                { toolchain: passToolchain },
+                { invocation, requestId, refusalSink }
+              )
+            ).rejects.toMatchObject({
+              code: "FORBIDDEN",
+              status: 403,
+              details: { code: "parameter-sensitive-node-human-required", requireHuman: true }
+            });
+            expect(await snapshot()).toEqual(before);
+          }
+        });
+        const refusalRows = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events
+           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'
+           order by trace_id`,
+          [ORG]
+        );
+        expect(refusalRows.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "agent",
+            actor_user_id: USER,
+            trace_id: "enablement-agent-refusal",
+            metadata: expect.objectContaining({
+              initiator: "agent",
+              sessionId: "session-topology-enablement",
+              toolCallId: "tool-topology-enablement",
+              approvalId: "approval-topology-enablement"
+            })
+          }),
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-system-refusal",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "topology-enablement-job"
+            })
+          })
+        ]);
+        await db.query(
+          `create or replace function fail_enablement_draft_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-topology-governance' and new.action = 'enablement-changed' then
+               raise exception 'injected enablement draft audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_enablement_draft_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_enablement_draft_audit()`
+        );
+        await expect(
+          createNodeEnablementDraft(
+            db,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "Success audit failure must roll back the draft"
+            },
+            { toolchain: passToolchain },
+            createTestParameterSubmissionContext(capableAuth, "enablement-audit-failure")
+          )
+        ).rejects.toThrow("injected enablement draft audit failure");
+        expect(await snapshot()).toEqual(before);
+        await db.query(`drop trigger fail_enablement_draft_audit_trigger on audit_events`);
+        await db.query(`drop function fail_enablement_draft_audit()`);
         const created = await createNodeEnablementDraft(
           db,
           capableAuth,
@@ -630,7 +1106,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             target: "force-disabled",
             reason: "Allow capable direct user on quoted compatible"
           },
-          { toolchain: passToolchain }
+          { toolchain: passToolchain },
+          createTestParameterSubmissionContext(capableAuth, "enablement-capable-user")
         );
         expect(created).toMatchObject({
           logicalNodeId: exactNode.rows[0]!.logical_node_id,
@@ -638,6 +1115,364 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           action: "set"
         });
         expect(await snapshot()).toEqual({ drafts: "1", candidates: "1" });
+        await db.query(
+          `update dts_sensitive_node_rules set risk_tier = 'high'
+           where id = 'rule-pcw-quoted-compatible'`
+        );
+        await db.query(`delete from parameter_drafts where id = $1`, [created.draftId]);
+        const systemOwnedState = async () => (await db.query<Record<string, string>>(
+          `select
+             (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+             (select count(*)::text from dts_config_revisions where status = 'draft') as candidates,
+             (select count(*)::text from parameter_drafts) as drafts,
+             (select count(*)::text from audit_events
+              where kind = 'parameter-topology-governance' and action = 'enablement-changed') as success_audits`
+        )).rows[0];
+        const beforeSystemOwnedState = await systemOwnedState();
+        const systemHighDraft = await withRefusalSink(connectionString, (refusalSink) => createNodeEnablementDraft(
+          db,
+          capableAuth,
+          {
+            projectId: PROJECT,
+            logicalNodeId: exactNode.rows[0]!.logical_node_id,
+            baseRevisionId: seeded.configRevisionId,
+            target: "force-enabled",
+            reason: "System high-risk enablement preserves its service identity"
+          },
+          { toolchain: passToolchain },
+          {
+            invocation: createSystemInvocation({ kind: "service", name: "topology-high-service" }),
+            requestId: "enablement-high-system",
+            refusalSink
+          }
+        ));
+        expect(systemHighDraft.draftId).toBeTruthy();
+        expect(await snapshot()).toEqual({ drafts: "0", candidates: "2" });
+        expect(await systemOwnedState()).toEqual({
+          versions: "2",
+          candidates: "2",
+          drafts: "1",
+          success_audits: "2"
+        });
+        expect(beforeSystemOwnedState).toEqual({
+          versions: "1",
+          candidates: "1",
+          drafts: "0",
+          success_audits: "1"
+        });
+        const systemHighAttribution = await db.query<{
+          user_id: string | null;
+          created_by_user_id: string | null;
+        }>(
+          `select d.user_id, fv.created_by_user_id
+           from parameter_drafts d
+           inner join dts_config_revision_members crm on crm.config_revision_id = d.candidate_config_revision_id
+             and crm.role = 'overlay'
+           inner join project_parameter_file_versions fv on fv.id = crm.file_version_id
+           where d.id = $1`,
+          [systemHighDraft.draftId]
+        );
+        expect(systemHighAttribution.rows).toEqual([
+          { user_id: null, created_by_user_id: null }
+        ]);
+        const systemHighAudit = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events where trace_id = 'enablement-high-system'
+             and kind = 'parameter-topology-governance'`
+        );
+        expect(systemHighAudit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-high-system",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "service",
+              systemName: "topology-high-service"
+            })
+          })
+        ]);
+        const agentHighDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-enabled",
+              reason: "Agent uses its accountable principal without losing initiator"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createAgentInvocation(capableAuth, {
+                sessionId: "session-topology-high-agent",
+                toolCallId: "tool-topology-high-agent",
+                approval: { required: true, approvalId: "approval-topology-high-agent" }
+              }),
+              requestId: "enablement-high-agent",
+              refusalSink
+            }
+          )
+        );
+        const agentDraftOwner = await db.query<{ user_id: string }>(
+          `select user_id from parameter_drafts where id = $1`,
+          [agentHighDraft.draftId]
+        );
+        expect(agentDraftOwner.rows).toEqual([{ user_id: USER }]);
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values (
+             'rule-pcw-enablement-writeback-path', $1, $2, 'compatible', 'wiseeff,enablement-locked-critical',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+
+        const enablementLock = await resolveEnablementWriteLock(db, capableAuth, {
+          logicalNodeId: exactNode.rows[0]!.logical_node_id,
+          baseRevisionId: seeded.configRevisionId
+        });
+        await db.query(
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,enablement-locked-critical'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [seeded.configRevisionId, exactNode.rows[0]!.logical_node_id]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,enablement-locked-critical'
+           where file_version_id = $1 and node_path = $2`,
+          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           select 'node-enablement-locked-critical', $1, 'sc8562', $2, 'wiseeff,enablement-locked-critical'
+           where not exists (
+             select 1 from dts_nodes where file_version_id = $1 and node_path = $2
+           )`,
+          [enablementLock.sourceFileVersionId, enablementLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into project_parameter_file_versions (
+             id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
+           )
+           select 'fv-enablement-safe-current', file_id,
+                  (select max(version_number) + 1 from project_parameter_file_versions where file_id = locked.file_id),
+                  'safe-enablement-current', checksum, size_bytes, parsed_index, 'upload'
+           from project_parameter_file_versions locked where id = $1`,
+          [enablementLock.sourceFileVersionId]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           values ('node-enablement-safe-current', 'fv-enablement-safe-current', 'safe', $1, 'wiseeff,safe')`,
+          [enablementLock.sourceNodePath]
+        );
+        await db.query(
+          `update project_parameter_files set current_version_id = 'fv-enablement-safe-current'
+           where id = (select file_id from project_parameter_file_versions where id = $1)`,
+          [enablementLock.sourceFileVersionId]
+        );
+        const enablementPut = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/enablement-writeback.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
+        const enablementStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          put: enablementPut
+        };
+        const enablementState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from audit_events where kind = 'parameter-writeback-to-file') as success_audits`
+          )
+        ).rows[0];
+        const beforeEnablementWriteback = await enablementState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agent = createAgentInvocation(capableAuth, {
+            sessionId: "session-enablement-writeback",
+            toolCallId: "tool-enablement-writeback",
+            approval: { required: true, approvalId: "approval-enablement-writeback" }
+          });
+          const system = createSystemInvocation({ kind: "job", name: "enablement-writeback-job" });
+          for (const [requestId, invocation] of [
+            ["enablement-writeback-agent-refusal", agent],
+            ["enablement-writeback-system-refusal", system]
+          ] as const) {
+            await expect(
+              db.transaction((tx) =>
+                writebackMergedEnablementValue(
+                  asAuditTx(tx),
+                  enablementStore as never,
+                  capableAuth,
+                  {
+                    projectId: PROJECT,
+                    logicalNodeId: exactNode.rows[0]!.logical_node_id,
+                    mergedValue: '"disabled"',
+                    writeLock: enablementLock
+                  },
+                  {
+                    invocation,
+                    requestId,
+                    refusalSink,
+                    toolchain: passToolchain,
+                    skipSemanticGates: true
+                  }
+                )
+              )
+            ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+            expect(await enablementState()).toEqual(beforeEnablementWriteback);
+            expect(enablementPut).not.toHaveBeenCalled();
+          }
+        });
+        await db.query(
+          `update dts_sensitive_node_rules set risk_tier = 'high'
+           where id = 'rule-pcw-enablement-writeback-path'`
+        );
+        const systemEnablementWriteback = await withRefusalSink(connectionString, (refusalSink) =>
+          db.transaction((tx) => writebackMergedEnablementValue(
+            asAuditTx(tx),
+            enablementStore as never,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              mergedValue: '"disabled"',
+              writeLock: enablementLock
+            },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "enablement-high-writeback-job" }),
+              requestId: "enablement-high-system-writeback",
+              refusalSink,
+              toolchain: passToolchain,
+              skipSemanticGates: true
+            }
+          ))
+        );
+        expect(systemEnablementWriteback.skipped).toBe(false);
+        const systemEnablementAttribution = await db.query<{
+          created_by_user_id: string | null;
+          revision_creator_user_id: string | null;
+        }>(
+          `select fv.created_by_user_id, cr.created_by_user_id as revision_creator_user_id
+           from project_parameter_file_versions fv
+           inner join dts_config_revisions cr on cr.id = $2
+           where fv.id = $1`,
+          [systemEnablementWriteback.versionId, systemEnablementWriteback.candidateRevisionId]
+        );
+        expect(systemEnablementAttribution.rows).toEqual([
+          { created_by_user_id: null, revision_creator_user_id: null }
+        ]);
+        enablementPut.mockClear();
+        const enablementWriteback = await db.transaction((tx) =>
+          writebackMergedEnablementValue(
+            asAuditTx(tx),
+            enablementStore as never,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              mergedValue: '"disabled"',
+              writeLock: enablementLock
+            },
+            {
+              ...createTestParameterSubmissionContext(capableAuth, "enablement-writeback-user"),
+              toolchain: passToolchain,
+              skipSemanticGates: true
+            }
+          )
+        );
+        expect(enablementWriteback.skipped).toBe(false);
+        expect(enablementPut).toHaveBeenCalledTimes(1);
+        const enablementAudit = await db.query<{ actor_type: string; actor_user_id: string | null; trace_id: string }>(
+          `select actor_type, actor_user_id, trace_id from audit_events
+           where kind = 'parameter-writeback-to-file' and trace_id = 'enablement-writeback-user'`
+        );
+        expect(enablementAudit.rows).toEqual([
+          { actor_type: "user", actor_user_id: USER, trace_id: "enablement-writeback-user" }
+        ]);
+
+        await db.query(
+          `delete from dts_sensitive_node_rules
+           where id in ('rule-pcw-quoted-compatible', 'rule-pcw-enablement-writeback-path')`,
+        );
+        const beforeSystemNoMatch = await systemOwnedState();
+        const systemNoMatchDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            capableAuth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: exactNode.rows[0]!.logical_node_id,
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-enabled",
+              reason: "System no-match preserves the existing operation",
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "topology-no-match-job" }),
+              requestId: "enablement-no-match-system",
+              refusalSink,
+            },
+          ),
+        );
+        expect(systemNoMatchDraft.draftId).toBeTruthy();
+        expect(await systemOwnedState()).toEqual({
+          versions: String(Number(beforeSystemNoMatch.versions) + 1),
+          candidates: String(Number(beforeSystemNoMatch.candidates) + 1),
+          drafts: String(Number(beforeSystemNoMatch.drafts) + 1),
+          success_audits: String(Number(beforeSystemNoMatch.success_audits) + 1),
+        });
+        const systemNoMatchAttribution = await db.query<{
+          user_id: string | null;
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select user_id, initiator_type, initiator_system_kind, initiator_system_name
+           from parameter_drafts where id = $1`,
+          [systemNoMatchDraft.draftId],
+        );
+        expect(systemNoMatchAttribution.rows).toEqual([
+          {
+            user_id: null,
+            initiator_type: "system",
+            initiator_system_kind: "job",
+            initiator_system_name: "topology-no-match-job",
+          },
+        ]);
+        const systemNoMatchAudit = await db.query<{
+          actor_type: string;
+          actor_user_id: string | null;
+          trace_id: string;
+          metadata: Record<string, unknown>;
+        }>(
+          `select actor_type, actor_user_id, trace_id, metadata
+           from audit_events where trace_id = 'enablement-no-match-system'
+             and kind = 'parameter-topology-governance'`,
+        );
+        expect(systemNoMatchAudit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            trace_id: "enablement-no-match-system",
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "topology-no-match-job",
+            }),
+          }),
+        ]);
       });
     },
     90_000
@@ -646,7 +1481,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "submits an exact binding draft identity and rejects project/spec/candidate/write-lock mismatches",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1272,7 +2107,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "merges a persisted delete action through locked writeback without a replacement binding revision",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1289,7 +2124,14 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           PROJECT
         ]);
 
-        const auth = makeAuth();
+        const auth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
         const writeLock = await resolveBindingWriteLock(db, auth, {
           bindingId: seeded.bindingId,
           baseRevisionId: seeded.configRevisionId
@@ -1325,17 +2167,16 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(request.action).toBe("delete");
 
+        const deletePut = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/delete-writeback-pcw.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
         const objectStore = {
           async get(key: string) {
             return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
           },
-          async put(input: { bytes: Buffer }) {
-            return {
-              storageKey: `${ORG}/delete-writeback-pcw.dts`,
-              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
-              fileSizeBytes: input.bytes.length
-            };
-          }
+          put: deletePut
         };
         await db.query(
           `update dts_occurrence_effects set effect_kind = 'set'
@@ -1385,6 +2226,90 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            where config_revision_id = $1 and property_name = $2`,
           [submittedCandidateRevisionId, PROPERTY_KEY]
         );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-review-merge-critical', $1, $2, 'path', '*',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+        const mergeState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select status from parameter_change_requests where id = $1) as status,
+               (select count(*)::text from parameter_history_entries where request_id = $1) as history,
+               (select count(*)::text from parameter_review_decisions where request_id = $1) as decisions,
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from audit_events where kind in ('parameter-merge', 'parameter-writeback-to-file')) as success_audits`,
+            [request.id]
+          )
+        ).rows[0];
+        const beforeRefusal = await mergeState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agentInvocation = createAgentInvocation(auth, {
+            sessionId: "session-review-merge",
+            toolCallId: "tool-review-merge",
+            approval: { required: true, approvalId: "approval-review-merge" }
+          });
+          await expect(
+            reviewChangeService(
+              db,
+              auth,
+              { requestId: request.id, decision: "advance", note: "https://example.com/agent-delete" },
+              {
+                invocation: agentInvocation,
+                requestId: "review-merge-agent-refusal",
+                refusalSink,
+                objectStore: objectStore as never,
+                toolchain: passToolchain,
+                skipSemanticGates: true
+              }
+            )
+          ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+        });
+        expect(await mergeState()).toEqual(beforeRefusal);
+        expect(deletePut).not.toHaveBeenCalled();
+
+        await db.query(
+          `create or replace function fail_review_merge_writeback_audit() returns trigger as $$
+           begin
+             if new.kind = 'parameter-writeback-to-file' then
+               raise exception 'injected review merge writeback audit failure';
+             end if;
+             return new;
+           end;
+           $$ language plpgsql`
+        );
+        await db.query(
+          `create trigger fail_review_merge_writeback_audit_trigger
+           before insert on audit_events
+           for each row execute function fail_review_merge_writeback_audit()`
+        );
+        await expect(
+          reviewChange(
+            db,
+            auth,
+            { requestId: request.id, decision: "advance", note: "https://example.com/audit-failure-delete" },
+            {
+              objectStore: objectStore as never,
+              toolchain: passToolchain,
+              skipSemanticGates: true,
+              requestId: "trace-pcw-delete-merge-audit-failure"
+            }
+          )
+        ).rejects.toThrow("injected review merge writeback audit failure");
+        expect(await mergeState()).toEqual(beforeRefusal);
+        expect(deletePut).toHaveBeenCalledTimes(1);
+        expect((await db.query<{ count: string }>(
+          `select count(*)::text as count from user_notifications where source_id = $1`,
+          [request.id]
+        )).rows[0]?.count).toBe("0");
+        await db.query(`drop trigger fail_review_merge_writeback_audit_trigger on audit_events`);
+        await db.query(`drop function fail_review_merge_writeback_audit()`);
+        deletePut.mockClear();
+
         const merged = await reviewChange(
           db,
           auth,
@@ -1481,7 +2406,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   it(
     "runs list/draft/submit/review/merge/history/writeback/debug/delete without shadow PPV",
     async () => {
-      await withTempDatabase(async (db) => {
+      await withTempDatabase(async (db, connectionString) => {
         const seeded = await seedPreCutoverGraph(db);
         const report = await migrateParameterIdentities(db, {
           mode: "apply",
@@ -1514,11 +2439,97 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           PROJECT
         ]);
 
-        const auth = makeAuth();
+        const auth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
         const mergedGpioValue = "<&gpio13 30 0>";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           )
+           select 'zz-newer-unbound-revision', organization_id, project_id, config_set_id, 999, 'compiled',
+                  created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           from dts_config_revisions where id = $1`,
+          [seeded.configRevisionId]
+        );
+        await db.query(
+          `insert into dts_logical_node_revisions (
+             id, logical_node_id, config_revision_id, node_locator, name, unit_address,
+             parent_logical_node_id, compatible
+           ) values (
+             'lnr-newer-unbound-revision', $1, 'zz-newer-unbound-revision',
+             '/wrong/latest/locator', 'wrong', null, null, 'wiseeff,newer-safe'
+           )`,
+          [expectedLogicalNodeId()]
+        );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern,
+             risk_tier, required_capability, enabled
+           ) values ($1, $2, $3, 'path', $4, 'critical', 'parameter:edit-critical', true)`,
+          ["rule-pcw-exact-base-locator", ORG, PROJECT, NODE_LOCATOR]
+        );
+        const capableAuth = makeTestAuthContext({
+          userId: USER,
+          organizationId: ORG,
+          name: "PCW User",
+          email: "pcw@example.com",
+          organizationName: "PCW Org",
+          permissions: [...makeAuth().permissions, "parameter:edit-critical"]
+        });
+        const beforeTypedDraft = await db.query<{ drafts: string; candidates: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+             (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates`,
+          [PROJECT]
+        );
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          await expect(
+            createBindingDraftService(
+              db,
+              capableAuth,
+              {
+                projectId: PROJECT,
+                bindingId: seeded.bindingId,
+                baseRevisionId: seeded.configRevisionId,
+                targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "2", value: "2" }]] },
+                reason: "Exact base locator must govern typed binding policy"
+              },
+              { toolchain: passToolchain },
+              {
+                invocation: createAgentInvocation(capableAuth, {
+                  sessionId: "session-pcw-exact-base-locator",
+                  toolCallId: "tool-pcw-exact-base-locator",
+                  approval: { required: true, approvalId: "approval-pcw-exact-base-locator" }
+                }),
+                requestId: "trace-pcw-exact-base-locator",
+                refusalSink
+              }
+            )
+          ).rejects.toMatchObject({
+            code: "FORBIDDEN",
+            status: 403,
+            details: { code: "parameter-sensitive-node-human-required", requireHuman: true }
+          });
+        });
+        const afterTypedDraft = await db.query<{ drafts: string; candidates: string }>(
+          `select
+             (select count(*)::text from parameter_drafts where project_id = $1) as drafts,
+             (select count(*)::text from dts_config_revisions where project_id = $1 and status = 'draft') as candidates`,
+          [PROJECT]
+        );
+        expect(afterTypedDraft.rows).toEqual(beforeTypedDraft.rows);
+        await db.query(`delete from dts_sensitive_node_rules where id = $1`, ["rule-pcw-exact-base-locator"]);
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
         expect(writeLock.baseConfigRevisionId).toBeTruthy();
         expect(writeLock.bindingRevisionId).toBeTruthy();
+        expect(writeLock.sourceNodePath).toBe(NODE_LOCATOR);
 
         const draftId = randomUUID();
         const draft = await upsertDraft(db, {
@@ -1646,6 +2657,11 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         );
         expect(baseBindingRaw.rows[0]?.raw_value).toBe("<1>");
 
+        const put = vi.fn(async (input: { bytes: Buffer }) => ({
+          storageKey: `${ORG}/writeback-pcw.dts`,
+          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+          fileSizeBytes: input.bytes.length
+        }));
         const objectStore = {
           async get(key: string) {
             if (key.includes("overlay")) {
@@ -1653,14 +2669,146 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
             return Buffer.from(seeded.content, "utf8");
           },
-          async put(input: { bytes: Buffer }) {
-            return {
-              storageKey: `${ORG}/writeback-pcw.dts`,
-              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
-              fileSizeBytes: input.bytes.length
-            };
-          }
+          put
         };
+        await db.query(
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,semantic-locked-critical'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'
+           where file_version_id = $1 and node_path = $2`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           select 'node-semantic-locked-critical', $1, 'sc8562', $2, 'wiseeff,semantic-locked-critical'
+           where not exists (
+             select 1 from dts_nodes where file_version_id = $1 and node_path = $2
+           )`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+        );
+        await db.query(
+          `insert into project_parameter_file_versions (
+             id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
+           )
+           select 'fv-semantic-safe-current', file_id,
+                  (select max(version_number) + 1 from project_parameter_file_versions where file_id = locked.file_id),
+                  'safe-semantic-current', checksum, size_bytes, parsed_index, 'upload'
+           from project_parameter_file_versions locked where id = $1`,
+          [writeLock.sourceFileVersionId]
+        );
+        await db.query(
+          `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+           values ('node-semantic-safe-current', 'fv-semantic-safe-current', 'safe', $1, 'wiseeff,safe')`,
+          [writeLock.sourceNodePath]
+        );
+        await db.query(
+          `update project_parameter_files set current_version_id = 'fv-semantic-safe-current'
+           where id = (select file_id from project_parameter_file_versions where id = $1)`,
+          [writeLock.sourceFileVersionId]
+        );
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values (
+             'rule-semantic-writeback-critical', $1, $2, 'compatible', 'wiseeff,semantic-locked-critical',
+             'critical', 'parameter:edit-critical', true
+           )`,
+          [ORG, PROJECT]
+        );
+        const writebackState = async () => (
+          await db.query<Record<string, string>>(
+            `select
+               (select count(*)::text from project_parameter_file_versions where origin = 'writeback') as versions,
+               (select count(*)::text from dts_config_revisions where status = 'draft') as candidates,
+               (select count(*)::text from project_parameter_binding_revisions) as binding_revisions,
+               (select count(*)::text from audit_events where kind = 'parameter-writeback-to-file') as success_audits`
+          )
+        ).rows[0];
+        const beforeWriteback = await writebackState();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const agent = createAgentInvocation(auth, {
+            sessionId: "session-semantic-writeback",
+            toolCallId: "tool-semantic-writeback",
+            approval: { required: true, approvalId: "approval-semantic-writeback" }
+          });
+          const system = createSystemInvocation({ kind: "service", name: "semantic-writeback-service" });
+          for (const [requestId, invocation] of [
+            ["semantic-writeback-agent-refusal", agent],
+            ["semantic-writeback-system-refusal", system]
+          ] as const) {
+            await expect(
+              writebackMergedParameterValue(db, objectStore as never, auth, {
+                projectId: PROJECT,
+                parameterDefinitionId: seeded.specId,
+                mergedValue: mergedGpioValue,
+                projectParameterBindingId: seeded.bindingId,
+                parameterSpecId: seeded.specId,
+                changeRequestId: request.id
+              }, {
+                invocation,
+                requestId,
+                refusalSink,
+                toolchain: passToolchain,
+                skipSemanticGates: true
+              })
+            ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+            expect(await writebackState()).toEqual(beforeWriteback);
+            expect(put).not.toHaveBeenCalled();
+          }
+        });
+        await db.query(
+          `update dts_logical_node_revisions
+           set compatible = 'wiseeff,safe'
+           where config_revision_id = $1 and logical_node_id = $2`,
+          [writeLock.baseConfigRevisionId, expectedLogicalNodeId()]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,safe'
+           where file_version_id = $1 and node_path = $2`,
+          [writeLock.sourceFileVersionId, writeLock.sourceNodePath]
+        );
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,semantic-locked-critical'
+           where file_version_id = 'fv-semantic-safe-current' and node_path = $1`,
+          [writeLock.sourceNodePath]
+        );
+        put.mockClear();
+        await withRefusalSink(connectionString, async (refusalSink) => {
+          const systemWriteback = await writebackMergedParameterValue(db, objectStore as never, auth, {
+            projectId: PROJECT,
+            parameterDefinitionId: seeded.specId,
+            mergedValue: mergedGpioValue,
+            projectParameterBindingId: seeded.bindingId,
+            parameterSpecId: seeded.specId,
+            changeRequestId: request.id
+          }, {
+            invocation: createSystemInvocation({ kind: "service", name: "semantic-reverse-version-service" }),
+            requestId: "semantic-reverse-version-system",
+            refusalSink,
+            toolchain: passToolchain,
+            skipSemanticGates: true
+          });
+          expect(systemWriteback.skipped).toBe(false);
+          if (!systemWriteback.skipped) {
+            const exactVersion = await db.query<{ created_by_user_id: string | null }>(
+              `select created_by_user_id from project_parameter_file_versions where id = $1`,
+              [systemWriteback.versionId]
+            );
+            expect(exactVersion.rows).toEqual([{ created_by_user_id: null }]);
+          }
+          const exactAudit = await db.query<{ actor_type: string; actor_user_id: string | null }>(
+            `select actor_type, actor_user_id from audit_events where trace_id = 'semantic-reverse-version-system'`
+          );
+          expect(exactAudit.rows).toEqual([
+            expect.objectContaining({ actor_type: "system", actor_user_id: null })
+          ]);
+        });
+        expect(put).toHaveBeenCalledTimes(1);
+        put.mockClear();
         const writeback = await writebackMergedParameterValue(db, objectStore as never, auth, {
           projectId: PROJECT,
           parameterDefinitionId: seeded.specId,
@@ -1669,6 +2817,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterSpecId: seeded.specId,
           changeRequestId: request.id,
         }, {
+          ...createTestParameterSubmissionContext(auth, "semantic-writeback-direct"),
           toolchain: {
             async validate() {
               return {
@@ -2041,6 +3190,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               changeRequestId: request.id
             },
             {
+              ...createTestParameterSubmissionContext(auth, "semantic-writeback-stale"),
               toolchain: {
                 async validate() {
                   return {
@@ -2294,7 +3444,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     it(
       `completes semantic merge when toolchain ${caseDef.name} fails`,
       async () => {
-        await withTempDatabase(async (db) => {
+        await withTempDatabase(async (db, connectionString) => {
           const seeded = await seedPreCutoverGraph(db);
           const report = await migrateParameterIdentities(db, {
             mode: "apply",
@@ -2355,26 +3505,427 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
           };
 
-          const merged = await reviewChange(
-            db,
-            auth,
-            {
-              requestId: request.id,
-              decision: "advance",
-              note: `https://example.com/toolchain-fail-${caseDef.name}`,
-              expectedVersion: 1
-            },
-            {
-              objectStore: objectStore as never,
-              toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
-            }
-          );
+          const trustedInvocation =
+            caseDef.name === "dtc"
+              ? createAgentInvocation(auth, {
+                  sessionId: "session-merge-high-agent",
+                  toolCallId: "tool-merge-high-agent",
+                  approval: { required: true, approvalId: "approval-merge-high-agent" }
+                })
+              : caseDef.name === "fdtoverlay"
+                ? createSystemInvocation({ kind: "job", name: "parameter-merge-high-job" })
+                : undefined;
+          const trustedTrace = trustedInvocation ? `trusted-merge-${caseDef.name}` : undefined;
+          const reviewInput = {
+            requestId: request.id,
+            decision: "advance" as const,
+            note: `https://example.com/toolchain-fail-${caseDef.name}`,
+            expectedVersion: 1
+          };
+          const reviewContext = {
+            objectStore: objectStore as never,
+            toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
+          };
+          if (caseDef.name === "dtc") {
+            const substitutedAgent = createAgentInvocation({
+              ...auth,
+              user: { ...auth.user, id: "other-merge-principal" }
+            }, {
+              sessionId: "session-substituted-agent",
+              toolCallId: "tool-substituted-agent",
+              approval: { required: false }
+            });
+            await expect(withRefusalSink(connectionString, (refusalSink) =>
+              reviewChangeService(db, auth, reviewInput, {
+                ...reviewContext,
+                invocation: substitutedAgent,
+                requestId: "trusted-merge-substituted-agent",
+                refusalSink
+              })
+            )).rejects.toMatchObject({ code: "INVALID_TRUSTED_INVOCATION_CONTEXT" });
+            await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
+            expect((await db.query<{ count: string }>(
+              `select count(*)::text as count from user_notifications where source_id = $1`,
+              [request.id]
+            )).rows[0]?.count).toBe("0");
+          }
+          const runReview = () => trustedInvocation && trustedTrace
+            ? withRefusalSink(connectionString, (refusalSink) =>
+                reviewChangeService(db, auth, reviewInput, {
+                  ...reviewContext,
+                  invocation: trustedInvocation,
+                  requestId: trustedTrace,
+                  refusalSink
+                })
+              )
+            : reviewChange(db, auth, reviewInput, reviewContext);
+
+          const merged = await runReview();
 
           expect(merged.status).toBe("merged");
           await assertMergeSucceeded(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId, "<9>");
+          if (trustedInvocation && trustedTrace) {
+            const audits = await db.query<{
+              kind: string;
+              actor_type: string;
+              actor_user_id: string | null;
+              trace_id: string;
+              metadata: Record<string, unknown>;
+            }>(
+              `select kind, actor_type, actor_user_id, trace_id, metadata
+               from audit_events
+               where trace_id = $1 and kind in ('parameter-merge', 'parameter-writeback-to-file')
+               order by kind`,
+              [trustedTrace]
+            );
+            expect(audits.rows).toHaveLength(2);
+            if (trustedInvocation.initiator === "agent") {
+              expect(audits.rows).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    actor_type: "agent",
+                    actor_user_id: USER,
+                    trace_id: trustedTrace,
+                    metadata: expect.objectContaining({
+                      initiator: "agent",
+                      sessionId: "session-merge-high-agent",
+                      toolCallId: "tool-merge-high-agent",
+                      approvalId: "approval-merge-high-agent"
+                    })
+                  })
+                ])
+              );
+              expect(audits.rows.every((row) => row.actor_type === "agent" && row.actor_user_id === USER)).toBe(true);
+              expect(audits.rows.find((row) => row.kind === "parameter-merge")?.metadata).toEqual(
+                expect.objectContaining({
+                  participants: expect.arrayContaining([
+                    expect.objectContaining({ role: "Agent 合入执行", name: "WiseEff Agent" })
+                  ])
+                })
+              );
+              const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
+                `select body, metadata from user_notifications
+                 where source_id = $1 and category = 'parameter.merge.completed'`,
+                [request.id]
+              );
+              expect(notifications.rows.length).toBeGreaterThan(0);
+              expect(notifications.rows).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                  body: expect.stringContaining("WiseEff Agent"),
+                  metadata: expect.objectContaining({
+                    mergerName: "WiseEff Agent",
+                    initiatorType: "agent",
+                    executionLabel: "WiseEff Agent"
+                  })
+                })
+              ]));
+              expect(notifications.rows.every((row) =>
+                !row.body.includes("session-merge-high-agent") &&
+                !row.body.includes("tool-merge-high-agent") &&
+                !row.metadata.initiatorSessionId &&
+                !row.metadata.initiatorToolCallId &&
+                !row.metadata.initiatorApprovalId
+              )).toBe(true);
+              expect(notifications.rows.some((row) => row.body.includes(auth.user.name))).toBe(false);
+              const accountableRows = await db.query<{
+                reviewer_user_id: string;
+                changed_by_user_id: string | null;
+                file_creator_user_id: string | null;
+                revision_creator_user_id: string | null;
+              }>(
+                `select
+                   (select reviewer_user_id from parameter_review_decisions
+                    where request_id = $1 and to_status = 'merged' order by created_at desc limit 1) as reviewer_user_id,
+                   (select changed_by_user_id from parameter_history_entries
+                    where request_id = $1 order by changed_at desc limit 1) as changed_by_user_id,
+                   (select created_by_user_id from project_parameter_file_versions
+                    where origin = 'writeback' order by created_at desc limit 1) as file_creator_user_id,
+                   (select created_by_user_id from dts_config_revisions
+                    order by created_at desc limit 1) as revision_creator_user_id`,
+                [request.id]
+              );
+              expect(accountableRows.rows).toEqual([{
+                reviewer_user_id: USER,
+                changed_by_user_id: USER,
+                file_creator_user_id: USER,
+                revision_creator_user_id: USER
+              }]);
+            } else {
+              expect(audits.rows).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    actor_type: "system",
+                    actor_user_id: null,
+                    trace_id: trustedTrace,
+                    metadata: expect.objectContaining({
+                      initiator: "system",
+                      systemKind: "job",
+                      systemName: "parameter-merge-high-job"
+                    })
+                  })
+                ])
+              );
+              expect(audits.rows.every((row) => row.actor_type === "system" && row.actor_user_id === null)).toBe(true);
+              const mergeMetadata = audits.rows.find((row) => row.kind === "parameter-merge")?.metadata;
+              expect(mergeMetadata).toEqual(
+                expect.objectContaining({
+                  participants: expect.arrayContaining([
+                    expect.objectContaining({
+                      role: "System 合入执行",
+                      name: "WiseEff System job"
+                    })
+                  ])
+                })
+              );
+              const executionParticipants = (mergeMetadata?.participants as Array<{
+                role: string;
+                name: string;
+                action?: string;
+                note?: string;
+              }>)
+                .filter((participant) => participant.role.includes("合入执行"));
+              expect(executionParticipants).toEqual([
+                { role: "System 合入执行", name: "WiseEff System job", action: "合入参数", note: expect.any(String) }
+              ]);
+              expect(executionParticipants.some((participant) => participant.name === auth.user.name)).toBe(false);
+            }
+          }
         });
       },
       120_000
     );
   }
+
+  it(
+    "keeps topology draft ownership separated by trusted initiator and lets System submit its own draft",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        // Give the overlay fixture a concrete status effect so the enablement
+        // draft can resolve its write target before the ownership assertions.
+        await db.query(
+          `update dts_node_occurrences
+           set labels = '["sc8562"]'::jsonb
+           where config_revision_id = $1 and node_path = $2`,
+          [seeded.configRevisionId, "amba/i2c@FDF5E000/sc8562@6E"]
+        );
+        await db.query(
+          `insert into dts_occurrence_effects (
+             id, config_revision_id, logical_node_revision_id, node_occurrence_id,
+             property_name, effect_kind, source_order
+           ) values ($1, $2, $3, $4, 'status', 'delete', 2)`,
+          [
+            "oe-pcw-owner-status",
+            seeded.configRevisionId,
+            `lnr-${expectedLogicalNodeId()}`,
+            "no-pcw-1"
+          ]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.content, seeded.fileVersionId]
+        );
+        await db.query(
+          `update project_parameter_file_versions
+           set parsed_index = jsonb_build_object('sourceText', $1::text)
+           where id = $2`,
+          [seeded.overlayContent, seeded.overlayVersionId]
+        );
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-draft-owner",
+          objectSnapshotId: "obj-snap-draft-owner"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        await resolveParameterIdentityMode(db);
+
+        const auth = makeAuth();
+        const userDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "Direct user draft must keep its own working tip"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createUserInvocation(auth),
+              requestId: "draft-owner-user",
+              refusalSink
+            }
+          )
+        );
+        const userTip = userDraft.candidateRevisionId;
+
+        const agentDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-enabled",
+              reason: "Agent draft must not rebase the direct user draft"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createAgentInvocation(auth, {
+                sessionId: "session-draft-owner",
+                toolCallId: "tool-draft-owner",
+                approval: { required: true, approvalId: "approval-draft-owner" }
+              }),
+              requestId: "draft-owner-agent",
+              refusalSink
+            }
+          )
+        );
+
+        const owners = await db.query<{
+          id: string;
+          user_id: string | null;
+          initiator_type: string;
+          initiator_session_id: string | null;
+          candidate_config_revision_id: string | null;
+        }>(
+          `select id, user_id, initiator_type, initiator_session_id, candidate_config_revision_id
+           from parameter_drafts
+           where project_id = $1 and logical_node_id = $2
+           order by initiator_type`,
+          [PROJECT, expectedLogicalNodeId()]
+        );
+        expect(owners.rows).toEqual([
+          {
+            id: agentDraft.draftId,
+            user_id: USER,
+            initiator_type: "agent",
+            initiator_session_id: "session-draft-owner",
+            candidate_config_revision_id: agentDraft.candidateRevisionId
+          },
+          {
+            id: userDraft.draftId,
+            user_id: USER,
+            initiator_type: "user",
+            initiator_session_id: null,
+            candidate_config_revision_id: userTip
+          }
+        ]);
+
+        // A non-target binding is copied into every candidate revision.  Keep
+        // one explicit row so the test observes the carry-forward provenance,
+        // not only the binding edited by the enablement draft.
+        const baseBinding = await db.query<{
+          module_id: string;
+          parameter_spec_version_id: string;
+        }>(
+          `select b.module_id, br.parameter_spec_version_id
+           from project_parameter_bindings b
+           inner join project_parameter_binding_revisions br
+             on br.binding_id = b.id and br.config_revision_id = $2
+           where b.id = $1`,
+          [expectedBindingId(seeded.specId, expectedLogicalNodeId()), seeded.configRevisionId]
+        );
+        expect(baseBinding.rows[0]).toBeTruthy();
+        const carriedBindingId = "binding-pcw-carried-forward";
+        await db.query(
+          `insert into project_parameter_bindings (
+             id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+           ) values ($1, $2, $3, null, $4, $5)`,
+          [
+            carriedBindingId,
+            ORG,
+            PROJECT,
+            seeded.specId,
+            baseBinding.rows[0]!.module_id
+          ]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state
+           ) values ($1, $2, $3, $4, '{"kind":"integer","value":"7"}'::jsonb,
+                     '{"kind":"integer","value":"7"}'::jsonb, '<7>', 'valid')`,
+          [
+            "bpr-pcw-carried-forward-base",
+            carriedBindingId,
+            seeded.configRevisionId,
+            baseBinding.rows[0]!.parameter_spec_version_id
+          ]
+        );
+
+        const systemDraft = await withRefusalSink(connectionString, (refusalSink) =>
+          createNodeEnablementDraft(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              logicalNodeId: expectedLogicalNodeId(),
+              baseRevisionId: seeded.configRevisionId,
+              target: "force-disabled",
+              reason: "System draft has an independently addressable owner"
+            },
+            { toolchain: passToolchain },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "draft-owner-job" }),
+              requestId: "draft-owner-system",
+              refusalSink
+            }
+          )
+        );
+
+        const carriedForward = await db.query<{
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+        }>(
+          `select initiator_type, initiator_system_kind, initiator_system_name
+           from project_parameter_binding_revisions
+           where binding_id = $1 and config_revision_id = $2`,
+          [carriedBindingId, systemDraft.candidateRevisionId]
+        );
+        expect(carriedForward.rows).toEqual([
+          {
+            initiator_type: "system",
+            initiator_system_kind: "job",
+            initiator_system_name: "draft-owner-job"
+          }
+        ]);
+
+        const submitted = await withRefusalSink(connectionString, (refusalSink) =>
+          submitParameterChanges(
+            db,
+            auth,
+            {
+              projectId: PROJECT,
+              items: [
+                {
+                  draftId: systemDraft.draftId,
+                  editSubjectKind: "node-enablement",
+                  logicalNodeId: expectedLogicalNodeId(),
+                  targetValue: systemDraft.rawText,
+                  reason: "System draft has an independently addressable owner"
+                }
+              ]
+            },
+            {
+              invocation: createSystemInvocation({ kind: "job", name: "draft-owner-job" }),
+              requestId: "draft-owner-system-submit",
+              refusalSink
+            }
+          )
+        );
+        expect(submitted).toMatchObject({ status: "submitted" });
+      });
+    },
+    120_000
+  );
 });

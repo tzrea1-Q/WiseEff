@@ -20,6 +20,9 @@ export type ParameterDraftDto = {
   action: ParameterChangeAction;
   reason: string;
   updatedAt: string;
+  /** Subject identity for topology enablement drafts. */
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   /** Semantic binding identity for topology-aware drafts. */
   projectParameterBindingId?: string;
   /** Working candidate revision tip for binding draft rounds. */

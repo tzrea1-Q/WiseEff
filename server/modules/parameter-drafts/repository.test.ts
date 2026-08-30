@@ -12,6 +12,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
+import { createAgentInvocation, trustedDomainAttribution } from "../auth/trustedInvocation";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   deleteDraft,
@@ -205,6 +206,60 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
     await expect(
       listDraftsForUser(db, { organizationId: "org-1", userId: "user-1", projectId: "project-1" })
     ).resolves.toEqual([]);
+  });
+
+  it("keeps trusted Agent correlation out of the public draft DTO", async () => {
+    const agentAttribution = trustedDomainAttribution(
+      createAgentInvocation(
+        {
+          user: {
+            id: "user-1",
+            organizationId: "org-1",
+            name: "Riley Chen",
+            email: "riley@example.com",
+            title: "Engineer",
+            isActive: true
+          },
+          organization: { id: "org-1", name: "ChargeLab" },
+          roles: [],
+          permissions: ["parameter:view"]
+        },
+        {
+          sessionId: "draft-public-session",
+          toolCallId: "draft-public-tool",
+          approval: { required: true, approvalId: "draft-public-approval" }
+        }
+      )
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, origin, initiator_type, initiator_session_id,
+         initiator_tool_call_id, initiator_approval_id
+       ) values ($1, 'org-1', 'project-1', 'param-1', $2, '3150', 'Agent public projection', 'manual', $3, $4, $5, $6)`,
+      [
+        "draft-public-agent",
+        agentAttribution.userId,
+        agentAttribution.initiatorType,
+        agentAttribution.sessionId,
+        agentAttribution.toolCallId,
+        agentAttribution.approvalId
+      ]
+    );
+
+    const [draft] = await listDraftsForUser(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      owner: agentAttribution
+    });
+    expect(draft).toMatchObject({ id: "draft-public-agent", targetValue: "3150" });
+    expect(draft).not.toHaveProperty("initiatorType");
+    expect(draft).not.toHaveProperty("initiatorSessionId");
+    expect(draft).not.toHaveProperty("initiatorToolCallId");
+    expect(draft).not.toHaveProperty("initiatorApprovalId");
+    expect(JSON.stringify(draft)).not.toContain("draft-public-session");
+    expect(JSON.stringify(draft)).not.toContain("draft-public-tool");
+    expect(JSON.stringify(draft)).not.toContain("draft-public-approval");
   });
 
   it("listDraftsForUser maps binding identity, candidate revision, and locked base value", async () => {

@@ -9,6 +9,7 @@ import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterFileRoutes } from "./routes";
 import * as service from "./service";
+import * as candidateService from "./candidateService";
 import * as configSetService from "./configSetService";
 import * as conflictService from "./conflictService";
 
@@ -17,6 +18,17 @@ vi.mock("./service", () => ({
   getProjectParameterFileContent: vi.fn(),
   listProjectParameterFilesForAuth: vi.fn(),
   rollbackProjectParameterFileVersion: vi.fn()
+}));
+
+vi.mock("./candidateService", () => ({
+  abandonCandidate: vi.fn(),
+  activateCandidate: vi.fn(),
+  createCandidate: vi.fn(),
+  getCandidate: vi.fn(),
+  getCandidateContent: vi.fn(),
+  getCandidateImpact: vi.fn(),
+  listCandidates: vi.fn(),
+  recomputeCandidateImpact: vi.fn()
 }));
 
 vi.mock("./repository", () => ({
@@ -163,6 +175,36 @@ describe("parameter file routes", () => {
       },
       { requestId: "test-request" }
     );
+  });
+
+  it("GET candidate response uses the public lifecycle projection without trusted correlation", async () => {
+    vi.mocked(candidateService.getCandidate).mockResolvedValue({
+      id: "candidate-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: "config.dts",
+      format: "dts",
+      status: "ready",
+      parsedIndex: {},
+      diagnostics: [],
+      impact: {},
+      blockers: [],
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z",
+      createdByUserId: "user-1"
+    });
+
+    const response = await requestJson<{ item: Record<string, unknown> }>(
+      makeServer({ db: makeDb() }),
+      "/api/v1/projects/project-1/parameter-file-candidates/candidate-1"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toMatchObject({ id: "candidate-1", status: "ready" });
+    expect(response.body.item).not.toHaveProperty("initiatorSessionId");
+    expect(response.body.item).not.toHaveProperty("initiatorToolCallId");
+    expect(response.body.item).not.toHaveProperty("initiatorApprovalId");
+    expect(response.body.item).not.toHaveProperty("initiatorSystemName");
   });
 
   it("POST resolve accepts optional reason", async () => {

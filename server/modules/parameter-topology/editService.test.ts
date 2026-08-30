@@ -279,6 +279,16 @@ async function seedConfigAndBinding(
     sortOrder: 1,
   });
 
+  // Trusted typed-draft preflight resolves compatible from the exact locked
+  // source version. This fixture writes the structural node explicitly so
+  // the overlay's complete locator is represented in the same way as a
+  // production structural-ingest row (the overlay has no own compatible).
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ($1, $2, 'charging_core', '/charging_core', null)`,
+    [`dts-node-overlay-${randomUUID().slice(0, 8)}`, overlayVersionId],
+  );
+
   const manifest: ConfigRevisionManifest = {
     organizationId: ORG_ID,
     projectId: PROJECT_ID,
@@ -581,6 +591,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
         reason: "Raise current limit for board variant",
       },
       { toolchain: passToolchain },
+      createTestParameterSubmissionContext(auth, "enablement-draft-shared-tip"),
     );
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
@@ -2226,6 +2237,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
         reason: "Disable charging_core for board bring-up",
       },
       { toolchain: passToolchain },
+      createTestParameterSubmissionContext(auth, "enablement-draft-shared-tip"),
     );
 
     expect(enablement.logicalNodeId).toBe(logicalNodeId);

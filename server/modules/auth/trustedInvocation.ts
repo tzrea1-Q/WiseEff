@@ -42,6 +42,50 @@ export type SystemInvocationContext = {
 
 export type TrustedInvocationContext = UserInvocationContext | AgentInvocationContext | SystemInvocationContext;
 
+/**
+ * Projection used by #614 domain rows.  `userId` is the accountable principal
+ * (null for System), while initiator metadata identifies the actual executor.
+ * It is intentionally derived only after the trusted brand has been checked.
+ */
+export type TrustedInvocationDomainAttribution = Readonly<{
+  userId: string | null;
+  /** True only for a server-owned Agent row whose accountable user was deleted. */
+  principalDeleted: boolean;
+  initiatorType: TrustedInvocationContext["initiator"];
+  systemKind: SystemInvocationInput["kind"] | null;
+  systemName: string | null;
+  sessionId: string | null;
+  toolCallId: string | null;
+  approvalId: string | null;
+}>;
+
+/**
+ * Shared shape for an internal SQL row projection.  Public DTOs must never
+ * use this type: the correlation fields are durable evidence for policy,
+ * audit, and transaction code only.
+ */
+export type TrustedInvocationDomainAttributionRow = Readonly<{
+  /** Identity-free server-owned marker retained after an Agent user's deletion. */
+  initiator_principal_deleted?: boolean | null;
+  initiator_type?: TrustedInvocationContext["initiator"] | "legacy" | null;
+  initiator_system_kind?: SystemInvocationInput["kind"] | null;
+  initiator_system_name?: string | null;
+  initiator_session_id?: string | null;
+  initiator_tool_call_id?: string | null;
+  initiator_approval_id?: string | null;
+}>;
+
+export type PersistedInvocationDomainAttribution = Readonly<{
+  userId: string | null;
+  principalDeleted: boolean;
+  initiatorType: TrustedInvocationContext["initiator"] | "legacy";
+  systemKind: SystemInvocationInput["kind"] | null;
+  systemName: string | null;
+  sessionId: string | null;
+  toolCallId: string | null;
+  approvalId: string | null;
+}>;
+
 const backendRoleIds = new Set<string>(BACKEND_ROLE_IDS);
 const backendPermissions = new Set<string>(BACKEND_PERMISSIONS);
 
@@ -237,4 +281,138 @@ function validateBrandedContext(value: unknown): TrustedInvocationContext {
 /** Validate the server-owned brand before a sensitive policy or write is reached. */
 export function assertTrustedInvocationContext(value: unknown): TrustedInvocationContext {
   return validateBrandedContext(value);
+}
+
+/** Validate both server ownership and the authenticated principal boundary. */
+export function assertTrustedInvocationMatchesAuth(
+  auth: AuthContext,
+  value: unknown,
+  operation: string
+): TrustedInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (
+    invocation.initiator !== "system" &&
+    (invocation.principal.user.id !== auth.user.id ||
+      invocation.principal.organization.id !== auth.organization.id ||
+      invocation.principal.user.organizationId !== auth.organization.id)
+  ) {
+    throw new TrustedInvocationContextError(
+      `${operation} invocation principal does not match the authenticated principal`
+    );
+  }
+  return invocation;
+}
+
+/** Mutating #614 seams require complete Agent correlation, including approval. */
+export function assertTrustedMutationInvocation(
+  value: TrustedInvocationContext,
+  operation = "trusted mutation"
+): TrustedInvocationContext {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "agent" && (!invocation.approvalId || invocation.approvalId.trim().length === 0)) {
+    throw new TrustedInvocationContextError(`${operation} Agent invocation requires a non-empty approvalId`);
+  }
+  return invocation;
+}
+
+/** Accountable authorization principal for domain rows; System has no user principal. */
+export function trustedAccountableUser(value: TrustedInvocationContext): AuthContext["user"] | null {
+  const invocation = assertTrustedInvocationContext(value);
+  return invocation.initiator === "system" ? null : invocation.principal.user;
+}
+
+/** Return the truthful domain attribution for a trusted invocation. */
+export function trustedDomainAttribution(value: TrustedInvocationContext): TrustedInvocationDomainAttribution {
+  const invocation = assertTrustedInvocationContext(value);
+  if (invocation.initiator === "system") {
+    return {
+      userId: null,
+      principalDeleted: false,
+      initiatorType: "system",
+      systemKind: invocation.identity.kind,
+      systemName: invocation.identity.name,
+      sessionId: null,
+      toolCallId: null,
+      approvalId: null
+    };
+  }
+  if (invocation.initiator === "agent") {
+    return {
+      userId: invocation.principal.user.id,
+      principalDeleted: false,
+      initiatorType: "agent",
+      systemKind: null,
+      systemName: null,
+      sessionId: invocation.sessionId,
+      toolCallId: invocation.toolCallId,
+      approvalId: invocation.approvalId
+    };
+  }
+  return {
+    userId: invocation.principal.user.id,
+    principalDeleted: false,
+    initiatorType: "user",
+    systemKind: null,
+    systemName: null,
+    sessionId: null,
+    toolCallId: null,
+    approvalId: null
+  };
+}
+
+/** Convert one internal SQL projection into a durable-domain attribution. */
+export function trustedDomainAttributionFromRow(
+  row: TrustedInvocationDomainAttributionRow,
+  userId: string | null | undefined
+): PersistedInvocationDomainAttribution {
+  const principalDeleted = row.initiator_principal_deleted === true;
+  const initiatorType = row.initiator_type ?? "legacy";
+  return {
+    // A deleted marker is deliberately identity-free. Never recover a user id
+    // from any snapshot or tombstone; the FK is the sole accountable-principal
+    // source and is null after permanent deletion.
+    // System rows likewise have no user principal, even if a malformed or
+    // historical caller supplies an unrelated user id alongside the row.
+    userId: principalDeleted || initiatorType === "system" ? null : userId ?? null,
+    principalDeleted,
+    initiatorType,
+    systemKind: row.initiator_system_kind ?? null,
+    systemName: row.initiator_system_name ?? null,
+    sessionId: row.initiator_session_id ?? null,
+    toolCallId: row.initiator_tool_call_id ?? null,
+    approvalId: row.initiator_approval_id ?? null,
+  };
+}
+
+/**
+ * Stable public display projection.  Internal correlation and System names
+ * remain available only through the trusted domain/audit projection.
+ */
+export function trustedPublicExecutionLabel(value: TrustedInvocationContext): string {
+  const invocation = assertTrustedInvocationContext(value);
+  return trustedPublicExecutionLabelFromAttribution(
+    trustedDomainAttribution(invocation),
+    invocation.initiator === "user" ? invocation.principal.user.name : ""
+  );
+}
+
+/**
+ * Public display projection for an already persisted attribution row.  This
+ * deliberately accepts only the discriminant and System kind: correlation
+ * ids and System names never cross the public DTO/notification boundary.
+ */
+export function trustedPublicExecutionLabelFromAttribution(
+  attribution:
+    | {
+        initiatorType: TrustedInvocationDomainAttribution["initiatorType"] | "legacy";
+        systemKind: TrustedInvocationDomainAttribution["systemKind"];
+      }
+    | undefined,
+  userFallback = ""
+): string {
+  if (!attribution || attribution.initiatorType === "user" || attribution.initiatorType === "legacy") {
+    return userFallback;
+  }
+  if (attribution.initiatorType === "agent") return "WiseEff Agent";
+  return `WiseEff System ${attribution.systemKind ?? "service"}`;
 }

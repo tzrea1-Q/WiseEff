@@ -13,20 +13,26 @@ import type { Queryable } from "../../shared/database/client";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
+import { createAgentInvocation, createSystemInvocation } from "../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
+import { createPostgresDatabase } from "../../shared/database/client";
 import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
+import { listParameterHistory } from "./repository";
 import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
   listChangeRequests,
   listDrafts,
   listSubmissionRounds,
   listWorkflowAssignees,
-  reviewChange,
+  reviewChange as reviewChangeService,
   saveDraft,
   submitParameterChanges
 } from "./service";
 import { createTestParameterSubmissionContext } from "./testSubmissionContext";
+import type { ParameterReviewContext } from "./service";
+import { withTempDatabase } from "../../testing/tempDatabase";
 
 const ORG = "org-srw";
 const PROJECT = "project-srw";
@@ -37,6 +43,8 @@ const HW = "user-srw-hardware";
 const SWC = "user-srw-software-committer";
 const SWU = "user-srw-software-user";
 const OUTSIDER = "user-srw-outsider";
+const FOREIGN_ORG = "org-srw-foreign";
+const FOREIGN_USER = "user-srw-foreign-reviewer";
 
 const PD_HIGH = "pd-srw-high";
 const PPV_HIGH = "ppv-srw-high";
@@ -59,6 +67,18 @@ const completeAssignees = {
   softwareCommitterId: SWC,
   softwareUserId: SWU
 };
+
+function reviewChange(
+  db: Parameters<typeof reviewChangeService>[0],
+  auth: AuthContext,
+  input: Parameters<typeof reviewChangeService>[2],
+  context: ParameterReviewContext = {}
+) {
+  return reviewChangeService(db, auth, input, {
+    ...createTestParameterSubmissionContext(auth, `review-${input.requestId}`),
+    ...context
+  });
+}
 
 function authFor(
   userId: string,
@@ -706,6 +726,45 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       );
     });
 
+    it("redacts an unresolved cross-organization reviewer id from public workflow projections", async () => {
+      await db!.query(
+        `insert into organizations (id, name) values ($1, 'SRW Foreign Org') on conflict (id) do nothing`,
+        [FOREIGN_ORG],
+      );
+      await db!.query(
+        `insert into users (id, organization_id, name, email, title, is_active)
+         values ($1, $2, 'Foreign Reviewer', $3, 'SRW', true)
+         on conflict (id) do update set organization_id = excluded.organization_id`,
+        [FOREIGN_USER, FOREIGN_ORG, `${FOREIGN_USER}@example.com`],
+      );
+
+      const { requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
+      await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Create a review decision for the projection boundary.",
+      });
+      await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Create a mapped workflow transition for the projection boundary.",
+      });
+
+      // Simulate a legacy/corrupt row whose reviewer FK points outside the
+      // request organization.  The public projection must not echo that ID.
+      await db!.query(
+        `update parameter_review_decisions
+         set reviewer_user_id = $1
+         where organization_id = $2 and request_id = $3`,
+        [FOREIGN_USER, ORG, requestId],
+      );
+
+      const rounds = await listSubmissionRounds(db!, editorAuth(), { projectId: PROJECT });
+      const serialized = JSON.stringify(rounds);
+      expect(serialized).not.toContain(FOREIGN_USER);
+      expect(serialized).toContain("未知用户");
+    });
+
     it("software committer advances software review to software merge", async () => {
       const { requestId } = await submitOne(db!, { parameterId: PPV_MEDIUM, targetValue: "68" });
       const toSoftwareReview = await reviewChange(db!, hardwareAuth(), {
@@ -1052,4 +1111,330 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       }
     });
   });
+});
+
+describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", () => {
+  it("keeps the Agent execution label in the workflow trail for a high-risk merge", async () => {
+    await withTempDatabase({ prefix: "srwagenttrail" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "Agent workflow trail provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "agent-merge-trail-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail hardware gate" },
+        createTestParameterSubmissionContext(hardwareAuth(), "agent-merge-trail-hardware"),
+      );
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail hardware approval" },
+        createTestParameterSubmissionContext(hardwareAuth(), "agent-merge-trail-hardware-approval"),
+      );
+      await reviewChangeService(
+        db,
+        softwareCommitterAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail software approval" },
+        createTestParameterSubmissionContext(softwareCommitterAuth(), "agent-merge-trail-software"),
+      );
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: HIGH_BASE_VERSION,
+            note: MERGE_LINK,
+          },
+          {
+            invocation: createAgentInvocation(auth, {
+              sessionId: "session-merge-trail-agent",
+              toolCallId: "tool-merge-trail-agent",
+              approval: { required: true, approvalId: "approval-merge-trail-agent" },
+            }),
+            requestId: "agent-merge-trail",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+
+        const roundView = await listSubmissionRounds(db, auth, { projectId: PROJECT });
+        expect(roundView).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            workflowTrail: expect.arrayContaining([
+              expect.objectContaining({
+                key: "software_merge",
+                executorName: "WiseEff Agent",
+                executorLabel: "执行人",
+              }),
+            ]),
+          }),
+        ]));
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
+
+  it("keeps the existing high-risk merge workflow successful for a System initiator", async () => {
+    await withTempDatabase({ prefix: "srwsystem" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "System merge provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "system-merge-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge hardware stage" },
+        createTestParameterSubmissionContext(hardwareAuth(), "system-merge-hardware"),
+      );
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge hardware approval" },
+        createTestParameterSubmissionContext(hardwareAuth(), "system-merge-hardware-approval"),
+      );
+      await reviewChangeService(
+        db,
+        softwareCommitterAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge software stage" },
+        createTestParameterSubmissionContext(softwareCommitterAuth(), "system-merge-software"),
+      );
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const invocation = createSystemInvocation({ kind: "job", name: "system-merge-job" });
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: HIGH_BASE_VERSION,
+            note: MERGE_LINK,
+          },
+          {
+            invocation,
+            requestId: "system-merge-high",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+        const domainRows = await db.query<{
+          updated_by_user_id: string | null;
+          value_initiator_type: string;
+          value_system_kind: string | null;
+          value_system_name: string | null;
+          changed_by_user_id: string | null;
+          history_initiator_type: string;
+          reviewer_user_id: string | null;
+          decision_initiator_type: string;
+          decision_system_kind: string | null;
+          decision_system_name: string | null;
+        }>(
+          `select
+             (select updated_by_user_id from project_parameter_values where id = $1) as updated_by_user_id,
+             (select initiator_type from project_parameter_values where id = $1) as value_initiator_type,
+             (select initiator_system_kind from project_parameter_values where id = $1) as value_system_kind,
+             (select initiator_system_name from project_parameter_values where id = $1) as value_system_name,
+             (select changed_by_user_id from parameter_history_entries where request_id = $2 order by changed_at desc limit 1) as changed_by_user_id,
+             (select initiator_type from parameter_history_entries where request_id = $2 order by changed_at desc limit 1) as history_initiator_type,
+             (select reviewer_user_id from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as reviewer_user_id,
+             (select initiator_type from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_initiator_type,
+             (select initiator_system_kind from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_system_kind,
+             (select initiator_system_name from parameter_review_decisions where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as decision_system_name`,
+          [PPV_HIGH, requestId]
+        );
+        expect(domainRows.rows).toEqual([{
+          updated_by_user_id: null,
+          value_initiator_type: "system",
+          value_system_kind: "job",
+          value_system_name: "system-merge-job",
+          changed_by_user_id: null,
+          history_initiator_type: "system",
+          reviewer_user_id: null,
+          decision_initiator_type: "system",
+          decision_system_kind: "job",
+          decision_system_name: "system-merge-job"
+        }]);
+        await expect(listParameterHistory(db, { organizationId: ORG, parameterId: PPV_HIGH })).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ changedBy: "WiseEff System job" })
+          ])
+        );
+        const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
+          `select body, metadata from user_notifications
+           where source_id = $1 and category = 'parameter.merge.completed'`,
+          [requestId]
+        );
+        expect(notifications.rows.length).toBeGreaterThan(0);
+        expect(notifications.rows.every((row) =>
+          row.body.includes("WiseEff System job") &&
+          !row.body.includes("system-merge-job") &&
+          !row.body.includes(auth.user.name) &&
+          row.metadata.mergerName === "WiseEff System job" &&
+          row.metadata.initiatorType === "system" &&
+          row.metadata.executionLabel === "WiseEff System job" &&
+          !row.metadata.initiatorSystemName &&
+          !row.metadata.initiatorSessionId &&
+          !row.metadata.initiatorToolCallId &&
+          !row.metadata.initiatorApprovalId
+        )).toBe(true);
+        const roundView = await listSubmissionRounds(db, auth, { projectId: PROJECT });
+        expect(roundView).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            workflowTrail: expect.arrayContaining([
+              expect.objectContaining({
+                key: "software_merge",
+                executorName: "WiseEff System job",
+                executorLabel: "执行人",
+                state: "active"
+              })
+            ])
+          })
+        ]));
+        const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+          `select actor_type, actor_user_id, metadata from audit_events where trace_id = 'system-merge-high' and kind = 'parameter-merge'`
+        );
+        expect(audit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "job",
+              systemName: "system-merge-job"
+            })
+          })
+        ]);
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
+
+  it("keeps the existing no-match merge workflow successful for a System initiator", async () => {
+    await withTempDatabase({ prefix: "srwsystemnomatch" }, async ({ db, connectionString }) => {
+      await seedBaseline(db);
+      const auth = editorAuth();
+      const round = await submitParameterChanges(
+        db,
+        auth,
+        {
+          projectId: PROJECT,
+          items: [{ parameterId: PPV_MEDIUM, targetValue: "72", reason: "System no-match merge provenance" }],
+        },
+        createTestParameterSubmissionContext(auth, "system-merge-no-match-submit"),
+      );
+      const requestId = round.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+      await advanceMediumToSoftwareMerge(db, requestId!);
+
+      const refusalRoot = createPostgresDatabase(connectionString);
+      try {
+        const merged = await reviewChangeService(
+          db,
+          auth,
+          {
+            requestId: requestId!,
+            decision: "advance",
+            expectedVersion: MEDIUM_BASE_VERSION,
+            note: "https://example.com/mr/srw-system-no-match",
+          },
+          {
+            invocation: createSystemInvocation({ kind: "service", name: "system-no-match-service" }),
+            requestId: "system-merge-no-match",
+            refusalSink: createTrustedRefusalAuditSink(refusalRoot),
+          },
+        );
+        expect(merged.status).toBe("merged");
+
+        const domainRows = await db.query<{
+          updated_by_user_id: string | null;
+          initiator_type: string;
+          initiator_system_kind: string | null;
+          initiator_system_name: string | null;
+          reviewer_user_id: string | null;
+        }>(
+          `select
+             (select updated_by_user_id from project_parameter_values where id = $1) as updated_by_user_id,
+             (select initiator_type from project_parameter_values where id = $1) as initiator_type,
+             (select initiator_system_kind from project_parameter_values where id = $1) as initiator_system_kind,
+             (select initiator_system_name from project_parameter_values where id = $1) as initiator_system_name,
+             (select reviewer_user_id from parameter_review_decisions
+              where request_id = $2 and to_status = 'merged' order by created_at desc limit 1) as reviewer_user_id`,
+          [PPV_MEDIUM, requestId],
+        );
+        expect(domainRows.rows).toEqual([
+          {
+            updated_by_user_id: null,
+            initiator_type: "system",
+            initiator_system_kind: "service",
+            initiator_system_name: "system-no-match-service",
+            reviewer_user_id: null,
+          },
+        ]);
+
+        const notifications = await db.query<{ body: string; metadata: Record<string, unknown> }>(
+          `select body, metadata from user_notifications
+           where source_id = $1 and category = 'parameter.merge.completed'`,
+          [requestId],
+        );
+        expect(notifications.rows.length).toBeGreaterThan(0);
+        expect(notifications.rows.every((row) =>
+          row.body.includes("WiseEff System service") &&
+          !row.body.includes("system-no-match-service") &&
+          !row.body.includes(auth.user.name) &&
+          row.metadata.mergerName === "WiseEff System service" &&
+          row.metadata.initiatorType === "system" &&
+          row.metadata.executionLabel === "WiseEff System service" &&
+          !row.metadata.initiatorSystemName &&
+          !row.metadata.initiatorSessionId &&
+          !row.metadata.initiatorToolCallId &&
+          !row.metadata.initiatorApprovalId,
+        )).toBe(true);
+
+        const audit = await db.query<{ actor_type: string; actor_user_id: string | null; metadata: Record<string, unknown> }>(
+          `select actor_type, actor_user_id, metadata from audit_events
+           where trace_id = 'system-merge-no-match' and kind = 'parameter-merge'`,
+        );
+        expect(audit.rows).toEqual([
+          expect.objectContaining({
+            actor_type: "system",
+            actor_user_id: null,
+            metadata: expect.objectContaining({
+              initiator: "system",
+              systemKind: "service",
+              systemName: "system-no-match-service",
+            }),
+          }),
+        ]);
+      } finally {
+        await refusalRoot.close();
+      }
+    });
+  }, 90_000);
 });

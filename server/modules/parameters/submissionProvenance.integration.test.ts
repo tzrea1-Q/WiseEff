@@ -26,6 +26,7 @@ const HIGH = "ppv-provenance-high";
 const PLAIN = "ppv-provenance-plain";
 const ATOMIC = "ppv-provenance-atomic";
 const SYSTEM_PLAIN = "ppv-provenance-system-plain";
+const LEGACY_SOURCE = "ppv-provenance-legacy-source";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function auth(): AuthContext {
@@ -95,6 +96,43 @@ async function seed(db: Queryable) {
        ('rule-provenance-critical', $1, $2, 'path', 'safety/critical/*', 'critical', 'parameter:edit-critical', true),
        ('rule-provenance-high', $1, $2, 'path', 'safety/high/*', 'high', 'parameter:edit', true)`,
     [ORG, PROJECT]
+  );
+}
+
+async function seedLegacySource(db: Queryable, input: { nodePath: string; compatible: string }) {
+  await seedParameter(db, {
+    id: LEGACY_SOURCE,
+    definitionId: "definition-provenance-legacy-source",
+    nodePath: input.nodePath
+  });
+  await db.query(
+    `insert into project_parameter_files (
+       id, organization_id, project_id, file_name, format, enabled
+     ) values ('file-provenance-legacy-source', $1, $2, 'legacy-source.dts', 'dts', true)`,
+    [ORG, PROJECT]
+  );
+  await db.query(
+    `insert into project_parameter_file_versions (
+       id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+     ) values ('version-provenance-legacy-source', 'file-provenance-legacy-source', 1,
+               'provenance/legacy-source.dts', 'provenance-legacy-source-checksum', 1, '{}'::jsonb, 'upload', $1)`,
+    [USER]
+  );
+  await db.query(
+    `update project_parameter_files
+     set current_version_id = 'version-provenance-legacy-source'
+     where id = 'file-provenance-legacy-source'`
+  );
+  await db.query(
+    `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+     values ('node-provenance-legacy-source', 'version-provenance-legacy-source', 'legacy', $1, $2)`,
+    [input.nodePath, input.compatible]
+  );
+  await db.query(
+    `update project_parameter_values
+     set source_file_name = 'legacy-source.dts', source_node_path = $1
+     where id = $2`,
+    [`${input.nodePath}/value`, LEGACY_SOURCE]
   );
 }
 
@@ -391,6 +429,84 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
           })
         ).rejects.toThrow("force outer rollback");
         expect(await stateCounts(db)).toEqual(beforeAtomicRollback);
+      } finally {
+        await root.close();
+      }
+    });
+  }, 90_000);
+
+  it("uses the server-resolved source version for a retained legacy Agent submission", async () => {
+    await withTempDatabase({ prefix: "paramprovlegacyversion" }, async ({ db, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        setParameterIdentityMode("legacy");
+        await seed(db);
+        await seedLegacySource(db, { nodePath: "safety/legacy", compatible: "wiseeff,legacy" });
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values ('rule-provenance-legacy-source-high', $1, $2, 'path', 'safety/legacy/value',
+                     'high', 'parameter:edit', true)`,
+          [ORG, PROJECT]
+        );
+
+        const principal = auth();
+        const refusalSink = createTrustedRefusalAuditSink(root);
+        const agent = agentContext(principal);
+        const actionTool = createActionTools({ db: root, refusalAuditSink: refusalSink }).find(
+          (tool) => tool.name === "action.submitParameterChange"
+        )!;
+
+        const result = await actionTool.run(agent, {
+          projectId: PROJECT,
+          parameterId: LEGACY_SOURCE,
+          targetValue: "<7>",
+          reason: "legacy source version must be server-resolved"
+        });
+
+        expect(result.data).toMatchObject({ parameterId: LEGACY_SOURCE, targetValue: "<7>" });
+      } finally {
+        await root.close();
+      }
+    });
+  }, 90_000);
+
+  it("matches a retained legacy parent rule only through an explicit property path", async () => {
+    await withTempDatabase({ prefix: "paramprovlegacyparent" }, async ({ db, connectionString }) => {
+      const root = createPostgresDatabase(connectionString);
+      try {
+        setParameterIdentityMode("legacy");
+        await seed(db);
+        await seedLegacySource(db, { nodePath: "safety/legacy", compatible: "wiseeff,legacy" });
+        await db.query(
+          `insert into dts_sensitive_node_rules (
+             id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+           ) values ('rule-provenance-legacy-parent-critical', $1, $2, 'path', 'safety/legacy',
+                     'critical', 'parameter:edit-critical', true)`,
+          [ORG, PROJECT]
+        );
+
+        const principal = auth();
+        const refusalSink = createTrustedRefusalAuditSink(root);
+        const agent = agentContext(principal);
+        const before = await stateCounts(db);
+        await expect(
+          root.transaction(async (tx) =>
+            createActionTools({ db: tx, refusalAuditSink: refusalSink })
+              .find((tool) => tool.name === "action.submitParameterChange")!
+              .run(agent, {
+                projectId: PROJECT,
+                parameterId: LEGACY_SOURCE,
+                targetValue: "<8>",
+                reason: "legacy parent critical rule must require a human"
+              })
+          )
+        ).rejects.toMatchObject({
+          code: "FORBIDDEN",
+          status: 403,
+          details: { initiator: "agent", requireHuman: true }
+        });
+        expect(await stateCounts(db)).toEqual(before);
       } finally {
         await root.close();
       }

@@ -4,6 +4,7 @@ import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../
 import {
   assertTrustedInvocationContext,
   TrustedInvocationContextError,
+  trustedDomainAttribution,
   type AgentInvocationContext
 } from "../../auth/trustedInvocation";
 import { createAgentKnowledgeDraft } from "../../knowledge/service";
@@ -109,6 +110,8 @@ async function submitLegacyParameterChange(
       projectId: input.projectId,
       nodePath: parameter.sourceNodePath,
       sourceFileName: parameter.sourceFileName,
+      sourceFileVersionId: parameter.sourceFileVersionId,
+      sourcePath: { kind: "property-path", value: parameter.sourceNodePath },
       invocation,
       requestId: context.requestId,
       refusalSink
@@ -203,6 +206,11 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             projectId,
             nodePath: node.nodeLocator,
             compatible: node.compatible,
+            // The logical-node compatible token was read from the exact,
+            // server-selected binding-head revision above. It is not a
+            // client-supplied compatible override and must remain the
+            // authoritative source for this preflight.
+            compatibleIsAuthoritative: true,
             invocation,
             requestId: context.requestId,
             refusalSink
@@ -234,7 +242,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             reason
           },
           { objectStore: options.objectStore, toolchain: options.toolchain },
-          { requestId: context.requestId }
+          { requestId: context.requestId, invocation, refusalSink }
         );
 
         try {
@@ -275,7 +283,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           try {
             await deleteDraft(db, {
               organizationId: context.auth.organization.id,
-              userId: context.auth.user.id,
+              owner: trustedDomainAttribution(invocation),
               draftId: draft.draftId
             });
           } catch {

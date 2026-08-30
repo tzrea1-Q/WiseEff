@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
+import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { createAuditEvent } from "../audit/repository";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { patchDtsProperty, patchJsonValue, writebackMergedParameterValue } from "./writebackService";
@@ -184,11 +185,12 @@ describe("writebackMergedParameterValue", () => {
       createdByUserId: "user-1"
     });
 
-    const result = await writebackMergedParameterValue(db, objectStore, adminAuth(), {
+    const principal = adminAuth();
+    const result = await writebackMergedParameterValue(db, objectStore, principal, {
       projectId: "project-1",
       parameterDefinitionId: "pd-1",
       mergedValue: "85"
-    });
+    }, createTestParameterSubmissionContext(principal, "legacy-writeback-success"));
 
     expect(result).toEqual({
       skipped: false,
@@ -228,11 +230,12 @@ describe("writebackMergedParameterValue", () => {
       put: vi.fn()
     } as unknown as ObjectStore;
 
-    const result = await writebackMergedParameterValue(db, objectStore, adminAuth(), {
+    const principal = adminAuth();
+    const result = await writebackMergedParameterValue(db, objectStore, principal, {
       projectId: "project-1",
       parameterDefinitionId: "pd-1",
       mergedValue: "85"
-    });
+    }, createTestParameterSubmissionContext(principal, "legacy-writeback-skipped"));
 
     expect(result).toEqual({ skipped: true });
     expect(mockedGetProjectParameterFileByName).not.toHaveBeenCalled();

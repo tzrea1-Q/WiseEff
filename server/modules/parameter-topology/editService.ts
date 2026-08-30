@@ -15,6 +15,12 @@ import {
   type StatusSpelling,
 } from "../../../src/domain/parameter-topology/enablementEdit";
 import type { AuthContext } from "../auth/types";
+import {
+  trustedDomainAttribution,
+  type TrustedInvocationDomainAttribution,
+  type TrustedInvocationContext
+} from "../auth/trustedInvocation";
+import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
@@ -23,7 +29,11 @@ import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameter-kernel/policy";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacyParameterIdentityAdapter";
-import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
+import {
+  assertTrustedSensitiveNodeWriteAllowed,
+  assertTrustedSensitiveNodeWriteContext,
+  type TrustedSensitiveNodeWriteContext
+} from "../parameter-kernel/sensitiveNode";
 import {
   upsertDraft,
   upsertEnablementDraft,
@@ -45,7 +55,7 @@ import type {
   ConfigRevisionManifestMember,
   PersistedValidationDiagnostic,
 } from "./types";
-import { writeGovernanceAudit } from "./governanceAudit";
+import { writeGovernanceAudit, writeTrustedGovernanceAudit } from "./governanceAudit";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import {
@@ -78,6 +88,12 @@ export type CreateBindingDraftInput = {
    * Callers cannot disable it; this field is ignored when false.
    */
   enforceSchema?: boolean;
+};
+
+/** Optional trusted context for internal Agent/System typed-draft callers. */
+export type CreateBindingDraftContext = AuditCorrelationContext & {
+  invocation?: TrustedInvocationContext;
+  refusalSink?: TrustedRefusalAuditSink;
 };
 
 export type BindingDraftResult = {
@@ -278,6 +294,7 @@ async function carryForwardBindingRevisions(
     baseRevisionId: string;
     candidateRevisionId: string;
     excludeBindingId?: string;
+    attribution?: TrustedInvocationDomainAttribution;
   },
 ): Promise<void> {
   const rows = await db.query<{
@@ -320,8 +337,10 @@ async function carryForwardBindingRevisions(
       `
       insert into project_parameter_binding_revisions (
         id, binding_id, config_revision_id, parameter_spec_version_id,
-        typed_value, canonical_value, raw_value, schema_state, policy_state
-      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+        typed_value, canonical_value, raw_value, schema_state, policy_state,
+        initiator_type, initiator_system_kind, initiator_system_name,
+        initiator_session_id, initiator_tool_call_id, initiator_approval_id
+      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       `,
       [
         randomUUID(),
@@ -335,6 +354,12 @@ async function carryForwardBindingRevisions(
         row.raw_value,
         row.schema_state,
         row.policy_state,
+        input.attribution?.initiatorType ?? "user",
+        input.attribution?.systemKind ?? null,
+        input.attribution?.systemName ?? null,
+        input.attribution?.sessionId ?? null,
+        input.attribution?.toolCallId ?? null,
+        input.attribution?.approvalId ?? null,
       ],
     );
   }
@@ -350,9 +375,29 @@ export async function createBindingDraft(
   auth: AuthContext,
   input: CreateBindingDraftInput,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {},
+  context: CreateBindingDraftContext = {},
 ): Promise<BindingDraftResult> {
   requireCanEdit(auth);
+
+  const trustedContext = context.invocation || context.refusalSink
+    ? assertTrustedSensitiveNodeWriteContext(auth, {
+        invocation: context.invocation!,
+        requestId: context.requestId ?? "",
+        refusalSink: context.refusalSink!,
+      }, "typed binding draft")
+    : undefined;
+  const attribution = trustedContext ? trustedDomainAttribution(trustedContext.invocation) : undefined;
+  const accountableUserId = attribution ? attribution.userId : auth.user.id;
+  const draftOwner = attribution
+    ? {
+        owner: {
+          userId: attribution.userId,
+          initiatorType: attribution.initiatorType,
+          systemKind: attribution.systemKind,
+          systemName: attribution.systemName,
+        }
+      }
+    : { userId: auth.user.id };
 
   const action: BindingEditAction = input.action ?? "set";
   if (action === "set" && !input.targetValue) {
@@ -362,12 +407,12 @@ export async function createBindingDraft(
     );
   }
 
-  const binding = await loadBindingContext(db, auth, input.bindingId);
+  const bindingHead = await loadBindingContext(db, auth, input.bindingId);
 
   const openDrafts = await listOpenBindingDraftsForUser(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
-    userId: auth.user.id,
+    projectId: bindingHead.project_id,
+    ...draftOwner,
   });
   const openWorkingTips = [
     ...new Set(
@@ -387,7 +432,7 @@ export async function createBindingDraft(
   const sameBindingOpenDraft = openDrafts.find(
     (draft) =>
       draft.editSubjectKind === "binding" &&
-      draft.projectParameterBindingId === binding.binding_id,
+      draft.projectParameterBindingId === bindingHead.binding_id,
   );
 
   let effectiveBaseRevisionId = input.baseRevisionId;
@@ -406,7 +451,7 @@ export async function createBindingDraft(
 
   const revision = await getConfigRevisionById(db, {
     organizationId: auth.organization.id,
-    projectId: binding.project_id,
+    projectId: bindingHead.project_id,
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
@@ -419,6 +464,27 @@ export async function createBindingDraft(
         baseRevisionId: input.baseRevisionId,
       },
     );
+  }
+
+  // The initial binding lookup is sufficient for legacy/non-sensitive callers.
+  // A trusted write must instead use a locator from the selected exact base
+  // revision; this prevents a newer head from changing the policy subject.
+  let binding = bindingHead;
+  if (trustedContext) {
+    binding = await loadBindingContext(
+      db,
+      auth,
+      input.bindingId,
+      bindingHead.project_id,
+      revision.id,
+    );
+    if (binding.logical_node_id && !binding.node_locator) {
+      throw new ApiError("CONFLICT", "Binding logical node is missing from the exact config revision.", {
+        reason: "missing-logical-node-revision",
+        bindingId: input.bindingId,
+        baseRevisionId: revision.id,
+      });
+    }
   }
 
   throwIfManifestNeedsReview(revision);
@@ -485,6 +551,33 @@ export async function createBindingDraft(
     nodeLocator: binding.node_locator,
   });
 
+  if (trustedContext) {
+    const sourceFileName = writeTarget.fileName?.trim();
+    const sourceFileVersionId = writeTarget.fileVersionId?.trim();
+    const nodePath = (binding.node_locator ?? writeTarget.nodeLocator)?.trim();
+    if (!sourceFileName || !sourceFileVersionId || !nodePath) {
+      throw new ApiError("CONFLICT", "Typed binding draft is missing an exact sensitive-node source identity.", {
+        code: "parameter-sensitive-source-version-mismatch",
+        projectId: binding.project_id,
+        bindingId: binding.binding_id,
+        sourceFileName: sourceFileName ?? null,
+        sourceFileVersionId: sourceFileVersionId ?? null,
+        nodePath: nodePath ?? null,
+      });
+    }
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+      organizationId: auth.organization.id,
+      projectId: binding.project_id,
+      nodePath,
+      sourcePath: { kind: "node-locator", value: nodePath },
+      sourceFileName,
+      sourceFileVersionId,
+      invocation: trustedContext.invocation,
+      requestId: trustedContext.requestId,
+      refusalSink: trustedContext.refusalSink,
+    });
+  }
+
   const memberContents = new Map<string, string>();
   for (const member of members) {
     try {
@@ -542,9 +635,12 @@ export async function createBindingDraft(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin,
+      created_by_user_id, initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7
+    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback',
+      $7, $8, $9, $10, $11, $12, $13
     from project_parameter_file_versions
     where file_id = $2
     `,
@@ -555,7 +651,13 @@ export async function createBindingDraft(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      accountableUserId,
+      attribution?.initiatorType ?? "user",
+      attribution?.systemKind ?? null,
+      attribution?.systemName ?? null,
+      attribution?.sessionId ?? null,
+      attribution?.toolCallId ?? null,
+      attribution?.approvalId ?? null,
     ],
   );
 
@@ -619,12 +721,20 @@ export async function createBindingDraft(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(
+    db,
+    manifest,
+    auth,
+    attribution
+      ? { createdByUserId: attribution.userId, domain: attribution }
+      : undefined,
+  );
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
     baseRevisionId: revision.id,
     candidateRevisionId,
+    attribution,
     // Always exclude the edited binding — ingest match may attach a remapped
     // logical-node binding while this draft still keys the original binding id.
     excludeBindingId: binding.binding_id,
@@ -666,6 +776,7 @@ export async function createBindingDraft(
         schemaState: "valid",
         policyState: "not_applicable",
       },
+      attribution,
     });
   }
 
@@ -806,14 +917,15 @@ export async function createBindingDraft(
   const { draftId, rebasedDraftIds } = await withAuditedWrite(
     db,
     auth,
-    { requestId: context.requestId ?? randomUUID() },
+    { requestId: trustedContext?.requestId ?? context.requestId ?? randomUUID() },
     async (tx) => {
       const persistedDraft = await upsertDraft(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
         projectId: binding.project_id,
         parameterId: draftParameterId,
-        userId: auth.user.id,
+        userId: accountableUserId,
+        attribution,
         targetValue: rawText,
         reason: input.reason,
         origin: "manual",
@@ -834,35 +946,37 @@ export async function createBindingDraft(
       const rebased = await rebaseOpenBindingDraftCandidates(tx, {
         organizationId: auth.organization.id,
         projectId: binding.project_id,
-        userId: auth.user.id,
+        ...draftOwner,
         candidateConfigRevisionId: candidateRevisionId,
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          action: "binding-edited",
-          projectId: binding.project_id,
-          targetType: "project-parameter-binding",
-          targetId: binding.binding_id,
-          metadata: {
-            draftId: persistedDraft.id,
-            candidateRevisionId,
-            propertyKey: binding.property_key,
-            writeTargetRole: writeTarget.role,
-            targetRef,
-            action,
-          },
+      const auditInput = {
+        action: "binding-edited" as const,
+        projectId: binding.project_id,
+        targetType: "project-parameter-binding",
+        targetId: binding.binding_id,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          propertyKey: binding.property_key,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action,
         },
-        context,
-      );
-      return {
-        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
-        audit: null,
       };
-    },
+      if (trustedContext) {
+        await writeTrustedGovernanceAudit(
+          asAuditTx(tx),
+          trustedContext.invocation,
+          { ...auditInput, organizationId: auth.organization.id },
+          trustedContext.requestId,
+        );
+      } else {
+        await writeGovernanceAudit(asAuditTx(tx), auth, auditInput, context);
+      }
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
   );
 
   const baseChecksumAfter = checksumOf(baseContent);
@@ -909,19 +1023,26 @@ async function listRevisionStatusRawValues(
  * Create a node-enablement draft that patches (or deletes) `status` on a logical node.
  * Shares working tip / candidate revision coordination with binding drafts (ADR-0003).
  */
-export async function createNodeEnablementDraft(
+async function createNodeEnablementDraftInTransaction(
   db: Database,
   auth: AuthContext,
   input: CreateNodeEnablementDraftInput,
   deps: CreateBindingDraftDeps = {},
-  context: AuditCorrelationContext = {},
+  context: TrustedSensitiveNodeWriteContext,
 ): Promise<NodeEnablementDraftResult> {
   requireCanEdit(auth);
 
+  const attribution = trustedDomainAttribution(context.invocation);
+  const draftOwner = {
+    userId: attribution.userId,
+    initiatorType: attribution.initiatorType,
+    systemKind: attribution.systemKind,
+    systemName: attribution.systemName,
+  } as const;
   const openDrafts = await listOpenBindingDraftsForUser(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
-    userId: auth.user.id,
+    owner: draftOwner,
   });
   const openWorkingTips = [
     ...new Set(
@@ -1005,12 +1126,18 @@ export async function createNodeEnablementDraft(
     logicalNodeId: input.logicalNodeId,
   });
 
-  await assertSensitiveNodeWriteAllowed(db, auth, {
+  await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath: nodeContext.nodeLocator,
+    sourcePath: { kind: "node-locator", value: nodeContext.nodeLocator },
     compatible: nodeContext.compatible,
-    actorType: "user",
+    // The logical-node compatible token was loaded from this exact persisted
+    // config revision above; it is not a client-provided override.
+    compatibleIsAuthoritative: true,
+    invocation: context.invocation,
+    requestId: context.requestId,
+    refusalSink: context.refusalSink,
   });
 
   const projectSpelling =
@@ -1107,9 +1234,12 @@ export async function createNodeEnablementDraft(
   await db.query(
     `
     insert into project_parameter_file_versions (
-      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id,
+      initiator_type, initiator_system_kind, initiator_system_name,
+      initiator_session_id, initiator_tool_call_id, initiator_approval_id
     )
-    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7
+    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7,
+           $8, $9, $10, $11, $12, $13
     from project_parameter_file_versions
     where file_id = $2
     `,
@@ -1120,7 +1250,13 @@ export async function createNodeEnablementDraft(
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
-      auth.user.id,
+      attribution.userId,
+      attribution.initiatorType,
+      attribution.systemKind,
+      attribution.systemName,
+      attribution.sessionId,
+      attribution.toolCallId,
+      attribution.approvalId,
     ],
   );
 
@@ -1183,12 +1319,16 @@ export async function createNodeEnablementDraft(
     members: candidateMembers,
   };
 
-  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth, {
+    createdByUserId: attribution.userId ?? undefined,
+    domain: attribution,
+  });
   const candidateRevisionId = ingested.id;
 
   await carryForwardBindingRevisions(db, {
     baseRevisionId: revision.id,
     candidateRevisionId,
+    attribution,
   });
 
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
@@ -1292,14 +1432,15 @@ export async function createNodeEnablementDraft(
   const { draftId, rebasedDraftIds } = await withAuditedWrite(
     db,
     auth,
-    { requestId: context.requestId ?? randomUUID() },
+    { requestId: context.requestId },
     async (tx) => {
       const persistedDraft = await upsertEnablementDraft(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
         projectId: input.projectId,
         logicalNodeId: input.logicalNodeId,
-        userId: auth.user.id,
+        userId: attribution.userId,
+        attribution,
         targetValue: rawText,
         reason: input.reason,
         origin: "manual",
@@ -1317,38 +1458,31 @@ export async function createNodeEnablementDraft(
       const rebased = await rebaseOpenBindingDraftCandidates(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,
-        userId: auth.user.id,
+        owner: draftOwner,
         candidateConfigRevisionId: candidateRevisionId,
         excludeDraftId: persistedDraft.id,
       });
 
-      await writeGovernanceAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          action: "enablement-changed",
-          projectId: input.projectId,
-          targetType: "dts-logical-node",
-          targetId: input.logicalNodeId,
-          metadata: {
-            draftId: persistedDraft.id,
-            candidateRevisionId,
-            previousRaw: nodeContext.currentRaw,
-            nextRaw: writePlan.rawText,
-            target: input.target,
-            reason: input.reason,
-            writeTargetRole: writeTarget.role,
-            targetRef,
-            action: writePlan.action,
-          },
+      await writeTrustedGovernanceAudit(asAuditTx(tx), context.invocation, {
+        action: "enablement-changed",
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        targetType: "dts-logical-node",
+        targetId: input.logicalNodeId,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          previousRaw: nodeContext.currentRaw,
+          nextRaw: writePlan.rawText,
+          target: input.target,
+          reason: input.reason,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action: writePlan.action,
         },
-        context,
-      );
-      return {
-        result: { draftId: persistedDraft.id, rebasedDraftIds: rebased },
-        audit: null,
-      };
-    },
+      }, context.requestId);
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
   );
 
   return {
@@ -1365,6 +1499,17 @@ export async function createNodeEnablementDraft(
     previousRaw: nodeContext.currentRaw,
     target: input.target,
   };
+}
+
+export async function createNodeEnablementDraft(
+  db: Database,
+  auth: AuthContext,
+  input: CreateNodeEnablementDraftInput,
+  deps: CreateBindingDraftDeps = {},
+  context: TrustedSensitiveNodeWriteContext,
+): Promise<NodeEnablementDraftResult> {
+  const trustedContext = assertTrustedSensitiveNodeWriteContext(auth, context, "topology enablement draft");
+  return db.transaction((tx) => createNodeEnablementDraftInTransaction(tx, auth, input, deps, trustedContext));
 }
 
 async function loadRevisionDiagnostics(

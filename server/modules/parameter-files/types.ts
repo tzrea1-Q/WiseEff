@@ -1,3 +1,5 @@
+import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocation";
+
 export type ParameterFileFormat = "dts" | "json";
 export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
@@ -54,6 +56,7 @@ export type InsertFileVersionInput = {
   parsedIndex?: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdByUserId?: string;
+  attribution?: TrustedInvocationDomainAttribution;
 };
 
 /** Staged candidate lifecycle states (ADR-0018 / #232). */
@@ -159,6 +162,7 @@ export type InsertParameterFileCandidateInput = {
   impact?: CandidateImpact;
   blockers?: CandidateBlocker[];
   createdByUserId?: string;
+  attribution?: TrustedInvocationDomainAttribution;
 };
 
 export type UpdateParameterFileCandidateParseResultInput = {
