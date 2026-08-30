@@ -96,19 +96,18 @@ describe("trusted invocation context", () => {
   });
 
   it("uses the shared SQL-row projection for durable attribution", () => {
-    expect(
-      trustedDomainAttributionFromRow(
-        {
-          initiator_type: "system",
-          initiator_system_kind: "job",
-          initiator_system_name: "private-job",
-          initiator_session_id: null,
-          initiator_tool_call_id: null,
-          initiator_approval_id: null
-        },
-        null
-      )
-    ).toEqual({
+    const systemAttribution = trustedDomainAttributionFromRow(
+      {
+        initiator_type: "system",
+        initiator_system_kind: "job",
+        initiator_system_name: "private-job",
+        initiator_session_id: null,
+        initiator_tool_call_id: null,
+        initiator_approval_id: null
+      },
+      "unrelated-user"
+    );
+    expect(systemAttribution).toEqual({
       userId: null,
       principalDeleted: false,
       initiatorType: "system",

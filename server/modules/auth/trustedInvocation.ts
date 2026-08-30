@@ -366,13 +366,16 @@ export function trustedDomainAttributionFromRow(
   userId: string | null | undefined
 ): PersistedInvocationDomainAttribution {
   const principalDeleted = row.initiator_principal_deleted === true;
+  const initiatorType = row.initiator_type ?? "legacy";
   return {
     // A deleted marker is deliberately identity-free. Never recover a user id
     // from any snapshot or tombstone; the FK is the sole accountable-principal
     // source and is null after permanent deletion.
-    userId: principalDeleted ? null : userId ?? null,
+    // System rows likewise have no user principal, even if a malformed or
+    // historical caller supplies an unrelated user id alongside the row.
+    userId: principalDeleted || initiatorType === "system" ? null : userId ?? null,
     principalDeleted,
-    initiatorType: row.initiator_type ?? "legacy",
+    initiatorType,
     systemKind: row.initiator_system_kind ?? null,
     systemName: row.initiator_system_name ?? null,
     sessionId: row.initiator_session_id ?? null,
