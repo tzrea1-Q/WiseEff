@@ -25,6 +25,8 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | DTS | Device tree / parameter topology source format in the parameter workbench |
 | Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
+| Catalog kernel | The routes-less deep module that turns one published immutable Catalog release into verified current or pinned catalog snapshots and is the only steady-state seam allowed to materialize catalog structure. Callers consume its typed results and never coordinate catalog tables, revision heads, aliases, transactions, or cache repair. _Avoid_: catalog repository facade, schema loader (too narrow), runtime repair service |
+| Catalog snapshot | An immutable, verified read model of one exact Catalog release, carrying its opaque release identity and digest. Current snapshots are selected only by the current release pointer; pinned snapshots replay their named historical release without current aliases or lifecycle. _Avoid_: latest registry, mutable cache, organization overlay view |
 | Binding | Stable link between a parameter row and topology/schema identity |
 | Parameter draft | A user's staged pending change (binding value or node enablement) held in `parameter_drafts` between editing and submission. Editing writes drafts, submission/review reads them, so the staging area is a standalone module (`server/modules/parameter-drafts/`) both workflows depend on (ADR-0028) |
 | Xiaoze | WiseEff Agent assistant surface in the product |
