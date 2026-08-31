@@ -35,6 +35,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/full-stack-architecture.md", zh: "docs/zh-CN/design-docs/full-stack-architecture.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/domain-model.md", zh: "docs/zh-CN/design-docs/domain-model.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/api-contract.md", zh: "docs/zh-CN/design-docs/api-contract.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-api-transition.md", zh: "docs/zh-CN/design-docs/parameter-catalog-api-transition.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/testing-strategy.md", zh: "docs/zh-CN/design-docs/testing-strategy.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/deployment-operations.md", zh: "docs/zh-CN/design-docs/deployment-operations.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/security-governance.md", zh: "docs/zh-CN/design-docs/security-governance.md", tier: "architecture", status: "required" },
