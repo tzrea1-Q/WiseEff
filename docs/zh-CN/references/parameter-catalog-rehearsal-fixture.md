@@ -10,7 +10,7 @@
 - 关系、列、约束、索引和触发器元数据；
 - 已应用迁移名称及不可变 checksum；
 - 参数、目录和 DTS 相关关系的精确计数；
-- 只由封闭 lifecycle/kind/source 枚举和 present/missing/aligned/misaligned 桶组成的聚合行分类；
+- 只由封闭 lifecycle/kind/source 枚举和 present/missing/aligned/misaligned 桶组成的聚合行分类；若数据库早于 trusted-invocation 列，则记录 `initiator=column-absent`，不读取不存在的字段；
 - 聚合不变量计数与迁移输入计数；
 - 逻辑源数据库、schema 元数据、规范化 DDL、文件和归档的 SHA-256 checksum。规范化 DDL checksum 排除 PostgreSQL 每次生成的 `\\restrict` nonce；文件 checksum 仍保护原始 dump 字节。
 
@@ -27,7 +27,7 @@ scripts/wayfinder/export-parameter-catalog-rehearsal.sh \
   --output-dir /absolute/path/to/wiseeff-wayfinder-671-export-YYYYMMDDTHHMMSSZ
 ```
 
-若数据库尚未应用 `0136_parameter_execution_principal_deleted_marker.sql`、缺少必需的目录关系、无法证明只读事务，或 schema dump 含数据语句、聚合文件命中秘密形态，导出器会拒绝继续。
+导出器记录实际已应用的完整迁移清单，不要求数据库已应用仓库中的最新迁移。若数据库缺少必需的目录关系、无法证明只读事务，或 schema dump 含数据语句、聚合文件命中秘密形态，导出器会拒绝继续。
 
 ## 本地导入
 

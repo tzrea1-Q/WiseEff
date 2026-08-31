@@ -182,12 +182,6 @@ if [[ -n "${missing_relations}" ]]; then
   exit 1
 fi
 
-required_migration="0136_parameter_execution_principal_deleted_marker.sql"
-if [[ "$(db_psql -Atc "select count(*) from schema_migrations where name = '${required_migration}'")" != "1" ]]; then
-  printf 'Required migration is not applied: %s\n' "${required_migration}" >&2
-  exit 1
-fi
-
 stage_dir="$(mktemp -d "${output_dir}.tmp.XXXXXX")"
 on_error() {
   local exit_code=$?

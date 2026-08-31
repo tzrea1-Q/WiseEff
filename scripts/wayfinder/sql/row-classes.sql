@@ -287,10 +287,15 @@ workflow_classes as (
       'subject=' || case when edit_subject_kind in ('parameter-binding', 'node-enablement') then edit_subject_kind else 'other' end,
       'binding=' || case when project_parameter_binding_id is null then 'absent' else 'present' end,
       'candidate-revision=' || case when candidate_config_revision_id is null then 'absent' else 'present' end,
-      'initiator=' || case when initiator_type in ('user', 'agent', 'system') then initiator_type else 'other' end
+      'initiator=' || case
+        when not (to_jsonb(pd) ? 'initiator_type') then 'column-absent'
+        when to_jsonb(pd)->>'initiator_type' in ('user', 'agent', 'system', 'legacy')
+          then to_jsonb(pd)->>'initiator_type'
+        else 'other'
+      end
     ) as class_key,
     count(*)::bigint as row_count
-  from parameter_drafts
+  from parameter_drafts pd
   group by class_key
 
   union all
@@ -307,10 +312,15 @@ workflow_classes as (
       'spec=' || case when parameter_spec_id is null then 'absent' else 'present' end,
       'binding=' || case when project_parameter_binding_id is null then 'absent' else 'present' end,
       'candidate-revision=' || case when candidate_config_revision_id is null then 'absent' else 'present' end,
-      'initiator=' || case when initiator_type in ('user', 'agent', 'system') then initiator_type else 'other' end
+      'initiator=' || case
+        when not (to_jsonb(pcr) ? 'initiator_type') then 'column-absent'
+        when to_jsonb(pcr)->>'initiator_type' in ('user', 'agent', 'system', 'legacy')
+          then to_jsonb(pcr)->>'initiator_type'
+        else 'other'
+      end
     ) as class_key,
     count(*)::bigint as row_count
-  from parameter_change_requests
+  from parameter_change_requests pcr
   group by class_key
 
   union all
@@ -322,10 +332,15 @@ workflow_classes as (
       'binding=' || case when project_parameter_binding_id is null then 'absent' else 'present' end,
       'request=' || case when request_id is null then 'absent' else 'present' end,
       'logical-node=' || case when logical_node_id is null then 'absent' else 'present' end,
-      'initiator=' || case when initiator_type in ('user', 'agent', 'system') then initiator_type else 'other' end
+      'initiator=' || case
+        when not (to_jsonb(phe) ? 'initiator_type') then 'column-absent'
+        when to_jsonb(phe)->>'initiator_type' in ('user', 'agent', 'system', 'legacy')
+          then to_jsonb(phe)->>'initiator_type'
+        else 'other'
+      end
     ) as class_key,
     count(*)::bigint as row_count
-  from parameter_history_entries
+  from parameter_history_entries phe
   group by class_key
 ),
 overlay_classes as (

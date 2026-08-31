@@ -10,7 +10,7 @@ The exporter uses one repeatable-read, read-only PostgreSQL snapshot for every c
 - relation, column, constraint, index, and trigger metadata;
 - the applied migration names and immutable checksums;
 - exact counts for parameter/catalog/DTS relations;
-- aggregate row classes built only from closed lifecycle/kind/source values and presence/alignment buckets;
+- aggregate row classes built only from closed lifecycle/kind/source values and presence/alignment buckets; databases predating trusted-invocation columns report `initiator=column-absent` instead of reading a nonexistent field;
 - aggregate invariant and migration-input counts;
 - logical source-database, schema-metadata, canonicalized dump, file, and archive SHA-256 checksums. The canonical dump checksum excludes PostgreSQL's per-run `\\restrict` nonce; the file checksum still protects the exact dump bytes.
 
@@ -27,7 +27,7 @@ scripts/wayfinder/export-parameter-catalog-rehearsal.sh \
   --output-dir /absolute/path/to/wiseeff-wayfinder-671-export-YYYYMMDDTHHMMSSZ
 ```
 
-The exporter refuses a database that has not applied `0136_parameter_execution_principal_deleted_marker.sql`, is missing required catalog relations, cannot prove a read-only transaction, or produces a data-bearing schema dump or secret-shaped aggregate output.
+The exporter records the exact applied migration inventory rather than requiring the latest repository migration. It refuses a database that is missing required catalog relations, cannot prove a read-only transaction, or produces a data-bearing schema dump or secret-shaped aggregate output.
 
 ## Local import
 

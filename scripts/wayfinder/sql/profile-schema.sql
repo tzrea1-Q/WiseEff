@@ -49,7 +49,7 @@ create table wayfinder_rehearsal.triggers (
 
 create table wayfinder_rehearsal.migration_inventory (
   name text not null,
-  checksum text not null
+  checksum text
 );
 
 create table wayfinder_rehearsal.row_counts (
