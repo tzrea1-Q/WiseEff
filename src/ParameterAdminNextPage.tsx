@@ -24,6 +24,10 @@ import type { ParameterRecord, Project, PrototypeState } from "@/domain/prototyp
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecsArea } from "@/components/parameter-admin-next/OrganizationSpecsArea";
+import {
+  isParameterDefinitionPrototypeSearch,
+  ParameterDefinitionExperiencePrototype,
+} from "@/components/parameter-admin-next/ParameterDefinitionExperiencePrototype";
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
 import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
@@ -133,6 +137,9 @@ export function ParameterAdminNextPage({
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
     isProjectConfigurationWorkbenchPath(pathname);
+  const showParameterDefinitionPrototype =
+    organizationView === "specs" &&
+    isParameterDefinitionPrototypeSearch(search);
 
   useEffect(() => {
     if (area !== "organization") {
@@ -196,23 +203,37 @@ export function ParameterAdminNextPage({
           )
         ) : organizationView ? (
           <>
-            <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} />
-            <OrganizationBulkImportPanel
-              projects={projects}
-              parameters={parameters}
-              activeProjectId={activeProjectId || projects[0]?.id || ""}
-              dispatch={dispatch ?? (() => undefined)}
-              onNavigate={onNavigate}
-              parameterActions={parameterActions}
-              runtimeMode={runtimeMode}
-            />
-            {organizationView === "specs" ? (
-              <OrganizationSpecsArea
-                pathname={pathname}
-                search={search}
+            {showParameterDefinitionPrototype ? null : (
+              <ParameterAdminOrganizationSubNav
+                active={organizationView}
                 onNavigate={onNavigate}
-                isPlatformSuperAdmin={isPlatformSuperAdmin}
               />
+            )}
+            {showParameterDefinitionPrototype ? null : (
+              <OrganizationBulkImportPanel
+                projects={projects}
+                parameters={parameters}
+                activeProjectId={activeProjectId || projects[0]?.id || ""}
+                dispatch={dispatch ?? (() => undefined)}
+                onNavigate={onNavigate}
+                parameterActions={parameterActions}
+                runtimeMode={runtimeMode}
+              />
+            )}
+            {organizationView === "specs" ? (
+              showParameterDefinitionPrototype ? (
+                <ParameterDefinitionExperiencePrototype
+                  search={search}
+                  onNavigate={onNavigate}
+                />
+              ) : (
+                <OrganizationSpecsArea
+                  pathname={pathname}
+                  search={search}
+                  onNavigate={onNavigate}
+                  isPlatformSuperAdmin={isPlatformSuperAdmin}
+                />
+              )
             ) : null}
             {organizationView === "modules" ? (
               <OrganizationModuleGovernancePanel
