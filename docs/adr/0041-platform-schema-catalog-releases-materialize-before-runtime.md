@@ -1,6 +1,6 @@
-# ADR-0040: Platform schema catalog releases materialize before runtime
+# ADR-0041: Platform schema catalog releases materialize before runtime
 
-> Chinese companion: [中文决策记录](../zh-CN/design-docs/adr-0040-platform-schema-catalog-releases-materialize-before-runtime.md)
+> Chinese companion: [中文决策记录](../zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md)
 
 Date: 2026-08-31
 

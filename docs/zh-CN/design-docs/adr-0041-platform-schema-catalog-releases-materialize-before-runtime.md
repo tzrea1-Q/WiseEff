@@ -1,6 +1,6 @@
-# ADR-0040：平台 Schema Catalog Release 必须在运行时启动前完成物化
+# ADR-0041：平台 Schema Catalog Release 必须在运行时启动前完成物化
 
-> English: [English decision record](../../adr/0040-platform-schema-catalog-releases-materialize-before-runtime.md)
+> English: [English decision record](../../adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md)
 
 日期：2026-08-31
 
