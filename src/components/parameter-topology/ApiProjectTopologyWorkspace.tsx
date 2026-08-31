@@ -1177,7 +1177,6 @@ export function ApiProjectTopologyWorkspace({
         loadPrimaryDtsSource={loadPrimaryDtsSource}
         currentEdits={currentEdits}
         expandAllNodesByDefault
-        onNavigate={onNavigate}
         onExportRows={(rows) => {
           downloadSemanticWorkbenchCsv(
             rows,

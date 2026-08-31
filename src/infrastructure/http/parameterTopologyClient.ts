@@ -48,6 +48,9 @@ export type ProjectBindingDto = {
   schemaState: ProjectParameterBinding["schemaState"];
   policyState: ProjectParameterBinding["policyState"];
   moduleId: string;
+  displayName: string | null;
+  description: string | null;
+  documentation: string | null;
 };
 
 export type ParameterSpecSummaryDto = ParameterSpecSummary;
@@ -171,6 +174,9 @@ export function bindingFromDto(
     schemaState: dto.schemaState,
     policyState: dto.policyState,
     moduleId: dto.moduleId,
+    displayName: dto.displayName,
+    description: dto.description,
+    documentation: dto.documentation,
   };
 }
 

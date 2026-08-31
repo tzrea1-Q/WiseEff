@@ -260,7 +260,10 @@ export async function listProjectBindings(
       rawValue: row.rawValue,
       schemaState: toSchemaState(row.schemaState),
       policyState: toPolicyState(row.policyState),
-      moduleId: row.moduleId
+      moduleId: row.moduleId,
+      displayName: row.displayName,
+      description: row.description,
+      documentation: row.documentation
     })
   );
 

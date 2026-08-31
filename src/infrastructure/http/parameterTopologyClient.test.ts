@@ -37,7 +37,10 @@ const bindingDto: ProjectBindingDto = {
   rawValue: "<0>",
   schemaState: "valid",
   policyState: "pass",
-  moduleId: "mod-charging"
+  moduleId: "mod-charging",
+  displayName: "GPIO 中断",
+  description: "SC8562 中断 GPIO 展示描述。",
+  documentation: "电荷泵中断引脚的完整参数说明。"
 };
 
 const specDetailDto: ParameterSpecDetailDto = {
@@ -70,7 +73,10 @@ describe("parameterTopologyClient DTO mapping", () => {
       driverModule: "sc8562",
       instanceName: "sc8562@6E",
       locator: "/amba/i2c@FDF5E000/sc8562@6E",
-      moduleId: "mod-charging"
+      moduleId: "mod-charging",
+      displayName: "GPIO 中断",
+      description: "SC8562 中断 GPIO 展示描述。",
+      documentation: "电荷泵中断引脚的完整参数说明。"
     });
     expect(bindingFromDto(bindingDto)).not.toHaveProperty("recommendedValue");
     expect(bindingFromDto(bindingDto).effectiveValue).toEqual(bindingDto.effectiveValue);
@@ -247,7 +253,10 @@ describe("createHttpParameterTopologyRepository", () => {
       propertyKey: "gpio_int",
       driverModule: "sc8562",
       instanceName: "sc8562@6E",
-      locator: "/amba/i2c@FDF5E000/sc8562@6E"
+      locator: "/amba/i2c@FDF5E000/sc8562@6E",
+      displayName: "GPIO 中断",
+      description: "SC8562 中断 GPIO 展示描述。",
+      documentation: "电荷泵中断引脚的完整参数说明。"
     });
     expect(items[0]).not.toHaveProperty("recommendedValue");
   });

@@ -172,10 +172,16 @@ export function DtsBindingDetailDialog({
     [baseProjectId, baseProjectName, row.rawValue, compareEntries]
   );
 
-  const displayName = specDetail?.displayName?.trim() && specDetail.displayName !== row.propertyKey
-    ? specDetail.displayName
+  const pinnedDisplayName = row.displayName === undefined ? specDetail?.displayName : row.displayName;
+  const displayName = pinnedDisplayName?.trim() && pinnedDisplayName !== row.propertyKey
+    ? pinnedDisplayName
     : null;
-  const meaning = (specDetail?.documentation ?? specDetail?.description)?.trim() || null;
+  const displayDescription = (
+    row.description === undefined ? specDetail?.description : row.description
+  )?.trim() || "暂无展示描述";
+  const documentation = (
+    row.documentation === undefined ? specDetail?.documentation : row.documentation
+  )?.trim() || "暂无参数说明";
   const exampleValue = formatUnknownValue(specDetail?.exampleValue ?? null);
   const units = specDetail?.units?.trim() || null;
   const constraintsSummary = formatConstraints(specDetail?.constraints);
@@ -238,7 +244,8 @@ export function DtsBindingDetailDialog({
                 <p role="status">规格详情暂时无法加载，以下仅展示绑定当前值。</p>
               ) : null}
               {displayName ? <TextField label="显示名" value={displayName} /> : null}
-              {meaning ? <TextField label="参数含义" value={meaning} /> : null}
+              <TextField label="展示描述" value={displayDescription} />
+              <TextField label="参数说明" value={documentation} />
               <dl className="grid gap-2 sm:grid-cols-2">
                 <IdentityField label="当前值" value={row.rawValue} />
                 {exampleValue ? (

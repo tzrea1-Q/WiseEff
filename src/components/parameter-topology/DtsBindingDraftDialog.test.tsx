@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -152,6 +152,27 @@ function PendingCloseHarness({
 }
 
 describe("DtsBindingDraftDialog", () => {
+  it("shows the pinned parameter documentation on every edit card", () => {
+    const row = gpioRow({ documentation: "固定版本的参数说明。" } as Partial<DtsParameterWorkbenchRow>);
+    render(
+      <DtsBindingDraftDialog
+        rowsByBindingId={new Map([[row.bindingId, row]])}
+        draftBag={{ [row.bindingId]: { rawValue: row.rawValue, reason: "" } }}
+        focusedBindingId={row.bindingId}
+        canEdit
+        onClose={vi.fn()}
+        onUpdateDraft={vi.fn()}
+        onRemoveDraft={vi.fn()}
+        onClearAll={vi.fn()}
+        onCreateDraft={vi.fn().mockResolvedValue({ valid: true, diagnostics: [] })}
+      />
+    );
+
+    const card = screen.getByLabelText("gpio_int 草稿");
+    expect(within(card).getByText("参数说明")).toBeInTheDocument();
+    expect(within(card).getByText("固定版本的参数说明。")).toBeInTheDocument();
+  });
+
   it("focuses the target editor and exposes draft summary actions", () => {
     renderDraftDialog();
 

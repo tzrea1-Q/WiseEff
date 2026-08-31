@@ -87,6 +87,44 @@ function field(container: HTMLElement, label: string): HTMLElement {
 }
 
 describe("DtsBindingDetailDialog", () => {
+  it("shows pinned display description and parameter documentation as separate fields", () => {
+    renderDialog({
+      row: gpioRow({
+        description: "固定版本的展示描述。",
+        documentation: "固定版本的参数说明。"
+      } as Partial<DtsParameterWorkbenchRow>),
+      specDetail: {
+        id: "spec-gpio-int",
+        sourceKind: "dts",
+        specificationKey: "vendor/sc8562/gpio_int",
+        propertyKey: "gpio_int",
+        driverModule: "sc8562",
+        lifecycle: "active",
+        currentVersionId: "spec-version-gpio-int-v4",
+        currentVersion: 4,
+        displayName: "GPIO 中断",
+        description: "当前版本的展示描述。",
+        valueShape: { kind: "phandle-list" },
+        schemaDefault: null,
+        exampleValue: null,
+        schemaNamespace: "vendor/sc8562",
+        units: null,
+        constraints: null,
+        documentation: "当前版本的参数说明。",
+        compatiblePatterns: ["vendor,sc8562"],
+        attributionModules: [],
+        policyTarget: null
+      },
+      specDetailStatus: "ready"
+    });
+
+    const definition = screen.getByRole("heading", { name: "参数定义" }).closest("section") as HTMLElement;
+    expect(field(definition, "展示描述")).toHaveTextContent("固定版本的展示描述。");
+    expect(field(definition, "参数说明")).toHaveTextContent("固定版本的参数说明。");
+    expect(within(definition).queryByText("当前版本的展示描述。")).not.toBeInTheDocument();
+    expect(within(definition).queryByText("当前版本的参数说明。")).not.toBeInTheDocument();
+  });
+
   it("shows read-only definition, DTS location, history, compare, and folded technical identity", () => {
     renderDialog({
       specDetail: {

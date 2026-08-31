@@ -354,6 +354,7 @@ describe("DtsParameterWorkbench", () => {
     expect(headers).toEqual([
       expect.stringContaining(""),
       expect.stringContaining("参数名"),
+      "展示描述",
       expect.stringContaining("所属模块"),
       "器件 / 驱动",
       expect.stringContaining("当前值"),
@@ -361,8 +362,33 @@ describe("DtsParameterWorkbench", () => {
       "操作"
     ]);
     expect(headers[0]).toContain(""); // checkbox column
-    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
     expect(visibleBindingRows()).toHaveLength(4);
+  });
+
+  it("omits the legacy parameter count and debugging handoff from the parameter toolbar", () => {
+    renderWorkbench({ projectId: "project-1" });
+
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(within(workbench).queryByText(/显示\s+\d+\s*\/\s*\d+\s*个参数/)).not.toBeInTheDocument();
+    expect(within(workbench).queryByRole("button", { name: /带到参数调试/ })).not.toBeInTheDocument();
+    expect(within(workbench).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeVisible();
+    expect(within(workbench).getByRole("button", { name: "模块导航" })).toBeInTheDocument();
+    expect(within(workbench).getByRole("button", { name: "技术视图" })).toBeInTheDocument();
+  });
+
+  it("shows each parameter display description as a dedicated list column", () => {
+    const describedRows = effectiveRows.map((item, index) => ({
+      ...item,
+      description: index === 0 ? "SC8562 中断 GPIO 展示描述。" : null
+    }));
+    renderWorkbench({ effectiveRows: describedRows });
+
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(within(workbench).getByRole("columnheader", { name: "展示描述" })).toBeInTheDocument();
+    const describedRow = within(workbench).getByRole("row", { name: /gpio_int/ });
+    expect(within(describedRow).getByRole("cell", { name: /SC8562 中断 GPIO 展示描述/ })).toBeInTheDocument();
+    const emptyDescriptionRow = within(workbench).getByRole("row", { name: /watchdog_time/ });
+    expect(within(emptyDescriptionRow).getByRole("cell", { name: "—" })).toHaveAttribute("data-label", "展示描述");
   });
 
   it("searches precomputed semantic search text and clears the query back to the full result", () => {
@@ -374,14 +400,12 @@ describe("DtsParameterWorkbench", () => {
 
     expect(visibleBindingRows()).toHaveLength(1);
     expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-gpio-int");
-    expect(screen.getByRole("status")).toHaveTextContent("显示 1 / 4 个参数");
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
       target: { value: "" }
     });
     expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("");
     expect(visibleBindingRows()).toHaveLength(4);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
   });
 
   it("filters by the selected module subtree using binding identity", () => {
@@ -394,7 +418,6 @@ describe("DtsParameterWorkbench", () => {
       "binding-gpio-int",
       "binding-watchdog"
     ]);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 4 个参数");
     expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
   });
 
@@ -433,7 +456,6 @@ describe("DtsParameterWorkbench", () => {
     const refreshedRows = effectiveRows.filter((row) => row.driverModule !== "sc8562");
     rerender(<DtsParameterWorkbench {...props} effectiveRows={refreshedRows} />);
     expect(visibleBindingRows()).toHaveLength(2);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 2 个参数");
 
     rerender(<DtsParameterWorkbench {...props} />);
     expect(visibleBindingRows()).toHaveLength(4);
@@ -454,18 +476,15 @@ describe("DtsParameterWorkbench", () => {
       "binding-gpio-int",
       "binding-watchdog"
     ]);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 4 个参数");
     expect(trigger).toHaveClass("active");
     expect(trigger).toHaveTextContent("1");
 
     await user.click(within(menu).getByRole("checkbox", { name: "未分类 · mt5788" }));
     expect(visibleBindingRows()).toHaveLength(3);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
     expect(trigger).toHaveTextContent("2");
 
     await user.click(within(menu).getByRole("button", { name: "清除" }));
     expect(visibleBindingRows()).toHaveLength(4);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
   });
 
   it("selects a registered business module and includes its descendant rows", async () => {
@@ -550,7 +569,6 @@ describe("DtsParameterWorkbench", () => {
       "binding-watchdog",
       "binding-sensor-limit"
     ]);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
   });
 
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
@@ -852,34 +870,4 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/匹配/);
   });
 
-  it("disables 带到参数调试 until a row, draft, or narrowed result is chosen", () => {
-    renderWorkbench({ projectId: "project-1", onNavigate: vi.fn() });
-    const button = screen.getByRole("button", { name: /带到参数调试/ });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("aria-label", expect.stringContaining("请先勾选草稿"));
-  });
-
-  it("hands checked draft bindings to /dts-reload without dumping the full table", () => {
-    const onNavigate = vi.fn();
-    renderWorkbench({ projectId: "project-1", onNavigate });
-    fireEvent.click(screen.getByRole("checkbox", { name: /选择 gpio_int/ }));
-    const button = screen.getByRole("button", { name: /带到参数调试/ });
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
-    expect(onNavigate).toHaveBeenCalledWith(
-      "/dts-reload?project=project-1&bindingIds=binding-gpio-int"
-    );
-  });
-
-  it("hands the current search result to /dts-reload when no draft is checked", () => {
-    const onNavigate = vi.fn();
-    renderWorkbench({ projectId: "project-1", onNavigate });
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
-      target: { value: "gpio13" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: /带到参数调试/ }));
-    expect(onNavigate).toHaveBeenCalledWith(
-      "/dts-reload?project=project-1&bindingIds=binding-gpio-int"
-    );
-  });
 });
