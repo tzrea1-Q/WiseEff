@@ -35,11 +35,12 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | [Classify legacy parameter rows and repair semantics](https://github.com/tzrea1-Q/WiseEff/issues/670) | [`000f617b`](https://github.com/tzrea1-Q/WiseEff/commit/000f617ba9810adda4798b4bc4b2bdfed95b4c39)：R0-R10 classification 与禁止 weak identity inference。 |
 | [Capture a representative populated-database rehearsal fixture](https://github.com/tzrea1-Q/WiseEff/issues/671) | [`6c3adfc3`](https://github.com/tzrea1-Q/WiseEff/commit/6c3adfc35c0e3be6d5d381013dace9408190380e)：严格十案例 PostgreSQL fixture，包括必须保持不同的 same-key R6/R8 rows。 |
 | [Choose the canonical parameter-catalog relational model](https://github.com/tzrea1-Q/WiseEff/issues/672) | [`542c7a8b`](https://github.com/tzrea1-Q/WiseEff/commit/542c7a8bbce3bd6bb230b0d020d23d10af5182a9)：release-scoped subject lifecycle 与稳定 definition/revision/registration/placement identities。 |
-| [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) | [`41b7e58f`](https://github.com/tzrea1-Q/WiseEff/commit/41b7e58fd73524a81fb13db0078b332c54f7517a)：read-only runtime facet、nominal IDs、exact current/pinned snapshots、tagged lookup/error results，以及 kernel-owned transactions。 |
+| [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) | [`b5bf52cc`](https://github.com/tzrea1-Q/WiseEff/commit/b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb)：完整 read-only runtime facet、nominal IDs、exact current/pinned snapshots、deterministic Catalog pages、exact revision history、Catalog publication facts、tagged results 与 kernel-owned transactions。 |
 | [Choose platform schema publication and synchronization semantics](https://github.com/tzrea1-Q/WiseEff/issues/674) 与 [Choose organization registration and placement semantics](https://github.com/tzrea1-Q/WiseEff/issues/675) | [`9fe269d4`](https://github.com/tzrea1-Q/WiseEff/commit/9fe269d4facc31b49fc1e0535d2d51ba7140644b)：集成 ADR-0040/0041/0042 的 publication、synchronization、registration、placement、observation、proposal 语义。 |
 | [Prototype the single-page parameter-definition experience](https://github.com/tzrea1-Q/WiseEff/issues/676) | [`9c803557`](https://github.com/tzrea1-Q/WiseEff/commit/9c803557a55803ccca79c20eadd033f57d4729e0)：单页 definitions、Registration/Placement context、Review Queue、timeline，以及 ready/unregistered/empty/loading/error 状态。 |
+| [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678) | [`1839398b`](https://github.com/tzrea1-Q/WiseEff/commit/1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d)：唯一 R0-R10 production disposition、append-only typed mapping head、immutable Archive evidence 与 mandatory pre-switch semantic comparison。 |
 
-Issue #673 与本决策并发完成。其 runtime facet 与 tagged results 可直接适配本页 HTTP resource/error mapping，不会暴露 transaction，也不会让 kernel 持有 route。HTTP handler 必须适配已接受的 interface；不得重复实现 matching、revision selection、materialization 或 transaction coordination。
+修复后的 issue #673 read facet 可闭合本决策全部 canonical Catalog read，且不暴露 transaction，也不向 Kernel 增加 route。HTTP handler 适配该 interface；不得重复实现 matching、alias/lifecycle interpretation、revision selection、pagination、materialization 或 transaction coordination。Issue #678 是 production R0-R10 classification 与 mapping disposition 的唯一所有者；本 API 只投影 typed mapping head，绝不重新分类 legacy row。
 
 ## 范围与非目标
 
@@ -137,12 +138,38 @@ Issue #673 与本决策并发完成。其 runtime facet 与 tagged results 可�
 | Project drafts | 现有 binding 与 node-enablement draft paths | 保留产品行为；input 通过规范 binding/definition identity 解析。 |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | 仅 deployment operator 可用的 reconciliation 与迁移诊断；公共 DTO 不得链接。 |
 
+### Catalog Kernel read 闭合
+
+Canonical Catalog read 只能使用修复后 issue #673 在 `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb` 固定的 `CatalogRuntime`。Current read 调用 `loadCurrentCatalog(expectedPin)`；historical read 调用 `loadPinnedCatalog(exactPin)`。HTTP adapter 只验证 wire syntax 并映射 tagged result。它不能读取 Catalog tables、调用 raw Catalog repository、解释 alias/lifecycle、选择 current revision、对 Kernel page 排序或 post-filter，也不能用另一个 Catalog source 填补 missing result。
+
+| Canonical Catalog read route | Typed Kernel read 与授权组合 |
+| --- | --- |
+| `GET /api/v2/catalog` | `loadCurrentCatalog(expectedPin)` 与 `snapshot.release`；readiness status 来自独立 readiness seam。 |
+| `GET /api/v2/catalog/subjects` | `listSubjects(query)`；需要 Organization filter 时，在 Kernel pagination 前提供 authorized ID selection。 |
+| `GET /api/v2/catalog/subjects/{subjectId}` | `getSubject(subjectId)` 提供 stable identity、captured membership、aliases 与 Definition counts；Registration/Placement projection 来自其 owning seam。 |
+| `GET /api/v2/catalog/subjects/{subjectId}/definitions` | `listDefinitions({ scope: { kind: "subject", subjectId }, ... })`。 |
+| `GET /api/v2/catalog/definitions` | `listDefinitions({ scope: { kind: "all" }, ... })`；authorized ID selection 由 Kernel 在 ordering/paging 前应用。 |
+| `GET /api/v2/catalog/definitions/{definitionId}` | `getDefinitionById(definitionId)` 提供 release-selected revision；Registration、Placement 与 usage projection 来自各自 owning seam。 |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions` | `listDefinitionRevisions({ definitionId, ... })`；reverse order 与 release-bound cursor 由 Kernel 拥有。 |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions/{revisionId}` | `getDefinitionRevision({ definitionId, revisionId })`；`revision-unavailable` 绝不 fallback 到 selected revision。 |
+| `GET /api/v2/catalog/definitions/{definitionId}/timeline` | `listDefinitionTimelineFacts({ definitionId, ... })` 提供 immutable Catalog publication/revision facts；authorized application composer 合并独立 History/Audit events。 |
+
+Definition timeline composition seam 是严格边界。Kernel facts 只包含 release/revision publication facts；actor、Proposal/Review、Registration/Placement、Binding/value、usage 与 authorization-sensitive events 来自独立 History/Audit seam。Application composer 使用绑定 Catalog release 与 History/Audit high-water marks 的 composite cursor 合并 authorized streams；HTTP 只映射组合结果，不执行 Catalog join。
+
+Registration、Placement、usage、Observation、Review Queue、Proposal、legacy-ID、project Binding 与 operator-diagnostic resource 仍在 Catalog Kernel 外。其 owning module 可使用 nominal Catalog IDs、captured snapshot 或 tagged Kernel result，但不能为 `CatalogRuntime` 增加 write 或 raw repository。
+
 ### Registration command
+
+Registration 与 Review resolution 共用以下 discriminated `PlacementIntent`：
+
+- `{ "mode": "use-default" }` 表示用户显式选择本 Organization 的 reserved unclassified root；它绝不是服务端 fallback，也不允许服务端猜测 parent；
+- `{ "mode": "choose-parent", "parentPlacementId": "spla_...", "displayName": "..." }` 表示用户显式选择现有 parent 与 retained display label。
 
 ```json
 {
   "subjectId": "csub_01K...",
   "placement": {
+    "mode": "choose-parent",
     "parentPlacementId": "spla_root_drivers",
     "displayName": "Charging ICs"
   },
@@ -150,28 +177,97 @@ Issue #673 与本决策并发完成。其 runtime facet 与 tagged results 可�
 }
 ```
 
-服务端从可信上下文得到 `organizationId`、actor 和 registration method。只有 subject 与 placement intent 均一致时，重复 active registration 才能幂等；intent 冲突返回 `placement-conflict`。注册 unpublished 或 retired subject 必须 fail closed。
+命令必须携带当前 `X-WiseEff-Catalog-Release` anchor 与 `Idempotency-Key`。服务端从可信上下文得到 `organizationId`、actor 和 registration method。`choose-parent` 必须验证 parent 对同一 Organization 可见、处于 active lifecycle、符合 child taxonomy kind，且不会引入 cycle 或并发 placement conflict。Driver placement 可选择 reserved Driver root 或合法 business-category parent。NodeType placement 可选择它的 reserved root、合法 business-category parent，或只在 taxonomy rule 允许时选择 active 且已注册的 Driver/NodeType parent。可见的同 Organization parent 若 taxonomy kind 错误、已 retired 或形成 cycle，则返回 `invalid-placement-parent`；scope 外 parent 按 scope hiding 处理。
+
+一个事务创建 Registration、它唯一的 retained Placement，并追加 audit record；任一失败都回滚三项写入。同一 `Idempotency-Key` 与 request fingerprint 的精确重放返回已保存成功结果，不新增 Placement 或 audit event；相同 key 对应不同 fingerprint 返回 `revision-conflict`。已有 active Registration 只有在 retained Placement 精确表达所请求 intent 时才能幂等，否则返回 `placement-conflict`。注册 unpublished 或 retired subject 必须 fail closed。
 
 ### Review resolution
+
+`POST /api/v2/organizations/{organizationId}/parameter-review-items/{reviewItemId}/resolve` 必须携带以下三项 precondition：
+
+```text
+X-WiseEff-Catalog-Release: crel_01K42
+If-Match: "review-item-prev_01KAMBIG-v7"
+Idempotency-Key: resolve-review-prev-01KAMBIG-v7
+```
+
+显式选择 default placement：
 
 ```json
 {
   "resolution": {
     "type": "register-subject",
-    "subjectId": "csub_01K..."
+    "subjectId": "csub_01KSC8562",
+    "placement": {
+      "mode": "use-default"
+    }
   },
   "reason": "Authoritative compatible evidence confirms the published driver"
 }
 ```
 
+显式选择 parent：
+
+```json
+{
+  "resolution": {
+    "type": "register-subject",
+    "subjectId": "csub_01KSC8562",
+    "placement": {
+      "mode": "choose-parent",
+      "parentPlacementId": "spla_root_drivers",
+      "displayName": "Charging ICs"
+    }
+  },
+  "reason": "Place the selected published driver under the approved category"
+}
+```
+
+不提供新 Placement intent 的 restore：
+
+```json
+{
+  "resolution": {
+    "type": "restore-registration",
+    "registrationId": "sreg_01KACME"
+  },
+  "reason": "Restore the retained Organization registration and placement"
+}
+```
+
 允许的 `resolution.type`：
 
-- `register-subject`：注册 current-release active subject；
-- `restore-registration`：恢复该 subject 已保留的 registration；
+- `register-subject`：注册 current-release active subject，并根据必填的 discriminated `placement` intent 创建唯一 retained Placement；
+- `restore-registration`：恢复 `registrationId` 指定的 retained Registration；该 variant 拒绝 `placement` 字段，复用 retained Placement，绝不创建第二个 Placement；
 - `mark-out-of-scope`：关闭 evidence，不创建结构 truth；
 - `open-definition-proposal`：为缺失的 Platform definition 创建关联 draft proposal。
 
-unknown 或 ambiguous evidence 不能直接解析成新 definition。`open-definition-proposal` 只创建 proposal，不创建 subject、definition、revision、registration、placement 或 binding。
+对 `register-subject`，一个事务同时创建 Registration、Placement、Review Item resolution 与 audit record；失败后不得留下部分 Registration 或已 resolved 的 Review Item。Catalog release anchor 必须仍为 current，否则返回 `release-drift`。Review Item 的 `If-Match` 必须指向 unresolved current ETag；缺失/过期 tag 或 item 已 resolved 时返回 `revision-conflict`。同一 idempotency key 与完整 request fingerprint 的精确重放返回已保存结果，不新增 Placement、resolution 或 audit event；同 key 不同 fingerprint 返回 `revision-conflict`。已有精确 Registration/Placement 可用于解析 item；retained Placement 冲突时返回 `placement-conflict`，且 item 保持 unresolved。
+
+上述 `choose-parent` 示例的原子成功响应返回 `ETag: "review-item-prev_01KAMBIG-v8"` 与以下 body：
+
+```json
+{
+  "item": {
+    "reviewItem": {
+      "id": "prev_01KAMBIG",
+      "status": "resolved"
+    },
+    "registration": {
+      "id": "sreg_01KACME",
+      "subjectId": "csub_01KSC8562",
+      "placement": {
+        "id": "spla_01KCHARGING",
+        "parentPlacementId": "spla_root_drivers",
+        "displayName": "Charging ICs"
+      }
+    },
+    "catalogReleaseId": "crel_01K42"
+  }
+}
+```
+
+unknown 或 ambiguous evidence 不能直接解析成新 definition。人工选择只记录已选 existing published Subject 并解析 Review Item/evidence decision；它不创建 Definition、DefinitionRevision 或 recognized Binding。任何后续 Binding recognition 都必须走自身独立授权的普通命令。`open-definition-proposal` 只创建 proposal，不创建 subject、definition、revision、registration、placement 或 binding。
 
 ## DTO 与产品状态示例
 
@@ -346,7 +442,7 @@ release/revision IDs 会明确显示刻意保留的旧 effective revision，不�
 | register/retire/restore subject | 否 | 仅 home Organization | 否 | 否 | 仅 unique authoritative proof 自动注册；observation 绝不自动 restore |
 | rename/reparent placement | 否 | 仅 home Organization | 否 | 否 | 无公共 System route |
 | 读取 observations/review queue | 自己有权的工作 | home Organization | 跨 Organization support read | invoking principal 有权时只读 | 内部 |
-| resolve review work | 否 | 仅 home Organization | 否 | 否 | 只有唯一确定性证明时内部 recognition 可关闭 |
+| 使用显式 Placement intent 解析 review work | 否 | 仅 home Organization | 否 | 否 | 只有唯一确定性证明时内部 recognition 可关闭；对于 ambiguous evidence，不能代替人工选择 `use-default` 或 `choose-parent` |
 | create/submit/withdraw proposal | 否 | 仅 home Organization | 否 | 否 | 否 |
 | accept/reject proposal | 否 | 否 | 是，但不能处理自己的 proposal | 否 | 否 |
 | materialize/switch Catalog release | 否 | 否 | 无公共 API | 否 | 仅 synchronizer |
@@ -354,7 +450,7 @@ release/revision IDs 会明确显示刻意保留的旧 effective revision，不�
 
 Platform Admin 不等于 deployment Operator。公共 router 上探测 operator-only route 返回 `404 migration-diagnostics-not-public`；到达 operator router 但无 operator authority 时返回 `403 forbidden`。
 
-所有 Organization mutation、proposal transition、System auto-registration 和 release switch 都需要 trusted invocation context 与 audit record。Proposal acceptance 必须满足 `acceptedByPersonId != submittedByPersonId`。
+所有 Organization mutation、proposal transition、System auto-registration 和 release switch 都需要 trusted invocation context 与 audit record。只有 Organization Admin 可为 ambiguous Review Item 提供 `PlacementIntent`；Agent、Platform Admin 与 System principal 均不得冒充这一人工选择。Proposal acceptance 必须满足 `acceptedByPersonId != submittedByPersonId`。
 
 ## 错误合同
 
@@ -389,10 +485,11 @@ Platform Admin 不等于 deployment Operator。公共 router 上探测 operator-
 | `legacy-surface-retired` | 410 / `GONE` | 调用已删除 legacy route/mutation。 | 迁移到 successor link，不重试。 |
 | `registration-required` | 409 / `CONFLICT` | binding/value action 需要 active registration。 | 仅向 Org Admin 提供显式注册，不自动写。 |
 | `placement-conflict` | 409 / `CONFLICT` | registration/placement intent 与保留身份或 current placement 冲突。 | 刷新并要求用户处理。 |
+| `invalid-placement-parent` | 409 / `CONFLICT` | 可见的同 Organization parent taxonomy kind 错误、已 retired 或将形成 cycle。 | Review Item 保持 unresolved；要求用户重新显式选择合法 parent。 |
 | `observation-ambiguous` | 409 / `CONFLICT` | caller 尝试绑定 unresolved ambiguous evidence。 | 打开关联 review item。 |
 | `proposal-stale` | 409 / `CONFLICT` | proposal base release/revision 已过期。 | 作为新的 reviewed proposal revision rebase。 |
 | `proposal-self-approval-forbidden` | 403 / `FORBIDDEN` | submitter 尝试接受自己的 proposal。 | 需要另一名 Platform Admin。 |
-| `revision-conflict` | 409 / `CONFLICT` | `If-Match` 与可变资源版本不符。 | 刷新，不静默覆盖。 |
+| `revision-conflict` | 409 / `CONFLICT` | Review `If-Match` 缺失/过期、item 已 resolved，或同一 idempotency key 被用于不同 fingerprint。 | 刷新；不得静默覆盖或重复治理写入。 |
 | `forbidden` | 403 / `FORBIDDEN` | 已认证 principal 缺 action/scope。 | 不泄露 scope 外数据。 |
 | `migration-diagnostics-not-public` | 404 / `NOT_FOUND` | 公共 caller 探测内部诊断 route。 | 按不存在处理。 |
 
@@ -430,17 +527,19 @@ Platform Admin 不等于 deployment Operator。公共 router 上探测 operator-
 }
 ```
 
-resolver 只能 lookup：不允许 prefix search、reverse enumeration、raw source fields、candidate list、confidence score 或 archive payload。ambiguous mapping 返回 409，archived 返回 410，unknown 或 unauthorized ID 返回 404。响应携带与 legacy read 相同的 deprecation headers 和 sunset。
+resolver 只能 lookup，且不拥有分类权。它读取 issue #678 在 `1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d` 决定的当前 append-only typed mapping head，直接投影 outcome，不重新解释 source shape、property name 或 payload。它不允许 prefix search、reverse enumeration、raw source fields、candidate list、confidence score 或 archive payload。有权限的 operational mapping、ReviewEvidence 或 DefinitionProposal 可返回对应 typed target；archive-only outcome 返回 410，ambiguous/blocked mapping 返回 409，unknown 或 unauthorized ID 返回 404。resolver 绝不把 ReviewEvidence 或 DefinitionProposal 转换为 ParameterObservation、Definition 或 Revision。响应携带与 legacy read 相同的 deprecation headers 和 sunset。
 
 ### Mapping 与 archive 矩阵
 
-| Legacy identity/reference | 精确 disposition | 非精确 disposition |
+| Legacy identity/reference | issue #678 typed mapping 的 API projection | 禁止的 API inference |
 | --- | --- | --- |
-| 可证明为 R4/R5 正式 definition 的 `parameter_specs.id` | 映射到稳定 `ParameterDefinition.id`，旧 ID 留在 typed map。 | R6 只能映射 observation/review evidence；R8 只能映射 proposal/observation；R0/R3/R10 阻断；R1 仅在引用证明后归档。 |
-| `parameter_spec_versions.id` | 映射精确 immutable `DefinitionRevision.id`，历史 link 保持 pinned。 | 带 typed reason 归档，绝不拿 current revision 替代。 |
+| R4/R5 `parameter_specs.id` | 映射到 pinned Catalog Release 已物化的精确 `ParameterDefinition.id`，旧 ID 保留在 typed map；只有 R4/R5 spec row 可指向 Definition。 | 禁止根据 property/name 相似度或另一个 release 选择 Definition。 |
+| R6 `parameter_specs.id` | 生产 primary disposition 为 `ReviewEvidence`，同时保留 immutable Archive evidence 与 typed mapping。 | definition-shaped R6 spec ID 绝不直接映射为 `ParameterObservation`。只有具备完整 project、logical-node、source-revision provenance 的另一个 occurrence graph，才能凭该 graph 自身的 source identity 独立创建 ParameterObservation。 |
+| R8 `parameter_specs.id` | 映射为 `DefinitionProposal`，同时保留必要的 immutable Archive 与 typed mapping evidence。 | R8 spec ID 绝不直接映射为 `ParameterObservation`、`ParameterDefinition` 或 `DefinitionRevision`。 |
+| `parameter_spec_versions.id` | 只有 R4/R5 version 可映射到 pinned Catalog Release 已物化的精确 immutable `DefinitionRevision.id`，历史 link 保持 pinned；R6/R8 version 仅作为 immutable Archive/typed-mapping evidence 保留，并依附于 parent ReviewEvidence/DefinitionProposal outcome。 | 绝不拿 current revision 替代，也不把 R6/R8 version 提升为 Revision。 |
 | `project_parameter_bindings.id` | 关联可证明时保留 stable ID，否则一对一映射新 stable binding ID。 | subject/definition identity ambiguous 时阻断，禁止 property-key-only 推断。 |
 | Binding revision/workflow reference | 映射到 binding history 与 pinned definition/value references。 | 归档 workflow evidence，不制造 canonical binding。 |
-| Legacy subject ID | 只有 authoritative typed Driver/NodeType identity proof 才映射。 | unknown/ambiguous root 进入 observation/review 或 archive，绝不成为 subject。 |
+| Legacy subject ID | 只有 authoritative typed Driver/NodeType identity proof 才映射。 | unknown/ambiguous root 进入 ReviewEvidence 或 Archive，绝不成为 Subject。 |
 | Placement/module ID | ownership 与 registration 精确时保留 placement ID；module/category 只有身份可证明时才可映射 navigation placement。 | grouping-only module 归档；module equality 不证明 subject/definition identity。 |
 | Audit target | 保留 immutable legacy target fields，精确时新增 mapped target reference。 | 保留 legacy audit evidence 与 archived/ambiguous disposition，绝不重写历史。 |
 | Knowledge reference | 只有 exact mapping 才重写 definition/revision，并保留 legacy metadata。 | 标记 unresolved，排除出 current definition picker，不静默 retarget。 |
@@ -448,7 +547,7 @@ resolver 只能 lookup：不允许 prefix search、reverse enumeration、raw sou
 | Export/import ID | 新 export 只含 canonical IDs 与 schema version；有界 legacy import 每行经过 typed mapping。 | 用稳定 reason 拒绝该行；禁止部分创建结构。 |
 | Deep link/bookmark | 只有精确且有权限的 mapping 才 redirect 到 canonical detail。 | ambiguous 显示 conflict；archived 显示 gone；unknown/out-of-scope 显示 not found。 |
 
-archive ledger 是 append-only、typed、带 checksum 的迁移证据，不是公共 catalog resource。删除 legacy tables 或 mapping records 属于之后经验证的 retirement 决策；本 API 决策不授权删除。
+Issue #678 是全部 R0-R10 生产 disposition 的唯一 owner。与 ReviewEvidence 或 DefinitionProposal 同时保留的 `Archive` evidence 是 provenance，不是第二个 operational disposition。所有 legacy-ID API 只投影 typed mapping head，不得重新分类 row。archive ledger 是 append-only、typed、带 checksum 的迁移证据，不是公共 catalog resource。删除 legacy tables 或 mapping records 属于之后经验证的 retirement 决策；本 API 决策不授权删除。
 
 ## Legacy 路由处置
 
@@ -486,7 +585,7 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | `ParameterTopologyRepository` HTTP adapter | 现有 project topology/binding routes 与 catalog readers | 将 catalog read/governance 与 project topology 拆成不同端口；删除 `ParameterSpec` create/update/lifecycle methods。 |
 | Mock parameter topology adapter | 与 HTTP 相同 application ports/DTO states | version/reset fixtures；覆盖 ready、unregistered、empty、loading、error、retired、stale-release；不得有 mock-only governance。 |
 | Project parameter workbench/value editing | canonical binding ID、`definitionId`、`effectiveRevisionId`、`currentValueId` | 删除 `parameterSpecId` 和 module-as-definition identity，保留产品 workflow。 |
-| DTS ingest/recognition | 内部 observation command、canonical subject matcher、registration policy | unknown/ambiguous 只创建 observation/review，不创建 provisional spec。 |
+| DTS ingest/recognition | 内部 observation command、canonical subject matcher、registration policy | unknown/ambiguous occurrence evidence 只能创建 observation/review，不创建 provisional spec。ParameterObservation 必须具有自身完整的 project/logical-node/source-revision occurrence provenance；R6/R8 legacy spec ID 绝不提供该 identity。 |
 | File sync/writeback | canonical binding、pinned definition revision、source target | unresolved ID fail closed，不允许 property-key-only fallback。 |
 | Agent tools | invoking principal scope 内 catalog read DTO | 删除/禁用结构写工具；v1 中不允许 proposal、registration、placement、review mutation。 |
 | Log analysis | 安全的 canonical definition/revision reference 与 immutable observation evidence | 通过 exact mapping 保留 citation；unresolved evidence 不创建 definition。 |
@@ -496,8 +595,8 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | Module/driver registry UI | subject type、registration、placement navigation | 退役 module/Organization-schema 的结构所有权；无关 runtime module 概念保持独立。 |
 | Import/export | versioned canonical IDs 与 typed legacy resolver | 新 export only；legacy import 在任何写入前验证全部 rows。 |
 | Audit/history viewer | canonical target 与保留的 legacy target metadata | 绝不重写历史 actor、target 或 decision evidence。 |
-| External API client/bookmark | canonical routes 或有界 typed resolver | 在公开 window 内迁移；只有 exact deep link redirect，其余 outcome 显式。 |
-| Operations/migration tooling | operator-only reconciliation API 与 archive ledger | 不调用公共 raw/governance modes；诊断需要独立 operator authority。 |
+| External API client/bookmark | canonical routes 或有界 typed resolver | 在公开 window 内迁移；resolver outcome 只投影 issue #678 的 typed mapping head，只有 exact deep link redirect，其余 outcome 显式。 |
+| Operations/migration tooling | operator-only reconciliation API、typed mapping head 与 archive ledger | 不调用公共 raw/governance modes，也不要求 API adapter 重新分类 R6/R8；诊断需要独立 operator authority。 |
 
 ## UI 状态覆盖
 
@@ -511,18 +610,23 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 | Loading | 客户端请求未完成，尚无更新的成功响应 | 保持 layout，不允许针对未确认 release 写入。 |
 | Error | Structured error envelope，包括 503 readiness 或 409 drift | 按 reason retry/refresh；绝不转成 empty list。 |
 | Retired/deprecated | 指定 detail/filter 返回明确 membership/definition/registration lifecycle | 历史读保留；按合同禁用新 matching/binding。 |
+| Review placement choice | unresolved Review Item ETag、current release anchor、允许的 `register-subject` resolution | Org Admin 必须显式选择 `use-default` 或 `choose-parent`；不得预选或推断 parent。 |
+| Review resolution conflict | 409，reason 为 `placement-conflict`、`invalid-placement-parent`、`release-drift` 或 `revision-conflict` | 保留用户 selection，刷新 release/item/placement evidence，并要求重新确认；不得展示部分 Registration。 |
 
 ## OpenAPI 与前端后续影响
 
 后续实现规格必须在一次协调切换中更新：
 
-- 本页全部 resource、envelope、header、ETag、filter、lifecycle enum、review resolution、proposal transition 与 error reason 对应的 OpenAPI components；
+- 本页全部 resource、envelope、header、ETag、filter、lifecycle enum、discriminated `PlacementIntent`、原子 review-resolution response、proposal transition 与 error reason 对应的 OpenAPI components；
 - 共享 error registry 中的 `SERVICE_UNAVAILABLE` / 503，同时保留现有 envelope；
+- Review resolution 必填的 `X-WiseEff-Catalog-Release`、`If-Match`、`ETag` 与 `Idempotency-Key` 行为，包括 exact replay 与 conflicting-fingerprint tests；
 - route manifest 与授权测试，包括 public/operator route 分离；
 - frontend application ports：catalog read、Organization governance、proposal review、project topology 必须是分离接口，不能继续塞进浅层 `ParameterTopologyRepository`；
 - HTTP/mock adapter 合同对等与确定性 state fixtures；
 - URL state/deep-link translation、knowledge picker、project binding DTO、Agent read tools、debug/reload adapter、import/export schema、audit target rendering 与 telemetry；
-- consumer contract tests：上线后任何一方代码不得读取 `parameterSpecId`、Organization overlay DTO、module-as-definition identity 或 Effective/Governance view。
+- consumer contract tests：上线后任何一方代码不得读取 `parameterSpecId`、Organization overlay DTO、module-as-definition identity 或 Effective/Governance view；
+- route-to-Kernel contract tests：9 个 canonical Catalog read routes 全部使用 `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb` 的完整 typed snapshot facet，且 HTTP 不得触达 Catalog tables/raw repositories，也不得执行 alias、lifecycle、selected-revision、ordering 或 pagination policy；
+- atomicity tests：Registration + 唯一 Placement + Review resolution + audit 同时提交，restore 复用 retained Placement，每个已声明 stable conflict 都让 Review Item 保持 unresolved。
 
 这些是影响路由，不是实现 plan 或 ticket list。内部 module 可用 issue #673 决定的 capability 完成合同；本页不假定其方法名。
 
@@ -531,7 +635,7 @@ X-WiseEff-Legacy-Contract: parameter-spec-v2
 Canonical launch 要求后续 release plan 在同一 candidate revision 上证明：
 
 1. fresh 与 representative populated PostgreSQL 路径上的 canonical schema/current release 均 ready；
-2. 每个 R0-R10 row 只有一个确定性的 mapped、blocked 或 archived disposition，并保持 R6/R8 same-key hazard 分离；
+2. 每个 R0-R10 row 只有 issue #678 拥有的一个生产 disposition：R6 spec ID 投影 ReviewEvidence 加 immutable Archive/mapping evidence，R8 spec ID 投影 DefinitionProposal 加必要 Archive/mapping evidence，且两者都不得被重新分类为 ParameterObservation；
 3. 矩阵中所有一方消费者使用 canonical IDs，contract tests 通过；
 4. HTTP、Agent、scripts、jobs 都无法到达 legacy structural write；
 5. OpenAPI、HTTP、mock、authorization、audit 与 browser-real 单页 state checks 通过；
@@ -548,6 +652,20 @@ Canonical launch 要求后续 release plan 在同一 candidate revision 上证�
 
 任一门槛失败只会延长 read adapter，不会恢复 legacy write 或允许 dual write。最终退役前 rollback 可从 verified recovery point 恢复旧 application；不得把 canonical mutation 反向投影进 legacy tables。
 
+## 验收自检
+
+| 合同检查 | 固定 outcome |
+| --- | --- |
+| Route-to-Kernel 闭合 | 9 个 canonical Catalog read routes 全部映射到 `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb` 的 typed snapshot read facet；不存在 HTTP 自有的 Catalog 解释或 repository fallback。 |
+| Placement intent | `PlacementIntent` 明确判别为显式 `use-default` 或经验证的 `choose-parent`；服务端绝不猜 parent。 |
+| Review registration 原子性 | Registration + 唯一 retained Placement + Review resolution + audit 位于同一事务。 |
+| 并发与重放 | current release anchor、Review Item `If-Match`/ETag 与 `Idempotency-Key` 均必填；exact replay 幂等。 |
+| 稳定冲突 | `placement-conflict`、`invalid-placement-parent`、`release-drift`、`revision-conflict` 固定为 409，且无部分写入。 |
+| Restore | `restore-registration` 接收 `registrationId`、拒绝 Placement intent，并复用 retained Placement。 |
+| Ambiguity 边界 | 人工可根据 existing published Subject 解析 evidence；不得创建 Definition、Revision 或 recognized Binding。 |
+| R6/R8 cutover truth | R6 是 ReviewEvidence 加 Archive/mapping evidence；R8 是 DefinitionProposal 加 Archive/mapping evidence；只有独立证明的 occurrence graph 才能创建自身 ParameterObservation。 |
+| 双语/OpenAPI 一致性 | 中英文 DTO、矩阵、reason token、header 与 follow-up impact 指向同一合同。 |
+
 ## 决策完整性
 
 本 API 决策不存在剩余产品语义选择：
@@ -556,7 +674,9 @@ Canonical launch 要求后续 release plan 在同一 candidate revision 上证�
 - pre-registration visibility 已固定；
 - human、Agent、System、synchronizer、operator authority 已固定；
 - proposal authorship 与 separation of duties 已固定；
+- Review placement intent、validation、atomicity、concurrency 与 idempotency 已固定；
 - canonical resources、state projection、error reason、ID outcome、legacy route behavior 已固定；
+- Catalog read route 已通过修复后的 typed Kernel facet 闭合，R6/R8 分类唯一由 issue #678 拥有；
 - 最短 compatibility duration 与 evidence-based exit gates 已固定；
 - frontend、binding/value、ingest、Agent、log、debug、reload、knowledge、import/export、audit、external、operator 消费者均有 disposition。
 

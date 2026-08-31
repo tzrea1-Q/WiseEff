@@ -35,11 +35,12 @@ The contract was reconciled against current `origin/main` at `406c23bcaf0dcfca28
 | [Classify legacy parameter rows and repair semantics](https://github.com/tzrea1-Q/WiseEff/issues/670) | [`000f617b`](https://github.com/tzrea1-Q/WiseEff/commit/000f617ba9810adda4798b4bc4b2bdfed95b4c39): R0-R10 classification and the prohibition on weak identity inference. |
 | [Capture a representative populated-database rehearsal fixture](https://github.com/tzrea1-Q/WiseEff/issues/671) | [`6c3adfc3`](https://github.com/tzrea1-Q/WiseEff/commit/6c3adfc35c0e3be6d5d381013dace9408190380e): strict ten-case PostgreSQL fixture, including distinct same-key R6/R8 rows. |
 | [Choose the canonical parameter-catalog relational model](https://github.com/tzrea1-Q/WiseEff/issues/672) | [`542c7a8b`](https://github.com/tzrea1-Q/WiseEff/commit/542c7a8bbce3bd6bb230b0d020d23d10af5182a9): release-scoped subject lifecycle and stable definition/revision/registration/placement identities. |
-| [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) | [`41b7e58f`](https://github.com/tzrea1-Q/WiseEff/commit/41b7e58fd73524a81fb13db0078b332c54f7517a): read-only runtime facet, nominal IDs, exact current/pinned snapshots, tagged lookup/error results, and kernel-owned transactions. |
+| [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) | [`b5bf52cc`](https://github.com/tzrea1-Q/WiseEff/commit/b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb): completed read-only runtime facet, nominal IDs, exact current/pinned snapshots, deterministic Catalog pages, exact revision history, Catalog publication facts, tagged results, and kernel-owned transactions. |
 | [Choose platform schema publication and synchronization semantics](https://github.com/tzrea1-Q/WiseEff/issues/674) and [Choose organization registration and placement semantics](https://github.com/tzrea1-Q/WiseEff/issues/675) | [`9fe269d4`](https://github.com/tzrea1-Q/WiseEff/commit/9fe269d4facc31b49fc1e0535d2d51ba7140644b): integrated ADR-0040/0041/0042 publication, synchronization, registration, placement, observation, and proposal semantics. |
 | [Prototype the single-page parameter-definition experience](https://github.com/tzrea1-Q/WiseEff/issues/676) | [`9c803557`](https://github.com/tzrea1-Q/WiseEff/commit/9c803557a55803ccca79c20eadd033f57d4729e0): one-page definitions, Registration/Placement context, Review Queue, timeline, and explicit ready/unregistered/empty/loading/error states. |
+| [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678) | [`1839398b`](https://github.com/tzrea1-Q/WiseEff/commit/1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d): unique R0-R10 production dispositions, append-only typed mapping heads, immutable Archive evidence, and mandatory pre-switch semantic comparison. |
 
-Issue #673 completed concurrently with this decision. Its runtime facet and tagged results fit the HTTP resource/error mapping in this document without exposing transactions or adding routes to the kernel. HTTP handlers must adapt that accepted interface; they must not duplicate matching, revision selection, materialization, or transaction coordination.
+The repaired issue #673 read facet closes every canonical Catalog read in this decision without exposing transactions or adding routes to the Kernel. HTTP handlers adapt that interface; they do not duplicate matching, alias/lifecycle interpretation, revision selection, pagination, materialization, or transaction coordination. Issue #678 is the sole owner of production R0-R10 classification and mapping disposition. This API projects its typed mapping head and never reclassifies a legacy row.
 
 ## Scope and non-goals
 
@@ -137,12 +138,38 @@ Every route below is a target contract, not current implementation evidence.
 | Project drafts | Existing binding and node-enablement draft paths | Retained product behavior; inputs resolve through canonical binding/definition identity. |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | Deployment-operator-only reconciliation and migration diagnostics; never linked from public DTOs. |
 
+### Catalog Kernel read closure
+
+Canonical Catalog reads use only `CatalogRuntime` from the repaired issue #673 contract at `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb`. Current reads call `loadCurrentCatalog(expectedPin)`; historical reads call `loadPinnedCatalog(exactPin)`. The HTTP adapter validates wire syntax and maps tagged results. It cannot read Catalog tables, call a raw Catalog repository, interpret aliases or lifecycle, select a current revision, sort or post-filter a Kernel page, or fill a missing result from another Catalog source.
+
+| Canonical Catalog read route | Typed Kernel read and authorized composition |
+| --- | --- |
+| `GET /api/v2/catalog` | `loadCurrentCatalog(expectedPin)` and `snapshot.release`; the independent readiness seam supplies readiness status. |
+| `GET /api/v2/catalog/subjects` | `listSubjects(query)`; an authorized Organization ID selection, when required, is supplied before Kernel pagination. |
+| `GET /api/v2/catalog/subjects/{subjectId}` | `getSubject(subjectId)` supplies stable identity, captured membership, aliases, and Definition counts; Registration/Placement projection comes from its owning seam. |
+| `GET /api/v2/catalog/subjects/{subjectId}/definitions` | `listDefinitions({ scope: { kind: "subject", subjectId }, ... })`. |
+| `GET /api/v2/catalog/definitions` | `listDefinitions({ scope: { kind: "all" }, ... })`; any authorized ID selection is applied by the Kernel before ordering and paging. |
+| `GET /api/v2/catalog/definitions/{definitionId}` | `getDefinitionById(definitionId)` supplies the release-selected revision; Registration, Placement, and usage projections come from their owning seams. |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions` | `listDefinitionRevisions({ definitionId, ... })`; the Kernel owns reverse order and the release-bound cursor. |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions/{revisionId}` | `getDefinitionRevision({ definitionId, revisionId })`; `revision-unavailable` never falls back to the selected revision. |
+| `GET /api/v2/catalog/definitions/{definitionId}/timeline` | `listDefinitionTimelineFacts({ definitionId, ... })` supplies immutable Catalog publication/revision facts; an authorized application composer merges independent History/Audit events. |
+
+The Definition timeline composition seam is strict. Kernel facts contain release/revision publication facts only. Actor, Proposal/Review, Registration/Placement, Binding/value, usage, and authorization-sensitive events come from the independent History/Audit seam. The application composer merges authorized streams with a composite cursor pinned to the Catalog release and History/Audit high-water marks; HTTP only maps the composed result and performs no Catalog join.
+
+Registration, Placement, usage, Observation, Review Queue, Proposal, legacy-ID, project Binding, and operator-diagnostic resources remain outside the Catalog Kernel. Their owning modules may consume nominal Catalog IDs, a captured snapshot, or tagged Kernel results, but may not expand `CatalogRuntime` with writes or raw repositories.
+
 ### Registration command shape
+
+Registration and Review resolution share this discriminated `PlacementIntent`:
+
+- `{ "mode": "use-default" }` is the user's explicit choice of the Organization's reserved unclassified root. It is never a server-side fallback and never permits the service to guess a parent;
+- `{ "mode": "choose-parent", "parentPlacementId": "spla_...", "displayName": "..." }` is the user's explicit choice of an existing parent and retained display label.
 
 ```json
 {
   "subjectId": "csub_01K...",
   "placement": {
+    "mode": "choose-parent",
     "parentPlacementId": "spla_root_drivers",
     "displayName": "Charging ICs"
   },
@@ -150,28 +177,97 @@ Every route below is a target contract, not current implementation evidence.
 }
 ```
 
-The server derives `organizationId`, actor, and registration method from trusted context. Duplicate active registration is idempotent only when subject and placement intent match; conflicting intent returns `placement-conflict`. Registration of an unpublished or retired subject fails closed.
+The command requires the current `X-WiseEff-Catalog-Release` anchor and an `Idempotency-Key`. The server derives `organizationId`, actor, and registration method from trusted context. `choose-parent` validates that the parent is visible in the same Organization, active, valid for the child taxonomy kind, and introduces no cycle or concurrent placement conflict. A Driver placement may use the reserved Driver root or a valid business-category parent. A NodeType placement may use its reserved root, a valid business-category parent, or an active registered Driver/NodeType parent only where the taxonomy rules permit it. A visible same-Organization parent with the wrong kind, retired lifecycle, or a cycle returns `invalid-placement-parent`; an out-of-scope parent is scope-hidden.
+
+One transaction creates the Registration and its exactly one retained Placement and appends the audit record. Any failure rolls back all three writes. An exact replay of the same `Idempotency-Key` and request fingerprint returns the stored success without another Placement or audit event; reuse with a different fingerprint returns `revision-conflict`. An already-active Registration is idempotent only when its retained Placement represents the exact requested intent; otherwise it returns `placement-conflict`. Registration of an unpublished or retired subject fails closed.
 
 ### Review resolution shape
+
+`POST /api/v2/organizations/{organizationId}/parameter-review-items/{reviewItemId}/resolve` requires all three preconditions:
+
+```text
+X-WiseEff-Catalog-Release: crel_01K42
+If-Match: "review-item-prev_01KAMBIG-v7"
+Idempotency-Key: resolve-review-prev-01KAMBIG-v7
+```
+
+Explicit default-placement selection:
 
 ```json
 {
   "resolution": {
     "type": "register-subject",
-    "subjectId": "csub_01K..."
+    "subjectId": "csub_01KSC8562",
+    "placement": {
+      "mode": "use-default"
+    }
   },
   "reason": "Authoritative compatible evidence confirms the published driver"
 }
 ```
 
+Explicit parent selection:
+
+```json
+{
+  "resolution": {
+    "type": "register-subject",
+    "subjectId": "csub_01KSC8562",
+    "placement": {
+      "mode": "choose-parent",
+      "parentPlacementId": "spla_root_drivers",
+      "displayName": "Charging ICs"
+    }
+  },
+  "reason": "Place the selected published driver under the approved category"
+}
+```
+
+Restore without a new Placement intent:
+
+```json
+{
+  "resolution": {
+    "type": "restore-registration",
+    "registrationId": "sreg_01KACME"
+  },
+  "reason": "Restore the retained Organization registration and placement"
+}
+```
+
 Allowed `resolution.type` values are:
 
-- `register-subject`: register an active current-release subject;
-- `restore-registration`: restore the retained registration for that subject;
+- `register-subject`: register an active current-release subject and create its exactly one retained Placement from the required discriminated `placement` intent;
+- `restore-registration`: restore the retained Registration identified by `registrationId`; this variant rejects a `placement` field, reuses the retained Placement, and never creates a second Placement;
 - `mark-out-of-scope`: close the evidence without creating structural truth;
 - `open-definition-proposal`: create a linked draft proposal for a missing Platform definition.
 
-Unknown or ambiguous evidence cannot resolve directly to a new definition. `open-definition-proposal` creates only a proposal; it creates no subject, definition, revision, registration, placement, or binding.
+For `register-subject`, one transaction creates the Registration, its Placement, the Review Item resolution, and the audit record. No partial Registration or resolved Review Item survives a failure. The Catalog release anchor must still be current or the command returns `release-drift`. The Review Item `If-Match` must identify its unresolved current ETag; a missing/stale tag or an already-resolved item returns `revision-conflict`. An exact replay of the same idempotency key and complete request fingerprint returns the stored result without a second Placement, resolution, or audit event; reuse with a different fingerprint returns `revision-conflict`. An existing exact Registration/Placement may be reused to resolve the item; a conflicting retained Placement returns `placement-conflict` and leaves the item unresolved.
+
+The successful atomic response for the `choose-parent` example emits `ETag: "review-item-prev_01KAMBIG-v8"` and this body:
+
+```json
+{
+  "item": {
+    "reviewItem": {
+      "id": "prev_01KAMBIG",
+      "status": "resolved"
+    },
+    "registration": {
+      "id": "sreg_01KACME",
+      "subjectId": "csub_01KSC8562",
+      "placement": {
+        "id": "spla_01KCHARGING",
+        "parentPlacementId": "spla_root_drivers",
+        "displayName": "Charging ICs"
+      }
+    },
+    "catalogReleaseId": "crel_01K42"
+  }
+}
+```
+
+Unknown or ambiguous evidence cannot resolve directly to a new definition. A human selection records the chosen existing published Subject and resolves only the Review Item/evidence decision; it does not create a Definition, DefinitionRevision, or recognized Binding. Any later Binding recognition uses its ordinary independently authorized command. `open-definition-proposal` creates only a proposal; it creates no subject, definition, revision, registration, placement, or binding.
 
 ## DTO and product-state examples
 
@@ -346,7 +442,7 @@ Authorization uses trusted server-owned principal and Organization context. Head
 | Register, retire, or restore subject | No | Home Organization only | No | No | Auto-register only from unique authoritative proof; never restore from observation |
 | Rename or reparent placement | No | Home Organization only | No | No | No public System route |
 | Read observations/review queue | Own authorized work | Home Organization | Cross-Organization support read | Read-only if invoking principal could read it | Internal |
-| Resolve review work | No | Home Organization only | No | No | Deterministic internal recognition may close only the uniquely proven case |
+| Resolve review work with an explicit Placement intent | No | Home Organization only | No | No | Deterministic internal recognition may close only a uniquely proven case; it cannot choose `use-default` or `choose-parent` for ambiguous evidence |
 | Create/submit/withdraw proposal | No | Home Organization only | No | No | No |
 | Accept/reject proposal | No | No | Yes, except own proposal | No | No |
 | Materialize/switch Catalog release | No | No | No public API | No | Synchronizer only |
@@ -354,7 +450,7 @@ Authorization uses trusted server-owned principal and Organization context. Head
 
 Platform Admin and deployment Operator are not synonyms. An operator-only route returns `404 migration-diagnostics-not-public` on the public router and `403 forbidden` when the operator router is reached without operator authority.
 
-All Organization mutations, proposal transitions, System auto-registration, and release switches require a trusted invocation context and an audit record. Proposal acceptance requires `acceptedByPersonId != submittedByPersonId`.
+All Organization mutations, proposal transitions, System auto-registration, and release switches require a trusted invocation context and an audit record. Only an Organization Admin may supply the `PlacementIntent` for an ambiguous Review Item; Agent, Platform Admin, and System principals cannot impersonate that human choice. Proposal acceptance requires `acceptedByPersonId != submittedByPersonId`.
 
 ## Error contract
 
@@ -389,10 +485,11 @@ The target keeps the existing WiseEff error envelope and generic top-level codes
 | `legacy-surface-retired` | 410 / `GONE` | Removed legacy route or mutation is called. | Migrate to the successor link; do not retry. |
 | `registration-required` | 409 / `CONFLICT` | Binding/value action needs an active registration. | Offer explicit registration to Org Admin; never auto-write. |
 | `placement-conflict` | 409 / `CONFLICT` | Registration or placement intent conflicts with retained identity/current placement. | Refresh placement and require user resolution. |
+| `invalid-placement-parent` | 409 / `CONFLICT` | A visible same-Organization parent has the wrong taxonomy kind, is retired, or would create a cycle. | Keep the Review Item unresolved; require another valid explicit choice. |
 | `observation-ambiguous` | 409 / `CONFLICT` | Caller tries to bind unresolved ambiguous evidence. | Open linked review item. |
 | `proposal-stale` | 409 / `CONFLICT` | Proposal base release/revision is no longer current. | Rebase as a new reviewed proposal revision. |
 | `proposal-self-approval-forbidden` | 403 / `FORBIDDEN` | Submitter attempts to accept their own proposal. | Require another Platform Admin. |
-| `revision-conflict` | 409 / `CONFLICT` | `If-Match` does not match mutable resource version. | Refresh; never silently overwrite. |
+| `revision-conflict` | 409 / `CONFLICT` | Review `If-Match` is missing/stale, the item is already resolved, or an idempotency key is reused with another fingerprint. | Refresh; never silently overwrite or repeat governance writes. |
 | `forbidden` | 403 / `FORBIDDEN` | Authenticated principal lacks action/scope. | Do not reveal out-of-scope data. |
 | `migration-diagnostics-not-public` | 404 / `NOT_FOUND` | Public caller probes an internal diagnostic route. | Treat as nonexistent. |
 
@@ -430,17 +527,19 @@ An exact authorized mapping returns:
 }
 ```
 
-The resolver is lookup-only: no prefix search, reverse enumeration, raw source fields, candidate list, confidence score, or archive payload. Ambiguous mappings return 409; archived rows return 410; unknown or unauthorized identifiers return 404. Its responses carry the same deprecation headers and sunset as legacy reads.
+The resolver is lookup-only and classification-free. It reads the current append-only typed mapping head decided by issue #678 at `1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d` and projects that outcome without reinterpreting source shape, property name, or payload. It provides no prefix search, reverse enumeration, raw source fields, candidate list, confidence score, or archive payload. An authorized operational mapping, ReviewEvidence, or DefinitionProposal may return its typed target; an archive-only outcome returns 410, an ambiguous/blocked mapping returns 409, and an unknown or unauthorized identifier returns 404. The resolver never turns ReviewEvidence or a DefinitionProposal into a ParameterObservation, Definition, or Revision. Its responses carry the same deprecation headers and sunset as legacy reads.
 
 ### Mapping and archive matrix
 
-| Legacy identity/reference | Exact disposition | Non-exact disposition |
+| Legacy identity/reference | API projection of issue #678 typed mapping | Prohibited API inference |
 | --- | --- | --- |
-| `parameter_specs.id` for a proven R4/R5 formal definition | Map to stable `ParameterDefinition.id`; preserve old ID in typed map. | R6 maps to observation/review evidence only; R8 maps to proposal/observation only; R0/R3/R10 block; disposable R1 archives only after reference proof. |
-| `parameter_spec_versions.id` | Map to the exact immutable `DefinitionRevision.id`; historical links remain pinned. | Archive with typed reason; never point at current revision as a substitute. |
+| R4/R5 `parameter_specs.id` | Map to the exact `ParameterDefinition.id` already materialized by the pinned Catalog Release; preserve the old ID in the typed map. R4/R5 are the only spec rows that may target a Definition. | Never choose a Definition from property/name similarity or from another release. |
+| R6 `parameter_specs.id` | Primary production disposition is `ReviewEvidence`, with immutable Archive evidence and a typed mapping retained. | A definition-shaped R6 spec ID never maps directly to `ParameterObservation`. Only a separate occurrence graph with complete project, logical-node, and source-revision provenance may independently create a ParameterObservation under that graph's own source identity. |
+| R8 `parameter_specs.id` | Map to `DefinitionProposal`, retaining the necessary immutable Archive and typed mapping evidence. | Never map an R8 spec ID directly to `ParameterObservation`, `ParameterDefinition`, or `DefinitionRevision`. |
+| `parameter_spec_versions.id` | Only an R4/R5 version maps to the exact immutable `DefinitionRevision.id` already materialized by the pinned Catalog Release; historical links remain pinned. An R6/R8 version is retained only as immutable Archive/typed-mapping evidence attached to its parent ReviewEvidence/DefinitionProposal outcome. | Never point at the current revision as a substitute, and never promote an R6/R8 version into a Revision. |
 | `project_parameter_bindings.id` | Preserve the stable ID when the association is provable, otherwise map one-to-one to the new stable binding ID. | Block if subject/definition identity is ambiguous; no property-key-only inference. |
 | Binding revision/workflow references | Map to binding history and pinned definition/value references. | Archive the workflow evidence; do not manufacture a canonical binding. |
-| Legacy subject IDs | Map only with authoritative typed Driver/NodeType identity proof. | Unknown/ambiguous roots become observations/review or archive, never a subject. |
+| Legacy subject IDs | Map only with authoritative typed Driver/NodeType identity proof. | Unknown/ambiguous roots become ReviewEvidence or Archive, never a Subject. |
 | Placement and module IDs | Preserve a placement ID when ownership and registration are exact. Module/category IDs may map to navigation placement only when identity is proven. | Archive grouping-only modules; module equality never proves subject or definition identity. |
 | Audit targets | Keep immutable legacy target fields and add a mapped target reference when exact. | Keep legacy audit evidence with archived/ambiguous disposition; never rewrite history. |
 | Knowledge references | Rewrite to definition/revision only through exact mapping; keep legacy reference metadata. | Mark unresolved and exclude from current definition picker; do not silently retarget. |
@@ -448,7 +547,7 @@ The resolver is lookup-only: no prefix search, reverse enumeration, raw source f
 | Export/import identifiers | New exports contain canonical IDs and schema version. Bounded legacy import resolves every row through typed mapping. | Reject the row with a stable reason; partial structural creation is forbidden. |
 | Deep links/bookmarks | Redirect only exact authorized mappings to canonical detail. | Ambiguous shows conflict; archived shows gone; unknown/out-of-scope shows not found. |
 
-The archive ledger is append-only, typed, checksum-protected migration evidence. It is not a public catalog resource. Deletion of legacy tables or mapping records belongs to the later verified retirement decision; this API decision authorizes none.
+The cutover decision in issue #678 is the sole owner of every R0-R10 production disposition. `Archive` evidence alongside ReviewEvidence or DefinitionProposal is provenance, not a second operational disposition. Every legacy-ID API projects the typed mapping head; it cannot reclassify a row. The archive ledger is append-only, typed, checksum-protected migration evidence. It is not a public catalog resource. Deletion of legacy tables or mapping records belongs to the later verified retirement decision; this API decision authorizes none.
 
 ## Legacy route disposition
 
@@ -486,7 +585,7 @@ The announced `Sunset` is no earlier than two production releases or 90 days aft
 | `ParameterTopologyRepository` HTTP adapter | Existing project topology/binding routes plus catalog readers | Split catalog reading/governance from project topology; remove `ParameterSpec` create/update/lifecycle methods. |
 | Mock parameter topology adapter | Same application ports and DTO states as HTTP | Version/reset mock fixtures; represent ready, unregistered, empty, loading, error, retired, and stale-release cases. No mock-only governance ability. |
 | Project parameter workbench and value editing | Canonical binding ID, `definitionId`, `effectiveRevisionId`, `currentValueId` | Remove `parameterSpecId` and module-as-definition identity; preserve product workflow. |
-| DTS ingest and recognition | Internal observation command, canonical subject matcher, registration policy | Unknown/ambiguous creates observation/review only; no provisional spec. |
+| DTS ingest and recognition | Internal observation command, canonical subject matcher, registration policy | Unknown/ambiguous occurrence evidence may create observation/review only; no provisional spec. A ParameterObservation requires its own complete project/logical-node/source-revision occurrence provenance; R6/R8 legacy spec IDs never supply that identity. |
 | File sync/writeback | Canonical binding plus pinned definition revision and source target | Fail closed on unresolved IDs; no property-key-only fallback. |
 | Agent tools | Catalog read DTOs in invoking principal scope | Remove/disable structural write tools; no proposal, registration, placement, or review mutation in v1. |
 | Log analysis | Safe canonical definition/revision references and immutable observation evidence | Preserve citations through exact mapping; unresolved evidence does not create definitions. |
@@ -496,8 +595,8 @@ The announced `Sunset` is no earlier than two production releases or 90 days aft
 | Module/driver registry UI | Subject type, registration, placement navigation | Retire module/Organization-schema structural ownership; keep unrelated device/module runtime concepts separate. |
 | Imports and exports | Versioned canonical IDs and typed legacy resolver | New export only; bounded legacy import is all-row validated before any write. |
 | Audit/history viewers | Canonical target plus retained legacy target metadata | Never rewrite historical actor, target, or decision evidence. |
-| External API clients and bookmarks | Canonical routes or bounded typed resolver | Migrate during published window; exact deep links redirect, other outcomes stay explicit. |
-| Operations and migration tooling | Operator-only reconciliation APIs and archive ledger | Never call public raw/governance modes; diagnostics require separate operator authority. |
+| External API clients and bookmarks | Canonical routes or bounded typed resolver | Migrate during published window; resolver outcomes project issue #678's typed mapping head, exact deep links redirect, and other outcomes stay explicit. |
+| Operations and migration tooling | Operator-only reconciliation APIs, typed mapping heads, and archive ledger | Never call public raw/governance modes or ask an API adapter to reclassify R6/R8; diagnostics require separate operator authority. |
 
 ## UI state coverage
 
@@ -511,18 +610,23 @@ The accepted one-page experience has an API-distinguishable state for every prod
 | Loading | In-flight client state with no newer successful response | Preserve layout; do not enable writes against an unconfirmed release. |
 | Error | Structured error envelope, including 503 readiness or 409 drift | Show retry/refresh according to reason; never convert to an empty list. |
 | Retired/deprecated | Explicit membership/definition/registration lifecycle on requested detail/filter | Historical read remains; new matching/binding rules are disabled as specified. |
+| Review placement choice | Unresolved Review Item ETag, current release anchor, allowed `register-subject` resolution | An Org Admin must explicitly select `use-default` or `choose-parent`; no preselected or inferred parent. |
+| Review resolution conflict | 409 with `placement-conflict`, `invalid-placement-parent`, `release-drift`, or `revision-conflict` | Preserve the user's selection, refresh the release/item/placement evidence, and require reconfirmation; show no partial Registration. |
 
 ## OpenAPI and frontend follow-up impact
 
 The later implementation specification must update, in one coordinated cutover:
 
-- the OpenAPI components for every resource, envelope, header, ETag, filter, lifecycle enum, review resolution, proposal transition, and error reason in this document;
+- the OpenAPI components for every resource, envelope, header, ETag, filter, lifecycle enum, the discriminated `PlacementIntent`, atomic review-resolution response, proposal transition, and error reason in this document;
 - the shared error registry with `SERVICE_UNAVAILABLE` / 503 while retaining the current envelope;
+- required `X-WiseEff-Catalog-Release`, `If-Match`, `ETag`, and `Idempotency-Key` behavior for Review resolution, including exact replay and conflicting-fingerprint tests;
 - the route manifest and authorization tests, including public-versus-operator route separation;
 - frontend application ports so catalog reading, Organization governance, proposal review, and project topology are separate interfaces rather than one shallow `ParameterTopologyRepository`;
 - HTTP and mock adapters with contract parity and deterministic state fixtures;
 - URL state/deep-link translation, knowledge pickers, project binding DTOs, Agent read tools, debug/reload adapters, import/export schemas, audit target rendering, and telemetry;
-- consumer contract tests proving that no first-party code reads `parameterSpecId`, Organization overlay DTOs, module-as-definition identity, or Effective/Governance views after launch.
+- consumer contract tests proving that no first-party code reads `parameterSpecId`, Organization overlay DTOs, module-as-definition identity, or Effective/Governance views after launch;
+- route-to-Kernel contract tests proving all nine canonical Catalog read routes use the complete typed snapshot facet at `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb`, and that HTTP cannot reach Catalog tables/raw repositories or perform alias, lifecycle, selected-revision, ordering, or pagination policy;
+- atomicity tests proving Registration + exactly one Placement + Review resolution + audit commit together, restore reuses the retained Placement, and every declared stable conflict leaves the Review Item unresolved.
 
 This is impact routing, not an implementation plan or ticket list. Internal module methods may satisfy these capabilities under the interface/transaction decision from issue #673; this document does not assume its names.
 
@@ -531,7 +635,7 @@ This is impact routing, not an implementation plan or ticket list. Internal modu
 Canonical launch requires the later release plan to prove all of the following on the same candidate revision:
 
 1. the canonical schema and current release are ready on fresh and representative populated PostgreSQL paths;
-2. every R0-R10 row has one deterministic mapped, blocked, or archived disposition, with the R6/R8 same-key hazard kept distinct;
+2. every R0-R10 row has the one production disposition owned by issue #678: R6 spec IDs project ReviewEvidence plus immutable Archive/mapping evidence, R8 spec IDs project DefinitionProposal plus required Archive/mapping evidence, and neither is reclassified as a ParameterObservation;
 3. all first-party consumers in the matrix use canonical IDs and contract tests pass;
 4. no legacy structural write is reachable through HTTP, Agent, scripts, or jobs;
 5. OpenAPI, HTTP, mock, authorization, audit, and browser-real one-page state checks pass;
@@ -548,6 +652,20 @@ Legacy reads may retire only when **all** of these are true and the minimum wind
 
 Failure of any gate extends the read adapter. It does not restore legacy writes or authorize dual write. Rollback before final retirement may restore the previous application against the verified recovery point; it must not project canonical mutations backward into legacy tables.
 
+## Acceptance self-check
+
+| Contract check | Fixed outcome |
+| --- | --- |
+| Route-to-Kernel closure | All 9 canonical Catalog read routes map to the typed snapshot read facet at `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb`; no HTTP-owned Catalog interpretation or repository fallback remains. |
+| Placement intent | `PlacementIntent` is discriminated as explicit `use-default` or validated `choose-parent`; the server never guesses a parent. |
+| Atomic Review registration | Registration + exactly one retained Placement + Review resolution + audit are one transaction. |
+| Concurrency and replay | Current release anchor, Review Item `If-Match`/ETag, and `Idempotency-Key` are required; exact replay is idempotent. |
+| Stable conflicts | `placement-conflict`, `invalid-placement-parent`, `release-drift`, and `revision-conflict` have fixed 409 semantics with no partial write. |
+| Restore | `restore-registration` accepts `registrationId`, rejects Placement intent, and reuses the retained Placement. |
+| Ambiguity boundary | Human choice may resolve evidence against an existing published Subject; it creates no Definition, Revision, or recognized Binding. |
+| R6/R8 cutover truth | R6 is ReviewEvidence with Archive/mapping evidence; R8 is DefinitionProposal with Archive/mapping evidence; only an independently proven occurrence graph may create its own ParameterObservation. |
+| Bilingual/OpenAPI parity | English and Chinese DTOs, matrices, reason tokens, headers, and follow-up impact name the same contract. |
+
 ## Decision completeness
 
 The API decision has no remaining product-semantic choice:
@@ -556,7 +674,9 @@ The API decision has no remaining product-semantic choice:
 - pre-registration visibility is fixed;
 - human, Agent, System, synchronizer, and operator authority are fixed;
 - proposal authorship and separation of duties are fixed;
+- Review placement intent, validation, atomicity, concurrency, and idempotency are fixed;
 - canonical resources, state projections, error reasons, ID outcomes, and legacy route behavior are fixed;
+- Catalog read routes are closed through the fixed typed Kernel facet, and R6/R8 classification remains solely owned by issue #678;
 - the minimum compatibility duration and evidence-based exit gates are fixed;
 - all known frontend, binding/value, ingest, Agent, log, debug, reload, knowledge, import/export, audit, external, and operator consumers have a disposition.
 
