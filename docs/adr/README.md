@@ -49,3 +49,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0037](0037-organization-administration-is-home-org-tenant-operations.md) | Organization administration is home-org tenant operations |
 | [0038](0038-trusted-invocation-provenance-separates-principal-and-initiator.md) | Trusted invocation provenance separates the authenticated principal from the initiator |
 | [0039](0039-effective-driver-parameter-catalog.md) | Effective driver parameter definitions are canonical and placed |
+| [0042](0042-organizations-register-canonical-subjects-once.md) | Organizations register canonical subjects once and place them once |

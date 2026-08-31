@@ -26,6 +26,11 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
 | Binding | Stable link between a parameter row and topology/schema identity |
+| Formal catalog subject (target) | A Platform-owned Driver or NodeType identity in the replacement parameter catalog. An Organization references it through registration; observations and taxonomy modules never create it |
+| Organization subject registration (target) | One Organization's durable `active` or `retired` declaration that it uses one formal catalog subject. It is unique by Organization + subject, and is neither an Organization definition nor an observed occurrence |
+| Subject placement (target) | The single authoritative taxonomy node retained for one Organization subject registration. All of the subject's definitions inherit it dynamically; observed project modules are usage evidence, not placement identity |
+| Catalog observation (target) | Immutable project/config evidence that a DTS node or property was seen under one catalog and matcher revision. It may support a proven match or review, but never becomes a subject or definition |
+| Catalog match review item (target) | Organization-scoped work for unknown, ambiguous, conflicting, or retired-registration observations. Resolution may register an existing Platform subject, dismiss the evidence, or request Platform publication; it cannot create an Organization definition |
 | Parameter draft | A user's staged pending change (binding value or node enablement) held in `parameter_drafts` between editing and submission. Editing writes drafts, submission/review reads them, so the staging area is a standalone module (`server/modules/parameter-drafts/`) both workflows depend on (ADR-0028) |
 | Xiaoze | WiseEff Agent assistant surface in the product |
 | Parameter admin | Governance surface for parameter specs, review queues, module/driver mappings, project files, config sets, and baselines. Does not own everyday binding edits |
