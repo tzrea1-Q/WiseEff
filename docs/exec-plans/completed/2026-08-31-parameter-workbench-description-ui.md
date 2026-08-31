@@ -23,7 +23,7 @@ Improve the API-mode Project Parameter User Workbench at `/parameters` without c
 
 `DtsParameterWorkbench` renders the obsolete count and debugging handoff directly. The semantic row contract contains binding and topology data only, so the main table and edit dialog cannot render spec copy. The view dialog loads current spec detail and collapses `documentation` and `description` into one `参数含义`, losing the distinction between the display description and the fuller parameter documentation.
 
-The binding-list read already joins the pinned binding revision. Extend that single query and DTO with nullable `displayName`, `description`, and `documentation` from the pinned `parameter_spec_versions` row. Carry those fields through the HTTP mapper and workbench row builder, including search text. Render `description` in the table and render `documentation` as `参数说明` in view/edit surfaces. The view dialog may still load the richer current detail for constraints and comparison metadata, but its copy fields prefer the pinned row projection so the user sees content consistent with the binding revision.
+The binding-list read already joins the pinned binding revision. Extend that single query and DTO with nullable `displayName`, `description`, and `documentation` from the pinned `parameter_spec_versions` row. The version join remains optional so legacy bindings without a pinned version stay visible with nullable copy fields. Carry those fields through the HTTP mapper and workbench row builder, including search text. Render `description` in the table and render `documentation` as `参数说明` in view/edit surfaces. The view dialog may still load the richer current detail for constraints and comparison metadata, but its copy fields prefer the pinned row projection so the user sees content consistent with the binding revision.
 
 ## Scope
 
@@ -96,6 +96,7 @@ All implementation stays on `codex/parameter-workbench-description-ui-20260831`,
 
 - Toolbar regression: the new focused test first failed because the legacy `显示 4 / 4 个参数` status remained, then passed after the count and debugging handoff were removed.
 - Presentation projection: four focused tests first failed for missing pinned DTO fields, the `展示描述` column, split detail labels, and edit-card documentation; all four passed after implementation.
+- Legacy compatibility: CI visual review exposed that an inner version join hid bindings without `parameter_spec_version_id`; the query now uses an optional version join, and the server regression test covers the retained row with nullable presentation copy.
 - Related frontend: 8 files / 178 tests passed; the final workspace/component rerun passed 2 files / 53 tests.
 - PostgreSQL-focused server tests used a disposable clean database and passed 2 files / 21 tests. The database was dropped after verification.
 - Full frontend regression passed 421 files / 3,171 tests.

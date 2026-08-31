@@ -388,7 +388,7 @@ describe("createOrReuseBinding reuse-by-module (phase 2)", () => {
 });
 
 describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
-  it("selects module_id and maps it onto each binding list item", async () => {
+  it("maps pinned presentation copy without dropping legacy bindings that lack a pinned spec version", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
     const db: Queryable = {
       query: vi.fn(async (text, values = []) => {
@@ -413,8 +413,26 @@ describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
               description: "SC8562 中断 GPIO 展示描述。",
               documentation: "电荷泵中断引脚的完整参数说明。",
             },
+            {
+              id: "binding-legacy",
+              parameter_spec_id: "spec-legacy",
+              parameter_spec_version_id: null,
+              property_key: "legacy_property",
+              driver_module: "legacy_driver",
+              logical_node_id: "logical-legacy",
+              instance_name: "legacy@0",
+              locator: "/legacy@0",
+              typed_value: { kind: "empty" },
+              raw_value: null,
+              schema_state: null,
+              policy_state: null,
+              module_id: "mod-legacy",
+              display_name: null,
+              description: null,
+              documentation: null,
+            },
           ],
-          rowCount: 1,
+          rowCount: 2,
         };
       }),
     };
@@ -425,7 +443,7 @@ describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
     });
 
     expect(calls[0]?.text).toMatch(/\bmodule_id\b/);
-    expect(calls[0]?.text).toMatch(/parameter_spec_versions/);
+    expect(calls[0]?.text).toMatch(/left join parameter_spec_versions/);
     expect(items).toEqual([
       expect.objectContaining({
         id: "binding-1",
@@ -433,6 +451,13 @@ describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
         displayName: "GPIO 中断",
         description: "SC8562 中断 GPIO 展示描述。",
         documentation: "电荷泵中断引脚的完整参数说明。",
+      }),
+      expect.objectContaining({
+        id: "binding-legacy",
+        moduleId: "mod-legacy",
+        displayName: null,
+        description: null,
+        documentation: null,
       }),
     ]);
   });
