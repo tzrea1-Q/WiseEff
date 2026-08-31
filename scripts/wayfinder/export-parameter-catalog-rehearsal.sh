@@ -244,13 +244,15 @@ fi
 rm "${stage_dir}/migration-inventory-after-schema.csv"
 
 cp "${sql_dir}/profile-schema.sql" "${stage_dir}/profile-schema.sql"
+cp "${sql_dir}/synthetic-fixture.sql" "${stage_dir}/synthetic-fixture.sql"
+cp "${sql_dir}/synthetic-fixture-verify.sql" "${stage_dir}/synthetic-fixture-verify.sql"
 
 if grep -Eq '^COPY public\.|^INSERT INTO public\.' "${stage_dir}/schema.sql"; then
   printf '%s\n' 'Schema dump unexpectedly contains public data statements.' >&2
   exit 1
 fi
 
-for safe_profile in migration-inventory.csv row-counts.csv row-classes.csv invariant-counts.csv; do
+for safe_profile in migration-inventory.csv row-counts.csv row-classes.csv invariant-counts.csv synthetic-fixture.sql; do
   if grep -Eiq 'postgres(ql)?://|bearer[[:space:]]+[A-Za-z0-9._-]+|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|\$2[aby]\$' "${stage_dir}/${safe_profile}"; then
     printf 'Sensitive-token pattern detected in %s.\n' "${safe_profile}" >&2
     exit 1
@@ -283,9 +285,12 @@ exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 {
   printf 'key,value\n'
-  printf 'format_version,1\n'
-  printf 'artifact_kind,parameter-catalog-structural-rehearsal-profile\n'
+  printf 'format_version,2\n'
+  printf 'artifact_kind,parameter-catalog-populated-rehearsal-fixture\n'
   printf 'data_rows_exported,0\n'
+  printf 'source_data_rows_exported,0\n'
+  printf 'synthetic_fixture_version,1\n'
+  printf 'import_populates_synthetic_rows,true\n'
   printf 'database_identity,withheld\n'
   printf 'read_only_transaction_confirmed,true\n'
   printf 'profile_snapshot,repeatable-read-read-only\n'
@@ -298,7 +303,7 @@ exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'schema_metadata_checksum_sha256,%s\n' "${schema_checksum}"
   printf 'schema_dump_canonical_sha256,%s\n' "${schema_dump_canonical_checksum}"
   printf 'schema_dump_file_sha256,%s\n' "${schema_dump_file_checksum}"
-  printf 'sanitization_contract,structure-and-aggregate-classes-only\n'
+  printf 'sanitization_contract,structure-aggregates-and-deterministic-synthetic-rows\n'
 } > "${stage_dir}/manifest.csv"
 
 (
@@ -329,4 +334,5 @@ printf '%s\n' \
   "schema_dump_file_sha256=${schema_dump_file_checksum}" \
   "source_parameter_spec_rows=${row_class_count}" \
   'data_rows_exported=0' \
+  'source_data_rows_exported=0' \
   'database_identity=withheld'

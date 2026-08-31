@@ -74,3 +74,12 @@ create table wayfinder_rehearsal.manifest (
   key text not null,
   value text not null
 );
+
+-- Stable public index for the deterministic synthetic relationships loaded by
+-- synthetic-fixture.sql. Tests and migration rehearsals should select by
+-- case_name instead of depending on insertion order or internal fixture IDs.
+create table wayfinder_rehearsal.fixture_cases (
+  case_name text primary key,
+  relation_family text not null,
+  expected_rows bigint not null check (expected_rows > 0)
+);
