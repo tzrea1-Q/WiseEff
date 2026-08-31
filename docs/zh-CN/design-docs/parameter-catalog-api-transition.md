@@ -35,10 +35,11 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | [Classify legacy parameter rows and repair semantics](https://github.com/tzrea1-Q/WiseEff/issues/670) | [`000f617b`](https://github.com/tzrea1-Q/WiseEff/commit/000f617ba9810adda4798b4bc4b2bdfed95b4c39)：R0-R10 classification 与禁止 weak identity inference。 |
 | [Capture a representative populated-database rehearsal fixture](https://github.com/tzrea1-Q/WiseEff/issues/671) | [`6c3adfc3`](https://github.com/tzrea1-Q/WiseEff/commit/6c3adfc35c0e3be6d5d381013dace9408190380e)：严格十案例 PostgreSQL fixture，包括必须保持不同的 same-key R6/R8 rows。 |
 | [Choose the canonical parameter-catalog relational model](https://github.com/tzrea1-Q/WiseEff/issues/672) | [`542c7a8b`](https://github.com/tzrea1-Q/WiseEff/commit/542c7a8bbce3bd6bb230b0d020d23d10af5182a9)：release-scoped subject lifecycle 与稳定 definition/revision/registration/placement identities。 |
+| [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) | [`41b7e58f`](https://github.com/tzrea1-Q/WiseEff/commit/41b7e58fd73524a81fb13db0078b332c54f7517a)：read-only runtime facet、nominal IDs、exact current/pinned snapshots、tagged lookup/error results，以及 kernel-owned transactions。 |
 | [Choose platform schema publication and synchronization semantics](https://github.com/tzrea1-Q/WiseEff/issues/674) 与 [Choose organization registration and placement semantics](https://github.com/tzrea1-Q/WiseEff/issues/675) | [`9fe269d4`](https://github.com/tzrea1-Q/WiseEff/commit/9fe269d4facc31b49fc1e0535d2d51ba7140644b)：集成 ADR-0040/0041/0042 的 publication、synchronization、registration、placement、observation、proposal 语义。 |
 | [Prototype the single-page parameter-definition experience](https://github.com/tzrea1-Q/WiseEff/issues/676) | [`9c803557`](https://github.com/tzrea1-Q/WiseEff/commit/9c803557a55803ccca79c20eadd033f57d4729e0)：单页 definitions、Registration/Placement context、Review Queue、timeline，以及 ready/unregistered/empty/loading/error 状态。 |
 
-本决策形成时，issue #673 还没有可使用的 accepted result。因此 HTTP 合同只命名必须提供的外部 capability，不杜撰内部 kernel interface 或 transaction name。
+Issue #673 与本决策并发完成。其 runtime facet 与 tagged results 可直接适配本页 HTTP resource/error mapping，不会暴露 transaction，也不会让 kernel 持有 route。HTTP handler 必须适配已接受的 interface；不得重复实现 matching、revision selection、materialization 或 transaction coordination。
 
 ## 范围与非目标
 
