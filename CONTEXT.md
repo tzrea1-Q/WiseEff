@@ -25,7 +25,18 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | DTS | Device tree / parameter topology source format in the parameter workbench |
 | Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
-| Binding | Stable link between a parameter row and topology/schema identity |
+| Catalog subject | Platform-owned formal identity that is exactly one Driver or NodeType. Organizations use it through registration and placement; they do not copy or override its definitions. _Avoid_: attribution subject (legacy storage term), organization-owned subject |
+| Driver | A Catalog subject recognized by a unique authoritative `compatible` match and carrying Driver-only nature/cardinality facts. It is a sibling of NodeType, not its parent; any organization taxonomy nesting is placement, not catalog identity |
+| NodeType | A Catalog subject recognized by normalized node name only when no Driver matches. It is a fallback formal owner, not a weak Driver or an observed module label |
+| Parameter definition | The reusable Platform property contract declared by one Catalog subject and property key. It is never created from project DTS evidence, a project value, an Organization override, or a pending human change. _Avoid_: using definition for an observation, provisional surface, proposal, or raw history row |
+| Definition revision | An immutable snapshot of one Parameter definition's governed content. Exactly one revision is current even when the definition is retired; other revisions are history and never compete with the current catalog. _Avoid_: ParameterSpecVersion (legacy storage term) |
+| Definition proposal | Pending governed intent to create or change a Parameter definition. It pins the exact base revision when changing an existing definition and becomes catalog truth only through acceptance. _Avoid_: draft definition, provisional definition |
+| Parameter observation | Immutable evidence that a property occurred on one project logical node/source revision. It may gain one accepted match or require review; it never creates or becomes a Parameter definition |
+| Subject registration | One Organization's stable declaration that it uses one Catalog subject. It may be explicit or created by a uniquely proved DTS match and owns neither schema nor definitions |
+| Subject placement | The single authoritative Organization taxonomy location of one Subject registration. Definitions inherit it for navigation; moving it does not change definition or Binding identity |
+| Binding | Stable association between one project logical node and one matched Parameter definition through the Organization's Subject registration. Placement and values are separate; `module_id` is not part of target Binding identity |
+| Project value | An immutable configured-value fact under one Binding, interpreted through an exact Definition revision. Project-specific values never redefine the Platform property contract |
+| Definition retirement | Reversible unavailability for new use that preserves the definition's stable ID, permanent subject/property unique key, current revision, history, Bindings, and Project values. Restore reuses the same identity |
 | Parameter draft | A user's staged pending change (binding value or node enablement) held in `parameter_drafts` between editing and submission. Editing writes drafts, submission/review reads them, so the staging area is a standalone module (`server/modules/parameter-drafts/`) both workflows depend on (ADR-0028) |
 | Xiaoze | WiseEff Agent assistant surface in the product |
 | Parameter admin | Governance surface for parameter specs, review queues, module/driver mappings, project files, config sets, and baselines. Does not own everyday binding edits |
@@ -175,3 +186,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0036`](docs/adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md) — workflow discovery uses a visible-workflow allowlist
 - [`0037`](docs/adr/0037-organization-administration-is-home-org-tenant-operations.md) — Organization administration is home-org tenant operations, not departments or project ACL
 - [`0038`](docs/adr/0038-trusted-invocation-provenance-separates-principal-and-initiator.md) — trusted invocation provenance separates the authenticated principal from the operation initiator
+- [`0040`](docs/adr/0040-canonical-parameter-catalog-relational-model.md) — the replacement catalog separates Platform definition truth from organization registration, placement, observations, bindings, and values
