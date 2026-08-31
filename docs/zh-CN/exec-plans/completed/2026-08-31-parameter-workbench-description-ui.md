@@ -23,7 +23,7 @@
 
 `DtsParameterWorkbench` 仍直接渲染旧计数和调试跳转。语义行模型只有 binding 与拓扑数据，主表和修改弹窗没有规格文案可显示。查看弹窗则将 `documentation` 与 `description` 合并成一个“参数含义”，丢失了“展示描述”和更完整“参数说明”的区别。
 
-绑定列表查询已经关联固定的 binding revision。本次在该单次查询和 DTO 中补充固定 `parameter_spec_versions` 行的 nullable `displayName`、`description`、`documentation`；版本关联保持可选，确保没有固定版本的历史绑定仍然显示，只是文案字段为空。随后将字段透传到 HTTP mapper 和工作台行模型，并纳入搜索。表格显示 `description`；查看与修改界面用 `documentation` 显示“参数说明”。查看弹窗仍可按需加载约束、示例等丰富详情，但文案字段优先使用绑定行携带的固定版本投影。
+绑定列表查询已经关联固定的 binding revision。本次在该单次查询和 DTO 中补充固定 `parameter_spec_versions` 行的 nullable `displayName`、`description`、`documentation`，再透传到 HTTP mapper 和工作台行模型，并纳入搜索。表格显示 `description`；查看与修改界面用 `documentation` 显示“参数说明”。查看弹窗仍可按需加载约束、示例等丰富详情，但文案字段优先使用绑定行携带的固定版本投影。
 
 ## 范围
 
@@ -96,7 +96,6 @@
 
 - 工具栏回归测试首次因旧的“显示 4 / 4 个参数”仍存在而失败；删除计数和调试跳转后通过。
 - 展示字段投影的四项聚焦测试首次分别因缺少固定版本 DTO 字段、“展示描述”列、详情拆分标签和修改卡片说明而失败；实现后四项全部通过。
-- 历史兼容性：CI 视觉审查暴露出版本 inner join 会隐藏没有 `parameter_spec_version_id` 的历史绑定；查询已改为可选版本关联，服务端回归测试覆盖“绑定保留、展示文案为空”的行为。
 - 相关前端测试 8 个文件 / 178 项通过；最终工作台与 workspace 回归 2 个文件 / 53 项通过。
 - 服务端 PostgreSQL 聚焦测试使用全新临时数据库，2 个文件 / 21 项通过；验证后数据库已删除。
 - 全量前端回归 421 个文件 / 3,171 项全部通过。

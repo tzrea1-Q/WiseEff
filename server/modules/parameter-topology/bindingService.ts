@@ -1447,7 +1447,7 @@ export async function listProjectBindingRows(
     left join parameter_modules pm on pm.id = b.module_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
     ${revisionJoin}
-    left join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
+    inner join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
     left join lateral (
       select node_locator, name, unit_address
       from dts_logical_node_revisions
