@@ -1,4 +1,4 @@
-# ADR-0040: The canonical parameter catalog separates definition truth from organization use
+# ADR-0040: The canonical parameter catalog separates publication, definition truth, and organization use
 
 > Chinese companion: [中文决策记录](../zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md)
 
@@ -8,106 +8,286 @@ Date: 2026-08-31
 
 Accepted for the replacement architecture described by [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668). This is a target-model decision, not a claim that the current operational schema has already been cut over.
 
+This record remains ADR-0040. The publication decision in [Issue #674](https://github.com/tzrea1-Q/WiseEff/issues/674) is ADR-0041, and the registration/placement decision in [Issue #675](https://github.com/tzrea1-Q/WiseEff/issues/675) remains ADR-0042. Where those records conflict with this correction, they must be read and renumbered consistently with this sequence.
+
 ## Context
 
-The current catalog spreads one property contract across `parameter_specs`, `parameter_spec_versions`, attribution subjects, schema roots/properties, organization overlays, placements, review rows, bindings, and duplicated lifecycle/current flags. That shape can make an organization override, an unmatched DTS occurrence, a draft proposal, or a historical row look like a second current definition. The replacement must instead preserve stable externally referenced identities and exact historical interpretation while making the Platform schema catalog the only structural truth source.
+The current catalog spreads one property contract across `parameter_specs`, `parameter_spec_versions`, attribution subjects, schema roots/properties, organization overlays, placements, review rows, bindings, and duplicated lifecycle/current flags. That shape can make an organization override, an unmatched DTS occurrence, a proposal, or a historical row look like a second current definition.
 
-[Inventory the current parameter-catalog contracts and consumers](https://github.com/tzrea1-Q/WiseEff/issues/669) established the compatibility duties. [Classify legacy parameter rows and repair semantics](https://github.com/tzrea1-Q/WiseEff/issues/670) established that legacy rows must be classified by their complete relational graph and that R6/R7/R8 evidence cannot become a current definition by name or property key. [Choose the canonical parameter-catalog relational model](https://github.com/tzrea1-Q/WiseEff/issues/672) resolved the target relationships and the remaining product choices.
+[Issue #669](https://github.com/tzrea1-Q/WiseEff/issues/669) established the compatibility duties. [Issue #670](https://github.com/tzrea1-Q/WiseEff/issues/670) established that legacy rows must be classified by their complete relational graph and that R6/R7/R8 evidence cannot become a current definition by name or property key. ADR-0041 establishes an immutable repository Catalog Release as the sole publication input. ADR-0042 establishes one durable Organization registration and exactly one retained placement for each registered formal subject.
+
+The remaining model must have one materialization authority, stable identities, immutable and complete revision history, and database-enforced aggregate closure. In particular, proposal acceptance must not create a second path to `ParameterDefinition` or `DefinitionRevision`, and “exactly one placement” must mean exactly one at transaction commit for both active and retired registrations.
 
 ## Decision
 
-### Core relationships
+### Authority and aggregate boundaries
 
-- `CatalogSubject` is the Platform-owned formal identity. It has exactly one immutable kind: `driver` or `node-type`. `Driver` and `NodeType` are disjoint sibling subtypes; neither owns or contains the other.
-- A `ParameterDefinition` belongs to exactly one CatalogSubject and is uniquely identified in the catalog by `(subject_id, property_key)`. Its opaque `id` is the stable reference used by consumers.
-- A `DefinitionRevision` is an immutable content snapshot of one ParameterDefinition. Every definition, including a retired one, has exactly one current revision pointer. All other revisions are history and never compete in current catalog reads.
-- An Organization does not own definitions. It relates to a CatalogSubject through one `SubjectRegistration`, and that registration has one authoritative `SubjectPlacement` in the Organization taxonomy.
-- A `ParameterObservation` is immutable project/source evidence. A successful match records the exact definition and revision used; unmatched or ambiguous evidence creates review work only.
-- A `ParameterBinding` is the stable association between a project logical node and a matched ParameterDefinition through the Organization's registration. Placement is derived from the registration and is not part of binding identity.
-- A `ProjectValue` is an immutable value fact under one binding and pins the exact DefinitionRevision that interpreted it. It never updates definition content.
-- A `DefinitionProposal` is pending governed intent. It may target an existing definition/revision or propose a new subject/property identity, but it is not a definition, revision, observation, or project value. Acceptance is the only operation that may materialize a new definition or revision.
+- A **Catalog Release** is an immutable, repository-reviewed publication of formal subjects and definition content.
+- The **Catalog Release synchronizer** is the only steady-state writer allowed to materialize `CatalogSubject`, `ParameterDefinition`, or `DefinitionRevision` rows and advance catalog heads. PostgreSQL is its projection, not an authoring source.
+- A **Definition Proposal** is governed change intent. Acceptance may approve or create a Platform catalog publication intent or repository change, but it cannot insert, update, retire, or otherwise materialize a definition or revision. The proposal service therefore cannot become a second materializer.
+- A **Catalog Subject** is the Platform-owned formal identity and is exactly one `Driver` or one `NodeType`.
+- A **Parameter Definition** is the stable identity of one subject/property contract. A **Definition Revision** is an immutable snapshot of all persisted definition content.
+- An **Organization Subject Registration** is one Organization's durable declaration that it uses one formal subject. It is `active | retired` and always owns exactly one retained **Subject Placement**.
+- A **Parameter Observation** is immutable source evidence. A **Binding** is the stable project/logical-node association with one registered definition. A **Project Value** is an immutable value fact under that Binding. None of these objects owns or materializes catalog truth.
 
-One logical node resolves to one formal subject: a unique Driver `compatible` match wins; NodeType matching is the fallback only when no Driver matches. Driver and NodeType definitions are never unioned on the same observation. Unknown or ambiguous matches fail closed.
+Proposal, catalog publication, synchronization, registration/placement, matching, binding, and project-value mutation are separate transaction boundaries. A caller may orchestrate them, but it cannot bypass the owning aggregate or share an uncommitted catalog write across those boundaries.
 
-### Logical relational responsibilities
+### Relationship diagram
 
-Names below state the target responsibilities. Final physical names may be chosen by the implementation specification only if the same constraints remain explicit.
+```mermaid
+erDiagram
+  CATALOG_RELEASE ||--o{ DEFINITION_REVISION : materializes
+  CATALOG_RELEASE ||--o{ CATALOG_SUBJECT : publishes
+  CATALOG_SUBJECT ||--o| DRIVER : "exactly one subtype"
+  CATALOG_SUBJECT ||--o| NODE_TYPE : "exactly one subtype"
+  CATALOG_SUBJECT ||--o{ PARAMETER_DEFINITION : owns
+  PARAMETER_DEFINITION ||--|{ DEFINITION_REVISION : has
+  PARAMETER_DEFINITION ||--|| DEFINITION_REVISION : "current_revision_id"
 
-| Relation                                 | Responsibility and minimum keys                                                                                                                                                                                                                                                                                                  |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `catalog_subjects`                       | Platform subject root: opaque `id`, `kind`, stable catalog `canonical_key`, `status`. `UNIQUE (kind, canonical_key)` is permanent across retirement. No `organization_id`.                                                                                                                                                       |
-| `catalog_drivers` / `catalog_node_types` | Exactly one subtype row matching `catalog_subjects.kind`. Driver-only nature/cardinality and compatible-matcher semantics live on the Driver side; normalized node-name fallback semantics live on the NodeType side. Publication artifacts, aliases, and matcher lifecycle are governed separately by the publication decision. |
-| `parameter_definitions`                  | Opaque `id`, `subject_id`, normalized `property_key`, `current_revision_id`, `status`. Permanent `UNIQUE (subject_id, property_key)`; also `UNIQUE (id, subject_id)` for composite ownership FKs. No organization, module, source-precedence, proposal, or observation columns.                                                  |
-| `definition_revisions`                   | Opaque `id`, `definition_id`, monotonic `revision_number`, immutable shape/constraints/units/documentation and publication provenance. `UNIQUE (definition_id, revision_number)` and `UNIQUE (definition_id, id)`. It has no `current`, lifecycle, or precedence flag.                                                           |
-| `definition_proposals`                   | Opaque proposal `id`, proposed identity/content, optional target definition, optional exact base revision, review state, author/provenance, and optional accepted revision. Existing-definition proposals pin the base head so acceptance can compare-and-swap rather than overwrite concurrent catalog changes.                 |
-| existing DTS occurrence relations        | `dts_property_occurrences` and their logical-node/config-revision provenance remain the immutable ParameterObservation source. They are not copied into the catalog or promoted into definitions.                                                                                                                                |
-| `parameter_observation_matches`          | At most one accepted match per immutable occurrence, linking the observation to the exact definition, definition revision, registration, and binding plus match evidence. Absence means not recognized; ambiguity is review evidence, not a nullable pseudo-definition.                                                          |
-| `organization_subject_registrations`     | Opaque `id`, `organization_id`, `subject_id`, origin/proof, status. Permanent `UNIQUE (organization_id, subject_id)`; retirement never permits a second registration identity.                                                                                                                                                   |
-| `subject_placements`                     | Opaque `id`, `registration_id`, taxonomy module, placement provenance. `UNIQUE (registration_id)` and `UNIQUE (organization_id, module_id)` enforce one current authoritative placement and prevent a module from placing two subjects.                                                                                          |
-| `project_parameter_bindings`             | Opaque stable `id`, organization/project/logical-node identity, `definition_id`, `subject_id`, `registration_id`, and explicit `current_value_id`. `UNIQUE (project_id, logical_node_id, definition_id)`. No `module_id`; placement is reached through registration.                                                             |
-| project-value revisions                  | The current `project_parameter_binding_revisions` responsibility becomes ProjectValue: immutable value/source/config facts with opaque `id`, `binding_id`, `definition_id`, and exact `definition_revision_id`. `UNIQUE (binding_id, config_revision_id)`; no query may infer the tip by maximum row/version.                    |
-| typed legacy-ID maps and archive ledger  | Definition, revision, binding, subject, registration, and placement identifiers that cannot be retained verbatim receive kind-specific lookup rows. Every retained legacy ID maps exactly once; an unprovable object maps to immutable archive evidence, never an operational definition.                                        |
-| existing audit relations                 | Governance and migration mutations continue to use the shared trusted audit model. Revision history and audit history remain distinct: revisions say what the contract was; audit says who or what changed catalog state and why.                                                                                                |
+  ORGANIZATION ||--o{ SUBJECT_REGISTRATION : has
+  CATALOG_SUBJECT ||--o{ SUBJECT_REGISTRATION : registered_as
+  SUBJECT_REGISTRATION ||--|| SUBJECT_PLACEMENT : "current_placement_id"
 
-### Stable IDs, current heads, and retirement
+  PARAMETER_OBSERVATION o|--o| OBSERVATION_MATCH : resolved_by
+  PARAMETER_DEFINITION ||--o{ OBSERVATION_MATCH : matched_as
+  DEFINITION_REVISION ||--o{ OBSERVATION_MATCH : interpreted_by
+  SUBJECT_REGISTRATION ||--o{ BINDING : authorizes
+  PARAMETER_DEFINITION ||--o{ BINDING : binds
+  DEFINITION_REVISION ||--o{ BINDING : "effective_revision_id"
+  BINDING ||--o{ PROJECT_VALUE : records
+  DEFINITION_REVISION ||--o{ PROJECT_VALUE : interprets
 
-- Every domain entity uses an opaque, generated stable ID. Hashes of `canonical_key`, `subject_id`, `property_key`, module paths, content, or organization are not entity IDs. Natural-key correction therefore does not force foreign-key rewrites.
-- The definition's only current-revision truth is `parameter_definitions.current_revision_id`. A deferrable composite FK `(id, current_revision_id) → definition_revisions(definition_id, id)` proves that the head belongs to that definition. `current_revision_id` is non-null at transaction commit.
-- The binding's only current-value truth is its explicit `current_value_id`, protected by the equivalent composite FK to a ProjectValue owned by that binding. Readers must not select a “latest” row by numeric order or timestamp.
-- Retiring a CatalogSubject or ParameterDefinition disables new recognition, registration, binding, and publication as applicable; it does not delete the row, clear the current revision, release a unique key, rewrite a binding, or reinterpret a ProjectValue. Restore reactivates the same stable identity.
-- A retired subject transitively makes its definitions unavailable for new matches. A retired definition affects only that property. Existing registrations, placements, bindings, observations, values, revisions, citations, and audits remain readable.
+  DEFINITION_PROPOSAL o|--o| PUBLICATION_INTENT : acceptance_creates
+  PUBLICATION_INTENT o|--o| CATALOG_RELEASE : "fulfilled by repository publication"
+```
 
-### Database constraints
+The subtype cardinality is exclusive: a subject has one Driver row xor one NodeType row. The two `PARAMETER_DEFINITION` → `DEFINITION_REVISION` edges distinguish immutable history from the non-null current-head pointer. The diagram intentionally contains no Proposal → Definition materialization edge and no Placement → Binding identity edge.
 
-The database, not only HTTP writers, enforces these invariants:
+### Canonical terminology
 
-1. Catalog subjects are Platform-owned, kind-disjoint, and have exactly one matching subtype. Subject kind cannot change in place.
-2. Definition identity is globally unique by subject/property for all statuses. Retirement is not a partial-index escape hatch.
-3. Revision and ProjectValue rows are append-only. Normal application roles cannot update or delete them; bounded migration roles operate only during the verified cutover.
-4. Composite FKs prove revision→definition, binding→definition/subject/registration, ProjectValue→binding/definition/revision, and observation-match→definition/revision/registration/binding agreement. Tenant-bearing relations use organization-inclusive candidate keys so a cross-Organization reference cannot satisfy an FK accidentally.
-5. Placement references a module in the same Organization as the registration. A Driver registration may use only a driver-group module; a NodeType registration may use only a node-type module. This cross-table kind rule is a constraint trigger if it cannot be expressed by composite FK plus `CHECK` without duplicating authority.
-6. A recognized observation must reference one active, non-retired subject/definition head and the Organization's registration. Unknown or ambiguous evidence has no match row and cannot satisfy binding creation.
-7. Deletion is restricted for every retained subject, definition, revision, registration, placement, binding, ProjectValue, match, legacy map, and audit reference. Operational retirement is status change, never cascading history deletion.
+| Term                   | Exact meaning and boundary                                                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Driver`               | CatalogSubject subtype selected by the authoritative `compatible` matcher and carrying Driver-only nature/cardinality facts.                                                                                         |
+| `NodeType`             | CatalogSubject subtype selected by the formal normalized-node-name matcher only when no Driver matches. It is not an observed module label or weak Driver.                                                           |
+| `ParameterDefinition`  | Stable opaque identity for one permanent `(subject_id, property_key)` catalog key. It contains identity and the current-revision pointer, not mutable definition content.                                            |
+| `DefinitionRevision`   | Immutable snapshot of every persisted definition-content field, including documentation, units, constraints, defaults, lifecycle content, and matching/interpretation metadata.                                      |
+| `DefinitionProposal`   | Reviewable Platform catalog change intent. Acceptance produces or approves publication intent/repository change only; it never materializes catalog rows.                                                            |
+| `ParameterObservation` | Immutable project/source evidence that may be matched or sent to review. It never becomes a definition.                                                                                                              |
+| `SubjectRegistration`  | One durable `(organization_id, subject_id)` identity whose lifecycle is active or retired; it references exactly one retained current placement in every lifecycle state.                                            |
+| `SubjectPlacement`     | The single stable taxonomy node owned by one registration. Rename/reparent updates this retained identity; it is not observed usage and is not Binding identity.                                                     |
+| `Binding`              | Stable association between one project logical node, one Organization registration, and one ParameterDefinition. Its `effective_revision_id` controls the contract for new values until a governed semantic cutover. |
+| `ProjectValue`         | Immutable value/source/config fact under one Binding that pins the exact DefinitionRevision used to validate and interpret it.                                                                                       |
 
-### Transaction invariants
+These definitions intentionally match ADR-0042: formal subject, registration, authoritative placement, observed usage, Binding, and value are separate facts. “Registration” never means a catalog subject, module, observation, or project-specific use. “Placement” never means an occurrence or Binding.
 
-- **Publish:** lock the definition natural key or existing definition head; validate the proposal/base revision and publication artifact; insert one immutable revision; compare-and-swap the current pointer; resolve the proposal; write trusted audit; commit all or none. A new definition inserts its root, first revision, and non-null head in the same deferrable transaction.
-- **Recognize and bind:** lock the observation plus `(organization, subject)` registration key and `(project, logical node, definition)` binding key. Only a unique Driver-or-fallback-NodeType match may create/reuse registration and placement, create/reuse the binding, insert its initial ProjectValue, record the observation match, advance the explicit value head, and audit. Any ambiguity rolls the whole mutation back and leaves only observation/review evidence.
-- **Change project value:** lock the binding head; revalidate the exact definition revision and write lock; insert one immutable ProjectValue; compare-and-swap `current_value_id`; audit the governed workflow result; commit all or none.
-- **Retire or restore:** lock the subject/definition, change status without changing identity or head, and commit the audit atomically. Existing references are never rewritten as a retirement side effect.
-- **Move placement:** lock registration and source/destination taxonomy keys; update the single placement and audit in one transaction. The detailed move/adoption policy remains with the registration-and-placement decision, not with bindings.
-- **Migrate:** a retained object, all of its foreign-key consumers, its typed legacy-ID mapping/archive disposition, and migration audit evidence become visible together. A partial mapping or guessed identity cannot commit.
+### Logical relational responsibilities and keys
+
+Physical names may change in the implementation specification only if these ownership and constraint semantics remain explicit.
+
+| Relation                                                   | Responsibility and minimum keys                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `catalog_releases`                                         | Immutable release identity, version, predecessor, aggregate digest, verification state, and one explicit verified-current pointer outside the release row. Release version and digest are each unique and never reused.                                                    |
+| `catalog_subjects`                                         | Platform root: opaque `id`, immutable `kind`, permanent canonical key. `UNIQUE (kind, canonical_key)` across all lifecycle states; no `organization_id`.                                                                                                                   |
+| `catalog_drivers` / `catalog_node_types`                   | Disjoint subtype detail with exactly one row matching `catalog_subjects.kind`. Driver matcher/nature/cardinality and NodeType fallback matcher live here.                                                                                                                  |
+| `parameter_definitions`                                    | Opaque stable `id`, `subject_id`, normalized `property_key`, non-null `current_revision_id`. Permanent `UNIQUE (subject_id, property_key)` plus `UNIQUE (id, subject_id)` for ownership FKs. No organization, module, proposal, observation, or mutable content columns.   |
+| `definition_revisions`                                     | Opaque `id`, `definition_id`, monotonic display `revision_number`, release provenance/digest, and the complete immutable content snapshot. `UNIQUE (definition_id, revision_number)` and `UNIQUE (definition_id, id)`. No `current` flag.                                  |
+| `definition_proposals` / publication intents               | Proposal identity, proposed change, exact base release/revision where applicable, review/audit state, and accepted publication-intent or repository-change reference. There is no accepted-revision field written by proposal acceptance.                                  |
+| DTS occurrence relations / `parameter_observation_matches` | Immutable observation provenance and at most one accepted match per occurrence. A match pins definition, revision, registration, Binding, matcher revision, and Catalog Release digest. Absence means unrecognized; ambiguity remains review evidence.                     |
+| `organization_subject_registrations`                       | Opaque `id`, `organization_id`, `subject_id`, `status`, origin/proof, non-null `current_placement_id`. Permanent `UNIQUE (organization_id, subject_id)` and organization-inclusive candidate keys.                                                                         |
+| `subject_placements`                                       | Opaque stable `id`, `registration_id`, same-Organization taxonomy module, origin. `UNIQUE (registration_id)` makes the retained placement the only placement row; `UNIQUE (organization_id, module_id)` prevents two registered subjects from owning one placement module. |
+| `project_parameter_bindings`                               | Opaque stable `id`, organization/project/logical-node identity, `registration_id`, `subject_id`, `definition_id`, non-null `effective_revision_id`, and explicit `current_value_id`. `UNIQUE (project_id, logical_node_id, definition_id)`. No `module_id`.                |
+| project-value rows                                         | Immutable value/source/config facts with opaque `id`, `binding_id`, `definition_id`, and exact `definition_revision_id`. A binding has an explicit current-value pointer; readers never infer a tip by maximum number or time.                                             |
+| typed legacy-ID maps / archive ledger                      | Each retained externally referenced legacy ID maps once to the same-kind stable target, or to immutable archive evidence when identity cannot be proved.                                                                                                                   |
+
+### Stable IDs, revision heads, and revision policy
+
+- All domain IDs are opaque generated values. Natural keys, content digests, paths, and hashes are not entity IDs.
+- `(subject_id, property_key)` is permanent across retirement. Retirement cannot release the key for reuse or create a second definition identity.
+- `parameter_definitions.current_revision_id` is the only definition-head truth. A non-null, deferrable composite FK proves that the referenced revision belongs to the same definition. Revision number and timestamps are display/order facts, never head-selection rules.
+- Every persisted change to definition content creates a new immutable DefinitionRevision, including documentation-only corrections. Existing revision rows are never updated or deleted.
+- The synchronizer derives the new revision exclusively from a published immutable Catalog Release and advances the definition head in the same transaction. Replaying the same release digest is a verified no-op.
+- A documentation-only revision advances the definition head but requires no Binding `effective_revision_id` or ProjectValue cutover. The latest catalog documentation may be shown from the definition head, while existing Binding validation and ProjectValue interpretation remain pinned to their prior compatible revisions.
+- A semantic or matching-incompatible revision may require a separate governed Binding cutover before new values use it. That cutover never rewrites historical ProjectValues; each remains pinned to its original revision.
+- Retiring a subject or definition blocks new use as defined by the Catalog Release but preserves its stable ID, unique key, current revision, registrations, placement, Bindings, observations, values, and audit. Restore reuses the same identity.
+
+### Exactly-one retained placement
+
+`UNIQUE (registration_id)` alone proves only “at most one.” The target also stores `organization_subject_registrations.current_placement_id NOT NULL` and uses a deferred composite FK back to `(registration_id, id)` on `subject_placements`. Together they prove at commit that:
+
+1. every registration points to an existing placement belonging to that same registration;
+2. every registration owns at most one placement row; therefore it owns exactly one;
+3. there is no independent `is_current` flag that could disagree with the pointer; and
+4. the invariant applies unchanged to both `active` and `retired` registrations.
+
+Registration creation inserts the registration and its initial placement in one transaction with constraints deferred. Rename/reparent updates the same placement ID. Retirement never nulls the pointer or deletes the placement. A placement move changes taxonomy projection for all inherited definitions but does not change Definition, Binding, Observation, or ProjectValue identity.
+
+### Constraint-level PostgreSQL sketch
+
+This is a normative constraint sketch, not a migration. An implementation may choose other physical names only with equivalent PostgreSQL proof.
+
+```sql
+CREATE TABLE parameter_definitions (
+  id uuid PRIMARY KEY,
+  subject_id uuid NOT NULL REFERENCES catalog_subjects(id) ON DELETE RESTRICT,
+  property_key text NOT NULL,
+  current_revision_id uuid NOT NULL,
+  UNIQUE (subject_id, property_key),
+  UNIQUE (id, subject_id)
+);
+
+CREATE TABLE definition_revisions (
+  id uuid PRIMARY KEY,
+  definition_id uuid NOT NULL REFERENCES parameter_definitions(id) ON DELETE RESTRICT,
+  revision_number bigint NOT NULL CHECK (revision_number > 0),
+  catalog_release_id uuid NOT NULL REFERENCES catalog_releases(id) ON DELETE RESTRICT,
+  content_digest text NOT NULL,
+  content jsonb NOT NULL,
+  UNIQUE (definition_id, revision_number),
+  UNIQUE (definition_id, id)
+);
+
+ALTER TABLE parameter_definitions
+  ADD CONSTRAINT parameter_definition_current_revision_fk
+  FOREIGN KEY (id, current_revision_id)
+  REFERENCES definition_revisions (definition_id, id)
+  ON DELETE RESTRICT
+  DEFERRABLE INITIALLY DEFERRED;
+
+CREATE TABLE organization_subject_registrations (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL,
+  subject_id uuid NOT NULL REFERENCES catalog_subjects(id) ON DELETE RESTRICT,
+  status text NOT NULL CHECK (status IN ('active', 'retired')),
+  current_placement_id uuid NOT NULL,
+  UNIQUE (organization_id, subject_id),
+  UNIQUE (id, organization_id),
+  UNIQUE (id, organization_id, subject_id)
+);
+
+CREATE TABLE subject_placements (
+  id uuid PRIMARY KEY,
+  registration_id uuid NOT NULL,
+  organization_id uuid NOT NULL,
+  module_id uuid NOT NULL,
+  origin text NOT NULL CHECK (origin IN ('auto', 'curated')),
+  UNIQUE (registration_id),
+  UNIQUE (registration_id, id),
+  UNIQUE (organization_id, module_id),
+  FOREIGN KEY (registration_id, organization_id)
+    REFERENCES organization_subject_registrations (id, organization_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (module_id, organization_id)
+    REFERENCES parameter_modules (id, organization_id)
+    ON DELETE RESTRICT
+);
+
+ALTER TABLE organization_subject_registrations
+  ADD CONSTRAINT registration_current_placement_fk
+  FOREIGN KEY (id, current_placement_id)
+  REFERENCES subject_placements (registration_id, id)
+  ON DELETE RESTRICT
+  DEFERRABLE INITIALLY DEFERRED;
+
+CREATE CONSTRAINT TRIGGER subject_placement_kind_ck
+AFTER INSERT OR UPDATE OF registration_id, organization_id, module_id
+ON subject_placements
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION assert_subject_placement_kind();
+```
+
+`assert_subject_placement_kind()` joins placement → registration → CatalogSubject and the same-Organization module. It raises a constraint violation unless Driver maps to `driver-group` and NodeType maps to `node-type`. A second deferred constraint trigger enforces exactly one subtype row matching each subject kind if table inheritance is used. These triggers validate facts owned elsewhere; they do not duplicate kind or current-state columns.
+
+Tenant-bearing Binding FKs follow the same pattern: `(registration_id, organization_id, subject_id)` references the registration candidate key; `(definition_id, subject_id)` references the definition candidate key; `(definition_id, effective_revision_id)` references the revision candidate key. ProjectValue and observation-match rows repeat enough owner keys for composite FKs to prove binding/definition/revision agreement.
+
+Materialization authority is also enforced at the role boundary; catalog tables are owned by a non-login migration owner:
+
+```sql
+REVOKE INSERT, UPDATE, DELETE ON
+  catalog_releases, catalog_subjects, catalog_drivers, catalog_node_types,
+  parameter_definitions, definition_revisions
+FROM PUBLIC, application_role, proposal_service_role;
+
+GRANT INSERT ON
+  catalog_releases, catalog_subjects, catalog_drivers, catalog_node_types,
+  parameter_definitions, definition_revisions
+TO catalog_synchronizer_role;
+
+GRANT UPDATE (current_revision_id) ON parameter_definitions
+TO catalog_synchronizer_role;
+
+REVOKE UPDATE, DELETE ON definition_revisions
+FROM PUBLIC, application_role, proposal_service_role, catalog_synchronizer_role;
+
+GRANT SELECT ON
+  catalog_releases, catalog_subjects, catalog_drivers, catalog_node_types,
+  parameter_definitions, definition_revisions
+TO application_role, proposal_service_role;
+```
+
+Proposal acceptance writes only proposal/publication-intent relations and trusted audit. The proposal role has no catalog-table mutation grant. Catalog lifecycle fields represented in revisions are append-only; any root/head mutation needed by release synchronization is column-granted only to the synchronizer role.
+
+### Database and transaction invariants
+
+The database, not only HTTP writers, enforces the following:
+
+1. A CatalogSubject is Platform-owned, kind-immutable, and has exactly one matching Driver xor NodeType subtype.
+2. Definition identity is permanently unique by subject/property. Every definition has one non-null head belonging to itself; every revision is immutable and belongs to one release.
+3. Only the Catalog Release synchronizer role may insert catalog roots/revisions or advance heads. Proposal, observation, registration, binding, project-value, HTTP, Agent, and ordinary application roles cannot.
+4. Registration and placement satisfy exactly one retained placement at commit in both lifecycle states. Placement is same-Organization and kind-correct.
+5. Composite FKs prove definition/revision, registration/subject/organization, Binding/definition/registration/effective revision, ProjectValue/binding/revision, and observation-match agreement. Cross-Organization references cannot accidentally satisfy a key.
+6. Unknown or ambiguous evidence has no accepted match and cannot create a definition, revision, Binding, or ProjectValue. A uniquely proven subject may create registration/placement without proving a property, as ADR-0042 specifies.
+7. Subject, definition, revision, registration, placement, Binding, ProjectValue, match, legacy map, release, and audit history use restricted deletion. Domain retirement is never cascade deletion.
+
+Transaction ownership is:
+
+- **Accept Proposal:** lock and resolve the proposal, record the approved publication intent or repository-change reference, and commit trusted audit. The transaction performs zero catalog materialization.
+- **Synchronize Catalog Release:** take the exclusive release lock; verify the immutable release and lineage; stage subjects/definitions; create one revision for every changed persisted definition snapshot, including documentation-only changes; advance definition and verified-release heads; record materialization evidence/audit; commit all or none. Same verified digest is a read-only no-op.
+- **Register and place:** lock `(organization, subject)` and destination taxonomy keys; insert/reuse the one registration and its one placement under deferred constraints; audit; commit all or none. Retirement/restore preserves both IDs and the non-null pointer.
+- **Recognize and bind:** pin observation, matcher revision, Catalog Release, exact definition/revision, registration, and Binding. It may call the registration aggregate only after a unique formal-subject proof, but it never materializes catalog identity or definition content.
+- **Cut over Binding revision:** compare-and-swap `effective_revision_id`, validate compatibility and current Catalog Release, and append audit/history. Documentation-only revisions skip this transaction. Semantic cutover never changes prior ProjectValues.
+- **Change Project Value:** lock Binding/current-value head, validate against its effective revision, append one immutable ProjectValue, advance the explicit value pointer, and audit atomically.
+- **Move Placement:** lock registration plus source/destination taxonomy keys, update the retained placement ID in place, and audit atomically. Binding rows never move.
 
 ### Where Driver and NodeType differ
 
-The difference lives in the CatalogSubject subtype, schema-publication matcher, and placement validation layers:
+The difference is confined to three layers:
 
-- Driver identity is selected by a unique authoritative `compatible` match and carries Driver-only nature/cardinality facts.
-- NodeType identity is selected by normalized node name only as a fallback when no Driver matches.
-- Their organization modules have different allowed kinds.
+1. **Catalog subtype:** Driver owns compatible selectors and Driver-only nature/cardinality; NodeType owns its formal normalized-node-name selector.
+2. **Matcher:** unique Driver `compatible` match wins; NodeType is the fallback only when no Driver matches. The results are never unioned.
+3. **Placement validation:** Driver registration uses a `driver-group` module; NodeType registration uses a `node-type` module, with ADR-0042's allowed taxonomy parents.
 
-ParameterDefinition, DefinitionRevision, Proposal, registration identity, retirement, stable-ID handling, audit, Binding, and ProjectValue use the same interfaces for both subject kinds. A Driver/NodeType conditional in definition content or project-value storage is therefore a misplaced concern.
+Definition, DefinitionRevision, Proposal, publication intent, stable ID, registration lifecycle, Binding, ProjectValue, audit, and revision policy use one shared model for both subject kinds. A Driver/NodeType branch in definition content storage, revisioning, proposal materialization, Binding identity, or ProjectValue storage is therefore misplaced.
 
-### Current structures that do not survive as operational truth
+## Required PostgreSQL acceptance scenarios
 
-The cutover/archive decision controls when physical removal is safe, but the destination has no steady-state equivalent of:
+The implementation specification must run these against real PostgreSQL, not an in-memory substitute. Constraint cases must force `SET CONSTRAINTS ALL IMMEDIATE` or `COMMIT`; concurrency cases use independent sessions.
 
-- organization-owned `parameter_specs`, organization-over-Platform precedence, or `parameter_specs.organization_id` as definition ownership;
-- `source_kind`, `specification_key`, denormalized subject/property/module identity, duplicated definition/version lifecycle, duplicated current flags, or hash-derived IDs on the current definition path;
-- DriverSchema roots represented as ParameterDefinitions, or `dts_property_specs` as a second mutable property-contract store beside DefinitionRevision;
-- `driver_schema_overlays`, `driver_schema_overlay_properties`, organization schema promotion, and new organization definition overrides;
-- organization-shadow `attribution_subjects`; current `driver_registrations`/`node_type_definitions` are migrated into Platform subject/subtype identities instead;
-- `driver_registration_placements` as Driver-only placement; it is replaced by generic registration plus subject placement for both subject kinds;
-- `parameter_modules.attribution_subject_id` and `project_parameter_bindings.module_id` as competing placement/identity facts;
-- provisional unmatched-surface definitions and definition-shaped `parameter_spec_review_tasks`; observations and proposals replace those responsibilities;
-- “latest revision/version” reads or long-lived dual-write/trigger bridges between legacy and canonical stores.
-
-These rows may remain temporarily in the migration archive or bounded compatibility adapter, but they never participate in target current-definition selection.
+| Area                  | Required scenario and expected result                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Materializer          | `proposal_service_role` accepts a Proposal and writes intent/audit, while INSERT/UPDATE against Definition or Revision is denied and catalog row counts do not change.                                                        |
+| Materializer          | `catalog_synchronizer_role` materializes a published release atomically; failure before head switch leaves all previous heads/current release unchanged.                                                                      |
+| Idempotency           | Replaying the same verified release digest creates no rows and changes no heads; reusing a release version/digest with different normalized content fails closed.                                                             |
+| Revision              | Initial Definition + first Revision + non-null head commits under deferred FK; a head naming another Definition's revision fails at commit.                                                                                   |
+| Revision              | Every content delta—shape, constraint, unit, default, lifecycle content, matching metadata, or documentation—creates a new immutable Revision and advances the head. In-place Revision UPDATE/DELETE fails.                   |
+| Documentation         | A documentation-only release creates a Revision and advances Definition head while Binding `effective_revision_id`, Binding count/IDs, current ProjectValue, and all historical ProjectValues remain byte-for-byte unchanged. |
+| Semantic cutover      | A semantic revision leaves historical ProjectValues pinned; governed Binding cutover advances only `effective_revision_id` and audit/history, and stale compare-and-swap loses without partial writes.                        |
+| Placement creation    | Registration plus one owned Placement commits in either insert order with constraints deferred. The same test passes for `active` and `retired`.                                                                              |
+| Placement lower bound | Registration without Placement, or with a null/missing `current_placement_id`, fails no later than constraint check/commit for both lifecycle states.                                                                         |
+| Placement ownership   | A Registration pointer to another Registration's Placement fails the composite FK.                                                                                                                                            |
+| Placement upper bound | A second Placement for one Registration fails `UNIQUE (registration_id)` even if no row carries a current flag.                                                                                                               |
+| Placement retention   | Deleting the retained Placement, retiring while deleting it, or clearing/changing the pointer without an owned replacement fails atomically. Restore preserves both IDs.                                                      |
+| Placement move        | Rename/reparent updates the same Placement ID and leaves Definition, Binding, Observation, and ProjectValue rows unchanged; destination conflict rolls back move and audit together.                                          |
+| Tenant isolation      | Cross-Organization registration/module, Binding/registration, or ProjectValue/Binding combinations fail composite FKs.                                                                                                        |
+| Subject kind          | Missing subtype, both subtypes, mismatched subtype, Driver→`node-type` placement, and NodeType→`driver-group` placement all fail deferred constraint checks.                                                                  |
+| Matching boundary     | Unknown/ambiguous evidence creates only observation/review evidence. Unique subject but unknown property may create registration/placement, but creates no match, Binding, Definition, or Revision.                           |
+| Binding agreement     | A Binding whose Definition belongs to another subject, whose registration belongs to another subject/Organization, or whose effective revision belongs to another Definition fails.                                           |
+| Concurrency           | Concurrent first registration produces one stable Registration and one retained Placement; concurrent release synchronization or revision-head advancement produces one deterministic winner/no-op and no split head.         |
 
 ## Consequences
 
-- The catalog kernel can present one small definition/revision interface for both Drivers and NodeTypes while hiding publication, locking, ID translation, and invariant checks behind the seam.
-- Organization use cannot alter structural truth. Registration and placement may evolve without creating, copying, or changing definitions; moving a placement does not change binding identity.
-- Historical ProjectValues remain interpretable by exact revision even after semantic publication, identity correction, placement movement, or retirement.
-- More joins and explicit transaction orchestration are accepted in exchange for eliminating polymorphic foreign keys, row-order selection, nullable pseudo-definitions, and duplicated current/lifecycle truth.
-- Publication artifact/lifecycle, catalog-module interface, registration edge cases, API transition, populated-data mapping/archive, and release gates remain owned by their existing Wayfinder tickets. They may refine workflows, but may not weaken the identities, separations, constraints, or transaction invariants above.
+- The catalog synchronizer becomes a deep module: publication validation, immutable revision creation, stable-head advancement, permission boundary, and release verification live behind one seam rather than being repeated in proposal, ingest, startup, or review services.
+- Organizations cannot author structural truth. Registration/placement, observations, Bindings, and ProjectValues evolve independently without copying definitions.
+- Documentation history is complete because it follows the same immutable revision rule, while avoiding unnecessary Binding/value cutovers.
+- Circular non-null heads require deferred constraints and transaction tests, but eliminate zero-head and zero-placement states that application checks cannot prove under concurrency.
+- Existing organization overlays, proposal-to-definition writers, lazy ingest materialization, duplicated current flags, and Driver-only placement paths are migration inputs to retire, never destination contracts.
+- This ADR contains no production code, migration, API, UI, or implementation ticket. Later specifications may deepen module interfaces and physical names but may not weaken the single materializer, immutable revision, exact-one placement, stable-ID, or aggregate-boundary decisions above.
