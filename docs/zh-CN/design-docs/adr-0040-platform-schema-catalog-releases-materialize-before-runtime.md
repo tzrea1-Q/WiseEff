@@ -136,4 +136,3 @@ Organization 可以提交 observation、review evidence 或 repository change pr
 - ADR-0032 的 semantic-successor 规则保持不变：文档变化记录为新 Catalog Release，不制造语义 binding cutover。
 - Catalog compilation、materialization、current-pointer selection 与 cache construction 进入一个 deep module，不再由 ingest、startup、script 和 overlay service 重复协调。
 - 实现必须替换当前 silent loader fallback、lazy materialization、per-organization registry composition、API-start migration 与启动后的 database-only catalog check。本 ADR 不包含代码或 migration 实现。
-

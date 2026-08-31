@@ -136,4 +136,3 @@ Organizations may submit observations, review evidence, or repository change pro
 - ADR-0032's semantic-successor rule remains: documentation changes are recorded in a new Catalog Release without manufacturing a semantic binding cutover.
 - Catalog compilation, materialization, current-pointer selection, and cache construction become one deep module rather than coordination repeated in ingest, startup, scripts, and overlay services.
 - Implementation must replace current silent loader fallback, lazy materialization, per-organization registry composition, API-start migration, and post-start database-only catalog check. This ADR contains no code or migration implementation.
-
