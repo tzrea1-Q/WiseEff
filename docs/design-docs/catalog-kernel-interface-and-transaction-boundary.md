@@ -1,8 +1,8 @@
 # Catalog Kernel Interface and Transaction Boundary
 
-> Chinese: [中文](../zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md)
+> Chinese: [Chinese companion](../zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md)
 
-Status: accepted target contract for [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673). It is an implementation-specification input for the catalog replacement in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668), not a claim that the current runtime implements this module.
+Status: accepted target contract, completed after joint acceptance, for [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673). It is an implementation-specification input for the catalog replacement in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668), not a claim that the current runtime implements this module.
 
 This decision consumes the accepted ADR-0040/0041/0042 superset at [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b). Those decisions remain authoritative for domain and relational semantics. This document decides the deep module seam, types, transaction ownership, permissions, cache behavior, and test surface. It creates no production code, migration, HTTP route, UI, or implementation ticket and reserves no ADR number.
 
@@ -19,7 +19,7 @@ The seam has six operations:
 5. `loadCurrentCatalog` loads one verified, expected current snapshot.
 6. `loadPinnedCatalog` loads one exact historical release by both opaque ID and digest.
 
-`CurrentCatalogSnapshot` and `PinnedCatalogSnapshot` expose current release identity, authoritative Driver-first/NodeType-fallback matching, one definition lookup, and per-subject definition listing. They return tagged domain outcomes rather than `null`. PostgreSQL layout, joins, locks, cache objects, materialization fingerprints, and release-to-revision-head mappings are private implementation.
+`CurrentCatalogSnapshot` and `PinnedCatalogSnapshot` expose a complete typed read facet for the canonical Catalog resources: release identity, subject detail/listing, release-scoped membership and aliases, authoritative Driver-first/NodeType-fallback matching, definition lookup by stable key or opaque ID, global or subject-scoped definition listing, exact revision lookup/history, and Catalog-owned publication timeline facts. They return tagged domain outcomes rather than `null`. PostgreSQL layout, joins, locks, cache objects, materialization fingerprints, and release-to-revision-head mappings are private implementation.
 
 ## Module seam and ownership
 
@@ -31,7 +31,7 @@ The seam has six operations:
 - Materialize Catalog Release, Catalog subject, release membership, stable alias ownership, alias membership, Parameter definition, and immutable Definition revision state.
 - Persist enough exact per-release head provenance to reproduce a release snapshot and a permitted pre-traffic switch-back without using timestamps, maximum revision numbers, or current heads as history.
 - Own the exclusive catalog synchronization lock, transaction, idempotency recheck, Definition revision head advancement, current release pointer switch, and success audit/materialization evidence.
-- Build immutable current and pinned read snapshots, including selector and alias indexes, subject lifecycle, definition identities, and exact revisions.
+- Build immutable current and pinned read snapshots, including selector and alias indexes, Subject detail/global lists, release membership, Definition identities/global and subject-scoped lists, exact revision history, Catalog publication facts, fixed ordering, and release-bound cursors.
 - Implement authoritative matching: active Driver `compatible` candidates are evaluated first; NodeType normalized-name fallback is considered only when there is no Driver match.
 - Independently verify the compiled release against the full database projection through a read-only adapter that does not trust writer bookkeeping.
 - Own process-local snapshot cache construction, release-key selection, and invalidation behavior.
@@ -43,7 +43,8 @@ The seam has six operations:
 - Definition Proposal review and acceptance. It may produce publication intent or a repository change only.
 - Organization Subject registration and Subject placement. Those aggregates use catalog reads and Match results but own their separate organization-scoped transactions and trusted audit.
 - Parameter Observation persistence, Review Queue workflow, Binding, governed Binding-revision cutover, Project Value, and history writes.
-- Ordinary HTTP, ingest, review, Agent, script, and background-job orchestration. These callers may invoke a role-appropriate kernel facet but cannot coordinate catalog writes themselves.
+- Ordinary HTTP, ingest, review, Agent, script, and background-job orchestration. These callers may invoke a role-appropriate kernel facet but cannot coordinate catalog writes themselves. HTTP parameter/DTO mapping and cross-aggregate read composition stay outside; handlers cannot query Catalog tables or post-filter Kernel pages.
+- Authorization-sensitive History/Audit timeline events and Organization registration, placement, usage, and scope selection. Their owning seams may supply an authorized opaque ID selection before Kernel pagination, but the Kernel neither decides authorization nor interprets Organization facts.
 - Legacy-ID mapping/archive policy, migration phases, maintenance freeze, traffic state, recovery-point restore, route/DTO compatibility, readiness policy, observability thresholds, and legacy deletion gates. Later decisions consume the kernel proof surfaces without moving these responsibilities inside it.
 
 ### Dependency diagram
@@ -211,6 +212,10 @@ interface SwitchBackResult {
 interface CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
 
+  getSubject(subjectId: CatalogSubjectId): SubjectLookupResult;
+
+  listSubjects(query: SubjectListQuery): SubjectListResult;
+
   resolveSubject(selector: SubjectSelector): MatchResult;
 
   getDefinition(input: {
@@ -218,9 +223,24 @@ interface CatalogSnapshot {
     readonly propertyKey: PropertyKey;
   }): DefinitionLookupResult;
 
-  listDefinitions(
-    subjectId: CatalogSubjectId,
-  ): DefinitionListResult;
+  getDefinitionById(
+    definitionId: ParameterDefinitionId,
+  ): DefinitionLookupResult;
+
+  listDefinitions(query: DefinitionListQuery): DefinitionListResult;
+
+  getDefinitionRevision(input: {
+    readonly definitionId: ParameterDefinitionId;
+    readonly revisionId: DefinitionRevisionId;
+  }): DefinitionRevisionLookupResult;
+
+  listDefinitionRevisions(
+    query: DefinitionRevisionListQuery,
+  ): DefinitionRevisionListResult;
+
+  listDefinitionTimelineFacts(
+    query: DefinitionTimelineQuery,
+  ): DefinitionTimelineResult;
 }
 
 interface CurrentCatalogSnapshot extends CatalogSnapshot {
@@ -233,17 +253,21 @@ interface PinnedCatalogSnapshot extends CatalogSnapshot {
   readonly pin: CatalogReleasePin;
 }
 
+interface CompiledCatalogSnapshot extends CatalogSnapshot {
+  readonly snapshotKind: "candidate";
+}
+
 interface CompiledCatalogRelease {
   readonly release: CatalogReleaseIdentity;
   readonly predecessor: CatalogReleasePin | null;
   readonly aggregateDigest: CatalogReleaseDigest;
   readonly materializationFingerprint: CatalogMaterializationFingerprint;
   readonly counts: CatalogReleaseCounts;
-  readonly candidateSnapshot: CatalogSnapshot;
+  readonly candidateSnapshot: CompiledCatalogSnapshot;
 }
 ```
 
-A snapshot is immutable and side-effect free after loading. All three query methods are synchronous against the captured model, so one operation cannot mix releases. A known active subject with no definitions returns `found` with an empty list. No lookup returns `null` or an empty object to represent unknown, retired, ambiguous, or not-yet-published state.
+A snapshot is immutable and side effect free after loading. Every read method is synchronous against the captured model, so one operation cannot mix releases. `CurrentCatalogSnapshot` resolves membership, aliases, Definition heads, revisions, and timeline facts only through its captured current release. `PinnedCatalogSnapshot` resolves the same read facet only as of its exact ID/digest pin and never consults current membership, current aliases, or current heads. A known active subject with no definitions returns `found` with an empty page. No lookup returns `null` or an empty object to represent unknown, retired, ambiguous, not-yet-published, or revision-unavailable state.
 
 The compiler's candidate snapshot lets migration planning resolve strong evidence against the target release without installing it or switching the production pointer. It does not confer publication authority and cannot be used as a runtime cache.
 
@@ -264,8 +288,17 @@ type CatalogMaterializationFingerprint = Brand<
 >;
 type CatalogSubjectId = Brand<string, "CatalogSubjectId">;
 type CatalogAliasId = Brand<string, "CatalogAliasId">;
+type CatalogCanonicalKey = Brand<string, "CatalogCanonicalKey">;
 type ParameterDefinitionId = Brand<string, "ParameterDefinitionId">;
 type DefinitionRevisionId = Brand<string, "DefinitionRevisionId">;
+type CatalogTimelineFactId = Brand<string, "CatalogTimelineFactId">;
+type CatalogCursor = Brand<string, "CatalogCursor">;
+type CatalogSearchText = Brand<string, "CatalogSearchText">;
+type CatalogPageLimit = Brand<number, "CatalogPageLimit">;
+type CatalogReleaseSequence = Brand<number, "CatalogReleaseSequence">;
+type CatalogEventTime = Brand<string, "CatalogEventTime">;
+type CatalogTombstoneReason = Brand<string, "CatalogTombstoneReason">;
+type CatalogSelectionFingerprint = Brand<string, "CatalogSelectionFingerprint">;
 type PropertyKey = Brand<string, "PropertyKey">;
 type DriverCompatible = Brand<string, "DriverCompatible">;
 type NormalizedNodeTypeName = Brand<string, "NormalizedNodeTypeName">;
@@ -292,32 +325,96 @@ interface SubjectSelector {
     | { readonly kind: "absent" };
 }
 
-interface SubjectAlias {
+type CatalogSubjectSelectorSnapshot =
+  | {
+      readonly kind: "driver-compatible";
+      readonly values: readonly DriverCompatible[];
+    }
+  | {
+      readonly kind: "node-type-name";
+      readonly value: NormalizedNodeTypeName;
+    };
+
+interface CatalogTombstoneSummary {
+  readonly reason: CatalogTombstoneReason;
+  readonly successorSubjectId: OptionalValue<CatalogSubjectId>;
+}
+
+interface CatalogSubjectMembershipSnapshot {
+  readonly release: CatalogReleaseIdentity;
+  readonly lifecycle: SubjectLifecycle;
+  readonly selector: CatalogSubjectSelectorSnapshot;
+  readonly tombstone: OptionalValue<CatalogTombstoneSummary>;
+}
+
+interface CatalogAliasMembershipSnapshot {
+  readonly release: CatalogReleaseIdentity;
+  readonly lifecycle: SubjectLifecycle;
+  readonly tombstone: OptionalValue<CatalogTombstoneSummary>;
+}
+
+interface SubjectAliasSnapshot {
   readonly id: CatalogAliasId;
   readonly selector:
     | { readonly kind: "driver-compatible"; readonly value: DriverCompatible }
     | { readonly kind: "node-type-name"; readonly value: NormalizedNodeTypeName };
   readonly subjectId: CatalogSubjectId;
-  readonly lifecycle: SubjectLifecycle;
+  readonly membership: CatalogAliasMembershipSnapshot;
 }
 ```
 
-`SubjectSelector` contains the full matcher input. The caller cannot invoke a NodeType lookup after ignoring an ambiguous Driver result. The kernel evaluates active Driver candidates first. It evaluates `nodeTypeFallback` only when the Driver candidate set is empty. Canonical selectors and one-hop aliases use the same captured release memberships; current aliases are never applied to a pinned snapshot.
+`SubjectSelector` contains the full matcher input. The caller cannot invoke a NodeType lookup after ignoring an ambiguous Driver result. The kernel evaluates active Driver candidates first. It evaluates `nodeTypeFallback` only when the Driver candidate set is empty. Canonical selectors and one-hop aliases use the same captured release memberships; current aliases are never applied to a pinned snapshot. `getSubject` returns the captured subject membership and every captured stable alias membership, including explicit retired/tombstone state. Callers never reconstruct current membership from stable roots or infer alias absence as retirement.
 
 ### Match and lookup results
 
 ```ts
-interface CatalogSubjectSnapshot {
-  readonly id: CatalogSubjectId;
-  readonly kind: CatalogSubjectKind;
-  readonly lifecycle: SubjectLifecycle;
-}
-
 type DefinitionLifecycle = "active" | "deprecated" | "retired";
 
 type OptionalValue<T> =
   | { readonly kind: "present"; readonly value: T }
   | { readonly kind: "absent" };
+
+interface CatalogPageRequest {
+  readonly limit: CatalogPageLimit;
+  readonly after: OptionalValue<CatalogCursor>;
+}
+
+interface CatalogPage<T> {
+  readonly items: readonly T[];
+  readonly next: OptionalValue<CatalogCursor>;
+  readonly release: CatalogReleaseIdentity;
+}
+
+type CatalogPageFailure = {
+  readonly status: "invalid-page";
+  readonly reason: "cursor-malformed" | "release-mismatch" | "query-mismatch";
+};
+
+type CatalogIdSelection<Id> =
+  | { readonly kind: "all" }
+  | {
+      readonly kind: "only";
+      readonly ids: readonly Id[];
+      readonly fingerprint: CatalogSelectionFingerprint;
+    };
+
+interface CatalogSubjectSnapshot {
+  readonly id: CatalogSubjectId;
+  readonly kind: CatalogSubjectKind;
+  readonly canonicalKey: CatalogCanonicalKey;
+  readonly membership: CatalogSubjectMembershipSnapshot;
+}
+
+interface DefinitionLifecycleCounts {
+  readonly active: number;
+  readonly deprecated: number;
+  readonly retired: number;
+}
+
+interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
+  readonly aliases: readonly SubjectAliasSnapshot[];
+  readonly definitionCounts: DefinitionLifecycleCounts;
+}
 
 interface DefinitionContent {
   readonly lifecycle: DefinitionLifecycle;
@@ -332,13 +429,69 @@ interface DefinitionContent {
   readonly matching: DefinitionMatchingMetadata;
 }
 
+interface DefinitionRevisionSnapshot {
+  readonly id: DefinitionRevisionId;
+  readonly definitionId: ParameterDefinitionId;
+  readonly revisionNumber: number;
+  readonly contentDigest: Brand<string, "DefinitionContentDigest">;
+  readonly publishedIn: CatalogReleaseIdentity;
+  readonly content: Readonly<DefinitionContent>;
+}
+
 interface ParameterDefinitionSnapshot {
   readonly id: ParameterDefinitionId;
   readonly subjectId: CatalogSubjectId;
   readonly propertyKey: PropertyKey;
+  readonly selectedRevision: DefinitionRevisionSnapshot;
+}
+
+type DefinitionPublicationChange =
+  | "introduced"
+  | "content"
+  | "documentation"
+  | "lifecycle";
+
+interface CatalogDefinitionPublicationFact {
+  readonly id: CatalogTimelineFactId;
+  readonly definitionId: ParameterDefinitionId;
   readonly revisionId: DefinitionRevisionId;
-  readonly revisionContentDigest: Brand<string, "DefinitionContentDigest">;
-  readonly content: Readonly<DefinitionContent>;
+  readonly revisionNumber: number;
+  readonly release: CatalogReleaseIdentity;
+  readonly releaseSequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly previousRevisionId: OptionalValue<DefinitionRevisionId>;
+  readonly changes: readonly DefinitionPublicationChange[];
+}
+
+interface SubjectListQuery {
+  readonly selection: CatalogIdSelection<CatalogSubjectId>;
+  readonly kinds: readonly CatalogSubjectKind[];
+  readonly lifecycles: readonly SubjectLifecycle[];
+  readonly search: OptionalValue<CatalogSearchText>;
+  readonly page: CatalogPageRequest;
+}
+
+type DefinitionListScope =
+  | { readonly kind: "all" }
+  | { readonly kind: "subject"; readonly subjectId: CatalogSubjectId };
+
+interface DefinitionListQuery {
+  readonly selection: CatalogIdSelection<ParameterDefinitionId>;
+  readonly scope: DefinitionListScope;
+  readonly lifecycles: readonly DefinitionLifecycle[];
+  readonly propertyKey: OptionalValue<PropertyKey>;
+  readonly search: OptionalValue<CatalogSearchText>;
+  readonly page: CatalogPageRequest;
+}
+
+interface DefinitionRevisionListQuery {
+  readonly definitionId: ParameterDefinitionId;
+  readonly page: CatalogPageRequest;
+}
+
+interface DefinitionTimelineQuery {
+  readonly definitionId: ParameterDefinitionId;
+  readonly page: CatalogPageRequest;
 }
 
 type MatchResult =
@@ -346,7 +499,7 @@ type MatchResult =
       readonly status: "matched";
       readonly subject: CatalogSubjectSnapshot;
       readonly matchedBy: "canonical-selector" | "alias";
-      readonly alias: SubjectAlias | null;
+      readonly alias: SubjectAliasSnapshot | null;
     }
   | {
       readonly status: "unknown";
@@ -359,7 +512,7 @@ type MatchResult =
   | {
       readonly status: "retired";
       readonly subject: CatalogSubjectSnapshot;
-      readonly alias: SubjectAlias | null;
+      readonly alias: SubjectAliasSnapshot | null;
     }
   | {
       readonly status: "not-published";
@@ -367,13 +520,39 @@ type MatchResult =
       readonly subjectId: CatalogSubjectId;
     };
 
+type SubjectLookupResult =
+  | {
+      readonly status: "found";
+      readonly subject: CatalogSubjectDetailSnapshot;
+    }
+  | { readonly status: "unknown"; readonly target: "subject" }
+  | {
+      readonly status: "retired";
+      readonly subject: CatalogSubjectDetailSnapshot;
+    }
+  | {
+      readonly status: "not-published";
+      readonly subjectId: CatalogSubjectId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    };
+
+type SubjectListResult =
+  | {
+      readonly status: "found";
+      readonly page: CatalogPage<CatalogSubjectSnapshot>;
+    }
+  | CatalogPageFailure;
+
 type DefinitionLookupResult =
   | { readonly status: "found"; readonly definition: ParameterDefinitionSnapshot }
-  | { readonly status: "unknown"; readonly target: "subject" | "property" }
+  | {
+      readonly status: "unknown";
+      readonly target: "subject" | "property" | "definition";
+    }
   | {
       readonly status: "retired";
       readonly target: "subject" | "definition";
-      readonly definition: ParameterDefinitionSnapshot | null;
+      readonly definition: ParameterDefinitionSnapshot;
     }
   | {
       readonly status: "not-published";
@@ -384,24 +563,102 @@ type DefinitionLookupResult =
 type DefinitionListResult =
   | {
       readonly status: "found";
-      readonly subject: CatalogSubjectSnapshot;
-      readonly definitions: readonly ParameterDefinitionSnapshot[];
+      readonly scope: DefinitionListScope;
+      readonly page: CatalogPage<ParameterDefinitionSnapshot>;
     }
   | { readonly status: "unknown"; readonly target: "subject" }
   | {
       readonly status: "retired";
       readonly subject: CatalogSubjectSnapshot;
-      readonly definitions: readonly ParameterDefinitionSnapshot[];
+      readonly page: CatalogPage<ParameterDefinitionSnapshot>;
     }
   | {
       readonly status: "not-published";
+      readonly subjectId: CatalogSubjectId;
       readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
+
+type DefinitionRevisionLookupResult =
+  | {
+      readonly status: "found";
+      readonly revision: DefinitionRevisionSnapshot;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | {
+      readonly status: "revision-unavailable";
+      readonly definitionId: ParameterDefinitionId;
+      readonly revisionId: DefinitionRevisionId;
+      readonly reason:
+        | "not-in-snapshot"
+        | "not-owned-by-definition"
+        | "unknown-revision";
     };
+
+type DefinitionRevisionListResult =
+  | {
+      readonly status: "found";
+      readonly definition: ParameterDefinitionSnapshot;
+      readonly page: CatalogPage<DefinitionRevisionSnapshot>;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
+
+type DefinitionTimelineResult =
+  | {
+      readonly status: "found";
+      readonly definition: ParameterDefinitionSnapshot;
+      readonly page: CatalogPage<CatalogDefinitionPublicationFact>;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
 ```
 
-The only intentional nullable fields are values whose absence is part of a successful variant: bootstrap has no predecessor, a canonical match has no alias, and a retired subject may prevent a definition snapshot from being returned. Unknown, ambiguous, retired, and not-published are ordinary domain outcomes. They are not exceptions, `404` assumptions, or permission decisions.
+The only intentional `null` fields are values whose absence is part of a successful variant: bootstrap has no predecessor and a canonical match has no alias. Other optional successful fields use `OptionalValue`; lookup absence always uses a tagged result.
 
-For pinned replay, `not-published` means the stable identity first appears after the pinned release. A malformed or lineage-inconsistent release is not `not-published`; it is `invalid-release` or `drift`. An invalid selector encoding is an `invalid-selector` error rather than an `unknown` match.
+The result boundary is exact:
+
+- `unknown` means the requested opaque subject/definition identity, or the requested stable subject/property key, is not known in the captured snapshot's supported lineage. It never causes creation or a fallback search.
+- `retired` means the identity is present but its captured subject membership or selected Definition content is retired. Detail and historical revision reads remain available; current matching and new mutation eligibility do not.
+- `not-published` means a known stable subject or Definition first appears after a pinned snapshot. A malformed or lineage-inconsistent release is instead `invalid-release` or `drift`.
+- `revision-unavailable` means the Definition exists in this snapshot but the requested revision is not part of the snapshot, belongs to another Definition, or is not a known revision. It never substitutes `selectedRevision`. If retained history required to build the snapshot is physically missing or corrupt, snapshot loading fails with `historical-release-unavailable` or `drift` instead of returning a partial snapshot.
+- `scope-hidden` is intentionally absent from every Catalog Snapshot union. Authorization and Organization scope are not Catalog facts. The trusted application authorization/History seam returns its own tagged `scope-hidden` result before exposing a Kernel outcome, and the HTTP contract applies scope hiding before distinguishing unknown IDs as required by the accepted API decision.
+
+An invalid selector encoding is an `invalid-selector` error rather than an `unknown` match.
+
+### Filtering, ordering, and pagination ownership
+
+The Kernel owns Catalog-native filtering, normalization, total ordering, cursor construction/validation, and pagination. The fixed orders are:
+
+- subjects: `(kind, normalized canonical key, subjectId)`; aliases inside subject detail: `(selector kind, normalized selector, aliasId)`;
+- global Definitions: `(subject kind, normalized subject canonical key, normalized propertyKey, definitionId)`; subject-scoped Definitions: `(normalized propertyKey, definitionId)`;
+- Definition revisions: `(revisionNumber DESC, revisionId)`; and
+- Catalog publication timeline facts: `(releaseSequence DESC, revisionNumber DESC, factId)`.
+
+The Kernel applies an already-authorized `CatalogIdSelection`, then Catalog-native filters, then the fixed order, then the page boundary. Every cursor binds the exact snapshot ID/digest, the selection fingerprint, the complete normalized query fingerprint, and the last total-order tuple. A malformed cursor or reuse with another release, selection, or query returns `invalid-page`; a caller cannot replay a current cursor against a pinned snapshot. Empty filters produce a successful empty page and never mean unknown or not ready.
+
+The HTTP adapter only validates raw syntax, creates nominal query values, maps the opaque cursor and result DTO, and applies route-specific defaults such as active-only. It may not re-sort, post-filter, page an in-memory result, choose a Definition head, interpret an alias, or query Catalog tables. Registration, placement, usage, and authorization filters are obtained by a trusted application read composer from their owning seams as an immutable ID selection plus stable fingerprint; the Kernel intersects that opaque selection before pagination without knowing why an ID was selected. The selection is not client-supplied authority. If the owner seam cannot reproduce the selection fingerprint on a later page, the composed query rejects drift and refreshes rather than continuing against a changed set. A cross-aggregate composer must never filter a page after the Kernel has cut it.
+
+### Definition timeline composition boundary
+
+`listDefinitionTimelineFacts` returns only immutable Catalog publication/revision facts: exact Definition and revision IDs, revision number, release ID/version/digest and sequence, publication time, predecessor revision, and classified content/documentation/lifecycle changes. `publishedAt` is immutable reviewed release metadata verified by the compiler; it is never the database synchronization or installation clock. Those facts come from the captured release/revision lineage; they do not contain an actor, Organization, proposal decision, registration, placement, usage count, request, trace, or raw migration row.
+
+Actor and authorization-sensitive history remains in the independent History/Audit seam: proposal submission/review, publication-intent approval, trusted principal and initiator, registration/placement changes, Binding/value history, and operational audit references. The application timeline composer merges the Kernel fact stream with only authorized History/Audit events using `(occurredAt DESC, source rank, stable event ID)` and a composite cursor pinned to the Catalog release plus each History/Audit high-water mark. The HTTP handler only maps that composed read result; it never joins Catalog relations, mines audit data from revision rows, or lets History/Audit choose a Catalog revision.
 
 `ParameterValueShape`, `ParameterConstraints`, `UnitDescriptor`, `ParameterValue`, and `DefinitionMatchingMetadata` are closed tagged domain types shared with value validation; none may be implemented as an unvalidated string or `Record<string, unknown>`. This ticket fixes their containment in an immutable Definition revision but does not redesign their already-owned value-shape semantics.
 
@@ -619,11 +876,17 @@ The compiler, matcher, normalized model, lookup behavior, and error classificati
 | Deterministic compiler | Same source with permuted enumeration; missing/unlisted file; bad digest; duplicate/reassigned ID/selector; predecessor omission; bad tombstone | Same compiled digest/snapshot for equivalent input; otherwise `invalid-release` before writes |
 | Fake immutable source | Source bytes change between inventory and read, path escapes, duplicate names, read failure | Compile fails closed; no parsed-source trust or partial candidate |
 | Snapshot matching | Driver unique, Driver ambiguous, no Driver then NodeType, alias, retired alias/subject, unknown, pre-publication pinned release | Exact `MatchResult`; current aliases never affect pinned replay |
-| Definition lookup | Found, unknown subject, unknown property, retired subject/definition, not yet published, known subject with zero definitions | Exact non-null tagged result and release-correct revision ID |
+| Opaque Subject reads | `getSubject` for active, retired, unknown, and first-published-after-pin IDs; `listSubjects` globally by kind/lifecycle/search | Exact membership and aliases from the captured release; retired/not-published remain distinct; empty global list is a successful page |
+| Alias and membership replay | Introduce, retire, and restore canonical selectors and aliases across releases A/B/C; retain A current and pinned snapshots | Current follows its captured release; pinned A returns only A membership/aliases and never interprets omission or current state |
+| Definition identity reads | Stable-key `getDefinition`, opaque-ID `getDefinitionById`, global list, subject-scoped list, lifecycle/property/search filters, known subject with zero Definitions | Exact non-null tagged result; global and scoped pages select the release-correct head without caller joins or head choice |
+| Exact revision reads | Opaque Definition/revision pair found, wrong owner, unknown revision, revision after pin, retired current Definition, complete revision list | Exact requested revision or `revision-unavailable`; retired history remains readable; current revision is never substituted |
+| Deterministic paging | Permute storage/enumeration order; equal normalized keys; page every collection; reuse cursor with another pin, query, or selection fingerprint | Fixed order and byte-identical page boundaries; no duplicate/skip; mismatched cursor returns `invalid-page` |
+| Cross-aggregate filter selection | Registration/placement/usage seam supplies authorized ID selection and fingerprint before global list pagination | Kernel intersects before ordering/page without interpreting Organization semantics; adapter performs no post-filter |
+| Definition timeline composition | Introduced, documentation, semantic, lifecycle, and no-definition-change releases plus authorized and scope-hidden audit events | Kernel emits only exact publication/revision facts; application composer deterministically merges authorized History/Audit events; HTTP performs no Catalog-table join |
 | Install failure injection | Before first write; after each staged relation family; after revisions; before heads; between heads and pointer; before commit | Every failed call leaves previous pointer, every head, counts, and fingerprint unchanged |
 | Idempotency | Same digest repeat, lost response retry, same ID/version with changed bytes | Verified no-op or `digest-conflict`; never duplicate revision |
 | Concurrent synchronizer | Independent sessions install same target and different competing successors | One commit plus one no-op or lineage error; no partial/mixed head |
-| Current/pinned resolver | Switch active -> retired -> restored while retaining release A snapshot | Current changes by pointer; pinned A stays byte-for-byte stable |
+| Current/pinned resolver | Switch active -> retired -> restored and advance Definition revisions while retaining release A snapshot | Current changes by pointer; pinned A subject, aliases, selected revisions, revision lists, ordering, and timeline facts stay byte-for-byte stable |
 | Independent verifier | Remove/add/mutate membership, alias owner, tombstone, Definition revision/head, release-head provenance, fingerprint, or current pointer | Read-only `drift` with exact violation; zero repair writes |
 | Role permissions | Direct SQL as proposal, API/worker, application read, verifier, synchronizer, migration owner | Only declared grants succeed; synchronizer cannot UPDATE/DELETE immutable rows; verifier transaction proves read-only |
 | PostgreSQL constraints | Owner/composite FKs, permanent keys, immutable rows, release completeness, revision head ownership, exact release-head provenance | Violations fail at `SET CONSTRAINTS ALL IMMEDIATE` or commit |
@@ -640,11 +903,27 @@ All PostgreSQL ownership, FK, deferred-constraint, concurrency, and atomicity te
 That decision receives:
 
 - `CatalogRuntime`, `CatalogReleaseIdentity`, `CatalogReleasePin`, `CatalogSubjectId`, `ParameterDefinitionId`, and `DefinitionRevisionId` as the stable server-side vocabulary.
-- `loadCurrentCatalog(expected)`, exact pinned replay, `MatchResult`, `DefinitionLookupResult`, and `DefinitionListResult`; HTTP callers never join catalog relations or select heads.
-- Normal distinction among `unknown`, `ambiguous`, `retired`, and `not-published`; failure distinction among `invalid-release`, `drift`, `release-mismatch`, and unavailable history.
+- `loadCurrentCatalog(expected)`, exact pinned replay, the complete Subject/Definition/revision/timeline read facet, and release-bound deterministic pages; HTTP callers never join Catalog relations, interpret aliases, or select heads.
+- Normal distinction among `unknown`, `ambiguous`, `retired`, `not-published`, and `revision-unavailable`; failure distinction among `invalid-release`, `drift`, `release-mismatch`, and unavailable history. Authorization composition separately owns `scope-hidden`.
 - Read-only runtime capability for HTTP, Agent, ingest, review, debug, and reload consumers. No route may receive an install, head-update, overlay-write, or runtime-repair method.
 
 That decision still owns route names, DTOs, HTTP status/error mapping, authorization, legacy-ID response behavior, deprecation duration, internal diagnostics, and consumer-by-consumer transition. A kernel outcome does not prescribe a `404`, `409`, `410`, or `503` response.
+
+The accepted canonical Catalog read resources are closed by this mapping:
+
+| Accepted API read resource | Kernel and composition source |
+| --- | --- |
+| `GET /api/v2/catalog` Catalog document | `loadCurrentCatalog(expected)` and `snapshot.release`; readiness/status comes from the independent readiness seam |
+| `GET /api/v2/catalog/subjects` | `listSubjects(query)` plus optional pre-page Organization ID selection |
+| `GET /api/v2/catalog/subjects/{subjectId}` | `getSubject(subjectId)` for stable identity, captured membership, aliases, and Definition counts; registration/placement projection stays outside |
+| `GET /api/v2/catalog/subjects/{subjectId}/definitions` | `listDefinitions({ scope: { kind: "subject", subjectId }, ... })` |
+| `GET /api/v2/catalog/definitions` | `listDefinitions({ scope: { kind: "all" }, ... })` plus optional pre-page Organization ID selection |
+| `GET /api/v2/catalog/definitions/{definitionId}` | `getDefinitionById(definitionId)`; registration, placement, and scoped usage come from their owning seams |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions` | `listDefinitionRevisions({ definitionId, ... })` |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions/{revisionId}` | `getDefinitionRevision({ definitionId, revisionId })`; no current-revision substitution |
+| `GET /api/v2/catalog/definitions/{definitionId}/timeline` | `listDefinitionTimelineFacts({ definitionId, ... })` plus authorized History/Audit composition |
+
+Registration, placement, usage, Observation, Review Queue, Proposal, legacy-ID, project Binding, and operator-diagnostic resources from the accepted API decision remain owned by their named aggregates. This complete mapping is not permission to move those resources or their authorization into the Catalog Kernel.
 
 ### Choose populated-data cutover, archive, and rollback strategy
 
@@ -664,7 +943,7 @@ That decision receives:
 
 - `verifyCurrentMaterialization` through a distinct read-only role and comparison path;
 - a success proof containing exact release identity/digest, materialization fingerprint, checks, and counts;
-- structured `invalid-release`, `drift`, `release-mismatch`, historical-unavailable, permission, and storage failures;
+- structured `invalid-release`, `drift`, `release-mismatch`, `historical-release-unavailable`, permission, and storage failures;
 - startup `loadCurrentCatalog(expected)` behavior that cannot repair or fall back to empty/cache-only state;
 - the PostgreSQL, concurrency, pinned replay, role-negative, atomicity, and cache acceptance seams above.
 
@@ -676,6 +955,9 @@ That decision still owns upgrade ordering around migrations/synchronization, rea
 - **Expose compiler, synchronizer, matcher, verifier, and cache as peer application modules.** Rejected because orchestration would move back into startup, scripts, ingest, and HTTP. They are internal implementations/adapters of one deep module.
 - **Accept a caller transaction for composability.** Rejected because a caller could split materialization from audit, nest it under unrelated business work, or hold catalog locks across unbounded operations. Catalog installation is the composition boundary.
 - **Return `null` for misses and throw one generic catalog error.** Rejected because unknown, ambiguous, retired, not-published, invalid release, and drift lead to different safe behavior.
+- **Keep only point lookup and let HTTP query Catalog tables for lists, revisions, or timeline.** Rejected because the handler would again select heads, interpret membership/aliases, leak raw lifecycle joins, and break release consistency.
+- **Let the API adapter sort, post-filter, and paginate a Kernel list.** Rejected because page boundaries would depend on call-site behavior and Organization filters could skip or duplicate canonical resources. Kernel-native pages apply authorized ID selection before a fixed total order.
+- **Put registration, placement, usage, or audit authorization into the Catalog Kernel.** Rejected because those facts belong to other aggregates. A typed application composer supplies authorized selections and timeline events without making the Kernel Organization-aware.
 - **Use current rows plus max revision/timestamp for historical replay or switch-back.** Rejected because it silently reinterprets history and cannot restore an exact previous head set.
 - **Let cache, YAML-on-miss, or an ordinary process repair the projection.** Rejected because each creates a second authority or a hidden write path.
 
@@ -685,12 +967,14 @@ That decision still owns upgrade ordering around migrations/synchronization, rea
 | --- | --- |
 | Module boundary | Inside/outside lists and dependency diagram |
 | Compile/validate, install, verify, current/pinned loads | Six-operation `CatalogKernel` interface |
-| Selector/alias, one definition, per-subject list, release identity | Immutable snapshot interface and nominal types |
-| Not-published, retired, unknown, ambiguous, drift, invalid release | Tagged lookup results and `CatalogKernelError` |
+| Opaque Subject/Definition reads, global/scoped lists, membership/alias, exact revisions, timeline facts | Complete immutable snapshot read facet and accepted API resource mapping |
+| Deterministic filtering, ordering, cursors, paging, and cross-aggregate ID selection | Filtering, ordering, and pagination ownership section |
+| Not-published, retired, unknown, ambiguous, revision-unavailable, scope-hidden, drift, invalid release | Tagged result boundary and `CatalogKernelError` |
+| Catalog publication/revision facts versus authorized actor/audit history | Definition timeline composition boundary |
 | Bootstrap, successor, lifecycle, alias, revisions, pointer, replay, concurrency, failures, rollback | Transaction ownership table |
 | Migration/synchronizer/read/proposal/API/verifier roles | Database ownership table and negative tests |
 | Cache keys, startup digest, DB miss, invalidation, replay isolation, no repair | Cache and runtime contract |
-| Fake source, deterministic compiler, failure injection, concurrency, verifier, resolver, permissions, PostgreSQL | Test seams and acceptance matrix |
+| Fake source, opaque-ID/global reads, aliases, revisions, paging, timeline, failure injection, concurrency, verifier, permissions, PostgreSQL | Test seams and acceptance matrix |
 | Minimal handoff to API, migration, verification decisions | Three bounded handoff sections |
 
-No unresolved Catalog Kernel interface or transaction-boundary question remains. Physical schema names, route/DTO behavior, migration/archive phases, traffic ledger implementation, readiness policy, and deletion gates remain deliberately with their named later decisions.
+The joint-acceptance gap in the original handed-forward read facet is closed: every accepted canonical Catalog read resource has a typed current/pinned path without handler-side Catalog joins or caller-selected revisions. No unresolved Catalog Kernel interface or transaction-boundary question remains. Physical schema names, route/DTO behavior, migration/archive phases, traffic ledger implementation, readiness policy, and deletion gates remain deliberately with their named later decisions.

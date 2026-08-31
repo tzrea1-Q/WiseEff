@@ -2,7 +2,7 @@
 
 > English: [English](../../design-docs/catalog-kernel-interface-and-transaction-boundary.md)
 
-状态：作为 [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 的已接受目标合同。本页是 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668) 后续实现规格的输入，不表示当前运行时已经实现此模块。
+状态：作为 [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 经联合验收补全后的已接受目标合同。本页是 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668) 后续实现规格的输入，不表示当前运行时已经实现此模块。
 
 本决策以 [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b) 中通过验收的 ADR-0040/0041/0042 最终超集为前提；领域与关系语义继续以这些 ADR 为准。本页只决定深模块 seam、类型、事务所有权、权限、缓存行为和测试面，不创建生产代码、迁移、HTTP 路由、UI 或 implementation ticket，也不占用新的 ADR 编号。
 
@@ -19,7 +19,7 @@
 5. `loadCurrentCatalog` 加载一个已经验证且与应用预期一致的 current snapshot。
 6. `loadPinnedCatalog` 同时按 opaque ID 与 digest 加载一个精确历史 release。
 
-`CurrentCatalogSnapshot` 和 `PinnedCatalogSnapshot` 暴露 current release identity、Driver 优先且 NodeType fallback 的权威匹配、单个 Definition 查询和按 Catalog subject 列出 Definition。它们返回 tagged domain outcome，不用 `null` 隐藏状态。PostgreSQL 布局、join、锁、cache 对象、materialization fingerprint 和 release-to-revision-head 映射都属于私有实现。
+`CurrentCatalogSnapshot` 和 `PinnedCatalogSnapshot` 暴露覆盖 canonical Catalog resource 的完整 typed read facet：release identity、Subject detail/listing、release-scoped membership 与 alias、Driver 优先且 NodeType fallback 的权威匹配、按 stable key 或 opaque ID 查询 Definition、全局或 subject-scoped Definition listing、精确 revision 查询与 history，以及 Catalog 自有 publication timeline fact。它们返回 tagged domain outcome，不用 `null` 隐藏状态。PostgreSQL 布局、join、锁、cache 对象、materialization fingerprint 和 release-to-revision-head 映射都属于私有实现。
 
 ## 模块 seam 与所有权
 
@@ -31,7 +31,7 @@
 - 物化 Catalog Release、Catalog subject、release membership、stable alias ownership、alias membership、Parameter definition 和 immutable Definition revision。
 - 持久化足够的精确 per-release head provenance，使历史 release snapshot 和允许的流量前回切不依赖 timestamp、最大 revision number 或 current head 来推断历史。
 - 拥有独占 catalog synchronization lock、事务、幂等复核、Definition revision head 前移、current release pointer 切换及 success audit/materialization evidence。
-- 构造 immutable current/pinned read snapshot，包括 selector/alias index、subject lifecycle、definition identity 和精确 revision。
+- 构造 immutable current/pinned read snapshot，包括 selector/alias index、Subject detail/global list、release membership、Definition identity/global 与 subject-scoped list、精确 revision history、Catalog publication fact、固定 ordering 和 release-bound cursor。
 - 实现权威匹配：先求 active Driver `compatible` candidate；只有不存在 Driver match 时才考虑 NodeType normalized-name fallback。
 - 使用不信任 writer bookkeeping 的只读 adapter，独立比较 compiled release 和完整数据库 projection。
 - 拥有进程内 snapshot cache 构造、release key 选择和失效行为。
@@ -43,7 +43,8 @@
 - Definition Proposal 的 review 与 acceptance。它只能产生 publication intent 或 repository change。
 - Organization Subject registration 与 Subject placement。它们使用 catalog read 和 Match result，但拥有独立的 Organization-scoped 事务与 trusted audit。
 - Parameter Observation 持久化、Review Queue workflow、Binding、受治理的 Binding revision cutover、Project Value 及 history write。
-- 普通 HTTP、ingest、review、Agent、script 和 background job 协调。调用方可使用与角色相符的 kernel facet，但不能自行协调 catalog 写入。
+- 普通 HTTP、ingest、review、Agent、script 和 background job 协调。调用方可使用与角色相符的 kernel facet，但不能自行协调 catalog 写入。HTTP parameter/DTO mapping 与 cross-aggregate read composition 留在外部；handler 不能查询 Catalog table 或 post-filter Kernel page。
+- Authorization-sensitive History/Audit timeline event，以及 Organization registration、placement、usage、scope selection。各 owner seam 可以在 Kernel pagination 前提供 authorized opaque ID selection，但 Kernel 既不决定 authorization，也不解释 Organization fact。
 - Legacy-ID mapping/archive policy、migration phase、maintenance freeze、traffic state、recovery-point restore、route/DTO compatibility、readiness policy、observability threshold 和 legacy deletion gate。后续决策消费 kernel 的 proof surface，不把这些职责移入 kernel。
 
 ### 依赖图
@@ -211,6 +212,10 @@ interface SwitchBackResult {
 interface CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
 
+  getSubject(subjectId: CatalogSubjectId): SubjectLookupResult;
+
+  listSubjects(query: SubjectListQuery): SubjectListResult;
+
   resolveSubject(selector: SubjectSelector): MatchResult;
 
   getDefinition(input: {
@@ -218,9 +223,24 @@ interface CatalogSnapshot {
     readonly propertyKey: PropertyKey;
   }): DefinitionLookupResult;
 
-  listDefinitions(
-    subjectId: CatalogSubjectId,
-  ): DefinitionListResult;
+  getDefinitionById(
+    definitionId: ParameterDefinitionId,
+  ): DefinitionLookupResult;
+
+  listDefinitions(query: DefinitionListQuery): DefinitionListResult;
+
+  getDefinitionRevision(input: {
+    readonly definitionId: ParameterDefinitionId;
+    readonly revisionId: DefinitionRevisionId;
+  }): DefinitionRevisionLookupResult;
+
+  listDefinitionRevisions(
+    query: DefinitionRevisionListQuery,
+  ): DefinitionRevisionListResult;
+
+  listDefinitionTimelineFacts(
+    query: DefinitionTimelineQuery,
+  ): DefinitionTimelineResult;
 }
 
 interface CurrentCatalogSnapshot extends CatalogSnapshot {
@@ -233,17 +253,21 @@ interface PinnedCatalogSnapshot extends CatalogSnapshot {
   readonly pin: CatalogReleasePin;
 }
 
+interface CompiledCatalogSnapshot extends CatalogSnapshot {
+  readonly snapshotKind: "candidate";
+}
+
 interface CompiledCatalogRelease {
   readonly release: CatalogReleaseIdentity;
   readonly predecessor: CatalogReleasePin | null;
   readonly aggregateDigest: CatalogReleaseDigest;
   readonly materializationFingerprint: CatalogMaterializationFingerprint;
   readonly counts: CatalogReleaseCounts;
-  readonly candidateSnapshot: CatalogSnapshot;
+  readonly candidateSnapshot: CompiledCatalogSnapshot;
 }
 ```
 
-Snapshot 加载完成后是 immutable 且 side-effect free 的。三个 query method 都同步查询 captured model，因此一次业务操作不可能混用 release。已知 active subject 即便没有 Definition，也返回 `found` 和空列表。任何 lookup 都不以 `null` 或空对象表示 unknown、retired、ambiguous 或 not-yet-published。
+Snapshot 加载完成后是 immutable 且 side-effect free 的。每个 read method 都同步查询 captured model，因此一次业务操作不可能混用 release。`CurrentCatalogSnapshot` 只通过 captured current release 解析 membership、alias、Definition head、revision 和 timeline fact；`PinnedCatalogSnapshot` 只按精确 ID/digest pin 解析同一 read facet，绝不查询 current membership、current alias 或 current head。已知 active subject 即便没有 Definition，也返回 `found` 和空 page。任何 lookup 都不以 `null` 或空对象表示 unknown、retired、ambiguous、not-yet-published 或 revision-unavailable。
 
 Compiler 的 candidate snapshot 让 migration planning 能在不安装、不切换 production pointer 的情况下，针对 target release 解析 strong evidence。它不带来 publication authority，也不能作为 runtime cache。
 
@@ -264,8 +288,17 @@ type CatalogMaterializationFingerprint = Brand<
 >;
 type CatalogSubjectId = Brand<string, "CatalogSubjectId">;
 type CatalogAliasId = Brand<string, "CatalogAliasId">;
+type CatalogCanonicalKey = Brand<string, "CatalogCanonicalKey">;
 type ParameterDefinitionId = Brand<string, "ParameterDefinitionId">;
 type DefinitionRevisionId = Brand<string, "DefinitionRevisionId">;
+type CatalogTimelineFactId = Brand<string, "CatalogTimelineFactId">;
+type CatalogCursor = Brand<string, "CatalogCursor">;
+type CatalogSearchText = Brand<string, "CatalogSearchText">;
+type CatalogPageLimit = Brand<number, "CatalogPageLimit">;
+type CatalogReleaseSequence = Brand<number, "CatalogReleaseSequence">;
+type CatalogEventTime = Brand<string, "CatalogEventTime">;
+type CatalogTombstoneReason = Brand<string, "CatalogTombstoneReason">;
+type CatalogSelectionFingerprint = Brand<string, "CatalogSelectionFingerprint">;
 type PropertyKey = Brand<string, "PropertyKey">;
 type DriverCompatible = Brand<string, "DriverCompatible">;
 type NormalizedNodeTypeName = Brand<string, "NormalizedNodeTypeName">;
@@ -292,32 +325,96 @@ interface SubjectSelector {
     | { readonly kind: "absent" };
 }
 
-interface SubjectAlias {
+type CatalogSubjectSelectorSnapshot =
+  | {
+      readonly kind: "driver-compatible";
+      readonly values: readonly DriverCompatible[];
+    }
+  | {
+      readonly kind: "node-type-name";
+      readonly value: NormalizedNodeTypeName;
+    };
+
+interface CatalogTombstoneSummary {
+  readonly reason: CatalogTombstoneReason;
+  readonly successorSubjectId: OptionalValue<CatalogSubjectId>;
+}
+
+interface CatalogSubjectMembershipSnapshot {
+  readonly release: CatalogReleaseIdentity;
+  readonly lifecycle: SubjectLifecycle;
+  readonly selector: CatalogSubjectSelectorSnapshot;
+  readonly tombstone: OptionalValue<CatalogTombstoneSummary>;
+}
+
+interface CatalogAliasMembershipSnapshot {
+  readonly release: CatalogReleaseIdentity;
+  readonly lifecycle: SubjectLifecycle;
+  readonly tombstone: OptionalValue<CatalogTombstoneSummary>;
+}
+
+interface SubjectAliasSnapshot {
   readonly id: CatalogAliasId;
   readonly selector:
     | { readonly kind: "driver-compatible"; readonly value: DriverCompatible }
     | { readonly kind: "node-type-name"; readonly value: NormalizedNodeTypeName };
   readonly subjectId: CatalogSubjectId;
-  readonly lifecycle: SubjectLifecycle;
+  readonly membership: CatalogAliasMembershipSnapshot;
 }
 ```
 
-`SubjectSelector` 包含完整 matcher input，调用方无法在忽略 ambiguous Driver result 后自行调用 NodeType lookup。Kernel 先评估 active Driver candidate；只有 Driver candidate set 为空时才评估 `nodeTypeFallback`。Canonical selector 与 one-hop alias 都使用 captured release membership；pinned snapshot 永远不应用 current alias。
+`SubjectSelector` 包含完整 matcher input，调用方无法在忽略 ambiguous Driver result 后自行调用 NodeType lookup。Kernel 先评估 active Driver candidate；只有 Driver candidate set 为空时才评估 `nodeTypeFallback`。Canonical selector 与 one-hop alias 都使用 captured release membership；pinned snapshot 永远不应用 current alias。`getSubject` 返回 captured subject membership 与全部 captured stable alias membership，包括显式 retired/tombstone state。调用方不能从 stable root 重建 current membership，也不能把 alias 缺失推断为 retirement。
 
 ### Match 与 lookup result
 
 ```ts
-interface CatalogSubjectSnapshot {
-  readonly id: CatalogSubjectId;
-  readonly kind: CatalogSubjectKind;
-  readonly lifecycle: SubjectLifecycle;
-}
-
 type DefinitionLifecycle = "active" | "deprecated" | "retired";
 
 type OptionalValue<T> =
   | { readonly kind: "present"; readonly value: T }
   | { readonly kind: "absent" };
+
+interface CatalogPageRequest {
+  readonly limit: CatalogPageLimit;
+  readonly after: OptionalValue<CatalogCursor>;
+}
+
+interface CatalogPage<T> {
+  readonly items: readonly T[];
+  readonly next: OptionalValue<CatalogCursor>;
+  readonly release: CatalogReleaseIdentity;
+}
+
+type CatalogPageFailure = {
+  readonly status: "invalid-page";
+  readonly reason: "cursor-malformed" | "release-mismatch" | "query-mismatch";
+};
+
+type CatalogIdSelection<Id> =
+  | { readonly kind: "all" }
+  | {
+      readonly kind: "only";
+      readonly ids: readonly Id[];
+      readonly fingerprint: CatalogSelectionFingerprint;
+    };
+
+interface CatalogSubjectSnapshot {
+  readonly id: CatalogSubjectId;
+  readonly kind: CatalogSubjectKind;
+  readonly canonicalKey: CatalogCanonicalKey;
+  readonly membership: CatalogSubjectMembershipSnapshot;
+}
+
+interface DefinitionLifecycleCounts {
+  readonly active: number;
+  readonly deprecated: number;
+  readonly retired: number;
+}
+
+interface CatalogSubjectDetailSnapshot extends CatalogSubjectSnapshot {
+  readonly aliases: readonly SubjectAliasSnapshot[];
+  readonly definitionCounts: DefinitionLifecycleCounts;
+}
 
 interface DefinitionContent {
   readonly lifecycle: DefinitionLifecycle;
@@ -332,13 +429,69 @@ interface DefinitionContent {
   readonly matching: DefinitionMatchingMetadata;
 }
 
+interface DefinitionRevisionSnapshot {
+  readonly id: DefinitionRevisionId;
+  readonly definitionId: ParameterDefinitionId;
+  readonly revisionNumber: number;
+  readonly contentDigest: Brand<string, "DefinitionContentDigest">;
+  readonly publishedIn: CatalogReleaseIdentity;
+  readonly content: Readonly<DefinitionContent>;
+}
+
 interface ParameterDefinitionSnapshot {
   readonly id: ParameterDefinitionId;
   readonly subjectId: CatalogSubjectId;
   readonly propertyKey: PropertyKey;
+  readonly selectedRevision: DefinitionRevisionSnapshot;
+}
+
+type DefinitionPublicationChange =
+  | "introduced"
+  | "content"
+  | "documentation"
+  | "lifecycle";
+
+interface CatalogDefinitionPublicationFact {
+  readonly id: CatalogTimelineFactId;
+  readonly definitionId: ParameterDefinitionId;
   readonly revisionId: DefinitionRevisionId;
-  readonly revisionContentDigest: Brand<string, "DefinitionContentDigest">;
-  readonly content: Readonly<DefinitionContent>;
+  readonly revisionNumber: number;
+  readonly release: CatalogReleaseIdentity;
+  readonly releaseSequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly previousRevisionId: OptionalValue<DefinitionRevisionId>;
+  readonly changes: readonly DefinitionPublicationChange[];
+}
+
+interface SubjectListQuery {
+  readonly selection: CatalogIdSelection<CatalogSubjectId>;
+  readonly kinds: readonly CatalogSubjectKind[];
+  readonly lifecycles: readonly SubjectLifecycle[];
+  readonly search: OptionalValue<CatalogSearchText>;
+  readonly page: CatalogPageRequest;
+}
+
+type DefinitionListScope =
+  | { readonly kind: "all" }
+  | { readonly kind: "subject"; readonly subjectId: CatalogSubjectId };
+
+interface DefinitionListQuery {
+  readonly selection: CatalogIdSelection<ParameterDefinitionId>;
+  readonly scope: DefinitionListScope;
+  readonly lifecycles: readonly DefinitionLifecycle[];
+  readonly propertyKey: OptionalValue<PropertyKey>;
+  readonly search: OptionalValue<CatalogSearchText>;
+  readonly page: CatalogPageRequest;
+}
+
+interface DefinitionRevisionListQuery {
+  readonly definitionId: ParameterDefinitionId;
+  readonly page: CatalogPageRequest;
+}
+
+interface DefinitionTimelineQuery {
+  readonly definitionId: ParameterDefinitionId;
+  readonly page: CatalogPageRequest;
 }
 
 type MatchResult =
@@ -346,7 +499,7 @@ type MatchResult =
       readonly status: "matched";
       readonly subject: CatalogSubjectSnapshot;
       readonly matchedBy: "canonical-selector" | "alias";
-      readonly alias: SubjectAlias | null;
+      readonly alias: SubjectAliasSnapshot | null;
     }
   | {
       readonly status: "unknown";
@@ -359,7 +512,7 @@ type MatchResult =
   | {
       readonly status: "retired";
       readonly subject: CatalogSubjectSnapshot;
-      readonly alias: SubjectAlias | null;
+      readonly alias: SubjectAliasSnapshot | null;
     }
   | {
       readonly status: "not-published";
@@ -367,13 +520,39 @@ type MatchResult =
       readonly subjectId: CatalogSubjectId;
     };
 
+type SubjectLookupResult =
+  | {
+      readonly status: "found";
+      readonly subject: CatalogSubjectDetailSnapshot;
+    }
+  | { readonly status: "unknown"; readonly target: "subject" }
+  | {
+      readonly status: "retired";
+      readonly subject: CatalogSubjectDetailSnapshot;
+    }
+  | {
+      readonly status: "not-published";
+      readonly subjectId: CatalogSubjectId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    };
+
+type SubjectListResult =
+  | {
+      readonly status: "found";
+      readonly page: CatalogPage<CatalogSubjectSnapshot>;
+    }
+  | CatalogPageFailure;
+
 type DefinitionLookupResult =
   | { readonly status: "found"; readonly definition: ParameterDefinitionSnapshot }
-  | { readonly status: "unknown"; readonly target: "subject" | "property" }
+  | {
+      readonly status: "unknown";
+      readonly target: "subject" | "property" | "definition";
+    }
   | {
       readonly status: "retired";
       readonly target: "subject" | "definition";
-      readonly definition: ParameterDefinitionSnapshot | null;
+      readonly definition: ParameterDefinitionSnapshot;
     }
   | {
       readonly status: "not-published";
@@ -384,24 +563,102 @@ type DefinitionLookupResult =
 type DefinitionListResult =
   | {
       readonly status: "found";
-      readonly subject: CatalogSubjectSnapshot;
-      readonly definitions: readonly ParameterDefinitionSnapshot[];
+      readonly scope: DefinitionListScope;
+      readonly page: CatalogPage<ParameterDefinitionSnapshot>;
     }
   | { readonly status: "unknown"; readonly target: "subject" }
   | {
       readonly status: "retired";
       readonly subject: CatalogSubjectSnapshot;
-      readonly definitions: readonly ParameterDefinitionSnapshot[];
+      readonly page: CatalogPage<ParameterDefinitionSnapshot>;
     }
   | {
       readonly status: "not-published";
+      readonly subjectId: CatalogSubjectId;
       readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
+
+type DefinitionRevisionLookupResult =
+  | {
+      readonly status: "found";
+      readonly revision: DefinitionRevisionSnapshot;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | {
+      readonly status: "revision-unavailable";
+      readonly definitionId: ParameterDefinitionId;
+      readonly revisionId: DefinitionRevisionId;
+      readonly reason:
+        | "not-in-snapshot"
+        | "not-owned-by-definition"
+        | "unknown-revision";
     };
+
+type DefinitionRevisionListResult =
+  | {
+      readonly status: "found";
+      readonly definition: ParameterDefinitionSnapshot;
+      readonly page: CatalogPage<DefinitionRevisionSnapshot>;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
+
+type DefinitionTimelineResult =
+  | {
+      readonly status: "found";
+      readonly definition: ParameterDefinitionSnapshot;
+      readonly page: CatalogPage<CatalogDefinitionPublicationFact>;
+    }
+  | { readonly status: "unknown"; readonly target: "definition" }
+  | {
+      readonly status: "not-published";
+      readonly definitionId: ParameterDefinitionId;
+      readonly firstPublishedIn: CatalogReleaseIdentity;
+    }
+  | CatalogPageFailure;
 ```
 
-只有“某成功 variant 中确实允许缺失”的字段可以为 `null`：bootstrap 没有 predecessor、canonical match 没有 alias、retired subject 可能阻止返回 definition snapshot。Unknown、ambiguous、retired 和 not-published 都是正常 domain outcome，不是 exception、`404` 假设或权限决定。
+只有“某成功 variant 中确实允许缺失”的字段可以为 `null`：bootstrap 没有 predecessor，canonical match 没有 alias。其他成功但可选的字段使用 `OptionalValue`；lookup 缺失始终使用 tagged result。
 
-对 pinned replay，`not-published` 表示该 stable identity 首次出现于 pinned release 之后。Malformed 或 lineage-inconsistent release 不能被解释为 `not-published`，而是 `invalid-release` 或 `drift`。Invalid selector encoding 是 `invalid-selector` error，不是 `unknown` match。
+Result boundary 精确定义如下：
+
+- `unknown` 表示请求的 opaque Subject/Definition identity，或 stable subject/property key，在 captured snapshot 的 supported lineage 中未知；它绝不触发创建或 fallback 搜索。
+- `retired` 表示 identity 存在，但其 captured subject membership 或 selected Definition content 已退役。Detail 与历史 revision read 仍可用；current matching 与新 mutation eligibility 不可用。
+- `not-published` 表示已知 stable Subject 或 Definition 首次出现于 pinned snapshot 之后。Malformed 或 lineage-inconsistent release 则是 `invalid-release` 或 `drift`。
+- `revision-unavailable` 表示 Definition 存在于该 snapshot，但请求的 revision 不属于该 snapshot、属于其他 Definition，或不是已知 revision。它绝不以 `selectedRevision` 替代。若构建 snapshot 所必需的 retained history 在物理上缺失或损坏，snapshot load 应以 `historical-release-unavailable` 或 `drift` 失败，不能返回 partial snapshot。
+- `scope-hidden` 刻意不出现在任何 Catalog Snapshot union 中。Authorization 与 Organization scope 不是 Catalog fact。Trusted application authorization/History seam 在暴露 Kernel outcome 之前返回自己的 tagged `scope-hidden`；HTTP contract 按已接受 API 决策，在区分 unknown ID 前先执行 scope hiding。
+
+Invalid selector encoding 是 `invalid-selector` error，不是 `unknown` match。
+
+### 过滤、排序与分页责任
+
+Kernel 负责 Catalog-native filtering、normalization、total ordering、cursor 构造/校验和 pagination。固定顺序为：
+
+- Subject：`(kind, normalized canonical key, subjectId)`；Subject detail 内的 alias：`(selector kind, normalized selector, aliasId)`；
+- 全局 Definition：`(subject kind, normalized subject canonical key, normalized propertyKey, definitionId)`；subject-scoped Definition：`(normalized propertyKey, definitionId)`；
+- Definition revision：`(revisionNumber DESC, revisionId)`；
+- Catalog publication timeline fact：`(releaseSequence DESC, revisionNumber DESC, factId)`。
+
+Kernel 先应用已经授权的 `CatalogIdSelection`，再应用 Catalog-native filter、固定顺序与 page boundary。每个 cursor 绑定精确 snapshot ID/digest、selection fingerprint、完整 normalized query fingerprint 和最后一个 total-order tuple。Malformed cursor，或把 cursor 用于其他 release、selection、query，返回 `invalid-page`；调用方不能把 current cursor 用于 pinned snapshot。空 filter 产生成功的空 page，绝不代表 unknown 或 not ready。
+
+HTTP adapter 只校验 raw syntax、构造 nominal query value、映射 opaque cursor/result DTO，并应用 route-specific default（例如默认仅 active）。它不能重新排序、事后过滤、对 in-memory result 分页、选择 Definition head、解释 alias 或查询 Catalog table。Registration、placement、usage 与 authorization filter 由 trusted application read composer 从各自 owner seam 获取为 immutable ID selection 加 stable fingerprint；Kernel 在 pagination 前交集这个 opaque selection，但不知道某 ID 被选中的原因。Selection 不是 client-supplied authority。若 owner seam 无法在后一页重现 selection fingerprint，composed query 应拒绝 drift 并要求刷新，而不能在已变化的集合上继续。任何 cross-aggregate composer 都不能在 Kernel 已切出 page 后再过滤。
+
+### Definition timeline 组合边界
+
+`listDefinitionTimelineFacts` 只返回 immutable Catalog publication/revision fact：精确 Definition/revision ID、revision number、release ID/version/digest 与 sequence、publication time、predecessor revision，以及 content/documentation/lifecycle change 分类。`publishedAt` 是经过 compiler 验证的 immutable reviewed release metadata，绝不是 database synchronization/install clock。这些事实来自 captured release/revision lineage；它们不包含 actor、Organization、proposal decision、registration、placement、usage count、request、trace 或 raw migration row。
+
+Actor 与 authorization-sensitive history 继续属于独立 History/Audit seam：proposal submission/review、publication-intent approval、trusted principal 与 initiator、registration/placement change、Binding/value history，以及 operational audit reference。Application timeline composer 使用 `(occurredAt DESC, source rank, stable event ID)` 合并 Kernel fact stream 与仅限已授权的 History/Audit event，并使用绑定 Catalog release 和各 History/Audit high-water mark 的 composite cursor。HTTP handler 只映射该 composed read result；它绝不 join Catalog relation、从 revision row 猜测 audit data，或让 History/Audit 选择 Catalog revision。
 
 `ParameterValueShape`、`ParameterConstraints`、`UnitDescriptor`、`ParameterValue` 和 `DefinitionMatchingMetadata` 都是与 value validation 共用的 closed tagged domain type；任何一个都不能实现成未校验 string 或 `Record<string, unknown>`。本票锁定它们必须包含在 immutable Definition revision 中，但不重新设计已有 owner 所负责的 value-shape 语义。
 
@@ -619,11 +876,17 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 | Deterministic compiler | 同一 source 的 enumeration 置换；missing/unlisted file；bad digest；duplicate/reassigned ID/selector；predecessor omission；bad tombstone | 等价 input 得到相同 compiled digest/snapshot；否则写前 `invalid-release` |
 | Fake immutable source | Inventory/read 之间 bytes 变化、path escape、duplicate name、read failure | Compile fail closed；不信任 parsed source，也不留下 partial candidate |
 | Snapshot matching | Driver unique、Driver ambiguous、无 Driver 后 NodeType、alias、retired alias/subject、unknown、pre-publication pinned release | 精确 `MatchResult`；current alias 永不影响 pinned replay |
-| Definition lookup | Found、unknown subject、unknown property、retired subject/definition、not yet published、已知 subject 的空 definition list | 精确 non-null tagged result 和 release-correct revision ID |
+| Opaque Subject read | 对 active、retired、unknown、pin 后首次发布的 ID 执行 `getSubject`；按 kind/lifecycle/search 全局执行 `listSubjects` | 返回 captured release 的精确 membership 与 alias；retired/not-published 保持区分；全局空列表是成功 page |
+| Alias 与 membership replay | 在 release A/B/C 引入、退役、恢复 canonical selector 与 alias；同时保留 A 的 current/pinned snapshot | Current 跟随 captured release；pinned A 只返回 A membership/alias，不解释 omission 或 current state |
+| Definition identity read | Stable-key `getDefinition`、opaque-ID `getDefinitionById`、全局 list、subject-scoped list、lifecycle/property/search filter、已知 subject 的零 Definition | 精确 non-null tagged result；global/scoped page 选择 release-correct head，调用方不 join、不选择 head |
+| 精确 revision read | Opaque Definition/revision pair found、wrong owner、unknown revision、pin 之后的 revision、retired current Definition、完整 revision list | 返回精确 requested revision 或 `revision-unavailable`；retired history 仍可读；绝不替换为 current revision |
+| Deterministic paging | 置换 storage/enumeration 顺序；相同 normalized key；翻遍每个 collection；在另一 pin/query/selection fingerprint 重用 cursor | 固定顺序与 byte-identical page boundary；无重复/跳过；mismatched cursor 返回 `invalid-page` |
+| Cross-aggregate filter selection | Registration/placement/usage seam 在全局列表分页前提供 authorized ID selection 与 fingerprint | Kernel 在 ordering/page 前求交集且不解释 Organization 语义；adapter 不做 post-filter |
+| Definition timeline composition | Introduced、documentation、semantic、lifecycle、无 Definition change 的 release，以及 authorized/scope-hidden audit event | Kernel 只输出精确 publication/revision fact；application composer 确定性合并 authorized History/Audit event；HTTP 不 join Catalog table |
 | Install failure injection | First write 前；每个 staged relation family 后；revision 后；head 前；head 与 pointer 之间；commit 前 | 每次失败都保持 previous pointer、全部 head、count 和 fingerprint 不变 |
 | Idempotency | Same digest repeat、lost response retry、同 ID/version 但 bytes 不同 | Verified no-op 或 `digest-conflict`；不重复 revision |
 | Concurrent synchronizer | Independent session 安装相同 target 和不同 competing successor | 一个 commit 加一个 no-op/lineage error；无 partial/mixed head |
-| Current/pinned resolver | Active -> retired -> restored，同时保留 release A snapshot | Current 随 pointer 改变；pinned A byte-for-byte 稳定 |
+| Current/pinned resolver | Active -> retired -> restored 并推进 Definition revision，同时保留 release A snapshot | Current 随 pointer 改变；pinned A 的 subject、alias、selected revision、revision list、ordering 与 timeline fact 均 byte-for-byte 稳定 |
 | Independent verifier | 删除/增加/修改 membership、alias owner、tombstone、Definition revision/head、release-head provenance、fingerprint 或 current pointer | Read-only `drift` 且给出精确 violation；零 repair write |
 | Role permissions | 分别以 proposal、API/worker、application read、verifier、synchronizer、migration owner 执行直接 SQL | 只有声明的 grant 成功；synchronizer 不能 UPDATE/DELETE immutable row；verifier transaction 被证明 read-only |
 | PostgreSQL constraints | Owner/composite FK、permanent key、immutable row、release completeness、revision head ownership、exact release-head provenance | Violation 在 `SET CONSTRAINTS ALL IMMEDIATE` 或 commit 失败 |
@@ -640,11 +903,27 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 该决策获得：
 
 - `CatalogRuntime`、`CatalogReleaseIdentity`、`CatalogReleasePin`、`CatalogSubjectId`、`ParameterDefinitionId` 和 `DefinitionRevisionId` 作为稳定 server-side vocabulary。
-- `loadCurrentCatalog(expected)`、精确 pinned replay、`MatchResult`、`DefinitionLookupResult` 和 `DefinitionListResult`；HTTP caller 不再 join catalog relation 或选择 head。
-- 对 `unknown`、`ambiguous`、`retired`、`not-published` 的正常区分，以及对 `invalid-release`、`drift`、`release-mismatch`、unavailable history 的失败区分。
+- `loadCurrentCatalog(expected)`、精确 pinned replay、完整 Subject/Definition/revision/timeline read facet，以及 release-bound deterministic page；HTTP caller 不再 join Catalog relation、解释 alias 或选择 head。
+- 对 `unknown`、`ambiguous`、`retired`、`not-published`、`revision-unavailable` 的正常区分，以及对 `invalid-release`、`drift`、`release-mismatch`、unavailable history 的失败区分。Authorization composition 独立拥有 `scope-hidden`。
 - HTTP、Agent、ingest、review、debug、reload consumer 只有 read-only runtime capability；任何 route 都不能得到 install、head-update、overlay-write 或 runtime-repair 方法。
 
 该决策仍自行决定 route name、DTO、HTTP status/error mapping、authorization、legacy-ID response behavior、deprecation duration、internal diagnostics 和逐 consumer transition。Kernel outcome 不预设 `404`、`409`、`410` 或 `503`。
+
+已接受的 canonical Catalog read resource 由下表闭合：
+
+| 已接受 API read resource | Kernel 与 composition source |
+| --- | --- |
+| `GET /api/v2/catalog` Catalog document | `loadCurrentCatalog(expected)` 与 `snapshot.release`；readiness/status 来自独立 readiness seam |
+| `GET /api/v2/catalog/subjects` | `listSubjects(query)` 加可选的 pagination 前 Organization ID selection |
+| `GET /api/v2/catalog/subjects/{subjectId}` | `getSubject(subjectId)` 提供 stable identity、captured membership、alias 与 Definition count；registration/placement projection 仍在外部 |
+| `GET /api/v2/catalog/subjects/{subjectId}/definitions` | `listDefinitions({ scope: { kind: "subject", subjectId }, ... })` |
+| `GET /api/v2/catalog/definitions` | `listDefinitions({ scope: { kind: "all" }, ... })` 加可选的 pagination 前 Organization ID selection |
+| `GET /api/v2/catalog/definitions/{definitionId}` | `getDefinitionById(definitionId)`；registration、placement 与 scoped usage 来自各自 owner seam |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions` | `listDefinitionRevisions({ definitionId, ... })` |
+| `GET /api/v2/catalog/definitions/{definitionId}/revisions/{revisionId}` | `getDefinitionRevision({ definitionId, revisionId })`；不替换为 current revision |
+| `GET /api/v2/catalog/definitions/{definitionId}/timeline` | `listDefinitionTimelineFacts({ definitionId, ... })` 加 authorized History/Audit composition |
+
+已接受 API 决策中的 registration、placement、usage、Observation、Review Queue、Proposal、legacy-ID、project Binding 与 operator-diagnostic resource 仍由各自已命名 aggregate 拥有。本完整映射不授权把这些 resource 或其 authorization 移入 Catalog Kernel。
 
 ### Choose populated-data cutover, archive, and rollback strategy
 
@@ -664,7 +943,7 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 
 - 通过 distinct read-only role 和 comparison path 执行的 `verifyCurrentMaterialization`；
 - 包含 exact release identity/digest、materialization fingerprint、check 和 count 的 success proof；
-- Structured `invalid-release`、`drift`、`release-mismatch`、historical-unavailable、permission 和 storage failure；
+- Structured `invalid-release`、`drift`、`release-mismatch`、`historical-release-unavailable`、permission 和 storage failure；
 - 不修复、不回退到 empty/cache-only state 的 startup `loadCurrentCatalog(expected)` 行为；
 - 上述 PostgreSQL、concurrency、pinned replay、role-negative、atomicity 和 cache acceptance seam。
 
@@ -676,6 +955,9 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 - **把 compiler、synchronizer、matcher、verifier 和 cache 作为平级 application module。** 这会把 orchestration 再次扩散到 startup、script、ingest 和 HTTP；它们应是一个深模块内部的 implementation/adapter。
 - **为“可组合性”接受 caller transaction。** Caller 可借此拆开 materialization 与 audit、把安装嵌入无关 business work，或无限持有 catalog lock。Catalog installation 本身就是 composition boundary。
 - **Miss 返回 `null`，所有失败抛一个 generic catalog error。** Unknown、ambiguous、retired、not-published、invalid release 和 drift 的安全处理不同，不能合并。
+- **只保留 point lookup，让 HTTP 为 list、revision 或 timeline 直接查询 Catalog table。** 这会让 handler 再次选择 head、解释 membership/alias、泄漏 raw lifecycle join，并破坏 release consistency。
+- **让 API adapter 对 Kernel list 排序、事后过滤和分页。** Page boundary 会依赖 call-site 行为，Organization filter 也可能跳过或重复 canonical resource。Kernel-native page 必须先应用 authorized ID selection，再按固定 total order 分页。
+- **把 registration、placement、usage 或 audit authorization 放入 Catalog Kernel。** 这些 fact 属于其他 aggregate。Typed application composer 可以提供 authorized selection 与 timeline event，而不让 Kernel 感知 Organization。
 - **用 current row + max revision/timestamp 做 historical replay 或 switch-back。** 这会静默重解释历史，也无法恢复精确 previous head set。
 - **让 cache、YAML-on-miss 或普通进程修复 projection。** 每种方式都会形成第二权威或隐藏写入路径。
 
@@ -685,12 +967,14 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 | --- | --- |
 | 模块边界 | Inside/outside 清单与依赖图 |
 | Compile/validate、install、verify、current/pinned load | 六操作 `CatalogKernel` interface |
-| Selector/alias、单 Definition、按 subject 列表、release identity | Immutable snapshot interface 与 nominal type |
-| Not-published、retired、unknown、ambiguous、drift、invalid release | Tagged lookup result 与 `CatalogKernelError` |
+| Opaque Subject/Definition read、global/scoped list、membership/alias、exact revision、timeline fact | 完整 immutable snapshot read facet 与已接受 API resource mapping |
+| Deterministic filtering、ordering、cursor、paging 与 cross-aggregate ID selection | 过滤、排序与分页责任 section |
+| Not-published、retired、unknown、ambiguous、revision-unavailable、scope-hidden、drift、invalid release | Tagged result boundary 与 `CatalogKernelError` |
+| Catalog publication/revision fact 与 authorized actor/audit history | Definition timeline composition boundary |
 | Bootstrap、successor、lifecycle、alias、revision、pointer、replay、concurrency、failure、rollback | Transaction ownership table |
 | Migration/synchronizer/read/proposal/API/verifier role | Database ownership table 与 negative test |
 | Cache key、startup digest、DB miss、invalidation、replay isolation、no repair | Cache/runtime contract |
-| Fake source、deterministic compiler、failure injection、concurrency、verifier、resolver、permission、PostgreSQL | Test seam 与 acceptance matrix |
+| Fake source、opaque-ID/global read、alias、revision、paging、timeline、failure injection、concurrency、verifier、permission、PostgreSQL | Test seam 与 acceptance matrix |
 | 向 API、migration、verification 决策的最小交付 | 三个有边界的 handoff section |
 
-Catalog Kernel 的 interface 与 transaction-boundary 已无未决问题。Physical schema name、route/DTO behavior、migration/archive phase、traffic ledger implementation、readiness policy 和 deletion gate 仍有意留给各自已命名的后续决策。
+原 handed-forward read facet 的联合验收缺口已闭合：每个已接受 canonical Catalog read resource 都有 typed current/pinned path，不需要 handler-side Catalog join，也不允许 caller 选择 revision。Catalog Kernel 的 interface 与 transaction-boundary 已无未决问题。Physical schema name、route/DTO behavior、migration/archive phase、traffic ledger implementation、readiness policy 和 deletion gate 仍有意留给各自已命名的后续决策。
