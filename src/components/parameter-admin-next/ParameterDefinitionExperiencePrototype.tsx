@@ -2,15 +2,13 @@
  * PROTOTYPE ONLY — throwaway evidence for the Wayfinder decision
  * "Prototype the single-page parameter-definition experience".
  *
- * Three structurally different variants of `/parameter-admin/specs`, switchable
- * with `?variant=A|B|C`. Static in-memory fixtures deliberately avoid production
+ * Final A+B+C composition on `/parameter-admin/specs`, enabled only with
+ * `?variant=Final`. Static in-memory fixtures deliberately avoid production
  * mutations and expose target concepts rather than current storage projections.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   BookOpen,
   Box,
   ChevronDown,
@@ -32,11 +30,13 @@ import {
 } from "lucide-react";
 import "./ParameterDefinitionExperiencePrototype.css";
 
-type VariantKey = "A" | "B" | "C";
+type VariantKey = "Final" | "A" | "B" | "C";
 type ScenarioKey = "ready" | "unregistered" | "empty" | "loading" | "error";
 type SubjectKind = "Driver" | "NodeType";
 type DetailTab = "overview" | "history";
 type MobilePane = "subjects" | "definitions" | "detail" | "matching";
+type FinalWorkspace = "catalog" | "queue";
+type SubjectFilter = "all" | SubjectKind;
 
 type Subject = {
   id: string;
@@ -74,11 +74,11 @@ type MatchTask = {
   confidence: "需确认" | "未知";
 };
 
-const VARIANTS: Array<{ key: VariantKey; name: string; note: string }> = [
-  { key: "A", name: "三栏目录工作台", note: "对象、定义与详情同屏" },
-  { key: "B", name: "对象档案页", note: "先理解登记对象，再查看定义" },
-  { key: "C", name: "任务优先工作台", note: "待匹配工作与定义共用工作面" },
-];
+const FINAL_VARIANT = {
+  key: "Final" as const,
+  name: "最终组合",
+  note: "目录骨架 + 登记与位置 + 审阅队列",
+};
 
 const SCENARIOS: Array<{ key: ScenarioKey; label: string }> = [
   { key: "ready", label: "典型数据" },
@@ -252,11 +252,8 @@ function normalizeSearch(search: string) {
   return search.startsWith("?") ? search.slice(1) : search;
 }
 
-function readVariant(search: string): VariantKey {
-  const value = new URLSearchParams(normalizeSearch(search))
-    .get("variant")
-    ?.toUpperCase();
-  return value === "B" || value === "C" ? value : "A";
+function readVariant(): VariantKey {
+  return "Final";
 }
 
 function readScenario(search: string): ScenarioKey {
@@ -385,9 +382,14 @@ function ScenarioState({
   if (scenario === "loading") {
     return (
       <div className="pd-proto-state is-loading" aria-label="正在加载当前定义">
-        <span />
-        <span />
-        <span />
+        <RefreshCw size={24} aria-hidden="true" />
+        <strong>正在加载当前定义</strong>
+        <p>对象导航和审阅队列保持可用，定义列表加载完成后原位呈现。</p>
+        <div className="pd-proto-loading-bars" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
     );
   }
@@ -513,6 +515,31 @@ function DetailContent({
               <dd>{definition.references} 个绑定</dd>
             </div>
           </dl>
+          <section className="pd-proto-detail__section">
+            <h4>登记与位置</h4>
+            <dl className="pd-proto-registration-placement">
+              <div>
+                <dt>组织登记</dt>
+                <dd>
+                  <StatusPill tone={subject.registered ? "good" : "warn"}>
+                    {subject.registered ? "已登记" : "待登记"}
+                  </StatusPill>
+                </dd>
+              </div>
+              <div>
+                <dt>登记方式</dt>
+                <dd>{subject.registered ? "显式选择平台对象" : "尚未建立"}</dd>
+              </div>
+              <div>
+                <dt>权威位置</dt>
+                <dd>{subject.placement.join(" / ")}</dd>
+              </div>
+              <div>
+                <dt>继承范围</dt>
+                <dd>{subject.definitionCount} 个当前定义</dd>
+              </div>
+            </dl>
+          </section>
           <section className="pd-proto-detail__section">
             <h4>约束</h4>
             <ul>
@@ -652,6 +679,473 @@ function MatchTaskCard({
         </div>
       )}
     </article>
+  );
+}
+
+function FinalSearchField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="pd-proto-search">
+      <Search size={16} aria-hidden="true" />
+      <input
+        aria-label="搜索对象、属性键或观测证据"
+        placeholder="搜索对象、属性键或观测证据"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function FinalSubjectSummary({
+  subject,
+  onAction,
+}: {
+  subject: Subject;
+  onAction: (message: string) => void;
+}) {
+  return (
+    <section
+      className="pd-proto-final-subject-summary"
+      aria-label="对象登记与位置摘要"
+    >
+      <div className="pd-proto-final-subject-summary__identity">
+        <span
+          className="pd-proto-final-subject-summary__icon"
+          aria-hidden="true"
+        >
+          {subject.kind === "Driver" ? (
+            <Network size={20} />
+          ) : (
+            <Box size={20} />
+          )}
+        </span>
+        <div>
+          <span className="pd-proto-eyebrow">
+            正式所有者 · {kindLabel(subject.kind)}
+          </span>
+          <strong>{subject.name}</strong>
+          <code>{subject.identity}</code>
+        </div>
+      </div>
+      <dl>
+        <div>
+          <dt>组织登记</dt>
+          <dd>
+            <StatusPill tone={subject.registered ? "good" : "warn"}>
+              {subject.registered ? "已登记" : "待登记"}
+            </StatusPill>
+          </dd>
+        </div>
+        <div>
+          <dt>登记方式</dt>
+          <dd>{subject.registered ? "显式选择平台对象" : "尚未建立"}</dd>
+        </div>
+        <div>
+          <dt>权威位置</dt>
+          <dd>{subject.placement.join(" / ")}</dd>
+        </div>
+        <div>
+          <dt>定义继承</dt>
+          <dd>{subject.definitionCount} 个当前定义</dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        className="button subtle"
+        onClick={() =>
+          onAction(
+            subject.registered
+              ? "已打开登记与位置影响预览；原型不执行写入。"
+              : "已打开组织登记预览；原型不执行写入。",
+          )
+        }
+      >
+        {subject.registered ? "查看登记与位置" : "预览登记"}
+      </button>
+    </section>
+  );
+}
+
+function FinalDefinitionRow({
+  definition,
+  subject,
+  selected,
+  onSelect,
+}: {
+  definition: Definition;
+  subject: Subject;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`pd-proto-final-definition-row${selected ? " is-selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+    >
+      <span className="pd-proto-final-definition-row__definition">
+        <strong>{definition.propertyKey}</strong>
+        <small>
+          {definition.displayName} · {definition.valueType}
+        </small>
+      </span>
+      <span className="pd-proto-final-definition-row__governance">
+        <small>
+          <CircleCheck size={13} aria-hidden="true" />
+          组织登记：{subject.registered ? "已登记" : "待登记"}
+        </small>
+        <small>
+          <FolderTree size={13} aria-hidden="true" />
+          权威位置：{subject.placement.join(" / ")}
+        </small>
+      </span>
+      <span className="pd-proto-final-definition-row__revision">
+        <StatusPill tone="good">
+          {definition.lifecycle} · {definition.revision}
+        </StatusPill>
+        <ChevronRight size={16} aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
+type FinalVariantProps = VariantProps & {
+  query: string;
+  subjectFilter: SubjectFilter;
+  workspace: FinalWorkspace;
+  onQuery: (value: string) => void;
+  onSubjectFilter: (value: SubjectFilter) => void;
+  onWorkspace: (value: FinalWorkspace) => void;
+};
+
+function FinalCombined({
+  scenario,
+  subject,
+  subjects,
+  definitions,
+  selectedDefinition,
+  detailTab,
+  mobilePane,
+  query,
+  subjectFilter,
+  workspace,
+  onSelectSubject,
+  onSelectDefinition,
+  onDetailTab,
+  onMobilePane,
+  onQuery,
+  onSubjectFilter,
+  onWorkspace,
+  onAction,
+}: FinalVariantProps) {
+  const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
+  const subjectMatchesQuery = (item: Subject) => {
+    if (!normalizedQuery) return true;
+    const ownText = [item.name, item.identity, item.kind, ...item.placement]
+      .join(" ")
+      .toLocaleLowerCase("zh-CN");
+    const definitionText = DEFINITIONS.filter(
+      (definition) => definition.subjectId === item.id,
+    )
+      .flatMap((definition) => [
+        definition.propertyKey,
+        definition.displayName,
+        definition.description,
+      ])
+      .join(" ")
+      .toLocaleLowerCase("zh-CN");
+    return (
+      ownText.includes(normalizedQuery) ||
+      definitionText.includes(normalizedQuery)
+    );
+  };
+  const visibleSubjects = subjects.filter(
+    (item) =>
+      (subjectFilter === "all" || item.kind === subjectFilter) &&
+      subjectMatchesQuery(item),
+  );
+  const visibleDefinitions = definitions.filter((definition) => {
+    if (!normalizedQuery) return true;
+    return [
+      definition.propertyKey,
+      definition.displayName,
+      definition.description,
+      definition.valueType,
+    ]
+      .join(" ")
+      .toLocaleLowerCase("zh-CN")
+      .includes(normalizedQuery);
+  });
+  const visibleTasks = MATCH_TASKS.filter((task) => {
+    if (!normalizedQuery) return true;
+    return [task.observedKey, task.sourcePath, task.evidence, task.confidence]
+      .join(" ")
+      .toLocaleLowerCase("zh-CN")
+      .includes(normalizedQuery);
+  });
+  const showDefinitions =
+    scenario === "ready" && visibleDefinitions.length > 0 && subject.registered;
+
+  const selectFilter = (nextFilter: SubjectFilter) => {
+    onSubjectFilter(nextFilter);
+    if (nextFilter === "all" || subject.kind === nextFilter) return;
+    const nextSubject = subjects.find((item) => item.kind === nextFilter);
+    if (nextSubject) onSelectSubject(nextSubject.id);
+  };
+
+  return (
+    <div className="pd-proto-final">
+      <header className="pd-proto-final-intro">
+        <div>
+          <span className="pd-proto-eyebrow">
+            最终组合原型 · 单一参数定义页面
+          </span>
+          <strong>平台定义、组织使用上下文与观测审阅共用一个工作面</strong>
+          <p>目录负责稳定浏览；登记与位置贴近定义；待处理证据进入审阅队列。</p>
+        </div>
+        <button
+          type="button"
+          className="button primary"
+          onClick={() => onAction("将创建平台目录变更提案；原型不执行写入。")}
+        >
+          提出目录变更
+        </button>
+      </header>
+
+      <nav className="pd-proto-final-area-tabs" aria-label="参数定义页面区域">
+        <button
+          type="button"
+          aria-current={workspace === "catalog" ? "page" : undefined}
+          onClick={() => onWorkspace("catalog")}
+        >
+          <FileText size={17} aria-hidden="true" />
+          <span>
+            <strong>当前定义</strong>
+            <small>按 Driver / NodeType 与模块浏览</small>
+          </span>
+          <StatusPill>{DEFINITIONS.length}</StatusPill>
+        </button>
+        <button
+          type="button"
+          aria-current={workspace === "queue" ? "page" : undefined}
+          onClick={() => {
+            onWorkspace("queue");
+            onMobilePane("matching");
+          }}
+        >
+          <ListChecks size={17} aria-hidden="true" />
+          <span>
+            <strong>审阅队列</strong>
+            <small>匹配与观测证据</small>
+          </span>
+          <StatusPill tone="warn">{MATCH_TASKS.length}</StatusPill>
+        </button>
+        <FinalSearchField value={query} onChange={onQuery} />
+      </nav>
+
+      {workspace === "queue" ? (
+        <section className="pd-proto-final-queue" aria-label="审阅队列">
+          <header>
+            <div>
+              <span className="pd-proto-eyebrow">同页辅助区域</span>
+              <h3>审阅队列</h3>
+              <p>未知或歧义观测只保留证据；确认前不创建定义或识别绑定。</p>
+            </div>
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => onWorkspace("catalog")}
+            >
+              返回当前定义
+            </button>
+          </header>
+          {visibleTasks.length > 0 ? (
+            <div className="pd-proto-final-queue__grid">
+              {visibleTasks.map((task) => (
+                <MatchTaskCard
+                  key={task.id}
+                  task={task}
+                  definitions={DEFINITIONS}
+                  onPick={onAction}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="pd-proto-state">
+              <Search size={24} aria-hidden="true" />
+              <strong>没有匹配的观测证据</strong>
+              <p>清除搜索条件后查看全部待处理项目。</p>
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          <FinalSubjectSummary subject={subject} onAction={onAction} />
+          <div
+            className="pd-proto-mobile-panes pd-proto-final-mobile-panes"
+            role="tablist"
+            aria-label="移动端目录区域"
+          >
+            {(["subjects", "definitions", "detail"] as MobilePane[]).map(
+              (pane) => (
+                <button
+                  key={pane}
+                  type="button"
+                  role="tab"
+                  aria-selected={mobilePane === pane}
+                  onClick={() => onMobilePane(pane)}
+                >
+                  {pane === "subjects"
+                    ? "对象"
+                    : pane === "definitions"
+                      ? "定义"
+                      : "详情"}
+                </button>
+              ),
+            )}
+          </div>
+          <div className="pd-proto-three-pane pd-proto-final-three-pane">
+            <aside
+              className={`pd-proto-pane pd-proto-pane--subjects${mobilePane === "subjects" ? " is-mobile-active" : ""}`}
+            >
+              <div className="pd-proto-pane__head">
+                <div>
+                  <FolderTree size={17} aria-hidden="true" />
+                  <span>
+                    <strong>对象与模块</strong>
+                    <small>正式所有者与权威位置</small>
+                  </span>
+                </div>
+                <span>{visibleSubjects.length}</span>
+              </div>
+              <div className="pd-proto-final-filters" aria-label="对象类型筛选">
+                {(
+                  [
+                    ["all", "全部"],
+                    ["Driver", "Driver"],
+                    ["NodeType", "NodeType"],
+                  ] as Array<[SubjectFilter, string]>
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={subjectFilter === value}
+                    onClick={() => selectFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {visibleSubjects.length > 0 ? (
+                ["充电与供电", "热管理", "尚未登记"].map((placement) => {
+                  const placementSubjects = visibleSubjects.filter(
+                    (item) => item.placement[0] === placement,
+                  );
+                  if (placementSubjects.length === 0) return null;
+                  return (
+                    <div className="pd-proto-tree-group" key={placement}>
+                      <div className="pd-proto-tree-group__label">
+                        <ChevronDown size={15} aria-hidden="true" />
+                        {placement} <span>{placementSubjects.length}</span>
+                      </div>
+                      {placementSubjects.map((item) => (
+                        <SubjectButton
+                          key={item.id}
+                          subject={item}
+                          selected={item.id === subject.id}
+                          compact
+                          onSelect={() => onSelectSubject(item.id)}
+                        />
+                      ))}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="pd-proto-state is-compact">
+                  <Search size={20} aria-hidden="true" />
+                  <strong>没有匹配的对象</strong>
+                  <p>清除搜索或类型筛选后重试。</p>
+                </div>
+              )}
+            </aside>
+            <section
+              className={`pd-proto-pane pd-proto-pane--definitions${mobilePane === "definitions" ? " is-mobile-active" : ""}`}
+            >
+              <div className="pd-proto-pane__head">
+                <div>
+                  <FileText size={17} aria-hidden="true" />
+                  <span>
+                    <strong>当前定义</strong>
+                    <small>{subject.name}</small>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="pd-proto-queue-link"
+                  onClick={() => onWorkspace("queue")}
+                >
+                  <ListChecks size={15} aria-hidden="true" />
+                  审阅队列 {MATCH_TASKS.length}
+                </button>
+              </div>
+              {showDefinitions ? (
+                visibleDefinitions.map((definition) => (
+                  <FinalDefinitionRow
+                    key={definition.id}
+                    definition={definition}
+                    subject={subject}
+                    selected={selectedDefinition?.id === definition.id}
+                    onSelect={() => {
+                      onSelectDefinition(definition.id);
+                      onMobilePane("detail");
+                    }}
+                  />
+                ))
+              ) : scenario === "ready" && definitions.length > 0 ? (
+                <div className="pd-proto-state">
+                  <Search size={24} aria-hidden="true" />
+                  <strong>没有匹配的当前定义</strong>
+                  <p>调整搜索条件，或从左侧选择其他正式对象。</p>
+                </div>
+              ) : (
+                <ScenarioState
+                  scenario={scenario}
+                  subject={subject}
+                  onRetry={() =>
+                    onAction(
+                      scenario === "error"
+                        ? "正在模拟重新加载…"
+                        : "已打开审阅队列。",
+                    )
+                  }
+                  onRegister={() =>
+                    onAction("登记预览：只建立组织登记与一个权威位置。")
+                  }
+                />
+              )}
+            </section>
+            <aside
+              className={`pd-proto-pane pd-proto-pane--detail${mobilePane === "detail" ? " is-mobile-active" : ""}`}
+            >
+              <DetailContent
+                definition={selectedDefinition}
+                subject={subject}
+                tab={detailTab}
+                onTabChange={onDetailTab}
+                onAction={onAction}
+              />
+            </aside>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1233,6 +1727,9 @@ function PrototypeSwitcher({
   selectedDefinitionId,
   detailTab,
   mobilePane,
+  workspace,
+  query,
+  subjectFilter,
   onNavigate,
 }: {
   search: string;
@@ -1242,40 +1739,20 @@ function PrototypeSwitcher({
   selectedDefinitionId: string | null;
   detailTab: DetailTab;
   mobilePane: MobilePane;
+  workspace: FinalWorkspace;
+  query: string;
+  subjectFilter: SubjectFilter;
   onNavigate: (path: string) => void;
 }) {
   const [stateOpen, setStateOpen] = useState(false);
-  const currentIndex = VARIANTS.findIndex((item) => item.key === variant);
-  const navigateWith = (patch: {
-    variant?: VariantKey;
-    scenario?: ScenarioKey;
-  }) => {
+  const navigateWith = (patch: { scenario?: ScenarioKey }) => {
     const params = new URLSearchParams(normalizeSearch(search));
-    if (patch.variant) params.set("variant", patch.variant);
+    params.set("variant", "Final");
     if (patch.scenario) params.set("scenario", patch.scenario);
     onNavigate(`/parameter-admin/specs?${params.toString()}`);
   };
-  const cycle = (direction: -1 | 1) => {
-    const nextIndex =
-      (currentIndex + direction + VARIANTS.length) % VARIANTS.length;
-    navigateWith({ variant: VARIANTS[nextIndex].key });
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']"))
-        return;
-      if (event.key === "ArrowLeft") cycle(-1);
-      if (event.key === "ArrowRight") cycle(1);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  });
-
-  const current = VARIANTS[currentIndex];
   return (
-    <div className="pd-proto-switcher" aria-label="原型方案切换器">
+    <div className="pd-proto-switcher" aria-label="最终原型场景切换器">
       {stateOpen ? (
         <pre className="pd-proto-switcher__state">
           {JSON.stringify(
@@ -1286,24 +1763,21 @@ function PrototypeSwitcher({
               selectedDefinitionId,
               detailTab,
               mobilePane,
+              workspace,
+              query,
+              subjectFilter,
             },
             null,
             2,
           )}
         </pre>
       ) : null}
-      <button type="button" aria-label="上一个方案" onClick={() => cycle(-1)}>
-        <ArrowLeft size={16} aria-hidden="true" />
-      </button>
       <div className="pd-proto-switcher__label">
         <strong>
-          {current.key} · {current.name}
+          {FINAL_VARIANT.key} · {FINAL_VARIANT.name}
         </strong>
-        <small>{current.note}</small>
+        <small>{FINAL_VARIANT.note}</small>
       </div>
-      <button type="button" aria-label="下一个方案" onClick={() => cycle(1)}>
-        <ArrowRight size={16} aria-hidden="true" />
-      </button>
       <label>
         <span>场景</span>
         <select
@@ -1339,7 +1813,7 @@ export function ParameterDefinitionExperiencePrototype({
   search: string;
   onNavigate: (path: string) => void;
 }) {
-  const variant = readVariant(search);
+  const variant = readVariant();
   const scenario = readScenario(search);
   const [selectedSubjectId, setSelectedSubjectId] = useState(
     scenario === "unregistered" ? "driver:fan-controller" : SUBJECTS[0].id,
@@ -1350,6 +1824,17 @@ export function ParameterDefinitionExperiencePrototype({
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [mobilePane, setMobilePane] = useState<MobilePane>("definitions");
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<FinalWorkspace>("catalog");
+  const [query, setQuery] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState<SubjectFilter>("all");
+
+  useEffect(() => {
+    setWorkspace("catalog");
+    setQuery("");
+    setSubjectFilter("all");
+    setMobilePane("definitions");
+    setActionNote(null);
+  }, [scenario]);
 
   useEffect(() => {
     if (scenario === "unregistered") {
@@ -1371,9 +1856,13 @@ export function ParameterDefinitionExperiencePrototype({
     [subject.id],
   );
   const selectedDefinition =
-    subjectDefinitions.find(
-      (definition) => definition.id === selectedDefinitionId,
-    ) ?? (scenario === "ready" ? (subjectDefinitions[0] ?? null) : null);
+    scenario === "ready"
+      ? (subjectDefinitions.find(
+          (definition) => definition.id === selectedDefinitionId,
+        ) ??
+        subjectDefinitions[0] ??
+        null)
+      : null;
 
   const handleSubjectSelect = (id: string) => {
     const nextDefinitions = DEFINITIONS.filter(
@@ -1406,6 +1895,17 @@ export function ParameterDefinitionExperiencePrototype({
   return (
     <div className="param-admin-main pd-proto-root" data-variant={variant}>
       <PrototypeNotice actionNote={actionNote} />
+      {variant === "Final" ? (
+        <FinalCombined
+          {...variantProps}
+          query={query}
+          subjectFilter={subjectFilter}
+          workspace={workspace}
+          onQuery={setQuery}
+          onSubjectFilter={setSubjectFilter}
+          onWorkspace={setWorkspace}
+        />
+      ) : null}
       {variant === "A" ? <VariantA {...variantProps} /> : null}
       {variant === "B" ? <VariantB {...variantProps} /> : null}
       {variant === "C" ? <VariantC {...variantProps} /> : null}
@@ -1417,6 +1917,9 @@ export function ParameterDefinitionExperiencePrototype({
         selectedDefinitionId={selectedDefinition?.id ?? null}
         detailTab={detailTab}
         mobilePane={mobilePane}
+        workspace={workspace}
+        query={query}
+        subjectFilter={subjectFilter}
         onNavigate={onNavigate}
       />
     </div>
