@@ -21763,15 +21763,15 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table--surface-mvp {
-  min-width: 680px;
-  width: max(100%, 680px);
+  min-width: 840px;
+  width: max(100%, 840px);
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head,
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
-  /* select + 参数名 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
-  grid-template-columns: 36px minmax(120px, 1fr) minmax(120px, 1fr) minmax(160px, 1.25fr) 68px 76px;
-  min-width: 680px;
+  /* select + 参数名 + 展示描述 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
+  grid-template-columns: 36px minmax(120px, .9fr) minmax(160px, 1.2fr) minmax(120px, .9fr) minmax(160px, 1.15fr) 68px 76px;
+  min-width: 840px;
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__driver-col {
@@ -21901,6 +21901,34 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--dts-workbench-ink);
   font-size: var(--text-sm);
   font-weight: 700;
+}
+
+.dts-parameter-workbench-table__description {
+  color: var(--dts-workbench-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.dts-binding-draft-card__documentation {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  color: var(--dts-workbench-muted);
+  background: var(--dts-workbench-surface-soft);
+  border: 1px solid var(--dts-workbench-border);
+  border-radius: var(--radius-md);
+}
+
+.dts-binding-draft-card__documentation strong {
+  color: var(--dts-workbench-ink);
+  font-size: var(--text-xs);
+}
+
+.dts-binding-draft-card__documentation p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .dts-parameter-workbench-table__select {
@@ -23318,16 +23346,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
     border-bottom: 0;
   }
 
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(1),
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(3),
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(4),
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(5),
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(6),
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(7) {
-    grid-column: 1 / -1;
-  }
-
-  .dts-parameter-workbench-table__row > [role="cell"]:nth-child(2) {
+  .dts-parameter-workbench-table__row > [role="cell"] {
     grid-column: 1 / -1;
   }
 

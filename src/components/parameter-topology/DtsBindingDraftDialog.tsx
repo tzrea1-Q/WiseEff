@@ -324,6 +324,10 @@ export function DtsBindingDraftDialog({
                   <p className="dts-binding-draft-card__context">
                     <code>{dtsContext(row)}</code>
                   </p>
+                  <div className="dts-binding-draft-card__documentation">
+                    <strong>参数说明</strong>
+                    <p>{row.documentation?.trim() || "暂无参数说明"}</p>
+                  </div>
 
                   {isComplexCard ? (
                     <>

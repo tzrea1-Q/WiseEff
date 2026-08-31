@@ -20,6 +20,10 @@ export type DtsParameterWorkbenchRow = {
   parameterSpecVersionId: string;
   logicalNodeId: string | null;
   propertyKey: string;
+  /** Presentation copy from the parameter spec version pinned by the binding revision. */
+  displayName?: string | null;
+  description?: string | null;
+  documentation?: string | null;
   driverModule: string | null;
   compatible: string | null;
   instanceName: string | null;

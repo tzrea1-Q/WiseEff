@@ -409,6 +409,9 @@ describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
               schema_state: "valid",
               policy_state: "pass",
               module_id: "mod-charging",
+              display_name: "GPIO 中断",
+              description: "SC8562 中断 GPIO 展示描述。",
+              documentation: "电荷泵中断引脚的完整参数说明。",
             },
           ],
           rowCount: 1,
@@ -422,8 +425,15 @@ describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
     });
 
     expect(calls[0]?.text).toMatch(/\bmodule_id\b/);
+    expect(calls[0]?.text).toMatch(/parameter_spec_versions/);
     expect(items).toEqual([
-      expect.objectContaining({ id: "binding-1", moduleId: "mod-charging" }),
+      expect.objectContaining({
+        id: "binding-1",
+        moduleId: "mod-charging",
+        displayName: "GPIO 中断",
+        description: "SC8562 中断 GPIO 展示描述。",
+        documentation: "电荷泵中断引脚的完整参数说明。",
+      }),
     ]);
   });
 });

@@ -115,14 +115,23 @@ describe("parameter topology service org scope", () => {
         rawValue: "<0>",
         schemaState: "valid",
         policyState: "pass",
-        moduleId: "mod-charging"
+        moduleId: "mod-charging",
+        displayName: "GPIO 中断",
+        description: "SC8562 中断 GPIO 展示描述。",
+        documentation: "电荷泵中断引脚的完整参数说明。"
       }
     ]);
 
     const result = await listProjectBindings(makeDb(), makeAuth(), { projectId: "project-1" });
 
     expect(result.items).toEqual([
-      expect.objectContaining({ id: "binding-1", moduleId: "mod-charging" })
+      expect.objectContaining({
+        id: "binding-1",
+        moduleId: "mod-charging",
+        displayName: "GPIO 中断",
+        description: "SC8562 中断 GPIO 展示描述。",
+        documentation: "电荷泵中断引脚的完整参数说明。"
+      })
     ]);
   });
 

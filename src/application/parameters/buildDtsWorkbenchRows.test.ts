@@ -282,6 +282,33 @@ describe("buildDtsWorkbenchRows", () => {
     expect(sourceRow.topologyPath).toBe("/amba/i2c@FDF5E000/sc8562@6E");
   });
 
+  it("projects pinned spec presentation copy into the row and semantic search text", () => {
+    const describedBinding = {
+      ...binding,
+      displayName: "GPIO 中断",
+      description: "SC8562 中断 GPIO 展示描述。",
+      documentation: "电荷泵中断引脚的完整参数说明。"
+    };
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [describedBinding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(row).toMatchObject({
+      displayName: "GPIO 中断",
+      description: "SC8562 中断 GPIO 展示描述。",
+      documentation: "电荷泵中断引脚的完整参数说明。"
+    });
+    expect(row.searchText).toContain("sc8562 中断 gpio 展示描述");
+    expect(row.searchText).toContain("电荷泵中断引脚的完整参数说明");
+  });
+
   it("uses the persisted binding.moduleId with registry lookup for name/importance/sortOrder (phase 2 browse source of truth)", () => {
     const registry: ParameterModuleRegistry = {
       modules: [

@@ -293,6 +293,7 @@ export function DtsParameterWorkbenchTable({
           <span role="columnheader">
             <SortableHeader label="参数名" sortKey="propertyKey" sort={sort} onSort={updateSort} />
           </span>
+          <span role="columnheader">展示描述</span>
           <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
             <span className="dts-parameter-workbench-table__head-cell">
               <span>所属模块</span>
@@ -384,6 +385,14 @@ export function DtsParameterWorkbenchTable({
                     ) : null}
                   </small>
                 ) : null}
+              </span>
+              <span
+                role="cell"
+                data-label="展示描述"
+                className="dts-parameter-workbench-table__description"
+                title={row.description?.trim() || undefined}
+              >
+                {row.description?.trim() || "—"}
               </span>
               <span role="cell" data-label="所属模块">
                 <span className="dts-parameter-workbench-table__module">

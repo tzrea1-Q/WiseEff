@@ -213,6 +213,10 @@ export type ProjectParameterBinding = {
   policyState: BindingPolicyState;
   /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
   moduleId: string;
+  /** Presentation copy from the exact parameter spec version pinned by this revision. */
+  displayName?: string | null;
+  description?: string | null;
+  documentation?: string | null;
 };
 
 /**

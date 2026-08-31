@@ -1364,6 +1364,9 @@ type BindingListRow = {
   schema_state: string | null;
   policy_state: string | null;
   module_id: string;
+  display_name: string | null;
+  description: string | null;
+  documentation: string | null;
 };
 
 export type ProjectBindingListItem = {
@@ -1381,6 +1384,10 @@ export type ProjectBindingListItem = {
   policyState: string | null;
   /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
   moduleId: string;
+  /** Presentation copy from the exact spec version pinned by this binding revision. */
+  displayName: string | null;
+  description: string | null;
+  documentation: string | null;
 };
 
 export async function listProjectBindingRows(
@@ -1430,13 +1437,17 @@ export async function listProjectBindingRows(
       br.raw_value,
       br.schema_state,
       br.policy_state,
-      b.module_id
+      b.module_id,
+      psv.display_name,
+      psv.description,
+      psv.documentation
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join parameter_modules pm on pm.id = b.module_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
     ${revisionJoin}
+    inner join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
     left join lateral (
       select node_locator, name, unit_address
       from dts_logical_node_revisions
@@ -1466,5 +1477,8 @@ export async function listProjectBindingRows(
     schemaState: row.schema_state,
     policyState: row.policy_state,
     moduleId: row.module_id,
+    displayName: row.display_name,
+    description: row.description,
+    documentation: row.documentation,
   }));
 }

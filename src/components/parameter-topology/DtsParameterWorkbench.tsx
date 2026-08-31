@@ -3,8 +3,7 @@ import {
   Download,
   Network,
   Search,
-  Boxes,
-  Cpu
+  Boxes
 } from "lucide-react";
 
 import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
@@ -29,10 +28,6 @@ import {
 } from "@/domain/tree-filter/treeFilter";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
-import {
-  buildDtsReloadHandoffPath,
-  resolveWorkbenchReloadHandoff
-} from "@/domain/dtsReload/handoff";
 
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import {
@@ -107,8 +102,6 @@ export type DtsParameterWorkbenchProps = {
   onExportRows?: (rows: DtsParameterWorkbenchRow[]) => void;
   /** Loads the project's primary DTS source when entering tech view. */
   loadPrimaryDtsSource?: () => Promise<PrimaryDtsSource>;
-  /** Router navigation for the parameter-debugging hand-off. */
-  onNavigate?: (path: string) => void;
 };
 
 function selectedSubtreeBindingIds(
@@ -190,8 +183,7 @@ export function DtsParameterWorkbench({
   toolbarActions,
   expandAllNodesByDefault: _expandAllNodesByDefault = false,
   onExportRows,
-  loadPrimaryDtsSource,
-  onNavigate
+  loadPrimaryDtsSource
 }: DtsParameterWorkbenchProps) {
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
@@ -353,17 +345,6 @@ export function DtsParameterWorkbench({
     const selected = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, activeModuleFilter);
     return scopedRows.filter((row) => selected.has(row.moduleId));
   }, [activeModuleFilter, moduleFilterNodes, scopedRows]);
-
-  const reloadHandoff = useMemo(
-    () =>
-      resolveWorkbenchReloadHandoff({
-        projectId,
-        selectedDraftBindingIds: selectedBindingIds,
-        visibleBindingIds: visibleRows.map((row) => row.bindingId),
-        totalRowCount: currentRows.length
-      }),
-    [currentRows.length, projectId, selectedBindingIds, visibleRows]
-  );
 
   useEffect(() => {
     const scroller = listScrollXRef.current;
@@ -630,19 +611,14 @@ export function DtsParameterWorkbench({
             }}
           />
         </label>
-        <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
-          {resultsMode === "dtsSource" ? (
-            moduleJumpStatus
+        {resultsMode === "dtsSource" ? (
+          <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
+            {moduleJumpStatus
               ?? (dtsFindQuery.trim()
                 ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
-                : null)
-          ) : (
-            <>
-              显示 {visibleRows.length} / {currentRows.length} 个参数
-              {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
-            </>
-          )}
-        </p>
+                : null)}
+          </p>
+        ) : null}
         <div className="dts-parameter-workbench__toolbar-actions">
           <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
             <button
@@ -684,34 +660,6 @@ export function DtsParameterWorkbench({
                 导出当前结果
               </button>
             ) : null}
-            <button
-              type="button"
-              className="button subtle"
-              disabled={!reloadHandoff.ok || !onNavigate}
-              aria-label={
-                !onNavigate
-                  ? "带到参数调试：当前页未提供导航"
-                  : reloadHandoff.ok
-                    ? `带到参数调试（${reloadHandoff.bindingIds.length} 个参数）`
-                    : `带到参数调试：${reloadHandoff.disabledReason}`
-              }
-              title={
-                !onNavigate
-                  ? "带到参数调试：当前页未提供导航"
-                  : reloadHandoff.ok
-                    ? undefined
-                    : reloadHandoff.disabledReason
-              }
-              onClick={() => {
-                if (!reloadHandoff.ok || !projectId || !onNavigate) return;
-                onNavigate(
-                  buildDtsReloadHandoffPath({ projectId, bindingIds: reloadHandoff.bindingIds })
-                );
-              }}
-            >
-              <Cpu size={15} strokeWidth={1.9} aria-hidden="true" />
-              带到参数调试
-            </button>
           </div>
           {toolbarActions}
         </div>
