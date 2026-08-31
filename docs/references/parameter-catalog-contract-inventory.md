@@ -1,4 +1,4 @@
-# Parameter catalog contract and consumer inventory
+# Current parameter-catalog contract and replacement-compatibility inventory
 
 **Status:** research note for Issue #669
 
@@ -9,14 +9,22 @@ out-of-repository client inspection
 
 ## Decision summary
 
-A replacement must preserve the **semantic catalog**, not the current table
-layout. The durable contract is an owner-scoped, subject-scoped and
-property-scoped definition with version-pinned historical semantic
-interpretation; a deterministic effective projection; stable opaque definition
-and binding identifiers; fail-closed recognition; and tenant-scoped, audited
-governance. The current dual-written lifecycle fields, denormalized identity
-columns, legacy unlinked staging, physical identifier formulas, flat-storage
-adapter and several "latest version" lookups are implementation details or known
+A replacement must preserve stable opaque definition/binding references,
+version-pinned historical semantic interpretation, fail-closed recognition,
+trusted audit and deterministic migration of current data. It must **not**
+preserve today's organization-over-platform effective projection as the target
+model. The approved destination has one Platform schema catalog as structural
+truth, one current definition revision per formal Driver/NodeType subject plus
+property key, organization registration/placement without schema authorship,
+and one current Parameter definitions page. Organization overlays and definition
+overrides are compatibility inputs to classify, migrate/archive and then reject
+for new operational writes; raw/governance projections are transitional or
+internal migration/audit surfaces whose exact removal contract remains for #677.
+([Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
+
+The current dual-written lifecycle fields, denormalized identity columns,
+legacy unlinked staging, physical identifier formulas, flat-storage adapter and
+several "latest version" lookups are implementation details or known
 divergences, not behavior to clone. The `module_id` uniqueness suffix is a
 current compatibility duty whose removal is only a candidate cleanup pending
 populated-data and retained-ID proof.
@@ -36,9 +44,20 @@ production data. The resulting contract map is current-tree evidence, not proof
 that a deployed database has completed every repair or that an external client
 does not depend on an undocumented response detail.
 
-## 1. Authoritative schema inputs and identity
+### Reading this inventory
 
-### Source hierarchy
+"Current contract" below means behavior and retained data that the replacement
+must handle during migration. It does not automatically mean a destination
+operational feature. The approved target supersedes current behavior where it
+is explicit: Platform-only structural truth replaces organization
+overlays/overrides; one current definitions page replaces peer effective versus
+governance navigation; matching work moves to a review queue; revision/audit
+history lives in definition detail; and raw migration diagnostics stay internal.
+([Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
+
+## 1. Current authoritative inputs and approved target identity
+
+### Current source hierarchy
 
 1. `schemas/dts/catalog.json` is the tracked allow-list and pins each vendor
    schema plus its content hash and upstream DTS/toolchain provenance.
@@ -47,14 +66,17 @@ does not depend on an undocumented response detail.
    the directory as authoritative.
    ([catalog](../../schemas/dts/catalog.json),
    [loader](../../server/modules/parameter-specs/schemaLoader.ts))
-2. Active platform and organization overlays are the only database-owned schema
-   additions. The registry cache composes the pinned root with active overlays
-   and keys the result by catalog hash plus overlay digest. Organization
-   promotion copies a definition into the platform tier; it does not silently
-   re-own the original row.
+2. In the current implementation, active platform and organization overlays are
+   database-owned schema additions. The registry cache composes the pinned root
+   with active overlays and keys the result by catalog hash plus overlay digest.
+   Organization promotion copies a definition into the platform tier; it does
+   not silently re-own the original row. These rows and artifacts are migration
+   inputs only in the approved replacement: new organization schema authorship
+   and organization definition overrides retire.
    ([registry cache](../../server/modules/parameter-specs/schemaRegistryCache.ts),
    [overlay service](../../server/modules/parameter-specs/driverSchemaOverlayService.ts),
-   [overlay repository](../../server/modules/parameter-specs/driverSchemaOverlayRepository.ts))
+   [overlay repository](../../server/modules/parameter-specs/driverSchemaOverlayRepository.ts),
+   [Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
 3. Matching preserves an explicit tier order: Linux base, then a unique vendor
    add/narrow match, then reviewed manual platform/organization gap-fill. A
    same-tier tie stays ambiguous, and a single property hit cannot disambiguate
@@ -71,13 +93,26 @@ does not depend on an undocumented response detail.
 
 ### Durable identity and effective-selection rules
 
-The business identity of a property definition is:
+The current storage business identity of a property definition is:
 
 ```text
 owner scope (platform or organization)
   + canonical AttributionSubject.source_key
   + property_key
 ```
+
+The approved target identity removes organization definition ownership:
+
+```text
+typed formal subject (Driver or NodeType)
+  + property_key
+```
+
+Organization ownership on current rows is a migration-classification input.
+Organizations relate to the target catalog only through subject registration
+and one authoritative placement inherited by the registered subject's
+definitions.
+([Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
 
 `parameter_specs.id` is an opaque stable surrogate for that identity. Identity
 corrections update the row in place because bindings, debug operations,
@@ -87,7 +122,7 @@ every externally retained surrogate.
 ([ADR-0017](../adr/0017-definition-identity-is-correctable.md),
 [identity migration](../../server/migrations/0090_parameter_spec_identity_surrogate.sql))
 
-An ordinary effective result requires all of the following:
+The current ordinary effective projection requires all of the following:
 
 - one active definition and one active current version;
 - a canonical subject whose owner matches the definition owner;
@@ -105,6 +140,13 @@ explicit governance view for repair/history.
 [effective-definition service](../../server/modules/parameter-specs/effectiveDefinitionService.ts),
 [verification](../../server/modules/parameter-specs/definitionVerification.ts))
 
+The completeness, unique-winner and fail-closed properties remain durable. The
+organization-active-over-platform precedence does not: it is a bounded
+compatibility rule for reading and classifying pre-cutover rows. The destination
+must produce one current Platform definition and migrate/archive organization
+twins rather than reproduce override selection in steady state.
+([Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
+
 Structural DTS keys are topology, not configurable parameter definitions; the
 guard must survive even if a replacement changes its internal allow/deny
 representation.
@@ -115,10 +157,10 @@ representation.
 
 | State | Current tables | Durable meaning | Required invariants |
 | --- | --- | --- | --- |
-| Definition | `parameter_specs`, `parameter_spec_versions` | Stable definition identity plus versioned semantic content | owner/subject/property uniqueness; exactly one active version; semantic edits mint a successor while documentation-class fields may update current content in place; historical semantic interpretation remains pinned |
+| Definition | `parameter_specs`, `parameter_spec_versions` | Current owner-scoped rows to map into stable formal-subject/property identity plus versioned semantic content | target uniqueness is typed formal subject + property with one current revision; current organization-owned twins are classified for migration/archive; historical semantic interpretation remains pinned |
 | Driver schema | `driver_schemas`, `driver_schema_versions`, `dts_property_specs` | Subject-bearing schema root and property shape derived from an authoritative schema source | root/version/property ownership and subject alignment; property version belongs to its definition |
-| Canonical subject | `attribution_subjects`, `driver_registrations`, `node_type_definitions` | Canonical schema subject, distinct from observed module navigation | unique owner-scoped source key; subject kind and backing row agree |
-| Declared placement | `driver_registration_placements` | Organization placement of a driver subject under the registry/module taxonomy | one subject placement and one driver group/module placement per organization |
+| Canonical subject | `attribution_subjects`, `driver_registrations`, `node_type_definitions` | Current representation to map into a typed formal Driver or NodeType, distinct from observed module navigation | target subject/property identity is Platform structural truth; current owner scope is migration evidence, not destination definition ownership |
+| Declared placement | `driver_registration_placements` | Organization registration placement of a formal subject under the registry/module taxonomy | one authoritative subject placement per organization registration, inherited by that subject's definitions |
 | Observation | `dts_config_revisions`, `dts_logical_nodes`, `dts_logical_node_revisions`, `dts_node_occurrences`, `dts_property_occurrences`, `dts_occurrence_effects` | What a particular source revision contained | does not create identity or declared placement; unknown/ambiguous evidence is retained |
 | Project binding | `project_parameter_bindings` | Current durable project/logical-node/definition/module association; binding ID is the value-workbench identity | tenant ownership; definition is recognized; module is navigation/placement, but the physical four-part uniqueness remains compatible until populated evidence supports a safe simplification |
 | Project value | `project_parameter_binding_revisions` | Immutable value fact at a configuration revision, interpreted by an exact definition version | pinned version belongs to the binding's definition; typed/canonical/raw value and policy result remain historical |
@@ -149,8 +191,8 @@ governance actions.
 | Owner/seam | Writes | Contract significance |
 | --- | --- | --- |
 | Tracked-schema materializer (`parameter-specs/repository.ts`) | matched specs, versions, driver schemas/versions and DTS property rows | Materializes authoritative pinned schema input; it must converge on semantic identity rather than invent a new row per observation. |
-| Definition governance service | draft creation, documentation update, activate/deprecate/restore, reattribution, property-key correction and version/property cutovers | Primary human-governed mutation API; lifecycle changes and identity corrections are audited and preserve the stable spec ID. |
-| Overlay service/repository/materializer | organization/platform driver schema overlays, their versions/properties and promotion/retirement | Only supported DB-owned schema-authoring path; activation is separate from draft materialization. |
+| Definition governance service | current draft creation, documentation update, activate/deprecate/restore, reattribution, property-key correction and version/property cutovers | Current human-governed mutation API and migration input. Stable IDs/history/audit remain; organization definition authoring retires, while the governed Platform publication lifecycle is a separate target-design decision. |
+| Overlay service/repository/materializer | current organization/platform driver schema overlays, their versions/properties and promotion/retirement | Current compatibility writer and populated-data migration source. The destination freezes/rejects new organization overlay/override writes and migrates or archives existing rows; it does not retain this as an operational authoring path. |
 | Effective-definition binding seam | recognized project bindings | `createRecognizedBinding` is the canonical binding-creation seam; callers must first resolve a single effective definition. |
 | Topology ingest/binding/edit/migration services | observations, review evidence, bindings, binding revisions, migration tips and structured edits | Observations remain evidence; incomplete identity/placement cannot become a recognized binding; edit/migration paths must retain exact tip/version/source locks. |
 | Review apply and cutover/reconciliation services | reviewed definitions, successor versions, repaired identity/placement and current tips | Repairs are explicit, resumable and history-preserving; they do not delete or rewrite historical binding revisions. |
@@ -187,7 +229,7 @@ recognition rule. It is not a compatibility obligation.
 
 | Consumer | What it consumes | Compatibility obligation and owner |
 | --- | --- | --- |
-| Catalog/governance HTTP | effective projection by default; explicit raw/history governance projection; schema overlay and lifecycle/cutover operations | Preserve effective-default semantics, explicit governance scope, tenant isolation and route/schema compatibility. Owner: parameter-specs + contracts. |
+| Catalog/governance HTTP | current effective projection by default; explicit raw/history governance projection; schema overlay and lifecycle/cutover operations | Inventory and bound transition behavior, but do not preserve it as peer destination UI/API. #677 must decide removal/internal-diagnostic compatibility, rejection of overlay writes and any bounded adapter. Owner: parameter-specs + contracts. |
 | Parameter topology HTTP | schema root, modules, occurrences, effective specs, review tasks, bindings and history | Preserve separation of declared placement, observation and definition identity. Owner: parameter-topology. |
 | Project parameter workbench | binding IDs, binding tips, pinned versions, drafts/submission rounds/change requests, compare/history/import/init/dashboard | Preserve binding IDs and exact-version interpretation; migrate tips and all historical FKs atomically. Owner: parameters + parameter-drafts. |
 | File sync/writeback | logical locator/property occurrence, binding and source occurrence | Preserve deterministic source occurrence and raw-format provenance; a definition alone is insufficient for writeback. Owner: files + parameter-topology. |
@@ -298,22 +340,33 @@ and write authorization outside the reload engine.
 
 ## 5. HTTP, OpenAPI and frontend surfaces
 
-The contract exposes an effective catalog by default and requires explicit
-governance scope for raw lifecycle/history access. The API also exposes
+The current contract exposes an effective catalog by default and requires
+explicit governance scope for raw lifecycle/history access. It also exposes
 definition lifecycle, review, identity/version/property-key cutover, schema
 overlay/promotion, module/driver registry, topology, binding/history and project
 value workflows. Route-manifest and schema-registry checks are the mechanical
-source for registered HTTP/OpenAPI compatibility; narrative API docs explain the
-projection semantics.
+source for today's registered HTTP/OpenAPI compatibility; narrative API docs
+explain the current projection semantics.
 ([API contract](../design-docs/api-contract.md),
 [route manifest](../../server/modules/contracts/routeManifest.ts),
 [schema registry](../../server/modules/contracts/schemaRegistry.ts))
 
-The frontend depends on the `ParameterTopologyRepository` port rather than SQL.
-Its HTTP and mock adapters must remain semantically aligned. The parameter-admin
-URL defaults to the effective view and preserves an explicit governance query;
-the governance panel consumes both the effective catalog and repair/history
-detail. Domain DTOs expose scope/override/declared-placement/observation state.
+That route inventory is not the destination product contract. The approved UI
+has one current Parameter definitions page, matching work in a review queue and
+revision/audit history in definition detail. Raw/governance queries are internal
+migration/audit compatibility, not a peer product surface; organization overlay
+mutations retire. #677 owns the exact `/api/v2` transition, removal response,
+bounded compatibility window and internal diagnostic contract.
+([Wayfinder map #668](https://github.com/tzrea1-Q/WiseEff/issues/668))
+
+The current frontend depends on the `ParameterTopologyRepository` port rather
+than SQL. Its HTTP and mock adapters must remain semantically aligned during the
+transition. The current parameter-admin URL defaults to the effective view and
+preserves an explicit governance query; the current governance panel consumes
+both the effective catalog and repair/history detail. Domain DTOs expose
+scope/override/declared-placement/observation state. These are consumer inputs
+for #677 and the one-page replacement, not proof that the port or peer views must
+survive unchanged.
 ([port](../../src/application/ports/ParameterTopologyRepository.ts),
 [HTTP adapter](../../src/infrastructure/http/parameterTopologyClient.ts),
 [mock adapter](../../src/infrastructure/mock/mockParameterTopologyRepository.ts),
@@ -414,8 +467,8 @@ Any replacement release therefore needs, at minimum:
 
 1. a populated-data classifier and deterministic reconciliation plan;
 2. stable-ID/FK mapping for every retained consumer above;
-3. dual-write or bounded freeze/cutover with no interval where incomplete rows
-   appear effective;
+3. a bounded maintenance-window cutover with a verified recovery point, no
+   long-lived dual writes and no interval where incomplete rows appear current;
 4. catalog-only and full independent checks against the candidate data;
 5. route/OpenAPI contract checks plus focused PostgreSQL behavior coverage; and
 6. rollback that restores both data and traffic routing without deleting audit
@@ -423,17 +476,17 @@ Any replacement release therefore needs, at minimum:
 
 ## 8. Business contracts versus implementation accidents
 
-| Preserve as business contract | Do not clone as a compatibility contract | Replacement action/owner |
+| Target contract to preserve | Current implementation or transition input | Replacement action/owner |
 | --- | --- | --- |
-| Owner + canonical subject + property identity | `property_key` denormalized on `parameter_specs` | Choose one canonical representation; migration owner maps and verifies identity. |
+| Typed formal Driver/NodeType subject + property identity | Current organization owner scope and `property_key` denormalized on `parameter_specs` | Map every provable row to one Platform definition identity; organization relation moves to registration/placement. |
 | Stable opaque spec/binding/version references | Current ID prefix/hash formulas | Preserve IDs or publish a complete immutable mapping; catalog + data-migration owners. |
 | Pinned historical semantic interpretation; semantic edits mint successors | Documentation-class in-place edits, plus duplicated lifecycle/version fields and duplicated property content used by the `0083` dual-write bridge | Preserve semantic pins while allowing documented non-semantic correction; normalize storage only after verifying every historical pin. |
-| One active complete definition/version and deterministic org-over-platform precedence | Physical table split and SQL trigger names | Re-enforce invariants transactionally; catalog owner. |
+| One complete current Platform definition revision per formal subject + property key | Organization-over-platform precedence, organization overlay authoring/definition overrides, physical table split and trigger names | Classify every organization row; migrate provable knowledge to the governed Platform publication path, archive unprovable rows outside operational reads, reject new organization structural writes, and enforce one current winner. |
 | Observation never grants authority | `provisionalSurfaceBinding.ts` unmatched draft creation (no production caller) | Retire; topology owner keeps review evidence only. |
 | Incomplete staging never appears effective | `0121` unlinked active-DTS staging for the legacy two-step importer | Retire with the old writer or contain behind the same fail-closed projection; migration owner. |
 | Current project/logical-node/definition/module binding and stable binding ID | `module_id` as a *candidate* removable uniqueness suffix, not a settled accident | Treat the four-part key as compatible now; simplify only after populated proof, duplicate/ID reconciliation and an explicit decision by parameters + module owners. |
 | Explicit binding/change-request version pins | "latest version by numeric version" lookups in Agent perception, log-analysis context and write-lock schema-default loading | Route through the canonical selection seam and add migration tests; Agent/logs/topology owners. |
-| Effective default and explicit governance view | Raw `specification_key` parsing and `driverModule` display fallbacks | Preserve DTO meaning during transition, then remove only with route/frontend migration. |
+| One current definitions page; matching review queue; revision/audit history in definition detail | Peer effective/governance navigation, public raw/governance projection, raw `specification_key` parsing and `driverModule` fallbacks | Keep only a bounded/internal migration and audit adapter until #677 defines exact removal; do not recreate peer governance UI or organization overlay mutations. |
 | Semantic storage as production target | Legacy flat `parameter_definitions` / `project_parameter_values` adapter and boot-time mode bridge | Keep only until the explicit semantic cutover gate; parameters owner. |
 | Audited trusted User/Agent/System mutations | Legacy rows admitted by `NOT VALID`/compatibility constraints | Preserve old audit readability, disallow new ambiguous writes; security + domain owners. |
 
@@ -457,9 +510,11 @@ only through a gated cutover, rather than preserved as a second product model.
 Before implementation tickets may call a replacement compatible, the named
 owners need to demonstrate:
 
-- **Catalog owner:** same effective results for every complete identity and the
-  same blockers for zero/multiple/incomplete identities; version-pinned semantic
-  and lifecycle history retained while documentation corrections remain possible.
+- **Catalog owner:** one complete current Platform definition revision per formal
+  subject + property key; fail-closed blockers for zero/multiple/incomplete
+  identities; version-pinned semantic/lifecycle history retained. Current
+  organization overlays/overrides are classified and migrated or archived, not
+  carried into steady-state selection.
 - **Migration owner:** every retained spec, version and binding ID maps exactly
   once; all FK consumers and audit subject links reconcile; populated repair is
   deterministic and resumable.
@@ -471,8 +526,10 @@ owners need to demonstrate:
 - **Agent/log/debug/reload/knowledge owners:** no dangling citations or retained
   references; tenant scope and pin-first value shape remain intact; reload
   promotion still enters ordinary drafts.
-- **API/frontend owners:** default effective and explicit governance semantics,
-  stable DTO identifiers, route manifest/OpenAPI and mock/HTTP port parity pass.
+- **API/frontend owners:** one current definitions page, matching review queue
+  and detail history pass with stable retained identifiers. Peer
+  effective/governance navigation is absent; raw/governance and overlay routes
+  follow #677's bounded/internal transition and reject retired new writes.
 - **Security/operations owners:** trusted provenance and atomic audit remain;
   reconciliation, catalog-only, full, contract and self-hosted readiness gates
   pass before traffic cutover.
@@ -492,15 +549,16 @@ owners need to demonstrate:
 4. Simplifying the physical binding key requires populated-data evidence about
    rows that differ only by `module_id`; the domain contract alone does not prove
    that such rows can be merged without an ID-retention decision.
-5. The repository does not settle whether every v1 route/DTO is permanent or a
-   bounded adapter. External stability and deprecation windows need an explicit
-   API-owner decision.
+5. #677 still must settle the exact `/api/v2` transition and removal behavior
+   for current raw/governance queries and organization overlay mutations,
+   including external DTO stability, rejection responses and any bounded
+   internal migration/audit adapter. The peer UI is already out of target scope.
 6. Current-version and current-binding-revision pointers coexist with local
    "latest" queries. The replacement must choose and enforce one canonical
    pointer policy before consumer migration.
-7. It is unknown which pinned/vendor/platform/organization schema digests and
-   overlay source artifacts must be retained for exact historical replay; the
-   registry proves current composition, not long-term artifact retention.
+7. It is unknown which pinned/vendor/platform schema digests and which legacy
+   organization overlay artifacts must be retained solely for historical/audit
+   replay. Those legacy artifacts are not target structural-truth inputs.
 8. Any changed ID scheme still needs an approved translation and audit policy;
    repository evidence establishes stable references but not permission to
    rewrite their public/audit identity.
