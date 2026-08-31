@@ -150,6 +150,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 - 贡献与本地开发：[`CONTRIBUTING.md`](../../../CONTRIBUTING.md) 和 [`docs/developer/README.md`](../../developer/README.md)
 - 架构：[`ARCHITECTURE.md`](../../../ARCHITECTURE.md) 和 [`docs/design-docs/index.md`](../../design-docs/index.md)
+- 参数目录权威模型：[ADR-0040](../../adr/0040-canonical-parameter-catalog-relational-model.md)；不可变发布、同步、验证、重放与回滚合同：[ADR-0041](../../adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md)
 - API：[`docs/api/README.md`](../../api/README.md)
 - 安全：[`docs/security/README.md`](../../security/README.md)
 - 运行手册：[`docs/runbooks/README.md`](../../runbooks/README.md)
