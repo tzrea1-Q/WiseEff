@@ -42,6 +42,9 @@ On import, the safe migration names and checksums are also restored into `public
 | `binding-module-identity-mismatch` | Active Platform NodeType definition bound through a differently attributed module |
 | `inactive-definition-binding` | Binding and pinned revision that reference a draft definition |
 | `pinned-binding-revision` | Three bindings with spec-version-pinned revisions and one synthetic DTS config revision |
+| `legacy-twin-r6-r8` | One R6 subjectless/unlinked Platform DTS staging row and one R8 Organization manual NodeType proposal share `synthetic.legacy-twin` while retaining separate identities and relation graphs |
+
+The legacy twin deliberately isolates the same-key hazard from the formal catalog examples. The R6 row keeps `semantic_module=synthetic.unlinked`, no organization, no subject, no schema link, and no binding. The R8 row keeps `semantic_module=synthetic.node`, its Organization NodeType subject, and its module/binding/revision graph. Neither formal Platform definition uses `synthetic.legacy-twin`.
 
 The graph creates no user or credential row. It contains no real organization, project, subject, source key, compatible, property key, schema namespace, DTS source, business description, parameter value, default, example, evidence payload, or workflow reason.
 
@@ -77,7 +80,7 @@ Expected terminal markers include:
 ```text
 IMPORT_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
-loaded_fixture_cases=9
+loaded_fixture_cases=10
 loaded_migration_ledger_rows=126
 data_rows_exported=0
 source_data_rows_exported=0
@@ -108,28 +111,29 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
   --validation-file /absolute/path/to/candidate-validation.sql
 ```
 
-The runner verifies all nine fixture cases first, hashes a canonical full database dump, executes candidate plus validation SQL with `ON_ERROR_STOP`, issues `ROLLBACK`, hashes the database again, and succeeds only if both hashes are identical. Expected output is:
+The runner verifies all ten fixture cases first, hashes a canonical full database dump, executes candidate plus validation SQL with `ON_ERROR_STOP`, issues `ROLLBACK`, hashes the database again, and succeeds only if both hashes are identical. Expected output is:
 
 ```text
 REHEARSAL_ROLLBACK_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
 before_sha256=<64 lowercase hex characters>
 after_sha256=<the same value>
-fixture_cases=9
+fixture_cases=10
 ```
 
 This proves that a transaction-safe candidate can map and validate the populated graph without leaving durable changes. It does not prove that an as-yet undesigned replacement migration has correct destination semantics.
+
+Candidate validation for `legacy-twin-r6-r8` must preserve both legacy IDs and their source attribution graphs. R6 may become only `Observation`, `ReviewEvidence`, or `Archive`; R8 may become only `Proposal`, `Observation`, or `Archive`. Property-key equality must never merge them, reattribute either row, infer a formal subject, activate either legacy row, or materialize one or more current Definitions. A future authoritative Platform definition can only come from the separately governed Catalog Release synchronizer, not from this twin.
 
 ## Automated PostgreSQL gate
 
 The integration test requires a reachable real PostgreSQL instance and its Docker container:
 
 ```bash
-npx vitest run --config vitest.scripts.config.ts \
-  scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts
+npm run test:scripts -- parameter-catalog-rehearsal.integration
 ```
 
-It proves populated export/import, all fixture cohorts, strict manifest rejection, true empty-database rejection, candidate validation, and canonical-dump rollback equality.
+It proves populated export/import, all fixture cohorts, strict manifest rejection, true empty-database rejection, candidate validation, same-key R6/R8 separation, rejection of a property-key merge candidate, and canonical-dump rollback equality.
 
 When finished, drop only the explicitly named disposable database:
 

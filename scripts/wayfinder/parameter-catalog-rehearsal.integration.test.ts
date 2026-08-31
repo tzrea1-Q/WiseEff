@@ -136,6 +136,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               "formal-platform-driver-definition",
               "formal-platform-node-type-definition",
               "inactive-definition-binding",
+              "legacy-twin-r6-r8",
               "organization-manual-node-type-draft",
               "organization-registration-placement",
               "pinned-binding-revision",
@@ -622,6 +623,345 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           expect(unsafeResult.stderr).toContain(
             "SQL input contains transaction control and cannot be rollback-contained",
           );
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin
+              .query(`drop database if exists ${restoreDatabase} with (force)`)
+              .catch(() => undefined);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "keeps the same-key R6 staging row and R8 proposal distinct during migration rehearsal",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-legacy-twin-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const candidateFile = path.join(tempRoot, "candidate.sql");
+        const validationFile = path.join(tempRoot, "validation.sql");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_legacy_twin_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_legacy_twin", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+          run("bash", [
+            importer,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--artifact-dir",
+            artifactDir,
+          ]);
+
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const fixtureCase = await client.query<{
+              expected_rows: string;
+            }>(`
+              select expected_rows::text
+              from wayfinder_rehearsal.fixture_cases
+              where case_name = 'legacy-twin-r6-r8'
+            `);
+            expect(fixtureCase.rows).toEqual([{ expected_rows: "2" }]);
+
+            const twin = await client.query<{
+              id: string;
+              source_kind: string;
+              organization_id: string | null;
+              attribution_subject_id: string | null;
+              driver_schema_id: string | null;
+              binding_count: string;
+              property_key: string;
+            }>(`
+              select
+                ps.id,
+                ps.source_kind,
+                ps.organization_id,
+                ps.attribution_subject_id,
+                dps.driver_schema_id,
+                count(binding.id)::text as binding_count,
+                ps.property_key
+              from parameter_specs ps
+              join dts_property_specs dps on dps.parameter_spec_id = ps.id
+              left join project_parameter_bindings binding
+                on binding.parameter_spec_id = ps.id
+              where ps.property_key = 'synthetic.legacy-twin'
+              group by ps.id, dps.driver_schema_id
+              order by ps.id
+            `);
+            expect(twin.rows).toEqual([
+              {
+                id: "wf671-org-manual-node-draft",
+                source_kind: "manual",
+                organization_id: "wf671-org",
+                attribution_subject_id: "wf671-org-node-subject",
+                driver_schema_id: null,
+                binding_count: "1",
+                property_key: "synthetic.legacy-twin",
+              },
+              {
+                id: "wf671-platform-subjectless-draft",
+                source_kind: "dts",
+                organization_id: null,
+                attribution_subject_id: null,
+                driver_schema_id: null,
+                binding_count: "0",
+                property_key: "synthetic.legacy-twin",
+              },
+            ]);
+          } finally {
+            await client.end();
+          }
+
+          await writeFile(
+            validationFile,
+            `
+              do $$
+              declare
+                source_rows bigint;
+                r6_rows bigint;
+                r8_rows bigint;
+                mapped_rows bigint;
+              begin
+                select count(*) into source_rows
+                from parameter_specs
+                where property_key = 'synthetic.legacy-twin';
+                if source_rows <> 2 then
+                  raise exception 'legacy twin source must contain exactly two rows, got %', source_rows;
+                end if;
+
+                select count(*) into r6_rows
+                from parameter_specs ps
+                join dts_property_specs dps on dps.parameter_spec_id = ps.id
+                where ps.id = 'wf671-platform-subjectless-draft'
+                  and ps.property_key = 'synthetic.legacy-twin'
+                  and ps.source_kind = 'dts'
+                  and ps.organization_id is null
+                  and ps.attribution_subject_id is null
+                  and ps.definition_lifecycle = 'draft'
+                  and dps.property_key = ps.property_key
+                  and dps.driver_schema_id is null
+                  and not exists (
+                    select 1 from project_parameter_bindings binding
+                    where binding.parameter_spec_id = ps.id
+                  );
+                if r6_rows <> 1 then
+                  raise exception 'legacy twin requires one R6 staging row, got %', r6_rows;
+                end if;
+
+                select count(*) into r8_rows
+                from parameter_specs ps
+                join dts_property_specs dps on dps.parameter_spec_id = ps.id
+                join attribution_subjects subject on subject.id = ps.attribution_subject_id
+                join node_type_definitions node_type
+                  on node_type.attribution_subject_id = subject.id
+                where ps.id = 'wf671-org-manual-node-draft'
+                  and ps.property_key = 'synthetic.legacy-twin'
+                  and ps.source_kind = 'manual'
+                  and ps.organization_id = 'wf671-org'
+                  and ps.definition_lifecycle = 'draft'
+                  and subject.organization_id = ps.organization_id
+                  and subject.subject_kind = 'node-type-definition'
+                  and dps.property_key = ps.property_key
+                  and dps.driver_schema_id is null
+                  and exists (
+                    select 1 from project_parameter_bindings binding
+                    where binding.parameter_spec_id = ps.id
+                      and binding.module_id = 'wf671-org-node-module'
+                  );
+                if r8_rows <> 1 then
+                  raise exception 'legacy twin requires one R8 proposal row, got %', r8_rows;
+                end if;
+
+                select count(*) into mapped_rows
+                from wf671_candidate_replacement.legacy_twin_dispositions;
+                if mapped_rows <> 2 then
+                  raise exception 'R6/R8 twin migration must preserve two source identities, got %', mapped_rows;
+                end if;
+
+                if (
+                  select count(distinct legacy_id)
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                ) <> 2 or exists (
+                  select legacy_id
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  group by legacy_id
+                  having count(*) <> 1
+                ) then
+                  raise exception 'R6/R8 twin migration duplicated or omitted a source identity';
+                end if;
+
+                if exists (
+                  select 1
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  where (legacy_id = 'wf671-platform-subjectless-draft'
+                         and legacy_class <> 'R6')
+                     or (legacy_id = 'wf671-org-manual-node-draft'
+                         and legacy_class <> 'R8')
+                     or legacy_id not in (
+                          'wf671-platform-subjectless-draft',
+                          'wf671-org-manual-node-draft'
+                        )
+                ) then
+                  raise exception 'R6/R8 twin migration changed a source classification';
+                end if;
+
+                if exists (
+                  select 1
+                  from wf671_candidate_replacement.legacy_twin_dispositions candidate
+                  join parameter_specs source on source.id = candidate.legacy_id
+                  where candidate.property_key <> 'synthetic.legacy-twin'
+                     or candidate.source_attribution_subject_id
+                        is distinct from source.attribution_subject_id
+                ) then
+                  raise exception 'R6/R8 twin migration changed a source identity';
+                end if;
+
+                if exists (
+                  select 1
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  where target_formal_subject_id is not null
+                ) then
+                  raise exception 'property key must not infer a formal subject for the R6/R8 twin';
+                end if;
+
+                if exists (
+                  select 1
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  where (legacy_class = 'R6' and destination_kind not in (
+                           'Observation', 'ReviewEvidence', 'Archive'
+                         ))
+                     or (legacy_class = 'R8' and destination_kind not in (
+                           'Proposal', 'Observation', 'Archive'
+                         ))
+                     or legacy_class not in ('R6', 'R8')
+                ) then
+                  raise exception 'R6/R8 twin migration selected a forbidden disposition';
+                end if;
+
+                if exists (
+                  select 1
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  where destination_kind = 'Definition'
+                     or is_current_definition
+                ) then
+                  raise exception 'R6/R8 twin migration must not create or activate a current Definition';
+                end if;
+
+                if exists (
+                  select destination_identity
+                  from wf671_candidate_replacement.legacy_twin_dispositions
+                  group by destination_identity
+                  having count(*) > 1
+                ) then
+                  raise exception 'R6/R8 twin migration must not merge destination identities';
+                end if;
+              end
+              $$;
+            `,
+          );
+
+          await writeFile(
+            candidateFile,
+            `
+              create schema wf671_candidate_replacement;
+              create table wf671_candidate_replacement.legacy_twin_dispositions as
+              select
+                min(id) as legacy_id,
+                'merged-by-property-key'::text as legacy_class,
+                property_key,
+                'Definition'::text as destination_kind,
+                property_key as destination_identity,
+                min(attribution_subject_id) as source_attribution_subject_id,
+                max(attribution_subject_id) as target_formal_subject_id,
+                true as is_current_definition
+              from parameter_specs
+              where property_key = 'synthetic.legacy-twin'
+              group by property_key;
+            `,
+          );
+          const mergedResult = runResult("bash", [
+            rehearser,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--migration-file",
+            candidateFile,
+            "--validation-file",
+            validationFile,
+          ]);
+          expect(mergedResult.status).not.toBe(0);
+          expect(mergedResult.stderr).toContain(
+            "R6/R8 twin migration must preserve two source identities",
+          );
+
+          await writeFile(
+            candidateFile,
+            `
+              create schema wf671_candidate_replacement;
+              create table wf671_candidate_replacement.legacy_twin_dispositions as
+              select
+                id as legacy_id,
+                case id
+                  when 'wf671-platform-subjectless-draft' then 'R6'
+                  when 'wf671-org-manual-node-draft' then 'R8'
+                end as legacy_class,
+                property_key,
+                case id
+                  when 'wf671-platform-subjectless-draft' then 'Observation'
+                  when 'wf671-org-manual-node-draft' then 'Proposal'
+                end as destination_kind,
+                case id
+                  when 'wf671-platform-subjectless-draft' then 'wf671-observation-r6'
+                  when 'wf671-org-manual-node-draft' then 'wf671-proposal-r8'
+                end as destination_identity,
+                attribution_subject_id as source_attribution_subject_id,
+                null::text as target_formal_subject_id,
+                false as is_current_definition
+              from parameter_specs
+              where property_key = 'synthetic.legacy-twin';
+            `,
+          );
+          const acceptedResult = run("bash", [
+            rehearser,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--migration-file",
+            candidateFile,
+            "--validation-file",
+            validationFile,
+          ]);
+          expect(acceptedResult.stdout).toContain("REHEARSAL_ROLLBACK_OK");
         } finally {
           await withAdminClient(async (admin) => {
             await admin

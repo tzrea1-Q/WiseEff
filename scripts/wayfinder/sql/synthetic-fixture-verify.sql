@@ -4,8 +4,8 @@ declare
   actual bigint;
 begin
   select count(*) into actual from wayfinder_rehearsal.fixture_cases;
-  if actual <> 9 then
-    raise exception 'Wayfinder fixture case registry: expected 9 rows, got %', actual;
+  if actual <> 10 then
+    raise exception 'Wayfinder fixture case registry: expected 10 rows, got %', actual;
   end if;
 
   select count(*) into actual
@@ -107,6 +107,90 @@ begin
     and dps.driver_schema_id is null;
   if actual <> 1 then
     raise exception 'Wayfinder organization NodeType drafts: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs
+  where property_key = 'synthetic.legacy-twin';
+  if actual <> 2 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 2 same-key rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  where ps.id = 'wf671-platform-subjectless-draft'
+    and ps.property_key = 'synthetic.legacy-twin'
+    and ps.source_kind = 'dts'
+    and ps.organization_id is null
+    and ps.attribution_subject_id is null
+    and ps.definition_lifecycle = 'draft'
+    and dps.property_key = ps.property_key
+    and dps.driver_schema_id is null
+    and not exists (
+      select 1
+      from project_parameter_bindings binding
+      where binding.parameter_spec_id = ps.id
+    );
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 1 R6 staging row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  join node_type_definitions node_type
+    on node_type.attribution_subject_id = subject.id
+  where ps.id = 'wf671-org-manual-node-draft'
+    and ps.property_key = 'synthetic.legacy-twin'
+    and ps.source_kind = 'manual'
+    and ps.organization_id = 'wf671-org'
+    and ps.definition_lifecycle = 'draft'
+    and subject.organization_id = ps.organization_id
+    and subject.subject_kind = 'node-type-definition'
+    and dps.property_key = ps.property_key
+    and dps.driver_schema_id is null
+    and exists (
+      select 1
+      from project_parameter_bindings binding
+      where binding.parameter_spec_id = ps.id
+        and binding.module_id = 'wf671-org-node-module'
+    );
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 1 R8 proposal row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs r6
+  join parameter_specs r8
+    on r8.property_key = r6.property_key
+   and r8.id = 'wf671-org-manual-node-draft'
+  join parameter_spec_versions r6_version on r6_version.parameter_spec_id = r6.id
+  join parameter_spec_versions r8_version on r8_version.parameter_spec_id = r8.id
+  where r6.id = 'wf671-platform-subjectless-draft'
+    and r6.id <> r8.id
+    and r6.specification_key <> r8.specification_key
+    and r6_version.id <> r8_version.id
+    and r6.organization_id is null
+    and r8.organization_id = 'wf671-org'
+    and r6.attribution_subject_id is null
+    and r8.attribution_subject_id = 'wf671-org-node-subject';
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin did not preserve distinct identities and owner graphs';
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  where ps.property_key = 'synthetic.legacy-twin'
+    and ps.organization_id is null
+    and ps.definition_lifecycle = 'active'
+    and dps.driver_schema_id is not null
+    and subject.organization_id is null;
+  if actual <> 0 then
+    raise exception 'Wayfinder R6/R8 legacy twin property key must not infer a formal Platform subject';
   end if;
 
   select count(*) into actual

@@ -250,7 +250,7 @@ data_rows_exported="$(target_psql -Atc "select value from wayfinder_rehearsal.ma
 fixture_cases="$(target_psql -Atc "select count(*) from wayfinder_rehearsal.fixture_cases")"
 migration_ledger_rows="$(target_psql -Atc 'select count(*) from schema_migrations')"
 
-if [[ "${restored_public_relations}" == "0" || "${profile_rows}" == "0" || "${data_rows_exported}" != "0" || "${fixture_cases}" != "9" ]]; then
+if [[ "${restored_public_relations}" == "0" || "${profile_rows}" == "0" || "${data_rows_exported}" != "0" || "${fixture_cases}" != "10" ]]; then
   printf '%s\n' 'Imported rehearsal failed structural/profile verification.' >&2
   exit 1
 fi

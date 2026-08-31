@@ -42,6 +42,9 @@
 | `binding-module-identity-mismatch` | active Platform NodeType 定义通过 attribution 不同的 module 绑定 |
 | `inactive-definition-binding` | binding 与 pinned revision 引用了 draft 定义 |
 | `pinned-binding-revision` | 三个 binding、对应 spec-version-pinned revision，以及一个 synthetic DTS config revision |
+| `legacy-twin-r6-r8` | 一条 R6 subjectless/unlinked Platform DTS staging 行与一条 R8 Organization manual NodeType proposal 共用 `synthetic.legacy-twin`，同时保留不同身份和关系图 |
+
+legacy twin 会把同 key 风险与 formal catalog 示例隔离开。R6 保留 `semantic_module=synthetic.unlinked`，没有 organization、subject、schema link 或 binding；R8 保留 `semantic_module=synthetic.node`、Organization NodeType subject，以及 module/binding/revision 关系图。任何 formal Platform definition 都不使用 `synthetic.legacy-twin`。
 
 关系图不会创建 user 或 credential 行，也不含真实组织、项目、subject、source key、compatible、property key、schema namespace、DTS 源文、业务说明、参数实际值、默认值、示例值、evidence payload 或工作流原因。
 
@@ -77,7 +80,7 @@ scripts/wayfinder/import-parameter-catalog-rehearsal.sh \
 ```text
 IMPORT_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
-loaded_fixture_cases=9
+loaded_fixture_cases=10
 loaded_migration_ledger_rows=126
 data_rows_exported=0
 source_data_rows_exported=0
@@ -108,28 +111,29 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
   --validation-file /absolute/path/to/candidate-validation.sql
 ```
 
-runner 会先验证全部 9 个夹具案例，对完整数据库的规范化 dump 计算 hash，然后以 `ON_ERROR_STOP` 执行 candidate 与 validation SQL，发出 `ROLLBACK`，再次计算数据库 hash；只有前后 hash 完全相同时才成功。预期输出：
+runner 会先验证全部 10 个夹具案例，对完整数据库的规范化 dump 计算 hash，然后以 `ON_ERROR_STOP` 执行 candidate 与 validation SQL，发出 `ROLLBACK`，再次计算数据库 hash；只有前后 hash 完全相同时才成功。预期输出：
 
 ```text
 REHEARSAL_ROLLBACK_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
 before_sha256=<64 位小写十六进制>
 after_sha256=<同一个值>
-fixture_cases=9
+fixture_cases=10
 ```
 
 这证明 transaction-safe candidate 可以映射并验证 populated 关系图，而不留下持久变更；它不能证明尚未设计的替换迁移已经拥有正确目标语义。
+
+`legacy-twin-r6-r8` 的 candidate validation 必须保留两个 legacy ID 及其 source attribution graph。R6 只允许进入 `Observation`、`ReviewEvidence` 或 `Archive`；R8 只允许进入 `Proposal`、`Observation` 或 `Archive`。property-key 相同绝不能合并两行、重归属任一行、推断 formal subject、激活任一 legacy 行，或物化一个或多个 current Definition。未来权威 Platform definition 只能来自独立治理的 Catalog Release synchronizer，不能来自这组 twin。
 
 ## 自动化 PostgreSQL 闸门
 
 集成测试需要可连接的真实 PostgreSQL 实例及其 Docker container：
 
 ```bash
-npx vitest run --config vitest.scripts.config.ts \
-  scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts
+npm run test:scripts -- parameter-catalog-rehearsal.integration
 ```
 
-测试覆盖 populated 导出/导入、全部关系形态、严格 manifest 拒绝、真正空数据库拒绝、candidate validation，以及规范化 dump 的回滚前后一致性。
+测试覆盖 populated 导出/导入、全部关系形态、严格 manifest 拒绝、真正空数据库拒绝、candidate validation、同 key R6/R8 分离、property-key merge candidate 拒绝，以及规范化 dump 的回滚前后一致性。
 
 完成后，只删除明确命名的 disposable 数据库：
 

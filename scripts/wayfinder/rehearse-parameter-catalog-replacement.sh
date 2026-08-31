@@ -104,7 +104,7 @@ if [[ "${fixture_relation}" != "wayfinder_rehearsal.fixture_cases" ]]; then
   exit 1
 fi
 fixture_cases="$(target_psql -Atc 'select count(*) from wayfinder_rehearsal.fixture_cases')"
-if [[ "${fixture_cases}" != "9" ]]; then
+if [[ "${fixture_cases}" != "10" ]]; then
   printf '%s\n' 'Target database does not contain the complete Wayfinder #671 fixture.' >&2
   exit 1
 fi

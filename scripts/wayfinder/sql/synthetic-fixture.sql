@@ -95,13 +95,13 @@ insert into parameter_specs (
   (
     'wf671-platform-subjectless-draft', null, 'dts',
     'wf671.platform.subjectless.draft', '2026-01-01T00:00:00Z',
-    'synthetic.unlinked', 'Low', null, 'draft', 'wf671,unlinked-property'
+    'synthetic.unlinked', 'Low', null, 'draft', 'synthetic.legacy-twin'
   ),
   (
     'wf671-org-manual-node-draft', 'wf671-org', 'manual',
     'wf671.organization.manual.node.draft', '2026-01-01T00:00:00Z',
     'synthetic.node', 'Low', 'wf671-org-node-subject', 'draft',
-    'wf671,organization-property'
+    'synthetic.legacy-twin'
   );
 
 insert into parameter_spec_versions (
@@ -200,13 +200,13 @@ insert into dts_property_specs (
   ),
   (
     'wf671-subjectless-property', 'wf671-platform-subjectless-draft', null,
-    'wf671,unlinked-property', 'wf671.synthetic.unlinked', null,
+    'synthetic.legacy-twin', 'wf671.synthetic.unlinked', null,
     '{}'::jsonb, '{}'::jsonb, 'Synthetic fixture only',
     '2026-01-01T00:00:00Z'
   ),
   (
     'wf671-org-property', 'wf671-org-manual-node-draft', null,
-    'wf671,organization-property', 'wf671.synthetic.organization', null,
+    'synthetic.legacy-twin', 'wf671.synthetic.organization', null,
     '{}'::jsonb, '{}'::jsonb, 'Synthetic fixture only',
     '2026-01-01T00:00:00Z'
   );
@@ -325,4 +325,5 @@ insert into wayfinder_rehearsal.fixture_cases (
   ('organization-registration-placement', 'topology', 1),
   ('binding-module-identity-mismatch', 'binding-anomaly', 1),
   ('inactive-definition-binding', 'binding-anomaly', 1),
-  ('pinned-binding-revision', 'binding-revision', 3);
+  ('pinned-binding-revision', 'binding-revision', 3),
+  ('legacy-twin-r6-r8', 'migration-identity-hazard', 2);
