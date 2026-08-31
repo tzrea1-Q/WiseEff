@@ -27,6 +27,7 @@
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
 - [自托管一键升级——本地实现，目标演练待完成](2026-08-20-self-hosted-one-command-upgrade-design.md)
+- [参数目录切换、归档与回滚——锁定决策](parameter-catalog-cutover-archive-rollback.md)
 - [docs/zh-CN/design-docs/security-governance.md](security-governance.md)
 - [docs/zh-CN/design-docs/2026-06-17-audit-center-design.md](2026-06-17-audit-center-design.md)
 - [DTS 可管参数面边界 RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md)
