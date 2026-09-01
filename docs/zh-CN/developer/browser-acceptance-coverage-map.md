@@ -143,6 +143,41 @@
 - `PARAM-ENABLE-TOGGLE-001`：已自动化。禁用需理由与二次确认；启停草稿持久化并写独立 `enablement-changed` 审计；与 binding 同轮提交不触发 `mixed-working-tips`（API 层证明；工作台同轮会与 `preferredRevision` 重载竞态）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：已自动化。非标准 `status = "reserved"` 只读；二级覆盖入口「仍要修改」须显式确认后方可写入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
+## Canonical Parameter definitions 替换登记（#668）
+
+以下 requirement ID 由 #668 规格预留，当前状态均为 `future`：本规格分支不改 `e2e/acceptance/requirements.ts`、不建 Playwright stub，也不声称可执行覆盖。G0 后 S9 browser automation package 是唯一 registry owner；它必须把全部 ID 登记为 blocking，并且只有真实 candidate test 无 skip 运行后才能改为 `automated`。canonical launch 没有 conditional 可选项。
+
+| Requirement ID | 状态 | 角色 | 路由/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Acceptance owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| `PCAT-UI-01` | future | User、Org Admin、Platform Admin、Agent | `/parameter-admin/specs` 进入唯一 Parameter definitions；无 Effective/Governance peer | 1440x900、768x1024、390x844 | catalog/list 200；current-release DB projection；零读 mutation；三视口入口/列表截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-02` | future | User、Org Admin | opaque Subject/Definition/release deep link 在 reload/Back/Forward 后恢复 | 三视口 | pinned cursor/detail API；selected-ID DB agreement；无 audit；恢复截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-03` | future | User、Org Admin | 搜索/选择 Subject/Definition，查看 owner、current/pinned revision、usage、Registration/Placement | 三视口 | detail/revision API；owner/head DB；无 audit；pane/sheet 截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-04` | future | Org Admin | 同页 Review Queue 选择合法 resolution 和显式 Placement，并提交一次 | 三视口 | ETag/release/idempotency API；Resolution+exact Registration/Placement/Proposal DB；成功/拒绝审计；前/确认/后截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-UI-05` | future | authorized reader | Definition timeline 稳定分页 Catalog fact 与授权 History/Audit | 三视口 | composite cursor API；pinned DB facts；无读审计；timeline 截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-06` | future | 全部表示角色 | ready 只展示授权动作并保留 release anchor | 三视口 | role API matrix；denied DB unchanged；必要 refusal audit；逐角色截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-07` | future | Org Admin；其他角色 negative | unregistered Subject 仍可读，显式 `use-default`/`choose-parent` 注册并保留 ID | 三视口 | release/idempotency API；exactly-one Registration/Placement DB；成功/拒绝审计；选择/结果截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-UI-08` | future | authorized reader | 区分 loading/error 和四个 emptyReason；stale-visible loading 禁写 | 三视口 | state API；fixture DB predicate；零 mutation/audit；全部状态截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-09` | future | authorized reader；Org Admin negative | retired/deprecated 历史可读，禁止新动作 | 三视口 | lifecycle read + 409；retained DB history；refusal audit；badge/disabled 截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-10` | future | Org Admin、Platform Admin | release/ETag/parent/idempotency conflict 保留输入、刷新证据、要求重确认 | 三视口 | exact 409 reason；无 partial DB；durable refusal/no success audit；conflict 截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-UI-11` | future | authorized + scope-hidden callers | legacy mapped redirect、410 gone、409 conflict、404 unknown/scope-hidden | 三视口 | status/deprecation/successor headers；mapping-head/Archive DB；必要 operator audit；各 outcome 截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-UI-12` | future | Agent | 按 invoking principal 只读，所有治理 mutation/spoof 被拒 | 三视口 | scoped reads + 403；零 DB mutation；trusted refusal audit；只读截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-UI-13` | future | 全部表示角色 | API/mock 重放相同状态与权限，不得有 mock-only governance | 三视口 | real API manifest；API-half DB；real-half audit/mock no-extra-authority；配对截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-UI-14` | future | authorized reader | 单页/list/detail/timeline/queue/dialog 无重叠、溢出、隐藏动作或焦点问题 | 三视口 | critical API success；DB/audit 明确 N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-UI-15` | future | Org Admin、Platform Admin、ordinary/Agent negatives | 真实导航、搜索、详情、timeline、queue、registration、proposal、conflict、deep link、keyboard/focus | 三视口 | operation request ledger；final DB predicates；每个 mutation/refusal audit；checkpoint screenshots + runtime/trace/report pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+
+职责文件固定为：`e2e/acceptance/parameter-catalog.acceptance.spec.ts`（read/detail/timeline/state/responsive）、`e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`（Registration/Placement、Review、Proposal）、`e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`（concurrency、role spoof、legacy、mock parity、fail closed）。登记后 `npm run acceptance:browser` 必须在 owned real candidate runtime 上无 skip 运行全部 blocking markers；`npm run acceptance:evidence` 必须校验同一 full run/source/runtime 的角色、路由、断言、API、DB、audit、截图/artifacts、trace/report 与 replay。当前命令范围不包含这些 future ID，因此不能产生 #668 证据。
+
+### 旧 operation disposition
+
+| 旧 ID/表面 | launch disposition |
+| --- | --- |
+| `PARAM-SPEC-VIEW-001`、Effective/Governance peer、`PARAM-ADMIN-IA-001` | 被 `PCAT-UI-01/02/03/05` supersede；eligible exact Effective read 仅迁移期兼容，Governance/raw 立即 410 |
+| `PARAM-SPEC-GOVERN-001`、`PARAM-IDENTITY-MAP-*`、`IDMAP-*` | active work 被 `PCAT-UI-04` typed Review Queue supersede；exact GET 可迁移期兼容，legacy resolve/reopen 410；旧自动化仅是 pre-cutover evidence |
+| `PARAM-SPEC-EDIT-*`、`SPEC-EDIT-DIFF-001`、`SPEC-DEPRECATE-001`、`SPEC-RESTORE-001` | direct Catalog edit/lifecycle retired；改为 repository publication 或 Proposal intent |
+| `PARAM-SPEC-IDENTITY-*` | in-place identity correction retired/410；迁移走 typed mapping，未来走 publication/proposal |
+| `DRV-SCHEMA-*`、`OVERLAY-RETIRE-001`、`DRV-PROMOTE-*` | Organization overlay/promotion 立即 retired，无兼容 authoring |
+| `DRV-REG-*`、`MOD-ATTR-*`、`MOD-QUEUE-RESTORE-001`、`MOD-ATTR-SORT-001` | registration/placement 被 `PCAT-UI-07/15` supersede；exact Placement 可 bounded read，module/schema structural writes retired |
+
 ## 同类中文文档
 
 - [docs/zh-CN/developer/README.md](README.md)

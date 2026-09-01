@@ -20,7 +20,7 @@ No unresolved product conflict was found among those inputs. Issue #679 explicit
 
 ## Solution
 
-Use four deep modules and one-directional business modules. Catalog Kernel exclusively owns release compilation, materialization, exact snapshots, and materialization verification. Release Verification exclusively owns purpose, plan, attempt, report, approval, evidence lineage, and runtime pins. Catalog Cutover exclusively owns P0-P16, R0-R10, typed mapping, Archive, checkpoints, and recovery. Subject Governance, Evidence/Review, Proposal, and Binding/ProjectValue each own their aggregate transactions. HTTP, frontend, and `upgrade.sh` are adapters and cannot coordinate internal transactions, select Definition heads, infer legacy dispositions, or waive gates.
+There are exactly four externally visible deep modules: **Catalog Kernel**, **Parameter Governance**, **Catalog Cutover**, and **Release Verification**. Catalog Kernel exclusively owns release compilation, materialization, exact snapshots, and materialization verification. Parameter Governance is the only external governance module and internally owns Subject Registration/Placement, Observation/ReviewEvidence/ReviewItem, DefinitionProposal, and the review-resolution transaction coordinator. Catalog Cutover exclusively owns the P0-P16 phase semantics, R0-R10, typed mapping, Archive, checkpoints, and recovery. Release Verification exclusively owns purpose, plan, attempt, report, approval, evidence lineage, and runtime pins. Binding/ProjectValue is a consuming business module, not a fifth governance module. HTTP, frontend, consumers, and `upgrade.sh` are adapters and cannot pass transaction handles, coordinate multiple writers, select Definition heads, infer legacy dispositions, or waive gates.
 
 ## User Stories
 
@@ -42,24 +42,30 @@ Use four deep modules and one-directional business modules. Catalog Kernel exclu
 
 ## Implementation Decisions
 
+<a id="pcat-spec-modules"></a>
+
 ### Module boundaries and dependency direction
 
-| Module | Owns | Public seam | Must not own |
+| Deep module | Exclusive ownership | External interface | Must not own |
 | --- | --- | --- | --- |
-| Catalog source/publication | immutable bundle, manifest/YAML, explicit stable IDs, CI compiler output | artifact | current DB pointer, Organization state, runtime repair |
-| Catalog Kernel | compile, validate, install, pre-traffic switch-back, current/pinned snapshots, matching, revision history, materialization verification/cache | role-shaped Kernel facets | routes, Registration, Proposal, Observation, Binding, approval |
-| Subject Governance | Registration lifecycle and exactly-one Placement | queries and commands | Subject/Definition creation, matcher, Binding identity |
-| Evidence and Review | immutable Observation/ReviewEvidence and ReviewItem grouping/resolution | ingest/query/resolve | Catalog materialization or weak-evidence binding |
-| Definition Proposal | proposal revisions and workflow, publication intent | proposal query/commands | Definition/Revision writes |
-| Binding and ProjectValue | canonical Binding, revision/value CAS pointers, immutable values/history | binding/value query/commands | Definition head selection or module identity |
-| Legacy Mapping and Archive | typed identities, append-only mapping versions/heads, Archive metadata/object references | exact compat/operator lookup | reclassification or public Archive enumeration |
-| Catalog Cutover | P0-P16, R0-R10, locks, checkpoints, mapping, Archive, P12/P13, recovery | four maintenance operations | Kernel internals and approval |
-| Release Verification | registry, plan/attempt/report, lineage, purpose approvals, runtime pin, retention | five semantic operations plus private readiness projection | repair, migration, synchronization, traffic writes |
-| API/application composers | auth, scope, DTOs, idempotency adapter, composed reads | canonical HTTP | raw Catalog repositories and policy inference |
-| Parameter definitions frontend | URL state, one-page UI, ports, reconfirmation | application ports | durable rules or raw diagnostics |
-| Self-hosted upgrade adapter | host/data-plane/journal/queue/proxy/process adapters | Cutover and Verification calls | selecting gates or starting API to migrate |
+| Catalog Kernel | compile, validate, install, pre-traffic switch-back, current/pinned snapshots, matcher, revision history, materialization verification/cache | role-shaped `CatalogMaintainer`, `CatalogRuntime`, and `CatalogVerifier`; six semantic operations | routes, Registration, Proposal, Observation, Binding, approval |
+| Parameter Governance | Registration/Placement, Observation/ReviewEvidence/ReviewItem, DefinitionProposal, review-resolution coordinator, success/refusal audit | `GovernanceReader` plus typed governance commands; review resolution only through `resolveReviewItem` | Catalog materialization, Definition/Revision writes, Binding/value writes, caller-owned transactions |
+| Catalog Cutover | `planCutover`, `executeCutover`, `inspectCutover`, `recoverCutover`; P0-P16 semantics, R0-R10, mapping/Archive, locks/checkpoints, recovery classification | four maintenance operations | Kernel transactions, Verification approval, HTTP/UI orchestration, traffic authorization |
+| Release Verification | gate registry, plan/attempt/report, lineage, purpose approval, runtime pin, retention | five semantic operations plus private readiness projection | repair, migration, sync, Archive decryption, traffic mutation |
 
-Allowed dependencies are `artifact -> Kernel`; `HTTP -> Kernel runtime + owning business modules`; `frontend -> ports -> HTTP`; `Evidence/Registration/Binding/Proposal -> nominal Catalog IDs + captured snapshot`; `Cutover -> Kernel maintainer/verifier + migration ports + mapping/archive + recovery`; `Release Verification -> read-only evidence adapters`; and `upgrade controller -> Cutover + Release Verification`. Static ratchets reject all reverse edges, cross-module open transactions, raw Catalog-table routes, verifier-to-writer calls, module-based Binding identity, and latest-head inference.
+| Supporting module/adapter | Owns | Consumes/exposes | Prohibited |
+| --- | --- | --- | --- |
+| Catalog source/publication | immutable bundle, manifest/YAML, explicit stable IDs, CI compiler output | artifact -> Kernel compiler | current DB pointer, Organization state, runtime repair |
+| Binding and ProjectValue | canonical Binding, effective-revision CAS, immutable values, explicit current pointer/history | captured Kernel snapshot + active Registration contract | Definition-head selection, module identity, governance writes |
+| Legacy Mapping and Archive | typed identity, append-only versions/heads, Archive metadata/object refs | private Cutover adapters; exact compat/operator lookup | reclassification, ordinary Catalog reads, public Archive enumeration |
+| API/application composers | auth, scope, DTOs, timeline composition, wire ETag/idempotency mapping | only public module interfaces | raw repository, transaction handle, multi-writer orchestration |
+| Parameter definitions frontend | URL state, one-page UI, ports, reconfirmation | ports -> HTTP adapters | durable business rules, raw diagnostics, mock-only authority |
+| Self-hosted upgrade adapter | host/data-plane/journal/queue/proxy/process adapters | Cutover + Verification; release integration is the convergence owner | gate selection, API-startup migration/sync, waiver |
+| Shared audit/observability/evidence | durable refusal sink, metrics/log/evidence stores, retention primitives | private infrastructure adapters | Catalog or release decisions |
+
+Allowed edges are `artifact -> Kernel`; `HTTP -> Kernel runtime + Parameter Governance + Binding/ProjectValue`; `frontend -> ports -> HTTP`; `Parameter Governance -> nominal Catalog IDs + captured Kernel snapshot`, with a private UoW release-pin guard; `Binding/ProjectValue -> Kernel snapshot + Governance Registration read contract`; `Cutover -> Kernel maintainer/verifier + private Governance/Binding migration ports + mapping/archive + recovery`; `Release Verification -> read-only evidence adapters`; and `upgrade controller -> Cutover + Release Verification`.
+
+Parameter Governance may coordinate several of its own internal aggregates inside its own UnitOfWork. The forbidden case is a caller, HTTP handler, Kernel, verifier, or another module opening or extending that transaction or invoking several writers and claiming atomicity. Every Governance repository, write port, coordinator, release-pin guard, and audit writer is private. Static ratchets reject reverse dependencies, caller-owned cross-module transactions, raw Catalog-table routes, verifier-to-writer calls, Kernel-to-Governance calls, module-based Binding identity, and latest-head inference.
 
 ### Catalog Kernel contract
 
@@ -67,27 +73,102 @@ The fixed operations are `compilePublishedRelease`, `installPublishedRelease(boo
 
 Snapshots are immutable and expose typed Subject get/list/resolve, Definition stable-key/opaque-ID get/list, exact Revision get/list, and Catalog publication timeline. Results distinguish found, unknown, ambiguous, retired, not-published, and revision-unavailable. Kernel owns one-hop aliases, Driver-first/NodeType-fallback matching, lifecycle/head selection, stable order/cursors, pre-page authorized selection intersection, and release fingerprints. It installs under one advisory lock and transaction, rechecks lineage/idempotency, stages the whole projection, forces deferred constraints, records exact release heads, atomically advances Definition heads and the current pointer, and commits success audit/materialization evidence. Same verified digest is a read-only no-op; conflicting bytes are drift/digest conflict. Cache keys include exact release identity/fingerprint and rebuild only from verified DB projection.
 
+<a id="pcat-spec-governance-uow"></a>
+
+### Parameter Governance contract and atomic transaction owner
+
+Parameter Governance is the sole external governance seam. Registration, Placement, Observation, ReviewEvidence, ReviewItem, ReviewResolution, DefinitionProposal, and PublicationIntent are internal aggregates/packages, not separately callable HTTP writers. Every Review Queue resolution variant uses one typed command:
+
+```text
+resolveReviewItem(command: ResolveReviewItemCommand)
+  -> Result<ReviewResolutionResult, GovernanceFailure>
+```
+
+The command carries a server-owned `TrustedInvocationContext`, Organization and ReviewItem nominal IDs, captured Catalog Release ID/digest, ReviewItem ETag, `Idempotency-Key`, canonical request fingerprint, reason, and the closed union `register-subject`, `restore-registration`, `mark-out-of-scope`, or `open-definition-proposal`. `register-subject` additionally requires Subject ID and an explicit `PlacementIntent` of `use-default` or `choose-parent`; `restore-registration` rejects Placement fields; every other variant rejects Registration payload. The result returns the exact ReviewItem/Resolution, any Registration/Placement or Proposal, Catalog pin, and new ETag. Failure is a closed `GovernanceFailure`, never `null` or a partial success.
+
+For `register-subject`, Parameter Governance opens one pool-backed database UnitOfWork and performs all of the following in that transaction:
+
+1. revalidate trusted Organization/principal/initiator and Org Admin authority; Agent, Platform Admin, and body/header role assertions cannot replace the Org Admin placement choice;
+2. use a private release-pin guard to lock and prove that the captured Catalog Release is still current and that the Subject is active in it; no caller passes a transaction handle to Kernel or Governance;
+3. reserve `(organization, command-family, Idempotency-Key)` and compare the complete request fingerprint; exact committed replay returns the stored result, while same key/different fingerprint is `revision-conflict`;
+4. lock the ReviewItem, CAS its `If-Match` ETag, and prove that its status, reason, candidates, and captured evidence are still valid;
+5. create or exactly reuse the `(organization,subject)` Registration only when lifecycle/method/proof are compatible;
+6. create exactly one retained Placement or prove that the existing Placement exactly represents the requested PlacementIntent; a conflict returns `placement-conflict` and never moves the retained Placement to accommodate the request;
+7. append immutable ReviewResolution, advance ReviewItem status/ETag, and append success audit plus the idempotency result reference;
+8. force all deferred constraints immediately, then commit once. Any failure leaves no Registration, Placement, Resolution, ReviewItem change, success audit, or success idempotency result visible.
+
+Explicit registration, uniquely proved automatic registration, and review registration share the same internal registration writer and lock order: `catalog_state/current-release guard -> idempotency row -> optional ReviewItem -> (organization,subject) registration key/row -> requested parent/destination key/row -> retained Placement -> deferred constraints`. Explicit/review registration requires an Org Admin and explicit PlacementIntent. Automatic registration requires a Trusted System plus captured matcher/release proof, uses the reserved default root, and cannot restore a retired Registration or select a curated parent. Agent never writes. Exact proof/placement/request replay after a lost response returns the same IDs and audit reference. Release/ETag/proof/permission/kind/owner/cycle conflicts fail closed. Concurrent explicit, automatic, and review registration converge to one exact Registration/Placement or one success plus a typed conflict; they never create a second Placement.
+
+Placement change, Registration lifecycle, Observation ingest, and Proposal transition also use typed Parameter Governance commands with private UoWs. Observation and ReviewEvidence are immutable. Proposal acceptance appends only `catalog_publication_intents` and trusted audit; it never writes Catalog Subject, Definition, Revision, head, or pointer. Success audit commits with the domain write. Authorization, stale, malformed, and evidence-conflict refusals use an independent pool-owned durable sink so the refusal survives rollback without borrowing the caller transaction.
+
+Tests observe only public commands/queries and use independent real-PostgreSQL sessions for ETag races, explicit/automatic/review races, lost response, key-fingerprint conflict, deferred-constraint failure, and refusal durability. A test-only repository, public transaction callback, direct ReviewResolution insert, or separate Registration/Placement writer calls are ratchet failures.
+
 ### Release Verification contract
 
 The fixed operations are `prepareVerification`, `runVerification`, `assembleReport`, `approveReport`, and `readReport`. A private `readApprovedRuntimePin` returns only the latest passing and approved post-retirement-runtime report for the exact P13 state. Startup cannot prepare, execute, approve, synchronize, migrate, or repair.
 
 Purposes are closed: pre-activation, post-retirement-runtime, isolated-candidate-acceptance, public-release, legacy-read-sunset, and p16-cleanup. Plans pin artifact/images, Catalog, migration ledger, cutover, mapping/Archive, Recovery Point, acceptance, target, verifier, and purpose lineage. Attempts and reports are append-only. Every applicable gate appears once as passed, failed, not-yet-executable, or registry-proved not-applicable. There is no waiver. Operator and Platform-owner approvals are distinct principals and purpose-specific; verifier signatures are not approvals.
 
+<a id="pcat-spec-schema"></a>
+
 ### Canonical PostgreSQL model
 
-The physical contract uses:
+These physical relation names, keys, and ownership rules are normative. A ticket may rename only with one atomic, proven-equivalent update to migration, OpenAPI, verifier, and both language documents; it may not weaken a key or invariant.
 
-- immutable `catalog_releases`; Platform-only `catalog_subjects` with disjoint Driver/NodeType subtype; immutable complete `catalog_release_subjects`;
-- permanent `catalog_subject_aliases` and complete immutable `catalog_release_subject_aliases`;
-- singleton `catalog_state`; stable `parameter_definitions`; immutable `definition_revisions`; exact `catalog_release_definition_heads`; append-only materialization evidence;
-- `organization_subject_registrations` with non-null current Placement and permanent `(organization,subject)` uniqueness; `subject_placements` with unique registration and Organization module;
-- immutable `parameter_observations`, at-most-one accepted observation match, immutable ReviewEvidence, mutable ETag ReviewItems plus immutable resolutions;
-- DefinitionProposals with immutable revisions and publication intents that carry no Catalog mutation pointer;
-- canonical `project_parameter_bindings` unique by project/logical-node/Definition, non-null effective revision, explicit current value, no module identity; immutable `project_parameter_values` and history;
-- immutable legacy identities, append-only mapping versions, CAS mapping heads, immutable Archive metadata/object references;
-- append-only cutover runs/events/checkpoints, comparison corpus/results, verification plans/attempts/gate results/reports/evidence/approvals/runtime pins, and immutable rollback closure.
+#### Platform Catalog
 
-Composite and deferred foreign keys prove Definition/head ownership, release completeness, subtype xor, Registration/Placement exactly-one ownership, same-Organization placement, kind-correct placement, Binding registration/subject/Definition/revision agreement, and ProjectValue exact revision ownership. All protected domain history uses restricted deletion. Catalog tables are owned by a non-login owner; the synchronizer receives insert plus column-limited pointer/head updates only; application/proposal/verifier roles cannot mutate immutable Catalog state or assume writer roles.
+| Relation | Required columns and keys | Invariant |
+| --- | --- | --- |
+| `catalog_releases` | `id`; unique `release_version`; unique `release_digest`; restricted `predecessor_release_id`; compiled/toolchain digests | append-only; no update/delete |
+| `catalog_subjects` | `id`; `kind=driver` or `node-type`; `canonical_key`; unique `(kind,canonical_key)` and `(id,kind)` | Platform-only; no Organization/lifecycle/current selector |
+| `catalog_drivers`, `catalog_node_types` | PK/FK `subject_id` plus subtype fields | every Subject has exactly one matching subtype; deferred xor check |
+| `catalog_release_subjects` | PK `(release_id,subject_id)`; lifecycle; selector/provenance snapshot; tombstone | active has null tombstone; retired has non-null tombstone; successor never silently omits identity |
+| `catalog_subject_aliases` | `id`, `subject_id`, selector kind/value; unique normalized selector and `(id,subject_id)` | permanent owner; no reuse or alias chain |
+| `catalog_release_subject_aliases` | PK `(release_id,alias_id)` plus composite owner FKs, lifecycle/provenance/tombstone | an active alias requires its active Subject in the same release |
+| `catalog_state` | singleton PK; non-null `current_catalog_release_id` | sole current release pointer |
+| `parameter_definitions` | `id`, `subject_id`, normalized `property_key`, non-null `current_revision_id`; unique `(subject_id,property_key)` and `(id,subject_id)` | no Organization/module/proposal/observation/content columns |
+| `definition_revisions` | `id`, `definition_id`, positive `revision_number`, `catalog_release_id`, `content_digest`, complete typed content; unique `(definition_id,revision_number)` and `(definition_id,id)` | every persisted content delta, including docs, creates an immutable row |
+| `catalog_release_definition_heads` | PK `(release_id,definition_id)`; composite FK to exact revision | pinned replay/switch-back never infers head by max/time |
+| `catalog_materializations` | release, compiled/database fingerprint, attempt, success-audit ref, installed time | append-only successful projection evidence |
+
+`parameter_definitions.current_revision_id` uses deferrable composite FK `(id,current_revision_id) -> definition_revisions(definition_id,id)`. Before current-pointer commit, deferred completeness checks prove explicit predecessor inheritance/retirement, alias ownership, complete release heads, and valid active/tombstone combinations. Historical reads use pinned release membership/head tables and never join current `catalog_state`.
+
+#### Organization governance
+
+| Relation | Required columns and keys | Invariant |
+| --- | --- | --- |
+| `organization_subject_registrations` | `id`, Organization, Subject, `status=active` or `retired`, method/proof, non-null `current_placement_id`; unique `(organization,subject)`, `(id,organization)`, `(id,organization,subject)` | retire/restore retains ID and Placement |
+| `subject_placements` | `id`, registration, Organization, taxonomy `module_id`, origin; unique registration, `(registration,id)`, `(organization,module)` | exactly one retained Placement; deferred same-Organization/kind checks |
+| `parameter_observations` | immutable source identity, Organization/project/logical-node/config/source locator, release/matcher pin, evidence fingerprint | never becomes a Definition |
+| `parameter_observation_matches` | unique accepted match per observation; pins Registration/Definition/Revision/Binding/release/matcher | only complete provenance plus one active match; unknown/ambiguous has no row |
+| `parameter_review_evidence` | immutable evidence bundle, reason, candidate-safe digest, R/source-graph refs where applicable | no publicly exposed raw payload |
+| `parameter_review_items` | `id`, `organization_id`, evidence fingerprint, matcher revision, release, reason, `status=open/resolved/out-of-scope`, positive ETag version; unique active grouping `(organization_id,matcher_revision,evidence_fingerprint)` | repeated evidence groups; resolved status requires deferred resolution FK |
+| `parameter_review_resolutions` | immutable `id`; unique `review_item_id`; resolution type; before/after ETag; actor/initiator; captured release; request fingerprint; typed Registration/Proposal/out-of-scope target | closed-union target columns and atomic commit with ReviewItem/Registration/Placement/audit |
+| `definition_proposals` | `id`, Organization/author, base release/revision, closed status, non-null current proposal revision, positive ETag; unique `(id,organization)` | no accepted Definition/Revision materialization pointer |
+| `definition_proposal_revisions` | immutable `id`, proposal, positive number, typed payload/reason/evidence; unique `(proposal_id,revision_number)` and `(proposal_id,id)` | edit appends; current pointer uses deferrable composite FK |
+| `catalog_publication_intents` | immutable `id`; unique accepted proposal; exact proposal revision/base release; repository/publication ref; reviewer/audit | intent only; no Catalog head/pointer or Catalog grant |
+| `governance_command_idempotency` | PK `(organization_id,command_family,idempotency_key)`; request fingerprint; state; typed result ref; committed time | pending exists only inside its UoW; exact success replay; different fingerprint conflicts |
+
+`UNIQUE(subject_placements.registration_id)` proves at most one Placement. The non-null Registration pointer plus deferrable `(id,current_placement_id) -> subject_placements(registration_id,id)` proves at least one. Driver Placement kind is `driver-group`; NodeType kind is `node-type`; parent rules are the accepted taxonomy rules. Organization creation creates only reserved roots and zero Registrations.
+
+#### Binding, ProjectValue, mapping, and Archive
+
+| Relation | Required columns and keys | Invariant |
+| --- | --- | --- |
+| `project_parameter_bindings` | stable `id`, Organization/project/logical-node, registration, subject, definition, non-null effective revision, explicit current value, release pin; unique `(project,logical_node,definition)` | no module identity; composite FKs prove every owner/revision agreement |
+| `project_parameter_values` | immutable `id`, binding, definition, exact revision, source/config/value digest, typed storage | history never follows Definition head; no update/delete |
+| `binding_history_events` | binding, old/new pointer, reason, trusted audit, release/mapping pin | append-only; current is not inferred from time |
+| `legacy_identities` | unique `(source_system,source_kind,owner_scope_kind,owner_scope_id,source_id)` | immutable typed source identity |
+| `legacy_mapping_versions` | identity, run, checksum, graph fingerprint, R class, exactly one typed target or Archive, optional supersedes | append-only; never reclassify at read time |
+| `legacy_mapping_heads` | one CAS pointer per legacy identity | historical consumers pin versions; repair appends and CASes |
+| `parameter_catalog_archives` | Archive ID, source/owner/R class/reason, checksums, encrypted object ref, protected refs, run/release/audit/retention | ordinary roles cannot update/delete/decrypt; excluded from Catalog/public UI |
+| `catalog_command_idempotency` | non-governance scope/key/request fingerprint/result ref/status | exact replay returns stored result; different fingerprint conflicts |
+
+R6's production target is ReviewEvidence plus Archive/mapping evidence; R8's is DefinitionProposal plus Archive/mapping evidence. Only a separate complete project/logical-node/source-revision occurrence graph may create a ParameterObservation. Same property key never merges R6 and R8.
+
+Cutover persistence uses `parameter_catalog_cutover_runs`, append-only events, phase CAS/checkpoints, classification ledger, comparison corpus/results, and rollback-closure record. The unique run tuple is `(source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest)`. Verification persists immutable plans, attempts, gate results, reports, evidence refs, approvals, runtime pins, and retention calculations. Canonical report bytes are SHA-256 digested; approvals never mutate reports. `pointer_rollback_closed_at` records the earliest candidate business mutation, queue business delivery, or accepted public business request and is irreversible.
+
+Catalog relations are owned by a non-login migration owner. `catalog_synchronizer_role` can insert immutable rows and perform only column-limited current release/Definition-head updates. `parameter_governance_writer_role` has only necessary Governance DML and success-audit append, no Catalog/Binding/Cutover/Verification writes; only the Parameter Governance composition root holds its pool. Proposal capability is a role-shaped Governance facet and its DB grant touches proposal/intent/audit only. Application, Agent, ordinary API/worker, and verifier cannot assume writer roles. The verifier cannot `SET ROLE`, call write-capable functions, create writer functions, or obtain Archive keys. P01/P02 prove both Catalog immutability and post-P13 legacy-writer unreachability with real SQLSTATE negatives.
 
 ### Aggregate state machines and transactions
 
@@ -97,6 +178,20 @@ Composite and deferred foreign keys prove Definition/head ownership, release com
 - Proposal is draft -> submitted -> accepted/rejected, with draft/submitted -> withdrawn. Acceptance requires a different Platform Admin and creates intent/audit only.
 - Binding recognition validates one captured release, active Registration, Definition, exact revision, and all owners. Semantic cutover CASes the effective revision; documentation-only heads do not. Value change locks the Binding/value head, validates against effective revision, appends one immutable ProjectValue, CASes current value, and audits atomically.
 - Successful domain writes and success audit commit together. Refusal evidence uses a pool-owned durable sink. Trusted invocation is server-owned and never body/header asserted.
+
+| Operation | Concurrency/transaction | Lost response/retry | Conflict behavior |
+| --- | --- | --- | --- |
+| Catalog install/switch-back | transaction advisory lock + `catalog_state` row + expected current pin | verify committed release digest/fingerprint, then no-op | stale lineage, split head, or unknown projection fails closed |
+| explicit/automatic Registration | current-release guard -> idempotency -> `(organization,subject)` key/row -> destination key/row -> deferred constraints, in Governance UoW | exact fingerprint returns stored Registration/Placement/audit ref | proof/permission/release/Placement conflict leaves no partial Registration |
+| Placement move/rename | Registration row, source/destination keys, ETag CAS | exact same mutation replays result | cycle/kind/Organization/stale destination is 409 and audit rolls back |
+| Review resolution | current-release guard -> idempotency -> ReviewItem ETag -> shared Registration/Placement locks -> deferred constraints, only through `resolveReviewItem` | exact replay returns identical Resolution/Registration/Placement/Proposal and audit ref | stale/resolved/key reuse is `revision-conflict`; Placement conflict leaves item unresolved |
+| Proposal transition | proposal ETag/revision row + exact base release/revision | identical transition returns stored outcome | stale base is `proposal-stale`; self approval 403; no Catalog materialization |
+| Observation ingest | immutable occurrence identity + evidence fingerprint unique | identical occurrence deduplicates/aggregates | changed payload for one source identity is evidence conflict, never overwrite |
+| automatic Registration | same shared writer/locks as explicit/review; captured matcher/release proof; reserved default only | concurrent paths converge on one exact result | zero/multiple/retired/conflicting evidence creates review/refusal and never auto-restores |
+| Binding create/cutover | unique `(project,logical_node,definition)` + Binding row + expected revision | identical recognized association is idempotent | stale pin/owner mismatch/CAS loser leaves no history |
+| ProjectValue append | Binding/current-value row + expected current value/effective revision | command idempotency returns exact immutable value | stale CAS leaves no value, pointer, or success audit |
+| Cutover phase | host operation lock + PG advisory lock + phase CAS + exact digests | inspect checkpoint; resume only known committed phase | unknown outcome is classified first; otherwise `recovery-required` |
+| Verification/report | immutable plan/attempt/report; approval unique by report/purpose/principal role | interrupted attempt is closed and a new attempt starts; valid report may be reused | nondeterminism, lineage/purpose mismatch, or same-role approval blocks |
 
 ### Publication, API, frontend, and legacy transition
 
@@ -108,21 +203,163 @@ The only UI entry is `/parameter-admin/specs`. It provides Subject/Placement nav
 
 At canonical launch every legacy structural mutation, overlay, and promotion write returns 410. Eligible exact reads remain for at least the later of two production releases and 90 days and until every deployment class has 30 consecutive zero-use days plus all exit gates. The resolver allow-list and mapped/archived/ambiguous/unknown behavior are fixed by #677 and can never reclassify R0-R10.
 
+<a id="pcat-spec-api"></a>
+
+#### Exact canonical route and wire contract
+
+Every canonical response includes `X-WiseEff-Catalog-Release`. Collections are `{items,nextCursor,catalogReleaseId}` and items are `{item}`. Cursors bind release plus stable sort key and opaque ID. Publication-dependent writes echo the release header; mutable Governance/Proposal resources require ETag/`If-Match`; Governance commands require `Idempotency-Key`. HTTP maps one typed module command and never accepts/passes a transaction handle.
+
+| Resource | Method/path | Owning seam |
+| --- | --- | --- |
+| Catalog | `GET /api/v2/catalog` | Kernel snapshot + read-only readiness |
+| Subjects | `GET /api/v2/catalog/subjects` | Kernel `listSubjects` |
+| Subject detail | `GET /api/v2/catalog/subjects/{subjectId}` | Kernel + Governance read composition |
+| Subject definitions | `GET /api/v2/catalog/subjects/{subjectId}/definitions` | Kernel `listDefinitions` |
+| Definitions | `GET /api/v2/catalog/definitions` | Kernel `listDefinitions` |
+| Definition detail | `GET /api/v2/catalog/definitions/{definitionId}` | Kernel + scoped usage/Governance reads |
+| Definition revisions | `GET /api/v2/catalog/definitions/{definitionId}/revisions` | Kernel exact reverse-order page |
+| Pinned revision | `GET /api/v2/catalog/definitions/{definitionId}/revisions/{revisionId}` | Kernel exact revision; no current fallback |
+| Timeline | `GET /api/v2/catalog/definitions/{definitionId}/timeline` | Kernel facts + authorized History/Audit composer |
+| Registrations | `GET, POST /api/v2/organizations/{organizationId}/subject-registrations` | Parameter Governance query/register command |
+| Registration detail/lifecycle | `GET .../{registrationId}`; `POST .../{registrationId}/retire`; `POST .../{registrationId}/restore` | Parameter Governance |
+| Placement | `GET, PATCH .../{registrationId}/placement` | Parameter Governance ETag command |
+| Observations | `GET /api/v2/organizations/{organizationId}/parameter-observations`; detail | Parameter Governance read only; creation internal |
+| Review Queue | `GET /api/v2/organizations/{organizationId}/parameter-review-items`; detail | Parameter Governance reader |
+| Review resolution | `POST .../{reviewItemId}/resolve` | exactly one `resolveReviewItem` command |
+| Proposals | `GET, POST /api/v2/catalog/definition-proposals`; detail | Parameter Governance Proposal facet |
+| Proposal workflow | `POST .../{proposalId}/submit`, `/withdraw`, `/accept`, `/reject` | Parameter Governance Proposal command |
+| Legacy ID | `GET /api/v2/catalog/legacy-identifiers/{legacyType}/{legacyId}` | exact mapping-head adapter |
+| Project Binding/history/compare/drafts | retained v2 project paths with canonical DTO IDs | Binding/ProjectValue seams |
+| Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | deployment Operator only; public router 404 |
+
+The legacy resolver allow-list is exactly `parameter-spec`, `parameter-spec-version`, `project-parameter-binding`, `project-parameter-binding-revision`, `parameter-subject`, `parameter-placement`, and `parameter-module`. It supports no prefix/reverse search, candidates, confidence, source rows, or raw Archive. Exact mapped target returns the canonical link; Archive is 410; ambiguous/blocker is 409; unknown/out-of-scope is 404.
+
+| `details.reason` | HTTP/top-level | Required behavior |
+| --- | --- | --- |
+| `catalog-not-ready` | 503 / `SERVICE_UNAVAILABLE` | writes disabled; `Retry-After`; never empty fallback |
+| `release-drift` | 409 / `CONFLICT` | refresh and explicit reconfirmation |
+| `subject-not-published` | 404 / `NOT_FOUND` | no inference/create |
+| `subject-retired` | 409 / `CONFLICT` | show lifecycle; never auto-restore |
+| `definition-not-found` | 404 / `NOT_FOUND` | scope-safe not found |
+| `definition-retired` | 409 / `CONFLICT` | historical read allowed; mutation blocked |
+| `registration-required` | 409 / `CONFLICT` | offer explicit Org Admin registration only |
+| `placement-conflict` | 409 / `CONFLICT` | refresh retained Placement and resolve explicitly |
+| `invalid-placement-parent` | 409 / `CONFLICT` | ReviewItem remains unresolved |
+| `observation-ambiguous` | 409 / `CONFLICT` | open linked review work; no Binding |
+| `proposal-stale` | 409 / `CONFLICT` | rebase as reviewed Proposal revision |
+| `proposal-self-approval-forbidden` | 403 / `FORBIDDEN` | require another Platform Admin |
+| `revision-conflict` | 409 / `CONFLICT` | stale/missing ETag, resolved item, or key fingerprint conflict; no silent retry |
+| `legacy-id-archived` | 410 / `GONE` | no Archive payload |
+| `legacy-surface-retired` | 410 / `GONE` | successor link, no retry |
+| `legacy-id-ambiguous` | 409 / `CONFLICT` | no candidate disclosure |
+| `forbidden` | 403 / `FORBIDDEN` | no out-of-scope disclosure |
+| `migration-diagnostics-not-public` | 404 / `NOT_FOUND` | operator route absent from public router |
+
+At launch, exact eligible Effective reads may be a bounded canonical adapter. Governance/raw modes, Organization definition edit/lifecycle/identity correction, identity-map mutation/reopen, overlay/promotion, and module structural writes return 410 immediately. Legacy responses carry `Deprecation`, `Sunset`, successor `Link`, `Warning`, and `X-WiseEff-Legacy-Contract`. A failed exit gate extends read-only compatibility and never revives a writer or dual read.
+
 ### P0-P16 and release chain
 
-P0 inventories exact inputs. P1 validates/builds offline. P2 quiesces proxy, queue, services, DB writers, and jobs. P3 captures and verifies a same-boundary PostgreSQL/object-store/Redis Recovery Point. P4 runs one-shot append-only schema migration. P5 installs the immutable Catalog. P6 classifies R0-R10. P7 creates typed mapping versions/heads. P8 migrates only evidence-backed Registration/Placement. P9 preserves complete Binding/ProjectValue/history and explicit tips. P10 creates immutable Archive. P11a runs the complete initial V01-V17, migration/privilege gates, and D01-D09. P12 CASes the application read pointer bound to the approved pre-activation report. P13 permanently retires all legacy writers. P11b creates a new attempt and fully reruns V01-V17 and D01-D09, including V13/P02, then publishes the approved runtime pin. P14 starts API verify-only, then isolated worker/web, executes exact-target API/browser acceptance, assembles/approves the public-release report, and only then resumes queue, proxy, and public traffic. P15 observes the declared period and workload cycle. P16 is a separate cleanup release and purpose.
+<a id="pcat-spec-p0-p16"></a>
+
+| Phase | Exact exit contract |
+| --- | --- |
+| P0 inventory/plan | Read-only exact target, migration filenames/checksums, source fingerprints, R0-R10/protected counts, read modes, release lineage, store identities, and plan digest. |
+| P1 offline validate | Candidate built; bundle/toolchain/lineage, old/new compatibility, and #671 fixture evidence verified; changed artifact means new plan. |
+| P2 quiesce | Proxy stopped, queue paused/drained, API/worker/web stopped, host+PG locks and writer fences held, zero active write transaction and leased job. |
+| P3 Recovery Point | One same-boundary PostgreSQL + S3-compatible object store + durable Redis manifest with identities, checksums, restore tool, target, and maximum age verified. |
+| P4 schema expand | Dedicated one-shot append-only old-binary-compatible migration; API is not runner; M01-M04 pass. |
+| P5 Catalog install | Kernel bootstrap/advance atomically switches exact release/heads; exact same verified digest is no-op. |
+| P6 classify | Full-graph R0-R10 with classifier/source/graph/protected fingerprints; any R0 or drift stops. |
+| P7 typed mapping | Every legacy identity has exactly one primary append-only mapping version/head; conflict never overwrites. |
+| P8 register/place | Only strong Organization/Subject evidence; active membership, same Organization, kind, and exactly-one Placement prove. |
+| P9 Binding/value/history | Complete operational and historical graph, exact revisions/tips/source/config/audit; never max/time tip inference. |
+| P10 Archive | Immutable metadata plus encrypted object ref/checksums for every Archive disposition and required source graph. |
+| P11a initial verification | Isolation/fences remain; full V01-V17, M/P, and D01-D09; zero unexplained/unqueryable; all 11 families. |
+| P12 read switch | CAS legacy -> canonical bound to exact approved pre-activation report, release, mapping, verifier, and comparison digests; no runtime dual-read fallback. |
+| P13 R-L0 writer retirement | Permanently revoke/disable role, grant, trigger, function, HTTP, Agent, job, and script writers; record fingerprint. |
+| P11b post-retirement rerun | New attempt reruns all V01-V17 and D01-D09, including V13/P02; approve exact post-retirement runtime pin. |
+| P14a verify-only startup | API consumes latest runtime pin; worker/web internal checks follow; queue/proxy/public stay isolated. |
+| P14b isolated acceptance | Exact-target real-PG/HTTP/auth/audit API and browser-real acceptance; any business mutation irreversibly closes pointer rollback. |
+| P14c public release | New report aggregates three predecessor reports plus current target/recovery/observability; distinct purpose approvals precede queue -> proxy -> public traffic. |
+| P15 observe/accept | Predeclared time and at least one complete workload cycle; zero drift, unmapped ID, legacy write, Archive/pin/Placement error. |
+| P16 R-L3 cleanup | Separate cleanup release and purpose after sunset, telemetry, dependency, recovery, and retention gates; approved assets only; protected history retained. |
 
 R0 blocks; R1 archives; R2 maps only to an independently published Subject plus Archive; R3 becomes ReviewEvidence; R4/R5 exact-map to Driver/NodeType Definition and Revision; R6 becomes ReviewEvidence plus Archive; R7 Archive plus policy-review reason; R8 DefinitionProposal; R9 same-kind immutable history; R10 unresolved Archive and blocks when a protected consumer needs an operational target.
 
 Pointer-only rollback closes permanently on the earliest candidate business mutation, queue delivery, or accepted public business request. Before that boundary, switch-back still requires exact compatibility and zero-write proof. Afterwards recovery is forward repair or incident-approved whole-state restore of PostgreSQL, configured object storage, and Redis from one manifest; partial restore is unsupported.
 
+The controller actions are exact and fail closed: `plan`; `apply`; `activate-p12` with an approved pre-activation report whose API/browser entries are `not-yet-executable`; `retire-p13` while isolated; `approve-runtime-startup` only after a new complete post-P13 V/D attempt; `start-candidate` verify-only; `run-isolated-acceptance`; `release-public`; `resume` only for known unchanged commits; `recover-candidate` only for recorded completion failures without restore; token-gated `rollback --restore-data`; and purpose-specific `legacy-read-sunset`/`p16-cleanup`. The append-only journal records all plan/attempt/report/approval/predecessor pins, target/host/Compose/volume/bucket identities, migration/schema/Catalog/materialization/source/classifier/recovery/mapping/Archive digests, both V/D attempts, P13 fingerprint, runtime-pin generation, API/browser/recovery evidence, traffic/queue/proxy states, rollback closure, phase events, bounded failure fields, and exactly one executable `next_action`.
+
 ### Gate registry, observability, retention, and retirement
 
-V01-V17 cover duplicate current identity, head cardinality, owner scope, active membership, Placement cardinality, Binding agreement, ProjectValue pins, protected ID mapping, source conservation, R6/R8 separation, Archive integrity, materialization drift, writer reachability, Binding-tip conservation, audit continuity, zero Organization structural Catalog, and exact fresh/populated mode. M01-M04 cover migration package/applied-file/suffix-alias/one-shot result. P01/P02 are real-PostgreSQL privilege negatives.
+<a id="pcat-spec-verification"></a>
 
-D01-D09 cover Definitions, Subject identity, Registration/Placement, Binding/history, ProjectValue pin, Review/Proposal/Observation, protected consumer references, source/writeback, and legacy/operator outcomes. Unexplained and unqueryable/protected-reference-missing counts are zero; expected differences carry exact R class, mapping head, typed target/Archive, rule, and plan pin; all 11 consumer families are covered.
+| Purpose | Required now | Intentionally unavailable | Sole authorization after passing approval |
+| --- | --- | --- | --- |
+| `pre-activation` | exact pins, Catalog/materialization, migration, initial V01-V17/D01-D09, Recovery Point, pre-switch fence | API/HTTP/browser/runtime are `not-yet-executable` | P12 read switch |
+| `post-retirement-runtime` | new post-P13 full V/D attempt, V13/P02, pointer/fingerprint, zero writer, runtime pin | API/browser acceptance still `not-yet-executable` | API verify-only, then isolated worker/web checks |
+| `isolated-candidate-acceptance` | exact-target API/PG/HTTP/auth/audit, three-view browser, internal observability, rollback-closure record | public approval absent | evidence only; no traffic act |
+| `public-release` | exact three predecessor reports plus current target/recovery/observability/rollback | sunset/P16 absent | queue, proxy, public traffic |
+| `legacy-read-sunset` | public lineage, two releases plus 90 days, per-class 30-day zero use, consumer/reference/recovery proof | P16 deletion | eligible public legacy reads become 410 |
+| `p16-cleanup` | full canonical/fresh/populated/API/browser/observability/rollback, own Recovery Point/target restore, zero dependency, retention/legal hold | no waiver | removal of explicitly approved assets |
 
-PCAT-API-01-12 and PCAT-UI-01-15 are all blocking. Browser evidence uses the real candidate API, all three viewports, snapshot and screenshot, console/page/request/critical-response checks, network summaries, real interactions, and immutable artifact/report/release/target pins. Fresh runs prove zero legacy inventory through executed zero-corpus predicates; populated runs are complete and non-sampled.
+| Gate | Exact invariant | Stable failure code |
+| --- | --- | --- |
+| V01 | current `(subject,property)` duplicate = 0 | `PCAT-VRF-V01-DUPLICATE-CURRENT-DEFINITION` |
+| V02 | each Definition has exactly one owned head | `PCAT-VRF-V02-CURRENT-REVISION-CARDINALITY` |
+| V03 | cross-owner/Organization refs = 0 | `PCAT-VRF-V03-OWNER-SCOPE-MISMATCH` |
+| V04 | every current operational ref has active membership | `PCAT-VRF-V04-SUBJECT-MEMBERSHIP-MISSING` |
+| V05 | every active/retired Registration has exactly one valid Placement | `PCAT-VRF-V05-PLACEMENT-CARDINALITY` |
+| V06 | Binding/Registration/Subject/Definition/revision agree | `PCAT-VRF-V06-BINDING-DEFINITION-MISMATCH` |
+| V07 | ProjectValue/Binding/revision/source ownership agrees | `PCAT-VRF-V07-PROJECT-VALUE-REVISION-MISMATCH` |
+| V08 | protected legacy/external ID mapping is exact | `PCAT-VRF-V08-PROTECTED-ID-UNMAPPED` |
+| V09 | P0 source = blockers + unique primary dispositions | `PCAT-VRF-V09-SOURCE-CONSERVATION` |
+| V10 | R6/R8 same-key merge = 0 | `PCAT-VRF-V10-R6-R8-IDENTITY-MERGE` |
+| V11 | Archive row/graph/object integrity exact | `PCAT-VRF-V11-ARCHIVE-INTEGRITY` |
+| V12 | packaged/compiled/DB/head/cache/readiness exact | `PCAT-VRF-V12-CATALOG-MATERIALIZATION-DRIFT` |
+| V13 | reachable legacy writers = 0 | `PCAT-VRF-V13-LEGACY-WRITER-REACHABLE` |
+| V14 | Binding/value tips and histories conserved | `PCAT-VRF-V14-BINDING-TIP-CONSERVATION` |
+| V15 | audit principal/initiator/trace/map/target continuity | `PCAT-VRF-V15-AUDIT-CONTINUITY` |
+| V16 | Organization structural Catalog objects/paths = 0 | `PCAT-VRF-V16-ORGANIZATION-STRUCTURAL-CATALOG` |
+| V17 | exact fresh/populated mode result | `PCAT-VRF-V17-MODE-RESULT-MISMATCH` |
+
+M01-M04 are respectively package-inventory drift, applied-file missing/checksum, ordered suffix/append-only alias ledger, and one-shot exact result, with codes `PCAT-MIG-PACKAGE-INVENTORY-DRIFT`, `PCAT-MIG-APPLIED-FILE-MISSING`, `PCAT-MIG-HISTORICAL-ALIAS-INVALID`, and `PCAT-SCHEMA-MIGRATION-RESULT-MISMATCH`. P01/P02 are real-PostgreSQL privilege negatives `PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS` and `PCAT-PRIV-LEGACY-WRITER-BYPASS`.
+
+| Comparator gate | Semantic scope | Stable failure code |
+| --- | --- | --- |
+| D01 | Definition semantics | `PCAT-CMP-D01-DEFINITION-SEMANTICS` |
+| D02 | Subject identity | `PCAT-CMP-D02-SUBJECT-IDENTITY` |
+| D03 | Registration/Placement | `PCAT-CMP-D03-REGISTRATION-PLACEMENT` |
+| D04 | Binding/current tip/history | `PCAT-CMP-D04-BINDING-HISTORY` |
+| D05 | ProjectValue/revision pin | `PCAT-CMP-D05-PROJECT-VALUE-PIN` |
+| D06 | Review/Proposal/Observation disposition | `PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION` |
+| D07 | protected consumer references | `PCAT-CMP-D07-PROTECTED-CONSUMER-REFERENCE` |
+| D08 | source/writeback provenance | `PCAT-CMP-D08-SOURCE-WRITEBACK` |
+| D09 | legacy/operator HTTP outcome | `PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME` |
+
+Each comparison case is exactly `exact-equivalent`, `declared-expected-difference`, `unexplained-difference`, or `unqueryable/protected-reference-missing`. The last two counts are zero. Every expected difference has one R class, mapping-head/version, typed target or Archive, rule ID, and plan pin. Corpus-integrity codes are `PCAT-CMP-CORPUS-COVERAGE`, `PCAT-CMP-UNEXPLAINED-DIFFERENCE`, `PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE`, `PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE`, and `PCAT-CMP-REPORT-INTEGRITY`. All 11 inventory families are non-sampled and covered.
+
+PCAT-API-01 through 12 are blocking: readiness; Subject/Definition reads; exact revision/timeline; Registration/Placement atomicity; Review; Proposal; typed legacy; legacy 410; role-spoof negatives; release/ETag/idempotency; all nine reads through Kernel; canonical project IDs. PCAT-UI-01 through 15 are blocking and reserved in the bilingual browser/operation registries: single page, URL/release anchor, detail, same-page queue, timeline, every state, conflict, legacy link, Agent read-only, adapter parity, three viewports, and real interactions. The exact files are `e2e/acceptance/parameter-catalog.acceptance.spec.ts`, `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`, and `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`.
+
+| Browser ID | Normative behavior | File owner |
+| --- | --- | --- |
+| PCAT-UI-01 | one Parameter definitions entry; no Effective/Governance peer | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-02 | opaque Subject/Definition/release deep link survives reload/Back/Forward | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-03 | formal detail, current/pinned revision, usage, Registration/Placement | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-04 | same-page Review Queue and atomic allowed resolution | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| PCAT-UI-05 | deterministic Catalog plus authorized History/Audit timeline | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-06 | ready exposes only role-authorized actions | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-07 | unregistered remains readable; Org Admin chooses explicit Placement and registers | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| PCAT-UI-08 | loading/error and four empty reasons are distinct; stale-visible writes disabled | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-09 | retired/deprecated history remains readable and new actions disabled | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-10 | release/ETag/parent/idempotency conflict preserves input and requires reconfirmation | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| PCAT-UI-11 | exact legacy mapped/410/409/404 outcomes without Archive/candidate disclosure | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| PCAT-UI-12 | Agent read-only within invoking scope and all mutation/spoof paths denied | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| PCAT-UI-13 | API/mock states and authority are identical; mock has no extra power | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| PCAT-UI-14 | no overlap/overflow/hidden action/obstructed overlay at all three viewports | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| PCAT-UI-15 | real navigation/search/detail/timeline/registration/review/proposal/conflict/deep-link/focus journey | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+
+Browser evidence uses the real candidate API at 1440x900, 768x1024, and 390x844 and contains snapshot+screenshot, console/page/request/critical-response checks, network summary, real interaction ledger, browser/runtime/source/API/frontend/OpenAPI/report/release/target pins, and redaction result. `npm run acceptance:browser` cannot pass a blocking ID by skip/planned marker; `npm run acceptance:evidence` requires exact full-run role/route/assertion/API/DB/audit/artifact/runtime/replay records. Fresh executes zero-inventory and zero-corpus predicates rather than skipping; populated is complete and non-sampled. Target-host executes exact artifact/data-profile/cross-store restore/isolation/verifier/browser/observability; local and Hosted do not substitute.
 
 Stable failure families are `PCAT-ART|MIG|SCHEMA|SYNC|CLASS|MAP|REG|BIND|ARCH|VRF|CMP|API|AUTH|UI|UPG|WRITER|RP|RESTORE|RET-*`. Metrics use bounded labels and never entity/property/value/person identifiers. Structured logs and audit carry trace, target/release/run/attempt/report/gate/phase/stable code and redacted evidence references. Reports exclude raw values, DTS, Archive payloads, credentials, and person data. Retention is the latest legal/audit hold, protected/business/Archive/mapping need, cleanup-plus-one-year, last restore/compatibility-plus-one-year, and completed public legacy window; failed/interrupted attempts remain at least one year.
 
@@ -132,21 +369,184 @@ R-L0 is P13 writer retirement, R-L1 read-only observation, R-L2 approved public 
 
 Current main ends at `0136`; this draft reserves no number. Every implementation slice fetches current `origin/main`, enumerates package filenames/checksums and the applied ledger, and takes the next unique contiguous prefix at that time. A collision may content-preserving-renumber only an unapplied branch migration. Applied filenames/bytes are never edited, removed, or recreated with different bytes; repairs are append-only. Historical aliasing requires one explicit append-only alias ledger. M01-M04 execute before/after one-shot migration, and API startup proves it applied none. Fresh, supported-floor upgrade, populated fixture, COMMIT/deferred constraints, and independent-session concurrency are mandatory. Generated schema and `docs:check` use a real pgvector PostgreSQL path.
 
-### Implementation slices and dependency graph
+<a id="pcat-spec-work-packages"></a>
 
-S0 contract/gate/fixture ratchets precedes S1 bundle compiler and S2 schema/roles; S1+S2 enable S3 Catalog Kernel. S3 enables parallel S4 Registration/Placement and S5 Observation/Review/Proposal; S3+S4 enable S6 Binding/ProjectValue. S2-S6 converge in S7 mapping/Archive/Cutover P0-P10. S3-S6 enable S8 canonical API/legacy resolver, which enables S9 one-page frontend and consumers. S7-S9 converge in S10 Release Verification/evidence, then S11 self-hosted controller/recovery. S8-S11 converge in S12 all 11 consumer cutovers and P12-P15. S12 enables later S13 R-L2 sunset, then S14 P16 cleanup.
+### Ticket-ready work packages, not Issues
 
-Future ticket granularity should be one public seam or independently verifiable vertical contract, not one file/table. No issues are created until the parent confirms these seams, the S0-S14 granularity, and the dependency graph.
+S0-S14 are workstream numbers, not ticket numbers. Each row below is one future ticket candidate for one agent/branch/merge decision. This specification creates none of them. Evidence codes are D=document/static, L=local pure/fake, PG=real local PostgreSQL, B=browser-real, H=Hosted/CI, T=real target-host, and R=release/production report. “None” means another level cannot be inferred.
+
+Number/ID ownership defaults apply to every row: unless a row explicitly names a migration, ADR, PCAT-API, PCAT-UI, operation, V/M/P/D, or generated artifact, that node owns **none** of that class. Only S2-SCH/S2-RBAC/S10-PER may allocate their explicitly scoped migrations; G0/parent owns ADR numbers; S8-CON owns the API registry while route nodes own only their named assertion ranges; S9-BRW owns requirement/operation registry sources while S9-CAT/S9-GOV/S9-BRW own only their named markers/files. This default is a normative explicit “none,” not omitted ticket metadata.
+
+#### S0-S3: contracts, bundle, schema, and Kernel
+
+| Node | Objective / owner and public seam | Allowed paths; artifact/ID ownership | Input -> output | Red -> Green | Evidence boundary | Dependencies; merge/conflict gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| S0-ID | branded IDs, closed enums, failure/gate/purpose/results; shared contract package | `server/modules/parameter-catalog-contract/**`; sole ID/enum registry; no migration/ADR/API/UI IDs | #669-#679 -> compile-time registry | primitive/cross-kind assignment -> type/serialization golden | D+L; no PG/B/H/T/R | G0; no other ticket edits registry |
+| S0-RAT | legacy-writer/raw-read/import/route ratchets | `scripts/check-parameter-catalog-*.ts`, tests, allowlist manifest | inventory -> exact violation list | enumerate current violations -> named decreasing allowlist only | D+L only | G0, S0-ID CD; consumer tickets own only their allowlist entry removal |
+| S0-FIX | integrate checksum-locked #671 populated and zero-mode fixture | `scripts/wayfinder/**`, exact EN/ZH fixture references; sole fixture/version owner | #671 -> reusable loader | checksum/R6-R8/dirty DB failure -> checked-empty load/cleanup | D+L; PG execution in S2-PGH; H later; no T/R | G0, S0-ID CF; downstream consumes without edits |
+| S1-BND | immutable bundle schema/manifest/stable IDs/lineage | `schemas/dts/catalog-release/**`, `docs/generated/parameter-catalog-bundle.schema.json`; schema-version owner | ADR-0040/41 -> canonical JSON schema | malformed/reassigned/cycle -> reject before compile | D+L only | G0, S0-ID CD; sole generated schema owner |
+| S1-CMP | deterministic offline compiler/validator | `server/modules/catalog-kernel/compiler/**`, tests; compiled model/toolchain digest owner | S1-BND -> byte-identical compiled release | reorder/duplicate/gap -> deterministic result/violations | L; H repeat later; no PG/B/T/R | S1-BND CD, S0-ID CD; no DB/runtime files |
+| S2-SCH | physical schema, keys, deferred constraints/triggers | sole `server/migrations/<next>_canonical_parameter_catalog_schema.sql`, schema tests; physical-name owner | ADR-0040/42 -> fresh/upgrade schema | COMMIT-time head/subtype/Placement/owner failures -> exact rollback-safe constraints | PG required; D ledger; H later | G0, S0-ID CF; no shared migration file |
+| S2-RBAC | owners/roles/grants/function reachability | sole later `server/migrations/<next>_canonical_parameter_catalog_roles.sql`, role tests; grant-manifest owner | S2-SCH contract -> least privilege | app/verifier/Agent bypass -> P01/P02 SQLSTATE matrix | PG required; H repeat later | S2-SCH CF; separate migration filename |
+| S2-PGH | real-PG harness, independent sessions, COMMIT/failure injection | `server/testing/parameterCatalog/**`, runner config; no schema ownership | S0-FIX + schema -> disposable checked-empty DB | fake/shared-session accepted -> real server/independent pools | PG required; H later | S0-FIX CD, S2-SCH CF; no migration/generated-schema edits |
+| S3-RUN | Kernel public types and immutable current/pinned read facet | `server/modules/catalog-kernel/interface.ts`, `runtime/**`, tests; sole public-type owner | compiler+schema contracts -> six-operation interface/snapshots | mixed release/null/post-page filter -> tagged captured reads/cursors | L+PG; B via API later | S1-CMP CF, S2-SCH CF, S2-PGH CD; freeze before consumers |
+| S3-INS | bootstrap/advance/switch-back Kernel-owned transaction | `server/modules/catalog-kernel/install/**`, tests; install adapter owner | compiler+schema/RBAC+types -> atomic materialization | each failure/lost response/race -> all-or-none/no-op/conflict | PG required; H later | S1-CMP CD, S2-SCH/RBAC CD, S3-RUN CF; no public-interface edits |
+| S3-VFY | independent verifier, cache rebuild, failure injection | `server/modules/catalog-kernel/verification/**`, `cache/**`; fingerprint/cache-format owner | S3-RUN/INS -> verifier snapshot/cache | stale/poisoned/partial/writer credential -> read-only exact drift | L+PG; H later | S3-RUN/INS CD, S2-RBAC CD; S10 consumes read-only schema |
+
+#### S4-S6: internal Governance packages and Binding/ProjectValue
+
+| Node | Objective / owner and public seam | Allowed paths; artifact/ID ownership | Input -> output | Red -> Green | Evidence boundary | Dependencies; merge/conflict gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| S4-REG | Governance Registration/Placement explicit/auto/lifecycle/move | `server/modules/parameter-governance/registration/**`; private repos/lock-order owner; no API/UI IDs | Kernel snapshot + context + intent/proof -> stable result | double Placement/auto-restore/race/lost response -> shared-UoW convergence | L+PG; B/H later | S3-RUN CF, S2-SCH/S2-PGH CD; no public repo/UoW; parallel with S4-EVD |
+| S4-EVD | immutable Observation/ReviewEvidence ingest | `server/modules/parameter-governance/evidence/**`; fingerprint owner | matcher/source provenance -> evidence | weak match/overwrite/R6-R8 merge -> immutable dedupe/conflict | L+PG | S3-RUN CF, S2-SCH CD; creates no Registration/Definition/Binding |
+| S4-REV | Review Queue grouping/read/state, excluding resolution coordinator | `server/modules/parameter-governance/review/**`; ReviewItem ETag/query owner | S4-EVD -> grouped open read model | duplicate group/stale candidate/raw leak -> exact authorized query | L+PG; B later | S4-EVD CD, S3-RUN CF; no Resolution/Registration write |
+| S5-RSL | sole `resolveReviewItem` coordinator and atomic review-registration | `server/modules/parameter-governance/resolveReviewItem/**`; command/result/failure/UoW owner | S4-REG+REV+release -> ReviewResolutionResult | HTTP multiwriter/ETag race/key conflict/failure each step -> one commit + durable refusal | PG required; B/H later | S4-REG/REV CD, S2-RBAC CD, S3-RUN CF; no private seam imports |
+| S5-PRP | Proposal revisions/workflow/publication intent | `server/modules/parameter-governance/proposals/**`; Proposal command/result owner | captured base + roles -> Proposal/intent | self-accept/stale/Catalog write -> distinct reviewer/intent-only audit | L+PG; B/H later | S3-RUN CF, S2-SCH CD; parallel with S5-RSL after shared interface freeze |
+| S6-BND | Binding stable identity/effective-revision semantic cutover | `server/modules/parameter-bindings/binding/**` and explicit migration adapter; Binding-type owner | Kernel + active Registration -> Binding/CAS | module/latest/cross-owner race -> composite agreement/stable ID | PG required | S3-RUN CD, S4-REG CF, S2-SCH CD; cannot be fully parallel with S4-REG |
+| S6-VAL | immutable ProjectValue, explicit current tip, complete history | `server/modules/parameter-bindings/values/**`, tests; value/history owner | Binding + exact revision/source -> value/pointer | max-time/update/history loss/CAS race -> append+CAS+audit | PG required | S6-BND CD; no consumer adapters |
+| S6-WFA | protected workflow adapter contract, not 11 consumer migrations | `server/modules/parameter-bindings/adapters/**`, tests; internal canonical adapter DTO owner | S6-BND/VAL -> protected-reference adapter | `parameterSpecId` fallback -> canonical pin or typed block | L+PG; consumer evidence later | S6-BND/VAL CD; S12 owns call sites |
+
+#### S7-S11: Cutover, API/UI, Verification, and upgrade
+
+| Node | Objective / owner and public seam | Allowed paths; artifact/ID ownership | Input -> output | Red -> Green | Evidence boundary | Dependencies; merge/conflict gate |
+| --- | --- | --- | --- | --- | --- | --- |
+| S7-CLS | private R0-R10 full-graph classifier | `server/modules/catalog-cutover/classifier/**`; classifier version/rule IDs | P0 graph+fixture -> one primary class | R0 archive/R6-R8 merge/sample -> full conservation/block | L+populated PG; H/T later | S0-FIX, S2-PGH CD, S3-RUN CF; no mapping/archive writes |
+| S7-MAP | typed identity, append-only mapping versions/heads | `server/modules/catalog-cutover/mapping/**`; mapping schema owner | classifier -> one typed head | reclassify/overwrite/ambiguous -> append/no-op/conflict | PG; T later | S7-CLS, S2-SCH CD; no Archive adapter edits |
+| S7-ARC | immutable Archive DB+encrypted object adapter | `server/modules/catalog-cutover/archive/**`; manifest/object schema owner | archive outcomes -> metadata/object checksum | public/partial/leak -> atomic integrity/authorized restore read | L+PG+local object; T later | S7-CLS, S2-SCH CD; parallel with MAP |
+| S7-ORC | four Cutover operations, P0-P10, rehearsal/rollback containment | remaining `server/modules/catalog-cutover/**`, `scripts/wayfinder/**` orchestration; plan/run-schema owner | Kernel/Governance/Binding + CLS/MAP/ARC -> checkpoints | duplicate/unknown/ad-hoc/rollback drift -> same-plan resume/dump equality | populated PG required; H/T later | S3-INS, S4/S5/S6 contracts, S7 children; P12-15 not executed |
+| S8-READ | nine Catalog read routes close through Kernel | `server/modules/parameter-catalog-api/read/**`, tests; PCAT-API-01..03 assertions | S3-RUN -> HTTP DTO/cursors | raw repo/post-filter/scope leak -> exact closure | L+PG+HTTP; B/H later | S3-RUN CD, S8-CON CF; no generated OpenAPI edits |
+| S8-GOV | Governance route family maps one command per handler | `server/modules/parameter-catalog-api/governance/**`; PCAT-API-04..07 assertions | S4/S5 -> ETag/idempotent HTTP | tx handle/multiwriter/spoof/partial -> typed mapping | PG+HTTP+audit; B/H later | S4-REG/REV, S5-RSL/PRP CD, S8-CON CF; no private imports |
+| S8-LEG | exact resolver/read adapter/410 transition | `server/modules/parameter-catalog-api/legacy/**`; PCAT-API-08..10 assertions | mapping/Archive projection -> mapped/410/409/404 | inference/reverse/raw Archive/write -> allow-list exact | PG+HTTP; B/H later | S7-MAP/ARC CD, S8-CON CF; no P12-15 |
+| S8-CON | OpenAPI, route manifest, DTO/error registry, clients | `server/modules/contracts/**`, `docs/generated/openapi.json`, client contract source; PCAT-API-01..12 registry owner | #677 + frozen seams -> wire contract | missing route/reason/client branch -> generated parity | D+L; runtime later | G0, S0/S3/S5/S6/S7 CF; sole generated OpenAPI owner |
+| S9-PRT | frontend ports, domain states, URL/release/ETag/idempotency | `src/application/ports/ParameterCatalog*.ts`, `src/application/parameter-catalog/**`; operation-ID/port owner | OpenAPI freeze -> frontend types/states | Effective/Governance/mock power -> parity | L; B later | S8-CON CF; no page/spec edits |
+| S9-CAT | one-page list/detail/timeline/read states | `src/features/parameter-catalog/**`, route slice, `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; owns UI-01/02/03/05/06/08/09/14 markers | ports + running read API -> UI | mixed release/peer/hidden state/overflow -> exact 3-view UI | L+B real API; PG via API | S9-PRT CD, S8-READ ID; no Governance/negative file edits |
+| S9-GOV | Registration/Placement/Review/Proposal interactions | `src/features/parameter-catalog-governance/**`, `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; UI-04/07/15 markers | ports + running Governance API -> reconfirming UX | silent retry/Agent write/partial/Proposal materialize -> exact role/ETag flows | PG+HTTP+B+audit | S9-PRT CD, S8-GOV ID; separate spec owner |
+| S9-BRW | responsive/deep-link/negative bundle and registry integration | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`, `e2e/acceptance/requirements.ts`, `e2e/acceptance/operationMatrix.ts`, four EN/ZH coverage docs; UI-10..13 and registry status owner | S9 pages + legacy API -> blocking suite | lost input/inference/mock drift/diagnostics fail -> all 15 IDs | B three views + PG/API/audit refs; H/T later | S9-CAT/GOV and S8-LEG ID; sole registry/generated-doc owner |
+| S10-PER | Verification persistence/core, gate registry, applicability | `server/modules/release-verification/core/**`; only its own allocated migration; registry/base-report owner | S0+schema freeze -> plans/attempts/results | waiver/missing/mutable -> closed append-only | L+PG; H later | S0-ID CD, S2-SCH CF; early parallel core |
+| S10-VMP | V01-V17, M01-M04, P01/P02 SQL adapters | `server/modules/release-verification/gates/postgres/**`; V/M/P implementation owner | producer contracts -> typed results | false zero/skip/bypass -> exact counts/SQLSTATE | fresh+populated PG; H/T later | S10-PER CF, S2-RBAC, S3-VFY, S7-ORC; waits producer evidence |
+| S10-DCP | D01-D09 corpus/comparator | `server/modules/release-verification/comparison/**`; corpus/result schema owner | #669 families + Cutover/consumer outputs -> report | sample/missing/free text -> zero unexplained/unqueryable | populated PG; H/T later; D09 may consume B | S10-PER CF, S7-ORC, all S12 ID; core may land early |
+| S10-API | API-01..12 evidence adapter | `server/modules/release-verification/evidence/api/**`; API evidence schema owner | running S8 -> immutable HTTP/PG/auth/audit refs | mock/stale/missing request ID -> exact candidate bundle | PG+HTTP; H/T later | S10-PER CF, S8 route ID, S8-CON CD; never starts runtime |
+| S10-UI | UI-01..15 evidence adapter | `server/modules/release-verification/evidence/browser/**`; browser bundle adapter owner | S9-BRW -> sanitized evidence refs | screenshot-only/pre-P13/stale/redaction fail -> full pins | B; H/T later; PG/API refs | S10-PER CF, S9-BRW ID; no UI action implementation |
+| S10-RPT | report lineage, approvals, runtime pin, retention | `server/modules/release-verification/report/**`; report/approval/pin schema owner | core+adapters -> purpose report/pin | wrong purpose/self/pre-pin/nondeterminism -> exact lineage | L+PG; T/R later | S10-PER CD, VMP CD, adapter contracts CF; waits final producers |
+| S11-UPG | controller state machine/journal core, Cutover/Verification only | `ops/self-hosted/scripts/upgrade-lib.sh`, future controller/tests; journal/state owner | Cutover/Verification contracts -> guarded actions | API migrate/gate select/guess -> idempotent guards | L; PG in apply; H/T later | S7/S10 CF; parallel with RP/Verification core |
+| S11-RP | Recovery Point capture/verify/token restore | `scripts/run-restore-drill.ts`, `ops/self-hosted/storage/**`, tests; manifest owner | quiesced target -> 3-store manifest/restore | pre-quiesce/partial/stale/wrong target -> exact checksum | local cross-store+PG; T later | G0, S10-PER CF; disposable targets only |
+| S11-APL | fresh/populated apply through controller | `ops/self-hosted/scripts/upgrade.sh` integration tests/self-host fixtures; mode-acceptance owner | UPG+RP+Cutover -> P0-P11 checkpoints | startup migration/duplicate/mode ambiguity -> exact zero/full mode | PG required; H/T later | S11-UPG/RP, S7-ORC CD, S10-VMP ID; no P12-15 ownership |
+| S11-REC | resume/recovery-required/failure matrix | controller recovery paths/tests; failure/next-action owner | UPG/RP/APL -> one legal result | unknown auto-resume/partial restore -> exact next action | L+PG cross-store; H/T later | S11-UPG/RP/APL CD; no production incident action |
+
+#### S12: eleven independent consumer-family adapter tickets
+
+Each owns only its family's legacy-to-canonical call sites and acceptance. None owns P12/P13/P14/P15, Cutover phases, Verification reports, upgrade controller, shared OpenAPI/migration, or generated schema.
+
+| Node/family | Allowed paths and objective | Input -> output; owned corpus IDs | Red -> Green | Evidence | Dependencies; merge/conflict gate |
+| --- | --- | --- | --- | --- | --- |
+| S12-CGH Catalog/governance HTTP | migrate/remove old consumers/wiring in `server/modules/parameter-specs/**` and old methods in `src/infrastructure/http/parameterAdminClient.ts` | S8 -> no Effective/Governance/raw writer; D01/D03/D06/D09 cases | direct legacy read/write -> exact adapter/410 | PG+HTTP; B via S9; H/T later | S8 routes CD, S7-ORC CF; frozen manifest avoids S8 file conflict |
+| S12-TOP Parameter topology HTTP | `server/modules/parameter-topology/**`; `src/application/ports/ParameterTopologyRepository.ts`; `src/infrastructure/http/parameterTopologyClient.ts` | S3/S4/S6 -> canonical Subject/evidence/Binding; D02/D03/D04/D06 | provisional spec/module identity -> observe/review/bind or block | PG+HTTP+B existing suite | S4-EVD, S6-WFA CD, S8-CON CF; no raw Catalog writer |
+| S12-PRJ Project parameter workbench | `server/modules/parameters/**`; `server/modules/parameter-drafts/**`; `src/application/ports/ParameterRepository.ts`; `src/infrastructure/http/parameterClient.ts`; `src/infrastructure/http/parameterDtos.ts` | S6 -> Binding/revision/value tips; D04/D05 | `parameterSpecId`/latest -> stable history | PG+HTTP+B | S6-WFA CD, S8-CON CF; no S6 core edits |
+| S12-FIL File sync/writeback | `server/modules/parameter-files/**`; `src/application/ports/ParameterFileRepository.ts`; `src/infrastructure/http/parameterFileClient.ts` | protected adapter+source -> canonical writeback; D07/D08 | property fallback -> exact pin/source or block | PG+HTTP+B | S6-WFA CD; frozen shared port |
+| S12-AGT Agent tools | parameter tools/schemas under `server/modules/agent/**` | reads+normal Binding workflow; D07/D08 | structural tool/spoof -> scoped read, no Governance write | L+PG+HTTP; B where existing | S8-READ, S6-WFA CD, S8-CON CF; tool-registry/provenance gate |
+| S12-LOG Log analysis | `server/modules/logs/**`; `src/application/ports/LogAnalysisRepository.ts`; `src/infrastructure/http/logClient.ts`; `src/infrastructure/http/logDtos.ts` | exact refs/mappings; D07 | tenant leak/unpinned/create -> scoped immutable ref | PG+HTTP+B existing log | S8-READ, S7-MAP CD; no Catalog DTO edits |
+| S12-DBG Debugging | `server/modules/debugging/**`; `src/application/ports/DebuggingGateway.ts`; `src/infrastructure/http/debuggingClient.ts`; `src/infrastructure/http/debuggingDtos.ts` | exact Binding/revision map; D07 | debug mutates Catalog/guesses -> exact or block | PG+HTTP+B; HDC/T separate | S6-WFA, S7-MAP CD; device approval unchanged |
+| S12-DTS DTS reload | `server/modules/dts-reload/**`; `src/application/ports/DtsReloadRepository.ts`; `src/infrastructure/http/dtsReloadClient.ts` | Binding/value/revision/release pins; D07/D08 | stale/unpinned/direct write -> exact or block | PG+HTTP+B fake bridge; HDC/T separate | S6-WFA, S8-READ, S7-MAP CD |
+| S12-KNW Knowledge | `server/modules/knowledge/**`; `src/application/ports/KnowledgeRepository.ts`; `src/infrastructure/http/knowledgeClient.ts`; `src/features/knowledge/**` | canonical ref + legacy metadata; D07 | orphan/silent retarget/draft -> exact history | PG+HTTP+B existing knowledge | S8-READ, S7-MAP CD; no shared OpenAPI edit |
+| S12-MOD Module registry | `server/modules/parameter-modules/**`; `src/application/ports/ParameterModuleRegistryRepository.ts`; `src/infrastructure/http/parameterModuleRegistryClient.ts` | Registration/Placement navigation; D02/D03 | module proves identity/overlay -> placement-only or 410 | PG+HTTP+B transition | S4-REG, S8-LEG CD; structural-owner census zero |
+| S12-OPS Release/operations | `server/modules/operations/**`, reconciliation/operator-read callers, excluding controller | inspect/readReport -> canonical diagnostics; D09 | old verifier/reclassify/public diag -> typed read only | PG+HTTP; H/T later | S7-ORC/S10-RPT CF, S8-LEG CD; P12-15 excluded |
+
+#### Release integration and later programs
+
+| Node | Objective/owner and allowed artifacts | Input -> output | Red -> Green | Evidence | Dependency/merge gate |
+| --- | --- | --- | --- | --- | --- |
+| RI-01 | independent parent/release-owner package invokes Cutover, Verification, and controller; allowed paths `scripts/run-self-hosted-release-gate.ts`, its tests, and `ops/self-hosted/releases/**`; owns P12/P13/P14/P15 invocation wiring and target/report refs, no business module | all consumers + P0-P10 + Verification + upgrade/recovery + API/UI -> approved public chain | missing producer/pre-pin/P13 delta/pre-runtime browser/early traffic -> exact purpose/isolation chain | PG+B; H repeat only; T required; R with distinct approvals | CD/ID S7/S10/S11; RE every S12, VMP/DCP/API/UI and S9-BRW; last launch merge only |
+| S13-PROGRAM | later R-L2 production-release program; telemetry/compat docs, not a launch ticket | two releases + 90 days + per-class 30-day zero use + purpose report -> eligible reads 410 | unmet real time/telemetry blocks | T+R only | RI-01 complete plus actual window and `legacy-read-sunset` approval |
+| S14-PROGRAM | later R-L3/P16 production-release program; separately approved removal list | S13 + retention/recovery/zero dependency + own RP/restore -> deletion | any protected dependency/history/restore gap blocks | T+R only | S13 actual evidence; never merge with launch or delete from static “unused” proof |
+
+<a id="pcat-spec-dag"></a>
+
+### Typed dependency DAG, critical path, and merge order
+
+`CD` means code dependency, `CF` contract freeze, `ID` candidate integration, and `RE` release/evidence dependency.
+
+```text
+G0: #669-#679 decisions + this parent-accepted Spec are present on main
+ -> S0-ID -> {S0-RAT,S0-FIX,S1-BND,S2-SCH,S10-PER-core,S11-RP-core}
+S1-BND -> S1-CMP -----------------------------\
+S2-SCH -> {S2-RBAC,S2-PGH} -------------------+-> S3-RUN -> {S3-INS,S4-REG,S4-EVD,S5-PRP}
+S1-CMP + S2-SCH contract ---------------------/
+S4-EVD -> S4-REV; S4-REG + S4-REV -> S5-RSL
+S3-RUN + S4-REG -> S6-BND -> S6-VAL -> S6-WFA
+S3-INS + Governance/Binding contracts -> S7-CLS -> {S7-MAP,S7-ARC} -> S7-ORC(P0-P10)
+S8-CON freeze -> {S8-READ after Kernel, S8-GOV after S5-RSL, S8-LEG after MAP/Archive}
+S8-CON freeze -> S9-PRT -> {S9-CAT after running read API, S9-GOV after running Governance API}
+S9-CAT + S9-GOV + S8-LEG -> S9-BRW
+S10-PER -> {VMP waits DB, DCP waits corpus, API waits routes, UI waits browser} -> S10-RPT
+S7/S10 contracts -> S11-UPG; S11-UPG + S11-RP -> S11-APL -> S11-REC
+{S6/S7/S8 contracts} -> eleven independent S12 adapters
+ID/RE convergence: all S12 + S7-ORC + complete S10/S11 + API/UI acceptance -> RI-01
+RI-01 + real elapsed telemetry -> S13-PROGRAM -> S14-PROGRAM
+```
+
+The critical path is `G0 -> S0-ID -> compiler+schema -> Kernel -> Registration/Evidence/Review/atomic resolution -> Binding/value -> P0-P10 -> blocking S12 frontier -> V/D/API/UI/report + recovery -> RI-01`. Binding starts only after Kernel and Registration contract freeze and is not fully parallel with S4-REG. Verification core, controller core, and Recovery Point adapter start early in parallel; producer adapters wait for their producers. Frontend ports start after OpenAPI freeze; browser-real waits for running APIs.
+
+Recommended merge waves are: G0; S0-ID; parallel S0-RAT/S0-FIX/S1-BND/S2-SCH/S10-PER-core/S11-RP-core; compiler/RBAC/PG-harness/Kernel types/OpenAPI freeze; Kernel install/verifier, Registration/Evidence/Proposal, frontend ports, controller core; Review/resolution/Binding and route families; value/adapters/classifier/legacy API/pages; mapping+Archive; P0-P10 plus eleven S12 branches; producer-ready Verification adapters and upgrade apply/recovery; browser bundle; RI-01 last. S13/S14 wait for real time and evidence.
+
+<a id="pcat-spec-artifact-freeze"></a>
+
+### Artifact ownership and freeze
+
+| Artifact | Sole owner before freeze | Downstream rule |
+| --- | --- | --- |
+| branded IDs/enums | S0-ID | downstream consumes; semantic change returns to owner |
+| migration filenames | S2-SCH, S2-RBAC, S10-PER each owns only its allocated file | allocate after fetch/rebase; never two tickets edit one file; applied bytes immutable |
+| ADR numbers/index | G0/parent | decisions and ADR-0040-0042 freeze on main; tickets do not self-allocate |
+| bundle schema/generated JSON | S1-BND | freeze before compiler; one generator owner |
+| PostgreSQL schema | S2-SCH | freeze before Kernel/Governance/Binding/Cutover/Verification |
+| Kernel public types | S3-RUN | freeze before implementations and consumers |
+| OpenAPI/route/error/generated OpenAPI | S8-CON | route/frontend tickets do not edit generated artifact |
+| frontend ports/state | S9-PRT | freeze before page/Governance UI |
+| browser requirement/operation IDs | reserved here; S9-BRW is implementation registry owner | ID map freezes before acceptance files; each file owns only markers |
+| Verification gate registry/report schema | S10-PER and S10-RPT in non-overlapping files | adapters/controller cannot change applicability |
+| upgrade journal/state machine | S11-UPG | freeze before apply/recovery/RI-01 |
+| `docs/generated/db-schema.md` | schema integration owner | regenerate from exact tree on real pgvector; parallel tickets do not edit |
+| #671 shared fixture | S0-FIX | checksum freeze; downstream consumes only |
+| acceptance files | S9-CAT owns `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; S9-GOV owns `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; S9-BRW owns `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` | one file, one ticket owner |
+
+Two tickets in one wave may not own the same generated artifact, migration, registry source, or acceptance file. The parent must change ownership/wave before implementation; resolving the conflict later does not preserve ticket independence. No Issues are created until the parent confirms the four seams, every row's granularity, dependency types, critical path, and merge order.
 
 ## Testing Decisions
 
-Tests use production public seams or controlled adapters to the same production port. Direct Catalog-table insertion, private repository tests as acceptance, test-only materializers, mock-only governance, API-startup migrations, and manual repair do not satisfy acceptance. Pure/fake adapters cover deterministic failures; transactions, roles, constraints, concurrency, cutover, audit, and verification use real PostgreSQL.
+Tests use a production public interface or controlled adapters at the same production seam. Direct Catalog-table inserts, private repository tests as acceptance, test-only materializers, mock-only Governance, API-startup migration, and manual repair are invalid acceptance. Pure/fake adapters cover deterministic computation/failure injection. Transactions, roles, deferred constraints, concurrency, cutover, audit, and Verification use real PostgreSQL. Parameter Governance acceptance crosses `resolveReviewItem`, never its private repositories/UoW.
 
-TDD proceeds Red -> Green through: static legacy/raw-read ratchets; deterministic malformed/valid release compilation; real-PG deferred constraints/roles/failure injection; Kernel bootstrap/advance/replay/cache; separate Proposal/Evidence/Registration aggregate boundaries; Binding/ProjectValue exact pins and CAS; #671 R0-R10/mapping/Archive/failure/idempotency/rollback; API contract+PG+running HTTP+auth+audit; one-page mock/API parity and browser-real; six-purpose report chain and complete post-P13 rerun; upgrade fresh/populated/restore/unknown-outcome guards; all 11 consumer families; and finally sunset/P16 fail-closed gates.
+#### TDD Red -> Green order
 
-The locked populated rehearsal retains `npm run test:scripts -- parameter-catalog-rehearsal.integration` semantics: checked-empty dedicated DB, exact schema ledger, checksum-locked fixture, candidate and verifier, failure after each phase, same-run idempotency, R6/R8 separation, and byte-identical canonical dump after rollback containment. It proves populated shape only, not target readiness.
+1. Red static legacy writer/raw-read/`parameterSpecId`/overlay/Effective/Governance census; Green an exact monotonically decreasing compatibility allowlist.
+2. Red malformed/missing/duplicate/reordered bundle/lineage fixtures; Green enumeration-order-independent byte-identical compile and fixed violations before write.
+3. Red real-PG deferred head/subtype/Placement/owner, role bypass, and injected transaction failures; Green constraints fire at `SET CONSTRAINTS ALL IMMEDIATE` or COMMIT with zero partial rows.
+4. Red Kernel bootstrap/advance/idempotency/drift/current+pinned/cache/failure points; Green all six operations through the public facets and unchanged pointers/heads on every failure.
+5. Red caller/HTTP transaction handles and multiwriters, Review ETag partial writes, explicit/auto/review double Placement, lost-response duplicate audit, and Proposal Catalog write; Green Governance-owned UoW, shared lock order, exact replay, durable refusal, and intent-only acceptance.
+6. Red module/latest Binding identity, unpinned ProjectValue, and CAS race; Green composite FK agreement, immutable history, independent-session winner, and no partial audit/pointer.
+7. Red #671 R6/R8 merge, R0 Archive-as-success, rerun duplicates, and rollback dump drift; Green full P0-P10 fixture, every failure point, and byte-identical containment.
+8. Red raw-repository routes, scope leak, role spoof, partial idempotency conflict, and legacy inference; Green PCAT-API-01..12 over real PG/running HTTP/auth/audit.
+9. Red every page state/viewport/interaction and mock/API mismatch; Green PCAT-UI-01..15 browser-real bundle and zero unexpected console/network failures.
+10. Red adapter-chosen gates, missing/wrong-purpose/wrong-predecessor report, self approval, pre-report runtime pin, and post-P13 V13/P02-only delta; Green frozen registry, six-purpose chain, complete rerun, distinct approvals, no waiver.
+11. Red API migration/sync, guessed resume, partial restore, and early traffic; Green independent controller core, Recovery Point adapter, fresh/populated apply, and recovery-required matrix before integration.
+12. Red each of 11 consumers on legacy structure/ID; Green each S12 adapter plus complete D corpus and zero unresolved protected reference; no consumer ticket executes P12-P15.
+13. Red RI-01 with any missing consumer/P0-P10/V-D-API-UI/recovery evidence, premature browser, or early traffic; Green exact pre-activation -> P12 -> P13 -> full P11b -> runtime pin -> isolated API/browser -> public report -> P15 chain.
+14. Red sunset/delete with missing time/telemetry/dependency/retention; Green only in later S13/S14 production programs with their own passing purpose.
 
-The acceptance matrix includes fresh, populated, rollback/restore, browser-real, Hosted/CI, real target-host, release, and production approval as separate columns. Focused tests, `npm run test:all`, `npm run build`, OpenAPI/route checks, acceptance coverage/operations/models/browser, self-host checks, migration-history checks, `npm run docs:check`, and `git diff --check` are local gates. Hosted, target, release, and approval results must be recorded where executed and cannot be inferred from local green.
+#### Real PostgreSQL and evidence matrix
+
+| Dimension | Fresh | Populated #671 | Rollback/restore | Browser-real | Hosted | Target/release |
+| --- | --- | --- | --- | --- | --- | --- |
+| Schema/migration | empty DB full chain, M01-M04, roles | pre-candidate schema + exact ledger/fingerprint | failed-phase dump equality; isolated three-store restore | N/A | Linux repeatability | exact target ledger/schema |
+| Catalog | bootstrap, zero legacy | formal Driver/NodeType only from release; no subjectless/manual materialization | old/current/pinned head/fingerprint | API-backed read states | artifact/digest repeat | packaged/DB/runtime equality |
+| Governance | zero default Registrations | only proved Organization/Subject + one Placement; full evidence/review/proposal | stable IDs through lifecycle/move/recovery | unregistered/register/review/conflict/proposal | contract repeat | same-Organization/kind/lock proof |
+| R0-R10 | executed zero-inventory predicate | all fixture classes + full graph | P0 conservation and mapping/Archive checksums | legacy deep links | corpus artifact | non-sampled target inventory |
+| Binding/value | no rows absent explicit seed | stable IDs, complete histories, exact pins, mismatch block | current/effective pointer equality | project consumer states | test repeat | exact target protected refs |
+| Verification | complete zero-mode V/D | V01-V17 + D01-D09 twice | restore-bound verifier rerun | API-01..12/UI-01..15 | archived runner evidence only | six-purpose chain + accountable approvals |
+| Claim limit | real local PG only | populated shape only | local mechanics only | local/target browser exactly as run | Hosted only | target-host, then release/production approval separately |
+
+The locked rehearsal retains `npm run test:scripts -- parameter-catalog-rehearsal.integration` semantics: checked-empty dedicated DB, exact schema ledger, checksum-locked fixture, candidate and verifier transactions, failure after every phase, same-run idempotency, R6/R8 separation, byte-identical dump after rollback, and cleanup marker. It is populated-shape evidence, never target readiness.
+
+Implementation completion requires risk-appropriate focused tests, `npm run test:all`, `npm run build`, OpenAPI/route checks, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:models`, `npm run acceptance:browser`, `npm run acceptance:evidence`, self-host checks, historical-migration inventory, `npm run docs:check`, and `git diff --check`. Local, real-PG, browser, Hosted, target, release, and production approval remain separate observations; none is inferred from another.
 
 ## Out of Scope
 
@@ -162,25 +562,30 @@ Current blockers: none among the immutable decisions. Implementation blocks imme
 
 Evidence remains classified as documentation/static, local synthetic, real local PostgreSQL, populated-shape, browser, Hosted/CI, real target-host, release, and production approval. This draft creates documentation evidence only. It runs no production behavior, PostgreSQL, browser, Hosted, target, or release verification. Issue #676 remains DEV-only decision evidence.
 
+<a id="pcat-spec-documentation"></a>
+
 ## Documentation Impact Matrix
 
-| Area | Disposition | Exact paths / gate |
-| --- | --- | --- |
-| Repository maps | Update with implementation | `AGENTS.md`, `ARCHITECTURE.md` and Chinese companions |
-| Planning | Update now/review later | this bilingual active plan; `docs/PLANS.md`, `docs/zh-CN/PLANS.md`; later completed/tech-debt moves |
-| Domain/glossary | Update with model slice | `CONTEXT.md`, domain model and Chinese companion |
-| ADR/index | Update before implementation merge | ADR index and bilingual ADR-0040/41/42; mark supersession without rewriting history |
-| Product/UI specs | Update with UI slice | bilingual product spec and prototype functional spec |
-| Architecture | Update | bilingual full-stack architecture, domain model, design index |
-| API | Update atomically | bilingual API contract/guides, OpenAPI artifact, route manifest, error registry |
-| Frontend/design | Update with S9 | bilingual FRONTEND, UI design system, UI quality checklist |
-| Quality/testing | Update before P12 | bilingual QUALITY, testing strategy, verification matrix, browser coverage and operation matrix |
-| Security/governance | Update with roles/audit | bilingual SECURITY, threat model, data classification, audit retention, permissions |
-| Reliability/runbooks | Update with S11 | bilingual RELIABILITY, self-hosted, backup/restore, rollback, release, monitoring, incidents |
-| Self-hosted operator docs | Update with S11 | bilingual `ops/self-hosted/upgrade.md`, operations, release template |
-| Generated schema | Update after migrations | `docs/generated/db-schema.md` from exact migrations on real pgvector PostgreSQL |
-| Immutable decision docs | Land/review | preserve #669-#679 SHA citations; do not silently replace their evidence |
-| External compatibility | Update before launch | deprecation/sunset, import/export, deep-link, operator-diagnostics docs |
+`Disposition` is restricted to `Update`, `Review`, or `No change`. This repair currently updates only the bilingual active plan, both EN/ZH coverage registries, and plan indexes; it does not describe future behavior as implemented.
+
+| Area | Disposition | English paths | Chinese paths | Owner/gate |
+| --- | --- | --- | --- | --- |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md` | first module merge records four modules/dependencies/readiness |
+| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | parent keeps one plan across many tickets |
+| Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 first model slice; CONTEXT remains implementation-free |
+| ADR/index and decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0; cite immutable SHAs and never rewrite meaning |
+| Product specs | Update | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/product-specs/prototype-functional-spec.md` | `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`; `docs/zh-CN/product-specs/prototype-functional-spec.md` | S9 one page, roles, states |
+| Architecture/design | Update | `docs/design-docs/index.md`; `docs/design-docs/full-stack-architecture.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/full-stack-architecture.md`; `docs/zh-CN/design-docs/domain-model.md` | S3/S5/S7/S10 seams |
+| API contract/guides | Update | `docs/design-docs/api-contract.md`; `docs/api/README.md`; `docs/api/authentication.md`; `docs/api/errors.md`; `docs/api/examples.md` | `docs/zh-CN/design-docs/api-contract.md`; `docs/zh-CN/api/README.md`; `docs/zh-CN/api/authentication.md`; `docs/zh-CN/api/errors.md`; `docs/zh-CN/api/examples.md` | S8-CON exact route/error/concurrency/legacy |
+| Frontend/design | Update | `docs/FRONTEND.md`; `docs/design-docs/ui-design-system.md`; `docs/developer/ui-quality-checklist.md` | `docs/zh-CN/frontend.md`; `docs/zh-CN/design-docs/ui-design-system.md`; `docs/zh-CN/developer/ui-quality-checklist.md` | S9 ports/state/three views/focus |
+| Coverage registries | Update | `docs/developer/browser-acceptance-coverage-map.md`; `docs/developer/user-operation-coverage-matrix.md` | `docs/zh-CN/developer/browser-acceptance-coverage-map.md`; `docs/zh-CN/developer/user-operation-coverage-matrix.md` | this draft reserves future IDs; S9-BRW registers/automates |
+| Quality/testing | Update | `docs/QUALITY_SCORE.md`; `docs/design-docs/testing-strategy.md`; `docs/developer/verification-matrix.md` | `docs/zh-CN/QUALITY_SCORE.md`; `docs/zh-CN/design-docs/testing-strategy.md`; `docs/zh-CN/developer/verification-matrix.md` | S2/S10/S11/RI evidence hierarchy |
+| Security/governance | Update | `docs/SECURITY.md`; `docs/design-docs/security-governance.md`; `docs/security/README.md`; `docs/security/threat-model.md`; `docs/security/data-classification.md`; `docs/security/audit-retention.md`; `docs/security/user-permission-design.md` | `docs/zh-CN/SECURITY.md`; `docs/zh-CN/design-docs/security-governance.md`; `docs/zh-CN/security/README.md`; `docs/zh-CN/security/threat-model.md`; `docs/zh-CN/security/data-classification.md`; `docs/zh-CN/security/audit-retention.md`; `docs/zh-CN/security/user-permission-design.md` | S2/S5/S10 roles/audit/retention/refusal sink |
+| Reliability | Update | `docs/RELIABILITY.md`; `docs/design-docs/deployment-operations.md` | `docs/zh-CN/RELIABILITY.md`; `docs/zh-CN/design-docs/deployment-operations.md` | S10/S11 readiness/failure/recovery |
+| Runbooks | Update | `docs/runbooks/self-hosted-runtime.md`; `docs/runbooks/backup-restore.md`; `docs/runbooks/rollback.md`; `docs/runbooks/release-rollback.md`; `docs/runbooks/monitoring-alerting.md`; `docs/runbooks/observability-operations.md`; `docs/runbooks/incidents.md`; `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md`; `docs/runbooks/platform-admin-and-schema-promotion.md` | `docs/zh-CN/runbooks/self-hosted-runtime.md`; `docs/zh-CN/runbooks/backup-restore.md`; `docs/zh-CN/runbooks/rollback.md`; `docs/zh-CN/runbooks/release-rollback.md`; `docs/zh-CN/runbooks/monitoring-alerting.md`; `docs/zh-CN/runbooks/observability-operations.md`; `docs/zh-CN/runbooks/incidents.md`; `docs/zh-CN/runbooks/effective-driver-parameter-catalog-reconciliation.md`; `docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md` | S11/RI/S13/S14 phase/restore/sunset and supersession |
+| Self-hosted operator docs | Update | `ops/self-hosted/upgrade.md`; `ops/self-hosted/operations.md`; `ops/self-hosted/releases/README.md`; `ops/self-hosted/releases/release-template.md` | `ops/self-hosted/upgrade.zh-CN.md`; `ops/self-hosted/operations.zh-CN.md`; `ops/self-hosted/releases/README.zh-CN.md`; `ops/self-hosted/releases/release-template.zh-CN.md` | S11/RI; same merge as controller |
+| Generated artifacts | Update | `docs/generated/openapi.json`; `docs/generated/db-schema.md`; `docs/generated/acceptance-operation-evidence.md`; `docs/generated/acceptance-operation-evidence/index.json` | same language-neutral generated paths: `docs/generated/openapi.json`; `docs/generated/db-schema.md`; `docs/generated/acceptance-operation-evidence.md`; `docs/generated/acceptance-operation-evidence/index.json` | S8-CON/S2 integration/S9-BRW sole owners, exact source SHA |
+| Log-analysis API guide | Review | `docs/api/log-analysis-integration.md` | `docs/zh-CN/api/log-analysis-integration.md` | S12-LOG records exact unchanged review or updates |
 
 ## Documentation Update Gate
 
@@ -188,4 +593,9 @@ The plan cannot complete until every Update/Review row is updated bilingually or
 
 ### Git & PR Workflow
 
-Each future implementation agent starts from then-current `origin/main` in an isolated worktree and `codex/` feature branch, reads this specification and the owning decisions, implements/tests/commits only on that branch, and never opens/merges a PR or updates `main`. The parent/session owner reviews exact diffs and evidence, owns integration/PR/merge/main synchronization, and rechecks migration/ADR/acceptance IDs after every rebase. Inherited dirty worktrees remain untouched. This draft remains paused pending seam, granularity, and dependency confirmation.
+- The current specification branch is exactly `codex/wayfinder-668-implementation-spec-20260901`; repairs are append-only commits, never amend/rebase/force-push.
+- Every future ticket agent starts from then-current `origin/main` in an isolated worktree with branch template `codex/pcat-<issue-number>-<slug>` and reads this Spec plus the owning decisions/module docs.
+- This is one plan with many ticket branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
+- The parent/session owner integrates branches under the CD/CF/ID/RE graph and exclusively owns PR creation, merge, and main synchronization.
+- Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after rebase. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
+- This branch remains paused before `/to-tickets` until the parent accepts seams, package granularity, and dependencies.

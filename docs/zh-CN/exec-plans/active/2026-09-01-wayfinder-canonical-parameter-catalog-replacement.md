@@ -38,7 +38,7 @@
 
 ## Solution
 
-建立四个深模块与一组单向依赖的业务模块：Catalog Kernel 独占 release 编译、materialization 和一致 snapshot；Release Verification 独占 purpose/report/approval/runtime-pin；Cutover 独占 P0–P16、R0–R10、mapping、Archive 和 recovery；Subject Governance、Evidence/Review、Proposal、Binding/ProjectValue 各自拥有业务事务。HTTP、前端和 `upgrade.sh` 只是适配器，不能重新编排内部事务、选择 Definition head、推断 legacy disposition 或豁免 gate。
+建立且只建立四个对外深模块：**Catalog Kernel**、**Parameter Governance**、**Catalog Cutover**、**Release Verification**。Catalog Kernel 独占 release 编译、materialization 和一致 snapshot；Parameter Governance 是唯一对外治理深模块，在内部拥有 Subject Registration/Placement、Observation/ReviewEvidence/ReviewItem、DefinitionProposal 和 review-resolution transaction coordinator；Catalog Cutover 独占 P0–P16 的 phase 语义、R0–R10、mapping、Archive、checkpoint 与 recovery；Release Verification 独占 purpose/report/approval/runtime-pin。Binding/ProjectValue 是消费这些合同的业务模块，不是第五个治理深模块。HTTP、前端、consumer 和 `upgrade.sh` 只是适配器，不能重新编排内部事务、传递 transaction handle、选择 Definition head、推断 legacy disposition 或豁免 gate。
 
 目标读路径只从一个捕获的 Catalog Release snapshot 解释 Subject、alias、Definition 和 Revision。组织上下文通过独立 composer 加入 Registration/Placement、usage、Review 和 Audit 投影；它不能改变 Platform truth 或在 Kernel 分页后再过滤。目标写路径只允许 synchronizer materialize Catalog；组织与项目写入各自 aggregate；所有 unknown/ambiguous/retired/drift 状态都产生 typed outcome，不以 `null`、空目录、overlay、cache 或“latest”回退。
 
@@ -63,37 +63,41 @@
 
 ## Implementation Decisions
 
+<a id="pcat-spec-modules"></a>
+
 ### 1. 最终模块边界、所有权与依赖方向
 
-| 模块 | 拥有 | 公开 seam | 明确不拥有 |
+| 四个深模块 | 独占所有权 | 对外 interface | 明确不拥有 |
 | --- | --- | --- | --- |
-| Catalog source/publication | release bundle、manifest/YAML、稳定显式 ID、CI 编译产物 | immutable artifact | PostgreSQL current pointer、组织数据、runtime repair |
-| Catalog Kernel | 编译、验证、安装、switch-back、current/pinned snapshot、matcher、revision history、materialization verification/cache | `CatalogMaintainer`、`CatalogRuntime`、`CatalogVerifier` | HTTP 路由、Registration、Proposal、Observation、Binding、release approval |
-| Subject Governance | Registration 状态机、exactly-one Placement、taxonomy move/rename | query + commands | Subject/Definition 创建、matcher、Binding identity |
-| Evidence & Review | immutable Observation/ReviewEvidence、ReviewItem grouping/resolution | observation ingest、queue query、resolve | Catalog materialization、弱证据自动绑定 |
-| Definition Proposal | proposal revisions、submit/withdraw/accept/reject、publication intent | proposal commands/query | Definition/Revision 写入、Catalog pointer |
-| Binding & Project Value | canonical Binding、effective revision CAS、immutable values、explicit current pointer/history | binding/value commands/query | Definition head 选择、module-as-identity |
-| Legacy Mapping & Archive | typed identities、append-only mapping versions/heads、Archive metadata/object refs | exact operator/compat lookup | 重新分类、普通 Catalog 读取、public Archive enumeration |
-| Catalog Cutover | P0–P16、R0–R10、phase locks/checkpoints、classification/mapping/archive、P12/P13、recovery | 4 个 maintenance 操作 | Catalog 内部事务、verification approval、HTTP/UI 业务编排 |
-| Release Verification | gate registry、plan/attempt/report、lineage、purpose approvals、runtime pin、evidence retention | 5 个语义操作 + 私有 readiness projection | 修复、migration、sync、Archive 解密、traffic mutation |
-| Catalog application/API | 认证、scope、DTO、timeline/composed reads、idempotency adapter | canonical HTTP contract | Catalog table/raw repository、排序/head/alias 推断 |
-| Parameter definitions frontend | URL state、单页 UI、ports、conflict/reconfirm UX | application ports | durable business rule、raw migration diagnostics |
-| Self-hosted upgrade adapter | host/data-plane orchestration、journal IO、queue/proxy/process adapter | Cutover/Verification 调用 | 自行选 gate、迁移 API startup、人工 waiver |
-| Shared audit/observability/evidence | trusted audit、metric/log/evidence stores、retention primitives | shared infrastructure seams | Catalog 或 release 决策 |
+| Catalog Kernel | 编译、验证、安装、pre-traffic switch-back、current/pinned snapshot、matcher、revision history、materialization verification/cache | `CatalogMaintainer`、`CatalogRuntime`、`CatalogVerifier` 三个 role-shaped facet，共六个语义操作 | HTTP 路由、Registration、Proposal、Observation、Binding、release approval |
+| Parameter Governance | Registration/Placement、Observation/ReviewEvidence/ReviewItem、DefinitionProposal、review-resolution coordinator、对应成功/拒绝审计 | `GovernanceReader` 与 typed governance commands；review 只能走 `resolveReviewItem` | Catalog materialization、Definition/Revision 写入、Binding/value 写入、caller-owned transaction |
+| Catalog Cutover | `planCutover`、`executeCutover`、`inspectCutover`、`recoverCutover`；P0–P16 phase 语义、R0–R10、mapping/Archive、locks/checkpoints、rollback/recovery classification | 四个 maintenance 操作 | Kernel 内部事务、verification approval、HTTP/UI 编排、traffic release authorization |
+| Release Verification | gate registry、plan/attempt/report、lineage、purpose approvals、runtime pin、evidence retention | 五个语义操作 + 私有 readiness projection | 修复、migration、sync、Archive 解密、traffic mutation |
+
+| 支持模块/适配器 | 所有权 | 依赖/公开面 | 禁止事项 |
+| --- | --- | --- | --- |
+| Catalog source/publication | release bundle、manifest/YAML、稳定显式 ID、CI 编译产物 | immutable artifact -> Kernel compiler | PostgreSQL pointer、组织数据、runtime repair |
+| Binding & ProjectValue | canonical Binding、effective revision CAS、immutable values、explicit current pointer/history | captured Kernel snapshot + active Registration contract | Definition head 选择、module-as-identity、治理写入 |
+| Legacy Mapping & Archive | typed identities、append-only mapping versions/heads、Archive metadata/object refs | Catalog Cutover 私有 adapter；compat/operator exact lookup | 重新分类、普通 Catalog 读取、public Archive enumeration |
+| Catalog application/API | 认证、scope、DTO、timeline/composed reads、wire idempotency/ETag mapping | 只调用四个深模块或 Binding/ProjectValue 的 public seam | raw repository、transaction handle、跨模块 writer 编排 |
+| Parameter definitions frontend | URL state、单页 UI、application ports、conflict/reconfirm UX | frontend ports -> HTTP adapters | durable rule、raw migration diagnostics、mock-only authority |
+| Self-hosted upgrade adapter | host/data-plane orchestration、journal IO、queue/proxy/process adapter | 调用 Cutover/Verification；release-integration package 统一汇合 | 自行选 gate、在 API startup migration/sync、人工 waiver |
+| Shared audit/observability/evidence | durable refusal sink、metric/log/evidence stores、retention primitives | 私有 infrastructure adapters | Catalog 或 release 决策 |
 
 依赖只允许如下方向：
 
 ```text
 Catalog artifact -> Catalog Kernel
-HTTP/composers -> Catalog Kernel runtime + owning business modules
+HTTP/composers -> Catalog Kernel runtime + Parameter Governance + Binding/ProjectValue
 Frontend -> application ports -> HTTP adapters
-Evidence/Registration/Binding/Proposal -> Catalog nominal IDs + captured snapshot
-Cutover -> Kernel maintainer/verifier + business migration ports + mapping/archive + recovery
+Parameter Governance -> Catalog nominal IDs + captured Kernel snapshot；内部 UoW 只通过私有 read guard 复核 release pin
+Binding/ProjectValue -> captured Kernel snapshot + Parameter Governance registration read contract
+Catalog Cutover -> Kernel maintainer/verifier + private governance/binding migration ports + mapping/archive + recovery
 Release Verification -> read-only Kernel verifier + read-only Cutover/API/browser/recovery evidence adapters
 upgrade controller -> Cutover + Release Verification
 ```
 
-反向依赖、跨模块 open transaction、HTTP 直接读 Catalog 表、Verifier 调 writer、Kernel 调 Registration/Proposal、Binding 按 module 或 current head 猜测均由静态 ratchet 阻止。现有 routes-less `parameter-kernel` 只保留跨参数工作流 primitive；新的 Catalog Kernel 是独立深模块，不能把旧 legacy identity adapter 当 canonical read seam。
+Parameter Governance 可以在**自己拥有**的 UnitOfWork 内协调多个内部 aggregate；禁止的是 caller、HTTP、Kernel、Verifier 或另一个模块打开/延长该事务，或分别调用多个 writer 后伪装成原子操作。所有 governance repository、write port、transaction coordinator、release-pin guard 和 audit writer 都是模块私有；其测试 seam 也不得出现在应用 composition root。反向依赖、caller-owned cross-module open transaction、HTTP 直接读 Catalog 表、Verifier 调 writer、Kernel 调 Governance、Binding 按 module 或 current head 猜测均由静态 ratchet 阻止。现有 routes-less `parameter-kernel` 只保留跨参数工作流 primitive；新的 Catalog Kernel 是独立深模块，不能把旧 legacy identity adapter 当 canonical read seam。
 
 ### 2. Catalog Kernel 深模块合同
 
@@ -118,7 +122,37 @@ loadPinnedCatalog(exactPin) -> Result<PinnedCatalogSnapshot, CatalogFailure>
 - Cache 以 exact release ID/digest/fingerprint 命名。current load 先读 pointer 决定 key；cache miss 只可从验证后的数据库投影重建，不得 parse YAML、远程 fetch、overlay compose、返回空 Catalog 或 runtime repair。
 - Catalog failure 至少覆盖 `invalid-release` 的固定 violation、`drift` scope、`release-mismatch`、`digest-conflict`、`unsupported-lineage`、`synchronization-busy`、`historical-release-unavailable`、`switch-back-forbidden`、`invalid-selector`、`permission-denied`、`storage-failure`。
 
-### 3. Release Verification 深模块合同
+<a id="pcat-spec-governance-uow"></a>
+
+### 3. Parameter Governance 深模块合同与原子事务 owner
+
+Parameter Governance 是唯一对外 governance seam；Registration、Placement、Observation、ReviewEvidence、ReviewItem、ReviewResolution、DefinitionProposal 与 PublicationIntent 是其内部 aggregate/package，不是由 HTTP 拼装的独立 writer。对 Review Queue 的所有 resolution variant 只有一个 typed command：
+
+```text
+resolveReviewItem(command: ResolveReviewItemCommand)
+  -> Result<ReviewResolutionResult, GovernanceFailure>
+```
+
+`ResolveReviewItemCommand` 必含 server-owned `TrustedInvocationContext`、organization/review item nominal ID、captured Catalog Release ID/digest、ReviewItem ETag、`Idempotency-Key`、canonical request fingerprint、reason，以及 closed union `register-subject | restore-registration | mark-out-of-scope | open-definition-proposal`。`register-subject` 还必须带 Subject ID 与显式 `PlacementIntent=use-default|choose-parent`；`restore-registration` 禁止 placement 字段；其他 variant 禁止 Registration payload。结果返回 exact ReviewItem/Resolution、可能存在的 Registration/Placement 或 Proposal、Catalog pin 和新的 ETag；失败是 closed `GovernanceFailure`，不得以 `null` 或部分结果表示。
+
+`register-subject` variant 由 Parameter Governance 自己创建一个 pool-backed database UnitOfWork，并在同一事务中完成以下全部动作：
+
+1. 复核可信 organization/principal/initiator 与 Org Admin 权限；Agent、Platform Admin 和 body/header 自报角色不得替代 Org Admin 的 placement 选择。
+2. 通过模块私有 release-pin guard 锁定并验证 captured Catalog Release 仍是 current，Subject 在该 release 为 active；caller 不向 Kernel 或 Governance 传 transaction handle。
+3. 预占 `(organization, command-family, Idempotency-Key)`，比较完整 canonical request fingerprint；exact committed replay 直接返回 stored result，同 key/different fingerprint 为 `revision-conflict`。
+4. 锁定 ReviewItem，执行 `If-Match` ETag CAS，验证仍 open、reason/candidates 与 captured evidence 一致。
+5. 创建或**精确复用** `(organization,subject)` Registration；只在 status、method/proof 与请求允许的 lifecycle 一致时复用。
+6. 创建 exactly-one retained Placement，或证明现有 Placement 精确表达同一 `PlacementIntent`；冲突返回 `placement-conflict`，不得移动现有 Placement 迎合请求。
+7. 追加 immutable ReviewResolution、更新 ReviewItem 状态/ETag、写 success audit 与 idempotency result reference。
+8. 执行 `SET CONSTRAINTS ALL IMMEDIATE`（或等价 commit-time 强制），再一次 commit；任一步失败时 Registration、Placement、ReviewResolution、ReviewItem、success audit 和 success idempotency result 全部不可见。
+
+显式注册、唯一证明的自动注册、review registration 共享同一内部 registration writer 与锁顺序：`catalog_state/current release guard -> idempotency row -> optional ReviewItem -> (organization,subject) registration key/row -> requested parent/destination taxonomy key/row -> retained Placement -> deferred constraints`。显式/review 注册要求 Org Admin 与 explicit PlacementIntent；自动注册只允许 Trusted System + captured matcher/release proof，落到 reserved default root，不能 restore retired Registration 或替人选择 curated parent；Agent 永无 write capability。三个入口都以完整 proof/placement/request fingerprint 幂等，committed-but-response-lost retry 返回原 stored IDs/audit reference；同 key不同 fingerprint、同 Subject不同 placement intent、stale release/ETag、retired membership、wrong-kind/cross-org/cycle 均 fail closed，无 partial write。自动与显式并发时，唯一 `(organization,subject)`、共享 key lock 与 exact-placement comparison 使它们收敛为同一 Registration/Placement，或一个成功、另一个得到 typed conflict；不得产生第二个 Placement。
+
+Placement rename/reparent、Registration retire/restore、Observation ingest、Proposal transition 也只通过 Parameter Governance 的 typed commands；各自拥有内部事务与 idempotency/CAS，不把 repository 暴露给 caller。Observation 与 ReviewEvidence immutable；DefinitionProposal acceptance 只追加 `catalog_publication_intents` 与 trusted audit，绝不写 Catalog Subject/Definition/Revision/head/pointer。成功 audit 与 domain mutation 同事务；authorization、stale、malformed、evidence-conflict 等 refusal audit 通过独立 pool-owned durable sink 写入，不能借 caller transaction，也不能被主事务 rollback 擦除。
+
+测试只从 public commands/query 观察结果，并用真实 PostgreSQL independent sessions 证明 ETag race、explicit/automatic/review race、lost response、key fingerprint conflict、deferred constraint failure 和 refusal durability。test-only repository、外部 transaction callback、直接插入 ReviewResolution 或分别调用 Registration/Placement writer 均是 static/behavior ratchet failure。
+
+### 4. Release Verification 深模块合同
 
 公开操作固定为：
 
@@ -140,16 +174,18 @@ readReport(reportIdOrDigest) -> ReleaseVerificationReport
 - `public-release` report 必须聚合 exact pre-activation、post-retirement-runtime、isolated-acceptance report digests；它不能把 predecessor evidence 伪装为新执行。
 - Release Verification 只有 read-only verifier credential；没有 `SET ROLE`、writer role、DDL、Catalog sync、Archive decryption 或 repair 权限。
 
-### 4. Canonical relational schema 与约束
+<a id="pcat-spec-schema"></a>
+
+### 5. Canonical relational schema 与约束
 
 实现采用 PostgreSQL physical relation；下列名称是本规格选择的 canonical 名称。若后续实现 ticket 提议改名，必须证明 OpenAPI、migration、verifier 和文档同时等价，不能改变 key/ownership。
 
-#### 4.1 Platform Catalog
+#### 5.1 Platform Catalog
 
 | Relation | 必要列与 key | 不变量 |
 | --- | --- | --- |
 | `catalog_releases` | `id`, unique `release_version`, unique `release_digest`, restricted `predecessor_release_id`, compiled/toolchain digests | append-only，不 update/delete |
-| `catalog_subjects` | `id`, `kind=driver|node-type`, `canonical_key`; unique `(kind, canonical_key)`、`(id,kind)` | Platform-only，无 organization/lifecycle/current selector |
+| `catalog_subjects` | `id`, `kind=driver` 或 `node-type`, `canonical_key`; unique `(kind, canonical_key)`、`(id,kind)` | Platform-only，无 organization/lifecycle/current selector |
 | `catalog_drivers` / `catalog_node_types` | PK/FK `subject_id` 与 subtype fields | 每个 Subject exactly one matching subtype，xor deferred check |
 | `catalog_release_subjects` | PK `(release_id,subject_id)`, lifecycle、selector snapshot/provenance、tombstone | active 时 tombstone null；retired 时 non-null；successor 不得遗漏 predecessor identity |
 | `catalog_subject_aliases` | `id`, `subject_id`, selector kind/value；unique normalized selector、`(id,subject_id)` | 永久 owner，不得复用或链式 alias |
@@ -162,24 +198,25 @@ readReport(reportIdOrDigest) -> ReleaseVerificationReport
 
 `parameter_definitions.current_revision_id` 使用 deferrable composite FK `(id,current_revision_id) -> definition_revisions(definition_id,id)`。current pointer 切换前 deferred completeness trigger 必须证明 predecessor Subject/alias 全部显式继承或 retire、owner 一致、release heads 完整、active/tombstone 合法。历史 read 直接按 pinned release membership/head 表，不 join `catalog_state`。
 
-#### 4.2 Organization、evidence 与 proposal
+#### 5.2 Organization、evidence 与 proposal
 
 | Relation | 必要列与 key | 不变量 |
 | --- | --- | --- |
-| `organization_subject_registrations` | `id`, organization, subject, `status=active|retired`, method/proof, non-null `current_placement_id`; unique `(org,subject)`、`(id,org)`、`(id,org,subject)` | retire/restore 保留 ID 与 placement |
+| `organization_subject_registrations` | `id`, organization, subject, `status=active` 或 `retired`, method/proof, non-null `current_placement_id`; unique `(org,subject)`、`(id,org)`、`(id,org,subject)` | retire/restore 保留 ID 与 placement |
 | `subject_placements` | `id`, registration, org, taxonomy `module_id`, origin；unique registration、`(registration,id)`、`(org,module)` | exactly one retained placement；same-org 与 kind-correct deferred check |
 | `parameter_observations` | immutable source identity、org/project/logical-node/config/source locator、release/matcher pin、evidence fingerprint | 创建后不可变，不能成为 Definition |
 | `parameter_observation_matches` | unique observation accepted match，pins registration/definition/revision/binding/release/matcher | 只有完整 provenance + unique active match；unknown/ambiguous 无行 |
 | `parameter_review_evidence` | immutable evidence bundle、reason、candidate-safe digest、R class/source graph where applicable | 不包含可公开 raw payload |
-| `parameter_review_items` | org、evidence fingerprint、matcher/release、reason、status、ETag version | group repeated evidence，不制造 identity |
-| `parameter_review_resolutions` | immutable decision、actor、before/after ETag、idempotency fingerprint、target/proposal/out-of-scope | 与 item/Registration/Placement/audit 按 resolution 原子提交 |
-| `definition_proposals` | org author、base release/revision、status、current proposal revision、ETag | 不含 accepted Definition/Revision materialization pointer |
-| `definition_proposal_revisions` | immutable proposed payload/reason/evidence | proposal edit 追加 revision |
-| `catalog_publication_intents` | accepted proposal、repository/publication reference、reviewer/audit | 只表达 intent；无 Catalog table grant |
+| `parameter_review_items` | `id`, `organization_id`, `evidence_fingerprint`, `matcher_revision`, `catalog_release_id`, `reason`, `status=open`/`resolved`/`out-of-scope`, positive `etag_version`; unique active grouping `(organization_id,matcher_revision,evidence_fingerprint)` | group repeated evidence，不制造 identity；resolved 状态必须有 deferred resolution FK |
+| `parameter_review_resolutions` | immutable `id`, unique `review_item_id`, `resolution_type`, `before_etag_version`, `after_etag_version`, actor/initiator、captured release、request fingerprint、typed registration/proposal/out-of-scope target | 与 item/Registration/Placement/audit 按 resolution 原子提交；closed union 的非目标列必须为 null，目标列必须恰好一个 |
+| `definition_proposals` | `id`, organization/author, base release/revision, status closed enum `draft`/`submitted`/`accepted`/`rejected`/`withdrawn`, non-null current proposal revision、positive ETag；`(id,organization)` unique | 不含 accepted Definition/Revision materialization pointer |
+| `definition_proposal_revisions` | immutable `id`, proposal, positive revision number, proposed typed payload/reason/evidence；unique `(proposal_id,revision_number)`、`(proposal_id,id)` | proposal edit 追加 revision；proposal current pointer用 deferrable composite FK |
+| `catalog_publication_intents` | immutable `id`, unique accepted proposal, exact proposal revision/base release、repository/publication reference、reviewer/audit | 只表达 intent；无 Catalog table grant；不得携带 Definition head/pointer |
+| `governance_command_idempotency` | PK `(organization_id,command_family,idempotency_key)`, request fingerprint, state, typed result ref, committed timestamp | `pending` 只在同一 UoW 内；success exact replay 复读结果；不同 fingerprint 永久冲突 |
 
 Placement 的 `UNIQUE(registration_id)` 证明至多一个，Registration 的 non-null pointer 与 deferrable `(id,current_placement_id) -> subject_placements(registration_id,id)` 证明至少一个。Driver placement 必须落在 `driver-group`；NodeType 落在 `node-type`，父节点遵循已接受 taxonomy 规则。组织创建只建 reserved taxonomy root，Registration 初始为零。
 
-#### 4.3 Binding、ProjectValue、mapping、Archive
+#### 5.3 Binding、ProjectValue、mapping、Archive
 
 | Relation | 必要列与 key | 不变量 |
 | --- | --- | --- |
@@ -190,26 +227,27 @@ Placement 的 `UNIQUE(registration_id)` 证明至多一个，Registration 的 no
 | `legacy_mapping_versions` | identity、run、checksum、graph fingerprint、R class、exactly one typed target or Archive、optional supersedes | append-only，不 reclassify at read time |
 | `legacy_mapping_heads` | one CAS pointer per legacy identity | historical consumer pins version；forward repair 追加并 CAS |
 | `parameter_catalog_archives` | archive ID、source/owner/R class/reason、checksums、encrypted object ref、protected refs、run/release/audit/retention | ordinary roles no update/delete/decrypt；不进入 Catalog/public UI |
-| `catalog_command_idempotency` | scope/key/request fingerprint/result ref/status | exact replay 返回 stored result；同 key 不同 fingerprint 冲突 |
+| `catalog_command_idempotency` | Kernel/Cutover scope、key、request fingerprint、result ref、status | 仅非-governance command；exact replay 返回 stored result；同 key不同 fingerprint 冲突 |
 
 R6 legacy spec 的 production target 是 ReviewEvidence + Archive/mapping evidence；R8 是 DefinitionProposal + Archive/mapping evidence。只有独立、完整的 project/logical-node/source-revision occurrence graph 才可产生 ParameterObservation；两者不得因相同 property key 合并。
 
-#### 4.4 Cutover 与 verification persistence
+#### 5.4 Cutover 与 verification persistence
 
 Cutover 采用 `parameter_catalog_cutover_runs`、append-only `parameter_catalog_cutover_events`、CAS `current_phase`、typed phase checkpoints、classification ledger、comparison corpus/results 和 rollback-closure record。唯一 run tuple 是 `(source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest)`。
 
 Verification 采用 immutable plans、attempts、gate results、reports、report-evidence refs、approvals、runtime pins 与 retention calculations。Report bytes canonicalize 后取 SHA-256；approval 不修改 report。`pointer_rollback_closed_at` 是 first candidate business mutation、first queue business delivery、first accepted public business request 的最早 durable event，一旦写入不可清除，测试数据补偿也不重开。
 
-#### 4.5 角色与权限
+#### 5.5 角色与权限
 
 - catalog relations 由 non-login migration owner 所有。
 - `catalog_synchronizer_role` 只有插入新 immutable rows、column-limited 更新 `catalog_state.current_catalog_release_id` 与 `parameter_definitions.current_revision_id` 的能力；不能 UPDATE/DELETE immutable rows。
 - application、proposal、Agent、ordinary API/worker 只有允许的 SELECT 与各自业务 relation 写权；不能 assume synchronizer/migration owner。
-- proposal role 只能 proposal/publication intent/audit。
+- `parameter_governance_writer_role` 只有 governance relation 的必要 DML 与 success audit append；无 Catalog、Binding、ProjectValue、Cutover、Verification write grant。HTTP/Agent composition 不获得其 pool；只有 Parameter Governance composition root 持有。
+- proposal capability 只是 Parameter Governance interface 的 role-shaped facet；数据库 grant 只能触及 proposal/publication intent/audit，不能触及 Catalog。
 - verifier role read-only，不能 `SET ROLE`、执行有写能力的 function、建立临时 writer function 或取得 Archive key。
 - legacy structural tables在 P13 后所有 production role/function/trigger 路径都不可写；P01/P02 用真实 SQLSTATE negative matrix 证明。
 
-### 5. 状态机与事务边界
+### 6. 状态机与事务边界
 
 #### Catalog publication
 
@@ -217,15 +255,15 @@ Verification 采用 immutable plans、attempts、gate results、reports、report
 
 #### Registration/Placement
 
-`unregistered -> active -> retired -> active`。explicit 注册要求 Org Admin + release anchor + explicit PlacementIntent；system auto-register 只接受 unique authoritative active match；Agent 不得写。Observation 不得自动 restore retired Registration。move/rename 更新同一 Placement ID；destination conflict 与 audit 一起回滚。
+`unregistered -> active -> retired -> active`。所有 transition 是 Parameter Governance command。explicit 注册要求 Org Admin + release anchor + explicit PlacementIntent；system auto-register 只接受 unique authoritative active match 并使用 reserved default root；review register 只通过 `resolveReviewItem`。三者共享上一节的 UoW、锁顺序、permission/idempotency/lost-response/conflict 合同；Agent 不得写。Observation 不得自动 restore retired Registration。move/rename 更新同一 Placement ID；destination conflict 与 audit 一起回滚。
 
 #### Observation/Review
 
-Observation immutable。matcher outcome 为 matched/unknown/ambiguous/retired/placement-conflict。ReviewItem `open -> resolved|out-of-scope`；resolution 只允许 `register-subject`、`restore-registration`、`mark-out-of-scope`、`open-definition-proposal`。选择 existing Subject 不创建 Definition/Revision/Binding；后续 recognition 走独立事务。
+Observation immutable。matcher outcome 为 matched/unknown/ambiguous/retired/placement-conflict。ReviewItem `open -> resolved|out-of-scope`；resolution 只允许 `register-subject`、`restore-registration`、`mark-out-of-scope`、`open-definition-proposal`，全部穿过 Parameter Governance 的单一 `resolveReviewItem` typed command。`register-subject` 在 Governance-owned UoW 中原子覆盖 ReviewItem ETag CAS + idempotency + Registration + exactly-one Placement + Resolution + success audit；选择 existing Subject 不创建 Definition/Revision/Binding，后续 recognition 走 Binding/ProjectValue 的独立事务。
 
 #### DefinitionProposal
 
-`draft -> submitted -> accepted|rejected`，`draft|submitted -> withdrawn`。accepted/rejected 要求 Platform Admin，acceptor 与 submitter 不同；stale base 返回 `proposal-stale`。accept 事务只锁 proposal、追加 publication intent 和 trusted audit。
+`draft -> submitted -> accepted|rejected`，`draft|submitted -> withdrawn`。这些都是 Parameter Governance 内部 Proposal aggregate；accepted/rejected 要求 Platform Admin，acceptor 与 submitter 不同；stale base 返回 `proposal-stale`。accept 事务只锁 proposal、追加 publication intent 和 trusted audit，绝不 materialize Catalog。
 
 #### Binding/ProjectValue
 
@@ -240,18 +278,18 @@ Recognize-and-bind 在 captured release 下验证 active Subject、Registration�
 | Aggregate/operation | 并发控制 | Lost response / retry | 冲突行为 |
 | --- | --- | --- | --- |
 | Catalog install/switch-back | transaction-scoped advisory lock + `catalog_state` row lock + expected current pin | 按 release digest/fingerprint 复查 committed state，完整则 no-op | stale lineage、split head 或 unknown projection fail closed |
-| Registration create | `(organization,subject)` key lock + destination taxonomy key lock + deferred constraints | Idempotency-Key/request fingerprint 返回 stored result | conflicting PlacementIntent 为 `placement-conflict`，无 partial Registration |
+| Explicit/automatic Registration | current release guard -> idempotency -> `(organization,subject)` key/row -> destination key/row -> deferred constraints；Governance-owned UoW | exact fingerprint 返回 stored Registration/Placement/audit ref；lost response 不重复写 | permission/proof/placement/release conflict 为 typed failure，无 partial Registration |
 | Placement move/rename | Registration row + source/destination taxonomy key locks；ETag CAS | exact same mutation 可复读结果 | cycle/kind/org/stale destination 409，move 与 audit 一起回滚 |
-| Review resolution | ReviewItem ETag CAS + release anchor + idempotency key | exact replay 返回同一 resolution/Registration/Placement | stale/already resolved/key reuse 为 `revision-conflict`，item 保持 unresolved |
+| Review resolution | current release guard -> idempotency -> ReviewItem ETag CAS -> registration/placement shared locks -> deferred constraints；只走 `resolveReviewItem` | exact replay 返回同一 resolution/Registration/Placement/Proposal 与 audit ref | stale/already resolved/key reuse 为 `revision-conflict`；placement conflict 时 item 保持 unresolved且无 partial row |
 | Proposal transition | proposal revision/ETag row lock + exact base release/revision | 已提交同一 transition 返回 stored outcome | stale base `proposal-stale`；self approval 403；无 publication materialization |
 | Observation ingest | immutable source occurrence identity + evidence fingerprint uniqueness | identical occurrence is one evidence record/aggregate increment | changed payload under same source identity is evidence conflict，不覆盖 |
-| Auto registration | 同 explicit Registration 锁；proof pin 是 captured release + matcher revision | concurrent unique proof 收敛为 one Registration/Placement | zero/multiple/retired/conflicting placement 只 review/refusal |
+| Auto registration | 与 explicit/review 完全相同的 shared registration writer/锁；proof pin 是 captured release + matcher revision；reserved default only | concurrent explicit/auto/review 收敛为 one exact Registration/Placement 或 typed conflict | zero/multiple/retired/conflicting placement 只 review/refusal；绝不 auto-restore |
 | Binding create/cutover | unique `(project,logical_node,definition)` + Binding row lock + expected effective revision | exact recognized association idempotent | stale release/revision、owner mismatch 或 CAS loser 无 partial history |
 | ProjectValue append | Binding/current-value row lock + expected current value/effective revision | command idempotency record 返回 exact immutable value | stale CAS 无 value、pointer 或 audit partial write |
 | Cutover phase | host operation lock + PG cutover advisory lock + phase CAS + source/plan digests | inspect exact checkpoint；known committed phase 可 resume | unknown outcome 先独立分类，不能证明即 `recovery-required` |
 | Verification/report | immutable plan/attempt/report IDs；approval unique by report/purpose/principal role | incomplete attempt 标 interrupted 后新 attempt；complete digest-valid report 复用 | nondeterminism、wrong lineage/purpose 或 duplicate-role approval 阻断 |
 
-### 6. Catalog Release 发布、同步与回放
+### 7. Catalog Release 发布、同步与回放
 
 Bundle 必须包含 release ID/version/predecessor digest、exact manifest-listed YAML + per-file digest、显式稳定 Subject/alias/Definition/Revision IDs、完整 as-of memberships、selector/tombstone provenance、complete Definition snapshots、schema/toolchain provenance 和 aggregate digest。文件枚举顺序不得影响编译结果；unlisted file、missing reference、digest mismatch、重复 identity、key/alias reassignment、非法 lifecycle/tombstone、lineage gap 均在写前失败。
 
@@ -259,7 +297,9 @@ Bundle 必须包含 release ID/version/predecessor digest、exact manifest-liste
 
 Self-hosted 顺序必须是 build/offline validate -> quiesce -> verified Recovery Point -> data plane -> one-shot migration -> one-shot Catalog sync -> independent materialization verification；API/worker/web ordinary startup 只 verify packaged digest 与 approved runtime pin，不迁移、不同步、不 repair。
 
-### 7. Canonical API、并发和 legacy ID 过渡
+<a id="pcat-spec-api"></a>
+
+### 8. Canonical API、并发和 legacy ID 过渡
 
 所有 canonical Catalog response 包含 `X-WiseEff-Catalog-Release`。collection envelope 固定为 `items/nextCursor/catalogReleaseId`，item envelope 为 `item`；cursor 绑定 release 与 stable sort + opaque ID。依赖当前 publication 的 write 必须回传 release header；mutable org/proposal 还必须带 `If-Match`/ETag；governance command 还带 `Idempotency-Key`。
 
@@ -287,7 +327,7 @@ legacy resolver allow-list 仅 `parameter-spec`、`parameter-spec-version`、`pr
 
 canonical launch 时所有 legacy structural mutation 与 overlay/promotion write 立即 410。eligible exact reads 最短保留到 canonical launch 后“至少两个 production releases”与“90 天”两者中更晚者，且所有 deployment class 连续 30 天零使用等 exit gates 通过；响应带 `Deprecation`、`Sunset`、successor `Link`、`Warning` 和 legacy contract header。失败只延长 read-only window，不恢复 writer/dual-read。
 
-### 8. 单一 Parameter definitions 页面
+### 9. 单一 Parameter definitions 页面
 
 canonical 路由为 `/parameter-admin/specs`，导航中只有一个 Parameter definitions entry；不存在 Effective/Governance peer。URL state 使用 opaque Subject/Definition/Review IDs 与 release anchor，支持 list/detail、timeline 与 same-page Review Queue；legacy bookmarks 通过 exact mapping/redirect/gone/conflict/not-found 处理。
 
@@ -300,7 +340,9 @@ canonical 路由为 `/parameter-admin/specs`，导航中只有一个 Parameter d
 - 前端 ports 至少拆为 CatalogRead、SubjectGovernance、ReviewQueue、DefinitionProposal、DefinitionTimeline、LegacyLink；项目 topology/workbench port 不再兼任 Catalog governance。
 - HTTP/mock adapters 满足相同 state machine；mock 无额外治理能力。#676 仅作为 IA/视觉决策，生产组件、测试和 screenshot 必须在实现分支重新构建与验证。
 
-### 9. P0–P16、Archive 与 rollback
+<a id="pcat-spec-p0-p16"></a>
+
+### 10. P0–P16、Archive 与 rollback
 
 | Phase | 直接可实现的 exit contract |
 | --- | --- |
@@ -346,7 +388,9 @@ Rollback 边界：P12 前可 abort/合法 pointer switch-back；P12 后 P13 前�
 
 Append-only journal 至少记录 plan/attempt/report/approval IDs/digests 与 predecessor lineage、artifact/image/config/target/host/Compose/volume/bucket、migration inventories/schema fingerprints、Catalog/compiled/materialization fingerprints、P0/source/classifier/recovery、mapping/head/Archive、P11a/P11b V/D counts/digests、P13 fingerprint、runtime pin generation、API/browser/recovery evidence、public report、queue/proxy state、first mutation/delivery/public timestamps、rollback closure、phase events、isolation results，以及 bounded `failed_phase/failure_service/failure_code/failure_summary` 和唯一 executable `next_action`。
 
-### 10. 六类 verification purpose 与 report chain
+<a id="pcat-spec-verification"></a>
+
+### 11. 六类 verification purpose 与 report chain
 
 | Purpose | required-now | 明确不可用 | 通过并批准后唯一授权 |
 | --- | --- | --- | --- |
@@ -357,7 +401,7 @@ Append-only journal 至少记录 plan/attempt/report/approval IDs/digests 与 pr
 | legacy-read-sunset | public lineage、2 releases + 90 days、每类 30 天零使用、consumer/reference/recovery/approval | P16 deletion | eligible public legacy reads 410 |
 | p16-cleanup | 全 canonical/fresh/populated/API/browser/obs/rollback、own Recovery Point/target restore、zero dependency、retention/legal hold | 无 waiver | 列举且批准的 code/schema/role/grant/trigger/view removal |
 
-### 11. Verification gates
+### 12. Verification gates
 
 #### V01–V17
 
@@ -418,7 +462,7 @@ Corpus/threshold integrity 另用 `PCAT-CMP-CORPUS-COVERAGE`、`PCAT-CMP-UNEXPLA
 - Fresh path 证明 zero legacy inventory/maps/Archive/registrations（除显式 seed）且 D01–D09 运行零语料谓词，不是 skip。Populated path 用完整非抽样 corpus，P0 counts 到 V17 完全守恒。
 - target-host 必须对 exact artifact/host/data profile 执行 cross-store restore、one-shot ordering、queue/proxy isolation、target verifier/browser/observability；local 或 Hosted 不替代。
 
-### 12. Observability、failure codes、audit 与 retention
+### 13. Observability、failure codes、audit 与 retention
 
 Stable family 固定为 `PCAT-ART|MIG|SCHEMA|SYNC|CLASS|MAP|REG|BIND|ARCH|VRF|CMP|API|AUTH|UI|UPG|WRITER|RP|RESTORE|RET-*`。human summary 可改，automation 只依赖 family/code + gate ID。
 
@@ -428,7 +472,7 @@ Structured logs 含 trace/request、target class、release/run/attempt/report、
 
 Retention 取 legal/audit hold、最长 protected/business/Archive/mapping retention、cleanup 后一年、最后支持 restore/old-binary window 后一年、legacy public window 结束的最晚者。failed/interrupted attempt 至少一年，incident/legal hold 更长。Report 不复制 raw dump、Archive payload、parameter value、DTS、credential 或 person data。
 
-### 13. Legacy retirement 与可删除条件
+### 14. Legacy retirement 与可删除条件
 
 R-L0=P13 writer retirement；R-L1=launch 后 read-only observation；R-L2=purpose-approved public read sunset；R-L3=P16 cleanup release。Catalog-only escape checks、reconcile code、legacy writers/roles/triggers/tables、Effective/Governance projection、migration aliases 各自只在 #679 asset-specific gate 到达时删除。
 
@@ -436,7 +480,7 @@ P16 必须同时满足：至少两次 production release、至少 90 天、每�
 
 P16 永不因“非 current”删除 Audit、Archive、mapping versions/heads、Catalog releases、Definition revisions、Bindings、ProjectValues、Proposals、Observations 或 ReviewEvidence。
 
-### 14. Migration 编号与历史不可变策略
+### 15. Migration 编号与历史不可变策略
 
 - 当前基线最高 prefix 是 `0136`；本规格不抢占 `0137` 或任何具体编号。
 - 每个实际 migration slice 开工与 rebase 后重新 fetch `origin/main`，枚举 packaged filenames 与 applied ledger，取当时下一组连续、唯一 prefix；并行 collision 只对尚未应用的本分支文件做 content-preserving renumber。
@@ -446,44 +490,153 @@ P16 永不因“非 current”删除 Audit、Archive、mapping versions/heads、
 - 每个 migration 强制 fresh + upgrade-from-supported-floor + populated rehearsal，约束测试必须 `SET CONSTRAINTS ALL IMMEDIATE` 或 COMMIT；并发用 independent sessions。
 - `docs/generated/db-schema.md` 由 exact migration tree 重新生成，`npm run docs:check` 必须在计划完成前用真实 pgvector PostgreSQL 路径验证，而不是把 extension skip 当完整 schema evidence。
 
-### 15. 实现切片与依赖图（尚非 Issues）
+<a id="pcat-spec-work-packages"></a>
+
+### 16. Ticket-ready work packages（仍不是 Issues）
+
+`S0`–`S14` 只是 workstream 编号，**不等于 ticket**。下表每一行才是一个可交给单一开发智能体、独立分支和独立 merge decision 的 future ticket candidate。本规格不创建这些 ticket；父会话仍需确认 seam、行粒度与阻塞边。
+
+证据缩写：`D`=文档/静态；`L`=local pure/fake；`PG`=真实 local PostgreSQL；`B`=browser-real；`H`=Hosted/CI；`T`=真实 target-host；`R`=release/production purpose report。某行写“无”即不得由别的证据层推导。
+
+编号/ID ownership 的默认值适用于每一行：如果某 node 没有显式写出 migration、ADR、PCAT-API、PCAT-UI、operation、V/M/P/D 或 generated artifact，则它对该类的 ownership 明确为 **none**，不是 ticket metadata 漏写。只有 S2-SCH/S2-RBAC/S10-PER 可分配各自限定的 migration；ADR 号由 G0/父会话拥有；S8-CON 拥有 API registry，route nodes 只拥有列出的 assertion ranges；S9-BRW 拥有 requirement/operation registry source，S9-CAT/S9-GOV/S9-BRW 只拥有列出的 marker/file。
+
+#### S0–S3：合同、bundle、schema 与 Catalog Kernel
+
+| Node | Objective / owning module and public seam | Allowed paths / artifact and ID owner | Inputs -> outputs | Red -> Green | Evidence boundary | Dependencies | Merge gate / parallel conflict surface |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| S0-ID | 固定 branded nominal IDs、closed enums、failure/gate/purpose/result types；owner=`parameter-catalog-contract` shared package | `server/modules/parameter-catalog-contract/**`；owns ID/enum registry；migration/ADR/API/UI IDs=none | #669–#679 -> compile-time registry | Red primitive-string/cross-kind assignment；Green typecheck + serialization golden | D+L；PG/B/H/T/R 无 | G0 | registry snapshot + no duplicate brand；其他 ticket 禁止并改同一 registry |
+| S0-RAT | 建立 legacy writer/raw-read/forbidden-import/route/static ratchets | `scripts/check-parameter-catalog-*.ts`, matching tests, allowlist artifact；owns ratchet manifests | S0-ID + inventory -> deterministic violation list | Red current violations enumerated；Green only named decreasing allowlist | D+L；其余无 | G0, S0-ID(CD) | exact violation golden；与 consumer ticket 只通过 allowlist entry ownership 协调 |
+| S0-FIX | 把 #671 checksum-locked populated fixture 接入统一 loader 与 zero-mode fixture contract | `scripts/wayfinder/**`, `docs/references/parameter-catalog-rehearsal-fixture.md`, `docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md`；owns shared fixture/version | #671 artifact -> reusable fresh/populated loader contract | Red checksum/R6-R8 twin/dirty DB failure；Green checked-empty load + cleanup marker | D+L；PG execution 等 S2-PGH；H repeat later；T/R 无 | G0, S0-ID(CF) | fixture digest frozen；S2/S7/S10 只消费不编辑 |
+| S1-BND | 定义 immutable Catalog Release bundle schema、manifest、stable-ID/release lineage | `schemas/dts/catalog-release/**`, `docs/generated/parameter-catalog-bundle.schema.json`；owns bundle schema version | ADR-0040/41 + S0-ID -> canonical bundle JSON schema | Red missing/unlisted/reassigned/cycle fixtures；Green schema rejects before compiler | D+L；其余无 | G0, S0-ID(CD) | schema/digest golden freeze；唯一 generated bundle-schema owner |
+| S1-CMP | 实现 deterministic offline compiler/validator，无 DB | `server/modules/catalog-kernel/compiler/**`, compiler tests；owns compiled-model schema/toolchain digest | S1-BND -> byte-identical `CompiledCatalogRelease` | Red reorder/duplicate/lineage gaps；Green deterministic compile + exact violations | L；H repeatability later；PG/B/T/R 无 | S1-BND(CD), S0-ID(CD) | compiler contract frozen；不得编辑 PG schema或 runtime reader |
+| S2-SCH | 创建 canonical PostgreSQL schema、keys、deferrable constraints/triggers | 独占本 ticket 分配的 `server/migrations/<next>_canonical_parameter_catalog_schema.sql` 与 schema contract tests；owns physical relation names | ADR-0040/42 + S0-ID -> fresh/upgrade schema | Red COMMIT-time head/subtype/placement/owner failures；Green exact constraints + rollback no residue | PG required；D ledger；H later；B/T/R 无 | G0, S0-ID(CF) | fresh+supported-floor+populated schema gate；同阶段无人编辑该 migration |
+| S2-RBAC | 实现 owner/roles/grants/function reachability negative matrix | 独占后续 `server/migrations/<next>_canonical_parameter_catalog_roles.sql`, role tests；owns role/grant manifest | S2-SCH contract -> least-privilege roles | Red application/verifier/Agent bypass；Green P01/P02 SQLSTATE matrix | PG required；H repeat later；B/T/R 无 | S2-SCH(CF) | migration history + privilege matrix；不与 S2-SCH 共用 migration file |
+| S2-PGH | 提供 real-PG contract harness、independent sessions、commit/failure injection | `server/testing/parameterCatalog/**`, test scripts；owns PG harness config，不拥有 schema | S0-FIX + S2-SCH -> disposable checked-empty DB harness | Red fake/PGLite accepted or shared-session race；Green real server + independent pools | PG required；H adapter later；B/T/R 无 | S0-FIX(CD), S2-SCH(CF) | pgvector present and exact server version recorded；不得编辑 migration/generated schema |
+| S3-RUN | 实现 Kernel public types、current/pinned synchronous read facet 与 exact snapshot | `server/modules/catalog-kernel/interface.ts`, `runtime/**`, tests；owns Kernel public types | S1-CMP contract + S2-SCH contract -> six-operation interface/read snapshots | Red mixed release/null/post-page filter；Green captured typed results + cursor pins | L+PG；B 经 API later；H/T/R 无 | S1-CMP(CF), S2-SCH(CF), S2-PGH(CD) | public types frozen；唯一 interface owner，其他 Kernel tickets只实现 |
+| S3-INS | 实现 bootstrap/advance/switch-back Kernel-owned install transaction | `server/modules/catalog-kernel/install/**`, tests；owns install adapter | S1-CMP + S2 schema/RBAC + S3-RUN types -> atomic materialization | Red failure after each write/lost response/concurrent install；Green all-or-none/no-op/conflict | PG required；H repeat later；B/T/R 无 | S1-CMP(CD), S2-SCH(CD), S2-RBAC(CD), S3-RUN(CF) | six-operation contract + audit/fingerprint gate；不编辑 public interface |
+| S3-VFY | 实现 independent verifier、cache rebuild 和 deterministic failure injection | `server/modules/catalog-kernel/verification/**`, `cache/**`, tests；owns materialization fingerprint/cache format | S3-RUN + S3-INS output -> verifier snapshot/cache | Red stale/poisoned/partial cache and writer credential；Green read-only recompute + exact drift | L+PG；H later；T/R 无 | S3-RUN(CD), S3-INS(CD), S2-RBAC(CD) | verifier credential negative + cache golden；与 S10 仅交换 read-only evidence schema |
+
+#### S4–S6：Parameter Governance 内部 packages 与 Binding/ProjectValue
+
+| Node | Objective / owning module and public seam | Allowed paths / artifact and ID owner | Inputs -> outputs | Red -> Green | Evidence boundary | Dependencies | Merge gate / parallel conflict surface |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| S4-REG | Parameter Governance 内部 Registration/Placement：explicit/auto、retire/restore、move/rename | `server/modules/parameter-governance/registration/**`；owns private repos/lock-order spec；no migration/API/UI IDs | Kernel snapshot + trusted context + PlacementIntent/proof -> stable Registration/Placement result | Red double placement/auto restore/race/lost response；Green shared UoW exact convergence | L+PG；B later；H repeat；T/R 无 | S3-RUN(CF), S2-SCH(CD), S2-PGH(CD) | public Governance command types freeze；不暴露 repo/UoW；与 S4-EVD 可并行 |
+| S4-EVD | Parameter Governance 内部 immutable Observation/ReviewEvidence ingest | `server/modules/parameter-governance/evidence/**`；owns occurrence/evidence fingerprints | captured matcher outcome/source provenance -> immutable evidence | Red weak match/overwrite/same-key R6-R8 merge；Green immutable dedupe/conflict | L+PG；其余 later/无 | S3-RUN(CF), S2-SCH(CD) | fingerprint golden；不创建 Registration/Definition/Binding；与 S4-REG 可并行 |
+| S4-REV | Parameter Governance Review Queue grouping/query/state machine，不含 resolution transaction | `server/modules/parameter-governance/review/**` excluding coordinator；owns ReviewItem ETag/query contract | S4-EVD -> grouped open/read model | Red duplicate group/stale candidate/raw payload leak；Green exact grouping/authorized query | L+PG；B later；H repeat；T/R 无 | S4-EVD(CD), S3-RUN(CF) | ReviewItem interface freeze；不写 Resolution/Registration |
+| S5-RSL | 实现唯一 `resolveReviewItem` coordinator，原子 review-registration resolution | `server/modules/parameter-governance/resolveReviewItem/**`；owns command/result/failure types and UoW coordinator | S4-REG + S4-REV + captured release -> ReviewResolutionResult | Red HTTP-multiwriter/ETag race/key conflict/failure each step；Green one commit + durable refusal | PG required；B via S9；H repeat；T/R 无 | S4-REG(CD), S4-REV(CD), S2-RBAC(CD), S3-RUN(CF) | full Red matrix + no public tx/repo imports；S4/S5 workstream不是独立深模块 |
+| S5-PRP | Parameter Governance Proposal revisions/workflow/publication intent | `server/modules/parameter-governance/proposals/**`；owns proposal command/results | captured release/revision + trusted roles -> proposal/intention | Red self-accept/stale/materialize Catalog；Green distinct reviewer + intent-only atomic audit | L+PG；B later；H repeat；T/R 无 | S3-RUN(CF), S2-SCH(CD) | no Catalog grant/write proof；与 S5-RSL 可并行，只有 shared interface freeze 协调 |
+| S6-BND | Binding stable identity 与 effective DefinitionRevision semantic cutover | `server/modules/parameter-bindings/binding/**`及明确迁移 adapter；owns Binding public types | Kernel + active Registration contract -> stable Binding/CAS | Red module/latest-head identity/cross-owner race；Green composite agreement + stable ID | PG required；B via consumers；H later；T/R 无 | S3-RUN(CD), S4-REG(CF), S2-SCH(CD) | Registration contract必须先 freeze；因此不能与 S4-REG 全程并行 |
+| S6-VAL | immutable ProjectValue、explicit current tip、complete history | `server/modules/parameter-bindings/values/**`, history tests；owns value/history contract | S6-BND + exact revision/source -> immutable value/current pointer | Red max-time tip/update/history loss/CAS race；Green append+CAS+audit all-or-none | PG required；其余 later | S6-BND(CD) | current/effective pointer conservation gate；不编辑 consumer adapters |
+| S6-WFA | protected workflow adapter contract for binding/history/reference reads；不迁移 11 consumers | `server/modules/parameter-bindings/adapters/**`, contract tests；owns internal canonical adapter DTO | S6-BND/S6-VAL -> protected-reference adapter | Red legacy `parameterSpecId` fallback；Green canonical ID/pin or typed block | L+PG；B/H/T/R by consumers | S6-BND(CD), S6-VAL(CD) | adapter contract freeze；S12 families各自拥有调用点，不能修改此 core |
+
+#### S7–S11：Cutover、API/UI、Verification 与 upgrade
+
+| Node | Objective / owning module and public seam | Allowed paths / artifact and ID owner | Inputs -> outputs | Red -> Green | Evidence boundary | Dependencies | Merge gate / parallel conflict surface |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| S7-CLS | Catalog Cutover 私有 R0–R10 full-graph classifier | `server/modules/catalog-cutover/classifier/**`; owns classifier version/rule IDs | P0 source graph + S0 fixture -> exactly one primary R class | Red R0 archive-as-success/R6-R8 merge/sample；Green full conservation/block | L+PG populated；H repeat；T later；B/R 无 | S0-FIX(CD), S2-PGH(CD), S3-RUN(CF) | classifier golden/digest；不写 mapping/archive |
+| S7-MAP | typed legacy identities、append-only mapping versions/heads/CAS | `server/modules/catalog-cutover/mapping/**`; owns mapping schema version | S7-CLS results -> one typed head per identity | Red reclassification/overwrite/ambiguous head；Green append/no-op/conflict | PG required；T later；其余无 | S7-CLS(CD), S2-SCH(CD) | mapping checksum/conservation；不编辑 Archive adapter |
+| S7-ARC | immutable Archive metadata + S3-compatible encrypted object adapter | `server/modules/catalog-cutover/archive/**`; owns Archive manifest/object schema | typed archive outcomes/source graphs -> metadata+object checksums | Red public enumeration/partial object/credential leak；Green atomic reference/integrity/restore read | L+PG + local object store；T required later；H repeat；B/R 无 | S7-CLS(CD), S2-SCH(CD) | object/DB checksum + authz gate；与 S7-MAP 可并行 after classifier |
+| S7-ORC | 实现 `plan/execute/inspect/recover` 与 P0–P10、rehearsal/phase rollback containment | `server/modules/catalog-cutover/**` excluding classifier/mapping/archive；`scripts/wayfinder/**` orchestrator tests；owns cutover plan/run schema | S3/S4-S6 + S7-CLS/MAP/ARC -> P0-P10 checkpoints | Red rerun duplicates/unknown outcome/ad-hoc SQL/rollback drift；Green same-plan resume + byte-equal containment | PG populated required；H repeat；T integration later；B/R 无 | S3-INS(CD), S4-REG(CF), S4-EVD(CF), S5-PRP(CF), S6-VAL(CD), S7-CLS/MAP/ARC(CD) | P0-P10 complete + #671 dump equality；P12-15不在此 ticket执行 |
+| S8-READ | Catalog read route family，九条 route 全闭合到 Kernel facet | `server/modules/parameter-catalog-api/read/**`, route tests；owns PCAT-API-01..03 read assertions | S3-RUN -> HTTP DTO/envelopes/release cursor | Red raw repo/post-filter/scope leak；Green exact nine-route closure | L+PG+running HTTP；B later；H repeat；T/R 无 | S3-RUN(CD), S8-CON(CF) | OpenAPI/route parity + release header；不编辑 generated OpenAPI |
+| S8-GOV | Governance route family，handlers 只调用 Parameter Governance commands | `server/modules/parameter-catalog-api/governance/**`, tests；owns PCAT-API-04..07 assertions | S4/S5 public seam -> ETag/idempotent HTTP | Red transaction handle/multiwriter/role spoof/partial write；Green typed one-command mapping | PG+HTTP+audit required；B later；H repeat；T/R 无 | S4-REG(CD), S4-REV(CD), S5-RSL(CD), S5-PRP(CD), S8-CON(CF) | route auth/error/concurrency gate；禁止 imports private repos/UoW |
+| S8-LEG | exact legacy resolver/read adapter/410 transition | `server/modules/parameter-catalog-api/legacy/**`, tests；owns PCAT-API-08..10 assertions | S7-MAP/ARC read projection -> mapped/410/409/404 | Red property inference/reverse search/raw Archive/legacy write；Green allowlist exact outcomes | PG+HTTP required；B deep link later；H repeat；T/R 无 | S7-MAP(CD), S7-ARC(CD), S8-CON(CF) | legacy matrix + headers；不 reclassify，不拥有 P12-15 |
+| S8-CON | freeze OpenAPI、route manifest、DTO/error registry、clients | `server/modules/contracts/**`, `docs/generated/openapi.json`, client contract source；owns route manifest/error registry and PCAT-API-01..12 registry | #677 + S0-ID + business seam signatures -> frozen wire contract | Red missing route/reason/client branch；Green generated parity and stable schemas | D+L；running HTTP由 route tickets；B/H/T/R later | G0, S0-ID(CF), S3-RUN(CF), S5-RSL(CF), S6-WFA(CF), S7-MAP(CF) | single generated OpenAPI owner；先 freeze 再允许 S8 routes/S9 ports |
+| S9-PRT | frontend application ports、domain state、URL/release/ETag/idempotency model | `src/application/ports/ParameterCatalog*.ts`, `src/application/parameter-catalog/**`, operation registry reservation；owns frontend ports + PCAT operation IDs | S8-CON OpenAPI freeze -> port commands/results/states | Red legacy Effective/Governance/mock extra power；Green HTTP/mock type/state parity | L component/port；B later；PG/API producer later；H/T/R 无 | S8-CON(CF) | port/state/operation-ID freeze；不得编辑 page/acceptance spec |
+| S9-CAT | 单页 Catalog list/detail/timeline 与 read states | `src/features/parameter-catalog/**`, page routing slice, `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; owns PCAT-UI-01/02/03/05/06/08/09/14 markers | S9-PRT + running S8-READ -> one-page read UX | Red mixed release/peer view/hidden state/overflow；Green exact route/state/3 viewport | L+B against real API；PG via API；H/T/R later | S9-PRT(CD), S8-READ(ID) | component + browser markers；不编辑 Governance spec/registry |
+| S9-GOV | Review/Registration/Placement/Proposal interactions | `src/features/parameter-catalog-governance/**`, `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; owns PCAT-UI-04/07/15 markers | S9-PRT + running S8-GOV -> reconfirming governance UX | Red silent retry/Agent write/partial response/proposal materialize；Green exact role+ETag+idempotency interactions | PG+HTTP+B+audit required；H/T/R later | S9-PRT(CD), S8-GOV(ID) | real interactions + audit IDs；不编辑 read/negative spec |
+| S9-BRW | responsive/deep-link/negative evidence bundle 与 coverage registry integration | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`, `e2e/acceptance/requirements.ts`, `e2e/acceptance/operationMatrix.ts`, 四份 EN/ZH coverage docs；owns PCAT-UI-10..13 and generated registry status | S9-CAT/GOV + S8-LEG -> blocking browser suite/evidence schema | Red conflict input lost/deep-link inference/mock divergence/console-network fail；Green all 15 IDs + screenshots | B required 3 viewport；PG/API/audit evidence refs；H repeat；T final；R 无 | S9-CAT(ID), S9-GOV(ID), S8-LEG(ID) | `acceptance:browser/evidence/coverage/operations`；唯一 registry/generated-doc owner |
+| S10-PER | Release Verification persistence/core、gate registry、purpose applicability | `server/modules/release-verification/core/**`, migrations allocated only to this node if needed；owns Verification gate registry/report schema base | S0-ID + S2 schema freeze -> plans/attempts/gate results | Red waiver/missing gate/mutable attempt；Green closed applicability + append-only | L+PG；H later；B/T/R no | S0-ID(CD), S2-SCH(CF) | registry/schema freeze；可与 S3/S4/S11 core 提前并行 |
+| S10-VMP | V01–V17、M01–M04、P01/P02 real-SQL adapters | `server/modules/release-verification/gates/postgres/**`; owns V/M/P SQL/gate implementation | S2/S3/S4-S7 schema/read contracts -> typed results | Red false zero/skip/privilege bypass；Green exact counts+SQLSTATE | PG required fresh+populated；H repeat；T final；B/R no | S10-PER(CF), S2-RBAC(CD), S3-VFY(CD), S7-ORC(CF) | all gates deterministic；producer完成前 adapter不能声称通过 |
+| S10-DCP | D01–D09 complete corpus/comparator/report digest | `server/modules/release-verification/comparison/**`; owns D corpus/result schema | #669 11 families + S7 outputs + consumer adapters -> comparison report | Red sampled/missing family/free-text expected diff；Green zero unexplained/unqueryable | PG populated required；H repeat；T final；B only D09 input；R later | S10-PER(CF), S7-ORC(CD), each S12 family(ID) | corpus coverage checksum + 11 families；可先实现 core，最终等待 producers |
+| S10-API | API evidence adapter for PCAT-API-01..12 | `server/modules/release-verification/evidence/api/**`, runner tests；owns API evidence schema adapter | running S8 routes -> immutable HTTP/PG/auth/audit refs | Red mock/stale pin/missing request ID；Green exact candidate evidence bundle | PG+HTTP required；H repeat；T final；B/R no | S10-PER(CF), S8-READ/GOV/LEG(ID), S8-CON(CD) | all 12 IDs same target pin；不启动/改变 runtime |
+| S10-UI | browser evidence adapter for PCAT-UI-01..15 | `server/modules/release-verification/evidence/browser/**`, evidence parser tests；owns browser bundle adapter | S9-BRW outputs -> immutable sanitized evidence refs | Red screenshot-only/pre-P13/stale report/redaction fail；Green full operation/network/runtime pins | B required；H repeat；T final；PG/API refs；R later | S10-PER(CF), S9-BRW(ID) | 15 IDs/3 viewports/diagnostics complete；不执行 UI actions itself |
+| S10-RPT | report assembly/lineage、distinct approvals、runtime-pin projection、retention | `server/modules/release-verification/report/**`; owns report/approval/runtime-pin schemas | S10-PER + gate/evidence adapters -> purpose report and pin | Red wrong purpose/self approval/pre-report pin/nondeterminism；Green exact lineage/no waiver | L+PG；H repeat；T/R integration later；B refs only | S10-PER(CD), S10-VMP(CD), adapter contracts(CF) | five public operations + private pin gate；final report waits producers |
+| S11-UPG | upgrade controller state machine/journal core，只调用 Cutover/Verification | `ops/self-hosted/scripts/upgrade-lib.sh`, future controller modules/tests；owns journal/state-machine schema | S7/S10 contracts -> legal-action controller | Red API migrate/gate selection/unknown commit guess；Green guarded idempotent actions | L；PG via apply ticket；H repeat；T/R later | S7-ORC(CF), S10-PER(CF), S10-RPT(CF) | journal golden/no direct DB business writer；可与 RP/verification core并行 |
+| S11-RP | Recovery Point capture/verify/token-gated whole-state restore adapter | `scripts/run-restore-drill.ts`, `ops/self-hosted/storage/**`, RP tests；owns recovery manifest schema | quiesced target identity -> PG/object/Redis manifest and restore result | Red pre-quiesce/partial/stale/wrong target restore；Green same-boundary checksums | local cross-store + PG；H repeat；T required final；B/R no | G0, S10-PER(CF) | destructive tests only disposable targets；与 S11-UPG 并行 |
+| S11-APL | fresh/populated one-shot apply integration through controller | `ops/self-hosted/scripts/upgrade.sh` integration tests, self-host fixtures；owns apply-mode acceptance | S11-UPG + S11-RP + S7-ORC -> P0-P11 checkpoints | Red API startup migration/duplicate apply/mode ambiguity；Green fresh zero-mode + populated full mode | PG real required；H repeat；T final；B/R no | S11-UPG(CD), S11-RP(CD), S7-ORC(CD), S10-VMP(ID) | same controller/mode exact result；不拥有 P12-15 release action |
+| S11-REC | resume/recovery-required/failure-after-each-phase matrix | upgrade controller recovery paths/tests；owns failure/next_action mapping | S11-UPG/RP/APL -> deterministic resume/restore/forward result | Red unknown commit auto-resume/partial restore；Green one legal next action | L+PG cross-store；H repeat；T final；B/R no | S11-UPG(CD), S11-RP(CD), S11-APL(CD) | failure matrix exhaustive + journal lineage；不执行 production incident restore |
+
+#### S12：11 个 consumer-family adapter tickets
+
+每个 S12 node **只拥有本 family 的 legacy -> canonical 调用点与 acceptance**；均不得拥有 Cutover phase、P12/P13/P14/P15、Verification report、upgrade controller、shared OpenAPI、shared migration 或 generated schema。
+
+| Node / family | Objective / allowed paths | Inputs -> outputs and ID ownership | Red -> Green | Evidence boundary | Dependencies | Merge gate / conflict surface |
+| --- | --- | --- | --- | --- | --- | --- |
+| S12-CGH Catalog/governance HTTP | 迁移/删除 `server/modules/parameter-specs/**` 与 `src/infrastructure/http/parameterAdminClient.ts` 的旧 consumer/wiring，只调用 S8 canonical seams | S8 -> no Effective/Governance/raw writer；owns family D01/D03/D06/D09 corpus cases；no P IDs | Red direct legacy reads/writes；Green exact adapter/410 | PG+HTTP；H repeat；B由S9；T/R later | S8-READ/GOV/LEG(CD), S7-ORC(CF) | route census zero；与 S8 通过 frozen manifest避免同文件并改 |
+| S12-TOP Parameter topology HTTP | `server/modules/parameter-topology/**`；`src/application/ports/ParameterTopologyRepository.ts`；`src/infrastructure/http/parameterTopologyClient.ts` | S3/S4/S6 -> canonical subjects/evidence/bindings；owns D02/D03/D04/D06 cases | Red provisional spec/module identity；Green observe/review/bind or typed block | PG+HTTP；H/T later；B existing topology acceptance | S4-EVD(CD), S6-WFA(CD), S8-CON(CF) | no catalog writer/raw table；shared DTO frozen |
+| S12-PRJ Project parameter workbench | `server/modules/parameters/**`；`server/modules/parameter-drafts/**`；`src/application/ports/ParameterRepository.ts`；`src/infrastructure/http/parameterClient.ts`；`src/infrastructure/http/parameterDtos.ts` | S6 -> binding IDs/revision/value tips；owns D04/D05 workflow cases | Red `parameterSpecId`/latest tip；Green stable IDs/history | PG+HTTP+B existing workflows；H/T later | S6-WFA(CD), S8-CON(CF) | full drafts/review regression；不改 S6 core |
+| S12-FIL File sync/writeback | `server/modules/parameter-files/**`；`src/application/ports/ParameterFileRepository.ts`；`src/infrastructure/http/parameterFileClient.ts` | S6 protected adapter + source locator -> canonical writeback；owns D07/D08 cases | Red property-only fallback；Green exact binding/revision/source or block | PG+HTTP+B existing file suite；H/T later | S6-WFA(CD) | writeback/audit/provenance gate；与 PRJ 只共享 frozen port |
+| S12-AGT Agent tools | `server/modules/agent/**` parameter tools and client schema | S8 read + S6 binding commands -> read/citation/approved normal workflow；owns D07/D08 cases | Red structural governance tool/role spoof；Green scoped read, no governance write | L+PG+HTTP；B existing Agent where applicable；H/T later | S8-READ(CD), S6-WFA(CD), S8-CON(CF) | tool registry no structural write + provenance tests |
+| S12-LOG Log analysis | `server/modules/logs/**`；`src/application/ports/LogAnalysisRepository.ts`；`src/infrastructure/http/logClient.ts`；`src/infrastructure/http/logDtos.ts` | S8 read + exact mappings -> safe definition/revision refs；owns D07 case | Red tenant leak/unpinned ref/definition creation；Green scoped immutable ref | PG+HTTP；B existing log acceptance；H/T later | S8-READ(CD), S7-MAP(CD) | log regression + scope negative；不改 Catalog DTO |
+| S12-DBG Debugging | `server/modules/debugging/**`；`src/application/ports/DebuggingGateway.ts`；`src/infrastructure/http/debuggingClient.ts`；`src/infrastructure/http/debuggingDtos.ts` | S6/S7 exact map -> optional binding/pinned revision；owns D07 case | Red debug value mutates Catalog/property guess；Green exact map or block | PG+HTTP+B existing debug suite；H/T/hardware separate | S6-WFA(CD), S7-MAP(CD) | device approval unchanged；hardware evidence不由本票声称 |
+| S12-DTS DTS reload | `server/modules/dts-reload/**`；`src/application/ports/DtsReloadRepository.ts`；`src/infrastructure/http/dtsReloadClient.ts` | S6 + release anchor -> candidate/run/snapshot pins；owns D07/D08 cases | Red stale release/unpinned value shape/direct Catalog write；Green exact pin or block | PG+HTTP+B fake bridge；H/T/HDC separate | S6-WFA(CD), S8-READ(CD), S7-MAP(CD) | reload regression/provenance；真实 HDC 非 launch code evidence替代 |
+| S12-KNW Knowledge | `server/modules/knowledge/**`；`src/application/ports/KnowledgeRepository.ts`；`src/infrastructure/http/knowledgeClient.ts`；`src/features/knowledge/**` | S8/S7 -> canonical definition/revision ref + retained legacy metadata；owns D07 case | Red orphan/silent retarget/draft visible；Green exact mapping/historical badge | PG+HTTP+B existing knowledge suite；H/T later | S8-READ(CD), S7-MAP(CD) | knowledge reference/audit gate；不编辑 shared OpenAPI |
+| S12-MOD Module registry | `server/modules/parameter-modules/**`；`src/application/ports/ParameterModuleRegistryRepository.ts`；`src/infrastructure/http/parameterModuleRegistryClient.ts` | S4 Registration/Placement -> navigation-only placement；owns D02/D03 cases | Red module proves Subject/Definition/overlay authoring；Green placement-only or 410 | PG+HTTP+B legacy transition；H/T later | S4-REG(CD), S8-LEG(CD) | structural owner census zero；与 Governance page用 frozen ports |
+| S12-OPS Release/operations | `server/modules/operations/**`, reconciliation callers, operator read adapters（不含 upgrade controller） | S7 inspect + S10 readReport -> canonical diagnostics；owns D09 operations cases | Red old catalog-only verifier/reclassify/public diagnostics；Green read-only typed operator outcome | PG+HTTP；H repeat；T integration later；R 无 | S7-ORC(CF), S10-RPT(CF), S8-LEG(CD) | operator authz + no Cutover mutation；P12-15 expressly excluded |
+
+#### Release integration 与后续 programs
+
+| Node | Objective / owner | Allowed paths / artifacts | Inputs -> outputs | Red -> Green | Evidence boundary | Dependencies / merge gate / conflict |
+| --- | --- | --- | --- | --- | --- | --- |
+| RI-01 | 独立 release-integration gate；由父会话/发布 owner 统一调用 Cutover、Verification 与 upgrade controller，执行 P12、P13、P11b、P14a/b/c、P15 | `scripts/run-self-hosted-release-gate.ts`、其 tests、`ops/self-hosted/releases/**`；owns target evidence manifest、release report refs、P12/P13/P14/P15 invocation wiring；不拥有 business module | all consumers + P0-P10 + Verification + upgrade/recovery + API/UI acceptance -> approved public-release chain | Red missing consumer/pre-report pin/P13 delta-only/pre-runtime browser/traffic early；Green exact purpose chain and isolation | PG+B+H（repeat only）+T required；R only with distinct approvals | CD/ID: S7-ORC,S10-RPT,S11-REC；RE: all S12,S10-VMP/DCP/API/UI,S9-BRW；merge only after every blocking producer；不编辑 producer artifacts |
+| S13-PROGRAM | R-L2 legacy-read sunset production-release program，不是 launch implementation ticket | future release plan/telemetry/compat docs only after real window | two releases + 90 days + 30-day per-class zero use + report -> eligible reads 410 | unmet telemetry must block | T+R required；local/H不可替代 | RI-01 complete + actual elapsed time/telemetry + `legacy-read-sunset` approval；不能预先排期成代码 ticket |
+| S14-PROGRAM | R-L3/P16 cleanup production-release program，不是 launch implementation ticket | separately approved cleanup release; exact asset removal list | S13 + retention/recovery/zero dependency + own RP/restore -> approved deletion | any protected dependency/history/restore gap blocks | T+R required | S13-PROGRAM + actual evidence；不得与 launch 合并或因静态“无引用”提前删除 |
+
+<a id="pcat-spec-dag"></a>
+
+### 17. Typed dependency DAG、critical path 与推荐 merge order
+
+依赖类型：`CD`=code dependency；`CF`=contract-freeze dependency（consumer 可在 producer 实现未完成时开工，但只能依 frozen interface）；`ID`=integration dependency（必须在同一候选上汇合）；`RE`=release/evidence dependency（代码 green 不可替代）。
 
 ```text
-S0 contract/gate registry + fixture ratchets
-  -> S1 release bundle/compiler
-  -> S2 canonical PostgreSQL schema/roles
-  -> S3 Catalog Kernel
-S3 -> S4 Registration/Placement
-S3 -> S5 Observation/Review/Proposal
-S3 + S4 -> S6 Binding/ProjectValue
-S2..S6 -> S7 mapping/Archive/cutover P0-P10
-S3..S6 -> S8 canonical API + legacy resolver
-S8 -> S9 one-page frontend + consumers
-S7 + S8 + S9 -> S10 Release Verification + V/D/API/UI evidence
-S7 + S10 -> S11 self-hosted controller/report chain/recovery
-S8..S11 -> S12 all 11 consumer cutovers + P12/P13/P14/P15
-S12 -> S13 R-L2 telemetry/sunset
-S13 -> S14 P16 cleanup release
+G0: #669-#679 decision docs + this Spec accepted by parent and present on main
+  -> S0-ID -> {S0-RAT, S0-FIX, S1-BND, S2-SCH, S10-PER-core, S11-RP-core}
+S1-BND -> S1-CMP -----------------------------\
+S2-SCH -> {S2-RBAC, S2-PGH} ------------------+-> S3-RUN -> {S3-INS, S4-REG, S4-EVD, S5-PRP}
+S1-CMP + S2-SCH contracts --------------------/
+S4-EVD -> S4-REV; S4-REG + S4-REV -> S5-RSL
+S3-RUN + S4-REG -> S6-BND -> S6-VAL -> S6-WFA
+S3-INS + S4/S5/S6 contracts -> S7-CLS -> {S7-MAP,S7-ARC} -> S7-ORC(P0-P10)
+S8-CON freeze -> {S8-READ after S3-RUN, S8-GOV after S5-RSL, S8-LEG after S7-MAP/ARC}
+S8-CON freeze -> S9-PRT -> {S9-CAT after S8-READ runtime, S9-GOV after S8-GOV runtime}
+S9-CAT + S9-GOV + S8-LEG -> S9-BRW(browser-real)
+S10-PER -> {S10-VMP waiting DB producers, S10-DCP waiting corpus producers,
+            S10-API waiting running APIs, S10-UI waiting browser bundle} -> S10-RPT
+S7/S10 contracts -> S11-UPG; S11-UPG + S11-RP -> S11-APL -> S11-REC
+{S8/S6/S7 contracts} -> eleven S12 family adapters (independent paths)
+ID/RE convergence: all S12 + S7-ORC(P0-P10) + S10 complete + S11-REC
+                 + S8 API acceptance + S9 browser acceptance -> RI-01(P12-P15)
+RI-01 + real elapsed telemetry -> S13-PROGRAM -> S14-PROGRAM
 ```
 
-建议后续 ticket 粒度是“一条公开 seam 或一个可独立验证的 vertical contract”，不是按文件或表拆票：
+关键路径是 `G0 -> S0-ID -> S1-BND/S1-CMP + S2-SCH/S2-PGH -> S3-RUN/S3-INS -> S4-REG/S4-EVD/S4-REV/S5-RSL -> S6-BND/S6-VAL -> S7-ORC -> blocking S12 frontier -> S10-DCP/VMP/API/UI/RPT + S11-REC -> RI-01`。Binding 只可在 Kernel 与 Registration contract freeze 后开始，不能声称与所依赖的 S4-REG 全程并行。Verification core、upgrade controller core 与 Recovery Point adapter应提前并行；它们只在 producer evidence 到齐后 integration。frontend ports 可在 OpenAPI freeze 后开始，browser-real 必须等 running API。
 
-1. S0 固定 branded IDs、closed enums、gate registry、static import/route/legacy writer ratchets 与 #671 fixture loader。
-2. S1 实现 deterministic bundle compiler/validator 与 release-history artifact，不接数据库。
-3. S2 实现 schema、deferred constraints、roles/grants 和 real-PG contract harness，不接 HTTP。
-4. S3 实现完整 Kernel 六操作、snapshots、cache、failure injection 与 independent verifier。
-5. S4 实现 Registration/Placement aggregate、explicit/auto flows、concurrency 与 audit。
-6. S5 实现 Observation/Review/Proposal 三个不同 aggregate，确保 acceptance 不 materialize Catalog。
-7. S6 实现 canonical Binding/ProjectValue 和所有 protected workflow adapters。
-8. S7 实现 classifier、typed mapping、Archive、P0–P10 和 rollback-contained populated rehearsal。
-9. S8 一次协调交付 OpenAPI、route manifest、auth/idempotency、Kernel closure 与 legacy HTTP。
-10. S9 一次协调交付 ports、HTTP/mock parity、single page、responsive/browser operation IDs。
-11. S10 实现 verification persistence/interface、V/M/P/D gate、report lineage/approvals/runtime pin；browser/API runner 只作为 evidence producer。
-12. S11 修改 upgrade controller 只消费 Cutover/Verification seams，完成 fresh/populated/restore/unknown-outcome matrix。
-13. S12 按 11 consumer families 分批迁移，但 P12 前必须在同一 candidate 上整体 P11；P13 后完整重跑，再做 isolated/public release chain。
-14. S13/S14 是后续 release 工作，不能与 launch ticket 合并，也不能因代码“看起来无引用”提前删除。
+推荐 merge waves：`G0`；`S0-ID`；并行 `S0-RAT/S0-FIX/S1-BND/S2-SCH/S10-PER-core/S11-RP-core`；`S1-CMP/S2-RBAC/S2-PGH/S3-RUN/S8-CON`；`S3-INS/S3-VFY/S4-REG/S4-EVD/S5-PRP/S9-PRT/S11-UPG`；`S4-REV/S5-RSL/S6-BND/S8-READ/S8-GOV`；`S6-VAL/S6-WFA/S7-CLS/S8-LEG/S9-CAT/S9-GOV`；`S7-MAP/S7-ARC`；`S7-ORC` 与 11 个 S12 adapter；各自 producer-ready 的 S10 adapters 与 `S11-APL/REC`；`S9-BRW`；最后 `RI-01`。S13/S14 等真实窗口，不进入 launch merge wave。
 
-Ticket 创建前需要父会话确认三点：上述模块 seams 是否正确；每个编号项是否为合适 ticket 粒度；依赖边是否允许 S4/S5/S6 并行且仍保持 S7/S10 汇合 gate。本草案不会创建 Issues。
+<a id="pcat-spec-artifact-freeze"></a>
+
+### 18. Artifact ownership 与 freeze
+
+| Artifact | Sole owner before freeze | Freeze point / downstream rule |
+| --- | --- | --- |
+| Branded IDs / closed enums | S0-ID | merge 后 CF；下游只消费，新增/改语义回 owner |
+| Migration filenames | S2-SCH、S2-RBAC、S10-PER 各自仅拥有自己分配的文件 | 开工和 rebase 后分配；同阶段不得两 ticket 编辑同文件；applied bytes永不改 |
+| ADR numbers/index | G0/父会话 | #669–#679 与 ADR-0040–0042 入 main 后 freeze；实现 ticket 不自行占号 |
+| Catalog bundle schema / generated JSON | S1-BND | S1-CMP 前 CF；唯一 generator owner |
+| PostgreSQL schema/constraints | S2-SCH | S3/S4/S6/S7/S10 使用前 CF；generated schema仍等 migration merge后更新 |
+| Kernel public types | S3-RUN | S3-INS/S3-VFY/S4/S6/S8 前 CF |
+| OpenAPI / route manifest / error registry / generated OpenAPI | S8-CON | route/frontend 前 CF；route tickets不得编辑 generated artifact |
+| Frontend application ports/state | S9-PRT | page/governance tickets前 CF |
+| Browser requirement/operation IDs | 本 Spec先预留；实现阶段 S9-BRW 唯一 registry owner | S9-CAT/GOV 开工前 ID map freeze；各 spec只写其 marker |
+| Verification gate registry / report schema | S10-PER / S10-RPT（不重叠文件） | adapters/controller 前 CF；purpose applicability不可由 adapter改变 |
+| Upgrade journal / state machine | S11-UPG | S11-APL/REC 与 RI-01 前 CF |
+| `docs/generated/db-schema.md` | schema integration owner（S2-SCH 后续与最终 migration wave各一次） | exact migration tree + real pgvector 后生成；并行 ticket不编辑 |
+| Shared #671 fixture | S0-FIX | checksum freeze；S2/S7/S10 only consume |
+| Acceptance spec files | S9-CAT owns `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; S9-GOV owns `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; S9-BRW owns `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` | 文件一票一 owner；不得跨票同改 |
+
+任何同一 merge wave 出现两个 ticket 同时拥有同一 generated artifact、migration file、registry source 或 acceptance file，父会话必须先调整 ownership/merge wave；不能靠冲突解决后继续称为独立 ticket。
+
+Ticket 创建前仍需父会话确认：四个深模块 seams；上述每行 ticket 粒度；`CD/CF/ID/RE` 边、critical path 与 merge order。本草案继续停在 `/to-tickets` 前。
 
 ## Testing Decisions
 
@@ -497,15 +650,16 @@ Ticket 创建前需要父会话确认三点：上述模块 seams 是否正确；
 2. Red：malformed/missing/duplicate/reordered release fixtures 编译错误；Green：同 bundle 任意枚举顺序产生 byte-identical model/digest，非法 lineage 全部 fail before write。
 3. Red：fresh PostgreSQL 上 deferred head/subtype/placement/owner constraints、role negative 和 injected transaction failures；Green：S2 全部约束在 COMMIT 生效且无 partial row。
 4. Red：Kernel bootstrap/advance/idempotency/drift/current+pinned replay/cache/failure injection；Green：六操作通过 production seam，previous pointer/heads 在每个 failure point 不变。
-5. Red：Proposal accept 仍能写 Definition、Observation 能 weak-match、Registration 产生多 Placement/自动 restore；Green：各 aggregate 和权限边界分别通过。
+5. Red：caller/HTTP 传 transaction handle 或依次调用 Review/Registration/Placement writer、ETag race 留下 partial row、explicit/auto/review registration 产生多 Placement、lost response 重复审计、Proposal accept 写 Definition；Green：只通过 Parameter Governance public commands，`resolveReviewItem` 的 Governance-owned UoW、共享锁序、exact replay、独立 refusal sink 和 intent-only proposal 全通过。
 6. Red：Binding 用 module/current latest、ProjectValue 未 pin exact revision、CAS race；Green：composite FKs、immutable history、independent-session winner/no-partial-write 通过。
 7. Red：#671 R6/R8 same-key 被 merge、R0 被 Archive-as-success、rerun duplicate、rollback dump drift；Green：P0–P10 完整 fixture 与 failure-after-each-phase 通过。
 8. Red：canonical routes 直接 repo、scope leak、header/body role spoof、idempotency conflict partial write、legacy inference；Green：PCAT-API-01–12 contract + real-PG + running HTTP + audit 全通过。
 9. Red：single page 各 state/viewport/interaction 与 mock/API parity；Green：PCAT-UI-01–15 browser-real bundle 完整，所有 console/network unexpected failure 为零。
-10. Red：report 缺 gate、错 purpose、错 predecessor、self approval、pre-report 被当 runtime pin、P13 只跑 V13/P02；Green：六 purpose/report chain、完整 post-P13 rerun、distinct approvals、no-waiver 通过。
-11. Red：upgrade 仍由 API migrate/sync、unknown commit 猜测 resume、partial restore、traffic 早开；Green：fresh/populated/restore 与每个 legal-action guard 通过。
-12. Red：11 consumer family 任一仍读 legacy ID/structure；Green：完整 D corpus 与 acceptance matrix 通过后才允许 P12/P13。
-13. Red：telemetry/dependency/retention 任一缺失仍可 sunset/delete；Green：R-L2/P16 purpose gates fail closed。
+10. Red：Verification core 可被 adapter 改 gate、report 缺 gate、错 purpose/前驱、自批、pre-report 当 runtime pin、P13 后只跑 V13/P02；Green：冻结 registry、六 purpose/report chain、完整 post-P13 rerun、distinct approvals、no-waiver 通过。
+11. Red：upgrade 仍由 API migrate/sync、unknown commit 猜测 resume、partial restore、traffic 早开；Green：controller core、Recovery Point adapter、fresh/populated apply 与 recovery-required matrix分别通过再汇合。
+12. Red：11 consumer family 任一仍读 legacy ID/structure；Green：每个 S12 adapter 独立 green，完整 D corpus 与 protected-reference census 为零；这些 tickets不执行/拥有 P12–P15。
+13. Red：缺任一 consumer/P0–P10/V-D-API-UI/upgrade-recovery evidence 仍可 P12、P13、candidate startup 或 public traffic；Green：RI-01 在同一 target/pin 上按 pre-activation -> P12 -> P13 -> full P11b -> runtime pin -> isolated API/browser -> public report -> P15 顺序通过。
+14. Red：telemetry/dependency/retention 任一缺失仍可 sunset/delete；Green：只在后续真实 S13/S14 production programs 中由 R-L2/P16 purpose gates fail closed。
 
 ### 真实 PostgreSQL fixture 与验收矩阵
 
@@ -551,27 +705,30 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 | Target-host | 未执行 | exact target rehearsal | another target/release approval |
 | Release/production approval | 不存在 | exact purpose report + accountable approvals | future releases or waived failures |
 
+<a id="pcat-spec-documentation"></a>
+
 ## 文档影响矩阵
 
-此矩阵是实现完成前的 blocking 更新清单；本规格草案只新增双语 active plan 和相应计划索引，不提前把目标行为写成“已实现”。
+此矩阵是实现完成前的 blocking 更新清单；`Disposition` 只允许 `Update`、`Review`、`No change`。本规格修复现在只更新双语 active plan、两份 EN/ZH coverage 文档与计划索引，不提前把未来目标写成“已实现”。
 
-| Area | Disposition | Exact paths / update gate |
-| --- | --- | --- |
-| Repository maps | Update at implementation | `AGENTS.md`, `ARCHITECTURE.md`, `docs/zh-CN/root/AGENTS.md`, `docs/zh-CN/root/ARCHITECTURE.md`：登记新模块、命令和 readiness 顺序 |
-| Planning | Update now/review later | 本双语 active plan；`docs/PLANS.md`, `docs/zh-CN/PLANS.md`；完成后移至双语 completed，任何 deferred work 进双语 tech-debt tracker |
-| Domain/glossary | Update with first model slice | `CONTEXT.md` 及相关中文 domain model：删除/标记旧词义，加入 CatalogRelease、CatalogSubject、DefinitionRevision、Registration、Placement、Observation、ReviewEvidence、Proposal、ProjectValue、VerificationPurpose |
-| ADR/index | Update before implementation merge | `docs/adr/README.md`、ADR-0040/41/42 双语落主线；明确旧 ADR supersession，不改历史正文 |
-| Product specs | Review/update with UI slice | `docs/product-specs/product-spec.md`, `prototype-functional-spec.md` 及中文 companion：唯一页面和角色/状态 |
-| Architecture/domain | Update | `docs/design-docs/full-stack-architecture.md`, `domain-model.md`, `index.md` 及中文 companion；加入 Kernel/Verifier/Cutover seams 和依赖方向 |
-| API docs/contract | Update atomically with S8 | `docs/design-docs/api-contract.md`, `docs/api/README.md`, `authentication.md`, `errors.md`, `examples.md` 及中文 companion；OpenAPI generated artifact/route manifest |
-| Frontend/design | Update with S9 | `docs/FRONTEND.md`, `docs/design-docs/ui-design-system.md`, `docs/developer/ui-quality-checklist.md` 及中文 companion；单页 state/ports/responsive contract |
-| Quality/testing | Update before P12 | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md`, `docs/developer/verification-matrix.md`, browser coverage map、operation matrix 及中文 companion；登记 PCAT IDs/commands/evidence |
-| Security/governance | Update with roles/audit | `docs/SECURITY.md`, `docs/security/threat-model.md`, `data-classification.md`, `audit-retention.md`, `user-permission-design.md` 及中文 companion |
-| Reliability/runbooks | Update with S11 | `docs/RELIABILITY.md`, self-hosted runtime、backup/restore、rollback、release-rollback、monitoring/alerts、incidents runbooks 及中文 companion |
-| Self-hosted operator docs | Update with S11 | `ops/self-hosted/upgrade.md`, `operations.md`, release template 及 `.zh-CN.md` companions；不在本草案改 `upgrade.sh` |
-| Generated schema | Update after migrations | `docs/generated/db-schema.md` 由 exact fresh migration tree 生成并用 real pgvector PostgreSQL 验证 |
-| References/decision contracts | Land/review | #669–#679 的双语 ADR/design/reference artifacts 以 immutable SHA 为来源；若 cherry-pick/重写会改变 SHA，则以新文档明确引用原 SHA，不替代证据 |
-| External compatibility | Update before launch | published API deprecation/sunset docs、import/export schema、deep-link mapping 与 operator diagnostics 文档 |
+| Area | Disposition | English paths | Chinese paths | Owner / gate |
+| --- | --- | --- | --- | --- |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md` | 首个模块 merge 时登记四深模块、依赖和 readiness |
+| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | 父会话维护一份计划、多 ticket evidence |
+| Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 首个 model slice；只写 domain term，不把实现细节塞进 CONTEXT |
+| ADR/index and accepted decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0；引用 immutable SHA，不改历史决策语义 |
+| Product specs | Update | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/product-specs/prototype-functional-spec.md` | `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`; `docs/zh-CN/product-specs/prototype-functional-spec.md` | S9 单页/角色/state 合同 |
+| Architecture/design | Update | `docs/design-docs/index.md`; `docs/design-docs/full-stack-architecture.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/full-stack-architecture.md`; `docs/zh-CN/design-docs/domain-model.md` | S3/S5/S7/S10 seams 与依赖方向 |
+| API contract and guides | Update | `docs/design-docs/api-contract.md`; `docs/api/README.md`; `docs/api/authentication.md`; `docs/api/errors.md`; `docs/api/examples.md` | `docs/zh-CN/design-docs/api-contract.md`; `docs/zh-CN/api/README.md`; `docs/zh-CN/api/authentication.md`; `docs/zh-CN/api/errors.md`; `docs/zh-CN/api/examples.md` | S8-CON 同 SHA更新 route/error/concurrency/legacy |
+| Frontend and design quality | Update | `docs/FRONTEND.md`; `docs/design-docs/ui-design-system.md`; `docs/developer/ui-quality-checklist.md` | `docs/zh-CN/frontend.md`; `docs/zh-CN/design-docs/ui-design-system.md`; `docs/zh-CN/developer/ui-quality-checklist.md` | S9 ports/state/3 viewport/focus |
+| Coverage registries | Update | `docs/developer/browser-acceptance-coverage-map.md`; `docs/developer/user-operation-coverage-matrix.md` | `docs/zh-CN/developer/browser-acceptance-coverage-map.md`; `docs/zh-CN/developer/user-operation-coverage-matrix.md` | 本 Spec预留 future；S9-BRW 登记/自动化并生成 evidence |
+| Quality/testing | Update | `docs/QUALITY_SCORE.md`; `docs/design-docs/testing-strategy.md`; `docs/developer/verification-matrix.md` | `docs/zh-CN/QUALITY_SCORE.md`; `docs/zh-CN/design-docs/testing-strategy.md`; `docs/zh-CN/developer/verification-matrix.md` | S2/S10/S11/RI 真实 PG、V/D/API/UI/evidence hierarchy |
+| Security/governance | Update | `docs/SECURITY.md`; `docs/design-docs/security-governance.md`; `docs/security/README.md`; `docs/security/threat-model.md`; `docs/security/data-classification.md`; `docs/security/audit-retention.md`; `docs/security/user-permission-design.md` | `docs/zh-CN/SECURITY.md`; `docs/zh-CN/design-docs/security-governance.md`; `docs/zh-CN/security/README.md`; `docs/zh-CN/security/threat-model.md`; `docs/zh-CN/security/data-classification.md`; `docs/zh-CN/security/audit-retention.md`; `docs/zh-CN/security/user-permission-design.md` | S2-RBAC/S5/S10 audit、roles、retention、refusal sink |
+| Reliability | Update | `docs/RELIABILITY.md`; `docs/design-docs/deployment-operations.md` | `docs/zh-CN/RELIABILITY.md`; `docs/zh-CN/design-docs/deployment-operations.md` | S10/S11 readiness、failure、recovery |
+| Runbooks | Update | `docs/runbooks/self-hosted-runtime.md`; `docs/runbooks/backup-restore.md`; `docs/runbooks/rollback.md`; `docs/runbooks/release-rollback.md`; `docs/runbooks/monitoring-alerting.md`; `docs/runbooks/observability-operations.md`; `docs/runbooks/incidents.md`; `docs/runbooks/effective-driver-parameter-catalog-reconciliation.md`; `docs/runbooks/platform-admin-and-schema-promotion.md` | `docs/zh-CN/runbooks/self-hosted-runtime.md`; `docs/zh-CN/runbooks/backup-restore.md`; `docs/zh-CN/runbooks/rollback.md`; `docs/zh-CN/runbooks/release-rollback.md`; `docs/zh-CN/runbooks/monitoring-alerting.md`; `docs/zh-CN/runbooks/observability-operations.md`; `docs/zh-CN/runbooks/incidents.md`; `docs/zh-CN/runbooks/effective-driver-parameter-catalog-reconciliation.md`; `docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md` | S11/RI/S13/S14 phase、restore、sunset；旧 runbook标 superseded/retired |
+| Self-hosted operator docs | Update | `ops/self-hosted/upgrade.md`; `ops/self-hosted/operations.md`; `ops/self-hosted/releases/README.md`; `ops/self-hosted/releases/release-template.md` | `ops/self-hosted/upgrade.zh-CN.md`; `ops/self-hosted/operations.zh-CN.md`; `ops/self-hosted/releases/README.zh-CN.md`; `ops/self-hosted/releases/release-template.zh-CN.md` | S11/RI；文档与 controller 同 merge，本 Spec不改 `upgrade.sh` |
+| Generated artifacts | Update | `docs/generated/openapi.json`; `docs/generated/db-schema.md`; `docs/generated/acceptance-operation-evidence.md`; `docs/generated/acceptance-operation-evidence/index.json` | 同一 language-neutral generated paths：`docs/generated/openapi.json`; `docs/generated/db-schema.md`; `docs/generated/acceptance-operation-evidence.md`; `docs/generated/acceptance-operation-evidence/index.json` | S8-CON/S2 integration/S9-BRW sole-owner rules；exact source SHA生成 |
+| Log-analysis API guide | Review | `docs/api/log-analysis-integration.md` | `docs/zh-CN/api/log-analysis-integration.md` | S12-LOG 逐项核对 canonical reference；若无 user-facing drift则记录 exact review evidence |
 
 ## 文档更新门
 
@@ -579,8 +736,9 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 
 ### Git & PR Workflow
 
-- 未来每个实现 agent 从当时最新 `origin/main` 创建独立 worktree 和 `codex/` feature branch，先读本规格、AGENTS、对应 ADR/contract 与最近模块文档。
-- 实现 agent 仅在自己的 branch 实现、测试、commit；不得 push `main`、开/合 PR、fast-forward 本地 `main`。
-- 父 agent/会话所有者审查 exact diff 与 evidence，决定 ticket/branch 集成，拥有 PR、merge 和 `git pull origin main`。
+- 当前 Spec 分支固定为 `codex/wayfinder-668-implementation-spec-20260901`；本轮只允许 append-only commit，不 amend/rebase/force-push。
+- 未来每个 ticket agent 从当时最新 `origin/main` 创建独立 worktree，分支模板固定为 `codex/pcat-<issue-number>-<slug>`，先读本规格、AGENTS、对应 ADR/contract 与 owning-module 文档。
+- 这是一份计划、多个 ticket 分支。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
+- 父 agent/会话所有者按本 Spec 的 `CD/CF/ID/RE` 图审查 exact diff/evidence、集成 ticket branches，独占 PR creation、merge 和 main synchronization。
 - 多分支并行必须先 claim migration/ADR/acceptance ID，rebase 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
 - 本草案分支只含规格/计划文档；在 seams、粒度和依赖确认前保持暂停。
