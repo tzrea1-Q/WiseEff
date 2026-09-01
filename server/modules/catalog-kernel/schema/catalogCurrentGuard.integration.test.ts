@@ -58,7 +58,7 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
         ('csub-retired', 'node-type', 'node-type:retired');
 
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
-      values ('csub-active', 'platform', '{"minimum":1,"maximum":1}'::jsonb);
+      values ('csub-active', 'physical-device', 'multiple');
 
       insert into parameter_catalog.catalog_node_types (subject_id, family)
       values ('csub-retired', 'device');
@@ -139,6 +139,111 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         ["crel-a", "sha256:release-a", "csub-active", "active"]
       )
     ).resolves.toMatchObject({ rowCount: 1 });
+  });
+
+  it.each([
+    {
+      name: "Subject membership",
+      setupSql: `
+        begin;
+        insert into parameter_catalog.catalog_subjects (id, kind, canonical_key)
+        values ('csub-late', 'node-type', 'node-type:late');
+        insert into parameter_catalog.catalog_node_types (subject_id, family)
+        values ('csub-late', 'device');
+        set constraints all immediate;
+        commit
+      `,
+      mutationSql: `
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
+        ) values ('crel-a', 'csub-late', 'active', '{}', '{}', null)
+      `,
+      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_subjects where release_id = 'crel-a' and subject_id = 'csub-late'"
+    },
+    {
+      name: "Subject alias membership",
+      setupSql: `
+        insert into parameter_catalog.catalog_subject_aliases (
+          id, subject_id, selector_kind, normalized_selector
+        ) values ('calias-late', 'csub-active', 'driver-compatible', 'late,selector')
+      `,
+      mutationSql: `
+        insert into parameter_catalog.catalog_release_subject_aliases (
+          release_id, subject_id, alias_id, lifecycle, selector_provenance, tombstone_provenance
+        ) values ('crel-a', 'csub-active', 'calias-late', 'active', '{}', null)
+      `,
+      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_subject_aliases where release_id = 'crel-a' and alias_id = 'calias-late'"
+    },
+    {
+      name: "Definition revision",
+      setupSql: `
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late');
+        insert into parameter_catalog.parameter_definitions (
+          id, subject_id, property_key, current_revision_id
+        ) values ('pdef-late', 'csub-active', 'late-property', 'drev-late');
+        insert into parameter_catalog.definition_revisions (
+          id, definition_id, revision_number, catalog_release_id, content_digest, content
+        ) values ('drev-late', 'pdef-late', 1, 'crel-late', 'sha256:drev-late', '{}');
+        set constraints all immediate;
+        commit
+      `,
+      mutationSql: `
+        insert into parameter_catalog.definition_revisions (
+          id, definition_id, revision_number, catalog_release_id, content_digest, content
+        ) values ('drev-late-sealed', 'pdef-late', 2, 'crel-a', 'sha256:drev-late-sealed', '{}')
+      `,
+      residueSql: "select count(*)::text as count from parameter_catalog.definition_revisions where id = 'drev-late-sealed'"
+    },
+    {
+      name: "Definition head",
+      setupSql: `
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late');
+        insert into parameter_catalog.parameter_definitions (
+          id, subject_id, property_key, current_revision_id
+        ) values ('pdef-late', 'csub-active', 'late-property', 'drev-late');
+        insert into parameter_catalog.definition_revisions (
+          id, definition_id, revision_number, catalog_release_id, content_digest, content
+        ) values ('drev-late', 'pdef-late', 1, 'crel-late', 'sha256:drev-late', '{}');
+        set constraints all immediate;
+        commit
+      `,
+      mutationSql: `
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-a', 'pdef-late', 'drev-late')
+      `,
+      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-a' and definition_id = 'pdef-late'"
+    }
+  ])("rejects a post-materialization $name append without changing the exact guard", async ({
+    setupSql,
+    mutationSql,
+    residueSql
+  }) => {
+    await primary.query(setupSql);
+    await primary.query("begin");
+    const error = await captureDatabaseError(primary.query(mutationSql));
+    expect(error.code).toBe("55000");
+    expect(error.constraint).toBe("catalog_release_sealed_ck");
+    await primary.query("rollback");
+
+    const residue = await primary.query<{ count: string }>(residueSql);
+    expect(residue.rows[0]?.count).toBe("0");
+    await expect(
+      primary.query(
+        "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
+        ["crel-a", "sha256:release-a", "csub-active", "active"]
+      )
+    ).resolves.toMatchObject({ rowCount: 1 });
+    const release = await primary.query<{ release_digest: string }>(
+      "select release_digest from parameter_catalog.catalog_releases where id = 'crel-a'"
+    );
+    expect(release.rows).toEqual([{ release_digest: "sha256:release-a" }]);
   });
 
   it.each([

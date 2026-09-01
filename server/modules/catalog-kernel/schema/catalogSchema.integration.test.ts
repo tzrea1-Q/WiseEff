@@ -172,6 +172,7 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
       "catalog_subject_exact_subtype_from_subject_ck",
+      "comparison_result_mapping_run_fk",
       "legacy_mapping_target_fk",
       "parameter_module_placement_kind_ck",
       "subject_placement_kind_ck"
@@ -194,6 +195,7 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
       "catalog_subject_exact_subtype_from_subject_ck",
+      "comparison_result_mapping_run_fk",
       "legacy_mapping_target_fk",
       "parameter_module_placement_kind_ck",
       "subject_placement_kind_ck"

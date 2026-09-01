@@ -67,8 +67,10 @@ create table parameter_catalog.catalog_subjects (
 
 create table parameter_catalog.catalog_drivers (
   subject_id text primary key references parameter_catalog.catalog_subjects(id) on delete restrict,
-  nature text not null check (nature <> '' and btrim(nature) = nature),
-  cardinality jsonb not null check (jsonb_typeof(cardinality) = 'object')
+  nature text not null constraint catalog_driver_nature_ck
+    check (nature in ('physical-device', 'logical-service')),
+  cardinality text not null constraint catalog_driver_cardinality_ck
+    check (cardinality in ('multiple', 'singleton-per-project'))
 );
 
 create table parameter_catalog.catalog_node_types (
@@ -165,6 +167,77 @@ create table parameter_catalog.catalog_materializations (
   success_audit_ref text not null check (success_audit_ref <> '' and btrim(success_audit_ref) = success_audit_ref),
   installed_at timestamptz not null default now()
 );
+
+create function parameter_catalog.lock_catalog_release_for_materialization()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  perform 1
+  from parameter_catalog.catalog_releases
+  where id = new.release_id
+  for update;
+
+  return new;
+end;
+$$;
+
+revoke all on function parameter_catalog.lock_catalog_release_for_materialization() from public;
+
+create trigger catalog_materialization_release_lock
+before insert on parameter_catalog.catalog_materializations
+for each row execute function parameter_catalog.lock_catalog_release_for_materialization();
+
+create function parameter_catalog.reject_sealed_catalog_release_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  changed_release_id text;
+begin
+  changed_release_id := pg_catalog.to_jsonb(new) ->> tg_argv[0];
+
+  perform 1
+  from parameter_catalog.catalog_releases
+  where id = changed_release_id
+  for update;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_materializations
+    where release_id = changed_release_id
+  ) then
+    raise exception using
+      errcode = '55000',
+      message = 'Materialized Catalog release semantics are sealed',
+      constraint = 'catalog_release_sealed_ck';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function parameter_catalog.reject_sealed_catalog_release_change() from public;
+
+create trigger catalog_release_subject_sealed
+before insert on parameter_catalog.catalog_release_subjects
+for each row execute function parameter_catalog.reject_sealed_catalog_release_change('release_id');
+
+create trigger catalog_release_subject_alias_sealed
+before insert on parameter_catalog.catalog_release_subject_aliases
+for each row execute function parameter_catalog.reject_sealed_catalog_release_change('release_id');
+
+create trigger definition_revision_release_sealed
+before insert on parameter_catalog.definition_revisions
+for each row execute function parameter_catalog.reject_sealed_catalog_release_change('catalog_release_id');
+
+create trigger catalog_release_definition_head_sealed
+before insert on parameter_catalog.catalog_release_definition_heads
+for each row execute function parameter_catalog.reject_sealed_catalog_release_change('release_id');
 
 create table parameter_catalog.catalog_state (
   singleton boolean primary key default true check (singleton),
@@ -626,7 +699,15 @@ for each row execute function parameter_catalog.reject_immutable_catalog_change(
 create table parameter_catalog.legacy_identities (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   source_system text not null check (source_system <> '' and btrim(source_system) = source_system),
-  source_kind text not null check (source_kind <> '' and btrim(source_kind) = source_kind),
+  source_kind text not null check (source_kind in (
+    'parameter-spec',
+    'parameter-spec-version',
+    'project-parameter-binding',
+    'project-parameter-binding-revision',
+    'parameter-subject',
+    'parameter-placement',
+    'parameter-module'
+  )),
   owner_scope_kind text not null check (owner_scope_kind in ('platform', 'organization', 'project')),
   owner_scope_id text not null check (owner_scope_id <> '' and btrim(owner_scope_id) = owner_scope_id),
   source_id text not null check (source_id <> '' and btrim(source_id) = source_id),
@@ -738,35 +819,108 @@ language plpgsql
 set search_path = pg_catalog, parameter_catalog
 as $$
 declare
+  mapping_source_kind text;
+  mapping_owner_scope_kind text;
+  mapping_owner_scope_id text;
+  target_compatible boolean;
   target_exists boolean;
+  target_owner_scope_kind text;
+  target_owner_scope_id text;
 begin
   if new.target_kind is null then
     return null;
   end if;
 
+  select source_kind, owner_scope_kind, owner_scope_id
+  into mapping_source_kind, mapping_owner_scope_kind, mapping_owner_scope_id
+  from parameter_catalog.legacy_identities
+  where id = new.legacy_identity_id;
+
+  target_compatible := case mapping_source_kind
+    when 'parameter-spec' then new.target_kind in (
+      'parameter-definition', 'review-evidence', 'definition-proposal'
+    )
+    when 'parameter-spec-version' then new.target_kind in (
+      'definition-revision', 'definition-proposal-revision'
+    )
+    when 'project-parameter-binding' then new.target_kind = 'parameter-binding'
+    when 'project-parameter-binding-revision' then new.target_kind in (
+      'project-value', 'binding-history-event'
+    )
+    when 'parameter-subject' then new.target_kind in (
+      'catalog-subject', 'subject-registration'
+    )
+    when 'parameter-placement' then new.target_kind = 'subject-placement'
+    when 'parameter-module' then new.target_kind = 'subject-placement'
+    else false
+  end;
+
+  if not coalesce(target_compatible, false) then
+    raise exception using
+      errcode = '23514',
+      message = 'Legacy identity source kind is incompatible with its typed target',
+      constraint = 'legacy_mapping_source_target_ck';
+  end if;
+
   case new.target_kind
     when 'catalog-subject' then
       select exists (select 1 from parameter_catalog.catalog_subjects where id = new.target_id) into target_exists;
+      target_owner_scope_kind := 'platform';
+      target_owner_scope_id := 'platform';
     when 'parameter-definition' then
       select exists (select 1 from parameter_catalog.parameter_definitions where id = new.target_id) into target_exists;
+      target_owner_scope_kind := 'platform';
+      target_owner_scope_id := 'platform';
     when 'definition-revision' then
       select exists (select 1 from parameter_catalog.definition_revisions where id = new.target_id) into target_exists;
+      target_owner_scope_kind := 'platform';
+      target_owner_scope_id := 'platform';
     when 'subject-registration' then
-      select exists (select 1 from parameter_catalog.organization_subject_registrations where id = new.target_id) into target_exists;
+      select organization_id into target_owner_scope_id
+      from parameter_catalog.organization_subject_registrations where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
     when 'subject-placement' then
-      select exists (select 1 from parameter_catalog.subject_placements where id = new.target_id) into target_exists;
+      select organization_id into target_owner_scope_id
+      from parameter_catalog.subject_placements where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
     when 'parameter-binding' then
-      select exists (select 1 from parameter_catalog.project_parameter_bindings where id = new.target_id) into target_exists;
+      select project_id into target_owner_scope_id
+      from parameter_catalog.project_parameter_bindings where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'project';
     when 'project-value' then
-      select exists (select 1 from parameter_catalog.project_parameter_values where id = new.target_id) into target_exists;
+      select binding.project_id into target_owner_scope_id
+      from parameter_catalog.project_parameter_values value
+      join parameter_catalog.project_parameter_bindings binding on binding.id = value.binding_id
+      where value.id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'project';
     when 'binding-history-event' then
-      select exists (select 1 from parameter_catalog.binding_history_events where id = new.target_id) into target_exists;
+      select binding.project_id into target_owner_scope_id
+      from parameter_catalog.binding_history_events history
+      join parameter_catalog.project_parameter_bindings binding on binding.id = history.binding_id
+      where history.id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'project';
     when 'review-evidence' then
-      select exists (select 1 from parameter_catalog.parameter_review_evidence where id = new.target_id) into target_exists;
+      select organization_id into target_owner_scope_id
+      from parameter_catalog.parameter_review_evidence where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
     when 'definition-proposal' then
-      select exists (select 1 from parameter_catalog.definition_proposals where id = new.target_id) into target_exists;
+      select organization_id into target_owner_scope_id
+      from parameter_catalog.definition_proposals where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
     when 'definition-proposal-revision' then
-      select exists (select 1 from parameter_catalog.definition_proposal_revisions where id = new.target_id) into target_exists;
+      select proposal.organization_id into target_owner_scope_id
+      from parameter_catalog.definition_proposal_revisions revision
+      join parameter_catalog.definition_proposals proposal on proposal.id = revision.proposal_id
+      where revision.id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
     else
       target_exists := false;
   end case;
@@ -776,6 +930,14 @@ begin
       errcode = '23503',
       message = 'Legacy mapping target does not exist',
       constraint = 'legacy_mapping_target_fk';
+  end if;
+
+  if mapping_owner_scope_kind is distinct from target_owner_scope_kind
+     or mapping_owner_scope_id is distinct from target_owner_scope_id then
+    raise exception using
+      errcode = '23503',
+      message = 'Legacy mapping target belongs to another owner scope',
+      constraint = 'legacy_mapping_target_owner_fk';
   end if;
 
   return null;
@@ -843,6 +1005,46 @@ create table parameter_catalog.parameter_catalog_comparison_results (
     (outcome <> 'declared-expected-difference' and mapping_version_id is null and rule_id is null)
   )
 );
+
+create function parameter_catalog.assert_comparison_result_mapping_run()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  comparison_run_id text;
+  mapping_run_id text;
+begin
+  if new.mapping_version_id is null then
+    return null;
+  end if;
+
+  select cutover_run_id into comparison_run_id
+  from parameter_catalog.parameter_catalog_comparison_cases
+  where id = new.comparison_case_id;
+
+  select cutover_run_id into mapping_run_id
+  from parameter_catalog.legacy_mapping_versions
+  where id = new.mapping_version_id;
+
+  if comparison_run_id is not null
+     and mapping_run_id is not null
+     and comparison_run_id is distinct from mapping_run_id then
+    raise exception using
+      errcode = '23503',
+      message = 'Comparison result mapping version belongs to another CutoverRun',
+      constraint = 'comparison_result_mapping_run_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger comparison_result_mapping_run_fk
+after insert or update of comparison_case_id, mapping_version_id
+on parameter_catalog.parameter_catalog_comparison_results
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_comparison_result_mapping_run();
 
 create table parameter_catalog.catalog_command_idempotency (
   command_scope text not null check (command_scope in ('catalog-kernel', 'catalog-cutover')),
@@ -1048,6 +1250,30 @@ create table parameter_catalog.subject_placements (
     references public.parameter_modules(id, organization_id)
     on delete restrict
 );
+
+create function parameter_catalog.lock_subject_placement_module()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  perform 1
+  from public.parameter_modules
+  where id = new.module_id
+    and organization_id = new.organization_id
+  for share;
+
+  return new;
+end;
+$$;
+
+revoke all on function parameter_catalog.lock_subject_placement_module() from public;
+
+create trigger subject_placement_module_lock
+before insert or update of module_id, organization_id
+on parameter_catalog.subject_placements
+for each row execute function parameter_catalog.lock_subject_placement_module();
 
 alter table parameter_catalog.organization_subject_registrations
   add constraint registration_current_placement_fk
