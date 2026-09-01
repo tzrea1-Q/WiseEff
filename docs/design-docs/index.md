@@ -16,6 +16,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | --- | --- | --- |
 | Current | [Full-Stack Architecture](full-stack-architecture.md) | Recommended runtime architecture and module boundaries. |
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
+| Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; not current runtime behavior. |
 | Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
 | Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |

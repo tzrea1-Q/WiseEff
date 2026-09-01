@@ -23,6 +23,7 @@
 - [docs/zh-CN/design-docs/core-beliefs.md](core-beliefs.md)
 - [docs/zh-CN/design-docs/full-stack-architecture.md](full-stack-architecture.md)
 - [docs/zh-CN/design-docs/domain-model.md](domain-model.md)
+- [Catalog Kernel 接口与事务边界——锁定目标合同](catalog-kernel-interface-and-transaction-boundary.md)
 - [docs/zh-CN/design-docs/api-contract.md](api-contract.md)
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
