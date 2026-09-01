@@ -384,6 +384,9 @@
             "retired"
           ]
         },
+        "successorDefinitionId": {
+          "$ref": "#/$defs/contractString"
+        },
         "displayName": {
           "$ref": "#/$defs/contractString"
         },
@@ -402,7 +405,38 @@
         "examples": {
           "type": "array"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "deprecated"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "successorDefinitionId": {
+                "$ref": "#/$defs/contractString"
+              }
+            },
+            "required": [
+              "successorDefinitionId"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "successorDefinitionId"
+              ]
+            }
+          }
+        }
+      ]
     },
     "definitionContent": {
       "type": "object",

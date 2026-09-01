@@ -147,6 +147,37 @@
     },
     "definitionRevision": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "successorDefinitionId"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "deprecated"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "successorDefinitionId": {
+                "$ref": "#/$defs/contractString"
+              }
+            },
+            "required": [
+              "successorDefinitionId"
+            ]
+          }
+        }
+      ],
       "properties": {
         "contentDigest": {
           "$ref": "#/$defs/digest"
@@ -177,6 +208,9 @@
           "maximum": 9007199254740991,
           "minimum": 1,
           "type": "integer"
+        },
+        "successorDefinitionId": {
+          "$ref": "#/$defs/contractString"
         },
         "unit": {
           "$ref": "#/$defs/contractString"
@@ -525,11 +559,20 @@
             "retired"
           ]
         },
+        "definitionLifecycleRules": {
+          "definitionIdPointer": "/content/id",
+          "deprecatedLifecycle": "deprecated",
+          "forbidSelfSuccessor": true,
+          "lifecyclePointer": "/content/revision/lifecycle",
+          "requireExistingSuccessor": true,
+          "successorDefinitionIdPointer": "/content/revision/successorDefinitionId"
+        },
         "definitionRevisionRules": {
           "algorithm": "sha256",
           "canonicalization": "parameter-catalog-contract-serialize",
           "contentPointers": [
             "/lifecycle",
+            "/successorDefinitionId",
             "/displayName",
             "/documentation",
             "/unit",
@@ -677,13 +720,15 @@
               "documentKind": "subject",
               "idPointer": "/content/id",
               "lifecyclePointer": "/content/lifecycle",
-              "selectorPointer": "/content/selector/value"
+              "selectorPointer": "/content/selector/value",
+              "semanticKindPointer": "/content/kind"
             },
             {
               "documentKind": "alias",
               "idPointer": "/content/id",
               "lifecyclePointer": "/content/lifecycle",
-              "selectorPointer": "/content/normalizedSelector"
+              "selectorPointer": "/content/normalizedSelector",
+              "semanticKindPointer": "/content/selectorKind"
             }
           ],
           "previousSelectorPointer": "/content/tombstone/previousSelector",
@@ -691,6 +736,7 @@
           "requireActiveSameKindSuccessor": true,
           "requireActualRetirementRelease": true,
           "requireExactPredecessorSelector": true,
+          "requirePublishedPredecessorForRetirement": true,
           "successorIdPointer": "/content/tombstone/successorId",
           "tombstonePointer": "/content/tombstone",
           "withdrawnByReleaseIdPointer": "/content/tombstone/withdrawnByReleaseId"
@@ -721,6 +767,12 @@
             "node-type": "node-type-name"
           },
           "subjectKindPointer": "/content/kind"
+        },
+        "valueSchemaRules": {
+          "allowRefs": false,
+          "dialect": "https://json-schema.org/draft/2020-12/schema",
+          "requireValidSchema": true,
+          "schemaPointer": "/content/revision/valueSchema"
         }
       },
       "description": "Normative pre-compile stable identity and lineage rules."

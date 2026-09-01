@@ -79,6 +79,7 @@
     "digestPointer": "/content/revision/contentDigest",
     "contentPointers": [
       "/lifecycle",
+      "/successorDefinitionId",
       "/displayName",
       "/documentation",
       "/unit",
@@ -95,6 +96,20 @@
       "changedContentRequiresFreshRevisionId": true,
       "changedContentRevisionIncrement": 1
     }
+  },
+  "valueSchemaRules": {
+    "schemaPointer": "/content/revision/valueSchema",
+    "dialect": "https://json-schema.org/draft/2020-12/schema",
+    "requireValidSchema": true,
+    "allowRefs": false
+  },
+  "definitionLifecycleRules": {
+    "definitionIdPointer": "/content/id",
+    "lifecyclePointer": "/content/revision/lifecycle",
+    "successorDefinitionIdPointer": "/content/revision/successorDefinitionId",
+    "deprecatedLifecycle": "deprecated",
+    "requireExistingSuccessor": true,
+    "forbidSelfSuccessor": true
   },
   "lineageRules": {
     "targetReleasePointer": "/targetReleaseId",
@@ -198,13 +213,15 @@
         "documentKind": "subject",
         "idPointer": "/content/id",
         "lifecyclePointer": "/content/lifecycle",
-        "selectorPointer": "/content/selector/value"
+        "selectorPointer": "/content/selector/value",
+        "semanticKindPointer": "/content/kind"
       },
       {
         "documentKind": "alias",
         "idPointer": "/content/id",
         "lifecyclePointer": "/content/lifecycle",
-        "selectorPointer": "/content/normalizedSelector"
+        "selectorPointer": "/content/normalizedSelector",
+        "semanticKindPointer": "/content/selectorKind"
       }
     ],
     "tombstonePointer": "/content/tombstone",
@@ -213,6 +230,7 @@
     "successorIdPointer": "/content/tombstone/successorId",
     "requireActualRetirementRelease": true,
     "requireExactPredecessorSelector": true,
+    "requirePublishedPredecessorForRetirement": true,
     "requireActiveSameKindSuccessor": true
   },
   "membershipRules": {
