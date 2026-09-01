@@ -1,0 +1,705 @@
+{
+  "$defs": {
+    "aliasContent": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "tombstone": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "retired"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tombstone": {
+                "$ref": "#/$defs/tombstone"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "retired"
+          ]
+        },
+        "normalizedSelector": {
+          "$ref": "#/$defs/contractString"
+        },
+        "selectorKind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "selectorProvenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "tombstone": {}
+      },
+      "required": [
+        "id",
+        "subjectId",
+        "selectorKind",
+        "normalizedSelector",
+        "lifecycle",
+        "selectorProvenance",
+        "tombstone"
+      ],
+      "type": "object"
+    },
+    "aliasDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/aliasContent"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "kind": {
+          "const": "alias"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "digest",
+        "content"
+      ],
+      "type": "object"
+    },
+    "contractString": {
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$",
+      "type": "string"
+    },
+    "definitionContent": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "propertyKey": {
+          "$ref": "#/$defs/contractString"
+        },
+        "revision": {
+          "$ref": "#/$defs/definitionRevision"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/contractString"
+        }
+      },
+      "required": [
+        "id",
+        "subjectId",
+        "propertyKey",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "definitionDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/definitionContent"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "kind": {
+          "const": "definition"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "digest",
+        "content"
+      ],
+      "type": "object"
+    },
+    "definitionRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "displayName": {
+          "$ref": "#/$defs/contractString"
+        },
+        "documentation": {
+          "type": "string"
+        },
+        "examples": {
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "deprecated",
+            "retired"
+          ]
+        },
+        "matching": {
+          "$ref": "#/$defs/matching"
+        },
+        "number": {
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "unit": {
+          "$ref": "#/$defs/contractString"
+        },
+        "valueSchema": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "contentDigest",
+        "lifecycle",
+        "displayName",
+        "documentation",
+        "valueSchema",
+        "matching"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "document": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/subjectDocument"
+        },
+        {
+          "$ref": "#/$defs/aliasDocument"
+        },
+        {
+          "$ref": "#/$defs/definitionDocument"
+        }
+      ]
+    },
+    "manifest": {
+      "$defs": {
+        "contractString": {
+          "minLength": 1,
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "file": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "kind": {
+              "enum": [
+                "subject",
+                "alias",
+                "definition"
+              ]
+            },
+            "mediaType": {
+              "const": "application/json"
+            },
+            "path": {
+              "$ref": "#/$defs/relativePath"
+            }
+          },
+          "required": [
+            "path",
+            "kind",
+            "digest",
+            "mediaType"
+          ],
+          "type": "object"
+        },
+        "predecessor": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "id": {
+                  "$ref": "#/$defs/contractString"
+                }
+              },
+              "required": [
+                "id",
+                "digest"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "relativePath": {
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "type": "string"
+        },
+        "releaseIdentity": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "id": {
+              "$ref": "#/$defs/contractString"
+            },
+            "predecessor": {
+              "$ref": "#/$defs/predecessor"
+            },
+            "sequence": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "version": {
+              "$ref": "#/$defs/contractString"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "sequence",
+            "digest",
+            "predecessor"
+          ],
+          "type": "object"
+        },
+        "toolchain": {
+          "additionalProperties": false,
+          "properties": {
+            "compiler": {
+              "$ref": "#/$defs/contractString"
+            },
+            "jsonSchemaDialect": {
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "sourceFormat": {
+              "const": "wiseeff-catalog-release@1"
+            }
+          },
+          "required": [
+            "compiler",
+            "jsonSchemaDialect",
+            "sourceFormat"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "https://wiseeff.dev/schemas/dts/catalog-release/manifest.schema.json",
+      "additionalProperties": false,
+      "description": "Closed manifest for one immutable Catalog Release and every authoritative document shipped with it.",
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/file"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "release": {
+          "$ref": "#/$defs/releaseIdentity"
+        },
+        "schemaVersion": {
+          "const": "1.0.0"
+        },
+        "toolchain": {
+          "$ref": "#/$defs/toolchain"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "release",
+        "toolchain",
+        "files"
+      ],
+      "title": "WiseEff Catalog Release manifest",
+      "type": "object"
+    },
+    "matching": {
+      "additionalProperties": false,
+      "properties": {
+        "notes": {
+          "$ref": "#/$defs/contractString"
+        },
+        "selectorKind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "sourceProperty": {
+          "$ref": "#/$defs/contractString"
+        }
+      },
+      "required": [
+        "sourceProperty"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "reviewReference": {
+          "$ref": "#/$defs/contractString"
+        },
+        "source": {
+          "$ref": "#/$defs/contractString"
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "type": "object"
+    },
+    "relativePath": {
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$",
+      "type": "string"
+    },
+    "releaseNode": {
+      "additionalProperties": false,
+      "properties": {
+        "documents": {
+          "contains": {
+            "$ref": "#/$defs/subjectDocument"
+          },
+          "items": {
+            "$ref": "#/$defs/document"
+          },
+          "minContains": 1,
+          "minItems": 1,
+          "type": "array"
+        },
+        "manifest": {
+          "$ref": "#/$defs/manifest"
+        }
+      },
+      "required": [
+        "manifest",
+        "documents"
+      ],
+      "type": "object"
+    },
+    "selector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "value": {
+          "$ref": "#/$defs/contractString"
+        }
+      },
+      "required": [
+        "kind",
+        "value",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "stableIdRules": {
+      "const": {
+        "closedEnums": {
+          "catalogSubjectKinds": [
+            "driver",
+            "node-type"
+          ],
+          "catalogSubjectSelectorKinds": [
+            "driver-compatible",
+            "node-type-name"
+          ],
+          "definitionLifecycles": [
+            "active",
+            "deprecated",
+            "retired"
+          ],
+          "subjectLifecycles": [
+            "active",
+            "retired"
+          ]
+        },
+        "idFormat": {
+          "controlFree": true,
+          "minLength": 1,
+          "trimmed": true,
+          "type": "string"
+        },
+        "identityRules": [
+          {
+            "documentKind": "subject",
+            "idPointer": "/content/id",
+            "immutableValuePointers": [
+              "/content/kind",
+              "/content/canonicalKey"
+            ],
+            "naturalKeyPointers": [
+              "/content/kind",
+              "/content/canonicalKey"
+            ]
+          },
+          {
+            "documentKind": "alias",
+            "idPointer": "/content/id",
+            "immutableValuePointers": [
+              "/content/subjectId"
+            ],
+            "naturalKeyPointers": [
+              "/content/selectorKind",
+              "/content/normalizedSelector"
+            ]
+          },
+          {
+            "documentKind": "definition",
+            "idPointer": "/content/id",
+            "immutableValuePointers": [
+              "/content/subjectId",
+              "/content/propertyKey"
+            ],
+            "naturalKeyPointers": [
+              "/content/subjectId",
+              "/content/propertyKey"
+            ]
+          },
+          {
+            "documentKind": "definition",
+            "idPointer": "/content/revision/id",
+            "immutableValuePointers": [
+              "/content/revision/contentDigest"
+            ],
+            "naturalKeyPointers": [
+              "/content/id",
+              "/content/revision/number"
+            ]
+          }
+        ],
+        "lineageRules": {
+          "predecessorDigestPointer": "/manifest/release/predecessor/digest",
+          "predecessorIdPointer": "/manifest/release/predecessor/id",
+          "releaseCollectionPointer": "/releases",
+          "releaseDigestPointer": "/manifest/release/digest",
+          "releaseIdPointer": "/manifest/release/id",
+          "releaseSequencePointer": "/manifest/release/sequence",
+          "releaseVersionPointer": "/manifest/release/version",
+          "requireAcyclic": true,
+          "requireConnectedFromTarget": true,
+          "requireGapFreeSequence": true,
+          "requirePredecessorDigestMatch": true,
+          "requireUniqueReleaseDigest": true,
+          "requireUniqueReleaseVersion": true,
+          "targetReleasePointer": "/targetReleaseId"
+        },
+        "manifestRules": {
+          "documentDigest": {
+            "algorithm": "sha256",
+            "canonicalization": "parameter-catalog-contract-serialize",
+            "contentPointer": "/content"
+          },
+          "exactDocumentSet": true,
+          "matchPointers": [
+            "/kind",
+            "/digest"
+          ]
+        },
+        "membershipRules": {
+          "activeAliasRequiresActiveSubject": true,
+          "requirePredecessorAliases": true,
+          "requirePredecessorSubjects": true
+        },
+        "schemaVersion": "1.0.0"
+      },
+      "description": "Normative pre-compile stable identity and lineage rules."
+    },
+    "subjectContent": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "tombstone": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "retired"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tombstone": {
+                "$ref": "#/$defs/tombstone"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "canonicalKey": {
+          "$ref": "#/$defs/contractString"
+        },
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "kind": {
+          "enum": [
+            "driver",
+            "node-type"
+          ]
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "retired"
+          ]
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "tombstone": {}
+      },
+      "required": [
+        "id",
+        "kind",
+        "canonicalKey",
+        "lifecycle",
+        "selector",
+        "tombstone"
+      ],
+      "type": "object"
+    },
+    "subjectDocument": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/subjectContent"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "kind": {
+          "const": "subject"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "digest",
+        "content"
+      ],
+      "type": "object"
+    },
+    "tombstone": {
+      "additionalProperties": false,
+      "properties": {
+        "previousSelector": {
+          "$ref": "#/$defs/contractString"
+        },
+        "reason": {
+          "$ref": "#/$defs/contractString"
+        },
+        "successorId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "withdrawnByReleaseId": {
+          "$ref": "#/$defs/contractString"
+        }
+      },
+      "required": [
+        "reason",
+        "withdrawnByReleaseId",
+        "previousSelector"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://wiseeff.dev/schemas/dts/catalog-release/catalog-release.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Closed, versioned publication bundle containing one target release and its complete supported predecessor lineage.",
+  "properties": {
+    "releases": {
+      "items": {
+        "$ref": "#/$defs/releaseNode"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "targetReleaseId": {
+      "$ref": "#/$defs/contractString"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "targetReleaseId",
+    "releases"
+  ],
+  "title": "WiseEff immutable Catalog Release bundle",
+  "type": "object"
+}

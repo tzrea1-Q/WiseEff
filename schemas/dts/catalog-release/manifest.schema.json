@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiseeff.dev/schemas/dts/catalog-release/manifest.schema.json",
+  "title": "WiseEff Catalog Release manifest",
+  "description": "Closed manifest for one immutable Catalog Release and every authoritative document shipped with it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "toolchain",
+    "files"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "release": {
+      "$ref": "#/$defs/releaseIdentity"
+    },
+    "toolchain": {
+      "$ref": "#/$defs/toolchain"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    }
+  },
+  "$defs": {
+    "contractString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "predecessor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "digest"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/contractString"
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        }
+      ]
+    },
+    "releaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "sequence",
+        "digest",
+        "predecessor"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "version": {
+          "$ref": "#/$defs/contractString"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "predecessor": {
+          "$ref": "#/$defs/predecessor"
+        }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compiler",
+        "jsonSchemaDialect",
+        "sourceFormat"
+      ],
+      "properties": {
+        "compiler": {
+          "$ref": "#/$defs/contractString"
+        },
+        "jsonSchemaDialect": {
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "sourceFormat": {
+          "const": "wiseeff-catalog-release@1"
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "digest",
+        "mediaType"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "kind": {
+          "enum": [
+            "subject",
+            "alias",
+            "definition"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "mediaType": {
+          "const": "application/json"
+        }
+      }
+    }
+  }
+}

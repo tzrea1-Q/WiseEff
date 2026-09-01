@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "1.0.0",
+  "idFormat": {
+    "type": "string",
+    "minLength": 1,
+    "trimmed": true,
+    "controlFree": true
+  },
+  "closedEnums": {
+    "catalogSubjectKinds": [
+      "driver",
+      "node-type"
+    ],
+    "catalogSubjectSelectorKinds": [
+      "driver-compatible",
+      "node-type-name"
+    ],
+    "definitionLifecycles": [
+      "active",
+      "deprecated",
+      "retired"
+    ],
+    "subjectLifecycles": [
+      "active",
+      "retired"
+    ]
+  },
+  "manifestRules": {
+    "exactDocumentSet": true,
+    "matchPointers": [
+      "/kind",
+      "/digest"
+    ],
+    "documentDigest": {
+      "algorithm": "sha256",
+      "canonicalization": "parameter-catalog-contract-serialize",
+      "contentPointer": "/content"
+    }
+  },
+  "lineageRules": {
+    "targetReleasePointer": "/targetReleaseId",
+    "releaseCollectionPointer": "/releases",
+    "releaseIdPointer": "/manifest/release/id",
+    "releaseDigestPointer": "/manifest/release/digest",
+    "releaseVersionPointer": "/manifest/release/version",
+    "releaseSequencePointer": "/manifest/release/sequence",
+    "predecessorIdPointer": "/manifest/release/predecessor/id",
+    "predecessorDigestPointer": "/manifest/release/predecessor/digest",
+    "requireAcyclic": true,
+    "requireConnectedFromTarget": true,
+    "requireGapFreeSequence": true,
+    "requirePredecessorDigestMatch": true,
+    "requireUniqueReleaseVersion": true,
+    "requireUniqueReleaseDigest": true
+  },
+  "identityRules": [
+    {
+      "documentKind": "subject",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/kind",
+        "/content/canonicalKey"
+      ],
+      "immutableValuePointers": [
+        "/content/kind",
+        "/content/canonicalKey"
+      ]
+    },
+    {
+      "documentKind": "alias",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/selectorKind",
+        "/content/normalizedSelector"
+      ],
+      "immutableValuePointers": [
+        "/content/subjectId"
+      ]
+    },
+    {
+      "documentKind": "definition",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/subjectId",
+        "/content/propertyKey"
+      ],
+      "immutableValuePointers": [
+        "/content/subjectId",
+        "/content/propertyKey"
+      ]
+    },
+    {
+      "documentKind": "definition",
+      "idPointer": "/content/revision/id",
+      "naturalKeyPointers": [
+        "/content/id",
+        "/content/revision/number"
+      ],
+      "immutableValuePointers": [
+        "/content/revision/contentDigest"
+      ]
+    }
+  ],
+  "membershipRules": {
+    "requirePredecessorSubjects": true,
+    "requirePredecessorAliases": true,
+    "activeAliasRequiresActiveSubject": true
+  }
+}
