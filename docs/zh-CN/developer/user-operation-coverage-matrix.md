@@ -144,6 +144,30 @@
 - `ORG-ADMIN-RENAME-001`：Admin 在 `/organization` 改本组织显示名称，写 `organization-update` 审计；非 Admin `PATCH` 返回 403；`coverage: automated`。
 - `PLAT-ROLE-002`：普通 Admin 在 `/organization/members` 看不到平台超级管理员授予控件，API 拒绝自授。
 
+## 计划中的 canonical Parameter definitions operations（#668）
+
+本附录同步 `e2e/acceptance/operationMatrix.ts` 中已正式登记的 15 个 `coverage=future` operation。每行当前都有完整 assertions、空 `specFiles`，exact future acceptance file 与 owner 写在 source `deferralReason`，因此不存在对尚未创建文件的 missing reference。英文 companion 由 `npm run acceptance:operations` 生成；S9-BRW 是唯一 registry-transition owner，只有真实 spec 与无 skip candidate evidence 到位后才可切为 `automated`。canonical launch 前全部 P0/P1 必须自动化，没有 conditional 可选项。
+
+| Operation ID | Priority | 状态 | Requirement | 路由/角色/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Future spec |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PCAT-CATALOG-DISCOVER-001` | P0 | future | PCAT-UI-01 | `/parameter-admin/specs`；全角色进入唯一目录 | 1440x900、768x1024、390x844 | catalog/list 200；current-release DB fingerprint；zero read mutation；entry/list screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-CATALOG-DEEP-LINK-001` | P0 | future | PCAT-UI-02 | User/Org Admin；reload/Back/Forward opaque selection | 三视口 | pinned API/cursor；selected-ID DB；无 audit；restored-selection screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-DEFINITION-DETAIL-001` | P0 | future | PCAT-UI-03 | User/Org Admin；选择 Subject/Definition/current+pinned revision | 三视口 | detail/revision API；owner/head DB；无 audit；pane/sheet screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-REVIEW-RESOLVE-001` | P0 | future | PCAT-UI-04 | Org Admin；ETag/release/idempotency 下 resolve 四种 variant | 三视口 | atomic API；Resolution/Registration/Placement/Proposal DB；success/refusal audit；前/确认/后截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-TIMELINE-001` | P1 | future | PCAT-UI-05 | authorized reader；稳定分页 timeline | 三视口 | composite cursor API；pinned DB facts；无 read audit；timeline screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-READY-ACTIONS-001` | P0 | future | PCAT-UI-06 | 全角色；对比 ready affordance 与 server denial | 三视口 | role API；denied DB unchanged；refusal audit；role screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-REGISTRATION-001` | P0 | future | PCAT-UI-07 | Org Admin + negative roles；显式 default/parent 注册并 reload | 三视口 | release/idempotency API；one Registration/Placement DB；success/denial audit；choice/result screenshots | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-CATALOG-STATES-001` | P0 | future | PCAT-UI-08 | authorized reader；loading/error/四种 emptyReason | 三视口 | state APIs；fixture DB；零 mutation/audit；全部状态截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-RETIRED-HISTORY-001` | P1 | future | PCAT-UI-09 | reader/Admin negative；读 retired/deprecated 并尝试禁止 mutation | 三视口 | lifecycle API+409；retained DB；refusal audit；badge/disabled screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-CONFLICT-RECONFIRM-001` | P0 | future | PCAT-UI-10 | Org/Platform Admin；触发四类 conflict 并保留输入重确认 | 三视口 | exact 409；no-partial DB；refusal/no-success audit；conflict screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-LEGACY-LINK-001` | P0 | future | PCAT-UI-11 | authorized/scope-hidden；mapped/410/409/404 | 三视口 | status+headers；mapping-head/Archive DB；必要 operator audit；outcome screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-AGENT-READONLY-001` | P0 | future | PCAT-UI-12 | Agent；scoped read + 所有治理 mutation/spoof probe | 三视口 | scoped 200/403；zero DB mutation；trusted refusal audit；read-only screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-ADAPTER-PARITY-001` | P1 | future | PCAT-UI-13 | 全角色；API/mock 重放相同 state/authority | 三视口 | real API manifest；API-half DB/audit；mock no-extra-authority；paired screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-RESPONSIVE-001` | P0 | future | PCAT-UI-14 | reader/Admin；全 page/dialog/drawer layout+focus | 三视口 | critical API；DB/audit N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-GOVERNANCE-JOURNEY-001` | P0 | future | PCAT-UI-15 | Org/Platform Admin + negative roles；完整 navigation/register/review/proposal/conflict/deep-link journey | 三视口 | request ledger；final DB；每个 mutation/refusal audit；checkpoint screenshots/trace/report/runtime pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+
+这些行现在已进入 registry，但仍是 future metadata；`npm run acceptance:browser` 不会把它们当成 automated coverage。S9-BRW 切换后，planned/skip 不能满足 launch；`npm run acceptance:evidence` 要求每个 automated P0/P1 都有同一 full run/source/runtime 的 role、route、assertions、API、DB、audit、screenshots/artifacts、trace/report 和 reproduction steps。本规格修复不产生任何上述 executable evidence。
+
 ## 同类中文文档
 
 - [docs/zh-CN/developer/README.md](README.md)

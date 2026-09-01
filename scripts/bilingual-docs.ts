@@ -31,10 +31,12 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/product-specs/mvp-scope.md", zh: "docs/zh-CN/product-specs/mvp-scope.md", tier: "product", status: "required" },
   { en: "docs/product-specs/new-user-onboarding.md", zh: "docs/zh-CN/product-specs/new-user-onboarding.md", tier: "product", status: "required" },
   { en: "docs/design-docs/index.md", zh: "docs/zh-CN/design-docs/index.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md", zh: "docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/core-beliefs.md", zh: "docs/zh-CN/design-docs/core-beliefs.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/full-stack-architecture.md", zh: "docs/zh-CN/design-docs/full-stack-architecture.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/domain-model.md", zh: "docs/zh-CN/design-docs/domain-model.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/api-contract.md", zh: "docs/zh-CN/design-docs/api-contract.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-api-transition.md", zh: "docs/zh-CN/design-docs/parameter-catalog-api-transition.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/testing-strategy.md", zh: "docs/zh-CN/design-docs/testing-strategy.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/deployment-operations.md", zh: "docs/zh-CN/design-docs/deployment-operations.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/security-governance.md", zh: "docs/zh-CN/design-docs/security-governance.md", tier: "architecture", status: "required" },
@@ -43,6 +45,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/2026-08-12-knowledge-base-design.md", zh: "docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-19-organization-administration-design.md", zh: "docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md", zh: "docs/zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-cutover-archive-rollback.md", zh: "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md", tier: "architecture", status: "required" },
   { en: "docs/api/README.md", zh: "docs/zh-CN/api/README.md", tier: "api", status: "required" },
   { en: "docs/api/authentication.md", zh: "docs/zh-CN/api/authentication.md", tier: "api", status: "required" },
   { en: "docs/api/errors.md", zh: "docs/zh-CN/api/errors.md", tier: "api", status: "required" },
@@ -83,5 +86,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "ops/self-hosted/releases/release-template.md", zh: "ops/self-hosted/releases/release-template.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "docs/exec-plans/active/development-roadmap.md", zh: "docs/zh-CN/exec-plans/development-roadmap.md", tier: "planning", status: "required" },
   { en: "docs/exec-plans/completed/README.md", zh: "docs/zh-CN/exec-plans/completed/README.md", tier: "planning", status: "required" },
-  { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" }
+  { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" }
 ];

@@ -20,13 +20,17 @@
 ## 同类中文文档
 
 - [docs/zh-CN/design-docs/index.md](index.md)
+- [参数目录验证、升级与退出门禁——锁定决策](parameter-catalog-verification-upgrade-retirement-gates.md)
 - [docs/zh-CN/design-docs/core-beliefs.md](core-beliefs.md)
 - [docs/zh-CN/design-docs/full-stack-architecture.md](full-stack-architecture.md)
 - [docs/zh-CN/design-docs/domain-model.md](domain-model.md)
+- [Catalog Kernel 接口与事务边界——锁定目标合同](catalog-kernel-interface-and-transaction-boundary.md)
 - [docs/zh-CN/design-docs/api-contract.md](api-contract.md)
+- [参数目录 API 与 legacy 标识符迁移——锁定决策](parameter-catalog-api-transition.md)
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
 - [自托管一键升级——本地实现，目标演练待完成](2026-08-20-self-hosted-one-command-upgrade-design.md)
+- [参数目录切换、归档与回滚——锁定决策](parameter-catalog-cutover-archive-rollback.md)
 - [docs/zh-CN/design-docs/security-governance.md](security-governance.md)
 - [docs/zh-CN/design-docs/2026-06-17-audit-center-design.md](2026-06-17-audit-center-design.md)
 - [DTS 可管参数面边界 RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md)

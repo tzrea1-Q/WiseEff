@@ -107,6 +107,32 @@ describe("acceptance coverage checker", () => {
     ).toEqual(m58RequiredIds.map((id) => ({ id, required: true })));
   });
 
+  it("registers the canonical parameter catalog requirements as non-blocking metadata until S9", () => {
+    const expectedIds = [
+      "PCAT-UI-01",
+      "PCAT-UI-02",
+      "PCAT-UI-03",
+      "PCAT-UI-04",
+      "PCAT-UI-05",
+      "PCAT-UI-06",
+      "PCAT-UI-07",
+      "PCAT-UI-08",
+      "PCAT-UI-09",
+      "PCAT-UI-10",
+      "PCAT-UI-11",
+      "PCAT-UI-12",
+      "PCAT-UI-13",
+      "PCAT-UI-14",
+      "PCAT-UI-15"
+    ];
+
+    expect(
+      acceptanceRequirements
+        .filter((requirement) => requirement.id.startsWith("PCAT-UI-"))
+        .map((requirement) => ({ id: requirement.id, workflow: requirement.workflow, required: requirement.required }))
+    ).toEqual(expectedIds.map((id) => ({ id, workflow: "C", required: false })));
+  });
+
   it("planned markers never satisfy a required requirement", () => {
     const result = evaluateAcceptanceCoverage({
       requirements: [

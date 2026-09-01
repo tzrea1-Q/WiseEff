@@ -49,3 +49,6 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0037](0037-organization-administration-is-home-org-tenant-operations.md) | Organization administration is home-org tenant operations |
 | [0038](0038-trusted-invocation-provenance-separates-principal-and-initiator.md) | Trusted invocation provenance separates the authenticated principal from the initiator |
 | [0039](0039-effective-driver-parameter-catalog.md) | Effective driver parameter definitions are canonical and placed |
+| [0040](0040-canonical-parameter-catalog-relational-model.md) | Canonical parameter catalog separates stable identity from release-scoped state |
+| [0041](0041-platform-schema-catalog-releases-materialize-before-runtime.md) | Platform schema catalog releases materialize before runtime |
+| [0042](0042-organizations-register-canonical-subjects-once.md) | Organization registration and placement |

@@ -12,14 +12,19 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 
 ## Current Architecture
 
+<!-- prettier-ignore -->
 | Status | Document | Purpose |
 | --- | --- | --- |
+| Locked decision | [Parameter Catalog Verification, Upgrade, and Retirement Gates](parameter-catalog-verification-upgrade-retirement-gates.md) | One Release Verification seam, V01-V17 and D01-D09 release gates, API/browser acceptance, self-hosted recovery, observability, evidence hierarchy, and staged legacy retirement. |
 | Current | [Full-Stack Architecture](full-stack-architecture.md) | Recommended runtime architecture and module boundaries. |
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
+| Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; not current runtime behavior. |
 | Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
+| Locked decision | [Parameter Catalog API and Legacy-Identifier Transition](parameter-catalog-api-transition.md) | Canonical `/api/v2/catalog/*` resources, permissions, DTO states, typed legacy-ID mapping, consumer migration, and bounded retirement rules. |
 | Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
 | Implemented locally | [Self-Hosted One-Command Upgrade](2026-08-20-self-hosted-one-command-upgrade-design.md) | Source-checkout upgrade seam: immutable target, prebuild, quiescence, verified recovery point, full data-preserving restart, resume/recovery. Non-customer target rehearsal remains required evidence. |
+| Locked decision | [Parameter Catalog Cutover, Archive, and Rollback](parameter-catalog-cutover-archive-rollback.md) | P0-P16 populated-data maintenance workflow, typed legacy dispositions, mandatory P11 semantic dual-read comparison, Archive, recovery, and self-hosted ordering contract. |
 | Current | [Security Governance](security-governance.md) | Identity, authorization, audit, Agent safety, device safety, data protection. |
 | Current | [Audit Center Design](2026-06-17-audit-center-design.md) | Audit evidence model, module/org audit IA, API, and phased delivery. |
 | Current | [DTS Parameter Management Assessment](2026-07-14-dts-parameter-management-assessment.md) | Current-state problem inventory and locked positioning decisions for DTS/JSON tree parameter management (planning input). |
@@ -38,19 +43,19 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 
 These are implementation and design history. They are useful context, but current behavior is governed by the current architecture docs, product specs, source code, tests, and generated artifacts.
 
-| Status | Document |
-| --- | --- |
-| Historical | `2026-05-07-light-homepage-color-refresh-design.md` |
-| Historical | `2026-05-07-parameter-management-homepage-design.md` |
-| Historical | `2026-05-07-wiseeff-icon-design.md` |
-| Historical | `2026-05-10-parameter-admin-redesign-design.md` |
-| Historical | `2026-05-10-parameter-comparison-redesign-design.md` |
-| Historical | `2026-05-15-node-debugging-design.md` |
-| Historical | `2026-05-17-user-permissions-design.md` |
+| Status     | Document                                                |
+| ---------- | ------------------------------------------------------- |
+| Historical | `2026-05-07-light-homepage-color-refresh-design.md`     |
+| Historical | `2026-05-07-parameter-management-homepage-design.md`    |
+| Historical | `2026-05-07-wiseeff-icon-design.md`                     |
+| Historical | `2026-05-10-parameter-admin-redesign-design.md`         |
+| Historical | `2026-05-10-parameter-comparison-redesign-design.md`    |
+| Historical | `2026-05-15-node-debugging-design.md`                   |
+| Historical | `2026-05-17-user-permissions-design.md`                 |
 | Historical | `2026-05-20-project-parameter-initialization-design.md` |
-| Historical | `2026-05-21-parameter-comparison-modal-design.md` |
-| Historical | `2026-05-23-parameter-draft-dialog-redesign-design.md` |
-| Historical | `2026-05-24-parameter-personal-workbench-design.md` |
+| Historical | `2026-05-21-parameter-comparison-modal-design.md`       |
+| Historical | `2026-05-23-parameter-draft-dialog-redesign-design.md`  |
+| Historical | `2026-05-24-parameter-personal-workbench-design.md`     |
 
 ## Maintenance Rules
 
