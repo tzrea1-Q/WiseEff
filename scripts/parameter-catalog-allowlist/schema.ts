@@ -140,7 +140,7 @@ export type BoundaryViolationFixture = z.infer<typeof boundaryViolationFixtureSc
 function validateUniqueSortedIds(
   entries: readonly { id: string }[],
   context: z.RefinementCtx,
-  pathPrefix: PropertyKey[] = ["entries"],
+  pathPrefix: Array<string | number> = ["entries"],
 ) {
   const seen = new Set<string>();
   for (const [index, entry] of entries.entries()) {
