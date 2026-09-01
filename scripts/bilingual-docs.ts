@@ -43,6 +43,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/2026-08-12-knowledge-base-design.md", zh: "docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-19-organization-administration-design.md", zh: "docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md", zh: "docs/zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" },
   { en: "docs/api/README.md", zh: "docs/zh-CN/api/README.md", tier: "api", status: "required" },
   { en: "docs/api/authentication.md", zh: "docs/zh-CN/api/authentication.md", tier: "api", status: "required" },
   { en: "docs/api/errors.md", zh: "docs/zh-CN/api/errors.md", tier: "api", status: "required" },
