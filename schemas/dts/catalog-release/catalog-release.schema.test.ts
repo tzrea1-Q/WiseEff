@@ -90,7 +90,15 @@ interface StableIdRules {
     schemaPointer: string;
     dialect: "https://json-schema.org/draft/2020-12/schema";
     requireValidSchema: boolean;
-    allowRefs: false;
+    referencePolicy: "forbid-all-json-schema-2020-12-reference-keywords";
+    forbiddenReferenceKeywords: string[];
+    traversal: {
+      strategy: "iterative-depth-first";
+      rootDepth: 0;
+      maxDepth: number;
+      maxContainerNodes: number;
+      limitViolation: string;
+    };
   };
   definitionLifecycleRules: {
     definitionIdPointer: string;
@@ -99,6 +107,13 @@ interface StableIdRules {
     deprecatedLifecycle: "deprecated";
     requireExistingSuccessor: boolean;
     forbidSelfSuccessor: boolean;
+    successorGraph: {
+      strategy: "iterative-indexed";
+      requireAcyclic: true;
+      terminalLifecycle: "active";
+      cycleViolation: string;
+      terminalViolation: string;
+    };
   };
   lineageRules: {
     targetReleasePointer: string;
@@ -115,6 +130,12 @@ interface StableIdRules {
     requirePredecessorDigestMatch: boolean;
     requireUniqueReleaseVersion: boolean;
     requireUniqueReleaseDigest: boolean;
+    traversal: {
+      strategy: "iterative-indexed";
+      releaseIndex: "release-id";
+      documentIndex: "release-id/document-kind/document-id";
+      revisionHistoryIndex: "definition-id/revision-id";
+    };
   };
   identityRules: StableIdentityRule[];
   selectorRules: {
@@ -151,6 +172,7 @@ interface StableIdRules {
     successorIdPointer: string;
     requireActualRetirementRelease: boolean;
     requireExactPredecessorSelector: boolean;
+    preserveOriginalPreviousSelector: boolean;
     requirePublishedPredecessorForRetirement: boolean;
     requireActiveSameKindSuccessor: boolean;
   };
@@ -236,15 +258,42 @@ const pointerValue = (value: unknown, pointer: string): unknown => {
     }, value);
 };
 
-const containsObjectKey = (value: unknown, key: string): boolean => {
-  if (Array.isArray(value)) {
-    return value.some((entry) => containsObjectKey(entry, key));
+const inspectValueSchema = (
+  value: unknown,
+  rule: StableIdRules["valueSchemaRules"],
+): { complexityExceeded: boolean; forbiddenReference: boolean } => {
+  const stack: Array<{ depth: number; value: unknown }> = [
+    { depth: rule.traversal.rootDepth, value },
+  ];
+  let containerNodes = 0;
+  const forbiddenKeywords = new Set(rule.forbiddenReferenceKeywords);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    if (current.value === null || typeof current.value !== "object") continue;
+    containerNodes += 1;
+    if (
+      current.depth > rule.traversal.maxDepth ||
+      containerNodes > rule.traversal.maxContainerNodes
+    ) {
+      return { complexityExceeded: true, forbiddenReference: false };
+    }
+    if (Array.isArray(current.value)) {
+      for (const entry of current.value) {
+        stack.push({ depth: current.depth + 1, value: entry });
+      }
+      continue;
+    }
+    for (const [key, entry] of Object.entries(current.value as JsonObject)) {
+      if (forbiddenKeywords.has(key)) {
+        return { complexityExceeded: false, forbiddenReference: true };
+      }
+      stack.push({ depth: current.depth + 1, value: entry });
+    }
   }
-  if (value === null || typeof value !== "object") return false;
-  return Object.entries(value as JsonObject).some(
-    ([entryKey, entry]) =>
-      entryKey === key || containsObjectKey(entry, key),
-  );
+
+  return { complexityExceeded: false, forbiddenReference: false };
 };
 
 const stableKey = (value: unknown): string =>
@@ -312,6 +361,10 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
   const releasesById = new Map<string, ReleaseNode>();
   const releaseVersions = new Map<string, string>();
   const releaseDigests = new Map<string, string>();
+  const documentsByReleaseId = new Map<
+    string,
+    Map<BundleDocument["kind"], Map<unknown, BundleDocument>>
+  >();
 
   for (const node of releases) {
     const releaseId = pointerValue(node, lineage.releaseIdPointer) as string;
@@ -335,6 +388,19 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     releasesById.set(releaseId, node);
     releaseVersions.set(releaseVersion, releaseId);
     releaseDigests.set(releaseDigest, releaseId);
+    const documentsByKind = new Map<
+      BundleDocument["kind"],
+      Map<unknown, BundleDocument>
+    >();
+    for (const document of node.documents) {
+      let documentsById = documentsByKind.get(document.kind);
+      if (!documentsById) {
+        documentsById = new Map();
+        documentsByKind.set(document.kind, documentsById);
+      }
+      documentsById.set(pointerValue(document, "/content/id"), document);
+    }
+    documentsByReleaseId.set(releaseId, documentsByKind);
 
     if (stableIdRules.manifestRules.exactDocumentSet) {
       const listed = new Map(
@@ -389,10 +455,10 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
           document,
           valueSchemaRule.schemaPointer,
         );
-        if (
-          !valueSchemaRule.allowRefs &&
-          containsObjectKey(valueSchema, "$ref")
-        ) {
+        const inspection = inspectValueSchema(valueSchema, valueSchemaRule);
+        if (inspection.complexityExceeded) {
+          violations.push(valueSchemaRule.traversal.limitViolation);
+        } else if (inspection.forbiddenReference) {
           violations.push("definition-value-schema-ref-forbidden");
         } else if (valueSchemaRule.requireValidSchema) {
           const declaredDialect = pointerValue(valueSchema, "/$schema");
@@ -430,26 +496,37 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
   }
 
   if (lineage.requireAcyclic) {
-    const visiting = new Set<string>();
-    const visited = new Set<string>();
-    const visit = (releaseId: string): void => {
-      if (visiting.has(releaseId)) {
-        violations.push("release-lineage-acyclic");
-        return;
+    const traversalState = new Map<string, "visiting" | "visited">();
+    for (const startReleaseId of releasesById.keys()) {
+      if (traversalState.get(startReleaseId) === "visited") continue;
+      const path: string[] = [];
+      let releaseId: string | undefined = startReleaseId;
+      while (releaseId !== undefined) {
+        const node = releasesById.get(releaseId);
+        if (!node) break;
+        const state = traversalState.get(releaseId);
+        if (state === "visiting") {
+          violations.push("release-lineage-acyclic");
+          break;
+        }
+        if (state === "visited") break;
+        traversalState.set(releaseId, "visiting");
+        path.push(releaseId);
+        const predecessorId = pointerValue(
+          node,
+          lineage.predecessorIdPointer,
+        );
+        releaseId =
+          typeof predecessorId === "string" ? predecessorId : undefined;
       }
-      if (visited.has(releaseId)) return;
-      const node = releasesById.get(releaseId);
-      if (node === undefined) return;
-      visiting.add(releaseId);
-      const predecessorId = pointerValue(node, lineage.predecessorIdPointer);
-      if (typeof predecessorId === "string") visit(predecessorId);
-      visiting.delete(releaseId);
-      visited.add(releaseId);
-    };
-    for (const releaseId of releasesById.keys()) visit(releaseId);
+      for (const pathReleaseId of path) {
+        traversalState.set(pathReleaseId, "visited");
+      }
+    }
   }
 
   const targetAncestors = new Set<string>();
+  const lineageFromTarget: ReleaseNode[] = [];
   let cursor = typeof targetReleaseId === "string" ? targetReleaseId : undefined;
   while (cursor !== undefined && !targetAncestors.has(cursor)) {
     targetAncestors.add(cursor);
@@ -458,6 +535,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       violations.push("release-lineage-connected");
       break;
     }
+    lineageFromTarget.push(node);
     const predecessorId = pointerValue(node, lineage.predecessorIdPointer);
     if (predecessorId === undefined) break;
     if (typeof predecessorId !== "string") {
@@ -491,6 +569,51 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     targetAncestors.size !== releasesById.size
   ) {
     violations.push("release-lineage-connected");
+  }
+  const lineageFromRoot = lineageFromTarget.toReversed();
+  const revisionTransition = stableIdRules.definitionRevisionRules.transitionRules;
+  const publishedRevisionIdsByDefinition = new Map<unknown, Set<unknown>>();
+  const reusedChangedRevisionKeys = new Set<string>();
+  for (const node of lineageFromRoot) {
+    const releaseId = pointerValue(node, lineage.releaseIdPointer);
+    const predecessorId = pointerValue(node, lineage.predecessorIdPointer);
+    const predecessorDefinitions =
+      typeof predecessorId === "string"
+        ? documentsByReleaseId.get(predecessorId)?.get("definition")
+        : undefined;
+    const definitions =
+      typeof releaseId === "string"
+        ? documentsByReleaseId.get(releaseId)?.get("definition")
+        : undefined;
+    for (const definition of definitions?.values() ?? []) {
+      const definitionId = pointerValue(
+        definition,
+        revisionTransition.definitionIdPointer,
+      );
+      const revisionId = pointerValue(
+        definition,
+        revisionTransition.revisionIdPointer,
+      );
+      let publishedRevisionIds = publishedRevisionIdsByDefinition.get(
+        definitionId,
+      );
+      if (!publishedRevisionIds) {
+        publishedRevisionIds = new Set();
+        publishedRevisionIdsByDefinition.set(definitionId, publishedRevisionIds);
+      }
+      const predecessorDefinition = predecessorDefinitions?.get(definitionId);
+      const contentChanged =
+        predecessorDefinition !== undefined &&
+        pointerValue(definition, revisionTransition.contentDigestPointer) !==
+          pointerValue(
+            predecessorDefinition,
+            revisionTransition.contentDigestPointer,
+          );
+      if (contentChanged && publishedRevisionIds.has(revisionId)) {
+        reusedChangedRevisionKeys.add(stableKey([releaseId, definitionId]));
+      }
+      publishedRevisionIds.add(revisionId);
+    }
   }
 
   for (const identityRule of stableIdRules.identityRules) {
@@ -643,20 +766,13 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     }
 
     const definitionLifecycleRules = stableIdRules.definitionLifecycleRules;
-    const definitionsById = new Map(
-      node.documents
-        .filter((document) => document.kind === "definition")
-        .map((document) => [
-          pointerValue(
-            document,
-            definitionLifecycleRules.definitionIdPointer,
-          ),
-          document,
-        ]),
-    );
-    for (const definition of node.documents.filter(
-      (document) => document.kind === "definition",
-    )) {
+    const currentReleaseId = pointerValue(node, lineage.releaseIdPointer);
+    const definitionsById =
+      typeof currentReleaseId === "string"
+        ? documentsByReleaseId.get(currentReleaseId)?.get("definition") ??
+          new Map()
+        : new Map();
+    for (const definition of definitionsById.values()) {
       if (
         pointerValue(
           definition,
@@ -685,6 +801,75 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         violations.push("definition-successor-missing");
       }
     }
+    const successorGraph = definitionLifecycleRules.successorGraph;
+    const successorOutcomes = new Map<
+      unknown,
+      "active-terminal" | "cycle" | "missing" | "terminal-invalid"
+    >();
+    for (const definition of definitionsById.values()) {
+      if (
+        pointerValue(
+          definition,
+          definitionLifecycleRules.lifecyclePointer,
+        ) !== definitionLifecycleRules.deprecatedLifecycle
+      ) {
+        continue;
+      }
+      const startDefinitionId = pointerValue(
+        definition,
+        definitionLifecycleRules.definitionIdPointer,
+      );
+      if (successorOutcomes.has(startDefinitionId)) continue;
+      const path: unknown[] = [];
+      const pathIndexes = new Map<unknown, number>();
+      let definitionId: unknown = startDefinitionId;
+      let outcome:
+        | "active-terminal"
+        | "cycle"
+        | "missing"
+        | "terminal-invalid";
+      while (true) {
+        const knownOutcome = successorOutcomes.get(definitionId);
+        if (knownOutcome) {
+          outcome = knownOutcome;
+          break;
+        }
+        if (pathIndexes.has(definitionId)) {
+          outcome = "cycle";
+          break;
+        }
+        const currentDefinition = definitionsById.get(definitionId);
+        if (!currentDefinition) {
+          outcome = "missing";
+          break;
+        }
+        const lifecycle = pointerValue(
+          currentDefinition,
+          definitionLifecycleRules.lifecyclePointer,
+        );
+        if (lifecycle !== definitionLifecycleRules.deprecatedLifecycle) {
+          outcome =
+            lifecycle === successorGraph.terminalLifecycle
+              ? "active-terminal"
+              : "terminal-invalid";
+          break;
+        }
+        pathIndexes.set(definitionId, path.length);
+        path.push(definitionId);
+        definitionId = pointerValue(
+          currentDefinition,
+          definitionLifecycleRules.successorDefinitionIdPointer,
+        );
+      }
+      for (const pathDefinitionId of path) {
+        successorOutcomes.set(pathDefinitionId, outcome);
+      }
+      if (outcome === "cycle" && successorGraph.requireAcyclic) {
+        violations.push(successorGraph.cycleViolation);
+      } else if (outcome === "terminal-invalid") {
+        violations.push(successorGraph.terminalViolation);
+      }
+    }
 
     const predecessorId = pointerValue(node, lineage.predecessorIdPointer);
     const predecessor =
@@ -693,16 +878,12 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         : undefined;
     const retirementRules = stableIdRules.retirementRules;
     for (const documentRule of retirementRules.documentRules) {
-      const predecessorById = new Map(
-        (predecessor?.documents ?? [])
-          .filter(
-            (document) => document.kind === documentRule.documentKind,
-          )
-          .map((document) => [
-            pointerValue(document, documentRule.idPointer),
-            document,
-          ]),
-      );
+      const predecessorById =
+        typeof predecessorId === "string"
+          ? documentsByReleaseId
+              .get(predecessorId)
+              ?.get(documentRule.documentKind) ?? new Map()
+          : new Map();
       for (const document of node.documents.filter(
         (candidate) => candidate.kind === documentRule.documentKind,
       )) {
@@ -739,7 +920,16 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         if (
           retirementRules.requireExactPredecessorSelector &&
           pointerValue(document, retirementRules.previousSelectorPointer) !==
-            pointerValue(predecessorDocument, documentRule.selectorPointer)
+            (predecessorWasRetired &&
+            retirementRules.preserveOriginalPreviousSelector
+              ? pointerValue(
+                  predecessorDocument,
+                  retirementRules.previousSelectorPointer,
+                )
+              : pointerValue(
+                  predecessorDocument,
+                  documentRule.selectorPointer,
+                ))
         ) {
           violations.push("retirement-previous-selector-mismatch");
         }
@@ -781,15 +971,9 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       }
     }
     if (predecessor === undefined) continue;
-    const revisionTransition = stableIdRules.definitionRevisionRules.transitionRules;
-    const predecessorDefinitions = new Map(
-      predecessor.documents
-        .filter((document) => document.kind === "definition")
-        .map((document) => [
-          pointerValue(document, revisionTransition.definitionIdPointer),
-          document,
-        ]),
-    );
+    const predecessorDefinitions =
+      documentsByReleaseId.get(predecessorId as string)?.get("definition") ??
+      new Map();
     for (const definition of node.documents.filter(
       (document) => document.kind === "definition",
     )) {
@@ -830,43 +1014,16 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         violations.push("definition-revision-created-without-content-change");
       }
       if (!contentChanged) continue;
-      if (revisionTransition.changedContentRequiresFreshRevisionId) {
-        const ancestorRevisionIds = new Set<unknown>();
-        const visitedAncestorReleaseIds = new Set<unknown>();
-        let ancestor: ReleaseNode | undefined = predecessor;
-        while (ancestor !== undefined) {
-          const ancestorReleaseId = pointerValue(
-            ancestor,
-            lineage.releaseIdPointer,
-          );
-          if (visitedAncestorReleaseIds.has(ancestorReleaseId)) break;
-          visitedAncestorReleaseIds.add(ancestorReleaseId);
-          const ancestorDefinition = ancestor.documents.find(
-            (document) =>
-              document.kind === "definition" &&
-              pointerValue(document, revisionTransition.definitionIdPointer) ===
-                definitionId,
-          );
-          if (ancestorDefinition !== undefined) {
-            ancestorRevisionIds.add(
-              pointerValue(
-                ancestorDefinition,
-                revisionTransition.revisionIdPointer,
-              ),
-            );
-          }
-          const ancestorPredecessorId = pointerValue(
-            ancestor,
-            lineage.predecessorIdPointer,
-          );
-          ancestor =
-            typeof ancestorPredecessorId === "string"
-              ? releasesById.get(ancestorPredecessorId)
-              : undefined;
-        }
-        if (ancestorRevisionIds.has(currentRevisionId)) {
-          violations.push("definition-revision-id-reused-for-content-change");
-        }
+      if (
+        revisionTransition.changedContentRequiresFreshRevisionId &&
+        reusedChangedRevisionKeys.has(
+          stableKey([
+            pointerValue(node, lineage.releaseIdPointer),
+            definitionId,
+          ]),
+        )
+      ) {
+        violations.push("definition-revision-id-reused-for-content-change");
       }
       if (
         typeof currentRevisionNumber === "number" &&
@@ -1302,11 +1459,35 @@ describe("immutable Catalog Release bundle contract", () => {
         $defs: { cycle: { $ref: "#/$defs/cycle" } },
         $ref: "#/$defs/cycle",
       },
+      {
+        $dynamicAnchor: "node",
+        allOf: [{ $dynamicRef: "#node" }],
+      },
     ]) {
       expect(validateBundle(bundleWithValueSchema(valueSchema))).toContain(
         "definition-value-schema-ref-forbidden",
       );
     }
+
+    expect(stableIdRules.valueSchemaRules).toMatchObject({
+      referencePolicy: "forbid-all-json-schema-2020-12-reference-keywords",
+      forbiddenReferenceKeywords: ["$ref", "$dynamicRef"],
+      traversal: {
+        strategy: "iterative-depth-first",
+        rootDepth: 0,
+        maxDepth: 64,
+        maxContainerNodes: 4096,
+        limitViolation: "definition-value-schema-complexity-limit",
+      },
+    });
+
+    let tooDeep: JsonObject = { type: "integer" };
+    for (let depth = 0; depth < 65; depth += 1) {
+      tooDeep = { allOf: [tooDeep] };
+    }
+    expect(validateBundle(bundleWithValueSchema(tooDeep))).toContain(
+      "definition-value-schema-complexity-limit",
+    );
   });
 
   it("requires Deprecated Definition revisions to name a structured successor", () => {
@@ -1419,6 +1600,91 @@ describe("immutable Catalog Release bundle contract", () => {
     );
     refreshDocumentAndReleaseDigests(activeRelease, activeDefinition);
     expect(validateBundle(activeWithSuccessor)).toEqual(["schema-invalid"]);
+  });
+
+  it("requires Deprecated Definition successor graphs to terminate active without cycles", () => {
+    const bundleWithDefinitionGraph = (
+      lifecycles: Array<"active" | "deprecated" | "retired">,
+      successorIndexes: Array<number | undefined>,
+    ): CatalogReleaseBundle => {
+      const bundle = validBundle();
+      const release = bundle.releases[1];
+      const baseDefinition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!baseDefinition) throw new Error("missing definition fixture");
+      const template = structuredClone(baseDefinition);
+      const definitionIds = lifecycles.map((_, index) =>
+        index === 0 ? "pdef_01KVIN" : `pdef_GRAPH_${index}`,
+      );
+
+      for (const [index, lifecycle] of lifecycles.entries()) {
+        const definition =
+          index === 0 ? baseDefinition : structuredClone(template);
+        if (index > 0) {
+          definition.path = `definitions/sc8562/graph-${index}.json`;
+          definition.content.id = definitionIds[index];
+          definition.content.propertyKey = `graph_property_${index}`;
+        }
+        const revision = definition.content.revision as JsonObject;
+        revision.id = `drev_GRAPH_${index}_${index === 0 ? 2 : 1}`;
+        revision.number = index === 0 ? 2 : 1;
+        revision.lifecycle = lifecycle;
+        const successorIndex = successorIndexes[index];
+        if (lifecycle === "deprecated" && successorIndex !== undefined) {
+          revision.successorDefinitionId = definitionIds[successorIndex];
+        } else {
+          delete revision.successorDefinitionId;
+        }
+        revision.contentDigest = definitionRevisionContentDigest(definition);
+        if (index === 0) {
+          refreshDocumentAndReleaseDigests(release, definition);
+        } else {
+          addDocumentToRelease(release, definition);
+        }
+      }
+      return bundle;
+    };
+
+    const twoNodeCycle = bundleWithDefinitionGraph(
+      ["deprecated", "deprecated"],
+      [1, 0],
+    );
+    expect(validateBundle(twoNodeCycle)).toContain(
+      "definition-successor-cycle",
+    );
+
+    const longCycleLength = 96;
+    const longCycle = bundleWithDefinitionGraph(
+      Array.from({ length: longCycleLength }, () => "deprecated"),
+      Array.from(
+        { length: longCycleLength },
+        (_, index) => (index + 1) % longCycleLength,
+      ),
+    );
+    expect(validateBundle(longCycle)).toContain("definition-successor-cycle");
+
+    const retiredTerminal = bundleWithDefinitionGraph(
+      ["deprecated", "retired"],
+      [1, undefined],
+    );
+    expect(validateBundle(retiredTerminal)).toContain(
+      "definition-successor-terminal-invalid",
+    );
+
+    const activeTerminal = bundleWithDefinitionGraph(
+      ["deprecated", "deprecated", "active"],
+      [1, 2, undefined],
+    );
+    expect(validateBundle(activeTerminal)).toEqual([]);
+
+    expect(stableIdRules.definitionLifecycleRules.successorGraph).toEqual({
+      strategy: "iterative-indexed",
+      requireAcyclic: true,
+      terminalLifecycle: "active",
+      cycleViolation: "definition-successor-cycle",
+      terminalViolation: "definition-successor-terminal-invalid",
+    });
   });
 
   it("binds the aggregate digest to the normalized complete release model", () => {
@@ -1545,6 +1811,13 @@ describe("immutable Catalog Release bundle contract", () => {
       digest: sha256("f"),
     };
     expect(validateBundle(missingPredecessor)).toContain("release-lineage-connected");
+
+    expect(stableIdRules.lineageRules.traversal).toEqual({
+      strategy: "iterative-indexed",
+      releaseIndex: "release-id",
+      documentIndex: "release-id/document-kind/document-id",
+      revisionHistoryIndex: "definition-id/revision-id",
+    });
   });
 
   it("requires complete predecessor subject/alias membership and valid alias owners", () => {
@@ -1671,6 +1944,39 @@ describe("immutable Catalog Release bundle contract", () => {
     );
     expect(validateBundle(forgedContinuedRetirement)).toContain(
       "retirement-release-mismatch",
+    );
+
+    const rewrittenRetirementProvenance = structuredClone(retiredBundle);
+    const rewrittenSecond = rewrittenRetirementProvenance.releases[1];
+    const rewrittenSecondSubject = rewrittenSecond.documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!rewrittenSecondSubject) throw new Error("missing subject fixture");
+    (rewrittenSecondSubject.content.selector as JsonObject).value =
+      "southchip,withdrawn-sc8562";
+    refreshDocumentAndReleaseDigests(rewrittenSecond, rewrittenSecondSubject);
+    const rewrittenThird = structuredClone(rewrittenSecond);
+    rewrittenThird.manifest.release = {
+      id: "crel_03",
+      version: "1.2.0",
+      sequence: 3,
+      digest: sha256("0"),
+      predecessor: {
+        id: rewrittenSecond.manifest.release.id,
+        digest: rewrittenSecond.manifest.release.digest,
+      },
+    };
+    const rewrittenThirdSubject = rewrittenThird.documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!rewrittenThirdSubject) throw new Error("missing subject fixture");
+    (rewrittenThirdSubject.content.tombstone as JsonObject).previousSelector =
+      "southchip,withdrawn-sc8562";
+    refreshDocumentAndReleaseDigests(rewrittenThird, rewrittenThirdSubject);
+    rewrittenRetirementProvenance.releases.push(rewrittenThird);
+    rewrittenRetirementProvenance.targetReleaseId = "crel_03";
+    expect(validateBundle(rewrittenRetirementProvenance)).toContain(
+      "retirement-previous-selector-mismatch",
     );
 
     const forgedRelease = structuredClone(retiredBundle);
@@ -2190,7 +2496,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "486857603e2257acbe3022ab3f893e8405bb18cd6fec0a82035108d540da8f38",
+      "0b68b23e7c6c18f5feb05a6de2ea3fad6b2db3cccb32bbf259763e54dfb4a378",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;

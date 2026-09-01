@@ -565,7 +565,14 @@
           "forbidSelfSuccessor": true,
           "lifecyclePointer": "/content/revision/lifecycle",
           "requireExistingSuccessor": true,
-          "successorDefinitionIdPointer": "/content/revision/successorDefinitionId"
+          "successorDefinitionIdPointer": "/content/revision/successorDefinitionId",
+          "successorGraph": {
+            "cycleViolation": "definition-successor-cycle",
+            "requireAcyclic": true,
+            "strategy": "iterative-indexed",
+            "terminalLifecycle": "active",
+            "terminalViolation": "definition-successor-terminal-invalid"
+          }
         },
         "definitionRevisionRules": {
           "algorithm": "sha256",
@@ -665,7 +672,13 @@
           "requirePredecessorDigestMatch": true,
           "requireUniqueReleaseDigest": true,
           "requireUniqueReleaseVersion": true,
-          "targetReleasePointer": "/targetReleaseId"
+          "targetReleasePointer": "/targetReleaseId",
+          "traversal": {
+            "documentIndex": "release-id/document-kind/document-id",
+            "releaseIndex": "release-id",
+            "revisionHistoryIndex": "definition-id/revision-id",
+            "strategy": "iterative-indexed"
+          }
         },
         "manifestRules": {
           "documentDigest": {
@@ -731,6 +744,7 @@
               "semanticKindPointer": "/content/selectorKind"
             }
           ],
+          "preserveOriginalPreviousSelector": true,
           "previousSelectorPointer": "/content/tombstone/previousSelector",
           "releaseIdPointer": "/manifest/release/id",
           "requireActiveSameKindSuccessor": true,
@@ -769,10 +783,21 @@
           "subjectKindPointer": "/content/kind"
         },
         "valueSchemaRules": {
-          "allowRefs": false,
           "dialect": "https://json-schema.org/draft/2020-12/schema",
+          "forbiddenReferenceKeywords": [
+            "$ref",
+            "$dynamicRef"
+          ],
+          "referencePolicy": "forbid-all-json-schema-2020-12-reference-keywords",
           "requireValidSchema": true,
-          "schemaPointer": "/content/revision/valueSchema"
+          "schemaPointer": "/content/revision/valueSchema",
+          "traversal": {
+            "limitViolation": "definition-value-schema-complexity-limit",
+            "maxContainerNodes": 4096,
+            "maxDepth": 64,
+            "rootDepth": 0,
+            "strategy": "iterative-depth-first"
+          }
         }
       },
       "description": "Normative pre-compile stable identity and lineage rules."

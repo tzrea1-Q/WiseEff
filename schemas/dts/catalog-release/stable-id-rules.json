@@ -101,7 +101,18 @@
     "schemaPointer": "/content/revision/valueSchema",
     "dialect": "https://json-schema.org/draft/2020-12/schema",
     "requireValidSchema": true,
-    "allowRefs": false
+    "referencePolicy": "forbid-all-json-schema-2020-12-reference-keywords",
+    "forbiddenReferenceKeywords": [
+      "$ref",
+      "$dynamicRef"
+    ],
+    "traversal": {
+      "strategy": "iterative-depth-first",
+      "rootDepth": 0,
+      "maxDepth": 64,
+      "maxContainerNodes": 4096,
+      "limitViolation": "definition-value-schema-complexity-limit"
+    }
   },
   "definitionLifecycleRules": {
     "definitionIdPointer": "/content/id",
@@ -109,7 +120,14 @@
     "successorDefinitionIdPointer": "/content/revision/successorDefinitionId",
     "deprecatedLifecycle": "deprecated",
     "requireExistingSuccessor": true,
-    "forbidSelfSuccessor": true
+    "forbidSelfSuccessor": true,
+    "successorGraph": {
+      "strategy": "iterative-indexed",
+      "requireAcyclic": true,
+      "terminalLifecycle": "active",
+      "cycleViolation": "definition-successor-cycle",
+      "terminalViolation": "definition-successor-terminal-invalid"
+    }
   },
   "lineageRules": {
     "targetReleasePointer": "/targetReleaseId",
@@ -125,7 +143,13 @@
     "requireGapFreeSequence": true,
     "requirePredecessorDigestMatch": true,
     "requireUniqueReleaseVersion": true,
-    "requireUniqueReleaseDigest": true
+    "requireUniqueReleaseDigest": true,
+    "traversal": {
+      "strategy": "iterative-indexed",
+      "releaseIndex": "release-id",
+      "documentIndex": "release-id/document-kind/document-id",
+      "revisionHistoryIndex": "definition-id/revision-id"
+    }
   },
   "identityRules": [
     {
@@ -230,6 +254,7 @@
     "successorIdPointer": "/content/tombstone/successorId",
     "requireActualRetirementRelease": true,
     "requireExactPredecessorSelector": true,
+    "preserveOriginalPreviousSelector": true,
     "requirePublishedPredecessorForRetirement": true,
     "requireActiveSameKindSuccessor": true
   },
