@@ -1,0 +1,60 @@
+{
+  "comparisonOutcomes": [
+    "exact-equivalent",
+    "declared-expected-difference",
+    "unexplained-difference",
+    "unqueryable/protected-reference-missing"
+  ],
+  "ids": {
+    "definitionRevisionId": "drev_01KVIN3",
+    "parameterDefinitionId": "pdef_01KVIN",
+    "releaseId": "crel_01K42",
+    "subjectId": "csub_01KSC8562"
+  },
+  "kernelOperations": [
+    "compilePublishedRelease",
+    "installPublishedRelease",
+    "switchBackBeforeTraffic",
+    "verifyCurrentMaterialization",
+    "loadCurrentCatalog",
+    "loadPinnedCatalog"
+  ],
+  "legacyIdentifierTypes": [
+    "parameter-spec",
+    "parameter-spec-version",
+    "project-parameter-binding",
+    "project-parameter-binding-revision",
+    "parameter-subject",
+    "parameter-placement",
+    "parameter-module"
+  ],
+  "result": {
+    "error": {
+      "actual": null,
+      "expected": {
+        "digest": "sha256:release",
+        "id": "crel_01K42"
+      },
+      "kind": "release-mismatch"
+    },
+    "ok": false
+  },
+  "reviewResolutionTypes": [
+    "register-subject",
+    "restore-registration",
+    "mark-out-of-scope",
+    "open-definition-proposal"
+  ],
+  "subjectKinds": [
+    "driver",
+    "node-type"
+  ],
+  "verificationPurposes": [
+    "pre-activation",
+    "post-retirement-runtime",
+    "isolated-candidate-acceptance",
+    "public-release",
+    "legacy-read-sunset",
+    "p16-cleanup"
+  ]
+}
