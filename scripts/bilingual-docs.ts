@@ -31,7 +31,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/product-specs/mvp-scope.md", zh: "docs/zh-CN/product-specs/mvp-scope.md", tier: "product", status: "required" },
   { en: "docs/product-specs/new-user-onboarding.md", zh: "docs/zh-CN/product-specs/new-user-onboarding.md", tier: "product", status: "required" },
   { en: "docs/design-docs/index.md", zh: "docs/zh-CN/design-docs/index.md", tier: "architecture", status: "required" },
-  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/core-beliefs.md", zh: "docs/zh-CN/design-docs/core-beliefs.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/full-stack-architecture.md", zh: "docs/zh-CN/design-docs/full-stack-architecture.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/domain-model.md", zh: "docs/zh-CN/design-docs/domain-model.md", tier: "architecture", status: "required" },
@@ -84,5 +83,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "ops/self-hosted/releases/release-template.md", zh: "ops/self-hosted/releases/release-template.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "docs/exec-plans/active/development-roadmap.md", zh: "docs/zh-CN/exec-plans/development-roadmap.md", tier: "planning", status: "required" },
   { en: "docs/exec-plans/completed/README.md", zh: "docs/zh-CN/exec-plans/completed/README.md", tier: "planning", status: "required" },
-  { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" }
+  { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" },
+  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" }
 ];
