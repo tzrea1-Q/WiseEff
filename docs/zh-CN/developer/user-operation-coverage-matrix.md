@@ -146,7 +146,7 @@
 
 ## 计划中的 canonical Parameter definitions operations（#668）
 
-本附录只预留 future operation ID 与证据合同，不在规格分支修改 generated source `e2e/acceptance/operationMatrix.ts`。S9-PRT freeze ID；S9-BRW 是唯一 generator/registry owner，届时把行写入 TypeScript matrix 并重新生成英文文档。canonical launch 前全部 P0/P1 必须成为 `automated`，没有 conditional 可选项。
+本附录同步 `e2e/acceptance/operationMatrix.ts` 中已正式登记的 15 个 `coverage=future` operation。每行当前都有完整 assertions、空 `specFiles`，exact future acceptance file 与 owner 写在 source `deferralReason`，因此不存在对尚未创建文件的 missing reference。英文 companion 由 `npm run acceptance:operations` 生成；S9-BRW 是唯一 registry-transition owner，只有真实 spec 与无 skip candidate evidence 到位后才可切为 `automated`。canonical launch 前全部 P0/P1 必须自动化，没有 conditional 可选项。
 
 | Operation ID | Priority | 状态 | Requirement | 路由/角色/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Future spec |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -166,7 +166,7 @@
 | `PCAT-RESPONSIVE-001` | P0 | future | PCAT-UI-14 | reader/Admin；全 page/dialog/drawer layout+focus | 三视口 | critical API；DB/audit N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-GOVERNANCE-JOURNEY-001` | P0 | future | PCAT-UI-15 | Org/Platform Admin + negative roles；完整 navigation/register/review/proposal/conflict/deep-link journey | 三视口 | request ledger；final DB；每个 mutation/refusal audit；checkpoint screenshots/trace/report/runtime pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 
-这些行写入 registry 与 owned specs 后，`npm run acceptance:browser` 才增加对应 operations；planned/skip 不能满足 launch。`npm run acceptance:evidence` 随后要求每个 automated P0/P1 都有同一 full run/source/runtime 的 role、route、assertions、API、DB、audit、screenshots/artifacts、trace/report 和 reproduction steps。本规格草案不产生任何上述 executable evidence。
+这些行现在已进入 registry，但仍是 future metadata；`npm run acceptance:browser` 不会把它们当成 automated coverage。S9-BRW 切换后，planned/skip 不能满足 launch；`npm run acceptance:evidence` 要求每个 automated P0/P1 都有同一 full run/source/runtime 的 role、route、assertions、API、DB、audit、screenshots/artifacts、trace/report 和 reproduction steps。本规格修复不产生任何上述 executable evidence。
 
 ## 同类中文文档
 

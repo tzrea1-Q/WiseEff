@@ -727,6 +727,96 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PCAT-UI-01",
+    workflow: "C",
+    title: "The canonical Parameter definitions route is the only catalog destination and has no Effective or Governance peer view.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-02",
+    workflow: "C",
+    title: "Opaque Subject, Definition, and Catalog Release deep-link selection survives reload, Back, and Forward on one captured release.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-03",
+    workflow: "C",
+    title: "Authorized readers inspect formal Subject and Definition identity, exact revisions, safe usage, Registration, and Placement.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-04",
+    workflow: "C",
+    title: "An Org Admin resolves Review Queue items through the atomic typed governance command with release, ETag, idempotency, and placement preconditions.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-05",
+    workflow: "C",
+    title: "The Definition timeline pages deterministic Catalog publication facts together with only authorized governance and audit history.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-06",
+    workflow: "C",
+    title: "Ready state exposes only role-authorized actions and keeps the captured Catalog Release visible.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-07",
+    workflow: "C",
+    title: "An Org Admin explicitly registers an unregistered Subject with a default-root or chosen-parent Placement while other roles are refused.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-08",
+    workflow: "C",
+    title: "The page distinguishes loading, error, no registrations, no definitions, no review work, and no filter match, and disables writes while stale data is visible.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-09",
+    workflow: "C",
+    title: "Retired or deprecated Subject, Definition, Registration, and history remain readable while prohibited new actions stay disabled.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-10",
+    workflow: "C",
+    title: "Release, ReviewItem ETag, Placement, and idempotency-fingerprint conflicts preserve input, refresh evidence, and require reconfirmation without partial writes.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-11",
+    workflow: "C",
+    title: "Legacy bookmarks and identifier resolution produce exact mapped, gone, conflict, unknown, and scope-hidden outcomes without Archive or candidate disclosure.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-12",
+    workflow: "C",
+    title: "Agent access is read-only within the invoking principal scope and every governance mutation or role-spoof path is refused.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-13",
+    workflow: "C",
+    title: "API and explicit mock adapters replay the same catalog states and authority decisions without mock-only governance power.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-14",
+    workflow: "C",
+    title: "The complete single-page catalog experience has no overlap, clipping, hidden action, obstructed overlay, horizontal page overflow, or keyboard-focus failure at all three required viewports.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-15",
+    workflow: "C",
+    title: "The real canonical journey covers navigation, search, detail, timeline, Registration and Placement, Review, Proposal, conflict recovery, deep links, and keyboard focus with forensic evidence.",
+    required: false
+  },
+  {
     id: "PARAM-SPEC-GOVERN-001",
     workflow: "C",
     title: "Admin can search parameter specs, open detail, and resolve inference review tasks with audit evidence.",
