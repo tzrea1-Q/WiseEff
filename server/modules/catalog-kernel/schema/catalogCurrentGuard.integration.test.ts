@@ -53,9 +53,11 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
         id, release_version, release_digest, compiled_model_digest, toolchain_digest
       ) values ('crel-a', '1.0.0', 'sha256:release-a', 'sha256:compiled-a', 'sha256:toolchain-a');
 
-      insert into parameter_catalog.catalog_subjects (id, kind, canonical_key) values
-        ('csub-active', 'driver', 'driver:active'),
-        ('csub-retired', 'node-type', 'node-type:retired');
+      insert into parameter_catalog.catalog_subjects (
+        id, introduced_release_id, kind, canonical_key
+      ) values
+        ('csub-active', 'crel-a', 'driver', 'driver:active'),
+        ('csub-retired', 'crel-a', 'node-type', 'node-type:retired');
 
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-active', 'physical-device', 'multiple');
@@ -64,8 +66,8 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
       values ('csub-retired', 'device');
 
       insert into parameter_catalog.parameter_definitions (
-        id, subject_id, property_key, current_revision_id
-      ) values ('pdef-active', 'csub-active', 'active-property', 'drev-active-a');
+        id, introduced_release_id, subject_id, property_key, current_revision_id
+      ) values ('pdef-active', 'crel-a', 'csub-active', 'active-property', 'drev-active-a');
 
       insert into parameter_catalog.definition_revisions (
         id, definition_id, revision_number, catalog_release_id, content_digest, content
@@ -201,10 +203,20 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       name: "Subject membership",
       setupSql: `
         begin;
-        insert into parameter_catalog.catalog_subjects (id, kind, canonical_key)
-        values ('csub-late', 'node-type', 'node-type:late');
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-late-subject', 'late-subject', 'sha256:release-late-subject',
+          'sha256:compiled-late-subject', 'sha256:toolchain-late-subject'
+        );
+        insert into parameter_catalog.catalog_subjects (
+          id, introduced_release_id, kind, canonical_key
+        ) values ('csub-late', 'crel-late-subject', 'node-type', 'node-type:late');
         insert into parameter_catalog.catalog_node_types (subject_id, family)
         values ('csub-late', 'device');
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values ('crel-late-subject', 'csub-late', 'active', '{}', '{}');
         set constraints all immediate;
         commit
       `,
@@ -218,9 +230,26 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
     {
       name: "Subject alias membership",
       setupSql: `
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-late-alias', 'late-alias', 'sha256:release-late-alias',
+          'sha256:compiled-late-alias', 'sha256:toolchain-late-alias'
+        );
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values ('crel-late-alias', 'csub-active', 'active', '{}', '{}');
         insert into parameter_catalog.catalog_subject_aliases (
-          id, subject_id, selector_kind, normalized_selector
-        ) values ('calias-late', 'csub-active', 'driver-compatible', 'late,selector')
+          id, introduced_release_id, subject_id, selector_kind, normalized_selector
+        ) values (
+          'calias-late', 'crel-late-alias', 'csub-active', 'driver-compatible', 'late,selector'
+        );
+        insert into parameter_catalog.catalog_release_subject_aliases (
+          release_id, subject_id, alias_id, lifecycle, selector_provenance
+        ) values ('crel-late-alias', 'csub-active', 'calias-late', 'active', '{}');
+        set constraints all immediate;
+        commit
       `,
       mutationSql: `
         insert into parameter_catalog.catalog_release_subject_aliases (
@@ -237,11 +266,14 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           id, release_version, release_digest, compiled_model_digest, toolchain_digest
         ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late');
         insert into parameter_catalog.parameter_definitions (
-          id, subject_id, property_key, current_revision_id
-        ) values ('pdef-late', 'csub-active', 'late-property', 'drev-late');
+          id, introduced_release_id, subject_id, property_key, current_revision_id
+        ) values ('pdef-late', 'crel-late', 'csub-active', 'late-property', 'drev-late');
         insert into parameter_catalog.definition_revisions (
           id, definition_id, revision_number, catalog_release_id, content_digest, content
         ) values ('drev-late', 'pdef-late', 1, 'crel-late', 'sha256:drev-late', '{}');
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-late', 'pdef-late', 'drev-late');
         set constraints all immediate;
         commit
       `,
@@ -260,11 +292,14 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           id, release_version, release_digest, compiled_model_digest, toolchain_digest
         ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late');
         insert into parameter_catalog.parameter_definitions (
-          id, subject_id, property_key, current_revision_id
-        ) values ('pdef-late', 'csub-active', 'late-property', 'drev-late');
+          id, introduced_release_id, subject_id, property_key, current_revision_id
+        ) values ('pdef-late', 'crel-late', 'csub-active', 'late-property', 'drev-late');
         insert into parameter_catalog.definition_revisions (
           id, definition_id, revision_number, catalog_release_id, content_digest, content
         ) values ('drev-late', 'pdef-late', 1, 'crel-late', 'sha256:drev-late', '{}');
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-late', 'pdef-late', 'drev-late');
         set constraints all immediate;
         commit
       `,

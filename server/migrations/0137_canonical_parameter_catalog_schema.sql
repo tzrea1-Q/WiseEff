@@ -96,8 +96,37 @@ after insert or update of predecessor_release_id on parameter_catalog.catalog_re
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_catalog_release_predecessor_acyclic();
 
+create function parameter_catalog.assert_catalog_release_predecessor_materialized()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if new.predecessor_release_id is not null
+     and not exists (
+       select 1
+       from parameter_catalog.catalog_materializations materialization
+       where materialization.release_id = new.predecessor_release_id
+         and materialization.xmin::text <> pg_catalog.pg_current_xact_id()::text
+     ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog release predecessor must already be materialized and complete',
+      constraint = 'catalog_release_predecessor_materialized_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger catalog_release_predecessor_materialized_ck
+after insert or update of predecessor_release_id on parameter_catalog.catalog_releases
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_catalog_release_predecessor_materialized();
+
 create table parameter_catalog.catalog_subjects (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
+  introduced_release_id text not null,
   kind text not null check (kind in ('driver', 'node-type')),
   canonical_key text not null check (canonical_key <> '' and btrim(canonical_key) = canonical_key),
   unique (kind, canonical_key),
@@ -105,40 +134,123 @@ create table parameter_catalog.catalog_subjects (
 );
 
 create table parameter_catalog.catalog_drivers (
-  subject_id text primary key references parameter_catalog.catalog_subjects(id) on delete restrict,
+  subject_id text primary key,
   nature text not null constraint catalog_driver_nature_ck
     check (nature in ('physical-device', 'logical-service')),
   cardinality text not null constraint catalog_driver_cardinality_ck
-    check (cardinality in ('multiple', 'singleton-per-project'))
+    check (cardinality in ('multiple', 'singleton-per-project')),
+  foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
+    on delete restrict deferrable initially deferred
 );
 
 create table parameter_catalog.catalog_node_types (
-  subject_id text primary key references parameter_catalog.catalog_subjects(id) on delete restrict,
-  family text not null check (family <> '' and btrim(family) = family)
+  subject_id text primary key,
+  family text not null check (family <> '' and btrim(family) = family),
+  foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
+    on delete restrict deferrable initially deferred
 );
 
 create table parameter_catalog.catalog_release_subjects (
   release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
-  subject_id text not null references parameter_catalog.catalog_subjects(id) on delete restrict,
+  subject_id text not null,
   lifecycle text not null check (lifecycle in ('active', 'retired')),
   selector_snapshot jsonb not null check (jsonb_typeof(selector_snapshot) = 'object'),
   selector_provenance jsonb not null check (jsonb_typeof(selector_provenance) = 'object'),
   tombstone_provenance jsonb,
   primary key (release_id, subject_id),
+  constraint catalog_release_subject_subject_fk
+    foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
+    on delete restrict deferrable initially deferred,
   check (
     (lifecycle = 'active' and tombstone_provenance is null) or
     (lifecycle = 'retired' and jsonb_typeof(tombstone_provenance) = 'object')
   )
 );
 
+alter table parameter_catalog.catalog_subjects
+  add constraint catalog_subject_introduced_release_fk
+  foreign key (introduced_release_id, id)
+  references parameter_catalog.catalog_release_subjects(release_id, subject_id)
+  on delete restrict
+  deferrable initially deferred;
+
 create table parameter_catalog.catalog_subject_aliases (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
-  subject_id text not null references parameter_catalog.catalog_subjects(id) on delete restrict,
+  introduced_release_id text not null,
+  subject_id text not null,
   selector_kind text not null check (selector_kind in ('driver-compatible', 'node-type-name')),
   normalized_selector text not null check (normalized_selector <> '' and btrim(normalized_selector) = normalized_selector),
   unique (selector_kind, normalized_selector),
-  unique (id, subject_id)
+  unique (id, subject_id),
+  foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
+    on delete restrict deferrable initially deferred
 );
+
+create function parameter_catalog.reject_cross_root_selector_collision()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  target_selector_kind text;
+  target_selector_value text;
+begin
+  if tg_table_name = 'catalog_subjects' then
+    target_selector_kind := case new.kind
+      when 'driver' then 'driver-compatible'
+      when 'node-type' then 'node-type-name'
+    end;
+    target_selector_value := new.canonical_key;
+  else
+    target_selector_kind := new.selector_kind;
+    target_selector_value := new.normalized_selector;
+  end if;
+
+  -- Serialize both root tables through one transaction lock so opposite insert
+  -- order and concurrent sessions observe one committed selector namespace.
+  perform pg_catalog.pg_advisory_xact_lock(688005000001::bigint);
+
+  if tg_table_name = 'catalog_subjects' and exists (
+    select 1
+    from parameter_catalog.catalog_subject_aliases alias
+    where alias.selector_kind = target_selector_kind
+      and alias.normalized_selector = target_selector_value
+  ) then
+    raise exception using
+      errcode = '23505',
+      message = 'Catalog canonical selector collides with an alias root',
+      constraint = 'catalog_selector_cross_root_unique_ck';
+  end if;
+
+  if tg_table_name = 'catalog_subject_aliases' and exists (
+    select 1
+    from parameter_catalog.catalog_subjects subject
+    where subject.kind = case target_selector_kind
+        when 'driver-compatible' then 'driver'
+        when 'node-type-name' then 'node-type'
+      end
+      and subject.canonical_key = target_selector_value
+  ) then
+    raise exception using
+      errcode = '23505',
+      message = 'Catalog alias collides with a canonical selector root',
+      constraint = 'catalog_selector_cross_root_unique_ck';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function parameter_catalog.reject_cross_root_selector_collision() from public;
+
+create trigger catalog_subject_selector_cross_root_unique
+before insert on parameter_catalog.catalog_subjects
+for each row execute function parameter_catalog.reject_cross_root_selector_collision();
+
+create trigger catalog_subject_alias_selector_cross_root_unique
+before insert on parameter_catalog.catalog_subject_aliases
+for each row execute function parameter_catalog.reject_cross_root_selector_collision();
 
 create table parameter_catalog.catalog_release_subject_aliases (
   release_id text not null,
@@ -150,35 +262,52 @@ create table parameter_catalog.catalog_release_subject_aliases (
   primary key (release_id, alias_id),
   foreign key (release_id, subject_id)
     references parameter_catalog.catalog_release_subjects(release_id, subject_id)
-    on delete restrict,
+    on delete restrict
+    deferrable initially deferred,
   foreign key (alias_id, subject_id)
     references parameter_catalog.catalog_subject_aliases(id, subject_id)
-    on delete restrict,
+    on delete restrict
+    deferrable initially deferred,
   check (
     (lifecycle = 'active' and tombstone_provenance is null) or
     (lifecycle = 'retired' and jsonb_typeof(tombstone_provenance) = 'object')
   )
 );
 
+alter table parameter_catalog.catalog_subject_aliases
+  add constraint catalog_subject_alias_introduced_release_fk
+  foreign key (introduced_release_id, id)
+  references parameter_catalog.catalog_release_subject_aliases(release_id, alias_id)
+  on delete restrict
+  deferrable initially deferred;
+
 create table parameter_catalog.parameter_definitions (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
-  subject_id text not null references parameter_catalog.catalog_subjects(id) on delete restrict,
+  introduced_release_id text not null,
+  subject_id text not null,
   property_key text not null check (property_key <> '' and btrim(property_key) = property_key),
   current_revision_id text not null,
   unique (subject_id, property_key),
-  unique (id, subject_id)
+  unique (id, subject_id),
+  foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
+    on delete restrict deferrable initially deferred
 );
 
 create table parameter_catalog.definition_revisions (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
-  definition_id text not null references parameter_catalog.parameter_definitions(id) on delete restrict,
+  definition_id text not null,
   revision_number bigint not null check (revision_number > 0),
   catalog_release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
   content_digest text not null check (content_digest <> '' and btrim(content_digest) = content_digest),
   content jsonb not null check (jsonb_typeof(content) = 'object'),
   created_at timestamptz not null default now(),
   unique (definition_id, revision_number),
-  unique (definition_id, id)
+  constraint definition_revision_release_unique
+    unique (definition_id, catalog_release_id)
+    deferrable initially deferred,
+  unique (definition_id, id),
+  foreign key (definition_id) references parameter_catalog.parameter_definitions(id)
+    on delete restrict deferrable initially deferred
 );
 
 alter table parameter_catalog.parameter_definitions
@@ -190,13 +319,25 @@ alter table parameter_catalog.parameter_definitions
 
 create table parameter_catalog.catalog_release_definition_heads (
   release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
-  definition_id text not null references parameter_catalog.parameter_definitions(id) on delete restrict,
+  definition_id text not null,
   revision_id text not null,
   primary key (release_id, definition_id),
+  foreign key (definition_id)
+    references parameter_catalog.parameter_definitions(id)
+    on delete restrict
+    deferrable initially deferred,
   foreign key (definition_id, revision_id)
     references parameter_catalog.definition_revisions(definition_id, id)
     on delete restrict
+    deferrable initially deferred
 );
+
+alter table parameter_catalog.parameter_definitions
+  add constraint parameter_definition_introduced_release_fk
+  foreign key (introduced_release_id, id)
+  references parameter_catalog.catalog_release_definition_heads(release_id, definition_id)
+  on delete restrict
+  deferrable initially deferred;
 
 create table parameter_catalog.catalog_materializations (
   release_id text primary key references parameter_catalog.catalog_releases(id) on delete restrict,
@@ -745,6 +886,7 @@ begin
   end if;
 
   if new.id is distinct from old.id
+     or new.introduced_release_id is distinct from old.introduced_release_id
      or new.subject_id is distinct from old.subject_id
      or new.property_key is distinct from old.property_key then
     raise exception using errcode = '55000', message = 'Parameter definition identity is immutable';
@@ -826,6 +968,7 @@ create table parameter_catalog.project_parameter_bindings (
   unique (id, organization_id),
   unique (id, definition_id),
   unique (id, organization_id, definition_id),
+  unique (id, organization_id, project_id, logical_node_id, definition_id),
   foreign key (project_id, organization_id)
     references public.projects(id, organization_id)
     on delete restrict,
@@ -1646,6 +1789,10 @@ create table parameter_catalog.parameter_observations (
   unique (organization_id, source_identity),
   unique (id, organization_id),
   unique (id, organization_id, catalog_release_id, matcher_revision),
+  unique (
+    id, organization_id, catalog_release_id, matcher_revision,
+    project_id, logical_node_id
+  ),
   foreign key (project_id, organization_id)
     references public.projects(id, organization_id)
     on delete restrict
@@ -1836,6 +1983,8 @@ create table parameter_catalog.parameter_observation_matches (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   observation_id text not null unique,
   organization_id text not null,
+  project_id text not null,
+  logical_node_id text not null check (logical_node_id <> '' and btrim(logical_node_id) = logical_node_id),
   registration_id text not null,
   subject_id text not null,
   definition_id text not null,
@@ -1845,9 +1994,13 @@ create table parameter_catalog.parameter_observation_matches (
   matcher_revision text not null check (matcher_revision <> '' and btrim(matcher_revision) = matcher_revision),
   matched_at timestamptz not null default now(),
   constraint parameter_observation_match_observation_fk
-    foreign key (observation_id, organization_id, catalog_release_id, matcher_revision)
+    foreign key (
+      observation_id, organization_id, catalog_release_id, matcher_revision,
+      project_id, logical_node_id
+    )
     references parameter_catalog.parameter_observations(
-      id, organization_id, catalog_release_id, matcher_revision
+      id, organization_id, catalog_release_id, matcher_revision,
+      project_id, logical_node_id
     )
     on delete restrict,
   foreign key (registration_id, organization_id, subject_id)
@@ -1986,6 +2139,8 @@ alter table parameter_catalog.project_parameter_bindings
 
 alter table parameter_catalog.parameter_observation_matches
   add constraint parameter_observation_match_binding_fk
-  foreign key (binding_id, organization_id, definition_id)
-  references parameter_catalog.project_parameter_bindings(id, organization_id, definition_id)
+  foreign key (binding_id, organization_id, project_id, logical_node_id, definition_id)
+  references parameter_catalog.project_parameter_bindings(
+    id, organization_id, project_id, logical_node_id, definition_id
+  )
   on delete restrict;

@@ -181,6 +181,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog migration paths", () => {
       expect(after.rows).toEqual(before.rows);
       expect(canonicalDefinitionColumns.rows.map((row) => row.column_name)).toEqual([
         "id",
+        "introduced_release_id",
         "subject_id",
         "property_key",
         "current_revision_id"
@@ -205,7 +206,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog migration paths", () => {
     expect(freshFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(upgradeFingerprint).toBe(freshFingerprint);
     expect(freshFingerprint).toBe(
-      "110e794cf14caab8b5f9053fd576a02c19ec9df09bfef086216bcf630b3f82e6"
+      "29890e3e1390da97731b2bd9ff0db802d257621678fbd11a1a96b1f7c964ed12"
     );
   });
 });
