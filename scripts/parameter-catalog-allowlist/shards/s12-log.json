@@ -1,7 +1,13 @@
 {
   "schemaVersion": 1,
   "family": "S12-LOG",
-  "root": "server/modules/logs",
+  "paths": [
+    "server/modules/logs/**",
+    "src/application/ports/LogAnalysisRepository.ts",
+    "src/infrastructure/http/logClient.ts",
+    "src/infrastructure/http/logDtos.ts",
+    "server/modules/logs/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
     {
       "id": "S12-LOG:legacy-catalog-raw-read:4fbbecaa42163b0f:1",
@@ -44,6 +50,24 @@
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:unresolved-boundary-expression:377bb92a19bebe92:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/logs/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-LOG:unresolved-boundary-expression:da462413cccf5cd7:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/logs/domainsRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-LOG:unresolved-boundary-expression:fee15240faf0be8e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/logs/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

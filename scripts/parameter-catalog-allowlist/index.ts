@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -9,17 +10,120 @@ import {
 } from "./schema";
 
 export const consumerShardDefinitions = [
-  ["S12-CGH", "server/modules/parameter-specs", "s12-cgh.json"],
-  ["S12-TOP", "server/modules/parameter-topology", "s12-top.json"],
-  ["S12-PRJ", "server/modules/parameters", "s12-prj.json"],
-  ["S12-FIL", "server/modules/parameter-files", "s12-fil.json"],
-  ["S12-AGT", "server/modules/agent", "s12-agt.json"],
-  ["S12-LOG", "server/modules/logs", "s12-log.json"],
-  ["S12-DBG", "server/modules/debugging", "s12-dbg.json"],
-  ["S12-DTS", "server/modules/dts-reload", "s12-dts.json"],
-  ["S12-KNW", "server/modules/knowledge", "s12-knw.json"],
-  ["S12-MOD", "server/modules/parameter-modules", "s12-mod.json"],
-  ["S12-OPS", "server/modules/operations", "s12-ops.json"],
+  {
+    family: "S12-CGH",
+    paths: [
+      { pattern: "server/modules/parameter-specs/**", required: true },
+      { pattern: "src/infrastructure/http/parameterAdminClient.ts", required: true },
+      { pattern: "server/modules/parameter-specs/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-cgh.json",
+  },
+  {
+    family: "S12-TOP",
+    paths: [
+      { pattern: "server/modules/parameter-topology/**", required: true },
+      { pattern: "src/application/ports/ParameterTopologyRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/parameterTopologyClient.ts", required: true },
+      { pattern: "server/modules/parameter-topology/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-top.json",
+  },
+  {
+    family: "S12-PRJ",
+    paths: [
+      { pattern: "server/modules/parameters/**", required: true },
+      { pattern: "server/modules/parameter-drafts/**", required: true },
+      { pattern: "src/application/ports/ParameterRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/parameterClient.ts", required: true },
+      { pattern: "src/infrastructure/http/parameterDtos.ts", required: true },
+      { pattern: "server/modules/parameters/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-prj.json",
+  },
+  {
+    family: "S12-FIL",
+    paths: [
+      { pattern: "server/modules/parameter-files/**", required: true },
+      { pattern: "src/application/ports/ParameterFileRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/parameterFileClient.ts", required: true },
+      { pattern: "server/modules/parameter-files/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-fil.json",
+  },
+  {
+    family: "S12-AGT",
+    paths: [
+      { pattern: "server/modules/agent/tools/actionTools.ts", required: true },
+      { pattern: "server/modules/agent/toolRegistry.ts", required: true },
+      { pattern: "server/modules/agent/toolMetadata.ts", required: true },
+      { pattern: "server/modules/agent/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-agt.json",
+  },
+  {
+    family: "S12-LOG",
+    paths: [
+      { pattern: "server/modules/logs/**", required: true },
+      { pattern: "src/application/ports/LogAnalysisRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/logClient.ts", required: true },
+      { pattern: "src/infrastructure/http/logDtos.ts", required: true },
+      { pattern: "server/modules/logs/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-log.json",
+  },
+  {
+    family: "S12-DBG",
+    paths: [
+      { pattern: "server/modules/debugging/**", required: true },
+      { pattern: "src/application/ports/DebuggingGateway.ts", required: true },
+      { pattern: "src/infrastructure/http/debuggingClient.ts", required: true },
+      { pattern: "src/infrastructure/http/debuggingDtos.ts", required: true },
+      { pattern: "server/modules/debugging/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-dbg.json",
+  },
+  {
+    family: "S12-DTS",
+    paths: [
+      { pattern: "server/modules/dts-reload/**", required: true },
+      { pattern: "src/application/ports/DtsReloadRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/dtsReloadClient.ts", required: true },
+      { pattern: "server/modules/dts-reload/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-dts.json",
+  },
+  {
+    family: "S12-KNW",
+    paths: [
+      { pattern: "server/modules/knowledge/**", required: true },
+      { pattern: "server/modules/knowledge/relatedKnowledge.ts", required: true },
+      { pattern: "src/application/ports/KnowledgeRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/knowledgeClient.ts", required: true },
+      { pattern: "src/features/knowledge/**", required: true },
+      { pattern: "server/modules/knowledge/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-knw.json",
+  },
+  {
+    family: "S12-MOD",
+    paths: [
+      { pattern: "server/modules/parameter-modules/**", required: true },
+      { pattern: "src/application/ports/ParameterModuleRegistryRepository.ts", required: true },
+      { pattern: "src/infrastructure/http/parameterModuleRegistryClient.ts", required: true },
+      { pattern: "server/modules/parameter-modules/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-mod.json",
+  },
+  {
+    family: "S12-OPS",
+    paths: [
+      { pattern: "server/modules/operations/**", required: true },
+      { pattern: "scripts/reconcile-parameter-definitions.ts", required: true },
+      { pattern: "server/modules/operations/parameterCatalogComparisonContribution.ts", required: false },
+    ],
+    shardFile: "s12-ops.json",
+  },
 ] as const;
 
 export const allowlistShardDirectory = "scripts/parameter-catalog-allowlist/shards";
@@ -31,17 +135,23 @@ export type AllowlistIndex = {
   entriesById: Map<string, AllowlistEntry>;
 };
 
+export type BoundaryFixtureIntegrity = {
+  baselineSha: string;
+  fixtureSha256: string;
+};
+
 export async function loadAllowlistIndex(repoRoot: string): Promise<AllowlistIndex> {
   const shards: AllowlistShard[] = [];
   const entries: AllowlistEntry[] = [];
   const entriesById = new Map<string, AllowlistEntry>();
 
-  for (const [family, root, file] of consumerShardDefinitions) {
-    const relativePath = `${allowlistShardDirectory}/${file}`;
+  for (const definition of consumerShardDefinitions) {
+    const relativePath = `${allowlistShardDirectory}/${definition.shardFile}`;
     const parsed = allowlistShardSchema.parse(await readJson(repoRoot, relativePath));
-    if (parsed.family !== family || parsed.root !== root) {
+    const expectedPaths = definition.paths.map(({ pattern }) => pattern);
+    if (parsed.family !== definition.family || JSON.stringify(parsed.paths) !== JSON.stringify(expectedPaths)) {
       throw new Error(
-        `Allow-list shard metadata mismatch for ${relativePath}: expected ${family} at ${root}, received ${parsed.family} at ${parsed.root}.`,
+        `Allow-list shard metadata mismatch for ${relativePath}: expected ${definition.family} at ${expectedPaths.join(", ")}.`,
       );
     }
 
@@ -58,11 +168,30 @@ export async function loadAllowlistIndex(repoRoot: string): Promise<AllowlistInd
   return { shards, entries, entriesById };
 }
 
-export async function loadBoundaryViolationFixture(repoRoot: string) {
-  return boundaryViolationFixtureSchema.parse(await readJson(repoRoot, boundaryViolationFixturePath));
+export async function loadBoundaryViolationFixture(repoRoot: string, integrity?: BoundaryFixtureIntegrity) {
+  const document = await readJsonDocument(repoRoot, boundaryViolationFixturePath);
+  const fixture = boundaryViolationFixtureSchema.parse(document.value);
+  if (integrity) {
+    const actualDigest = createHash("sha256").update(document.contents).digest("hex");
+    if (actualDigest !== integrity.fixtureSha256) {
+      throw new Error(
+        `Parameter-catalog baseline fixture digest mismatch: expected ${integrity.fixtureSha256}, received ${actualDigest}.`,
+      );
+    }
+    if (fixture.baselineSha !== integrity.baselineSha) {
+      throw new Error(
+        `Parameter-catalog baseline fixture SHA mismatch: expected ${integrity.baselineSha}, received ${fixture.baselineSha}.`,
+      );
+    }
+  }
+  return fixture;
 }
 
 async function readJson(repoRoot: string, relativePath: string) {
+  return (await readJsonDocument(repoRoot, relativePath)).value;
+}
+
+async function readJsonDocument(repoRoot: string, relativePath: string) {
   const absolutePath = resolve(repoRoot, relativePath);
   let contents: string;
   try {
@@ -72,7 +201,7 @@ async function readJson(repoRoot: string, relativePath: string) {
   }
 
   try {
-    return JSON.parse(contents) as unknown;
+    return { contents, value: JSON.parse(contents) as unknown };
   } catch (error) {
     throw new Error(`Invalid JSON in parameter-catalog allow-list artifact ${relativePath}.`, { cause: error });
   }

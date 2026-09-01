@@ -27,6 +27,7 @@ export const boundaryRuleIds = [
   "legacy-catalog-route",
   "legacy-effective-governance-contract",
   "legacy-overlay-catalog-contract",
+  "unresolved-boundary-expression",
 ] as const;
 
 export type BoundaryRuleId = (typeof boundaryRuleIds)[number];
@@ -40,6 +41,10 @@ const repoPathSchema = z
   .refine((value) => !value.startsWith("/") && !value.includes("\\") && !value.split("/").includes(".."), {
     message: "repository paths must be normalized relative POSIX paths",
   });
+const repoPathPatternSchema = repoPathSchema.refine(
+  (value) => !value.includes("*") || (value.endsWith("/**") && !value.slice(0, -3).includes("*")),
+  "repository path patterns may only use a trailing /** directory glob",
+);
 const violationIdSchema = z.string().regex(
   /^S12-(?:CGH|TOP|PRJ|FIL|AGT|LOG|DBG|DTS|KNW|MOD|OPS):[a-z0-9-]+:[a-f0-9]{16}:[1-9][0-9]*$/u,
   "violation IDs must use the stable family:rule:fingerprint:ordinal form",
@@ -75,12 +80,15 @@ export const allowlistShardSchema = z
   .object({
     schemaVersion: z.literal(1),
     family: consumerFamilyIdSchema,
-    root: repoPathSchema,
+    paths: z.array(repoPathPatternSchema).min(1),
     entries: z.array(allowlistEntrySchema),
   })
   .strict()
   .superRefine((shard, context) => {
     validateUniqueSortedIds(shard.entries, context);
+    if (new Set(shard.paths).size !== shard.paths.length) {
+      context.addIssue({ code: "custom", message: "shard paths must be unique", path: ["paths"] });
+    }
     for (const [index, entry] of shard.entries.entries()) {
       if (!entry.id.startsWith(`${shard.family}:`)) {
         context.addIssue({
@@ -96,10 +104,10 @@ export const allowlistShardSchema = z
           path: ["entries", index, "rule"],
         });
       }
-      if (entry.file !== shard.root && !entry.file.startsWith(`${shard.root}/`)) {
+      if (!shard.paths.some((pattern) => pathPatternMatches(pattern, entry.file))) {
         context.addIssue({
           code: "custom",
-          message: `entry file is outside family root ${shard.root}`,
+          message: "entry file is outside the family-owned paths",
           path: ["entries", index, "file"],
         });
       }
@@ -165,4 +173,10 @@ function validateUniqueSortedIds(
 
 export function compareText(left: string, right: string) {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function pathPatternMatches(pattern: string, file: string) {
+  if (!pattern.endsWith("/**")) return file === pattern;
+  const root = pattern.slice(0, -3);
+  return file === root || file.startsWith(`${root}/`);
 }

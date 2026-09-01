@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript";
@@ -11,6 +11,7 @@ import {
   consumerShardDefinitions,
   loadAllowlistIndex,
   loadBoundaryViolationFixture,
+  type BoundaryFixtureIntegrity,
 } from "./parameter-catalog-allowlist/index";
 import { compareBoundaryInventory, formatBoundaryReport } from "./parameter-catalog-allowlist/deterministicOutput";
 import {
@@ -25,6 +26,11 @@ import {
 } from "./parameter-catalog-allowlist/schema";
 
 const initialBaselineSha = "e84ca078ab8f7b7006fa8e635d722297a287d2a5";
+const initialFixtureSha256 = "9932ab08f7bd3ba5cafac08e03fa32d8a3c9a5e75f8aaa9242fefafcba798267";
+const initialFixtureIntegrity: BoundaryFixtureIntegrity = {
+  baselineSha: initialBaselineSha,
+  fixtureSha256: initialFixtureSha256,
+};
 
 const legacyCatalogTables = [
   "attribution_subjects",
@@ -101,6 +107,7 @@ const reasons: Record<BoundaryRuleId, string> = {
   "legacy-catalog-route": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
   "legacy-effective-governance-contract": "Legacy Effective or Governance catalog projection remains in a consumer contract.",
   "legacy-overlay-catalog-contract": "Legacy driver-schema overlay authoring contract remains reachable.",
+  "unresolved-boundary-expression": "A database, route, or module-loader boundary expression cannot be resolved statically.",
 };
 
 type CandidateViolation = Omit<BoundaryViolation, "id"> & {
@@ -115,14 +122,18 @@ export type InitialAllowlistArtifacts = {
 
 export async function scanParameterCatalogBoundaries(repoRoot: string): Promise<BoundaryViolation[]> {
   const candidates: CandidateViolation[] = [];
-  for (const [family, familyRoot] of consumerShardDefinitions) {
-    const absoluteRoot = resolve(repoRoot, familyRoot);
-    await assertDirectoryReadable(absoluteRoot, familyRoot);
-    const files = await collectSourceFiles(absoluteRoot);
+  const ownerByFile = new Map<string, ConsumerFamilyId>();
+  for (const definition of consumerShardDefinitions) {
+    const files = await collectConsumerSourceFiles(repoRoot, definition.paths);
     for (const absoluteFile of files) {
       const file = toPosix(relative(repoRoot, absoluteFile));
+      const existingOwner = ownerByFile.get(file);
+      if (existingOwner && existingOwner !== definition.family) {
+        throw new Error(`Consumer source file ${file} is assigned to both ${existingOwner} and ${definition.family}.`);
+      }
+      ownerByFile.set(file, definition.family);
       const source = await readFile(absoluteFile, "utf8");
-      candidates.push(...scanSourceFile(family, file, source));
+      candidates.push(...scanSourceFile(definition.family, file, source));
     }
   }
 
@@ -159,13 +170,13 @@ export function buildInitialAllowlistArtifacts(
     baselineSha,
     violations: sortedViolations,
   });
-  const shards = consumerShardDefinitions.map(([family, root]) =>
+  const shards = consumerShardDefinitions.map((definition) =>
     allowlistShardSchema.parse({
       schemaVersion: 1,
-      family,
-      root,
+      family: definition.family,
+      paths: definition.paths.map(({ pattern }) => pattern),
       entries: sortedViolations
-        .filter((violation) => violation.family === family)
+        .filter((violation) => violation.family === definition.family)
         .map(({ id, rule, file, reason }) => ({ id, rule, file, reason }))
         .sort((left, right) => compareText(left.id, right.id)),
     }),
@@ -173,11 +184,14 @@ export function buildInitialAllowlistArtifacts(
   return { fixture, shards };
 }
 
-export async function checkParameterCatalogBoundaries(repoRoot: string) {
+export async function checkParameterCatalogBoundaries(
+  repoRoot: string,
+  integrity: BoundaryFixtureIntegrity = initialFixtureIntegrity,
+) {
   const [violations, allowlist, fixture] = await Promise.all([
     scanParameterCatalogBoundaries(repoRoot),
     loadAllowlistIndex(repoRoot),
-    loadBoundaryViolationFixture(repoRoot),
+    loadBoundaryViolationFixture(repoRoot, integrity),
   ]);
   return compareBoundaryInventory(violations, allowlist.entries, fixture.violations);
 }
@@ -185,6 +199,7 @@ export async function checkParameterCatalogBoundaries(repoRoot: string) {
 function scanSourceFile(family: ConsumerFamilyId, file: string, source: string): CandidateViolation[] {
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const candidates: CandidateViolation[] = [];
+  const constantBindings = collectUniqueConstantBindings(sourceFile);
 
   const add = (rule: BoundaryRuleId, node: ts.Node, evidence: string, stableEvidence = evidence) => {
     const start = node.getStart(sourceFile, false);
@@ -214,8 +229,41 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
   const visit = (node: ts.Node) => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       scanModuleSpecifier(node.moduleSpecifier.text, node);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      scanModuleSpecifier(node.moduleReference.expression.text, node);
     } else if (ts.isCallExpression(node) && isModuleLoaderCall(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
       scanModuleSpecifier(node.arguments[0].text, node);
+    }
+
+    if (ts.isCallExpression(node) && node.arguments[0]) {
+      const argument = node.arguments[0];
+      if (isModuleLoaderCall(node) && !ts.isStringLiteral(argument)) {
+        const evaluated = evaluateStringExpression(argument, constantBindings);
+        if (evaluated.complete) {
+          scanModuleSpecifier(evaluated.text, argument);
+        } else {
+          add("unresolved-boundary-expression", argument, `module-loader: ${normalizeText(argument.getText(sourceFile))}`);
+        }
+      } else if (isDatabaseStringCall(node) && !isStringNode(argument)) {
+        const evaluated = evaluateStringExpression(argument, constantBindings);
+        if (evaluated.complete) {
+          scanStringValue(argument, evaluated.text, add);
+        } else {
+          add("unresolved-boundary-expression", argument, `database: ${normalizeText(argument.getText(sourceFile))}`);
+        }
+      } else if (isRouteRegistrationCall(node) && !isStringNode(argument)) {
+        const evaluated = evaluateStringExpression(argument, constantBindings);
+        if (evaluated.complete) {
+          scanStringValue(argument, evaluated.text, add);
+        } else {
+          add("unresolved-boundary-expression", argument, `route: ${normalizeText(argument.getText(sourceFile))}`);
+        }
+      }
     }
 
     if (ts.isIdentifier(node)) {
@@ -254,11 +302,12 @@ function scanStringValue(
 ) {
   const normalized = normalizeText(value);
   if (!normalized) return;
+  const sqlStructure = normalizeText(maskSqlLiteralsAndComments(value));
 
   for (const table of legacyCatalogTables) {
     const writePattern = sqlWritePattern(table);
-    const hasWrite = writePattern.test(normalized);
-    const withoutWriteTarget = normalized.replace(sqlWritePattern(table), " ");
+    const hasWrite = writePattern.test(sqlStructure);
+    const withoutWriteTarget = sqlStructure.replace(sqlWritePattern(table), " ");
     const hasRead = sqlReadPattern(table).test(withoutWriteTarget);
     if (hasWrite) {
       add("legacy-catalog-sql-write", node, `write ${table}: ${normalized}`, `write\0${table}\0${normalized}`);
@@ -272,7 +321,7 @@ function scanStringValue(
   }
 
   for (const table of canonicalCatalogTables) {
-    if (sqlWritePattern(table).test(normalized) || sqlReadPattern(table).test(normalized)) {
+    if (sqlWritePattern(table).test(sqlStructure) || sqlReadPattern(table).test(sqlStructure)) {
       add("canonical-catalog-raw-access", node, `${table}: ${normalized}`, `${table}\0${normalized}`);
     }
   }
@@ -286,6 +335,94 @@ function scanStringValue(
   if (/(?:driver_schema_overlays?|driver-schema-overlays?|organization-driver-schemas?)/iu.test(normalized)) {
     add("legacy-overlay-catalog-contract", node, normalized, normalized);
   }
+}
+
+function maskSqlLiteralsAndComments(value: string) {
+  let result = "";
+  let index = 0;
+  let state: "code" | "single" | "line-comment" | "block-comment" | "dollar" = "code";
+  let dollarDelimiter = "";
+  const mask = (character: string) => (character === "\n" || character === "\r" ? character : " ");
+
+  while (index < value.length) {
+    const character = value[index];
+    const next = value[index + 1];
+    if (state === "code") {
+      if (character === "'") {
+        state = "single";
+        result += " ";
+        index += 1;
+        continue;
+      }
+      if (character === "-" && next === "-") {
+        state = "line-comment";
+        result += "  ";
+        index += 2;
+        continue;
+      }
+      if (character === "/" && next === "*") {
+        state = "block-comment";
+        result += "  ";
+        index += 2;
+        continue;
+      }
+      if (character === "$") {
+        const delimiter = value.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u)?.[0];
+        if (delimiter) {
+          state = "dollar";
+          dollarDelimiter = delimiter;
+          result += " ".repeat(delimiter.length);
+          index += delimiter.length;
+          continue;
+        }
+      }
+      result += character;
+      index += 1;
+      continue;
+    }
+    if (state === "single") {
+      if (character === "'" && next === "'") {
+        result += "  ";
+        index += 2;
+        continue;
+      }
+      if (character === "\\" && next !== undefined) {
+        result += mask(character) + mask(next);
+        index += 2;
+        continue;
+      }
+      result += mask(character);
+      index += 1;
+      if (character === "'") state = "code";
+      continue;
+    }
+    if (state === "line-comment") {
+      result += mask(character);
+      index += 1;
+      if (character === "\n" || character === "\r") state = "code";
+      continue;
+    }
+    if (state === "block-comment") {
+      if (character === "*" && next === "/") {
+        result += "  ";
+        index += 2;
+        state = "code";
+      } else {
+        result += mask(character);
+        index += 1;
+      }
+      continue;
+    }
+    if (value.startsWith(dollarDelimiter, index)) {
+      result += " ".repeat(dollarDelimiter.length);
+      index += dollarDelimiter.length;
+      state = "code";
+    } else {
+      result += mask(character);
+      index += 1;
+    }
+  }
+  return result;
 }
 
 function sqlWritePattern(table: string) {
@@ -307,6 +444,88 @@ function isModuleLoaderCall(node: ts.CallExpression) {
     (ts.isIdentifier(node.expression) && node.expression.text === "require") ||
     node.expression.kind === ts.SyntaxKind.ImportKeyword
   );
+}
+
+function isDatabaseStringCall(node: ts.CallExpression) {
+  if (!ts.isPropertyAccessExpression(node.expression)) return false;
+  if (!/^(?:query|execute|raw|unsafe)$/u.test(node.expression.name.text)) return false;
+  return /(?:^|\.)(?:db|database|pool|client|tx|queryable)$/iu.test(normalizeText(node.expression.expression.getText()));
+}
+
+function isRouteRegistrationCall(node: ts.CallExpression) {
+  if (!ts.isPropertyAccessExpression(node.expression)) return false;
+  if (!/^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(node.expression.name.text)) return false;
+  return /(?:^|\.)(?:app|router|routes?)$/iu.test(normalizeText(node.expression.expression.getText()));
+}
+
+function collectUniqueConstantBindings(sourceFile: ts.SourceFile) {
+  const declarations = new Map<string, ts.Expression[]>();
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      const values = declarations.get(node.name.text) ?? [];
+      values.push(node.initializer);
+      declarations.set(node.name.text, values);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return new Map(
+    [...declarations.entries()].flatMap(([name, values]) => (values.length === 1 ? [[name, values[0]] as const] : [])),
+  );
+}
+
+type EvaluatedString = { text: string; complete: boolean };
+
+function evaluateStringExpression(
+  expression: ts.Expression,
+  bindings: ReadonlyMap<string, ts.Expression>,
+  seen = new Set<string>(),
+): EvaluatedString {
+  const node = unwrapStringExpression(expression);
+  if (isStringNode(node)) return { text: node.text, complete: true };
+  if (ts.isIdentifier(node)) {
+    if (seen.has(node.text)) return { text: "${unresolved}", complete: false };
+    const initializer = bindings.get(node.text);
+    if (!initializer) return { text: "${unresolved}", complete: false };
+    const nextSeen = new Set(seen);
+    nextSeen.add(node.text);
+    return evaluateStringExpression(initializer, bindings, nextSeen);
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = evaluateStringExpression(node.left, bindings, seen);
+    const right = evaluateStringExpression(node.right, bindings, seen);
+    return { text: left.text + right.text, complete: left.complete && right.complete };
+  }
+  if (ts.isTemplateExpression(node)) {
+    let text = node.head.text;
+    let complete = true;
+    for (const span of node.templateSpans) {
+      const value = evaluateStringExpression(span.expression, bindings, seen);
+      text += value.text + span.literal.text;
+      complete = complete && value.complete;
+    }
+    return { text, complete };
+  }
+  return { text: "${unresolved}", complete: false };
+}
+
+function unwrapStringExpression(expression: ts.Expression): ts.Expression {
+  if (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isTypeAssertionExpression(expression) ||
+    ts.isSatisfiesExpression(expression) ||
+    ts.isNonNullExpression(expression)
+  ) {
+    return unwrapStringExpression(expression.expression);
+  }
+  return expression;
 }
 
 function isStringNode(node: ts.Node): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
@@ -395,12 +614,36 @@ async function collectSourceFiles(root: string): Promise<string[]> {
   return files;
 }
 
-async function assertDirectoryReadable(absoluteRoot: string, relativeRoot: string) {
-  try {
-    await access(absoluteRoot);
-  } catch (error) {
-    throw new Error(`Required parameter-catalog consumer root is missing: ${relativeRoot}.`, { cause: error });
+async function collectConsumerSourceFiles(
+  repoRoot: string,
+  paths: readonly { pattern: string; required: boolean }[],
+): Promise<string[]> {
+  const files = new Set<string>();
+  for (const path of paths) {
+    const isDirectoryGlob = path.pattern.endsWith("/**");
+    const relativePath = isDirectoryGlob ? path.pattern.slice(0, -3) : path.pattern;
+    const absolutePath = resolve(repoRoot, relativePath);
+    if (!(await pathExists(absolutePath))) {
+      if (path.required) throw new Error(`Required parameter-catalog consumer path is missing: ${path.pattern}.`);
+      continue;
+    }
+    const metadata = await lstat(absolutePath);
+    if (metadata.isSymbolicLink()) {
+      throw new Error(`Symbol links are not allowed in parameter-catalog consumer paths: ${path.pattern}.`);
+    }
+    if (isDirectoryGlob) {
+      if (!metadata.isDirectory()) {
+        throw new Error(`Required parameter-catalog consumer directory is not a directory: ${path.pattern}.`);
+      }
+      for (const file of await collectSourceFiles(absolutePath)) files.add(file);
+      continue;
+    }
+    if (!metadata.isFile()) {
+      throw new Error(`Required parameter-catalog consumer file is not a file: ${path.pattern}.`);
+    }
+    if (sourceExtensions.has(extname(absolutePath).toLowerCase())) files.add(absolutePath);
   }
+  return [...files].sort(compareText);
 }
 
 async function initializeBaseline(repoRoot: string, baselineSha: string) {
@@ -414,7 +657,7 @@ async function initializeBaseline(repoRoot: string, baselineSha: string) {
 
   const targetPaths = [
     boundaryViolationFixturePath,
-    ...consumerShardDefinitions.map(([, , file]) => `${allowlistShardDirectory}/${file}`),
+    ...consumerShardDefinitions.map(({ shardFile }) => `${allowlistShardDirectory}/${shardFile}`),
   ];
   for (const path of targetPaths) {
     if (await pathExists(resolve(repoRoot, path))) {
@@ -425,10 +668,10 @@ async function initializeBaseline(repoRoot: string, baselineSha: string) {
   const violations = await scanParameterCatalogBoundaries(repoRoot);
   const artifacts = buildInitialAllowlistArtifacts(violations, baselineSha);
   await writeJson(resolve(repoRoot, boundaryViolationFixturePath), artifacts.fixture);
-  for (const [index, , file] of consumerShardDefinitions) {
-    const shard = artifacts.shards.find((candidate) => candidate.family === index);
-    if (!shard) throw new Error(`Missing generated shard for ${index}.`);
-    await writeJson(resolve(repoRoot, allowlistShardDirectory, file), shard);
+  for (const definition of consumerShardDefinitions) {
+    const shard = artifacts.shards.find((candidate) => candidate.family === definition.family);
+    if (!shard) throw new Error(`Missing generated shard for ${definition.family}.`);
+    await writeJson(resolve(repoRoot, allowlistShardDirectory, definition.shardFile), shard);
   }
 
   return {

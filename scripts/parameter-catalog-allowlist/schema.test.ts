@@ -17,7 +17,10 @@ const entry = {
 const shard = (): AllowlistShard => ({
   schemaVersion: 1,
   family: "S12-CGH",
-  root: "server/modules/parameter-specs",
+  paths: [
+    "server/modules/parameter-specs/**",
+    "src/infrastructure/http/parameterAdminClient.ts",
+  ],
   entries: [entry],
 });
 

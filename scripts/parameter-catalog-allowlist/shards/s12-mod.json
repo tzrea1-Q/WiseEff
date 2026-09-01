@@ -1,7 +1,12 @@
 {
   "schemaVersion": 1,
   "family": "S12-MOD",
-  "root": "server/modules/parameter-modules",
+  "paths": [
+    "server/modules/parameter-modules/**",
+    "src/application/ports/ParameterModuleRegistryRepository.ts",
+    "src/infrastructure/http/parameterModuleRegistryClient.ts",
+    "server/modules/parameter-modules/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
     {
       "id": "S12-MOD:legacy-catalog-module-import:398653f865956b7d:1",
@@ -694,6 +699,12 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-MOD:legacy-catalog-route:83b2ab7b728cd755:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-MOD:legacy-catalog-route:99d4172462ced801:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-modules/routes.ts",
@@ -727,6 +738,12 @@
       "id": "S12-MOD:legacy-catalog-route:e9538b1835022f34:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:eeb82a0204dccd76:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1090,15 +1107,321 @@
       "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:03c6f2b1ad814e1c:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:11887abc8440d7db:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:18daa89930561548:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2616079e597c5c51:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:26b9f7c5d6715182:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2be6928342120dff:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2be6928342120dff:2",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2c0689ad474cb795:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2ce841b579625cb4:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:3333bfdca549c8fd:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:38e358ea672efbe5:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:49d2b6cf2ea55930:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:49d2b6cf2ea55930:2",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:49d2b6cf2ea55930:3",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:49d2b6cf2ea55930:4",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:52d72f5a8e87e5e6:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:56ccd1fe20b38ed9:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:56f2a1e502353636:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:589127ad933001ba:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:5a34dcebae5632aa:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:5b66193b11fd256b:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:666fea1864c837c0:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:6acb7df14e1a7ecf:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:6da7c2a370029c09:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:791af1a265f9c5ed:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:7cc6b8509a231e62:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:7f2929f9c8dd0f13:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:814d4dd2fd6bbbcb:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:877a7d58bda3f996:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:94614bd1b74e265c:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:a6048f398f9aefdc:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:a74fca063a6327f0:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:a97792207f433aa7:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ac3d491cfc162c45:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ae6cd33299eea803:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-MOD:legacy-overlay-catalog-contract:b4a6fadf4e3e3b15:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-modules/service.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:b72f24002030b5d6:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:bd988d3b2cbb8cf8:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:bdbcdd37a6b55169:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c0d7fd3f19d72949:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c1a4bf4297fd72c1:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c3139aeba59b9e9e:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:cca08dbbcf81e642:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:d03d24fe2c4dd055:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:d447ed75fc809f4d:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:da4ea4e7460eb2d5:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:de43ee27df153a13:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:e34f9f3871eb449e:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:e88e96f5b031e0f9:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-MOD:legacy-overlay-catalog-contract:f2eed5a275c42aef:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:f79d1e29050ac74e:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:fe119002a65e2ee7:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ff702852ebc4defa:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -1240,6 +1563,18 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:9b62a5c32374cab8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:9b62a5c32374cab8:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-MOD:legacy-parameter-spec-identifier:a4ecb45d5c766889:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-modules/repository.ts",
@@ -1310,6 +1645,30 @@
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:8e1b925816738e75:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:ac7f0467eb8d3f63:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:b0a68fe03e93686c:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:f32c1a65891fdd11:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

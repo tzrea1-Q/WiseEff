@@ -1,8 +1,21 @@
 {
   "schemaVersion": 1,
   "family": "S12-KNW",
-  "root": "server/modules/knowledge",
+  "paths": [
+    "server/modules/knowledge/**",
+    "server/modules/knowledge/relatedKnowledge.ts",
+    "src/application/ports/KnowledgeRepository.ts",
+    "src/infrastructure/http/knowledgeClient.ts",
+    "src/features/knowledge/**",
+    "server/modules/knowledge/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:0924a15b879068ed:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
     {
       "id": "S12-KNW:legacy-catalog-raw-read:1300b00a87345f6c:1",
       "rule": "legacy-catalog-raw-read",
@@ -16,7 +29,25 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-KNW:legacy-catalog-raw-read:1adbb3ada5f4c1c3:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:2c99ab05ce5ae789:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-KNW:legacy-catalog-raw-read:371d2c07c987155f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:384cd9a1123e037e:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/knowledge/parameterReferences.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
@@ -29,6 +60,30 @@
     },
     {
       "id": "S12-KNW:legacy-catalog-raw-read:4bbf38e8e6a5a216:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:60529492ecf874e0:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:79e9a87f22172432:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:dd42b1920ce91c2e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:f246eafd8fda211b:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/knowledge/parameterReferences.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
@@ -73,6 +128,12 @@
       "id": "S12-KNW:legacy-catalog-route:882c20e86d9b6a56:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/knowledge/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:f63e5a19e7d5b00e:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/knowledgeClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -134,6 +195,36 @@
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/knowledge/reloadDistillationService.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-KNW:unresolved-boundary-expression:27820343969a3ce0:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/knowledge/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-KNW:unresolved-boundary-expression:454004a55c8292b0:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/knowledge/indexing/vectorEnsure.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-KNW:unresolved-boundary-expression:5dd05bca18adf81b:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/knowledge/logDomainRetrieval.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-KNW:unresolved-boundary-expression:6caa1474728a1a1e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/knowledge/logDomainRetrieval.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-KNW:unresolved-boundary-expression:d8165ec7b21bbbf2:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/knowledge/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

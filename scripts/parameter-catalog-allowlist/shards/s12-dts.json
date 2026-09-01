@@ -1,7 +1,12 @@
 {
   "schemaVersion": 1,
   "family": "S12-DTS",
-  "root": "server/modules/dts-reload",
+  "paths": [
+    "server/modules/dts-reload/**",
+    "src/application/ports/DtsReloadRepository.ts",
+    "src/infrastructure/http/dtsReloadClient.ts",
+    "server/modules/dts-reload/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
     {
       "id": "S12-DTS:legacy-catalog-raw-read:11200927df7f089f:1",
@@ -290,6 +295,18 @@
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/dts-reload/provenance.integration.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-DTS:unresolved-boundary-expression:1ac41d4b3c65aac6:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-DTS:unresolved-boundary-expression:9bf8a7899180ba3a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/dts-reload/resolveConfiguration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

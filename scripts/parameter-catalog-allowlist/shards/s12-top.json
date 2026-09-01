@@ -1,7 +1,12 @@
 {
   "schemaVersion": 1,
   "family": "S12-TOP",
-  "root": "server/modules/parameter-topology",
+  "paths": [
+    "server/modules/parameter-topology/**",
+    "src/application/ports/ParameterTopologyRepository.ts",
+    "src/infrastructure/http/parameterTopologyClient.ts",
+    "server/modules/parameter-topology/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
     {
       "id": "S12-TOP:legacy-catalog-module-import:025a2e38c294ec2f:1",
@@ -904,9 +909,27 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:01d452dfefec3d47:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:117743b602950178:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:1c7d19b943635dc4:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:1f999288902e0ddf:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -922,9 +945,27 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:24b956e43041e425:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:2e27668933c1d798:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:33433f0fe13af8c5:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:3786e9efb4db43c7:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -937,6 +978,12 @@
       "id": "S12-TOP:legacy-catalog-route:4694ccc5bf074d31:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:473c984936db17a1:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -955,6 +1002,12 @@
       "id": "S12-TOP:legacy-catalog-route:50b3b007415316a4:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:671f993769522b1d:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -994,6 +1047,18 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:8269cf2ac32cbcbc:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:867f90f5994a799d:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:86b65dd8775eb592:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -1018,6 +1083,18 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:907d1646efeb9aa6:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:9d14736975bc0da0:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:ae6b53480d343bc2:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -1030,9 +1107,63 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:b16a9863d5edbaa3:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:b7e1439ef944322a:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:b7ff6cb99f2cd747:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:bd89f1c77e6e9838:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:c7abe75f68c12311:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:c86d283bfb4f6795:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:c91ef0834014706e:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:ca23b186c3e3c22e:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:d5806c7773997ad5:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:dbb2ec5cfc576cf7:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1057,6 +1188,12 @@
       "id": "S12-TOP:legacy-catalog-route:ece6722ae24131ec:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:f8d77f46f9d5e47a:1",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1912,6 +2049,12 @@
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
+      "id": "S12-TOP:legacy-effective-governance-contract:9e0cac148908bd48:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
       "id": "S12-TOP:legacy-effective-governance-contract:a12829fc0e81e901:1",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -1978,6 +2121,12 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:01798c88a56edcc6:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterTopologyRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:017ffcb3d230e47a:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/overlayWriteback.ts",
@@ -1987,6 +2136,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:01b5f92171351999:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:01ed0a553dd4001b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2113,6 +2268,18 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:1a9ac51617c6359e:2",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1b25d30c88899fe9:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1b25d30c88899fe9:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2425,6 +2592,42 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:5152f375c680cf57:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:52e2c628bd176dd5:6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2917,6 +3120,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:899ab3c02f079af1:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8b5dfca5dfb3f7bc:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3518,6 +3727,342 @@
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:02f9d90705e4143a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:039491e954bf23c3:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:071982ad86deeef1:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:098cb04d1fb45135:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:09aaee46458e6733:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:168940c5a3b5aa65:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:18f0fd61875aaab6:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:22e52ad2bdf4a34f:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:22f71b943ee4caba:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/semanticFixtureCleanup.isolation.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:230b380612fe8b28:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:2983fab9aa94894b:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:2c44ec65ac82c8ec:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:2f154e74934997a2:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:354fdc188b342493:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:3889c1f144153984:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:3d7487883cde319e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:4d963d5ba9564bf7:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:4dc06f7d4cff6de1:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:5312db836ae88caf:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:5e583e1903893585:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:5e7fad33c8b980b6:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:5fd4c5f28825b2f9:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:615c9da74e2e9abf:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:663bde7400508419:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:6755199f40aebbd1:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:68199e38ab3b30f3:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:6e5eb48fa8704a5e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:6f8507a185dd4e3a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/semanticFixtureCleanup.isolation.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:73105d5a3fb021ef:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:7ec5b1234d453e6a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/semanticFixtureCleanup.isolation.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:809d150421cba6d7:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:817240b6e95814c3:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:835ac7f1548ad93f:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:8560fd5d2d61c330:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:868523d7730b252e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:8778a2d2f3b0cd84:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:886cfb64b981c96d:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:951729c84ef5ca83:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:951729c84ef5ca83:2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:951729c84ef5ca83:3",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:98213b0cace879e8:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:9d37c8c9e83f9f7f:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:aa1cdec9a293389a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:c4dda6ca4ca76236:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:c5a08bcdea02468d:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:cbf9802f0cca0165:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:cce11267469589fc:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/semanticFixtureCleanup.isolation.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:d0ae4fd542ef1451:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/localPostCutover.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:d41e6aa38120c45c:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:d7eea18d7d52447f:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:e21933a44a9e4cfc:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:e77fec4e490076f3:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:ee651f44bb315de3:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:ee651f44bb315de3:2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:fe4a0c927d410a82:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-TOP:unresolved-boundary-expression:fe898c135c169f20:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }

@@ -1,7 +1,11 @@
 {
   "schemaVersion": 1,
   "family": "S12-CGH",
-  "root": "server/modules/parameter-specs",
+  "paths": [
+    "server/modules/parameter-specs/**",
+    "src/infrastructure/http/parameterAdminClient.ts",
+    "server/modules/parameter-specs/parameterCatalogComparisonContribution.ts"
+  ],
   "entries": [
     {
       "id": "S12-CGH:legacy-catalog-raw-read:0052721edff9bb8a:1",
@@ -46,6 +50,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:06831a3902a473fd:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:06e012d5472eb52f:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/specVersionCutover.integration.test.ts",
@@ -85,6 +95,30 @@
       "id": "S12-CGH:legacy-catalog-raw-read:082344c75bf00457:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:0824a2b624058e63:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:0824a2b624058e63:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:0824a2b624058e63:3",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:0824a2b624058e63:4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -580,6 +614,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:46c9e7cb2329552c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:475751be78d8e3a2:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -640,6 +680,30 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:4c3d61d413aa5474:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:4c3d61d413aa5474:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:4c3d61d413aa5474:3",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:4c3d61d413aa5474:4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:4d63e2dd6ecb713a:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -697,6 +761,12 @@
       "id": "S12-CGH:legacy-catalog-raw-read:4fd35855bef3663d:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:5053fe2dddae5c00:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -1648,9 +1718,21 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:b6279bd0f1590577:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:b6284c15d098936b:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:b7f6e64ff3cca39d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -1726,6 +1808,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:be7f28e43e641f9d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:bf3714199b021123:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -1747,6 +1835,12 @@
       "id": "S12-CGH:legacy-catalog-raw-read:c0b14ee002c20559:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:c1addedfee94cdf4:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -2089,6 +2183,12 @@
       "id": "S12-CGH:legacy-catalog-raw-read:e72770e83eb34496:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-raw-read:e748c24701f29518:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -2815,6 +2915,12 @@
       "id": "S12-CGH:legacy-catalog-sql-write:2c31afad824ecabe:1",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-specs/specIdentityCorrection.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-sql-write:2c757561361b2302:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
@@ -4804,6 +4910,12 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:0895cf2dbb9d0c07:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:08d4440ba8662139:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
@@ -5266,6 +5378,12 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:3bb91a713aa8e7c1:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:3c92b8e07f14c092:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
@@ -5347,6 +5465,12 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:4345752b3ceeca4d:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:43db01a5bd55469e:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5449,6 +5573,12 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:5898f2fa77d5f38e:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:59b6e3a524a405b3:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5920,6 +6050,12 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:9527b1fb3ebb13fd:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:95f8da33b388c646:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
@@ -6046,6 +6182,12 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:a9bb17e095a16107:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:aa0b70027747d1d9:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.test.ts",
@@ -6091,6 +6233,12 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:b6115b54f3ea9e83:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:b6e6874ba9287971:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6202,6 +6350,12 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:c1cb756d03cad67d:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:c2215c19666b95ea:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/routes.ts",
@@ -6281,6 +6435,12 @@
     },
     {
       "id": "S12-CGH:legacy-overlay-catalog-contract:d1035d19552289c9:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-CGH:legacy-overlay-catalog-contract:d1864ae33332f91e:1",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
@@ -10580,6 +10740,72 @@
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-specs/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:17a26cef9d052926:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/effectiveDefinitionService.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:245cdddb298d0c92:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:3fefc7f7a85ef5f8:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:85505c96b066ad27:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:930493d5750d7a4c:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/definitionReconciliation.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:95fd7cbd3f38acb2:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/definitionVerification.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:9f4a338ad021ff3e:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:9f4a338ad021ff3e:2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/specReviewTenantEvidence.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:afe3d6a061df945b:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:f12c0f22ee25f32d:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-CGH:unresolved-boundary-expression:f42fc11e54821b5d:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-specs/effectiveDefinitionService.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]
 }
