@@ -22,6 +22,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
 | Implemented locally | [Self-Hosted One-Command Upgrade](2026-08-20-self-hosted-one-command-upgrade-design.md) | Source-checkout upgrade seam: immutable target, prebuild, quiescence, verified recovery point, full data-preserving restart, resume/recovery. Non-customer target rehearsal remains required evidence. |
+| Locked decision | [Parameter Catalog Cutover, Archive, and Rollback](parameter-catalog-cutover-archive-rollback.md) | P0-P16 populated-data maintenance workflow, typed legacy dispositions, mandatory P11 semantic dual-read comparison, Archive, recovery, and self-hosted ordering contract. |
 | Current | [Security Governance](security-governance.md) | Identity, authorization, audit, Agent safety, device safety, data protection. |
 | Current | [Audit Center Design](2026-06-17-audit-center-design.md) | Audit evidence model, module/org audit IA, API, and phased delivery. |
 | Current | [DTS Parameter Management Assessment](2026-07-14-dts-parameter-management-assessment.md) | Current-state problem inventory and locked positioning decisions for DTS/JSON tree parameter management (planning input). |
