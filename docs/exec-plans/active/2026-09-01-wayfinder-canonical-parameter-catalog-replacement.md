@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-Status: **Complete draft awaiting parent-session review**. Implementation, `/to-tickets`, pull requests, and merges are blocked until the owner confirms the module seams, implementation/ticket granularity, and dependency edges.
+Status: **Complete specification — parent accepted**. The accepted module seams, implementation/ticket granularity, and dependency edges are frozen. `/to-tickets` must not run until this G0 candidate has merged into `main`.
 
 Base: `origin/main@406c23bcaf0dcfca284de3135e27bfcd19c29c4e`. This is a target contract. It does not claim current implementation or release evidence, reserve a migration number, or authorize production activation.
 
@@ -382,7 +382,7 @@ Current main ends at `0136`; this draft reserves no number. Every implementation
 
 ### Ticket-ready work packages, not Issues
 
-S0-S14 are workstream numbers, not ticket numbers. Each row below is one future ticket candidate for one agent/branch/merge decision. This specification creates none of them. Evidence codes are D=document/static, L=local pure/fake, PG=real local PostgreSQL, B=browser-real, H=Hosted/CI, T=real target-host, and R=release/production report. “None” means another level cannot be inferred.
+S0-S14 are workstream numbers, not ticket numbers. Each row below is one future ticket candidate for one agent/branch/merge decision. This specification creates none of them. Parent acceptance freezes the module seams, row granularity, and dependency edges; `/to-tickets` still waits for this G0 candidate to merge into `main`. Evidence codes are D=document/static, L=local pure/fake, PG=real local PostgreSQL, B=browser-real, H=Hosted/CI, T=real target-host, and R=release/production report. “None” means another level cannot be inferred.
 
 Number/ID ownership defaults apply to every row: unless a row explicitly names a migration, ADR, PCAT-API, PCAT-UI, operation, V/M/P/D, or generated artifact, that node owns **none** of that class. Only S2-SCH/S2-RBAC/S10-PER may allocate their explicitly scoped migrations; G0/parent owns ADR numbers; S8-CON owns the API registry while route nodes own only their named assertion ranges. This Spec/G0 owns the initial non-blocking `PCAT-UI-01..15` and fifteen `future` operation registry entries; S9-BRW alone later changes their status to blocking/automated and regenerates the English operation matrix, while S9-CAT/S9-GOV/S9-BRW own only their named acceptance markers/files. This default is a normative explicit “none,” not omitted ticket metadata.
 
@@ -550,7 +550,7 @@ Recommended merge waves use only ticket rows: (0) `G0`; (1) `S0-ID`; (2) paralle
 | #671 shared fixture | S0-FIX | checksum freeze; downstream consumes only |
 | acceptance files | S9-CAT owns `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; S9-GOV owns `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; S9-BRW owns `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` | one file, one ticket owner |
 
-Two tickets in one wave may not own the same generated artifact, migration, registry source, or acceptance file. The parent must change ownership/wave before implementation; resolving the conflict later does not preserve ticket independence. No Issues are created until the parent confirms the four seams, every row's granularity, dependency types, critical path, and merge order.
+Two tickets in one wave may not own the same generated artifact, migration, registry source, or acceptance file. The parent must change ownership/wave before implementation; resolving the conflict later does not preserve ticket independence. Parent acceptance has frozen the four seams, every row's granularity, dependency types, critical path, and merge order; no Issues are created and `/to-tickets` does not run until this G0 candidate merges into `main`.
 
 ## Testing Decisions
 
@@ -639,4 +639,4 @@ The plan cannot complete until every Update/Review row is updated bilingually or
 - This is one plan with many ticket branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
 - The parent/session owner integrates branches under the CD/CF/ID/RE graph and exclusively owns PR creation, merge, and main synchronization.
 - Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after rebase. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
-- This branch remains paused before `/to-tickets` until the parent accepts seams, package granularity, and dependencies.
+- This branch remains paused before `/to-tickets`; parent acceptance is recorded, but `/to-tickets` may run only after this G0 candidate merges into `main`.

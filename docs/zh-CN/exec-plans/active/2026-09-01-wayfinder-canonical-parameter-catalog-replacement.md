@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-状态：**待父会话审查的完整规格草案**。在所有者确认模块 seams、实现切片/后续 ticket 粒度和依赖边之前，禁止进入 `/to-tickets`、生产实现、PR 或合并。
+状态：**完整规格——父会话已验收**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边已经冻结；在本 G0 候选合入 `main` 之前不得执行 `/to-tickets`。
 
 基线：`origin/main@406c23bcaf0dcfca284de3135e27bfcd19c29c4e`。本规格描述目标合同，不宣称主线已经实现，不预留 migration 编号，也不构成发布批准。
 
@@ -503,7 +503,7 @@ P16 永不因“非 current”删除 Audit、Archive、mapping versions/heads、
 
 ### 16. Ticket-ready work packages（仍不是 Issues）
 
-`S0`–`S14` 只是 workstream 编号，**不等于 ticket**。下表每一行才是一个可交给单一开发智能体、独立分支和独立 merge decision 的 future ticket candidate。本规格不创建这些 ticket；父会话仍需确认 seam、行粒度与阻塞边。
+`S0`–`S14` 只是 workstream 编号，**不等于 ticket**。下表每一行才是一个可交给单一开发智能体、独立分支和独立 merge decision 的 future ticket candidate。本规格不创建这些 ticket。父会话验收已经冻结模块 seams、行粒度与依赖边；`/to-tickets` 仍须等待本 G0 候选合入 `main`。
 
 证据缩写：`D`=文档/静态；`L`=local pure/fake；`PG`=真实 local PostgreSQL；`B`=browser-real；`H`=Hosted/CI；`T`=真实 target-host；`R`=release/production purpose report。某行写“无”即不得由别的证据层推导。
 
@@ -675,7 +675,7 @@ RI-01 -(RE + actual time/telemetry)-> S13-PROGRAM -(RE + actual evidence)-> S14-
 
 任何同一 merge wave 出现两个 ticket 同时拥有同一 generated artifact、migration file、registry source 或 acceptance file，父会话必须先调整 ownership/merge wave；不能靠冲突解决后继续称为独立 ticket。
 
-Ticket 创建前仍需父会话确认：四个深模块 seams；上述每行 ticket 粒度；`CD/CF/ID/RE` 边、critical path 与 merge order。本草案继续停在 `/to-tickets` 前。
+父会话验收已经冻结四个深模块 seams、上述每行 ticket 粒度、`CD/CF/ID/RE` 边、critical path 与 merge order；本 G0 不创建 Issues，且在候选合入 `main` 前不得执行 `/to-tickets`。
 
 ## Testing Decisions
 
@@ -780,4 +780,4 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 - 这是一份计划、多个 ticket 分支。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
 - 父 agent/会话所有者按本 Spec 的 `CD/CF/ID/RE` 图审查 exact diff/evidence、集成 ticket branches，独占 PR creation、merge 和 main synchronization。
 - 多分支并行必须先 claim migration/ADR/acceptance ID，rebase 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
-- 本草案分支只含规格/计划文档；在 seams、粒度和依赖确认前保持暂停。
+- 本规格分支只含规格/计划文档；父会话验收已经记录，但在本 G0 候选合入 `main` 前继续停在 `/to-tickets` 之前。
