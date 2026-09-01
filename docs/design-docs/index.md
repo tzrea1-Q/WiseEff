@@ -12,8 +12,10 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 
 ## Current Architecture
 
+<!-- prettier-ignore -->
 | Status | Document | Purpose |
 | --- | --- | --- |
+| Locked decision | [Parameter Catalog Verification, Upgrade, and Retirement Gates](parameter-catalog-verification-upgrade-retirement-gates.md) | One Release Verification seam, V01-V17 and D01-D09 release gates, API/browser acceptance, self-hosted recovery, observability, evidence hierarchy, and staged legacy retirement. |
 | Current | [Full-Stack Architecture](full-stack-architecture.md) | Recommended runtime architecture and module boundaries. |
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
 | Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; not current runtime behavior. |
@@ -41,19 +43,19 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 
 These are implementation and design history. They are useful context, but current behavior is governed by the current architecture docs, product specs, source code, tests, and generated artifacts.
 
-| Status | Document |
-| --- | --- |
-| Historical | `2026-05-07-light-homepage-color-refresh-design.md` |
-| Historical | `2026-05-07-parameter-management-homepage-design.md` |
-| Historical | `2026-05-07-wiseeff-icon-design.md` |
-| Historical | `2026-05-10-parameter-admin-redesign-design.md` |
-| Historical | `2026-05-10-parameter-comparison-redesign-design.md` |
-| Historical | `2026-05-15-node-debugging-design.md` |
-| Historical | `2026-05-17-user-permissions-design.md` |
+| Status     | Document                                                |
+| ---------- | ------------------------------------------------------- |
+| Historical | `2026-05-07-light-homepage-color-refresh-design.md`     |
+| Historical | `2026-05-07-parameter-management-homepage-design.md`    |
+| Historical | `2026-05-07-wiseeff-icon-design.md`                     |
+| Historical | `2026-05-10-parameter-admin-redesign-design.md`         |
+| Historical | `2026-05-10-parameter-comparison-redesign-design.md`    |
+| Historical | `2026-05-15-node-debugging-design.md`                   |
+| Historical | `2026-05-17-user-permissions-design.md`                 |
 | Historical | `2026-05-20-project-parameter-initialization-design.md` |
-| Historical | `2026-05-21-parameter-comparison-modal-design.md` |
-| Historical | `2026-05-23-parameter-draft-dialog-redesign-design.md` |
-| Historical | `2026-05-24-parameter-personal-workbench-design.md` |
+| Historical | `2026-05-21-parameter-comparison-modal-design.md`       |
+| Historical | `2026-05-23-parameter-draft-dialog-redesign-design.md`  |
+| Historical | `2026-05-24-parameter-personal-workbench-design.md`     |
 
 ## Maintenance Rules
 
