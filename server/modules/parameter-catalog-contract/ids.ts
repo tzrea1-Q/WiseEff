@@ -4,18 +4,27 @@ type Branded<Value, Name extends string> = Value & {
   readonly [parameterCatalogContractBrand]: Name;
 };
 
-const brandString = <Name extends string>(value: string): Branded<string, Name> => {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+const brandString = <Name extends string>(
+  value: string,
+): Branded<string, Name> => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    /[\u0000-\u001F\u007F-\u009F]/u.test(value)
+  ) {
     throw new TypeError(
-      "Branded contract strings must be non-empty and have no surrounding whitespace"
+      "Branded contract strings must be non-empty, control-free, and have no surrounding whitespace",
     );
   }
   return value as Branded<string, Name>;
 };
 
-const brandNumber = <Name extends string>(value: number): Branded<number, Name> => {
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
-    throw new TypeError("Branded contract numbers must be finite integers");
+const brandNumber = <Name extends string>(
+  value: number,
+): Branded<number, Name> => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new TypeError("Branded contract numbers must be safe integers");
   }
   return value as Branded<number, Name>;
 };

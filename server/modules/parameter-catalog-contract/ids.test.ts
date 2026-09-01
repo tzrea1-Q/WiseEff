@@ -54,7 +54,7 @@ describe("parameter catalog nominal identifiers", () => {
     expect(MaintenanceAttemptId("maint_01KCUTOVER")).toBe("maint_01KCUTOVER");
   });
 
-  it("rejects empty or surrounding-whitespace string values without inventing formats", () => {
+  it("rejects empty, surrounding-whitespace, or control-bearing strings without inventing formats", () => {
     expect(CatalogCanonicalKey("driver:sc8562")).toBe("driver:sc8562");
     expect(PropertyKey("input_voltage_limit")).toBe("input_voltage_limit");
     expect(CatalogSearchText("driver compatible")).toBe("driver compatible");
@@ -70,18 +70,42 @@ describe("parameter catalog nominal identifiers", () => {
     expect(() => PropertyKey(" input_voltage_limit")).toThrow(TypeError);
     expect(() => CatalogSearchText("driver compatible ")).toThrow(TypeError);
     expect(() => CatalogEventTime("\t2026-09-01T00:00:00.000Z")).toThrow(TypeError);
+    expect(() => CatalogReleaseId("crel_01K\n42")).toThrow(TypeError);
+    expect(() => CatalogReleaseDigest("sha256:\0release")).toThrow(TypeError);
+    expect(() => CatalogCanonicalKey("driver:\u0085sc8562")).toThrow(TypeError);
     expect(() => CatalogReleaseId(42 as never)).toThrow(TypeError);
   });
 
-  it("accepts only finite integer page limits and release sequences in their ranges", () => {
+  it("accepts only safe-integer page limits and release sequences in their ranges", () => {
     expect(CatalogPageLimit(1)).toBe(1);
+    expect(CatalogPageLimit(Number.MAX_SAFE_INTEGER)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
     expect(CatalogReleaseSequence(0)).toBe(0);
     expect(CatalogReleaseSequence(42)).toBe(42);
+    expect(CatalogReleaseSequence(Number.MAX_SAFE_INTEGER)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
 
-    for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    for (const invalid of [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MAX_VALUE,
+    ]) {
       expect(() => CatalogPageLimit(invalid)).toThrow(TypeError);
     }
-    for (const invalid of [-1, 0.5, Number.NaN, Number.NEGATIVE_INFINITY]) {
+    for (const invalid of [
+      -1,
+      0.5,
+      Number.NaN,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MAX_VALUE,
+    ]) {
       expect(() => CatalogReleaseSequence(invalid)).toThrow(TypeError);
     }
     expect(() => CatalogPageLimit("1" as never)).toThrow(TypeError);

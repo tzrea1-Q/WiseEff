@@ -63,6 +63,33 @@ describe("parameter catalog wire serialization", () => {
     );
   });
 
+  it("repeats a shared acyclic object deterministically instead of treating it as a cycle", () => {
+    const shared = { beta: 2, alpha: 1 };
+
+    expect(serializeUnknown({ right: shared, left: shared })).toBe(`{
+  "left": {
+    "alpha": 1,
+    "beta": 2
+  },
+  "right": {
+    "alpha": 1,
+    "beta": 2
+  }
+}
+`);
+  });
+
+  it("pins JSON escaping for punctuation, controls, Unicode, and a lone surrogate", () => {
+    expect(
+      serializeContract({
+        value:
+          'quote:" backslash:\\ nul:\0 backspace:\b tab:\t newline:\n formfeed:\f carriage:\r unit:\u001f unicode:雪 lone:\ud800',
+      }),
+    ).toBe(
+      '{\n  "value": "quote:\\" backslash:\\\\ nul:\\u0000 backspace:\\b tab:\\t newline:\\n formfeed:\\f carriage:\\r unit:\\u001f unicode:雪 lone:\\ud800"\n}\n',
+    );
+  });
+
   it("sorts nested object keys while retaining array order", () => {
     expect(
       serializeContract({
@@ -93,6 +120,38 @@ describe("parameter catalog wire serialization", () => {
   it("rejects numbers that JSON would silently coerce", () => {
     for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, -0]) {
       expect(() => serializeContract({ invalid })).toThrow(TypeError);
+    }
+  });
+
+  it("rejects arrays with unsupported properties, elements, or prototypes", () => {
+    const extraStringProperty = ["value"];
+    Object.defineProperty(extraStringProperty, "extra", {
+      value: true,
+      enumerable: true,
+    });
+
+    const symbolProperty = ["value"];
+    Object.defineProperty(symbolProperty, Symbol("extra"), {
+      value: true,
+      enumerable: true,
+    });
+
+    const accessorElement = ["value"];
+    Object.defineProperty(accessorElement, "0", {
+      get: () => "computed",
+      enumerable: true,
+    });
+
+    const customPrototype = ["value"];
+    Object.setPrototypeOf(customPrototype, null);
+
+    for (const invalid of [
+      extraStringProperty,
+      symbolProperty,
+      accessorElement,
+      customPrototype,
+    ]) {
+      expect(() => serializeUnknown(invalid)).toThrow(TypeError);
     }
   });
 
