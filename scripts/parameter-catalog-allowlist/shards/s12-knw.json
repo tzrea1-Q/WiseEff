@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "family": "S12-KNW",
+  "root": "server/modules/knowledge",
+  "entries": [
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:1300b00a87345f6c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:19116e650fea30b6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:371d2c07c987155f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:42c4c10978a64cdb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-raw-read:4bbf38e8e6a5a216:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:4340ff4f78c48a65:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:59d7efed440db110:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:6ac70416fa9ad485:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:783f49b875aed9c3:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:7ad6c29baaaf1ce9:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:7c7aea30348152f2:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:882c20e86d9b6a56:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/knowledge/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:2b8de11dabf4fe6b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:31aafeec75b04e40:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:7b2cf62ce334f2e1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:9294bd4f0bd675f6:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:f03eab1f82fd5cd4:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:f8e70527d8918f69:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-parameter-spec-identifier:1521a2835dbfcbf2:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-parameter-spec-identifier:1a3e2b8281aa8e35:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-parameter-spec-identifier:5766fb915e612bb5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-parameter-spec-identifier:99009f3eb4fb9719:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/knowledge/reloadDistillationService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    }
+  ]
+}

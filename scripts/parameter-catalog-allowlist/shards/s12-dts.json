@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 1,
+  "family": "S12-DTS",
+  "root": "server/modules/dts-reload",
+  "entries": [
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:11200927df7f089f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/restoreBaseline.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:20ca5adc05aaa65e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:372c8220c8daca66:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/behaviouralVerify.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:3ddebfd546053dfe:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:430614920de391b6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:5a836cb9ef7893fb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:5c6f53ed0778ae99:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:6448f8d8e955bd5b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:65fe61d37f104198:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:7245048151dbe022:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:78658cc7552b14c2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:9551deb2f8fb0395:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:9b1bba345022cee3:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:b810fb69421f648a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:ba5abdc4ab10656a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:bc2ea2e3bd4af71d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/behaviouralVerify.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:cef860a3183ca4d5:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:d91fe73ef3da8542:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:dbbbdabdd4432048:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:e7f3bf6345aabfe9:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/behaviouralVerify.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:f632dc7b9bfbdb5c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:21e5f1dabe42e147:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:2a5b5919986b3c83:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:360d87df8ba156b6:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:4049ed4b24aafa1e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:4577b07bd5b4d9b1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:484cc10d6c0d8df1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:75efc326d751be4a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:783b9de5236940ff:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:814b8b7284e8999b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:85ec5a184740c292:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:900ff0b4057fadd1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:983c81311bb033f6:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:9ec04a7e83fc614f:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:a4ac4cba2f69e6bc:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:a6308dd8492eeffc:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:aacdb8c4bad3627f:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/history.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:b8d553282931c8c2:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:bb63a6801ef31c22:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:bbb2cf43be298081:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:c853a225a6d1826f:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:c9ae68599d467f9b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:e6141a98e694f3a0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:f548c620bfd528db:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/deploy.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-sql-write:f9a461fd4418f66e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-parameter-spec-identifier:2913e26be73606ad:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/dts-reload/provenance.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-DTS:legacy-parameter-spec-identifier:91153c768fb50642:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/dts-reload/promote.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-DTS:legacy-parameter-spec-identifier:bc501145d9f0a083:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/dts-reload/provenance.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    }
+  ]
+}

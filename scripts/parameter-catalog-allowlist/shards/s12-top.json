@@ -1,0 +1,3523 @@
+{
+  "schemaVersion": 1,
+  "family": "S12-TOP",
+  "root": "server/modules/parameter-topology",
+  "entries": [
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:025a2e38c294ec2f:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:0b6be0628c95deb9:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:2420f27052a75026:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:4480dec628e668dd:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:4b35d0caafe7d64a:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:5928c78518cacf66:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:5b40995a5248b919:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:8e9f4f7f8e77c67f:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:a311cb0e0cc66770:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:ba42d1fce8b9d6aa:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:bdd78491ab33135e:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:ce8176ee7f3ecd8c:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:d3808bb6c96468ae:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:ee0b824ab0e1dc3a:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/overlayWriteback.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-module-import:f0e1a4487fcb541d:1",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:018f200ad2c0aaa8:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:01ac718f98b801d7:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:01ac718f98b801d7:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:023692497e6c45cc:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:023c93e1946614e1:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:028920f59f702d23:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0401da115f81cf39:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:078b77aea13e2a5f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:07bcb15373e0d530:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:07be48617a97f30f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0a24e7d2acd02424:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0a52318e474d9fea:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0a97e6d3369c2be5:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0d923efb35726b31:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:0ec4d6caf76d6255:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:123242e036c422b2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:123e58257ca61d53:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:1854d11841e2f3ff:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:1ae567154498e268:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:1e134c41f30d2741:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:1ec08242c2d3f38d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:2095c6095dded079:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:2126efd04f53688d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:215c919c8e2adaa2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:222d53d00ead9d14:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:222d53d00ead9d14:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:22c0256be52d7cdf:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:2793ccceffa42f41:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3348e2aa77c6681d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:362a5b7cf8c9f34c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3730475f9ae23db6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3819d0d0aabe1dcb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3b0a250bb523a329:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3b778721487ace33:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:3d1492645c616072:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:40e7cda7f97313b6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:41acc49b9a3a5545:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4310075cdc064f2e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4310075cdc064f2e:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:432ab0cc0cdae7d3:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:44ad750a1756fd27:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:454dc26d77be9695:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4698f43f877d270e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:47f3a01476e7eae2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:481c1720797bfab3:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:483de104c8fdf73f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4845e2f8e3fcff13:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4975fd7fd1a60cad:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4c938f180e491c72:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4d0957cca157ea31:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4da42c955730d98e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4e79afb3d1470200:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/localPostCutover.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4e79afb3d1470200:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/localPostCutover.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:4e79afb3d1470200:3",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/localPostCutover.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:50f47e93b33804fb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:53a5d0d1309c9878:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:5540903932e56b1b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:56114ff00a980317:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:566b097372e0e63c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:64802233b4c815c6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:661f6ab253a96b8d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:665bf3253d2b2c02:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:66a890216004f5c3:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6b986524db2516f9:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6c006356a936cea1:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6c006356a936cea1:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6d3ec103e3da32cb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:71062a74a01a426e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:712aa514f46eea9f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:732432bc0a6cb832:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:73658a476be48d72:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7407a70a7f023ae2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7407a70a7f023ae2:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7531929fa5791a3b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7574ebf0589fb81b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:76186c97431fcd4d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:783ad94191198488:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7df8c76d9e5df8fe:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7fbd5522a6cb81de:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:88c94d873995209f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:8a894fcf254436b4:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:8ad7730381e9071a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:90ff2bc26820a132:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:92c316fddc94eb35:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:93d7ce30d206a914:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:949f3e7c0a0e9d8b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:9589b291429764c8:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:9595f6c4bd00b41b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:978f7fd40c3d6c3a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:983bf00c71041f3c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:9fae3c6e6051c905:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:a25970ec76c49627:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b05875da1cb8c98d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b28a9b84c5e3a610:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b293b9d240c8f864:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b38ccfff4ea1c090:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b48b8dd9b834c0f2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:b9ab7929467a5272:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:ba2ac1c60f81ea44:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:ba6300e49a37b690:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c06cf29d8ff9e526:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c2c096882034cd72:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c723a26bedb097de:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c79d5cfc9cbba112:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c7c9040f14a3a2c7:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:cd31a9d7942d1b30:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:d003c153afab2c21:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:d3093f1bfe3997de:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:d62878b97c5ded56:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:d7f9e708ed46401c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:d9c78c0c6a829a66:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:da128e1917d4b45d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:dee3279bb6c9bad9:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:dfa5d9d276ec70d6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:e2807166ed73573b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:ea0eb78f94a6adf6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:ebdf1e790fa2c1f2:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:efcc5cc1e61c312d:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f03129b307b61034:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f03129b307b61034:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f07753a8038351ac:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f1d485d83bc8e6d6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f2016d9a4bea7e89:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f2016d9a4bea7e89:2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f308aa0e7494efc5:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f7cf92229f8d9725:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f89433448629567c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:f971e96ab0ee086e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/localPostCutover.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fa74d8f419da716f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fb9e38041b4be307:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fced355d5eddf37e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fd5dd5d50c898da6:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fe447ad04dcf5c24:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:fe73d85469955c2e:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:feeb3603f1ed397f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:1c7d19b943635dc4:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:24012e2ab12aaea4:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:240b817a3b928dd0:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:2e27668933c1d798:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:42621e6955075305:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:4694ccc5bf074d31:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:4887d5b765282c2f:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:4a6e5874fd34c881:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:50b3b007415316a4:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:67fb022547eb7c0a:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:6919bb27e140b15e:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:755bf8547f9b34f2:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:762688d8cca810b7:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:78ee47eaa56616b1:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7b066ca49ef691d6:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:86b65dd8775eb592:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:8746918323420657:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:8a7168dfe540a29d:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:8e13b7d49a254155:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:ae6b53480d343bc2:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:b13328853bc91449:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:c7abe75f68c12311:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:e3f3223d4d5e36d9:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:e6614048f6f16aee:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:e94e4bff1ce8285b:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:ece6722ae24131ec:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:03b1ed395fe6470b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:03cdb2d987a38e8c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:049520e7b3ee293e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0620b5a05a7fb6bf:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:06af3e35f1800904:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:081ecba4b83b7e9c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:081ecba4b83b7e9c:2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0c0c640a867fe995:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0c4f77c4526e8514:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0c66f805d99df77e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0d7f4b39d8025296:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0db1bd0f945ec010:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0e73131a465ce229:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:0ec1d1dbaf049388:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:16dca1db3d01b57a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:16fee43f068edd73:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:19172a560fef5306:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:1920a66a3378de15:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:1fb318552ee4fb5e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:20b273e39b487208:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:20bbe0fdd7c35db0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:24c4bc872ddd4857:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:2545ea611aef45de:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:263d699b11db82d0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:27fdbae9e1738e2d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:28719619e132e613:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:288102ab7422688f:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:29d7e9e1bd089495:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:2b83677f04ac2d2b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:2d4f7c0d2e0deb1f:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:306da32a210f11e6:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:333f5c5a859c2f06:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:33971f6de8d7e480:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:33cd840f06640a2c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:34208342939e9e41:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:365f8b7354446876:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:3bf7737ec5d26216:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:3c3628aa5b883e0e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:406920d86e2d5451:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:40ebc9f2fb5adb91:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:43840e07f7faf101:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:45d223cd87e4e30e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:4d8f4a53c917baa5:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:53f1b89ee746cca8:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:554f19d6350ab4b1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:56736debb2471dff:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:5857441fafde36cb:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:58e3cf704103b26e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:5b41a889e3fb7cad:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:5d353da1706ab11a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:5d8b8f26bba5680d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:5eeb44976feef3df:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:6051c9096e8799e9:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:622729a1704222a7:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:677b04c45cce1f9c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:6870b4c2c68d83d7:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:68a11f601f651d30:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:68f458931b7533f8:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:6d55c89a5ddd5088:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:6fbda1ed83d30e06:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:71a2151be0881dcc:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:71aebad1fdd2dca8:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:75521a37d2b75c25:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:76e26c10c5c3f511:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:79a51fdd41e03b49:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:7bfa0eaf0a8f1758:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:7c1d93a59c1c0634:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:7d2904ece537e541:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:83469cecb3324017:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:83f363ca507aa34e:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:876183f76a21f6af:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8b0ef96d08213953:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8bdb988c92b8dafc:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8be2ce69178adb03:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8d784d0ea81926d5:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8def77b036cc9009:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8df5a3a2b6c9124a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8ed5a01a8c9d582d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:8fc3ae96e38c50e1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:9385bed0016aa4d4:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:955b64f7a4f9fe3c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:9669dfd66f390124:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:985a324394fc86b1:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:999bbdf268af2e1a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:9cadff3810144d13:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:a0a4b20f0a897a3a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:a75b7339d06a9e42:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ab3a779ad6a4f31d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ab589653c1ecc233:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:abe300fd2285093c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ad0404996db68480:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:b41668fcd0433444:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:b76293891877ec02:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:b7e18702b3f6b851:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:b8a35071a3d38f18:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:bf13949f6b208b87:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:c065b455170f4dc0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:c14d0f47149f26ab:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:c472d158bfecaea5:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:c77b44b8ee13a016:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:cacdc16797dfdfc0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:cdd7f85cc7277a5d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingCompare.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:d00c483835abde9b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:d3bfe76546585e81:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:d8d17d0a2c7484a0:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:d9707e08e2488e11:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:dc5394ef27e987f3:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ddb3c5af4dfc2d73:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:e3f2c9c8bc815ec3:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:e465bdc05933a671:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:e549b2a336620e60:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:e678083c5acd9811:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:e7123b748f0eacf7:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ebb50a16bbe44a1b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ebcd4fcec5e2764a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:ed1f5d06374fd97b:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/validateConfigRevision.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:f280c39b2a3c446d:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:f7ba753cf175d895:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:f95ad94e19f67af9:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:fc9465e6f6edbcee:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:fd02485c31aae74a:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-sql-write:fd524ac76a2b6277:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:37f331a9a57befaf:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:41f946ba21ec169f:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:44781e7495bda3c7:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:5a38ce0c79156d27:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:60c0265fd067aee0:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:780799d54983d580:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:7edc75ec506834ef:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:8bb5736b2861833c:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:a173a6277ccc615c:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:a73b711e7739ca42:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/legacyDependencyGuard.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:bf0620ddc31bc79a:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:cc15e571e5795072:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:d6ffb609fdf71c53:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:ddac5666640c1092:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:fd108da6ff91ab1b:1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:1731d376de4f90c1:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/schemas.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:6372fa0469ecb3e4:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:7fcdf835122e1695:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:86bd61d16b267baf:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:89d4d95ca7748b7e:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:a12829fc0e81e901:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:a12829fc0e81e901:2",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:a789d156b8977a0c:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:c7b1155c5312f028:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:d9976b4314fe5824:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:f3173bddf998efeb:1",
+      "rule": "legacy-effective-governance-contract",
+      "file": "server/modules/parameter-topology/routes.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-overlay-catalog-contract:274e999ec29b509b:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-TOP:legacy-overlay-catalog-contract:71c8ba4c10b23f50:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-TOP:legacy-overlay-catalog-contract:af4d43e009687308:1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:00b013b292eba860:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:00c8e7799b337687:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:017ffcb3d230e47a:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/overlayWriteback.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:01b5f92171351999:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:03c9eded968b81af:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:03c9eded968b81af:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:04138f98a6c42d03:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0431cfad8a89efca:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:04d37ccf2a1fbf07:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:04d37ccf2a1fbf07:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0759e176bcff9898:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:084282998dc9c74e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:084282998dc9c74e:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:084282998dc9c74e:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0996543c26db85ce:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0a383bf56cafcc85:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0db637823763145c:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:100a366cbc4acfb6:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:130306c5a43a2cfb:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:130306c5a43a2cfb:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:130306c5a43a2cfb:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:13df6d43799aa15f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:152192182ef8249c:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1a9ac51617c6359e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1a9ac51617c6359e:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1c2860965f6f6cd3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1c3709336b58eecb:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1c5eea326d72c0e8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1c5eea326d72c0e8:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1c5eea326d72c0e8:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1e55b64b25de8cb0:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1e55b64b25de8cb0:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:1e55b64b25de8cb0:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2231ae73bdc9125e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2231ae73bdc9125e:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2231ae73bdc9125e:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2231ae73bdc9125e:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:22478e0a7cecdb26:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:22478e0a7cecdb26:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:23a7c678a87e6939:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/overlayWriteback.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:25f88691fffbbc5f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:28f61c277adf3a81:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:29178dc4772e7667:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:29178dc4772e7667:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:29178dc4772e7667:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:29a8540bb92db8fc:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:29e66bc66950bb15:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2baf91d3611f9270:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2baf91d3611f9270:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2baf91d3611f9270:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2c70d3b1f8e427b1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2d1099ad12e94d40:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2db560dfffb753f5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2db560dfffb753f5:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2de61852eaa48107:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2ff4179ccecddfd4:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:31fd27143b484de0:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:334f23d9ccfd3e70:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:334f23d9ccfd3e70:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:33947659682a75b9:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3890551d6af361f3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3890551d6af361f3:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3939771d8c450602:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3a4f67637ee37083:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3be0a9f1d5532de8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3c241514dcc8a5ad:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3c6d44bf22532e43:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3d80c5f2ca62f9a3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:40e14251954b047b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:40fc6097dfd4111f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/schemas.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:488bf1151c32cad7:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:49e4b645f5d01d0d:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4e48d39366151af4:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/resolveIdentityMapping.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4eee67155a28a0e3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4f141940c737ff7f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5114c0db4bbf8b5d:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5152f375c680cf57:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:560faebb527fb1b3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:560faebb527fb1b3:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:560faebb527fb1b3:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:56476171dcba9dfc:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5b7f12af159e416e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5bef3509122b6656:7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5e6891984092c7bf:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:62a341e9a3be9cfc:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:64ae8e1f5c725b0d:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:64b755b1d813d045:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:66579b4ab9a74df9:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6784f0f5569b3c10:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67b5fdba33b231ce:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:67d06a707774d84b:6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6b08a1a7dce5cdd9:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6d51c8f8621b4905:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6d51c8f8621b4905:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6d51c8f8621b4905:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6e0acc40b83ce55f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6e0acc40b83ce55f:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6fa449775440675e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6fa449775440675e:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6fa449775440675e:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6fa449775440675e:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:721b554dfedd9fc1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:72d720054976f5f0:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:72d720054976f5f0:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:72fcbf088d5bb3b8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:72fcbf088d5bb3b8:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:72fcbf088d5bb3b8:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:73f9285ae99eb1be:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:74a252c3399f1921:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:750641fcd3aafe93:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:750641fcd3aafe93:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:788016ada0f36f40:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:788016ada0f36f40:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:788016ada0f36f40:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:788016ada0f36f40:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:78aa48f285304152:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7c9e587deceeacc4:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7deef652ce066162:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:10",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:11",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:12",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:13",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:14",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:15",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:16",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:17",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:18",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:19",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:20",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:21",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:22",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:23",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7e7cdbc1e679e23b:9",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:831d187ec90eb3b5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:84d8281e5f54c2c2:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:84d8281e5f54c2c2:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:86fe0786e05b3832:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8727cd1abfe8a0bb:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8766f77ffcd2df84:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/identityContinuity.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:899ab3c02f079af1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8bc3b8bc3ec40398:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8bc3b8bc3ec40398:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8bc3b8bc3ec40398:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8c23786517299282:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8c23786517299282:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8c3a9aede61a2289:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90bad68d5f544223:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90bad68d5f544223:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90bad68d5f544223:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90bad68d5f544223:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90bad68d5f544223:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90ff049a1817edb4:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:90ff049a1817edb4:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:91c17858b7f3aa43:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:91c17858b7f3aa43:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:91c17858b7f3aa43:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:91c17858b7f3aa43:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:91c17858b7f3aa43:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:922f7102c3fe611e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:922f7102c3fe611e:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:92417b1792899a48:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:92f26e2910178897:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:92f26e2910178897:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:93fb14fb1188036b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:93fb14fb1188036b:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9496743b2708f687:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:96e90c3e72a6c605:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:96e90c3e72a6c605:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:98dfdd812fb7d608:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9aefe56810932395:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9b94cb4f92c7218b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9bf17cd985fb7293:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9dd07a35fd54dad3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:9dd07a35fd54dad3:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a42eb9ad9a7de131:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a5ea374f700d2a95:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a5ea374f700d2a95:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a63a41d7aeae6cd5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a63d5821e6a4d819:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a7c960d20203477c:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a879e568cee79482:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:aaf76ac8c2432221:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ac28d0d76beeb44a:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ac28d0d76beeb44a:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ac28d0d76beeb44a:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ae8bfbe4a9937d95:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b00994b6ad41a087:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b39665b7431a96a1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b39665b7431a96a1:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b39665b7431a96a1:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b925e20f6acde50d:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/overlayWriteback.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b925e20f6acde50d:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/overlayWriteback.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:befa36246d77ea14:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:bfddf76c4d409f5f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:bfddf76c4d409f5f:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c1cbbe98f1555bfd:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c21917ce5305cf50:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c2280df23d30bad1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c36e18b1d7c2f3a8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c36e18b1d7c2f3a8:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c4457b36d7e4e558:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c595a6a366ce654b:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c595a6a366ce654b:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c595a6a366ce654b:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c595a6a366ce654b:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c9490bd685ee60bf:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ca322e9d7429471e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:cad4f497bf6aefc4:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ccf2520bb0c70912:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:ccf2520bb0c70912:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d014121beb32134f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d014121beb32134f:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d303baf25d7fd126:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d906969530fcb224:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:dcf65c16417b4ed1:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:dfc4f596d11c0a5f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:e2c340a9358be86a:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:e4eefc7473e5b055:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:e721cdf5fd4da0fc:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/schemas.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:eeb4651a064e161f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f0fa8d5fb28579e3:7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f21f6c1dd878c22e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f6058470db5efd32:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f6058470db5efd32:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f633d1ebafeea784:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f91f458bee6e00bd:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fa8e7cd4c00c5c2f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fa8e7cd4c00c5c2f:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fa8e7cd4c00c5c2f:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fbcc809d9ed6401c:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fbfd2279cf1a4a90:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fbfd2279cf1a4a90:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fbfd2279cf1a4a90:3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fcade94356824043:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    }
+  ]
+}

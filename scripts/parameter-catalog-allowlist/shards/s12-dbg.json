@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "family": "S12-DBG",
+  "root": "server/modules/debugging",
+  "entries": [
+    {
+      "id": "S12-DBG:legacy-catalog-route:06ae252caec45eef:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/debugging/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-DBG:legacy-catalog-route:31542de5145b5f74:1",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/debugging/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-DBG:legacy-parameter-spec-identifier:3856272d492b10a9:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-DBG:legacy-parameter-spec-identifier:3856272d492b10a9:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-DBG:legacy-parameter-spec-identifier:f13d9b2592665e43:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    }
+  ]
+}

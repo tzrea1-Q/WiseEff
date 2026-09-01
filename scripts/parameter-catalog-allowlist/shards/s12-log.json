@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "family": "S12-LOG",
+  "root": "server/modules/logs",
+  "entries": [
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:4fbbecaa42163b0f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:624da0d3012a9d50:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:6435414bce3dd58a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:c55ac1142e57e962:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:d2812d2dc84b297b:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:e36c53c3472aa991:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-LOG:legacy-catalog-raw-read:f05291ef91cccedb:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    }
+  ]
+}
