@@ -49,7 +49,69 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格，消费 #669–#679 不可变决策，并固定 Catalog Kernel、Release Verification、cutover 与业务模块 seams、canonical schema/API/UI、P0–P16 和证据门禁。规格已经由父会话验收；四个 seams、ticket 粒度和依赖边已经冻结。当前仅因 G0 候选尚未合入 `main` 而禁止执行 `/to-tickets`。不声称已有生产实现或发布证据。
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 已经通过 PR #682 合入精确基线 `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`。Phase A Publisher 于 2026-09-01 完成：53 个 launch Issues 已发布为 #683–#735，S13-PROGRAM 与 S14-PROGRAM 继续延后。冻结的 GitHub 状态为 children 11 historical / 53 launch / 64 global，native relationships 18 historical / 136 launch / 0 cross-boundary / 154 global；27 条 ID 与 18 条 RE gate 只存在于 body。`ACTUAL_LAUNCH_READY_SET` 为空。S0-ID 是未来 frontier，但 Phase B 与 Phase C 尚未执行，因此当前没有 Issue 可交给 agent。不声称已有生产实现或发布证据。
+
+#### Wayfinder #668 Phase A launch 映射
+
+numeric database ID 与 GraphQL node ID 使映射不依赖 Issue 标题展示。本表是 Phase A snapshot 的 publisher-owned 精确映射；Phase B 必须先复审并合入这些文档，Phase C 才可启用 S0-ID。
+
+| Node | Issue | Database ID | GraphQL node ID |
+| --- | --- | --- | --- |
+| `S0-ID` | #683 | `5311617399` | `I_kwDOSVLD3c8AAAABPJjZdw` |
+| `S0-RAT` | #684 | `5311620341` | `I_kwDOSVLD3c8AAAABPJjk9Q` |
+| `S0-FIX` | #685 | `5311629076` | `I_kwDOSVLD3c8AAAABPJkHFA` |
+| `S1-BND` | #686 | `5311629415` | `I_kwDOSVLD3c8AAAABPJkIZw` |
+| `S1-CMP` | #687 | `5311629764` | `I_kwDOSVLD3c8AAAABPJkJxA` |
+| `S2-SCH` | #688 | `5311630186` | `I_kwDOSVLD3c8AAAABPJkLag` |
+| `S2-RBAC` | #689 | `5311630643` | `I_kwDOSVLD3c8AAAABPJkNMw` |
+| `S2-PGH` | #690 | `5311630952` | `I_kwDOSVLD3c8AAAABPJkOaA` |
+| `S3-RUN` | #691 | `5311631317` | `I_kwDOSVLD3c8AAAABPJkP1Q` |
+| `S3-INS` | #692 | `5311631684` | `I_kwDOSVLD3c8AAAABPJkRRA` |
+| `S3-VFY` | #693 | `5311632218` | `I_kwDOSVLD3c8AAAABPJkTWg` |
+| `S4-REG` | #694 | `5311632561` | `I_kwDOSVLD3c8AAAABPJkUsQ` |
+| `S4-EVD` | #695 | `5311632931` | `I_kwDOSVLD3c8AAAABPJkWIw` |
+| `S4-REV` | #696 | `5311633318` | `I_kwDOSVLD3c8AAAABPJkXpg` |
+| `S5-RSL` | #697 | `5311633687` | `I_kwDOSVLD3c8AAAABPJkZFw` |
+| `S5-PRP` | #698 | `5311634056` | `I_kwDOSVLD3c8AAAABPJkaiA` |
+| `S6-BND` | #699 | `5311634422` | `I_kwDOSVLD3c8AAAABPJkb9g` |
+| `S6-VAL` | #700 | `5311634925` | `I_kwDOSVLD3c8AAAABPJkd7Q` |
+| `S6-WFA` | #701 | `5311635272` | `I_kwDOSVLD3c8AAAABPJkfSA` |
+| `S7-CLS` | #702 | `5311635603` | `I_kwDOSVLD3c8AAAABPJkgkw` |
+| `S7-MAP` | #703 | `5311635944` | `I_kwDOSVLD3c8AAAABPJkh6A` |
+| `S7-ARC` | #704 | `5311636452` | `I_kwDOSVLD3c8AAAABPJkj5A` |
+| `S7-ORC` | #705 | `5311636772` | `I_kwDOSVLD3c8AAAABPJklJA` |
+| `S8-CON` | #706 | `5311637153` | `I_kwDOSVLD3c8AAAABPJkmoQ` |
+| `S8-READ` | #707 | `5311637559` | `I_kwDOSVLD3c8AAAABPJkoNw` |
+| `S8-GOV` | #708 | `5311638057` | `I_kwDOSVLD3c8AAAABPJkqKQ` |
+| `S8-LEG` | #709 | `5311638395` | `I_kwDOSVLD3c8AAAABPJkrew` |
+| `S9-PRT` | #710 | `5311638746` | `I_kwDOSVLD3c8AAAABPJks2g` |
+| `S9-CAT` | #711 | `5311639049` | `I_kwDOSVLD3c8AAAABPJkuCQ` |
+| `S9-GOV` | #712 | `5311639584` | `I_kwDOSVLD3c8AAAABPJkwIA` |
+| `S9-BRW` | #713 | `5311639914` | `I_kwDOSVLD3c8AAAABPJkxag` |
+| `S10-PER` | #714 | `5311640256` | `I_kwDOSVLD3c8AAAABPJkywA` |
+| `S10-VMP` | #715 | `5311640597` | `I_kwDOSVLD3c8AAAABPJk0FQ` |
+| `S10-DCP` | #716 | `5311641082` | `I_kwDOSVLD3c8AAAABPJk1-g` |
+| `S10-API` | #717 | `5311641367` | `I_kwDOSVLD3c8AAAABPJk3Fw` |
+| `S10-UI` | #718 | `5311641721` | `I_kwDOSVLD3c8AAAABPJk4eQ` |
+| `S10-RPT` | #719 | `5311642129` | `I_kwDOSVLD3c8AAAABPJk6EQ` |
+| `S11-UPG` | #720 | `5311642664` | `I_kwDOSVLD3c8AAAABPJk8KA` |
+| `S11-RP` | #721 | `5311643014` | `I_kwDOSVLD3c8AAAABPJk9hg` |
+| `S11-APL` | #722 | `5311643358` | `I_kwDOSVLD3c8AAAABPJk-3g` |
+| `S11-REC` | #723 | `5311643750` | `I_kwDOSVLD3c8AAAABPJlAZg` |
+| `S12-CGH` | #724 | `5311644127` | `I_kwDOSVLD3c8AAAABPJlB3w` |
+| `S12-TOP` | #725 | `5311644630` | `I_kwDOSVLD3c8AAAABPJlD1g` |
+| `S12-PRJ` | #726 | `5311645008` | `I_kwDOSVLD3c8AAAABPJlFUA` |
+| `S12-FIL` | #727 | `5311645321` | `I_kwDOSVLD3c8AAAABPJlGiQ` |
+| `S12-AGT` | #728 | `5311645856` | `I_kwDOSVLD3c8AAAABPJlIoA` |
+| `S12-LOG` | #729 | `5311646318` | `I_kwDOSVLD3c8AAAABPJlKbg` |
+| `S12-DBG` | #730 | `5311646689` | `I_kwDOSVLD3c8AAAABPJlL4Q` |
+| `S12-DTS` | #731 | `5311647176` | `I_kwDOSVLD3c8AAAABPJlNyA` |
+| `S12-KNW` | #732 | `5311647549` | `I_kwDOSVLD3c8AAAABPJlPPQ` |
+| `S12-MOD` | #733 | `5311648036` | `I_kwDOSVLD3c8AAAABPJlRJA` |
+| `S12-OPS` | #734 | `5311648532` | `I_kwDOSVLD3c8AAAABPJlTFA` |
+| `RI-01` | #735 | `5311648867` | `I_kwDOSVLD3c8AAAABPJlUYw` |
+
+`S13-PROGRAM` 延后到两个真实 release、90 天真实时间、按类别 30 天零使用窗口以及可问责的 `legacy-read-sunset` approval 全部存在之后。`S14-PROGRAM` 延后到 S13 完成，并且一个单独批准的 cleanup release 具备真实 retention、recovery point、restore 与 zero-dependency 证据之后。两者都不是 launch Issue，也不得交给 agent。
 - `exec-plans/completed/2026-08-29-effective-driver-populated-upgrade-repair.md`：通过追加式修复迁移、默认 effective catalog projection 与升级 catalog readiness 门禁，补齐 Issue #649 的自托管存量数据库升级缺口。
 
 - `exec-plans/active/2026-08-28-node-write-observation-outcomes.md`：在服务、Bridge、API、mock 与 UI 中把普通节点写命令执行和写后观测拆开；保留快照/回滚，同时停止对新写入做基于相等性的 mismatch 判定。真实 HDC/ADB readiness 继续属于条件目标环境证据。
