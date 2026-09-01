@@ -24,6 +24,27 @@ async function captureDatabaseError(action: Promise<unknown>): Promise<pg.Databa
   throw new Error("Expected PostgreSQL to reject the operation");
 }
 
+async function waitForAdvisoryLockWait(observer: pg.Client, processId: number): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{ waiting: boolean }>(`
+      select coalesce(
+        (
+          select wait_event_type = 'Lock' and wait_event = 'advisory'
+          from pg_catalog.pg_stat_activity
+          where pid = $1
+        ),
+        false
+      ) as waiting
+    `, [processId]);
+    if (result.rows[0]?.waiting) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Session ${processId} did not wait for the Catalog advisory lock`);
+}
+
 async function seedCurrentRelease(client: pg.Client): Promise<void> {
   await client.query("begin");
   try {
@@ -185,6 +206,7 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       );
 
       await contender.query("begin");
+      const startedAt = Date.now();
       const error = await captureDatabaseError(
         contender.query(`
           update parameter_catalog.catalog_state
@@ -193,6 +215,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       );
       expect(error.code).toBe("PCA05");
       expect(error.detail).toBe("PCAT-GUARD-SYNCHRONIZATION-BUSY");
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_500);
+      expect(Date.now() - startedAt).toBeLessThan(3_500);
       await contender.query("rollback");
 
       await primary.query("rollback");
@@ -200,6 +224,41 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       await expect(
         contender.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()")
       ).resolves.toMatchObject({ rowCount: 1 });
+      await contender.query("rollback");
+    } finally {
+      await primary.query("rollback").catch(() => undefined);
+      await contender.query("rollback").catch(() => undefined);
+      await contender.end();
+    }
+  });
+
+  it("lets the same exclusive pointer update continue after the shared guard transaction ends", async () => {
+    const contender = await connect(database.url);
+    try {
+      await primary.query("begin");
+      await primary.query(
+        "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
+        ["crel-a", "sha256:release-a", "csub-active", "active"]
+      );
+
+      await contender.query("begin");
+      const pointerAttempt = contender
+        .query(`
+          update parameter_catalog.catalog_state
+          set current_catalog_release_id = current_catalog_release_id
+        `)
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error })
+        );
+      await waitForAdvisoryLockWait(primary, contender.processID);
+
+      await primary.query("commit");
+
+      await expect(pointerAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null
+      });
       await contender.query("rollback");
     } finally {
       await primary.query("rollback").catch(() => undefined);
@@ -238,22 +297,23 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         set constraints all immediate;
       `);
 
-      const busy = await captureDatabaseError(
-        guardSession.query(
+      const guardAttempt = guardSession
+        .query(
           "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
           ["crel-a", "sha256:release-a", "csub-active", "active"]
         )
-      );
-      expect(busy.code).toBe("PCA05");
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error })
+        );
+      await waitForAdvisoryLockWait(primary, guardSession.processID);
 
       await primary.query("rollback");
 
-      await expect(
-        guardSession.query(
-          "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-          ["crel-a", "sha256:release-a", "csub-active", "active"]
-        )
-      ).resolves.toMatchObject({ rowCount: 1 });
+      await expect(guardAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null
+      });
 
       const state = await guardSession.query<{ current_catalog_release_id: string }>(
         "select current_catalog_release_id from parameter_catalog.catalog_state"
@@ -263,6 +323,67 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       );
       expect(state.rows[0]?.current_catalog_release_id).toBe("crel-a");
       expect(residue.rows[0]?.count).toBe("0");
+    } finally {
+      await primary.query("rollback").catch(() => undefined);
+      await guardSession.end();
+    }
+  });
+
+  it("waits for a pointer commit and reports retirement from the newly current release", async () => {
+    const guardSession = await connect(database.url);
+    try {
+      await primary.query("begin");
+      await primary.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()");
+      await primary.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, predecessor_release_id,
+          compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-retirement', '2.0.0-retirement', 'sha256:release-retirement', 'crel-a',
+          'sha256:compiled-retirement', 'sha256:toolchain-retirement'
+        );
+
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
+        ) values
+          ('crel-retirement', 'csub-active', 'retired', '{}', '{}', '{"reason":"withdrawn"}'),
+          ('crel-retirement', 'csub-retired', 'retired', '{}', '{}', '{"reason":"still-retired"}');
+
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+        ) values (
+          'crel-retirement', 'sha256:compiled-fp-retirement', 'sha256:database-fp-retirement',
+          'attempt-retirement', 'audit-retirement'
+        );
+
+        update parameter_catalog.catalog_state
+        set current_catalog_release_id = 'crel-retirement';
+
+        set constraints all immediate;
+      `);
+
+      const guardAttempt = guardSession
+        .query(
+          "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
+          ["crel-retirement", "sha256:release-retirement", "csub-active", "active"]
+        )
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error })
+        );
+      await waitForAdvisoryLockWait(primary, guardSession.processID);
+
+      await primary.query("commit");
+
+      const outcome = await guardAttempt;
+      expect(outcome.result).toBeNull();
+      expect(outcome.error?.code).toBe("PCA03");
+      expect(outcome.error?.detail).toBe("PCAT-GUARD-SUBJECT-RETIRED");
+
+      const state = await guardSession.query<{ current_catalog_release_id: string }>(
+        "select current_catalog_release_id from parameter_catalog.catalog_state"
+      );
+      expect(state.rows[0]?.current_catalog_release_id).toBe("crel-retirement");
     } finally {
       await primary.query("rollback").catch(() => undefined);
       await guardSession.end();

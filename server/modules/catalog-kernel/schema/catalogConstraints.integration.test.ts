@@ -24,6 +24,91 @@ async function captureDatabaseError(action: Promise<unknown>): Promise<pg.Databa
   throw new Error("Expected PostgreSQL to reject the operation");
 }
 
+async function seedLegacyMappingRoots(client: pg.Client): Promise<void> {
+  await client.query(`
+    insert into parameter_catalog.catalog_releases (
+      id, release_version, release_digest, compiled_model_digest, toolchain_digest
+    ) values (
+      'crel-legacy', 'legacy', 'sha256:legacy-release', 'sha256:legacy-compiled', 'sha256:legacy-toolchain'
+    );
+    insert into parameter_catalog.legacy_identities (
+      id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+    ) values
+      ('lid-a', 'legacy', 'parameter-spec', 'organization', 'org-pcat', 'source-a'),
+      ('lid-b', 'legacy', 'parameter-spec', 'organization', 'org-pcat-2', 'source-b');
+    insert into parameter_catalog.parameter_catalog_cutover_runs (
+      id, source_snapshot_fingerprint, target_artifact_sha, target_catalog_release_digest,
+      migration_contract_version, plan_digest, current_phase, state
+    ) values
+      (
+        'cutover-a', 'sha256:snapshot-a', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        'sha256:legacy-release', 'v1', 'sha256:plan-a', 'P6', 'running'
+      ),
+      (
+        'cutover-b', 'sha256:snapshot-b', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'sha256:legacy-release', 'v1', 'sha256:plan-b', 'P6', 'running'
+      );
+  `);
+}
+
+async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
+  await client.query(`
+    begin;
+    insert into parameter_catalog.catalog_releases (
+      id, release_version, release_digest, compiled_model_digest, toolchain_digest
+    ) values (
+      'crel-binding-owners', 'binding-owners', 'sha256:binding-owners',
+      'sha256:binding-owners-compiled', 'sha256:binding-owners-toolchain'
+    );
+    insert into parameter_catalog.parameter_definitions (
+      id, subject_id, property_key, current_revision_id
+    ) values
+      ('pdef-owner-a', 'csub-driver', 'owner-a', 'drev-owner-a'),
+      ('pdef-owner-b', 'csub-driver', 'owner-b', 'drev-owner-b');
+    insert into parameter_catalog.definition_revisions (
+      id, definition_id, revision_number, catalog_release_id, content_digest, content
+    ) values
+      ('drev-owner-a', 'pdef-owner-a', 1, 'crel-binding-owners', 'sha256:drev-owner-a', '{}'),
+      ('drev-owner-b', 'pdef-owner-b', 1, 'crel-binding-owners', 'sha256:drev-owner-b', '{}');
+    insert into parameter_catalog.organization_subject_registrations (
+      id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+    ) values (
+      'reg-binding-owners', 'org-pcat', 'csub-driver', 'active', 'explicit', '{}', 'placement-binding-owners'
+    );
+    insert into parameter_catalog.subject_placements (
+      id, registration_id, organization_id, module_id, origin
+    ) values (
+      'placement-binding-owners', 'reg-binding-owners', 'org-pcat', 'pmod-driver', 'curated'
+    );
+    insert into parameter_catalog.project_parameter_bindings (
+      id, organization_id, project_id, logical_node_id, registration_id, subject_id,
+      definition_id, effective_revision_id, current_value_id, catalog_release_id
+    ) values
+      (
+        'binding-owner-a', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
+        'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a', 'crel-binding-owners'
+      ),
+      (
+        'binding-owner-b', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
+        'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b', 'crel-binding-owners'
+      );
+    insert into parameter_catalog.project_parameter_values (
+      id, binding_id, definition_id, definition_revision_id,
+      source_ref, config_revision_id, value_digest, value_kind, value
+    ) values
+      (
+        'pvalue-owner-a', 'binding-owner-a', 'pdef-owner-a', 'drev-owner-a',
+        'source-owner-a', 'config-owner-a', 'sha256:value-owner-a', 'number', '1'
+      ),
+      (
+        'pvalue-owner-b', 'binding-owner-b', 'pdef-owner-b', 'drev-owner-b',
+        'source-owner-b', 'config-owner-b', 'sha256:value-owner-b', 'number', '2'
+      );
+    set constraints all immediate;
+    commit;
+  `);
+}
+
 describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", () => {
   let database: EphemeralTestDatabase;
   let client: pg.Client;
@@ -163,6 +248,22 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
     expect(residue.rows[0]?.count).toBe("0");
   });
 
+  it("rejects a Subject alias selector kind outside the frozen S0-ID registry", async () => {
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.catalog_subject_aliases (
+          id, subject_id, selector_kind, normalized_selector
+        ) values ('calias-invalid-kind', 'csub-driver', 'vendor-identifier', 'vendor,device')
+      `)
+    );
+    expect(error.code).toBe("23514");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.catalog_subject_aliases where id = 'calias-invalid-kind'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
   it("rejects a Definition head owned by another Definition at COMMIT time with zero residue", async () => {
     await client.query("begin");
     await client.query(`
@@ -244,6 +345,300 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
     const residue = await client.query<{ count: string }>(
       "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-cross-org'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects a ReviewEvidence reason outside the frozen S0-ID registry", async () => {
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.parameter_review_evidence (
+          id, organization_id, reason, candidate_safe_digest, evidence
+        ) values (
+          'prev-invalid-reason', 'org-pcat', 'legacy-review', 'sha256:candidate-safe', '{}'
+        )
+      `)
+    );
+    expect(error.code).toBe("23514");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-invalid-reason'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects an Archive whose owner scope differs from its LegacyIdentity", async () => {
+    await seedLegacyMappingRoots(client);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.parameter_catalog_archives (
+          id, legacy_identity_id, owner_scope_kind, owner_scope_id, r_class, reason,
+          source_checksum, graph_checksum, encrypted_object_ref, protected_references,
+          cutover_run_id, catalog_release_id, success_audit_ref, retain_until
+        ) values (
+          'archive-owner-mismatch', 'lid-a', 'organization', 'org-pcat-2', 'R6', 'review evidence',
+          'sha256:source-a', 'sha256:graph-a', 'object://archive-a', '[]',
+          'cutover-a', 'crel-legacy', 'audit-archive-a', now() + interval '90 days'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.parameter_catalog_archives where id = 'archive-owner-mismatch'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects a MappingVersion that consumes another identity and run's Archive", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into parameter_catalog.parameter_catalog_archives (
+        id, legacy_identity_id, owner_scope_kind, owner_scope_id, r_class, reason,
+        source_checksum, graph_checksum, encrypted_object_ref, protected_references,
+        cutover_run_id, catalog_release_id, success_audit_ref, retain_until
+      ) values (
+        'archive-b', 'lid-b', 'organization', 'org-pcat-2', 'R6', 'review evidence',
+        'sha256:source-b', 'sha256:graph-b', 'object://archive-b', '[]',
+        'cutover-b', 'crel-legacy', 'audit-archive-b', now() + interval '90 days'
+      )
+    `);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.legacy_mapping_versions (
+          id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+          graph_fingerprint, r_class, archive_id
+        ) values (
+          'lmap-cross-archive', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
+          'sha256:graph-a', 'R6', 'archive-b'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-archive'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects a MappingVersion that supersedes a version from another CutoverRun", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into parameter_catalog.parameter_catalog_archives (
+        id, legacy_identity_id, owner_scope_kind, owner_scope_id, r_class, reason,
+        source_checksum, graph_checksum, encrypted_object_ref, protected_references,
+        cutover_run_id, catalog_release_id, success_audit_ref, retain_until
+      ) values
+        (
+          'archive-a-run-a', 'lid-a', 'organization', 'org-pcat', 'R6', 'run a',
+          'sha256:source-a1', 'sha256:graph-a1', 'object://archive-a1', '[]',
+          'cutover-a', 'crel-legacy', 'audit-archive-a1', now() + interval '90 days'
+        ),
+        (
+          'archive-a-run-b', 'lid-a', 'organization', 'org-pcat', 'R6', 'run b',
+          'sha256:source-a2', 'sha256:graph-a2', 'object://archive-a2', '[]',
+          'cutover-b', 'crel-legacy', 'audit-archive-a2', now() + interval '90 days'
+        );
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, archive_id
+      ) values (
+        'lmap-a-run-a', 'lid-a', 'cutover-a', 1, 'sha256:source-a1',
+        'sha256:graph-a1', 'R6', 'archive-a-run-a'
+      );
+    `);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.legacy_mapping_versions (
+          id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+          graph_fingerprint, r_class, archive_id, supersedes_version_id
+        ) values (
+          'lmap-a-cross-run', 'lid-a', 'cutover-b', 2, 'sha256:source-a2',
+          'sha256:graph-a2', 'R6', 'archive-a-run-b', 'lmap-a-run-a'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-a-cross-run'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects Classification evidence backed by another identity and run's MappingVersion", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into parameter_catalog.parameter_catalog_archives (
+        id, legacy_identity_id, owner_scope_kind, owner_scope_id, r_class, reason,
+        source_checksum, graph_checksum, encrypted_object_ref, protected_references,
+        cutover_run_id, catalog_release_id, success_audit_ref, retain_until
+      ) values (
+        'archive-class-a', 'lid-a', 'organization', 'org-pcat', 'R6', 'classification',
+        'sha256:source-class-a', 'sha256:graph-class-a', 'object://archive-class-a', '[]',
+        'cutover-a', 'crel-legacy', 'audit-class-a', now() + interval '90 days'
+      );
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, archive_id
+      ) values (
+        'lmap-class-a', 'lid-a', 'cutover-a', 1, 'sha256:source-class-a',
+        'sha256:graph-class-a', 'R6', 'archive-class-a'
+      );
+    `);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.parameter_catalog_classification_ledger (
+          cutover_run_id, legacy_identity_id, r_class, classifier_version,
+          graph_fingerprint, disposition, mapping_version_id
+        ) values (
+          'cutover-b', 'lid-b', 'R6', 'classifier-v1',
+          'sha256:graph-class-b', 'archived', 'lmap-class-a'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+
+    const residue = await client.query<{ count: string }>(`
+      select count(*)::text as count
+      from parameter_catalog.parameter_catalog_classification_ledger
+      where cutover_run_id = 'cutover-b' and legacy_identity_id = 'lid-b'
+    `);
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects MappingVersion evidence from another identity and run's Archive", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into parameter_catalog.parameter_catalog_archives (
+        id, legacy_identity_id, owner_scope_kind, owner_scope_id, r_class, reason,
+        source_checksum, graph_checksum, encrypted_object_ref, protected_references,
+        cutover_run_id, catalog_release_id, success_audit_ref, retain_until
+      ) values (
+        'archive-evidence-b', 'lid-b', 'organization', 'org-pcat-2', 'R6', 'evidence',
+        'sha256:source-evidence-b', 'sha256:graph-evidence-b', 'object://archive-evidence-b', '[]',
+        'cutover-b', 'crel-legacy', 'audit-evidence-b', now() + interval '90 days'
+      )
+    `);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.legacy_mapping_versions (
+          id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+          graph_fingerprint, r_class, target_kind, target_id, evidence_archive_id
+        ) values (
+          'lmap-cross-evidence', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
+          'sha256:graph-a', 'R2', 'catalog-subject', 'csub-driver', 'archive-evidence-b'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-evidence'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("rejects a typed MappingVersion whose target does not exist", async () => {
+    await seedLegacyMappingRoots(client);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.legacy_mapping_versions (
+          id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+          graph_fingerprint, r_class, target_kind, target_id
+        ) values (
+          'lmap-missing-target', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
+          'sha256:graph-a', 'R2', 'catalog-subject', 'csub-does-not-exist'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+    expect(error.constraint).toBe("legacy_mapping_target_fk");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-missing-target'"
+    );
+    expect(residue.rows[0]?.count).toBe("0");
+  });
+
+  it("accepts existing BindingHistory and ProposalRevision typed mapping targets", async () => {
+    await seedLegacyMappingRoots(client);
+    await seedTwoCanonicalBindings(client);
+    await client.query(`
+      begin;
+      insert into parameter_catalog.binding_history_events (
+        id, binding_id, old_effective_revision_id, new_effective_revision_id,
+        old_current_value_id, new_current_value_id, reason, success_audit_ref, catalog_release_id
+      ) values (
+        'bhist-map-target', 'binding-owner-a', 'drev-owner-a', 'drev-owner-a',
+        null, 'pvalue-owner-a', 'initial mapping', 'audit-bhist-map', 'crel-binding-owners'
+      );
+      insert into parameter_catalog.definition_proposals (
+        id, organization_id, author_principal_id, base_catalog_release_id,
+        status, current_proposal_revision_id, etag_version
+      ) values (
+        'dprop-map-target', 'org-pcat-2', 'principal-proposer', 'crel-legacy',
+        'draft', 'dprev-map-target', 1
+      );
+      insert into parameter_catalog.definition_proposal_revisions (
+        id, proposal_id, revision_number, payload, reason, evidence_refs
+      ) values (
+        'dprev-map-target', 'dprop-map-target', 1, '{}', 'initial proposal', '[]'
+      );
+      set constraints all immediate;
+      commit;
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, target_kind, target_id
+      ) values
+        (
+          'lmap-bhist-target', 'lid-a', 'cutover-a', 1, 'sha256:source-bhist',
+          'sha256:graph-bhist', 'R9', 'binding-history-event', 'bhist-map-target'
+        ),
+        (
+          'lmap-dprev-target', 'lid-b', 'cutover-b', 1, 'sha256:source-dprev',
+          'sha256:graph-dprev', 'R9', 'definition-proposal-revision', 'dprev-map-target'
+        );
+    `);
+
+    const result = await client.query<{ target_kind: string; target_id: string }>(`
+      select target_kind, target_id
+      from parameter_catalog.legacy_mapping_versions
+      where id in ('lmap-bhist-target', 'lmap-dprev-target')
+      order by id
+    `);
+    expect(result.rows).toEqual([
+      { target_kind: "binding-history-event", target_id: "bhist-map-target" },
+      { target_kind: "definition-proposal-revision", target_id: "dprev-map-target" }
+    ]);
+  });
+
+  it("rejects BindingHistory revision and value pointers owned by another Binding", async () => {
+    await seedTwoCanonicalBindings(client);
+
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.binding_history_events (
+          id, binding_id, old_effective_revision_id, new_effective_revision_id,
+          old_current_value_id, new_current_value_id, reason, success_audit_ref, catalog_release_id
+        ) values (
+          'bhist-cross-owner', 'binding-owner-a', 'drev-owner-a', 'drev-owner-b',
+          'pvalue-owner-a', 'pvalue-owner-b', 'semantic cutover', 'audit-bhist', 'crel-binding-owners'
+        )
+      `)
+    );
+    expect(error.code).toBe("23503");
+    expect(error.constraint).toBe("binding_history_event_owner_fk");
+
+    const residue = await client.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.binding_history_events where id = 'bhist-cross-owner'"
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -553,6 +948,38 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         (select count(*)::text from parameter_catalog.subject_placements where id = 'placement-wrong-kind') as placements
     `);
     expect(residue.rows).toEqual([{ registrations: "0", placements: "0" }]);
+  });
+
+  it("rejects a parameter module kind update that would invalidate its retained Placement", async () => {
+    await client.query(`
+      begin;
+      insert into parameter_catalog.organization_subject_registrations (
+        id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+      ) values (
+        'reg-module-kind', 'org-pcat', 'csub-driver', 'active', 'explicit', '{}', 'placement-module-kind'
+      );
+      insert into parameter_catalog.subject_placements (
+        id, registration_id, organization_id, module_id, origin
+      ) values (
+        'placement-module-kind', 'reg-module-kind', 'org-pcat', 'pmod-driver', 'curated'
+      );
+      set constraints all immediate;
+      commit;
+    `);
+
+    await client.query("begin");
+    await client.query(
+      "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'"
+    );
+    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    expect(error.code).toBe("23514");
+    expect(error.constraint).toBe("subject_placement_kind_ck");
+    await client.query("rollback");
+
+    const module = await client.query<{ kind: string }>(
+      "select kind from public.parameter_modules where id = 'pmod-driver'"
+    );
+    expect(module.rows[0]?.kind).toBe("driver-group");
   });
 
   it("rejects a second Placement for one Registration", async () => {

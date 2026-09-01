@@ -163,14 +163,17 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       from pg_catalog.pg_trigger trigger_record
       join pg_catalog.pg_class class on class.oid = trigger_record.tgrelid
       join pg_catalog.pg_namespace namespace on namespace.oid = class.relnamespace
-      where namespace.nspname = 'parameter_catalog'
+      where namespace.nspname in ('parameter_catalog', 'public')
         and trigger_record.tgname = any($1::text[])
       order by trigger_record.tgname
     `, [[
+      "binding_history_event_owner_fk",
       "catalog_state_current_release_complete_ck",
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
       "catalog_subject_exact_subtype_from_subject_ck",
+      "legacy_mapping_target_fk",
+      "parameter_module_placement_kind_ck",
       "subject_placement_kind_ck"
     ]]);
 
@@ -186,10 +189,13 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       initially_deferred: true
     })));
     expect(triggers.rows).toEqual([
+      "binding_history_event_owner_fk",
       "catalog_state_current_release_complete_ck",
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
       "catalog_subject_exact_subtype_from_subject_ck",
+      "legacy_mapping_target_fk",
+      "parameter_module_placement_kind_ck",
       "subject_placement_kind_ck"
     ].map((trigger_name) => ({
       trigger_name,

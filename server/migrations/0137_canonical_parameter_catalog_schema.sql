@@ -25,13 +25,22 @@ language plpgsql
 security definer
 set search_path = pg_catalog, parameter_catalog
 as $$
+declare
+  previous_lock_timeout text;
 begin
-  if not pg_try_advisory_xact_lock(688004000041::bigint) then
-    raise exception using
-      errcode = 'PCA05',
-      message = 'catalog current-pointer serialization is busy',
-      detail = 'PCAT-GUARD-SYNCHRONIZATION-BUSY';
-  end if;
+  previous_lock_timeout := pg_catalog.current_setting('lock_timeout');
+  perform pg_catalog.set_config('lock_timeout', '2s', true);
+  begin
+    perform pg_catalog.pg_advisory_xact_lock(688004000041::bigint);
+  exception
+    when lock_not_available then
+      perform pg_catalog.set_config('lock_timeout', previous_lock_timeout, true);
+      raise exception using
+        errcode = 'PCA05',
+        message = 'catalog current-pointer serialization timed out',
+        detail = 'PCAT-GUARD-SYNCHRONIZATION-BUSY';
+  end;
+  perform pg_catalog.set_config('lock_timeout', previous_lock_timeout, true);
 end;
 $$;
 
@@ -84,7 +93,7 @@ create table parameter_catalog.catalog_release_subjects (
 create table parameter_catalog.catalog_subject_aliases (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   subject_id text not null references parameter_catalog.catalog_subjects(id) on delete restrict,
-  selector_kind text not null check (selector_kind in ('driver-compatible', 'node-type-name', 'vendor-identifier')),
+  selector_kind text not null check (selector_kind in ('driver-compatible', 'node-type-name')),
   normalized_selector text not null check (normalized_selector <> '' and btrim(normalized_selector) = normalized_selector),
   unique (selector_kind, normalized_selector),
   unique (id, subject_id)
@@ -525,6 +534,57 @@ create table parameter_catalog.binding_history_events (
   check (old_effective_revision_id is distinct from new_effective_revision_id or old_current_value_id is distinct from new_current_value_id)
 );
 
+create function parameter_catalog.assert_binding_history_event_owners()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  binding_definition_id text;
+begin
+  select definition_id into binding_definition_id
+  from parameter_catalog.project_parameter_bindings
+  where id = new.binding_id;
+
+  if binding_definition_id is null
+     or (new.old_effective_revision_id is not null and not exists (
+       select 1 from parameter_catalog.definition_revisions
+       where id = new.old_effective_revision_id
+         and definition_id = binding_definition_id
+     ))
+     or (new.new_effective_revision_id is not null and not exists (
+       select 1 from parameter_catalog.definition_revisions
+       where id = new.new_effective_revision_id
+         and definition_id = binding_definition_id
+     ))
+     or (new.old_current_value_id is not null and not exists (
+       select 1 from parameter_catalog.project_parameter_values
+       where id = new.old_current_value_id
+         and binding_id = new.binding_id
+         and definition_id = binding_definition_id
+     ))
+     or (new.new_current_value_id is not null and not exists (
+       select 1 from parameter_catalog.project_parameter_values
+       where id = new.new_current_value_id
+         and binding_id = new.binding_id
+         and definition_id = binding_definition_id
+     )) then
+    raise exception using
+      errcode = '23503',
+      message = 'Binding history pointers must belong to the same Binding and Definition',
+      constraint = 'binding_history_event_owner_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger binding_history_event_owner_fk
+after insert or update of binding_id, old_effective_revision_id, new_effective_revision_id, old_current_value_id, new_current_value_id
+on parameter_catalog.binding_history_events
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_binding_history_event_owners();
+
 create function parameter_catalog.protect_binding_identity()
 returns trigger
 language plpgsql
@@ -571,7 +631,8 @@ create table parameter_catalog.legacy_identities (
   owner_scope_id text not null check (owner_scope_id <> '' and btrim(owner_scope_id) = owner_scope_id),
   source_id text not null check (source_id <> '' and btrim(source_id) = source_id),
   created_at timestamptz not null default now(),
-  unique (source_system, source_kind, owner_scope_kind, owner_scope_id, source_id)
+  unique (source_system, source_kind, owner_scope_kind, owner_scope_id, source_id),
+  unique (id, owner_scope_kind, owner_scope_id)
 );
 
 create table parameter_catalog.parameter_catalog_cutover_runs (
@@ -617,7 +678,7 @@ create table parameter_catalog.parameter_catalog_cutover_checkpoints (
 
 create table parameter_catalog.parameter_catalog_archives (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
-  legacy_identity_id text not null references parameter_catalog.legacy_identities(id) on delete restrict,
+  legacy_identity_id text not null,
   owner_scope_kind text not null check (owner_scope_kind in ('platform', 'organization', 'project')),
   owner_scope_id text not null check (owner_scope_id <> '' and btrim(owner_scope_id) = owner_scope_id),
   r_class text not null check (r_class ~ '^R(?:[0-9]|10)$'),
@@ -630,7 +691,11 @@ create table parameter_catalog.parameter_catalog_archives (
   catalog_release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
   success_audit_ref text not null check (success_audit_ref <> '' and btrim(success_audit_ref) = success_audit_ref),
   retain_until timestamptz not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (id, legacy_identity_id, cutover_run_id),
+  foreign key (legacy_identity_id, owner_scope_kind, owner_scope_id)
+    references parameter_catalog.legacy_identities(id, owner_scope_kind, owner_scope_id)
+    on delete restrict
 );
 
 create table parameter_catalog.legacy_mapping_versions (
@@ -641,21 +706,87 @@ create table parameter_catalog.legacy_mapping_versions (
   source_checksum text not null check (source_checksum <> '' and btrim(source_checksum) = source_checksum),
   graph_fingerprint text not null check (graph_fingerprint <> '' and btrim(graph_fingerprint) = graph_fingerprint),
   r_class text not null check (r_class ~ '^R(?:[0-9]|10)$'),
-  target_kind text check (target_kind in ('catalog-subject', 'parameter-definition', 'definition-revision', 'subject-registration', 'subject-placement', 'parameter-binding', 'project-value', 'review-evidence', 'definition-proposal')),
+  target_kind text check (target_kind in ('catalog-subject', 'parameter-definition', 'definition-revision', 'subject-registration', 'subject-placement', 'parameter-binding', 'project-value', 'binding-history-event', 'review-evidence', 'definition-proposal', 'definition-proposal-revision')),
   target_id text,
-  archive_id text references parameter_catalog.parameter_catalog_archives(id) on delete restrict,
-  evidence_archive_id text references parameter_catalog.parameter_catalog_archives(id) on delete restrict,
-  supersedes_version_id text references parameter_catalog.legacy_mapping_versions(id) on delete restrict,
+  archive_id text,
+  evidence_archive_id text,
+  supersedes_version_id text,
   created_at timestamptz not null default now(),
   unique (legacy_identity_id, version_number),
   unique (legacy_identity_id, id),
+  unique (id, legacy_identity_id, cutover_run_id),
   check (
     (target_kind is not null and target_id is not null and archive_id is null) or
     (target_kind is null and target_id is null and archive_id is not null)
   ),
   check (target_id is null or (target_id <> '' and btrim(target_id) = target_id)),
-  check (evidence_archive_id is null or evidence_archive_id is distinct from archive_id)
+  check (evidence_archive_id is null or evidence_archive_id is distinct from archive_id),
+  foreign key (archive_id, legacy_identity_id, cutover_run_id)
+    references parameter_catalog.parameter_catalog_archives(id, legacy_identity_id, cutover_run_id)
+    on delete restrict,
+  foreign key (evidence_archive_id, legacy_identity_id, cutover_run_id)
+    references parameter_catalog.parameter_catalog_archives(id, legacy_identity_id, cutover_run_id)
+    on delete restrict,
+  foreign key (supersedes_version_id, legacy_identity_id, cutover_run_id)
+    references parameter_catalog.legacy_mapping_versions(id, legacy_identity_id, cutover_run_id)
+    on delete restrict
 );
+
+create function parameter_catalog.assert_legacy_mapping_target_exists()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  target_exists boolean;
+begin
+  if new.target_kind is null then
+    return null;
+  end if;
+
+  case new.target_kind
+    when 'catalog-subject' then
+      select exists (select 1 from parameter_catalog.catalog_subjects where id = new.target_id) into target_exists;
+    when 'parameter-definition' then
+      select exists (select 1 from parameter_catalog.parameter_definitions where id = new.target_id) into target_exists;
+    when 'definition-revision' then
+      select exists (select 1 from parameter_catalog.definition_revisions where id = new.target_id) into target_exists;
+    when 'subject-registration' then
+      select exists (select 1 from parameter_catalog.organization_subject_registrations where id = new.target_id) into target_exists;
+    when 'subject-placement' then
+      select exists (select 1 from parameter_catalog.subject_placements where id = new.target_id) into target_exists;
+    when 'parameter-binding' then
+      select exists (select 1 from parameter_catalog.project_parameter_bindings where id = new.target_id) into target_exists;
+    when 'project-value' then
+      select exists (select 1 from parameter_catalog.project_parameter_values where id = new.target_id) into target_exists;
+    when 'binding-history-event' then
+      select exists (select 1 from parameter_catalog.binding_history_events where id = new.target_id) into target_exists;
+    when 'review-evidence' then
+      select exists (select 1 from parameter_catalog.parameter_review_evidence where id = new.target_id) into target_exists;
+    when 'definition-proposal' then
+      select exists (select 1 from parameter_catalog.definition_proposals where id = new.target_id) into target_exists;
+    when 'definition-proposal-revision' then
+      select exists (select 1 from parameter_catalog.definition_proposal_revisions where id = new.target_id) into target_exists;
+    else
+      target_exists := false;
+  end case;
+
+  if not target_exists then
+    raise exception using
+      errcode = '23503',
+      message = 'Legacy mapping target does not exist',
+      constraint = 'legacy_mapping_target_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger legacy_mapping_target_fk
+after insert or update of target_kind, target_id
+on parameter_catalog.legacy_mapping_versions
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_legacy_mapping_target_exists();
 
 create table parameter_catalog.legacy_mapping_heads (
   legacy_identity_id text primary key references parameter_catalog.legacy_identities(id) on delete restrict,
@@ -681,10 +812,13 @@ create table parameter_catalog.parameter_catalog_classification_ledger (
   classifier_version text not null check (classifier_version <> '' and btrim(classifier_version) = classifier_version),
   graph_fingerprint text not null check (graph_fingerprint <> '' and btrim(graph_fingerprint) = graph_fingerprint),
   disposition text not null check (disposition in ('blocked', 'mapped', 'archived', 'review-evidence', 'definition-proposal')),
-  mapping_version_id text references parameter_catalog.legacy_mapping_versions(id) on delete restrict,
+  mapping_version_id text,
   classified_at timestamptz not null default now(),
   primary key (cutover_run_id, legacy_identity_id),
-  check ((disposition = 'blocked' and mapping_version_id is null) or (disposition <> 'blocked' and mapping_version_id is not null))
+  check ((disposition = 'blocked' and mapping_version_id is null) or (disposition <> 'blocked' and mapping_version_id is not null)),
+  foreign key (mapping_version_id, legacy_identity_id, cutover_run_id)
+    references parameter_catalog.legacy_mapping_versions(id, legacy_identity_id, cutover_run_id)
+    on delete restrict
 );
 
 create table parameter_catalog.parameter_catalog_comparison_cases (
@@ -790,6 +924,7 @@ declare
   current_release_digest text;
   current_state_count integer;
   membership_lifecycle text;
+  previous_lock_timeout text;
 begin
   if p_expected_release_id is null
      or p_expected_release_id = ''
@@ -810,12 +945,19 @@ begin
       detail = 'PCAT-GUARD-DRIFT';
   end if;
 
-  if not pg_try_advisory_xact_lock_shared(688004000041::bigint) then
-    raise exception using
-      errcode = 'PCA05',
-      message = 'catalog current-pointer serialization is busy',
-      detail = 'PCAT-GUARD-SYNCHRONIZATION-BUSY';
-  end if;
+  previous_lock_timeout := pg_catalog.current_setting('lock_timeout');
+  perform pg_catalog.set_config('lock_timeout', '2s', true);
+  begin
+    perform pg_catalog.pg_advisory_xact_lock_shared(688004000041::bigint);
+  exception
+    when lock_not_available then
+      perform pg_catalog.set_config('lock_timeout', previous_lock_timeout, true);
+      raise exception using
+        errcode = 'PCA05',
+        message = 'catalog current-pointer serialization timed out',
+        detail = 'PCAT-GUARD-SYNCHRONIZATION-BUSY';
+  end;
+  perform pg_catalog.set_config('lock_timeout', previous_lock_timeout, true);
 
   select count(*), min(state.current_catalog_release_id), min(release.release_digest)
   into current_state_count, current_release_id, current_release_digest
@@ -952,6 +1094,44 @@ on parameter_catalog.subject_placements
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_subject_placement_kind();
 
+create function parameter_catalog.assert_parameter_module_placement_kind()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if exists (
+    select 1
+    from parameter_catalog.subject_placements placement
+    join parameter_catalog.organization_subject_registrations registration
+      on registration.id = placement.registration_id
+     and registration.organization_id = placement.organization_id
+    join parameter_catalog.catalog_subjects subject on subject.id = registration.subject_id
+    where placement.module_id = new.id
+      and placement.organization_id = new.organization_id
+      and (
+        (subject.kind = 'driver' and new.kind <> 'driver-group') or
+        (subject.kind = 'node-type' and new.kind <> 'node-type')
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Parameter module kind does not match its retained Catalog Subject placement',
+      constraint = 'subject_placement_kind_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+revoke all on function parameter_catalog.assert_parameter_module_placement_kind() from public;
+
+create constraint trigger parameter_module_placement_kind_ck
+after update of kind on public.parameter_modules
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_parameter_module_placement_kind();
+
 create table parameter_catalog.parameter_observations (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   organization_id text not null references public.organizations(id) on delete restrict,
@@ -975,7 +1155,7 @@ create table parameter_catalog.parameter_review_evidence (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   organization_id text not null references public.organizations(id) on delete restrict,
   observation_id text,
-  reason text not null check (reason in ('unknown', 'ambiguous', 'placement-conflict', 'retired-registration-observed', 'legacy-review')),
+  reason text not null check (reason in ('unknown', 'ambiguous', 'placement-conflict', 'retired-registration-observed')),
   candidate_safe_digest text not null check (candidate_safe_digest <> '' and btrim(candidate_safe_digest) = candidate_safe_digest),
   r_class text check (r_class is null or r_class ~ '^R(?:[0-9]|10)$'),
   source_graph_ref text,
