@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CatalogEventTime,
   CatalogMaterializationFingerprint,
   CatalogReleaseDigest,
   CatalogReleaseId,
@@ -55,6 +56,18 @@ const counts = {
   definitionRevisions: 4
 };
 
+const rejectsRawVerificationTime: VerificationResult = {
+  status: "verified",
+  release,
+  materializationFingerprint: CatalogMaterializationFingerprint("sha256:verified"),
+  // @ts-expect-error Verification timestamps must cross the CatalogEventTime boundary.
+  verifiedAt: "2026-09-01T00:00:00.000Z",
+  checks: [{ code: "compiled-release", status: "passed" }],
+  counts
+};
+
+void rejectsRawVerificationTime;
+
 describe("parameter catalog operation results", () => {
   it("keeps Result success and failure explicitly tagged", () => {
     expect(unwrap({ ok: true, value: "ready" })).toBe("ready");
@@ -94,7 +107,7 @@ describe("parameter catalog operation results", () => {
       status: "verified",
       release,
       materializationFingerprint: CatalogMaterializationFingerprint("sha256:verified"),
-      verifiedAt: "2026-09-01T00:00:00.000Z",
+      verifiedAt: CatalogEventTime("2026-09-01T00:00:00.000Z"),
       checks: [{ code: "compiled-release", status: "passed" }],
       counts
     };

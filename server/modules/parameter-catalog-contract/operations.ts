@@ -1,38 +1,43 @@
 import type { SubjectPlacementId } from "./ids";
 
-export const catalogKernelOperations = [
+const freezeRegistry = <const Values extends readonly unknown[]>(values: Values): Values => {
+  Object.freeze(values);
+  return values;
+};
+
+export const catalogKernelOperations = freezeRegistry([
   "compilePublishedRelease",
   "installPublishedRelease",
   "switchBackBeforeTraffic",
   "verifyCurrentMaterialization",
   "loadCurrentCatalog",
   "loadPinnedCatalog"
-] as const;
+]);
 export type CatalogKernelOperation = (typeof catalogKernelOperations)[number];
 
-export const catalogCutoverOperations = [
+export const catalogCutoverOperations = freezeRegistry([
   "planCutover",
   "executeCutover",
   "inspectCutover",
   "recoverCutover"
-] as const;
+]);
 export type CatalogCutoverOperation = (typeof catalogCutoverOperations)[number];
 
-export const releaseVerificationOperations = [
+export const releaseVerificationOperations = freezeRegistry([
   "prepareVerification",
   "runVerification",
   "assembleReport",
   "approveReport",
   "readReport"
-] as const;
+]);
 export type ReleaseVerificationOperation = (typeof releaseVerificationOperations)[number];
 
-export const reviewResolutionTypes = [
+export const reviewResolutionTypes = freezeRegistry([
   "register-subject",
   "restore-registration",
   "mark-out-of-scope",
   "open-definition-proposal"
-] as const;
+]);
 export type ReviewResolutionType = (typeof reviewResolutionTypes)[number];
 
 export type PlacementIntent =

@@ -3,13 +3,19 @@ import type {
   CatalogReleaseId,
   CatalogSubjectId
 } from "./ids";
+import type { CatalogKernelOperation } from "./operations";
 import type {
   CatalogReleaseIdentity,
   CatalogReleasePin,
   OptionalValue
 } from "./results";
 
-export const catalogReleaseViolationCodes = [
+const freezeRegistry = <const Values extends readonly unknown[]>(values: Values): Values => {
+  Object.freeze(values);
+  return values;
+};
+
+export const catalogReleaseViolationCodes = freezeRegistry([
   "manifest-unreadable",
   "entry-missing",
   "entry-unlisted",
@@ -28,7 +34,7 @@ export const catalogReleaseViolationCodes = [
   "lifecycle-tombstone-mismatch",
   "definition-snapshot-incomplete",
   "revision-derivation-invalid"
-] as const;
+]);
 export type CatalogReleaseViolationCode = (typeof catalogReleaseViolationCodes)[number];
 
 export interface CatalogReleaseViolation {
@@ -38,7 +44,7 @@ export interface CatalogReleaseViolation {
   readonly detail: string;
 }
 
-export const catalogDriftViolationCodes = [
+export const catalogDriftViolationCodes = freezeRegistry([
   "release-identity-mismatch",
   "materialization-fingerprint-mismatch",
   "subject-root-mismatch",
@@ -52,7 +58,7 @@ export const catalogDriftViolationCodes = [
   "unexpected-catalog-row",
   "organization-owned-catalog-row",
   "current-pointer-mismatch"
-] as const;
+]);
 export type CatalogDriftViolationCode = (typeof catalogDriftViolationCodes)[number];
 
 export interface CatalogDriftViolation {
@@ -112,24 +118,27 @@ export type CatalogKernelError =
       readonly kind: "invalid-selector";
       readonly field: "driver-compatible" | "node-type-name" | "property-key";
     }
-  | { readonly kind: "permission-denied"; readonly operation: string }
+  | {
+      readonly kind: "permission-denied";
+      readonly operation: CatalogKernelOperation;
+    }
   | {
       readonly kind: "storage-failure";
-      readonly operation: string;
+      readonly operation: CatalogKernelOperation;
       readonly retryable: boolean;
     };
 
-export const catalogCurrentGuardFailureCodes = [
+export const catalogCurrentGuardFailureCodes = freezeRegistry([
   "PCAT-GUARD-RELEASE-MISMATCH",
   "PCAT-GUARD-SUBJECT-NOT-PUBLISHED",
   "PCAT-GUARD-SUBJECT-RETIRED",
   "PCAT-GUARD-DRIFT",
   "PCAT-GUARD-SYNCHRONIZATION-BUSY"
-] as const;
+]);
 export type CatalogCurrentGuardFailureCode =
   (typeof catalogCurrentGuardFailureCodes)[number];
 
-export const apiFailureReasons = [
+export const apiFailureReasons = freezeRegistry([
   "catalog-not-ready",
   "release-drift",
   "subject-not-published",
@@ -148,10 +157,10 @@ export const apiFailureReasons = [
   "legacy-id-ambiguous",
   "forbidden",
   "migration-diagnostics-not-public"
-] as const;
+]);
 export type ApiFailureReason = (typeof apiFailureReasons)[number];
 
-export const databaseVerificationGateIds = [
+export const databaseVerificationGateIds = freezeRegistry([
   "PCAT-DB-V01",
   "PCAT-DB-V02",
   "PCAT-DB-V03",
@@ -169,10 +178,10 @@ export const databaseVerificationGateIds = [
   "PCAT-DB-V15",
   "PCAT-DB-V16",
   "PCAT-DB-V17"
-] as const;
+]);
 export type DatabaseVerificationGateId = (typeof databaseVerificationGateIds)[number];
 
-export const databaseVerificationFailureCodes = [
+export const databaseVerificationFailureCodes = freezeRegistry([
   "PCAT-VRF-V01-DUPLICATE-CURRENT-DEFINITION",
   "PCAT-VRF-V02-CURRENT-REVISION-CARDINALITY",
   "PCAT-VRF-V03-OWNER-SCOPE-MISMATCH",
@@ -190,38 +199,41 @@ export const databaseVerificationFailureCodes = [
   "PCAT-VRF-V15-AUDIT-CONTINUITY",
   "PCAT-VRF-V16-ORGANIZATION-STRUCTURAL-CATALOG",
   "PCAT-VRF-V17-MODE-RESULT-MISMATCH"
-] as const;
+]);
 export type DatabaseVerificationFailureCode =
   (typeof databaseVerificationFailureCodes)[number];
 
-export const migrationVerificationGateIds = [
+export const migrationVerificationGateIds = freezeRegistry([
   "PCAT-DB-M01",
   "PCAT-DB-M02",
   "PCAT-DB-M03",
   "PCAT-DB-M04"
-] as const;
+]);
 export type MigrationVerificationGateId = (typeof migrationVerificationGateIds)[number];
 
-export const migrationVerificationFailureCodes = [
+export const migrationVerificationFailureCodes = freezeRegistry([
   "PCAT-MIG-PACKAGE-INVENTORY-DRIFT",
   "PCAT-MIG-APPLIED-FILE-MISSING",
   "PCAT-MIG-HISTORICAL-ALIAS-INVALID",
   "PCAT-SCHEMA-MIGRATION-RESULT-MISMATCH"
-] as const;
+]);
 export type MigrationVerificationFailureCode =
   (typeof migrationVerificationFailureCodes)[number];
 
-export const privilegeVerificationGateIds = ["PCAT-DB-P01", "PCAT-DB-P02"] as const;
+export const privilegeVerificationGateIds = freezeRegistry([
+  "PCAT-DB-P01",
+  "PCAT-DB-P02"
+]);
 export type PrivilegeVerificationGateId = (typeof privilegeVerificationGateIds)[number];
 
-export const privilegeVerificationFailureCodes = [
+export const privilegeVerificationFailureCodes = freezeRegistry([
   "PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS",
   "PCAT-PRIV-LEGACY-WRITER-BYPASS"
-] as const;
+]);
 export type PrivilegeVerificationFailureCode =
   (typeof privilegeVerificationFailureCodes)[number];
 
-export const comparisonVerificationGateIds = [
+export const comparisonVerificationGateIds = freezeRegistry([
   "PCAT-CMP-D01",
   "PCAT-CMP-D02",
   "PCAT-CMP-D03",
@@ -231,10 +243,10 @@ export const comparisonVerificationGateIds = [
   "PCAT-CMP-D07",
   "PCAT-CMP-D08",
   "PCAT-CMP-D09"
-] as const;
+]);
 export type ComparisonVerificationGateId = (typeof comparisonVerificationGateIds)[number];
 
-export const comparisonVerificationFailureCodes = [
+export const comparisonVerificationFailureCodes = freezeRegistry([
   "PCAT-CMP-D01-DEFINITION-SEMANTICS",
   "PCAT-CMP-D02-SUBJECT-IDENTITY",
   "PCAT-CMP-D03-REGISTRATION-PLACEMENT",
@@ -244,23 +256,28 @@ export const comparisonVerificationFailureCodes = [
   "PCAT-CMP-D07-PROTECTED-CONSUMER-REFERENCE",
   "PCAT-CMP-D08-SOURCE-WRITEBACK",
   "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"
-] as const;
+]);
 export type ComparisonVerificationFailureCode =
   (typeof comparisonVerificationFailureCodes)[number];
 
-export const comparatorFailureCodes = [
+export const comparatorFailureCodes = freezeRegistry([
   "PCAT-CMP-CORPUS-COVERAGE",
   "PCAT-CMP-UNEXPLAINED-DIFFERENCE",
   "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
   "PCAT-CMP-EXPECTED-DIFFERENCE-EVIDENCE",
   "PCAT-CMP-REPORT-INTEGRITY"
-] as const;
+]);
 export type ComparatorFailureCode = (typeof comparatorFailureCodes)[number];
 
-export const reportFailureCodes = ["PCAT-REPORT-NONDETERMINISTIC"] as const;
+export const reportFailureCodes = freezeRegistry(["PCAT-REPORT-NONDETERMINISTIC"]);
 export type ReportFailureCode = (typeof reportFailureCodes)[number];
 
-export const parameterCatalogFailureFamilies = [
+export const catalogUpgradeFailureCodes = freezeRegistry([
+  "PCAT-UPG-CANDIDATE-DIGEST-MISMATCH"
+]);
+export type CatalogUpgradeFailureCode = (typeof catalogUpgradeFailureCodes)[number];
+
+export const parameterCatalogFailureFamilies = freezeRegistry([
   "PCAT-ART-*",
   "PCAT-MIG-*",
   "PCAT-SCHEMA-*",
@@ -280,6 +297,6 @@ export const parameterCatalogFailureFamilies = [
   "PCAT-RP-*",
   "PCAT-RESTORE-*",
   "PCAT-RET-*"
-] as const;
+]);
 export type ParameterCatalogFailureFamily =
   (typeof parameterCatalogFailureFamilies)[number];

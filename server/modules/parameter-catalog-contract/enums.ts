@@ -1,80 +1,90 @@
-export const catalogSubjectKinds = ["driver", "node-type"] as const;
+const freezeRegistry = <const Values extends readonly unknown[]>(values: Values): Values => {
+  Object.freeze(values);
+  return values;
+};
+
+export const catalogSubjectKinds = freezeRegistry(["driver", "node-type"]);
 export type CatalogSubjectKind = (typeof catalogSubjectKinds)[number];
 
-export const subjectLifecycles = ["active", "retired"] as const;
+export const subjectLifecycles = freezeRegistry(["active", "retired"]);
 export type SubjectLifecycle = (typeof subjectLifecycles)[number];
 
-export const definitionLifecycles = ["active", "deprecated", "retired"] as const;
+export const definitionLifecycles = freezeRegistry(["active", "deprecated", "retired"]);
 export type DefinitionLifecycle = (typeof definitionLifecycles)[number];
 
-export const registrationStatuses = ["active", "retired"] as const;
+export const registrationStatuses = freezeRegistry(["active", "retired"]);
 export type RegistrationStatus = (typeof registrationStatuses)[number];
 
-export const placementOrigins = ["auto", "curated"] as const;
+export const placementOrigins = freezeRegistry(["auto", "curated"]);
 export type PlacementOrigin = (typeof placementOrigins)[number];
 
-export const reviewItemStatuses = ["open", "resolved", "out-of-scope"] as const;
+export const reviewItemStatuses = freezeRegistry(["open", "resolved", "out-of-scope"]);
 export type ReviewItemStatus = (typeof reviewItemStatuses)[number];
 
-export const reviewReasons = [
+export const reviewReasons = freezeRegistry([
   "unknown",
   "ambiguous",
   "placement-conflict",
   "retired-registration-observed"
-] as const;
+]);
 export type ReviewReason = (typeof reviewReasons)[number];
 
-export const definitionProposalStatuses = [
+export const definitionProposalStatuses = freezeRegistry([
   "draft",
   "submitted",
   "accepted",
   "rejected",
   "withdrawn"
-] as const;
+]);
 export type DefinitionProposalStatus = (typeof definitionProposalStatuses)[number];
 
-export const catalogInstallModes = ["bootstrap", "advance"] as const;
+export const catalogInstallModes = freezeRegistry(["bootstrap", "advance"]);
 export type CatalogInstallMode = (typeof catalogInstallModes)[number];
 
-export const catalogSubjectSelectorKinds = [
+export const catalogSubjectSelectorKinds = freezeRegistry([
   "driver-compatible",
   "node-type-name"
-] as const;
+]);
 export type CatalogSubjectSelectorKind = (typeof catalogSubjectSelectorKinds)[number];
 
-export const verificationPurposes = [
+export const verificationPurposes = freezeRegistry([
   "pre-activation",
   "post-retirement-runtime",
   "isolated-candidate-acceptance",
   "public-release",
   "legacy-read-sunset",
   "p16-cleanup"
-] as const;
+]);
 export type VerificationPurpose = (typeof verificationPurposes)[number];
 
-export const verificationModes = ["fresh", "populated", "restored", "cleanup"] as const;
+export const verificationModes = freezeRegistry([
+  "fresh",
+  "populated",
+  "restored",
+  "cleanup"
+]);
 export type VerificationMode = (typeof verificationModes)[number];
 
-export const verificationGateStatuses = [
+export const verificationGateStatuses = freezeRegistry([
   "passed",
   "failed",
   "not-yet-executable",
   "not-applicable"
-] as const;
+]);
 export type VerificationGateStatus = (typeof verificationGateStatuses)[number];
 
-export const verificationDecisions = ["passed", "blocked"] as const;
+export const verificationDecisions = freezeRegistry(["passed", "blocked"]);
 export type VerificationDecision = (typeof verificationDecisions)[number];
 
-export const comparisonOutcomes = [
+export const comparisonOutcomes = freezeRegistry([
   "exact-equivalent",
   "declared-expected-difference",
   "unexplained-difference",
   "unqueryable/protected-reference-missing"
-] as const;
+]);
 export type ComparisonOutcome = (typeof comparisonOutcomes)[number];
 
-export const legacyRowClasses = [
+export const legacyRowClasses = freezeRegistry([
   "R0",
   "R1",
   "R2",
@@ -86,10 +96,10 @@ export const legacyRowClasses = [
   "R8",
   "R9",
   "R10"
-] as const;
+]);
 export type LegacyRowClass = (typeof legacyRowClasses)[number];
 
-export const cutoverPhases = [
+export const cutoverPhases = freezeRegistry([
   "P0",
   "P1",
   "P2",
@@ -107,13 +117,13 @@ export const cutoverPhases = [
   "P14",
   "P15",
   "P16"
-] as const;
+]);
 export type CutoverPhase = (typeof cutoverPhases)[number];
 
-export const legacyRetirementStages = ["R-L0", "R-L1", "R-L2", "R-L3"] as const;
+export const legacyRetirementStages = freezeRegistry(["R-L0", "R-L1", "R-L2", "R-L3"]);
 export type LegacyRetirementStage = (typeof legacyRetirementStages)[number];
 
-export const legacyIdentifierTypes = [
+export const legacyIdentifierTypes = freezeRegistry([
   "parameter-spec",
   "parameter-spec-version",
   "project-parameter-binding",
@@ -121,18 +131,18 @@ export const legacyIdentifierTypes = [
   "parameter-subject",
   "parameter-placement",
   "parameter-module"
-] as const;
+]);
 export type LegacyIdentifierType = (typeof legacyIdentifierTypes)[number];
 
-export const emptyReasons = [
+export const emptyReasons = freezeRegistry([
   "no-registrations",
   "no-definitions",
   "no-review-work",
   "no-filter-match"
-] as const;
+]);
 export type EmptyReason = (typeof emptyReasons)[number];
 
-export const catalogVerificationCheckCodes = [
+export const catalogVerificationCheckCodes = freezeRegistry([
   "compiled-release",
   "release-lineage",
   "subject-memberships",
@@ -143,5 +153,5 @@ export const catalogVerificationCheckCodes = [
   "current-pointer",
   "materialization-fingerprint",
   "organization-structural-absence"
-] as const;
+]);
 export type CatalogVerificationCheckCode = (typeof catalogVerificationCheckCodes)[number];

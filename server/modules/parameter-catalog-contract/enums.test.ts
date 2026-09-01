@@ -159,4 +159,35 @@ describe("parameter catalog closed literals", () => {
       "organization-structural-absence"
     ]);
   });
+
+  it("freezes every exported enum registry without a mutable canonical copy", () => {
+    for (const registry of [
+      catalogSubjectKinds,
+      subjectLifecycles,
+      definitionLifecycles,
+      registrationStatuses,
+      placementOrigins,
+      reviewItemStatuses,
+      reviewReasons,
+      definitionProposalStatuses,
+      catalogInstallModes,
+      catalogSubjectSelectorKinds,
+      verificationPurposes,
+      verificationModes,
+      verificationGateStatuses,
+      verificationDecisions,
+      comparisonOutcomes,
+      legacyRowClasses,
+      cutoverPhases,
+      legacyRetirementStages,
+      legacyIdentifierTypes,
+      emptyReasons,
+      catalogVerificationCheckCodes
+    ]) {
+      expect(Object.isFrozen(registry)).toBe(true);
+    }
+    expect(() =>
+      (catalogSubjectKinds as unknown as string[]).push("invented-subject-kind")
+    ).toThrow(TypeError);
+  });
 });

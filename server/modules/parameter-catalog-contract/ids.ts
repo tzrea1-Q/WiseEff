@@ -4,11 +4,21 @@ type Branded<Value, Name extends string> = Value & {
   readonly [parameterCatalogContractBrand]: Name;
 };
 
-const brandString = <Name extends string>(value: string): Branded<string, Name> =>
-  value as Branded<string, Name>;
+const brandString = <Name extends string>(value: string): Branded<string, Name> => {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw new TypeError(
+      "Branded contract strings must be non-empty and have no surrounding whitespace"
+    );
+  }
+  return value as Branded<string, Name>;
+};
 
-const brandNumber = <Name extends string>(value: number): Branded<number, Name> =>
-  value as Branded<number, Name>;
+const brandNumber = <Name extends string>(value: number): Branded<number, Name> => {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new TypeError("Branded contract numbers must be finite integers");
+  }
+  return value as Branded<number, Name>;
+};
 
 export type CatalogReleaseId = Branded<string, "CatalogReleaseId">;
 export const CatalogReleaseId = (value: string): CatalogReleaseId =>
@@ -68,12 +78,22 @@ export const CatalogSearchText = (value: string): CatalogSearchText =>
   brandString<"CatalogSearchText">(value);
 
 export type CatalogPageLimit = Branded<number, "CatalogPageLimit">;
-export const CatalogPageLimit = (value: number): CatalogPageLimit =>
-  brandNumber<"CatalogPageLimit">(value);
+export const CatalogPageLimit = (value: number): CatalogPageLimit => {
+  const branded = brandNumber<"CatalogPageLimit">(value);
+  if (branded <= 0) {
+    throw new TypeError("CatalogPageLimit must be positive");
+  }
+  return branded;
+};
 
 export type CatalogReleaseSequence = Branded<number, "CatalogReleaseSequence">;
-export const CatalogReleaseSequence = (value: number): CatalogReleaseSequence =>
-  brandNumber<"CatalogReleaseSequence">(value);
+export const CatalogReleaseSequence = (value: number): CatalogReleaseSequence => {
+  const branded = brandNumber<"CatalogReleaseSequence">(value);
+  if (branded < 0) {
+    throw new TypeError("CatalogReleaseSequence must be non-negative");
+  }
+  return branded;
+};
 
 export type CatalogEventTime = Branded<string, "CatalogEventTime">;
 export const CatalogEventTime = (value: string): CatalogEventTime =>

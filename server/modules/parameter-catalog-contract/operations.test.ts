@@ -68,4 +68,15 @@ describe("parameter catalog operations", () => {
       })
     ).toBe("Charging ICs");
   });
+
+  it("freezes every exported operation registry", () => {
+    for (const registry of [
+      catalogKernelOperations,
+      catalogCutoverOperations,
+      releaseVerificationOperations,
+      reviewResolutionTypes
+    ]) {
+      expect(Object.isFrozen(registry)).toBe(true);
+    }
+  });
 });

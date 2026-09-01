@@ -7,6 +7,7 @@ import {
   catalogCurrentGuardFailureCodes,
   catalogDriftViolationCodes,
   catalogReleaseViolationCodes,
+  catalogUpgradeFailureCodes,
   comparisonVerificationFailureCodes,
   comparisonVerificationGateIds,
   comparatorFailureCodes,
@@ -52,6 +53,14 @@ const describeKernelFailure = (failure: CatalogKernelError): string => {
   }
 };
 
+const inventedKernelOperationFailure: CatalogKernelError = {
+  kind: "permission-denied",
+  // @ts-expect-error Kernel failure operations must use the frozen operation union.
+  operation: "inventedKernelOperation"
+};
+
+void inventedKernelOperationFailure;
+
 describe("parameter catalog stable failures", () => {
   it("keeps the Catalog Kernel failure union exhaustive", () => {
     const failure: CatalogKernelError = {
@@ -64,6 +73,12 @@ describe("parameter catalog stable failures", () => {
     };
 
     expect(describeKernelFailure(failure)).toBe("crel_expected");
+    expect(
+      describeKernelFailure({
+        kind: "permission-denied",
+        operation: "loadCurrentCatalog"
+      })
+    ).toBe("loadCurrentCatalog");
   });
 
   it("freezes release-validation and materialization-drift codes", () => {
@@ -217,6 +232,9 @@ describe("parameter catalog stable failures", () => {
       "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"
     ]);
     expect(reportFailureCodes).toEqual(["PCAT-REPORT-NONDETERMINISTIC"]);
+    expect(catalogUpgradeFailureCodes).toEqual([
+      "PCAT-UPG-CANDIDATE-DIGEST-MISMATCH"
+    ]);
     expect(parameterCatalogFailureFamilies).toEqual([
       "PCAT-ART-*",
       "PCAT-MIG-*",
@@ -238,5 +256,28 @@ describe("parameter catalog stable failures", () => {
       "PCAT-RESTORE-*",
       "PCAT-RET-*"
     ]);
+  });
+
+  it("freezes every exported failure and verification registry", () => {
+    for (const registry of [
+      catalogReleaseViolationCodes,
+      catalogDriftViolationCodes,
+      catalogCurrentGuardFailureCodes,
+      apiFailureReasons,
+      databaseVerificationGateIds,
+      databaseVerificationFailureCodes,
+      migrationVerificationGateIds,
+      migrationVerificationFailureCodes,
+      privilegeVerificationGateIds,
+      privilegeVerificationFailureCodes,
+      comparisonVerificationGateIds,
+      comparisonVerificationFailureCodes,
+      comparatorFailureCodes,
+      reportFailureCodes,
+      catalogUpgradeFailureCodes,
+      parameterCatalogFailureFamilies
+    ]) {
+      expect(Object.isFrozen(registry)).toBe(true);
+    }
   });
 });
