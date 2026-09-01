@@ -57,6 +57,45 @@ create table parameter_catalog.catalog_releases (
   check (predecessor_release_id is null or predecessor_release_id <> id)
 );
 
+create function parameter_catalog.assert_catalog_release_predecessor_acyclic()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  cycle_exists boolean;
+begin
+  with recursive predecessor_walk(release_id, visited_ids, cycle) as (
+    select new.id, array[new.id]::text[], false
+    union all
+    select
+      release.predecessor_release_id,
+      walk.visited_ids || release.predecessor_release_id,
+      release.predecessor_release_id = any(walk.visited_ids)
+    from predecessor_walk walk
+    join parameter_catalog.catalog_releases release on release.id = walk.release_id
+    where release.predecessor_release_id is not null
+      and not walk.cycle
+  )
+  select exists (select 1 from predecessor_walk where cycle)
+  into cycle_exists;
+
+  if cycle_exists then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog release predecessor graph must be acyclic',
+      constraint = 'catalog_release_predecessor_acyclic_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger catalog_release_predecessor_acyclic_ck
+after insert or update of predecessor_release_id on parameter_catalog.catalog_releases
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_catalog_release_predecessor_acyclic();
+
 create table parameter_catalog.catalog_subjects (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   kind text not null check (kind in ('driver', 'node-type')),
@@ -190,6 +229,173 @@ create trigger catalog_materialization_release_lock
 before insert on parameter_catalog.catalog_materializations
 for each row execute function parameter_catalog.lock_catalog_release_for_materialization();
 
+create function parameter_catalog.assert_catalog_materialization_projection_complete()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if not exists (
+    select 1
+    from parameter_catalog.catalog_release_subjects
+    where release_id = new.release_id
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog materialization has an empty release projection',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_releases release
+    join parameter_catalog.catalog_release_subjects predecessor_subject
+      on predecessor_subject.release_id = release.predecessor_release_id
+    where release.id = new.release_id
+      and not exists (
+        select 1
+        from parameter_catalog.catalog_release_subjects target_subject
+        where target_subject.release_id = release.id
+          and target_subject.subject_id = predecessor_subject.subject_id
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog materialization omits a predecessor subject',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_releases release
+    join parameter_catalog.catalog_release_subject_aliases predecessor_alias
+      on predecessor_alias.release_id = release.predecessor_release_id
+    where release.id = new.release_id
+      and not exists (
+        select 1
+        from parameter_catalog.catalog_release_subject_aliases target_alias
+        where target_alias.release_id = release.id
+          and target_alias.alias_id = predecessor_alias.alias_id
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog materialization omits a predecessor alias',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_release_subject_aliases release_alias
+    join parameter_catalog.catalog_release_subjects release_subject
+      on release_subject.release_id = release_alias.release_id
+     and release_subject.subject_id = release_alias.subject_id
+    where release_alias.release_id = new.release_id
+      and release_alias.lifecycle = 'active'
+      and release_subject.lifecycle <> 'active'
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Active Catalog alias requires an active subject membership',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_release_subject_aliases release_alias
+    join parameter_catalog.catalog_subject_aliases alias on alias.id = release_alias.alias_id
+    join parameter_catalog.catalog_subjects subject on subject.id = alias.subject_id
+    where release_alias.release_id = new.release_id
+      and (
+        (alias.selector_kind = 'driver-compatible' and subject.kind <> 'driver') or
+        (alias.selector_kind = 'node-type-name' and subject.kind <> 'node-type')
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog alias selector kind does not match its Subject kind',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_release_subject_aliases release_alias
+    join parameter_catalog.catalog_subject_aliases alias on alias.id = release_alias.alias_id
+    join parameter_catalog.catalog_subjects canonical_owner
+      on canonical_owner.canonical_key = alias.normalized_selector
+     and canonical_owner.kind = case alias.selector_kind
+       when 'driver-compatible' then 'driver'
+       when 'node-type-name' then 'node-type'
+     end
+    where release_alias.release_id = new.release_id
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog alias collides with another Subject canonical selector',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  if exists (
+    with recursive target_lineage(id) as (
+      select new.release_id
+      union
+      select release.predecessor_release_id
+      from parameter_catalog.catalog_releases release
+      join target_lineage lineage on lineage.id = release.id
+      where release.predecessor_release_id is not null
+    ),
+    expected_definitions(definition_id) as (
+      select distinct revision.definition_id
+      from parameter_catalog.definition_revisions revision
+      join target_lineage lineage on lineage.id = revision.catalog_release_id
+    ),
+    invalid_expected_definition as (
+      select expected.definition_id
+      from expected_definitions expected
+      join parameter_catalog.parameter_definitions definition
+        on definition.id = expected.definition_id
+      left join parameter_catalog.catalog_release_definition_heads release_head
+        on release_head.release_id = new.release_id
+       and release_head.definition_id = expected.definition_id
+      left join parameter_catalog.catalog_release_subjects release_subject
+        on release_subject.release_id = new.release_id
+       and release_subject.subject_id = definition.subject_id
+      where release_head.definition_id is null
+         or release_head.revision_id <> definition.current_revision_id
+         or release_subject.subject_id is null
+    ),
+    invalid_release_head as (
+      select release_head.definition_id
+      from parameter_catalog.catalog_release_definition_heads release_head
+      join parameter_catalog.definition_revisions revision
+        on revision.definition_id = release_head.definition_id
+       and revision.id = release_head.revision_id
+      left join expected_definitions expected
+        on expected.definition_id = release_head.definition_id
+      left join target_lineage revision_lineage
+        on revision_lineage.id = revision.catalog_release_id
+      where release_head.release_id = new.release_id
+        and (expected.definition_id is null or revision_lineage.id is null)
+    )
+    select 1 from invalid_expected_definition
+    union all
+    select 1 from invalid_release_head
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog materialization definition heads are incomplete or split',
+      constraint = 'catalog_materialization_projection_complete_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger catalog_materialization_projection_complete_ck
+after insert on parameter_catalog.catalog_materializations
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_catalog_materialization_projection_complete();
+
 create function parameter_catalog.reject_sealed_catalog_release_change()
 returns trigger
 language plpgsql
@@ -210,6 +416,7 @@ begin
     select 1
     from parameter_catalog.catalog_materializations
     where release_id = changed_release_id
+      and xmin::text <> pg_catalog.pg_current_xact_id()::text
   ) then
     raise exception using
       errcode = '55000',
@@ -374,9 +581,44 @@ begin
   end if;
 
   if exists (
+    select 1
+    from parameter_catalog.catalog_release_subject_aliases release_alias
+    join parameter_catalog.catalog_subject_aliases alias on alias.id = release_alias.alias_id
+    join parameter_catalog.catalog_subjects subject on subject.id = alias.subject_id
+    where release_alias.release_id = new.current_catalog_release_id
+      and (
+        (alias.selector_kind = 'driver-compatible' and subject.kind <> 'driver') or
+        (alias.selector_kind = 'node-type-name' and subject.kind <> 'node-type')
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog alias selector kind does not match its Subject kind',
+      constraint = 'catalog_state_current_release_complete_ck';
+  end if;
+
+  if exists (
+    select 1
+    from parameter_catalog.catalog_release_subject_aliases release_alias
+    join parameter_catalog.catalog_subject_aliases alias on alias.id = release_alias.alias_id
+    join parameter_catalog.catalog_subjects canonical_owner
+      on canonical_owner.canonical_key = alias.normalized_selector
+     and canonical_owner.kind = case alias.selector_kind
+       when 'driver-compatible' then 'driver'
+       when 'node-type-name' then 'node-type'
+     end
+    where release_alias.release_id = new.current_catalog_release_id
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog alias collides with another Subject canonical selector',
+      constraint = 'catalog_state_current_release_complete_ck';
+  end if;
+
+  if exists (
     with recursive target_lineage(id) as (
       select new.current_catalog_release_id
-      union all
+      union
       select release.predecessor_release_id
       from parameter_catalog.catalog_releases release
       join target_lineage lineage on lineage.id = release.id
@@ -460,6 +702,37 @@ create constraint trigger catalog_state_current_release_complete_ck
 after insert or update of current_catalog_release_id on parameter_catalog.catalog_state
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_current_release_complete();
+
+create function parameter_catalog.assert_current_definition_head()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  recorded_head_id text;
+begin
+  select release_head.revision_id into recorded_head_id
+  from parameter_catalog.catalog_state state
+  join parameter_catalog.catalog_release_definition_heads release_head
+    on release_head.release_id = state.current_catalog_release_id
+  where state.singleton
+    and release_head.definition_id = new.id;
+
+  if found and recorded_head_id is distinct from new.current_revision_id then
+    raise exception using
+      errcode = '23514',
+      message = 'Definition head disagrees with the current Catalog release',
+      constraint = 'catalog_current_definition_head_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger catalog_current_definition_head_ck
+after insert or update of current_revision_id on parameter_catalog.parameter_definitions
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_current_definition_head();
 
 create function parameter_catalog.protect_parameter_definition_identity()
 returns trigger
@@ -1372,6 +1645,7 @@ create table parameter_catalog.parameter_observations (
   observed_at timestamptz not null default now(),
   unique (organization_id, source_identity),
   unique (id, organization_id),
+  unique (id, organization_id, catalog_release_id, matcher_revision),
   foreign key (project_id, organization_id)
     references public.projects(id, organization_id)
     on delete restrict
@@ -1427,7 +1701,8 @@ create table parameter_catalog.definition_proposals (
   etag_version bigint not null check (etag_version > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (id, organization_id)
+  unique (id, organization_id),
+  unique (id, base_catalog_release_id)
 );
 
 create table parameter_catalog.definition_proposal_revisions (
@@ -1460,6 +1735,10 @@ create table parameter_catalog.catalog_publication_intents (
   created_at timestamptz not null default now(),
   foreign key (proposal_id, proposal_revision_id)
     references parameter_catalog.definition_proposal_revisions(proposal_id, id)
+    on delete restrict,
+  constraint catalog_publication_intent_proposal_base_fk
+    foreign key (proposal_id, base_catalog_release_id)
+    references parameter_catalog.definition_proposals(id, base_catalog_release_id)
     on delete restrict
 );
 
@@ -1485,6 +1764,50 @@ create table parameter_catalog.parameter_review_resolutions (
     (resolution_type = 'mark-out-of-scope' and registration_id is null and proposal_id is null and out_of_scope_reason is not null)
   )
 );
+
+create function parameter_catalog.assert_review_resolution_target_owner()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  review_organization_id text;
+  target_organization_id text;
+begin
+  select organization_id into review_organization_id
+  from parameter_catalog.parameter_review_items
+  where id = new.review_item_id;
+
+  if new.registration_id is not null then
+    select organization_id into target_organization_id
+    from parameter_catalog.organization_subject_registrations
+    where id = new.registration_id;
+  elsif new.proposal_id is not null then
+    select organization_id into target_organization_id
+    from parameter_catalog.definition_proposals
+    where id = new.proposal_id;
+  else
+    return null;
+  end if;
+
+  if review_organization_id is not null
+     and target_organization_id is not null
+     and review_organization_id is distinct from target_organization_id then
+    raise exception using
+      errcode = '23503',
+      message = 'Review resolution target belongs to another Organization',
+      constraint = 'review_resolution_target_owner_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger review_resolution_target_owner_fk
+after insert or update of review_item_id, registration_id, proposal_id
+on parameter_catalog.parameter_review_resolutions
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_review_resolution_target_owner();
 
 alter table parameter_catalog.parameter_review_items
   add constraint parameter_review_item_current_resolution_fk
@@ -1521,8 +1844,11 @@ create table parameter_catalog.parameter_observation_matches (
   catalog_release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
   matcher_revision text not null check (matcher_revision <> '' and btrim(matcher_revision) = matcher_revision),
   matched_at timestamptz not null default now(),
-  foreign key (observation_id, organization_id)
-    references parameter_catalog.parameter_observations(id, organization_id)
+  constraint parameter_observation_match_observation_fk
+    foreign key (observation_id, organization_id, catalog_release_id, matcher_revision)
+    references parameter_catalog.parameter_observations(
+      id, organization_id, catalog_release_id, matcher_revision
+    )
     on delete restrict,
   foreign key (registration_id, organization_id, subject_id)
     references parameter_catalog.organization_subject_registrations(id, organization_id, subject_id)

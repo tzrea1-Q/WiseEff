@@ -205,7 +205,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog migration paths", () => {
     expect(freshFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(upgradeFingerprint).toBe(freshFingerprint);
     expect(freshFingerprint).toBe(
-      "160b879e041cee335fec41741b2d449d61a9dbadd09651941840cf22926116d5"
+      "110e794cf14caab8b5f9053fd576a02c19ec9df09bfef086216bcf630b3f82e6"
     );
   });
 });

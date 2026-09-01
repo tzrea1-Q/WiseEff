@@ -63,6 +63,18 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
       insert into parameter_catalog.catalog_node_types (subject_id, family)
       values ('csub-retired', 'device');
 
+      insert into parameter_catalog.parameter_definitions (
+        id, subject_id, property_key, current_revision_id
+      ) values ('pdef-active', 'csub-active', 'active-property', 'drev-active-a');
+
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values ('drev-active-a', 'pdef-active', 1, 'crel-a', 'sha256:drev-active-a', '{}');
+
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values ('crel-a', 'pdef-active', 'drev-active-a');
+
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
       ) values
@@ -139,6 +151,49 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         ["crel-a", "sha256:release-a", "csub-active", "active"]
       )
     ).resolves.toMatchObject({ rowCount: 1 });
+  });
+
+  it("rejects an independent Definition head advance that disagrees with the current release", async () => {
+    await primary.query("begin");
+    await primary.query(`
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-head-future', 'head-future', 'sha256:head-future', 'crel-a',
+        'sha256:head-future-compiled', 'sha256:head-future-toolchain'
+      );
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values (
+        'drev-active-future', 'pdef-active', 2, 'crel-head-future',
+        'sha256:drev-active-future', '{}'
+      );
+      update parameter_catalog.parameter_definitions
+      set current_revision_id = 'drev-active-future'
+      where id = 'pdef-active'
+    `);
+
+    const error = await captureDatabaseError(primary.query("set constraints all immediate"));
+    expect(error.code).toBe("23514");
+    expect(error.constraint).toBe("catalog_current_definition_head_ck");
+    await primary.query("rollback");
+
+    const state = await primary.query<{
+      current_catalog_release_id: string;
+      current_revision_id: string;
+      release_head: string;
+    }>(`
+      select
+        (select current_catalog_release_id from parameter_catalog.catalog_state) as current_catalog_release_id,
+        (select current_revision_id from parameter_catalog.parameter_definitions where id = 'pdef-active') as current_revision_id,
+        (select revision_id from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-a' and definition_id = 'pdef-active') as release_head
+    `);
+    expect(state.rows).toEqual([{
+      current_catalog_release_id: "crel-a",
+      current_revision_id: "drev-active-a",
+      release_head: "drev-active-a"
+    }]);
   });
 
   it.each([
@@ -392,6 +447,10 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           ('crel-b', 'csub-active', 'retired', '{}', '{}', '{"reason":"withdrawn"}'),
           ('crel-b', 'csub-retired', 'retired', '{}', '{}', '{"reason":"still-retired"}');
 
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-b', 'pdef-active', 'drev-active-a');
+
         insert into parameter_catalog.catalog_materializations (
           release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
         ) values ('crel-b', 'sha256:compiled-fp-b', 'sha256:database-fp-b', 'attempt-b', 'audit-b');
@@ -453,6 +512,10 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         ) values
           ('crel-retirement', 'csub-active', 'retired', '{}', '{}', '{"reason":"withdrawn"}'),
           ('crel-retirement', 'csub-retired', 'retired', '{}', '{}', '{"reason":"still-retired"}');
+
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-retirement', 'pdef-active', 'drev-active-a');
 
         insert into parameter_catalog.catalog_materializations (
           release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref

@@ -168,6 +168,9 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       order by trigger_record.tgname
     `, [[
       "binding_history_event_owner_fk",
+      "catalog_current_definition_head_ck",
+      "catalog_materialization_projection_complete_ck",
+      "catalog_release_predecessor_acyclic_ck",
       "catalog_state_current_release_complete_ck",
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
@@ -175,6 +178,7 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       "comparison_result_mapping_run_fk",
       "legacy_mapping_target_fk",
       "parameter_module_placement_kind_ck",
+      "review_resolution_target_owner_fk",
       "subject_placement_kind_ck"
     ]]);
 
@@ -191,6 +195,9 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
     })));
     expect(triggers.rows).toEqual([
       "binding_history_event_owner_fk",
+      "catalog_current_definition_head_ck",
+      "catalog_materialization_projection_complete_ck",
+      "catalog_release_predecessor_acyclic_ck",
       "catalog_state_current_release_complete_ck",
       "catalog_subject_exact_subtype_from_driver_ck",
       "catalog_subject_exact_subtype_from_node_type_ck",
@@ -198,6 +205,7 @@ describe.skipIf(!databaseAvailable)("canonical parameter Catalog schema", () => 
       "comparison_result_mapping_run_fk",
       "legacy_mapping_target_fk",
       "parameter_module_placement_kind_ck",
+      "review_resolution_target_owner_fk",
       "subject_placement_kind_ck"
     ].map((trigger_name) => ({
       trigger_name,
