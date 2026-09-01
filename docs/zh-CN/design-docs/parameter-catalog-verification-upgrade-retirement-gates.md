@@ -25,27 +25,31 @@
 
 ## 决策摘要
 
-1. 一个 routes-less 的 **Release Verification** 深模块拥有 verification plan、typed gate 执行、不可变 Release Verification Report 与 approval binding。`upgrade.sh`、startup、API readiness、browser runner、后台任务和 runbook 只是 adapter 或 evidence producer；它们都不能重新编排或豁免门禁。
-2. 模块聚合四组独立证明：Catalog Kernel materialization proof、包含 V01-V17 与 D01-D09 的 cutover/database proof、API/browser acceptance，以及 target-host/recovery evidence。
-3. 每份报告固定到一个 artifact、Catalog Release、migration inventory、cutover plan、mapping epoch、recovery point、target identity 和 verification-contract version。任何输入变化都产生新 plan，绝不是 retry。
-4. V01-V17 仍是强制 release-blocking checks。Migration drift 与 role-negative proof 是额外强制 database checks；它们不替代、不重编号 V01-V17。
-5. P11 D01-D09 仍然强制。`unexplained-difference` 与 `unqueryable/protected-reference-missing` 必须同时等于零。自由文本 waiver、抽样覆盖、runtime traffic 或 dual-read fallback 都不能替代它。
-6. API 与 browser acceptance 证明 issue #677 的精确合同和已接受单页体验。Mock parity 只是 contract evidence；release browser evidence 必须使用真实 API 与精确 candidate artifact。
-7. Fresh 与 populated upgrade 使用同一个 phase controller 和 verifier。Fresh mode 证明零 legacy inventory；populated mode 证明精确 P0 counts、mappings、Archive 与完整 P11 corpus。
-8. Pointer-only switch-back 在最早一次 candidate business write、queue business delivery 或 public traffic acceptance 时永久失效。此后只能 forward repair，或由 incident owner 批准 whole-state restore。
-9. Legacy writes 在 canonical launch 时即不可达。Read compatibility 只有在至少两个 production releases、至少 90 天、每个受支持 deployment class 连续 30 天零使用以及全部 evidence gates 通过后才退出。Code/schema 删除只能发生在独立 P16 cleanup release。
-10. Documentation、local synthetic、real local PostgreSQL、populated-shape、Hosted/CI、target-host、release 与 production-approval evidence 必须清晰区分。
+1. 一个 routes-less 的 **Release Verification** 深模块拥有 purpose-scoped verification plan、typed gate 执行、不可变 Release Verification Report、report lineage、applicability 与 approval binding。`upgrade.sh`、startup、API readiness、browser runner、后台任务和 runbook 只是 adapter 或 evidence producer；它们都不能重新编排或豁免门禁。
+2. Verification 是有顺序的 report chain，而不是一份自我授权报告：`pre-activation` 授权 P12；P13 后的新 `post-retirement-runtime` attempt 授权 API verify-only startup；`isolated-candidate-acceptance` 在流量隔离时证明真实 candidate API/browser；`public-release` 聚合这些精确 report digests，且只有它能授权 queue/proxy/public traffic。
+3. Pre-activation report 固定精确 artifact、target、Catalog Release、migration、cutover plan、mapping、Recovery Point、Catalog/materialization proof、migration proof、初始 V01-V17、强制 D01-D09、recovery proof 与 pre-switch writer fence。API/browser gates 对该 purpose 明确为 `not-yet-executable`，绝不标为 `passed`。
+4. P13 legacy-writer retirement 创建新的 immutable attempt，并完整重跑 V01-V17 + D01-D09 P11，包括 V13/P02 writer-reachability 与 privilege negatives。不得只重跑 V13/P02，也不得把 P12 前的临时 fence 结果重用为 retirement proof。
+5. Startup verify-only readiness 绑定最新 passing 且 approved 的 post-retirement-runtime report。任一失败都保持 API、worker、web、queue、proxy 与 public traffic 隔离；不得 fallback、dual read/write 或 runtime repair。
+6. 只有得到该 runtime pin 后才能启动 candidate API，随后启动 worker/web，进行 isolated acceptance。API/PG/HTTP/auth/audit 与 browser-real evidence 必须使用精确 target 和真实 candidate API。任何 acceptance business mutation 都会 durable 且永久关闭 pointer-only rollback。
+7. Public release 需要新的 immutable report，聚合 pre-activation、post-retirement P11、API/browser、target/recovery 与 observability evidence。只有不同 principal 的 Operator 与 Platform owner 对 `public-release` purpose 单独批准后，才能恢复 queue/proxy/public traffic。
+8. V01-V17 与 P11 D01-D09 仍是强制 release-blocking checks。`unexplained-difference` 与 `unqueryable/protected-reference-missing` 均为零，11 个 consumer families 全覆盖，migration/role-negative gates 仍是额外强制检查。
+9. Fresh 与 populated upgrade 使用同一个 phase controller 和 verifier。Fresh mode 证明零 legacy inventory；populated mode 在两个强制 P11 边界都证明精确 P0 counts、mappings、Archive 与完整 corpus。
+10. Activation、runtime startup、isolated acceptance、public release、legacy-read sunset 与 P16 cleanup 具有独立 applicability/checklist semantics。一个 purpose 的 report/approval 不能授权另一个 purpose。
+11. Pointer-only switch-back 在最早一次 candidate business write、queue business delivery 或 public traffic acceptance 时永久失效。此后只能 forward repair，或由 incident owner 批准 whole-state restore。
+12. Legacy writes 在 canonical launch 时即不可达。Read compatibility 只有在至少两个 production releases、至少 90 天、每个受支持 deployment class 连续 30 天零使用以及全部 evidence gates 通过后才退出。Code/schema 删除只能发生在独立 P16 cleanup release。
+13. Documentation、local synthetic、real local PostgreSQL、populated-shape、Hosted/CI、target-host、release 与 production-approval evidence 必须清晰区分。
 
 ## 规范术语
 
-| 术语                            | 含义                                                                                                                                                                                               |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Verification Gate**           | 一个 deterministic、stable-ID 的检查，具备固定 inputs、expected result、failure code、evidence fields、severity、retry semantics、owning module 与 execution role。Gate 不得修复自己检查的状态。   |
-| **Evidence Artifact**           | 为一次 gate attempt 提供证明的 immutable、digest-addressed、redacted 输出。它标识 target、run、release 与 producer，但不含 parameter value、DTS text、Archive payload、credential 或 person data。 |
-| **Release Verification Report** | 针对一个精确 verification plan，聚合全部必需 gate 和 evidence reference 的不可变报告。`passed` 表示所有适用 blocking gate 均已通过；缺失 evidence 是 blocking，不是“pending success”。             |
-| **Runtime Readiness**           | verify-only 的进程状态，表明运行 artifact 和 database 仍与一份已批准报告相等。它不是 release verification、migration、synchronization 或 repair。                                                  |
-| **Recovery Point**              | PostgreSQL、配置的 object storage 与 durable Redis 在同一边界形成的已验证 manifest，包含 storage identity 与 restore proof。部分 cross-store snapshot 不是 Recovery Point。                        |
-| **Legacy Retirement**           | 分阶段移除 legacy write reachability、public read compatibility，最后移除 code/schema。它绝不会因为业务历史“不再 current”而删除受保护历史。                                                        |
+| 术语                            | 含义                                                                                                                                                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Verification Gate**           | 一个 deterministic、stable-ID 的检查，具备固定 inputs、expected result、failure code、evidence fields、severity、retry semantics、owning module 与 execution role。Gate 不得修复自己检查的状态。                                      |
+| **Evidence Artifact**           | 为一次 gate attempt 提供证明的 immutable、digest-addressed、redacted 输出。它标识 target、run、release 与 producer，但不含 parameter value、DTS text、Archive payload、credential 或 person data。                                    |
+| **Verification Purpose**        | 一个封闭授权动作及其 deterministic gate applicability：`pre-activation`、`post-retirement-runtime`、`isolated-candidate-acceptance`、`public-release`、`legacy-read-sunset` 或 `p16-cleanup`。Purpose 属于 report/approval identity。 |
+| **Release Verification Report** | 针对一个精确 verification plan 与 phase snapshot 的 immutable purpose-scoped aggregate。`passed` 只表示所有 `required-now` gate 通过；later-purpose gate 仍是明确义务，不能标为 passed、waive 或 infer。                              |
+| **Runtime Readiness**           | verify-only 的进程状态，表明运行 artifact 和 database 仍与 P13 后最新 approved `post-retirement-runtime` report 相等。它不是 release verification、migration、synchronization、repair 或 public-release approval。                    |
+| **Recovery Point**              | PostgreSQL、配置的 object storage 与 durable Redis 在同一边界形成的已验证 manifest，包含 storage identity 与 restore proof。部分 cross-store snapshot 不是 Recovery Point。                                                           |
+| **Legacy Retirement**           | 分阶段移除 legacy write reachability、public read compatibility，最后移除 code/schema。它绝不会因为业务历史“不再 current”而删除受保护历史。                                                                                           |
 
 `ready` 只表示当前 runtime readiness；`verified` 表示 gate 已重新计算事实；`approved` 表示具名 principal 把精确 passing report 绑定到获授权 release act。三者绝不是同义词。
 
@@ -54,16 +58,16 @@
 ### Interface
 
 ```text
-prepareVerification(subject, evidenceRequirements) -> immutable VerificationPlan
+prepareVerification(subject, purpose, evidenceRequirements) -> immutable VerificationPlan
 runVerification(planDigest) -> VerificationAttemptSnapshot
 assembleReport(planDigest, typedEvidenceRefs) -> ReleaseVerificationReport
 approveReport(reportDigest, approvalCommand) -> ReleaseApprovalRecord
 readReport(reportIdOrDigest) -> ReleaseVerificationReport
 ```
 
-Interface 有意保持很小。`runVerification` 拥有 target 上可执行的 deterministic gates，并通过内部 adapter 调用 Catalog Kernel verification、cutover verification、P11 comparison、API acceptance、recovery-manifest inspection 与 evidence-store verification。`assembleReport` 只接受 subject pins 与 plan 完全相等且经过 digest 校验的 typed evidence。它不能接受 boolean、自由文本 attestation、没有 digest 的 URL，或来自其他 target/run/release 的报告。
+Interface 有意保持很小。`purpose` 选择封闭 applicability profile；caller 不能提交自定义 gate set。`runVerification` 拥有该 purpose 在精确 target 上可执行的 deterministic gates，并通过内部 adapter 调用 Catalog Kernel verification、cutover verification、P11 comparison、API acceptance、recovery-manifest inspection 与 evidence-store verification。`assembleReport` 只接受 subject、purpose、phase snapshot 与 pins 均与 plan 完全相等且经过 digest 校验的 typed evidence。它不能接受 boolean、自由文本 attestation、没有 digest 的 URL，或来自其他 purpose/target/run/release 的报告。
 
-`approveReport` 追加 approval，绝不修改报告。Activation adapter 要求完整 `ReleaseApprovalRecord`，并在 P12 绑定其 report digest。Startup 只能调用模块后面的 verify-only `readApprovedRuntimePin` projection；它不能 prepare、run、assemble、approve、synchronize、migrate 或 repair。
+`approveReport` 只为报告自身 purpose 追加 approval；它绝不修改报告或扩大 applicability。P12 adapter 只接受 approved `pre-activation` report。Startup 只能调用模块后的 verify-only `readApprovedRuntimePin` projection；该 projection 只返回与当前精确 P13 state/pins 匹配的最新 approved `post-retirement-runtime` report。Queue/proxy/public traffic 只接受聚合精确 predecessor report digests 的 approved `public-release` report。Startup 不能 prepare、run、assemble、approve、synchronize、migrate 或 repair。
 
 ### Ownership
 
@@ -93,47 +97,53 @@ Release Verification 外部拥有：
 
 ```mermaid
 flowchart LR
-  Pins[Exact verification plan] --> CK[Catalog Kernel proof]
-  Pins --> DB[Cutover and database proof]
-  Pins --> API[API acceptance]
-  Pins --> UI[Browser-real acceptance]
-  Pins --> REC[Target and recovery proof]
-  CK --> R[Release Verification Report]
-  DB --> R
-  API --> R
-  UI --> R
-  REC --> R
-  R --> OP[Operator sign-off]
-  R --> PO[Platform owner approval]
-  OP --> A[Release Approval Record]
-  PO --> A
-  A --> ACT[P12 activation / release or retirement act]
+  Pins[Exact verification plan] --> PRE[Pre-activation report]
+  CK[Catalog/materialization] --> PRE
+  INIT[Migration + initial V01-V17 + D01-D09] --> PRE
+  REC[Recovery + pre-switch fence] --> PRE
+  PRE --> ACTAPP[Activation approval]
+  ACTAPP --> P12[P12 read switch]
+  P12 --> P13[P13 legacy writer retirement]
+  P13 --> POST[New attempt: full V01-V17 + D01-D09]
+  POST --> RUNAPP[Runtime-startup approval and pin]
+  RUNAPP --> API[Candidate API verify-only]
+  API --> WEB[Worker/web internal checks]
+  WEB --> ACC[Isolated API/browser acceptance]
+  ACC --> PUB[Public-release report]
+  PRE --> PUB
+  POST --> PUB
+  REC --> PUB
+  PUB --> PUBAPP[Public-release approval]
+  PUBAPP --> TRAFFIC[Queue/proxy/public traffic]
 ```
 
-任何 edge 都不从 verifier 指向 writer。Gate 失败后，只能由 owning phase repair 或 restore；随后重新运行完整适用 gate set。
+任何 edge 都不从 verifier 指向 writer。API/browser evidence 没有指向 pre-activation report 的 edge，因为真实 candidate API 尚不可合法运行。Gate 失败后，只能由 owning phase repair 或 restore；随后在新 attempt 中重跑完整 purpose-specific set。任何 predecessor report 都不会仅因存在而授权 successor。
 
 ## 固定输入与 attempt identity
 
 每个 plan 在任何 mutating phase 之前固定以下字段：
 
-| 输入族               | 必需的 immutable pin                                                                                                                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Application artifact | Git commit SHA、release/tag identity、package manifest digest、API/worker/web 的 OCI image manifest/config digest、platform/architecture 与 build trust fingerprint。                                         |
-| Catalog              | Catalog Release ID/version/digest、predecessor pin、canonical bundle digest、compiled-model digest 与 expected materialization fingerprint。                                                                  |
-| Database             | Target database identity、schema version、ordered migration filename/checksum inventory digest、applied-ledger digest 与 old-binary/new-schema compatibility declaration digest。                             |
-| Cutover              | Cutover plan digest、migration contract/classifier version、source snapshot/relation fingerprint、R0-R10 count digest、expected V/D applicability 与 maintenance run ID。                                     |
-| Mapping and Archive  | Mapping epoch、mapping-head digest、protected-reference inventory digest、external-reference inventory digest、Archive manifest digest 与 retention policy ID。                                               |
-| Recovery             | Recovery-point ID/digest、PostgreSQL backup identity、object-store endpoint/bucket/prefix identity、durable Redis identity、manifest/checksum digest 与 verified-at/maximum-age policy。                      |
-| Acceptance           | OpenAPI/route-manifest digest、API contract version、browser bundle/source SHA、expected viewport matrix 与 mock/API parity contract digest。                                                                 |
-| Target               | Deployment ID/class、environment identity、host identity fingerprint、Compose project、named-volume identity set、bucket identity、public/internal URL、OIDC issuer/audience identity 与 observation window。 |
-| Verification         | Verification contract version、gate-registry digest、verifier artifact/image digest、verifier database role identity 与 evidence-store policy。                                                               |
+| 输入族               | 必需的 immutable pin                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application artifact | Git commit SHA、release/tag identity、package manifest digest、API/worker/web 的 OCI image manifest/config digest、platform/architecture 与 build trust fingerprint。                                          |
+| Catalog              | Catalog Release ID/version/digest、predecessor pin、canonical bundle digest、compiled-model digest 与 expected materialization fingerprint。                                                                   |
+| Database             | Target database identity、schema version、ordered migration filename/checksum inventory digest、applied-ledger digest 与 old-binary/new-schema compatibility declaration digest。                              |
+| Cutover              | Cutover plan digest、migration contract/classifier version、source snapshot/relation fingerprint、R0-R10 count digest、expected V/D applicability 与 maintenance run ID。                                      |
+| Mapping and Archive  | Mapping epoch、mapping-head digest、protected-reference inventory digest、external-reference inventory digest、Archive manifest digest 与 retention policy ID。                                                |
+| Recovery             | Recovery-point ID/digest、PostgreSQL backup identity、object-store endpoint/bucket/prefix identity、durable Redis identity、manifest/checksum digest 与 verified-at/maximum-age policy。                       |
+| Acceptance           | OpenAPI/route-manifest digest、API contract version、browser bundle/source SHA、expected viewport matrix 与 mock/API parity contract digest。                                                                  |
+| Target               | Deployment ID/class、environment identity、host identity fingerprint、Compose project、named-volume identity set、bucket identity、public/internal URL、OIDC issuer/audience identity 与 observation window。  |
+| Verification         | Verification contract version、gate-registry digest、verifier artifact/image digest、verifier database role identity 与 evidence-store policy。                                                                |
+| Purpose and lineage  | Verification purpose、精确 phase/checkpoint snapshot、predecessor report ID/digest、P12/P13 state、writer-retirement fingerprint、runtime-pin generation、pointer-rollback status 与 traffic-isolation state。 |
 
-Plan 拥有 opaque `verification_plan_id` 和 canonical JSON 的 SHA-256 digest。每次执行拥有 opaque `verification_attempt_id`。每份报告拥有 opaque `verification_report_id`，以及不含 signature 的 canonical report bytes 的 SHA-256 digest。Approval 是针对该 digest 的 append-only record。
+Plan 拥有 opaque `verification_plan_id` 和 canonical JSON 的 SHA-256 digest。每次执行拥有 opaque `verification_attempt_id`。每份报告拥有 opaque `verification_report_id`，以及不含 signature 的 canonical report bytes 的 SHA-256 digest。Purpose 与 phase snapshot 属于每个 digest。Approval 是针对该 digest 与 purpose 的 append-only record。
 
 ### Rerun semantics
 
 - 相同 plan、相同 state：允许新 attempt。它产生新 attempt ID 与 timestamp；deterministic result/checksum 必须等于前次 attempt，否则以 `PCAT-REPORT-NONDETERMINISTIC` 阻塞。
 - 相同 plan、经过 owning repair：重跑完整受影响 proof group。P11 始终把 D01-D09 作为一个整体重跑，不能抑制单个失败 case。
+- P12 或 P13 即使不改变 artifact/target pins，也会改变 phase snapshot。P13 始终要求新的 `post-retirement-runtime` attempt，完整重跑 V01-V17 与 D01-D09，包括 V13/P02；pre-activation attempt 不得 promote、relabel 或重用为 runtime pin。
+- 启动 candidate API 会创建 `isolated-candidate-acceptance` purpose。API/browser evidence 只在该 purpose 产生，并由后续 `public-release` report 聚合；绝不回填或重写 pre-activation report。
 - Artifact、release、migration inventory、plan、mapping epoch、recovery point、target identity、gate registry 或 evidence requirement 任一变化：创建新 plan，禁止重用旧报告。
 - Response 丢失：按 plan 和 attempt ID 检查 immutable attempt/report store。完整且 digest-valid 的结果可以重用；不完整 attempt 追加为 interrupted 后重跑。不得覆盖 row。
 - Database commit outcome 未知：cutover owner 独立检查 pointer、head、phase checkpoint、run ownership 与 audit evidence。只有能证明一个精确 committed 或 uncommitted outcome 时才允许 resume；否则进入 `recovery-required`。
@@ -142,18 +152,30 @@ Plan 拥有 opaque `verification_plan_id` 和 canonical JSON 的 SHA-256 digest�
 
 ### Report contract
 
-报告包含：
+每份报告包含：
 
 - 所有固定 plan pins 及其 digest；
-- 每个必需 stable gate ID 恰好一次，状态为 `passed`、`failed` 或由 mode 证明的 `not-applicable`；
+- verification purpose、phase/checkpoint snapshot、predecessor report digests 与封闭 applicability profile；
+- purpose profile 中每个 stable gate ID 恰好一次，状态为 `passed`、`failed`、`not-yet-executable` 或由 mode 证明的 `not-applicable`；
 - deterministic expected/observed value、stable failure code、evidence digest/URI、producer artifact、role、开始/结束时间与 retry lineage；
-- Catalog Kernel report digest、V01-V17 与辅助 database report digest、D01-D09 comparison report digest/counts、API report digest、browser evidence-bundle digest 与 recovery/target evidence digest；
+- 当前 purpose 适用的 Catalog Kernel、V01-V17、辅助 database、D01-D09、API、browser、recovery、target 与 observability evidence digest；缺失 later-purpose digest 是明确义务，绝不是 passing value；
 - consumer-family coverage checksum 与 protected-reference coverage checksum；
 - writer-reachability result、runtime readiness pin 与 pointer-only rollback status；
 - redaction policy/version、evidence retention deadline 公式输入；以及
 - aggregate report digest。
 
-只有全部必需 evidence 存在且每个 blocking gate 通过时，报告才为 `passed`。`not-applicable` 只允许 gate registry 具备 deterministic mode predicate 且报告包含该 predicate 的证明。人工 waiver 不是 predicate。
+报告只有针对具名 purpose，全部 `required-now` evidence 存在且每个 blocking gate 通过时才为 `passed`。`not-yet-executable` 只允许 registry 指定一个必须产生该 evidence 的 successor purpose；它不能授权 successor。`not-applicable` 只允许 gate registry 具备 deterministic mode predicate 且报告包含该 predicate 的证明。人工 waiver 不是 predicate。
+
+### Purpose-specific report applicability
+
+| Purpose                         | 创建时点                                 | Required-now evidence                                                                                                                                                                    | 明确的 later obligation                                   | Passing 且 approved report 授权的动作                                            |
+| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `pre-activation`                | Cutover P11 后、P12 前                   | Exact pins；Catalog/materialization；migration；初始 V01-V17；mandatory D01-D09 的两个 zero thresholds 与 11-family coverage；Recovery Point/recovery；pre-switch writer fence           | API/HTTP/browser/runtime evidence 为 `not-yet-executable` | 仅 P12 application read switch                                                   |
+| `post-retirement-runtime`       | P12 与 P13 后的新 immutable attempt      | 完整重跑 V01-V17 + D01-D09，包括 V13/P02 与永久 writer retirement；精确 current pointer/fingerprint；startup pin                                                                         | API/browser acceptance 仍为 `not-yet-executable`          | Candidate API verify-only startup，然后在隔离状态启动 worker/web internal checks |
+| `isolated-candidate-acceptance` | Approved post-retirement runtime pin 后  | Exact-target API contract/real-PG/HTTP/auth/audit gates；全部三个 viewport 的 real-candidate browser gates；internal observability；mutation/rollback-closure record                     | Public-release approval 仍不存在                          | 不授权 traffic；它是 public-release report 的技术 evidence                       |
+| `public-release`                | Isolated acceptance 完成后               | Pre-activation、post-retirement-runtime、isolated-candidate-acceptance report 的精确 digests，加上当前 target/recovery/observability evidence 与 rollback status                         | Sunset 与 cleanup evidence 仍是 later purposes            | Queue resume、proxy activation 与 public traffic                                 |
+| `legacy-read-sunset`            | 最短 compatibility/telemetry interval 后 | 当前 public-release lineage、两个 releases 与 90 天、每个 deployment class 连续 30 天零使用、consumer/reference disposition、recovery 与 approval evidence                               | P16 code/schema deletion 仍是独立 purpose                 | R-L2 eligible legacy public reads 返回 410                                       |
+| `p16-cleanup`                   | 独立 cleanup release                     | 完整 canonical/fresh/populated/API/browser/observability/rollback gates、自己的 Recovery Point 与 real target restore rehearsal、zero writer/read/dependency、retention/legal-hold proof | 无；protected history 继续保留                            | 仅获明确批准的 R-L3 code/schema/role/grant/trigger/table/view removal            |
 
 ### Run、approve 与 read authority
 
@@ -166,7 +188,7 @@ Plan 拥有 opaque `verification_plan_id` 和 canonical JSON 的 SHA-256 digest�
 | Auditor/security reviewer                            | 依 retention policy 读取 immutable report、approval、audit linkage 与 redacted evidence。                        | 执行 writer 或修改 evidence。                                                                       |
 | Ordinary user 或 Agent                               | 没有 report endpoint。Catalog `ready` 只通过安全 Catalog document/readiness projection 暴露。                    | Diagnostics、evidence、approval 或 report enumeration。                                             |
 
-Operator 与 Platform owner approval 必须来自不同 authenticated principal。Independent verifier signature 证明 artifact execution；它不是任一 human approval。P12、public release、legacy-read sunset 与 P16 cleanup 分别把对应 approval purpose 绑定到相同或更新的精确 report digest。
+Operator 与 Platform owner approval 必须来自不同 authenticated principal。Independent verifier signature 证明 artifact execution；它不是任一 human approval。P12 activation、runtime startup、public release、legacy-read sunset 与 P16 cleanup 分别把独立 approval purpose 绑定到自己的精确 report digest。Isolated-candidate-acceptance report 只是技术 evidence，不授权 traffic。旧 approval 不能复制前移；successor report 可以引用 predecessor digest，但绝不能把 predecessor evidence 描述为新执行。
 
 ### Retention formula
 
@@ -184,7 +206,7 @@ Failed/interrupted attempt report 与 redacted diagnostics 至少保留一年；
 
 所有 database gate 由 cutover verifier 使用专用 one-shot PostgreSQL login 执行。该 login 以 `READ ONLY` 启动，验证 `transaction_read_only=on`，没有 `SET ROLE`、sequence use、DDL、可写 function execution、temporary writer function、Catalog synchronizer membership、migration owner membership、application writer grant 或 Archive decryption credential。它只可 `SELECT` 检查 constraint/grant 所需的 allow-listed Catalog/cutover/mapping/Archive metadata/audit projection 与 PostgreSQL catalog view。
 
-每个 V gate 都是 release-blocking。Retry 表示 owning module 在输入不变时 repair，随后完整重跑 proof group；verifier 自身绝不 repair。
+每个 V gate 都是 release-blocking。完整 V01-V17 + D01-D09 set 在 temporary pre-switch fences 下为 pre-activation 运行一次，并在 P13 permanent writer retirement 后的新 attempt 中再次运行。两份报告都标识自己的 phase snapshot；第一次执行不能满足第二次。Retry 表示 owning module 在输入不变时 repair，随后完整重跑 proof group；verifier 自身绝不 repair。
 
 | Gate ID       | Deterministic query/check 与必需结果                                                                                                                                                                                   | Stable failure code                            | Evidence fields                                                        | Retry                                                       | Owner / role                              |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------- |
@@ -267,7 +289,7 @@ Corpus manifest 恰好记录每个 family 一次，并把每个 protected refere
 
 ## API acceptance gate
 
-全部 API evidence 绑定 exact candidate image、OpenAPI/route-manifest digest、database verifier report、Catalog Release pin、target identity 与 authentication mode。`contract` 表示 schema/route/DTO behavior；`PG` 表示 real PostgreSQL；`HTTP` 表示运行 candidate direct smoke；`auth-` 表示 negative authorization/scope checks；`audit` 表示 persisted trusted audit assertions。
+API evidence 对 pre-activation 与 post-retirement-runtime purpose 都是 `not-yet-executable`。只有 approved post-retirement runtime pin 在 queue、proxy 与 public traffic 隔离时启动精确 candidate API 后，才能运行 API evidence。全部 API evidence 绑定 exact candidate image、OpenAPI/route-manifest digest、最新 post-retirement verifier/comparison reports、Catalog Release pin、target identity 与 authentication mode。`contract` 表示 schema/route/DTO behavior；`PG` 表示 real PostgreSQL；`HTTP` 表示运行 candidate direct smoke；`auth-` 表示 negative authorization/scope checks；`audit` 表示 persisted trusted audit assertions。
 
 | Gate ID       | Contract surface                                                                                                                                                               | contract        | PG  | HTTP | auth-              | audit                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- | --- | ---- | ------------------ | ---------------------------------------- |
@@ -284,11 +306,11 @@ Corpus manifest 恰好记录每个 family 一次，并把每个 protected refere
 | `PCAT-API-11` | 九个 Catalog read routes 使用 typed Kernel snapshot facet；无 raw Catalog table join、handler-side sort/filter/head choice、cache/YAML fallback 或 property-key fallback。     | Static contract | Yes | Yes  | Scope-hidden tests | No                                       |
 | `PCAT-API-12` | Project Binding/value/history/draft paths 暴露 canonical `definitionId`、`effectiveRevisionId`、`currentValueId`；无 `parameterSpecId` 或 Effective/Governance peer contract。 | Yes             | Yes | Yes  | Yes                | Mutation audit                           |
 
-所有 row 都是 release-blocking。Contract success 没有 real PostgreSQL 时不能证明 transaction、constraint、role 或 audit。HTTP smoke 没有 browser-real evidence 时不能证明单页体验。
+所有 row 都会阻塞 isolated candidate acceptance 与 public release。Contract success 没有 real PostgreSQL 时不能证明 transaction、constraint、role 或 audit。HTTP smoke 没有 browser-real evidence 时不能证明单页体验。任何测试若创建 Registration、Placement、Binding、ProjectValue、Proposal、Observation、Review resolution 或其他 business mutation，必须记录 first-mutation evidence，并永久关闭 pointer-only rollback；删除测试 row 不能重新打开它。
 
 ## Browser-real acceptance gate
 
-Browser release acceptance 针对真实 candidate API 运行。Mock mode 以独立 parity gate 运行相同 application-port state matrix；mock screenshot 或 mock authorization 永远不能满足 release browser evidence。
+Browser release acceptance 只有在 approved post-retirement runtime pin 后才针对真实 candidate API 运行，此时 queue、proxy 与 public traffic 仍保持隔离。Mock mode 以独立 parity gate 运行相同 application-port state matrix；mock screenshot 或 mock authorization 永远不能满足 release browser evidence。Pre-activation 与 post-retirement-runtime report 中的 browser evidence 是 absent，不是 passed。
 
 | Gate ID      | 必需 browser behavior                                                                                                                                                        |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -325,61 +347,75 @@ plan
 -> one-shot schema migration
 -> one-shot Catalog synchronization
 -> one-shot populated cutover (fresh proves zero work)
--> independent V01-V17 + D01-D09 verification
--> P12 application read switch bound to both report digests
--> legacy writer retirement
--> API verify-only startup
+-> initial independent V01-V17 + D01-D09 verification
+-> pre-activation report and activation-purpose approval
+-> P12 application read switch bound to the pre-activation report
+-> P13 / R-L0 legacy writer retirement
+-> new attempt: complete V01-V17 + D01-D09 rerun, including V13/P02
+-> post-retirement-runtime report, approval, and latest runtime pin
+-> API verify-only startup bound to that runtime pin
 -> worker/web internal checks
--> queue/proxy
+-> isolated exact-target API/browser acceptance
+-> public-release report and purpose-specific approval
+-> queue resume, proxy activation, and public traffic
 -> observation
 -> later cleanup
 ```
 
-API 永远不是 migration runner。Startup 永远不 synchronize、classify、map、repair、choose head，也不 fallback 到 legacy/cache/empty state。如果 packaged release digest、database verified digest、runtime fingerprint 或 approved report pin 不同，API 退出或保持 not-ready，并给出 `PCAT-UPG-CANDIDATE-DIGEST-MISMATCH`。
+以上顺序保留 issue #678：P13 retirement 后是新的完整 P11 attempt，而不是只重跑 V13/P02。API 永远不是 migration runner。Startup 永远不 synchronize、classify、map、repair、choose head，也不 fallback 到 legacy/cache/empty state；它拒绝把 pre-activation report 用作 runtime pin。如果 packaged release digest、post-retirement database/comparison digests、runtime fingerprint、writer-retirement fingerprint 或 approved post-retirement report pin 不同，API 退出或保持 not-ready，并给出 `PCAT-UPG-CANDIDATE-DIGEST-MISMATCH`。
 
 ### Mode-specific requirements
 
-| Mode                     | Required proof                                                                                                                                                                                                                                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fresh                    | Empty preflight；exact migration suffix；安装 packaged Catalog Release；除 explicit seed manifest 外，legacy identity/mapping/Archive/registration 全为零；D01-D09 zero-corpus proof；V01-V17、role negative、API、browser、recovery、startup digest gates。不得依赖 legacy seed 或 reconciliation。 |
-| Populated                | 精确 P0 R0-R10/protected-reference/source fingerprint；完整 mappings/Archive/registration/placement/Binding/history；覆盖每个 inventory family 的完整 D01-D09 corpus；精确 P0-to-V17 counts；无 R6/R8 merge；writer fences；target restore rehearsal 与 observation。                                |
-| Restored legacy boundary | Recovery manifest equality、old migration/artifact compatibility、legacy projection verifier、禁止重用 candidate checkpoint、安全 old-stack API/traffic proof。                                                                                                                                      |
-| P16 cleanup              | 当前 canonical gates 通过；legacy use/reachability/dependency 为零；独立 cleanup recovery point/restore rehearsal；没有受支持 recovery path 依赖已移除 schema/code。                                                                                                                                 |
+| Mode                     | Required proof                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fresh                    | Empty preflight；exact migration suffix；安装 packaged Catalog Release；除 explicit seed manifest 外，legacy identity/mapping/Archive/registration 全为零；在 initial 与 post-P13 P11 attempts 都运行 D01-D09 zero-corpus proof；V01-V17、role negative、API、browser、recovery、startup digest gates。不得依赖 legacy seed 或 reconciliation。 |
+| Populated                | 精确 P0 R0-R10/protected-reference/source fingerprint；完整 mappings/Archive/registration/placement/Binding/history；在 initial 与 post-P13 full P11 attempts 都运行覆盖每个 inventory family 的完整 D01-D09 corpus；精确 P0-to-V17 counts；无 R6/R8 merge；writer fences；target restore rehearsal 与 observation。                            |
+| Restored legacy boundary | Recovery manifest equality、old migration/artifact compatibility、legacy projection verifier、禁止重用 candidate checkpoint、安全 old-stack API/traffic proof。                                                                                                                                                                                 |
+| P16 cleanup              | 当前 canonical gates 通过；legacy use/reachability/dependency 为零；独立 cleanup recovery point/restore rehearsal；没有受支持 recovery path 依赖已移除 schema/code。                                                                                                                                                                            |
 
 ### Upgrade journal additions
 
-Append-only journal 记录 plan/attempt/report ID/digest；artifact/image/config identity；target/host/Compose/volume/bucket identity；migration inventory/schema fingerprint；Catalog Release/materialization fingerprint；source/P0/classifier/plan/recovery-point digest；mapping epoch/head/Archive manifest digest；V report、D corpus/report digest/counts；consumer coverage；API/browser/recovery evidence digest；read-switch-bound reports；writer fence/reachability；queue/proxy state；first candidate business write、first queue business delivery、first public traffic timestamp；pointer-only rollback closure time/reason；approvals；phase events；isolation result；以及既有 bounded/redacted failure fields 与唯一 executable `next_action`。
+Append-only journal 记录 purpose、plan/attempt/report ID/digest、predecessor-report lineage 与 approval purpose；artifact/image/config identity；target/host/Compose/volume/bucket identity；migration inventory/schema fingerprint；Catalog Release/materialization fingerprint；source/P0/classifier/plan/recovery-point digest；mapping epoch/head/Archive manifest digest；独立的 pre-activation 与 post-retirement V/D report digest/counts；consumer coverage；P13 writer-retirement fingerprint；latest runtime-pin generation；API/browser/recovery evidence digest；public-release aggregate digest；queue/proxy state；first candidate business write、first queue business delivery、first public traffic timestamp；pointer-only rollback closure time/reason；approvals；phase events；isolation result；以及既有 bounded/redacted failure fields 与唯一 executable `next_action`。
 
 ### Legal action by phase
 
-| Action                    | Legal states 与 input rule                                                                                                                                                           | Refusal                                                                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plan`                    | Online/read-only；可重复。任何 input change 都创建新 plan digest。                                                                                                                   | 不能重用 prior approval/report。                                                                                                                  |
-| `apply`                   | 只可从 current approved plan 且 target 未变开始，并且没有另一个 live run 持 lock。                                                                                                   | Drift、unknown target、stale recovery prerequisites 或 partial unowned destination 阻塞。                                                         |
-| `resume`                  | 只可用于 commit outcome 已知、inputs 未变的 idempotent same-run phase；pre-mutation old-stack restoration 与 isolated completion-only candidate recovery 遵循既有 controller rules。 | Unknown commit、changed digest、stale recovery point、unsafe pointer、candidate writes/traffic 或 unowned partial rows 进入 `recovery-required`。 |
-| `recover-candidate`       | 只用于已记录 post-migration completion failure，并且 recovery point 已验证、candidate image/report pins 精确、proxy/queue 重新隔离、无 data restore。                                | 任一 data/report/input drift 或 non-completion failure 均拒绝。                                                                                   |
-| pointer switch-back       | 只通过 cutover/Catalog Kernel proof，且发生在 rollback closure 前。                                                                                                                  | First candidate business write、queue delivery、public traffic、invalid previous projection 或 incompatibility 永久禁止。                         |
-| `rollback --restore-data` | Incident-owner-approved、run-token-bound 的 whole-state restore，来自一个 valid manifest。                                                                                           | Partial PostgreSQL/object/Redis selection、stale/unknown manifest 或 target identity mismatch 均拒绝。                                            |
+| Action                               | Legal states 与 input rule                                                                                                                                                                                                      | Refusal                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `plan`                               | Online/read-only；可重复。任何 input 或 purpose change 都创建新 plan digest。                                                                                                                                                   | 不能为不同 purpose 重用 prior approval/report。                                                                                                                    |
+| `apply`                              | 只可从 current approved plan 且 target 未变开始，并且没有另一个 live run 持 lock。                                                                                                                                              | Drift、unknown target、stale recovery prerequisites 或 partial unowned destination 阻塞。                                                                          |
+| `P12 activate`                       | Exact passing `pre-activation` report，加上不同 principal 的 activation-purpose Operator/Platform-owner approval；API/browser 记录为 `not-yet-executable`；traffic 保持隔离。                                                   | 缺失初始完整 V/D、Recovery Point、pre-switch fence、exact pins 或 purpose approval 时拒绝。                                                                        |
+| `P13 retire writers`                 | 只可紧接 bound P12 transition，且 services/traffic 仍隔离；记录精确 writer-retirement fingerprint。                                                                                                                             | 在此之前启动 API/worker/web，或从临时 pre-switch fence 声称 R-L0 时拒绝。                                                                                          |
+| `approve runtime startup`            | 新 post-P13 attempt 重跑每个 V01-V17 与 D01-D09，包括 V13/P02；独立 runtime-startup approval 绑定该 report。                                                                                                                    | V13/P02-only delta、重用 pre-activation report、corpus 不完整、unexplained/unqueryable 非零或 writer reachable 时拒绝。                                            |
+| `start API/worker/web`               | API 依据最新 approved post-retirement runtime pin 以 verify-only 启动；worker/web 随后用于 internal checks；queue/proxy/public traffic 保持隔离。                                                                               | 任一 pin/fingerprint drift、runtime repair/fallback 或缺失当前 post-retirement report 时拒绝并保持隔离。                                                           |
+| `run isolated candidate acceptance`  | Exact candidate API 在 target 上按 approved runtime pin 运行；在 queue/proxy/public traffic 隔离下运行 API/PG/HTTP/auth/audit 与全部 browser-real gates；记录任何 business mutation。                                           | Mock-only、pre-P13、stale-report、unpinned 或 public-traffic execution 时拒绝；任何 mutation 永久关闭 pointer-only rollback。                                      |
+| `resume queue/proxy/public traffic`  | Exact passing `public-release` report 聚合全部 predecessor reports 与当前 target/recovery/observability evidence；存在独立 public-release Operator/Platform-owner approval。                                                    | Activation/runtime/acceptance approval、缺失 aggregate、input drift 或 failed gate 均不能授权 traffic。                                                            |
+| `resume`                             | 只可用于 commit outcome 已知、inputs 未变、purpose checkpoint 精确且 successor obligations 仍有效的 idempotent same-run phase；pre-mutation old-stack restoration 与 isolated completion-only candidate recovery 遵循既有规则。 | Unknown commit、changed digest、stale recovery point、缺失最新 report、unsafe pointer、candidate writes/traffic 或 unowned partial rows 进入 `recovery-required`。 |
+| `recover-candidate`                  | 只用于已记录 post-migration completion failure，并且 Recovery Point 已验证、candidate image/current-purpose report pins 精确、proxy/queue 重新隔离、无 data restore。                                                           | 任一 data/report/input drift 或 non-completion failure 均拒绝。                                                                                                    |
+| pointer switch-back                  | 只通过 cutover/Catalog Kernel proof 且发生在 rollback closure 前；P13 后 legacy writers 保持 retired，previous read projection 必须在无 legacy writers 时仍可运行。                                                             | First candidate business write、queue delivery、public traffic、previous artifact 需要 legacy writer、invalid previous projection 或 incompatibility 时永久禁止。  |
+| `legacy-read sunset` / `P16 cleanup` | 只有各自 exact passing report 与 distinct purpose approval，且 timing、telemetry、dependency、recovery、retention gates 均通过。                                                                                                | 任一 earlier-purpose report/approval、未满足 two-release/90-day/30-day threshold 或 protected-history dependency 时拒绝。                                          |
+| `rollback --restore-data`            | Incident-owner-approved、run-token-bound 的 whole-state restore，来自一个 valid manifest。                                                                                                                                      | Partial PostgreSQL/object/Redis selection、stale/unknown manifest 或 target identity mismatch 均拒绝。                                                             |
 
 Partially populated destination 只有在每个 row 都由相同 run/plan/source digest 拥有、counts 对齐且没有 activation pointer 切换时才可 resume；否则是 drift。Recovery point 若在 mutation 前 stale，则重新 quiesce 后替换；若 mutation 后发现 stale，则不能使用，必须 isolated forward recovery 或使用另一个独立验证的 same-boundary point。
 
 ## Rollback 与 recovery proof
 
-| Boundary                                                   | Allowed recovery                                                                                              | Required proof 与 mandatory rerun                                                                                                                                  |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P12 read switch 前                                         | Abort 或 same-plan deterministic repair；Catalog pointer/heads 只可在已接受 zero-write proof 下 switch back。 | Previous Catalog projection、schema compatibility、recovery point、适用于 restored boundary 的 V01-V17，以及 zero candidate consumer。                             |
-| P12 后，但无 candidate business write/queue/public traffic | Atomic application read pointer + Catalog pointer/head switch-back，或 whole-state restore。                  | Bound reports 可归因；previous projection 与 old binary/new schema 验证；完整 writer/queue/traffic zero proof；重跑 old-boundary verifier 与 direct API smoke。    |
-| API 仅为 read-only internal checks 启动                    | 只有 audit/DB/queue 证明无 business mutation 时，才允许相同 conditional pointer switch-back。                 | Startup verify-only evidence 加此前全部 zero-write proof。                                                                                                         |
-| First business write、queue delivery 或 public traffic 后  | 优先 forward repair。Whole-state restore 需 incident-owner approval，并接受 recovery point 之后的写入损失。   | Blast-radius/write inventory；manifest validity；cross-store restore；完整 restored-boundary verifier、audit continuity、API/browser smoke 与新 release decision。 |
-| Schema 已提交且 old binary compatible                      | Artifact rollback 只可发生在 zero-write cases 内；pointer 仍需 proof。                                        | Exact old/new compatibility contract 与 report。                                                                                                                   |
-| Schema 已提交且 old binary incompatible                    | 只能 forward recovery 或 whole-state restore。                                                                | Recovery point 或 approved forward plan。                                                                                                                          |
-| P16 cleanup 已提交                                         | Forward repair，或包含 pre-cleanup schema、mapping、Archive 的 whole-state restore。                          | Cleanup recovery rehearsal、retained installer/artifact、restore manifest、完整 canonical + cleanup-dependency verification。                                      |
+| Boundary                                                     | Allowed recovery                                                                                                                                                | Required proof 与 mandatory rerun                                                                                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P12 read switch 前                                           | Abort 或 same-plan deterministic repair；Catalog pointer/heads 只可在已接受 zero-write proof 下 switch back。                                                   | Previous Catalog projection、schema compatibility、Recovery Point、适用于 restored boundary 的 V01-V17，以及 zero candidate consumer。                             |
+| P12 后、P13 writer retirement 前                             | Atomic application read pointer + Catalog pointer/head switch-back，或 whole-state restore。                                                                    | Pre-activation report 可归因；previous projection 与 old binary/new schema 验证；完整 writer/queue/traffic zero proof；重跑 old-boundary verifier。                |
+| P13 后、candidate API 前                                     | 只有 previous read projection 在 legacy writers 保持 retired 时仍可运行，才允许 conditional pointer switch-back；否则 forward recovery 或 whole-state restore。 | P13 fingerprint、包括 V13/P02 的完整 post-retirement V01-V17 + D01-D09 attempt、previous projection compatibility，以及 zero business mutation/queue/traffic。     |
+| API/worker/web 为 isolated checks 启动但无 business mutation | 只有 audit/DB/queue 证明 zero business mutation 且 public traffic 仍隔离时，才允许相同 conditional pointer switch-back。                                        | Latest approved post-retirement runtime pin、startup evidence 与此前全部 zero-write proof。                                                                        |
+| Isolated acceptance 产生任何 business mutation               | Pointer-only switch-back 永久关闭，即使测试 row 后续被删除。优先 forward repair；whole-state restore 需要 incident approval。                                   | Immutable first-mutation audit/evidence、blast-radius inventory、Recovery Point validity，以及 production write 后所需的同等完整 restored-boundary proof。         |
+| Queue delivery 或 public traffic 后                          | 优先 forward repair。Whole-state restore 需 incident-owner approval，并接受 recovery point 之后的写入损失。                                                     | Blast-radius/write inventory；manifest validity；cross-store restore；完整 restored-boundary verifier、audit continuity、API/browser smoke 与新 release decision。 |
+| Schema 已提交且 old binary compatible                        | Artifact rollback 只可发生在 zero-write cases 内；pointer 仍需 proof，且 retired writers 保持 retired。                                                         | Exact old/new compatibility contract 与 purpose-scoped report。                                                                                                    |
+| Schema 已提交且 old binary incompatible                      | 只能 forward recovery 或 whole-state restore。                                                                                                                  | Recovery Point 或 approved forward plan。                                                                                                                          |
+| P16 cleanup 已提交                                           | Forward repair，或包含 pre-cleanup schema、mapping、Archive 的 whole-state restore。                                                                            | Cleanup recovery rehearsal、retained installer/artifact、restore manifest、完整 canonical + cleanup-dependency verification。                                      |
 
 Recovery Point 始终包含同一 quiesced boundary 的 PostgreSQL、configured S3-compatible object storage 与 durable Redis。Restore manifest 记录 object count/checksum、database backup/ledger/schema checksum、Redis persistence/checkpoint、storage endpoint/bucket/prefix/volume identities、target、artifact、run、completion time、maximum age 与 restore tool identity。绝不暴露 partial restore。
 
 至少一次 real target-host rehearsal 必须把三个 store 全部恢复到 isolated targets，启动精确声明的 old 或 cleanup-recovery artifact，验证 table/object/queue reference 与 audit continuity，重跑必需 verifier groups，并证明 approval 前 traffic 始终隔离。Non-target local rehearsal 不能满足此 gate。
 
-`pointer_rollback_closed_at` 是以下 durable event 的最早者：first candidate business audit/write、first queue business delivery 或 first accepted public business request。Health probe 不关闭它；internal smoke mutation 会关闭它。一旦设置便不可变。P16 也永久关闭 pointer-only recovery。
+`pointer_rollback_closed_at` 是以下 durable event 的最早者：first candidate business audit/write（包括 isolated API/browser acceptance mutation）、first queue business delivery 或 first accepted public business request。Health probe 与可证明 read-only 的 check 不关闭它；删除或补偿测试 mutation 不能重新打开它。一旦设置便不可变。P16 也永久关闭 pointer-only recovery。
 
 ## Observability 与 stable failure codes
 
@@ -428,9 +464,9 @@ Allowed labels 只包含 bounded enum/registered deployment ID。绝不使用 De
 
 Structured log 包含 timestamp、trace/request ID、deployment/target class、release/run/attempt/report ID、gate ID、phase、stable failure code/family、result、duration、evidence reference ID 与 bounded redacted summary。Full report digest 可以作为 field，不能做 metric label。Log 永不包含 parameter value、DTS text、Archive payload、credential、person data、raw legacy row 或 signed URL。
 
-Audit event 覆盖 plan approval、verification start/finish/refusal、report assembly、Operator sign-off、Platform owner approval/refusal、P12 report binding、writer retirement、pointer rollback closure、restore authorization/completion、legacy-read sunset 与 P16 approval。它们保留 authenticated principal、trusted initiator、target、report digest、reason code 与 trace。
+Audit event 覆盖 purpose/plan approval、verification start/finish/refusal、predecessor-report binding、report assembly、Operator sign-off、Platform owner approval/refusal、P12 pre-activation binding、P13 writer retirement、post-retirement runtime-pin publication、isolated-acceptance start/finish/mutation、public-release binding、queue/proxy/public-traffic authorization、pointer rollback closure、restore authorization/completion、legacy-read sunset 与 P16 approval。它们保留 authenticated principal、trusted initiator、target、purpose、report digest、reason code 与 trace。
 
-Dashboard 展示 phase timeline、gate pass/fail、V/D counts、consumer coverage、candidate/runtime digest equality、writer reachability、recovery-point validity、restore rehearsal、各 deployment class legacy reads 与 retirement conditions。以下情况 page：report-integrity failure、non-zero unexplained/unqueryable comparison、candidate digest mismatch、reachable legacy writer、release window 内 invalid/stale recovery point、restore failure、approved 后 readiness drift，或没有完整 approval record 的 P12/P16 attempt。每条 alert 都包含 `runbook_url`。
+Dashboard 展示 purpose/report lineage、phase timeline、initial/post-retirement V/D counts、consumer coverage、candidate/runtime digest equality、writer reachability、recovery-point validity、acceptance isolation、rollback closure、restore rehearsal、各 deployment class legacy reads 与 retirement conditions。以下情况 page：report-integrity/lineage failure、non-zero unexplained/unqueryable comparison、缺失 post-P13 full P11 attempt、把 pre-activation report 用作 runtime pin、candidate digest mismatch、reachable legacy writer、release window 内 invalid/stale Recovery Point、restore failure、approved 后 readiness drift，或没有各自完整 approval record 的 P12/startup/public-release/sunset/P16 attempt。每条 alert 都包含 `runbook_url`。
 
 Prometheus 默认 15 天 retention 只用于 operational troubleshooting，绝不是唯一 retirement proof。Immutable report/evidence/audit retention 遵循上述 report formula。
 
@@ -438,7 +474,7 @@ Prometheus 默认 15 天 retention 只用于 operational troubleshooting，绝�
 
 | Stage                    | Timing                                                                                    | Required state                                                                                                                                    | 变为不可用                                                                                                                  | 保留                                                                                                                                          |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| R-L0 write retirement    | Canonical launch、API startup 前                                                          | V13/P02 zero reachable writer；全部 structural write routes 410；writer grants/triggers/functions fenced                                          | Organization definition/overlay writes、legacy lifecycle/reattribution/reconcile writes、Agent/script/job structural writes | Read-only compatibility 与 operator mapping diagnostics                                                                                       |
+| R-L0 write retirement    | P12 后的 P13、API startup 前                                                              | Writer grants/triggers/functions fenced 且 routes 410，随后新 attempt 通过完整 V01-V17 + D01-D09，包括 V13/P02 zero reachability                  | Organization definition/overlay writes、legacy lifecycle/reattribution/reconcile writes、Agent/script/job structural writes | Read-only compatibility 与 operator mapping diagnostics                                                                                       |
 | R-L1 observation         | Launch 后，贯穿 minimum window 与 rollback observation                                    | Read-only legacy relations/adapters；telemetry、D mapping、recovery point、forward repair；user traffic 无 dual write/read fallback               | 无 legacy mutation 返回                                                                                                     | Eligible public reads 携带 deprecation headers；mapping/Archive/operator lookup                                                               |
 | R-L2 public read sunset  | 两个 production releases 与 90 天较晚者，再加所有 class 连续 30 天零使用及全部 exit gates | 精确 external/first-party/import/export/deep-link disposition；zero ambiguous protected operational reference；Operator + Platform owner approval | Eligible public legacy read adapters 返回 410                                                                               | Internal mapping/Archive lookup 与 cleanup recovery assets                                                                                    |
 | R-L3 P16 cleanup release | 独立 release，rollback/recovery 不再依赖 legacy schema 后                                 | Full canonical/fresh/populated/API/browser/observability/rollback gates；独立 recovery point/rehearsal；zero writer/read/dependency               | 获批 legacy code、roles、grants、triggers、tables/views、aliases                                                            | Audit、Archive、mappings、Catalog history、revisions、Bindings、ProjectValues、Proposals、Observations、ReviewEvidence 与必需 operator lookup |
@@ -496,38 +532,35 @@ P16 绝不因为记录“不再 current”而删除 Audit、Archive、受保护�
 
 ## 精确 release-approval checklist
 
-Activation、public release、legacy-read sunset 或 P16 cleanup command 必须 fail closed，除非 purpose-specific checklist 完整：
+每个 purpose 都必须 fail closed，除非 exact artifact/image/target/Catalog/migration/plan/mapping/Recovery Point/verification pins 与 isolated target 一致；report 记录 purpose、phase snapshot、predecessor lineage、当前 rollback status 与唯一 executable failure action；每个必需 artifact 都有 independent verifier signature；assembly 后 input 未变化；需要的 Operator/Platform owner approvals 来自不同 authenticated principals，并绑定精确 purpose/report digest。
 
-1. Exact artifact/image/target/Catalog/migration/plan/mapping/recovery/verification pins 与 live isolated target 一致。
-2. Migration drift 与 role-negative gates 通过。
-3. V01-V17 恰好各存在一次并通过。
-4. D01-D09 恰好各存在一次；unexplained 与 unqueryable/protected counts 为零；每个 inventory family 被覆盖。
-5. API gates 按要求提供 contract、real PostgreSQL、HTTP、authorization-negative 与 audit evidence。
-6. Browser-real gates 在 `1440x900`、`768x1024`、`390x844` 通过，并具有 snapshot、screenshot、console、network、interaction 与 immutable evidence binding。
-7. Release 适用的 fresh/populated mode requirements 都有当前 evidence；不能用一个 mode 推断另一个。
-8. Recovery Point 当前且已验证；real target restore rehearsal 与 old-binary/new-schema decision 通过。
-9. Writer reachability 为零；API startup verify-only；candidate digest 等于 approved database/report pin。
-10. Observability dashboard/alert/audit/report retention ready，且无 privacy/redaction gate 失败。
-11. Pointer-only rollback status 与下一个 recovery action 明确。
-12. Sunset 或 cleanup 的 purpose-specific timing/telemetry/dependency gates 通过。
-13. Independent verifier signature、不同 principal 的 Operator sign-off 与 Platform owner approval 绑定 exact report digest。
-14. Report assembly 后没有 approval/report/evidence input 改变。
+| Purpose / act                 | 精确附加 checklist                                                                                                                                                                                                                                                                                                                      | 此时有意不可用的 gates                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| P12 activation                | Passing `pre-activation` report；Catalog/materialization 与 migration proof；初始 V01-V17；D01-D09 恰好一次、zero unexplained/unqueryable、11 families 全覆盖；当前 Recovery Point；pre-switch writer fence；activation-purpose Operator/Platform owner approvals                                                                       | API/HTTP/browser/runtime acceptance 为 `not-yet-executable`，不是 passed                                  |
+| Post-P13 runtime startup      | P12 绑定精确 pre-activation report；R-L0/P13 retirement fingerprint 存在；新 attempt 完整重跑 V01-V17 + D01-D09，包括 V13/P02、两个 zero thresholds 与 11 families；writer reachability 为零；runtime-startup approvals 绑定新的 post-retirement report；startup pin 等于该最新 report                                                  | API/browser acceptance 仍是 `not-yet-executable`；只允许 API verify-only startup，随后隔离启动 worker/web |
+| Isolated candidate acceptance | Approved runtime pin 当前有效；queue/proxy/public traffic 保持隔离；API contract/real-PG/HTTP/auth-negative/audit gates 通过；browser-real gates 在 `1440x900`、`768x1024`、`390x844` 通过并具备 snapshot、screenshot、console、network、real interaction、immutable binding；任何 business mutation 永久关闭 pointer rollback          | 不授权 queue、proxy、public traffic、sunset 或 cleanup                                                    |
+| Public release                | 新 report 聚合精确 pre-activation、post-retirement-runtime、isolated-acceptance report digests，以及当前 target/recovery/observability evidence；candidate/runtime/report pins 仍相等；pointer-rollback status 与 next recovery action 明确；public-release Operator/Platform owner approvals 绑定 aggregate report                     | Sunset 与 P16 仍是独立 future purposes                                                                    |
+| Legacy-read sunset            | Approved public-release lineage；至少两个 production releases 与至少 90 天；每个 supported deployment class 连续 30 天零使用；first-party/external/import-export/deep-link disposition 与 protected-reference reconciliation 通过；recovery/retention 仍有效；独立 sunset approvals                                                     | P16 code/schema deletion 仍不可用                                                                         |
+| P16 cleanup                   | 独立 cleanup artifact/report；完整当前 V01-V17/D01-D09、migration/privilege、fresh/populated、API/browser、observability、rollback evidence；zero writer/read/dependency；自己的 cross-store Recovery Point 与 real target restore rehearsal；old-binary decision；retention/legal hold；独立 cleanup approvals；protected history 保留 | 不允许 waiver 或 predecessor approval 替代 cleanup evidence                                               |
+
+P12 checklist 不能要求只有 running candidate API 才能产生的 evidence。Runtime-startup checklist 不能消费 pre-activation report。Public-release checklist 不能从 contract、mock、local 或 Hosted result 推断 API/browser evidence。Applicability transition 创建新的 immutable attempt/report，绝不重写 earlier report。
 
 ## 交给 `/to-spec` 的合同
 
 后续 implementation specification 必须在不改变本文决策的前提下定义：
 
-- 一个拥有五个 semantic operations 与 role-shaped composition 的 Release Verification module；
-- plan、attempt、gate result、report、approval、comparison report、browser bundle 与 retention calculation 的 canonical JSON schema；
-- 包含本文每个 ID 与 deterministic applicability predicate 的完整 gate registry；
+- 一个拥有五个 semantic operations、封闭 verification-purpose type、role-shaped composition、report-lineage validation 与 latest post-retirement runtime-pin projection 的 Release Verification module；
+- plan、purpose、phase snapshot、attempt、gate applicability/result、report lineage、approval、comparison report、browser bundle、runtime pin、rollback closure 与 retention calculation 的 canonical JSON schema；
+- 包含本文每个 ID 与 deterministic purpose/mode applicability predicate 的完整 gate registry，包括 `required-now`、`not-yet-executable` successor obligation 与 mode-proved `not-applicable`；
 - V01-V17、M01-M04、P01-P02 的 SQL/check definition 与 real-PostgreSQL role matrix；
 - D01-D09 corpus builder、两个 maintenance-only semantic adapters、report signer 与 no-waiver enforcement；
 - API contract/PG/HTTP/auth/audit tests 与 browser-real evidence ownership；
-- 精确 one-shot upgrade phases、journal schema、legal action guards、unknown-outcome classifier 与既有 `recovery-required` integration；
+- 精确 one-shot upgrade phases 与 pre-activation -> P12 -> P13 -> full post-retirement P11 -> runtime pin -> isolated API/browser -> public-release approval -> queue/proxy/public traffic state machine，以及 journal schema、legal action guards、unknown-outcome classifier 与既有 `recovery-required` integration；
 - cross-store Recovery Point/restore adapters 与 target-host rehearsal writer；
 - metrics、logs、audits、dashboards、alerts、redaction 与 immutable evidence store；
 - legacy telemetry rollups、supported-deployment inventory、R-L0 到 R-L3 stage guards 与 asset deletion ratchets；以及
-- 只消费 approved pin、没有 repair capability 的 startup verify-only readiness。
+- 只消费 latest approved post-retirement runtime pin、没有 repair capability 的 startup verify-only readiness；以及
+- mutation-aware isolated acceptance：durable 关闭 pointer-only rollback，cleanup/compensation 后也不能重新打开。
 
 Physical filename、table name、SQL text、CLI flag spelling、storage vendor 与 ticket slicing 仍是 implementation choice。它们不能削弱 gate ID、threshold、ownership、evidence level 或 recovery/retirement boundary。
 
@@ -536,6 +569,11 @@ Physical filename、table name、SQL text、CLI flag spelling、storage vendor �
 - **让 `upgrade.sh` 调多个 script 并自行决定成功。** 拒绝，因为 orchestration、pinning、retry 与 evidence semantics 会落入 shell caller，而不是一个深模块。
 - **让 Catalog Kernel 拥有 release verification。** 拒绝，因为 API/browser/target recovery/retirement 位于 Catalog materialization 之外；Kernel 仍是一个 subordinate verifier。
 - **把 startup readiness 当作 repair hook。** 拒绝，因为 startup 会变成 migration/synchronizer 和第二结构 authority。
+- **在 P12 前组装一份“complete” report，让它自我授权。** 拒绝，因为真实 candidate API/browser evidence 只有 P12/P13 与 runtime startup 后才能执行；提前称 passed 会形成 evidence cycle。
+- **把 pre-activation report 当作 startup 或 public-release pin。** 拒绝，因为它只证明 pre-P12 state，并携带明确 successor obligations；P13 会改变 writer reachability，要求新的完整 P11 attempt。
+- **P13 后只重跑 V13/P02。** 拒绝，因为 issue #678 锁定 writer retirement 后完整重跑 V01-V17 + D01-D09；delta 无法发现其他 state drift，也不能替代 mandatory comparison。
+- **在 post-retirement report 通过前启动 candidate API 收集 evidence。** 拒绝，因为 startup 必须消费最新 post-P13 runtime pin；任何完整 P11 result 缺失或失败时都 fail closed。
+- **把 isolated acceptance 当作 public-release approval。** 拒绝，因为技术 API/browser evidence 不授权 queue、proxy 或 public traffic；必须有新 aggregate report 与独立 public-release approvals。
 - **抽样 P11 或允许人工 waiver。** 拒绝，因为 protected-reference coverage 与 zero unexplained/unqueryable results 是已锁定决策。
 - **用 user traffic 做 dual-read canary。** 拒绝，因为会把 dual authority 延伸出 isolated maintenance comparison。
 - **把 CI 当作 target release proof。** 拒绝，因为 runner identity 与 target stores/host/queue/restore 是不同事实。
@@ -546,6 +584,6 @@ Physical filename、table name、SQL text、CLI flag spelling、storage vendor �
 
 ## 决策完整性
 
-本文没有为 issue #679 留下已知的 verification architecture、database invariant、P11 aggregation、API/browser gate、fresh/populated ordering、rollback proof、observability、evidence-level、compatibility-window 或 legacy-deletion 未决选择。
+本文没有为 issue #679 留下已知的 verification architecture、purpose-specific report applicability、P12/P13 ordering、post-retirement P11 rerun、runtime-pin selection、isolated candidate acceptance、public-release authorization、database invariant、API/browser gate、rollback proof、observability、evidence-level、compatibility-window 或 legacy-deletion 未决选择。
 
-没有发现与已接受输入冲突的新产品语义。后续工作可以选择 implementation mechanics，但若无新的明确 product decision，不得重开 Platform-only structural authority、R0-R10 outcomes、V01-V17、D01-D09、zero unexplained/unqueryable thresholds、one-page UX、API ownership、minimum two-release/90-day/30-day thresholds、no-dual-write/read/lazy-repair rule、cross-store recovery 或 staged retirement。
+此前 single-report cycle 已被 supersede：pre-activation 绝不声称 live API/browser success；P13 始终产生新的完整 V01-V17 + D01-D09 attempt；startup 只绑定其 approved post-retirement report；public traffic 等待后续 aggregate report 与 purpose-specific approval。该修复恢复 issue #678 在 `1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d` 的强度，不改变 #673 或 #677 authority。后续工作可以选择 implementation mechanics，但若无新的明确 product decision，不得重开 Platform-only structural authority、R0-R10 outcomes、V01-V17、D01-D09、zero unexplained/unqueryable thresholds、全部 11 consumer families、one-page UX、API ownership、三个 browser viewports、minimum two-release/90-day/30-day thresholds、no-dual-write/read/lazy-repair rule、cross-store recovery、protected-history retention 或 staged retirement。
