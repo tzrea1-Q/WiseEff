@@ -9,327 +9,327 @@
   ],
   "entries": [
     {
-      "id": "S12-FIL:legacy-catalog-raw-read:0bd565407c3760e3:1",
+      "id": "S12-FIL:legacy-catalog-raw-read:07dfea7664dcef5f:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-raw-read:2a79915ddaba9c5c:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-raw-read:343655fec3e46ec8:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-raw-read:74ad8606dec3b93a:1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-raw-read:b22b7ebaaa798ef4:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-raw-read:156b7b384f8f48ae:1",
+      "id": "S12-FIL:legacy-catalog-raw-read:d8c66b5d107ff28e:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-raw-read:2d3290f72c3e8f95:1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-raw-read:48c97cea80d139c4:1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-raw-read:83e2744b4a086f76:1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-raw-read:e1762e51dffda933:1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-raw-read:f24f06c42e4c9e26:1",
+      "id": "S12-FIL:legacy-catalog-raw-read:fda94c3e9eac1152:1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-sql-write:07b7d85b4c007237:1",
-      "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/parameter-files/repository.test.ts",
-      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-sql-write:573f1094218ac399:1",
+      "id": "S12-FIL:legacy-catalog-sql-write:1824dfb9a0c7bf94:1",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-files/integration.test.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-sql-write:5f0515f3ac870393:1",
+      "id": "S12-FIL:legacy-catalog-sql-write:1824dfb9a0c7bf94:2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-files/integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-sql-write:38833878bf097059:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-sql-write:5c1615c0416fccf0:1",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-files/syncAudit.integration.test.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-sql-write:7a93625629f4b91b:1",
-      "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/parameter-files/integration.test.ts",
-      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-sql-write:ad295d6df754803b:1",
-      "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/parameter-files/releaseReadinessService.test.ts",
-      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-sql-write:be6a929eef8a16bd:1",
-      "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/parameter-files/structural.integration.test.ts",
-      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-FIL:legacy-catalog-sql-write:cb8ebd0a8951e71c:1",
+      "id": "S12-FIL:legacy-catalog-sql-write:7611046860911697:1",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-files/service.test.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-catalog-sql-write:f02e54e0a28118c6:1",
+      "id": "S12-FIL:legacy-catalog-sql-write:8135f627eb089b57:1",
       "rule": "legacy-catalog-sql-write",
-      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "file": "server/modules/parameter-files/structural.integration.test.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:260530993fa1409c:1",
+      "id": "S12-FIL:legacy-catalog-sql-write:8fccc4071eba8152:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-files/releaseReadinessService.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-sql-write:a1990d7f2fb7402c:1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-files/repository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:00efb15850559a22:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/conflictService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:260530993fa1409c:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/conflictService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:26c8798b336ec59f:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/conflictService.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:2bc4f5811677b483:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:00fc33df08ce91e5:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:2e1a4a6b37e55213:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:2e1a4a6b37e55213:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:2f8f18457ebd4879:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:2f8f18457ebd4879:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:3403e749b324e2f9:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/conflictService.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:39e58262d4a38506:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:0de657324799ad8f:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/syncIdentity.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:59dbc1c84dbcff3c:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:633707df45bd8d9e:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:0ee03a93754c1087:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:6dd4e9e282111e3b:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncIdentity.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:6f42edb93c9cfbc4:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:1ce7fced0106c7cd:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:78a72ec0f00e6fa9:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncService.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:78a72ec0f00e6fa9:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncService.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:79b3f27106f7251e:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:296ea736b27d547e:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:8d93712faaee07a8:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:296ea736b27d547e:2",
       "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncService.ts",
+      "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:8f21e3d0e0658094:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncIdentity.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:aa1b4a44a2bdcb7e:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:2bd8e1eaa4177faa:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/syncIdentity.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:ab8cca5eeb261a6f:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:353d382225e9a23e:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/schemas.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:c9c972ed84d30fe0:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:44a26477c4abd72a:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:45f1ef9963c03169:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/writebackService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:3",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:4",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:5",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:6",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:7",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:cc45a14854843a17:8",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:d53d5308ce79fccb:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncIdentity.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:d53d5308ce79fccb:2",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/syncIdentity.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:dbe6cfacddd14e99:1",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameter-files/writebackService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-FIL:legacy-parameter-spec-identifier:e3a1877d5407293f:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:46a4dd8af441804d:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-files/conflictService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:unresolved-boundary-expression:1811e3afbab6d73c:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameter-files/syncAudit.integration.test.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+      "id": "S12-FIL:legacy-parameter-spec-identifier:6233ad7439d9f40d:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-FIL:unresolved-boundary-expression:3db1d9a1a77193aa:1",
+      "id": "S12-FIL:legacy-parameter-spec-identifier:6896f49b6f3f59c7:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:697f6296b499b418:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:700b72870b80dacf:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:700b72870b80dacf:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:710978699b6dbc41:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:74f0996e26920356:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:81c18cefe00688fe:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:9020778f9485e9af:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:91f0d13e9c57dc27:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:91f0d13e9c57dc27:2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:96541f156b26ee23:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:a509b10d27fe3b76:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:ab0d6c1430e6eb71:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:b9bfe41e6461cf10:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncIdentity.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:c345b6db5b4034da:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:d6f7efe233cafb7f:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncIdentity.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:dea306bcbd6da85e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/conflictService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:e8bd553a5cb5cab7:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncIdentity.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:ee94b028ac3a97c5:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/writebackService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:efbfe37959a7445e:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/conflictService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:legacy-parameter-spec-identifier:feeed869b45d4cc8:1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-files/syncIdentity.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-FIL:unresolved-boundary-expression:0b2d3f3f9efa71be:1",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameter-files/candidateRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-FIL:unresolved-boundary-expression:807626c3da75b936:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "src/infrastructure/http/parameterFileClient.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-FIL:unresolved-boundary-expression:88ccf23033124310:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "src/infrastructure/http/parameterFileClient.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-FIL:unresolved-boundary-expression:b9bf43aea6ab85bf:1",
+      "id": "S12-FIL:unresolved-boundary-expression:1382b3ef8d0008e5:1",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameter-files/syncIdentity.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-FIL:unresolved-boundary-expression:318e9b7df5e94a6d:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "src/infrastructure/http/parameterFileClient.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-FIL:unresolved-boundary-expression:ac709e9d4b47417c:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-files/syncAudit.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-FIL:unresolved-boundary-expression:b9317dad8c7bdc7a:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "src/infrastructure/http/parameterFileClient.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]

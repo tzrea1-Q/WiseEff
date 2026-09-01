@@ -8,25 +8,25 @@
   ],
   "entries": [
     {
-      "id": "S12-OPS:legacy-catalog-module-import:5d1ec13dc67f0c77:1",
+      "id": "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:1",
       "rule": "legacy-catalog-module-import",
       "file": "scripts/reconcile-parameter-definitions.ts",
       "reason": "Consumer code still imports the legacy parameter-specs module."
     },
     {
-      "id": "S12-OPS:legacy-catalog-module-import:74513ff31c953265:1",
+      "id": "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:1",
       "rule": "legacy-catalog-module-import",
       "file": "scripts/reconcile-parameter-definitions.ts",
       "reason": "Consumer code still imports the legacy parameter-specs module."
     },
     {
-      "id": "S12-OPS:legacy-effective-governance-contract:1eb7984ede05fb58:1",
+      "id": "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:1",
       "rule": "legacy-effective-governance-contract",
       "file": "scripts/reconcile-parameter-definitions.ts",
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
-      "id": "S12-OPS:legacy-effective-governance-contract:5b6c6ae39f745359:1",
+      "id": "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:1",
       "rule": "legacy-effective-governance-contract",
       "file": "scripts/reconcile-parameter-definitions.ts",
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."

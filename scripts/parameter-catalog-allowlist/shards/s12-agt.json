@@ -9,13 +9,13 @@
   ],
   "entries": [
     {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:1c110f85632088d7:1",
+      "id": "S12-AGT:legacy-parameter-spec-identifier:41333e6758b504a7:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:1c110f85632088d7:2",
+      "id": "S12-AGT:legacy-parameter-spec-identifier:f98934aa45a45cf4:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."

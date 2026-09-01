@@ -10,105 +10,105 @@
   ],
   "entries": [
     {
-      "id": "S12-DBG:legacy-catalog-route:06ae252caec45eef:1",
+      "id": "S12-DBG:legacy-catalog-route:88956bcd36330569:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/debugging/routes.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
-      "id": "S12-DBG:legacy-catalog-route:31542de5145b5f74:1",
+      "id": "S12-DBG:legacy-catalog-route:d4ce347ccd8d25d3:1",
       "rule": "legacy-catalog-route",
       "file": "server/modules/debugging/routes.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
-      "id": "S12-DBG:legacy-parameter-spec-identifier:3856272d492b10a9:1",
+      "id": "S12-DBG:legacy-parameter-spec-identifier:3424d335d60c1751:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/debugging/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-DBG:legacy-parameter-spec-identifier:3856272d492b10a9:2",
+      "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:1",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/debugging/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-DBG:legacy-parameter-spec-identifier:f13d9b2592665e43:1",
+      "id": "S12-DBG:legacy-parameter-spec-identifier:a5e1b6afd58d3283:2",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/debugging/repository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:100ca271732ed0a6:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/debugging/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-DBG:unresolved-boundary-expression:2657742f2009b4c5:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:1",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/catalogSplitRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:34a43cb850b96aef:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:2",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/catalogSplitRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:43bb532a15ed379e:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:3",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/catalogSplitRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:5313187b7677f98f:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:4",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/catalogSplitRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:56ae312c4ea05598:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:1",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:5d30d7e0137f5d16:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:2",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:6f6be4a46de91c95:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:3",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:8235a33a37dd170c:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:4",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-DBG:unresolved-boundary-expression:aadd2a00fa72562a:1",
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:5",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-DBG:unresolved-boundary-expression:6c380b3cd21de11f:6",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-DBG:unresolved-boundary-expression:9403efc8241367a6:1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/debugging/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-DBG:unresolved-boundary-expression:a4ba33c4b1ca319f:1",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/debugging/service.test.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-DBG:unresolved-boundary-expression:afc1e138e91132be:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/debugging/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-DBG:unresolved-boundary-expression:dbf88624e904d740:1",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/debugging/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     }
   ]

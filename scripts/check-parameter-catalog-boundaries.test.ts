@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -81,6 +82,38 @@ describe("parameter catalog boundary checker", () => {
 
     expect(first.map((item) => item.id)).toEqual(second.map((item) => item.id));
     expect(first.map((item) => item.line)).not.toEqual(second.map((item) => item.line));
+  });
+
+  it("anchors each stable ID to one legacy debt instead of its SQL sibling or carrier identifier", async () => {
+    const firstRoot = await createConsumerTree();
+    const secondRoot = await createConsumerTree();
+    const relativePath = "server/modules/parameters/atomicDebt.ts";
+    await writeSource(
+      firstRoot,
+      relativePath,
+      [
+        "const originalCarrier = `select ps.id from parameter_specs ps join parameter_spec_versions psv on psv.parameter_spec_id = ps.id`;",
+        "export const unrelatedValue = 'before';",
+      ].join("\n"),
+    );
+    await writeSource(
+      secondRoot,
+      relativePath,
+      [
+        "export const unrelatedValueAfterEdit = 'after';",
+        "const renamedCarrier = `select ps.id from parameter_specs ps`;",
+      ].join("\n"),
+    );
+
+    const first = (await scanParameterCatalogBoundaries(firstRoot)).find(
+      (violation) => violation.rule === "legacy-catalog-raw-read" && violation.evidence.startsWith("read parameter_specs:"),
+    );
+    const second = (await scanParameterCatalogBoundaries(secondRoot)).find(
+      (violation) => violation.rule === "legacy-catalog-raw-read" && violation.evidence.startsWith("read parameter_specs:"),
+    );
+
+    expect(first?.id).toBeDefined();
+    expect(second?.id).toBe(first?.id);
   });
 
   it("assigns debt from independently listed frozen paths to the exact future shrink owner", async () => {
@@ -167,6 +200,83 @@ describe("parameter catalog boundary checker", () => {
     ]);
   });
 
+  it("unwraps typed receivers and element-access methods before failing unresolved boundaries closed", async () => {
+    const root = await createConsumerTree();
+    await writeSource(
+      root,
+      "server/modules/parameters/receiverBoundaries.ts",
+      [
+        "((db as Database)!).query(makeSql());",
+        "(db as Database)![`query`](['select id', 'from parameter_specs'].join(' '));",
+        "(server as HttpServer)!.get(buildRoute(), handler);",
+        "router['get'](['/api/v2', '/parameter-specs'].join(''), handler);",
+      ].join("\n"),
+    );
+
+    const unresolved = (await scanParameterCatalogBoundaries(root))
+      .filter((violation) => violation.rule === "unresolved-boundary-expression")
+      .map((violation) => violation.evidence)
+      .sort();
+
+    expect(unresolved).toEqual([
+      "database: ['select id', 'from parameter_specs'].join(' ')",
+      "database: makeSql()",
+      "route: ['/api/v2', '/parameter-specs'].join('')",
+      "route: buildRoute()",
+    ]);
+  });
+
+  it("recognizes CommonJS loader aliases and fails dynamic alias arguments closed", async () => {
+    const root = await createConsumerTree();
+    await writeSource(
+      root,
+      "server/modules/parameters/loaderAliases.ts",
+      [
+        "const load = require;",
+        "const delegatedLoad = load;",
+        "const modulePath = '../parameter-' + 'specs/repository';",
+        "load(modulePath);",
+        "delegatedLoad(buildModulePath());",
+      ].join("\n"),
+    );
+
+    const violations = await scanParameterCatalogBoundaries(root);
+
+    expect(violations.filter((violation) => violation.rule === "legacy-catalog-module-import")).toHaveLength(1);
+    expect(
+      violations
+        .filter((violation) => violation.rule === "unresolved-boundary-expression")
+        .map((violation) => violation.evidence),
+    ).toEqual(["module-loader: buildModulePath()"]);
+  });
+
+  it("finds legacy parameter identity keys in element access, in checks, and has-own checks", async () => {
+    const root = await createConsumerTree();
+    await writeSource(
+      root,
+      "server/modules/parameters/payloadKeys.ts",
+      [
+        "declare const payload: Record<string, unknown>;",
+        "payload['parameterSpecId'];",
+        "'parameter_spec_id' in payload;",
+        "Object.hasOwn(payload, 'parameterSpecVersionId');",
+        "Object.prototype.hasOwnProperty.call(payload, 'parameter_spec_ids');",
+      ].join("\n"),
+    );
+
+    const keys = (await scanParameterCatalogBoundaries(root))
+      .filter((violation) => violation.rule === "legacy-parameter-spec-identifier")
+      .map((violation) => violation.evidence)
+      .sort();
+
+    expect(keys).toEqual([
+      "parameterSpecId",
+      "parameterSpecVersionId",
+      "parameter_spec_id",
+      "parameter_spec_ids",
+    ]);
+  });
+
   it("ignores table-shaped text inside SQL literals and comments while retaining real access", async () => {
     const root = await createConsumerTree();
     await writeSource(
@@ -187,6 +297,33 @@ describe("parameter catalog boundary checker", () => {
     expect(reads[0].evidence).toContain("select id from parameter_specs");
   });
 
+  it("preserves comment markers and escaped quotes inside double-quoted SQL identifiers", async () => {
+    const root = await createConsumerTree();
+    await writeSource(
+      root,
+      "server/modules/parameters/quotedIdentifiers.ts",
+      [
+        "const first = `select id from \"schema--name\".\"parameter_specs\"`;",
+        "const second = `select id from \"schema/*\"\"name\".\"parameter_spec_versions\"`;",
+        "const write = `update \"schema--name\".\"parameter_specs\" set lifecycle = 'retired'`;",
+      ].join("\n"),
+    );
+
+    const violations = await scanParameterCatalogBoundaries(root);
+
+    expect(
+      violations
+        .filter((violation) => violation.rule === "legacy-catalog-raw-read")
+        .map((violation) => violation.evidence.split(":", 1)[0])
+        .sort(),
+    ).toEqual(["read parameter_spec_versions", "read parameter_specs"]);
+    expect(
+      violations
+        .filter((violation) => violation.rule === "legacy-catalog-sql-write")
+        .map((violation) => violation.evidence.split(":", 1)[0]),
+    ).toEqual(["write parameter_specs"]);
+  });
+
   it("rejects fixture and shard growth after the authorized fixture digest is fixed", async () => {
     const root = await createConsumerTree();
     const baselineSha = "e84ca078ab8f7b7006fa8e635d722297a287d2a5";
@@ -201,6 +338,10 @@ describe("parameter catalog boundary checker", () => {
     );
     const initialFixtureBytes = await writeAllowlistArtifacts(root, initialArtifacts);
     const fixtureSha256 = createHash("sha256").update(initialFixtureBytes).digest("hex");
+    initializeGitRepository(root);
+    commitAll(root, "seed trusted fixture");
+    runGit(root, "update-ref", "refs/remotes/origin/main", "HEAD");
+    runGit(root, "switch", "-c", "feature/tamper");
 
     await expect(
       checkParameterCatalogBoundaries(root, { baselineSha, fixtureSha256 }),
@@ -220,6 +361,82 @@ describe("parameter catalog boundary checker", () => {
     await expect(
       checkParameterCatalogBoundaries(root, { baselineSha, fixtureSha256 }),
     ).rejects.toThrow(/fixture.*digest/iu);
+  });
+
+  it("fails closed when origin/main is unavailable or no longer the HEAD merge-base", async () => {
+    const unavailableRoot = await createConsumerTree();
+    const baselineSha = "2222222222222222222222222222222222222222";
+    const unavailableArtifacts = buildInitialAllowlistArtifacts(
+      await scanParameterCatalogBoundaries(unavailableRoot),
+      baselineSha,
+    );
+    const unavailableFixture = await writeAllowlistArtifacts(unavailableRoot, unavailableArtifacts);
+    const unavailableDigest = createHash("sha256").update(unavailableFixture).digest("hex");
+    await expect(
+      checkParameterCatalogBoundaries(unavailableRoot, {
+        baselineSha,
+        fixtureSha256: unavailableDigest,
+      }),
+    ).rejects.toThrow(/fails closed/iu);
+
+    const divergentRoot = await createConsumerTree();
+    const divergentArtifacts = buildInitialAllowlistArtifacts(
+      await scanParameterCatalogBoundaries(divergentRoot),
+      baselineSha,
+    );
+    const divergentFixture = await writeAllowlistArtifacts(divergentRoot, divergentArtifacts);
+    const divergentDigest = createHash("sha256").update(divergentFixture).digest("hex");
+    initializeGitRepository(divergentRoot);
+    commitAll(divergentRoot, "seed common base");
+    runGit(divergentRoot, "switch", "-c", "feature/divergent");
+    runGit(divergentRoot, "switch", "main");
+    await writeSource(divergentRoot, "unrelated-main.txt", "main advanced\n");
+    commitAll(divergentRoot, "advance main");
+    runGit(divergentRoot, "update-ref", "refs/remotes/origin/main", "HEAD");
+    runGit(divergentRoot, "switch", "feature/divergent");
+
+    await expect(
+      checkParameterCatalogBoundaries(divergentRoot, {
+        baselineSha,
+        fixtureSha256: divergentDigest,
+      }),
+    ).rejects.toThrow(/untrusted.*origin\/main.*merge-base/iu);
+  });
+
+  it("rejects re-adding debt removed from the trusted merge-base shard", async () => {
+    const root = await createConsumerTree();
+    const baselineSha = "1111111111111111111111111111111111111111";
+    const relativePath = "server/modules/parameters/monotonic.ts";
+    const initialSource = [
+      "export const first = `select id from parameter_specs`;",
+      "export const second = `select id from parameter_spec_versions`;",
+    ].join("\n");
+    await writeSource(root, relativePath, initialSource);
+    const initialArtifacts = buildInitialAllowlistArtifacts(
+      await scanParameterCatalogBoundaries(root),
+      baselineSha,
+    );
+    const fixtureBytes = await writeAllowlistArtifacts(root, initialArtifacts);
+    const fixtureSha256 = createHash("sha256").update(fixtureBytes).digest("hex");
+    initializeGitRepository(root);
+    commitAll(root, "seed initial fixture");
+
+    await writeSource(root, relativePath, `${initialSource.split("\n")[0]}\n`);
+    const reducedArtifacts = buildInitialAllowlistArtifacts(
+      await scanParameterCatalogBoundaries(root),
+      baselineSha,
+    );
+    await writeAllowlistShards(root, reducedArtifacts);
+    commitAll(root, "remove one debt");
+    runGit(root, "update-ref", "refs/remotes/origin/main", "HEAD");
+    runGit(root, "switch", "-c", "feature/readd");
+
+    await writeSource(root, relativePath, initialSource);
+    await writeAllowlistShards(root, initialArtifacts);
+
+    await expect(
+      checkParameterCatalogBoundaries(root, { baselineSha, fixtureSha256 }),
+    ).rejects.toThrow(/trusted merge-base.*allow-list growth/iu);
   });
 
   it("builds one immutable fixture and eleven independently shrinkable shards", async () => {
@@ -340,6 +557,14 @@ async function writeAllowlistArtifacts(
 ) {
   const fixtureBytes = `${JSON.stringify(artifacts.fixture, null, 2)}\n`;
   await writeSource(root, boundaryViolationFixturePath, fixtureBytes);
+  await writeAllowlistShards(root, artifacts);
+  return fixtureBytes;
+}
+
+async function writeAllowlistShards(
+  root: string,
+  artifacts: ReturnType<typeof buildInitialAllowlistArtifacts>,
+) {
   const shardFiles = {
     "S12-CGH": "s12-cgh.json",
     "S12-TOP": "s12-top.json",
@@ -360,5 +585,19 @@ async function writeAllowlistArtifacts(
       `${JSON.stringify(shard, null, 2)}\n`,
     );
   }
-  return fixtureBytes;
+}
+
+function initializeGitRepository(root: string) {
+  runGit(root, "init", "--initial-branch=main");
+  runGit(root, "config", "user.name", "Boundary Checker Test");
+  runGit(root, "config", "user.email", "boundary-checker@example.invalid");
+}
+
+function commitAll(root: string, message: string) {
+  runGit(root, "add", ".");
+  runGit(root, "commit", "-m", message);
+}
+
+function runGit(root: string, ...args: string[]) {
+  return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }

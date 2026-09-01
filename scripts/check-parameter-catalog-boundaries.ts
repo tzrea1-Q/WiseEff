@@ -19,6 +19,7 @@ import {
   boundaryViolationFixtureSchema,
   compareText,
   type AllowlistShard,
+  type AllowlistEntry,
   type BoundaryRuleId,
   type BoundaryViolation,
   type BoundaryViolationFixture,
@@ -26,7 +27,7 @@ import {
 } from "./parameter-catalog-allowlist/schema";
 
 const initialBaselineSha = "e84ca078ab8f7b7006fa8e635d722297a287d2a5";
-const initialFixtureSha256 = "9932ab08f7bd3ba5cafac08e03fa32d8a3c9a5e75f8aaa9242fefafcba798267";
+const initialFixtureSha256 = "90f7e03e420887e52537bab62be77a3779c15f2d670de7409137508d20bc9760";
 const initialFixtureIntegrity: BoundaryFixtureIntegrity = {
   baselineSha: initialBaselineSha,
   fixtureSha256: initialFixtureSha256,
@@ -193,13 +194,128 @@ export async function checkParameterCatalogBoundaries(
     loadAllowlistIndex(repoRoot),
     loadBoundaryViolationFixture(repoRoot, integrity),
   ]);
+  const trustedParentAllowances = loadTrustedParentAllowances(repoRoot, fixture);
+  if (trustedParentAllowances) {
+    const parentById = new Map(trustedParentAllowances.map((entry) => [entry.id, entry]));
+    const growth = allowlist.entries.filter((entry) => {
+      const parent = parentById.get(entry.id);
+      return (
+        !parent ||
+        parent.rule !== entry.rule ||
+        parent.file !== entry.file ||
+        parent.reason !== entry.reason
+      );
+    });
+    if (growth.length > 0) {
+      throw new Error(
+        `Trusted merge-base allow-list growth is forbidden: ${growth.map((entry) => entry.id).join(", ")}.`,
+      );
+    }
+  }
   return compareBoundaryInventory(violations, allowlist.entries, fixture.violations);
+}
+
+function loadTrustedParentAllowances(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+): AllowlistEntry[] | undefined {
+  const gitRoot = gitOutput(repoRoot, ["rev-parse", "--show-toplevel"], "repository root");
+  const gitPrefix = gitOutput(repoRoot, ["rev-parse", "--show-prefix"], "repository root prefix");
+  if (gitPrefix !== "") {
+    throw new Error(`Parameter-catalog checker root must be the Git repository root: ${gitRoot}.`);
+  }
+  const originMain = gitOutput(
+    repoRoot,
+    ["rev-parse", "--verify", "refs/remotes/origin/main^{commit}"],
+    "trusted origin/main commit",
+  );
+  const mergeBase = gitOutput(
+    repoRoot,
+    ["merge-base", "HEAD", "refs/remotes/origin/main"],
+    "trusted merge-base commit",
+  );
+  if (mergeBase !== originMain) {
+    throw new Error(
+      `Untrusted parameter-catalog parent: origin/main ${originMain} is not the HEAD merge-base ${mergeBase}.`,
+    );
+  }
+  gitOutput(repoRoot, ["cat-file", "-e", `${mergeBase}^{commit}`], "trusted merge-base object");
+
+  const shardDocuments = consumerShardDefinitions.map((definition) => {
+    const path = `${allowlistShardDirectory}/${definition.shardFile}`;
+    const contents = gitObjectContents(repoRoot, mergeBase, path);
+    return { definition, path, contents };
+  });
+  const present = shardDocuments.filter(({ contents }) => contents !== undefined);
+  if (present.length === 0) {
+    if (mergeBase === initialBaselineSha && fixture.baselineSha === initialBaselineSha) return undefined;
+    throw new Error(`Trusted merge-base ${mergeBase} has no parameter-catalog allow-list shards.`);
+  }
+  if (present.length !== shardDocuments.length) {
+    const missing = shardDocuments.filter(({ contents }) => contents === undefined).map(({ path }) => path);
+    throw new Error(`Trusted merge-base ${mergeBase} has an incomplete allow-list: ${missing.join(", ")}.`);
+  }
+
+  const fixtureById = new Map(fixture.violations.map((entry) => [entry.id, entry]));
+  const entries: AllowlistEntry[] = [];
+  for (const { definition, path, contents } of shardDocuments) {
+    let value: unknown;
+    try {
+      value = JSON.parse(contents as string) as unknown;
+    } catch (error) {
+      throw new Error(`Invalid JSON in trusted merge-base allow-list shard ${path}.`, { cause: error });
+    }
+    const shard = allowlistShardSchema.parse(value);
+    const expectedPaths = definition.paths.map(({ pattern }) => pattern);
+    if (shard.family !== definition.family || JSON.stringify(shard.paths) !== JSON.stringify(expectedPaths)) {
+      throw new Error(`Trusted merge-base allow-list metadata mismatch for ${path}.`);
+    }
+    for (const entry of shard.entries) {
+      const initial = fixtureById.get(entry.id);
+      if (
+        !initial ||
+        initial.rule !== entry.rule ||
+        initial.file !== entry.file ||
+        initial.reason !== entry.reason
+      ) {
+        throw new Error(`Trusted merge-base allow-list entry is outside the immutable fixture: ${entry.id}.`);
+      }
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+function gitOutput(repoRoot: string, args: readonly string[], label: string) {
+  try {
+    return execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch (error) {
+    throw new Error(`Unable to resolve ${label}; parameter-catalog ratchet fails closed.`, { cause: error });
+  }
+}
+
+function gitObjectContents(repoRoot: string, commit: string, path: string) {
+  try {
+    return execFileSync("git", ["show", `${commit}:${path}`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 function scanSourceFile(family: ConsumerFamilyId, file: string, source: string): CandidateViolation[] {
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const candidates: CandidateViolation[] = [];
   const constantBindings = collectUniqueConstantBindings(sourceFile);
+  const moduleLoaderAliases = collectModuleLoaderAliases(constantBindings);
 
   const add = (rule: BoundaryRuleId, node: ts.Node, evidence: string, stableEvidence = evidence) => {
     const start = node.getStart(sourceFile, false);
@@ -213,7 +329,7 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
       evidence: boundedEvidence(evidence),
       reason: reasons[rule],
       start,
-      stableEvidence: `${normalizeText(stableEvidence)}\0${stableContext(node, sourceFile)}`,
+      stableEvidence: `${normalizeText(stableEvidence)}\0${stableStructuralAnchor(node)}`,
     });
   };
 
@@ -236,32 +352,52 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
       ts.isStringLiteral(node.moduleReference.expression)
     ) {
       scanModuleSpecifier(node.moduleReference.expression.text, node);
-    } else if (ts.isCallExpression(node) && isModuleLoaderCall(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+    } else if (
+      ts.isCallExpression(node) &&
+      isModuleLoaderCall(node, moduleLoaderAliases) &&
+      node.arguments[0] &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
       scanModuleSpecifier(node.arguments[0].text, node);
     }
 
     if (ts.isCallExpression(node) && node.arguments[0]) {
       const argument = node.arguments[0];
-      if (isModuleLoaderCall(node) && !ts.isStringLiteral(argument)) {
+      if (isModuleLoaderCall(node, moduleLoaderAliases) && !ts.isStringLiteral(argument)) {
         const evaluated = evaluateStringExpression(argument, constantBindings);
         if (evaluated.complete) {
           scanModuleSpecifier(evaluated.text, argument);
         } else {
-          add("unresolved-boundary-expression", argument, `module-loader: ${normalizeText(argument.getText(sourceFile))}`);
+          add(
+            "unresolved-boundary-expression",
+            argument,
+            `module-loader: ${normalizeText(argument.getText(sourceFile))}`,
+            "unresolved:module-loader",
+          );
         }
       } else if (isDatabaseStringCall(node) && !isStringNode(argument)) {
         const evaluated = evaluateStringExpression(argument, constantBindings);
         if (evaluated.complete) {
           scanStringValue(argument, evaluated.text, add);
         } else {
-          add("unresolved-boundary-expression", argument, `database: ${normalizeText(argument.getText(sourceFile))}`);
+          add(
+            "unresolved-boundary-expression",
+            argument,
+            `database: ${normalizeText(argument.getText(sourceFile))}`,
+            "unresolved:database",
+          );
         }
       } else if (isRouteRegistrationCall(node) && !isStringNode(argument)) {
         const evaluated = evaluateStringExpression(argument, constantBindings);
         if (evaluated.complete) {
           scanStringValue(argument, evaluated.text, add);
         } else {
-          add("unresolved-boundary-expression", argument, `route: ${normalizeText(argument.getText(sourceFile))}`);
+          add(
+            "unresolved-boundary-expression",
+            argument,
+            `route: ${normalizeText(argument.getText(sourceFile))}`,
+            "unresolved:route",
+          );
         }
       }
     }
@@ -281,7 +417,7 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
     if (isStringNode(node)) {
       const text = stringNodeText(node);
       scanStringValue(node, text, add);
-      if (isQuotedPropertyName(node) && parameterSpecIdentifier.test(text)) {
+      if (isLegacyIdentityKeyContext(node) && parameterSpecIdentifier.test(text)) {
         add("legacy-parameter-spec-identifier", node, text, text);
       }
     } else if (ts.isTemplateExpression(node)) {
@@ -310,10 +446,10 @@ function scanStringValue(
     const withoutWriteTarget = sqlStructure.replace(sqlWritePattern(table), " ");
     const hasRead = sqlReadPattern(table).test(withoutWriteTarget);
     if (hasWrite) {
-      add("legacy-catalog-sql-write", node, `write ${table}: ${normalized}`, `write\0${table}\0${normalized}`);
+      add("legacy-catalog-sql-write", node, `write ${table}: ${normalized}`, `write:${table}`);
     }
     if (hasRead) {
-      add("legacy-catalog-raw-read", node, `read ${table}: ${normalized}`, `read\0${table}\0${normalized}`);
+      add("legacy-catalog-raw-read", node, `read ${table}: ${normalized}`, `read:${table}`);
     }
     if (!hasWrite && !hasRead && normalized.toLowerCase() === table) {
       add("legacy-catalog-table-name", node, table, table);
@@ -322,25 +458,39 @@ function scanStringValue(
 
   for (const table of canonicalCatalogTables) {
     if (sqlWritePattern(table).test(sqlStructure) || sqlReadPattern(table).test(sqlStructure)) {
-      add("canonical-catalog-raw-access", node, `${table}: ${normalized}`, `${table}\0${normalized}`);
+      add("canonical-catalog-raw-access", node, `${table}: ${normalized}`, `canonical:${table}`);
     }
   }
 
-  if (legacyRouteFragments.some((fragment) => normalized.includes(fragment))) {
-    add("legacy-catalog-route", node, normalized, normalized);
+  for (const fragment of legacyRouteFragments) {
+    if (normalized.includes(fragment)) {
+      add("legacy-catalog-route", node, normalized, `route:${fragment}`);
+    }
   }
-  if (/view=(?:effective|governance)(?:&|$)/iu.test(normalized) || (isViewContext(node) && /^(?:effective|governance)$/u.test(normalized))) {
-    add("legacy-effective-governance-contract", node, normalized, normalized);
+  const viewSelector = normalized.match(/view=(effective|governance)(?:&|$)/iu)?.[1]?.toLowerCase();
+  const contextualView = isViewContext(node) && /^(?:effective|governance)$/u.test(normalized)
+    ? normalized.toLowerCase()
+    : undefined;
+  if (viewSelector || contextualView) {
+    add(
+      "legacy-effective-governance-contract",
+      node,
+      normalized,
+      `view:${viewSelector ?? contextualView}`,
+    );
   }
-  if (/(?:driver_schema_overlays?|driver-schema-overlays?|organization-driver-schemas?)/iu.test(normalized)) {
-    add("legacy-overlay-catalog-contract", node, normalized, normalized);
+  const overlayToken = normalized.match(
+    /(?:driver_schema_overlays?|driver-schema-overlays?|organization-driver-schemas?)/iu,
+  )?.[0];
+  if (overlayToken) {
+    add("legacy-overlay-catalog-contract", node, normalized, `overlay:${overlayToken.toLowerCase()}`);
   }
 }
 
 function maskSqlLiteralsAndComments(value: string) {
   let result = "";
   let index = 0;
-  let state: "code" | "single" | "line-comment" | "block-comment" | "dollar" = "code";
+  let state: "code" | "single" | "double" | "line-comment" | "block-comment" | "dollar" = "code";
   let dollarDelimiter = "";
   const mask = (character: string) => (character === "\n" || character === "\r" ? character : " ");
 
@@ -351,6 +501,12 @@ function maskSqlLiteralsAndComments(value: string) {
       if (character === "'") {
         state = "single";
         result += " ";
+        index += 1;
+        continue;
+      }
+      if (character === '"') {
+        state = "double";
+        result += character;
         index += 1;
         continue;
       }
@@ -396,6 +552,17 @@ function maskSqlLiteralsAndComments(value: string) {
       if (character === "'") state = "code";
       continue;
     }
+    if (state === "double") {
+      if (character === '"' && next === '"') {
+        result += '""';
+        index += 2;
+        continue;
+      }
+      result += character;
+      index += 1;
+      if (character === '"') state = "code";
+      continue;
+    }
     if (state === "line-comment") {
       result += mask(character);
       index += 1;
@@ -427,35 +594,73 @@ function maskSqlLiteralsAndComments(value: string) {
 
 function sqlWritePattern(table: string) {
   return new RegExp(
-    `\\b(?:insert\\s+into|update|delete\\s+from|merge\\s+into|truncate(?:\\s+table)?)\\s+(?:only\\s+)?(?:"?[a-z_][a-z0-9_]*"?\\.)?"?${table}"?\\b`,
+    `\\b(?:insert\\s+into|update|delete\\s+from|merge\\s+into|truncate(?:\\s+table)?)\\s+(?:only\\s+)?${qualifiedSqlTablePattern(table)}`,
     "giu",
   );
 }
 
 function sqlReadPattern(table: string) {
   return new RegExp(
-    `\\b(?:from|join)\\s+(?:only\\s+)?(?:"?[a-z_][a-z0-9_]*"?\\.)?"?${table}"?\\b`,
+    `\\b(?:from|join)\\s+(?:only\\s+)?${qualifiedSqlTablePattern(table)}`,
     "iu",
   );
 }
 
-function isModuleLoaderCall(node: ts.CallExpression) {
+function qualifiedSqlTablePattern(table: string) {
+  const identifier = '(?:"(?:[^"]|"")*"|[a-z_][a-z0-9_$]*)';
+  return `(?:${identifier}\\s*\\.\\s*)?(?:"${table}"|${table})(?![a-z0-9_$])`;
+}
+
+function isModuleLoaderCall(node: ts.CallExpression, aliases: ReadonlySet<string>) {
   return (
-    (ts.isIdentifier(node.expression) && node.expression.text === "require") ||
+    (ts.isIdentifier(node.expression) && aliases.has(node.expression.text)) ||
     node.expression.kind === ts.SyntaxKind.ImportKeyword
   );
 }
 
 function isDatabaseStringCall(node: ts.CallExpression) {
-  if (!ts.isPropertyAccessExpression(node.expression)) return false;
-  if (!/^(?:query|execute|raw|unsafe)$/u.test(node.expression.name.text)) return false;
-  return /(?:^|\.)(?:db|database|pool|client|tx|queryable)$/iu.test(normalizeText(node.expression.expression.getText()));
+  const boundary = callBoundary(node);
+  return Boolean(
+    boundary &&
+      /^(?:query|execute|raw|unsafe)$/u.test(boundary.method) &&
+      /^(?:db|database|pool|client|tx|queryable)$/iu.test(boundary.receiver),
+  );
 }
 
 function isRouteRegistrationCall(node: ts.CallExpression) {
-  if (!ts.isPropertyAccessExpression(node.expression)) return false;
-  if (!/^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(node.expression.name.text)) return false;
-  return /(?:^|\.)(?:app|router|routes?)$/iu.test(normalizeText(node.expression.expression.getText()));
+  const boundary = callBoundary(node);
+  return Boolean(
+    boundary &&
+      /^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(boundary.method) &&
+      /^(?:app|router|routes?|server)$/iu.test(boundary.receiver),
+  );
+}
+
+function callBoundary(node: ts.CallExpression) {
+  const expression = unwrapStringExpression(node.expression);
+  if (ts.isPropertyAccessExpression(expression)) {
+    return {
+      method: expression.name.text,
+      receiver: boundaryReceiverName(expression.expression),
+    };
+  }
+  if (ts.isElementAccessExpression(expression) && isStringNode(expression.argumentExpression)) {
+    return {
+      method: expression.argumentExpression.text,
+      receiver: boundaryReceiverName(expression.expression),
+    };
+  }
+  return undefined;
+}
+
+function boundaryReceiverName(expression: ts.Expression): string {
+  const node = unwrapStringExpression(expression);
+  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  if (ts.isElementAccessExpression(node) && isStringNode(node.argumentExpression)) {
+    return node.argumentExpression.text;
+  }
+  return "";
 }
 
 function collectUniqueConstantBindings(sourceFile: ts.SourceFile) {
@@ -478,6 +683,22 @@ function collectUniqueConstantBindings(sourceFile: ts.SourceFile) {
   return new Map(
     [...declarations.entries()].flatMap(([name, values]) => (values.length === 1 ? [[name, values[0]] as const] : [])),
   );
+}
+
+function collectModuleLoaderAliases(bindings: ReadonlyMap<string, ts.Expression>) {
+  const aliases = new Set(["require"]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, initializer] of bindings) {
+      const target = unwrapStringExpression(initializer);
+      if (ts.isIdentifier(target) && aliases.has(target.text) && !aliases.has(name)) {
+        aliases.add(name);
+        changed = true;
+      }
+    }
+  }
+  return aliases;
 }
 
 type EvaluatedString = { text: string; complete: boolean };
@@ -548,6 +769,30 @@ function isQuotedPropertyName(node: ts.StringLiteral | ts.NoSubstitutionTemplate
   );
 }
 
+function isLegacyIdentityKeyContext(node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral) {
+  if (isQuotedPropertyName(node)) return true;
+  const parent = node.parent;
+  if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) return true;
+  if (
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.InKeyword &&
+    parent.left === node
+  ) {
+    return true;
+  }
+  if (!ts.isCallExpression(parent)) return false;
+  const argumentIndex = parent.arguments.indexOf(node);
+  const member = callMemberName(parent.expression);
+  if (member === "hasOwn" && argumentIndex === 1) return true;
+  if (member === "hasOwnProperty" && argumentIndex === 0) return true;
+  if (member !== "call" || argumentIndex !== 1) return false;
+  const callee = unwrapStringExpression(parent.expression);
+  return (
+    ts.isPropertyAccessExpression(callee) &&
+    callMemberName(callee.expression) === "hasOwnProperty"
+  );
+}
+
 function isViewContext(node: ts.Node) {
   let current: ts.Node | undefined = node.parent;
   for (let depth = 0; current && depth < 4; depth += 1, current = current.parent) {
@@ -557,26 +802,68 @@ function isViewContext(node: ts.Node) {
   return false;
 }
 
-function stableContext(node: ts.Node, sourceFile: ts.SourceFile) {
-  let current = node;
-  while (current.parent && !isStableContextBoundary(current)) {
+function stableStructuralAnchor(node: ts.Node) {
+  const parts: string[] = [];
+  let current: ts.Node | undefined = node;
+  for (let depth = 0; current && current.parent && depth < 12; depth += 1) {
+    parts.push(`${ts.SyntaxKind[current.kind]}:${structuralRole(current)}`);
+    if (ts.isCallExpression(current)) {
+      parts.push(`call:${callMemberName(current.expression) ?? "expression"}`);
+    }
+    const owner = stableNamedOwner(current);
+    if (owner) {
+      parts.push(owner);
+      break;
+    }
+    if (ts.isStatement(current)) break;
     current = current.parent;
   }
-  return normalizeText(current.getText(sourceFile));
+  return parts.join("/");
 }
 
-function isStableContextBoundary(node: ts.Node) {
-  return (
-    ts.isStatement(node) ||
-    ts.isVariableDeclaration(node) ||
-    ts.isParameter(node) ||
-    ts.isPropertySignature(node) ||
-    ts.isPropertyDeclaration(node) ||
-    ts.isPropertyAssignment(node) ||
-    ts.isImportDeclaration(node) ||
-    ts.isExportDeclaration(node) ||
-    ts.isCallExpression(node)
-  );
+function structuralRole(node: ts.Node) {
+  const parent = node.parent;
+  if (ts.isVariableDeclaration(parent)) {
+    if (parent.initializer === node) return "initializer";
+    if (parent.name === node) return "name";
+  }
+  if (ts.isCallExpression(parent)) {
+    if (parent.expression === node) return "callee";
+    const argumentIndex = parent.arguments.indexOf(node as ts.Expression);
+    if (argumentIndex >= 0) return `argument-${argumentIndex}`;
+  }
+  if (ts.isPropertyAssignment(parent)) return parent.name === node ? "property-name" : "property-value";
+  if (ts.isElementAccessExpression(parent)) {
+    return parent.argumentExpression === node ? "element-key" : "element-receiver";
+  }
+  if (ts.isBinaryExpression(parent)) return parent.left === node ? "binary-left" : "binary-right";
+  if (ts.isPropertyAccessExpression(parent)) return parent.name === node ? "member-name" : "member-receiver";
+  if (ts.isExpressionStatement(parent)) return "statement-expression";
+  return ts.SyntaxKind[parent.kind];
+}
+
+function stableNamedOwner(node: ts.Node) {
+  if (ts.isFunctionDeclaration(node) && node.name) return `function:${node.name.text}`;
+  if (ts.isMethodDeclaration(node) && node.name) return `method:${propertyNameText(node.name)}`;
+  if (ts.isGetAccessorDeclaration(node) && node.name) return `getter:${propertyNameText(node.name)}`;
+  if (ts.isSetAccessorDeclaration(node) && node.name) return `setter:${propertyNameText(node.name)}`;
+  return undefined;
+}
+
+function propertyNameText(node: ts.PropertyName) {
+  return ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)
+    ? node.text
+    : ts.SyntaxKind[node.kind];
+}
+
+function callMemberName(expression: ts.LeftHandSideExpression) {
+  const unwrapped = unwrapStringExpression(expression);
+  if (ts.isIdentifier(unwrapped)) return unwrapped.text;
+  if (ts.isPropertyAccessExpression(unwrapped)) return unwrapped.name.text;
+  if (ts.isElementAccessExpression(unwrapped) && isStringNode(unwrapped.argumentExpression)) {
+    return unwrapped.argumentExpression.text;
+  }
+  return undefined;
 }
 
 function normalizeText(value: string) {
