@@ -214,6 +214,37 @@
         }
       ]
     },
+    "driverSubtype": {
+      "additionalProperties": false,
+      "properties": {
+        "cardinality": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "multiple",
+                "singleton-per-project"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "nature": {
+          "enum": [
+            "physical-device",
+            "logical-service"
+          ]
+        }
+      },
+      "required": [
+        "nature",
+        "cardinality"
+      ],
+      "type": "object"
+    },
     "manifest": {
       "$defs": {
         "contractString": {
@@ -277,7 +308,7 @@
           ]
         },
         "relativePath": {
-          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
           "type": "string"
         },
         "releaseIdentity": {
@@ -383,6 +414,18 @@
       ],
       "type": "object"
     },
+    "nodeTypeSubtype": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/contractString"
+        }
+      },
+      "required": [
+        "family"
+      ],
+      "type": "object"
+    },
     "provenance": {
       "additionalProperties": false,
       "properties": {
@@ -402,7 +445,7 @@
       "type": "object"
     },
     "relativePath": {
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$",
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
       "type": "string"
     },
     "releaseNode": {
@@ -468,10 +511,33 @@
             "deprecated",
             "retired"
           ],
+          "driverInstanceCardinalities": [
+            "multiple",
+            "singleton-per-project"
+          ],
+          "driverNatures": [
+            "physical-device",
+            "logical-service"
+          ],
           "subjectLifecycles": [
             "active",
             "retired"
           ]
+        },
+        "definitionRevisionRules": {
+          "algorithm": "sha256",
+          "canonicalization": "parameter-catalog-contract-serialize",
+          "contentPointers": [
+            "/lifecycle",
+            "/displayName",
+            "/documentation",
+            "/unit",
+            "/valueSchema",
+            "/matching",
+            "/examples"
+          ],
+          "digestPointer": "/content/revision/contentDigest",
+          "revisionPointer": "/content/revision"
         },
         "idFormat": {
           "controlFree": true,
@@ -485,12 +551,14 @@
             "idPointer": "/content/id",
             "immutableValuePointers": [
               "/content/kind",
-              "/content/canonicalKey"
+              "/content/canonicalKey",
+              "/content/subtype"
             ],
             "naturalKeyPointers": [
               "/content/kind",
               "/content/canonicalKey"
-            ]
+            ],
+            "uniquePerRelease": true
           },
           {
             "documentKind": "alias",
@@ -501,7 +569,8 @@
             "naturalKeyPointers": [
               "/content/selectorKind",
               "/content/normalizedSelector"
-            ]
+            ],
+            "uniquePerRelease": true
           },
           {
             "documentKind": "definition",
@@ -513,7 +582,8 @@
             "naturalKeyPointers": [
               "/content/subjectId",
               "/content/propertyKey"
-            ]
+            ],
+            "uniquePerRelease": true
           },
           {
             "documentKind": "definition",
@@ -524,7 +594,8 @@
             "naturalKeyPointers": [
               "/content/id",
               "/content/revision/number"
-            ]
+            ],
+            "uniquePerRelease": true
           }
         ],
         "lineageRules": {
@@ -553,14 +624,51 @@
           "matchPointers": [
             "/kind",
             "/digest"
-          ]
+          ],
+          "releaseAggregateDigest": {
+            "algorithm": "sha256",
+            "canonicalization": "parameter-catalog-contract-serialize",
+            "digestPointer": "/manifest/release/digest",
+            "modelPointers": [
+              "/manifest/schemaVersion",
+              "/manifest/release/id",
+              "/manifest/release/version",
+              "/manifest/release/sequence",
+              "/manifest/release/predecessor",
+              "/manifest/toolchain",
+              "/manifest/files",
+              "/documents"
+            ],
+            "sortedCollections": [
+              {
+                "keyPointer": "/path",
+                "pointer": "/manifest/files"
+              },
+              {
+                "keyPointer": "/path",
+                "pointer": "/documents"
+              }
+            ]
+          }
         },
         "membershipRules": {
           "activeAliasRequiresActiveSubject": true,
+          "requireAliasSubject": true,
+          "requireDefinitionSubject": true,
           "requirePredecessorAliases": true,
+          "requirePredecessorDefinitions": true,
           "requirePredecessorSubjects": true
         },
-        "schemaVersion": "1.0.0"
+        "schemaVersion": "1.0.0",
+        "selectorRules": {
+          "aliasKindPointer": "/content/selectorKind",
+          "aliasValuePointer": "/content/normalizedSelector",
+          "canonicalKindPointer": "/content/selector/kind",
+          "canonicalSubjectIdPointer": "/content/id",
+          "canonicalValuePointer": "/content/selector/value",
+          "forbidAliasCanonicalCollision": true,
+          "requirePermanentCanonicalOwnership": true
+        }
       },
       "description": "Normative pre-compile stable identity and lineage rules."
     },
@@ -592,6 +700,54 @@
               }
             }
           }
+        },
+        {
+          "else": {
+            "properties": {
+              "selector": {
+                "properties": {
+                  "kind": {
+                    "const": "node-type-name"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "subtype": {
+                "$ref": "#/$defs/nodeTypeSubtype"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "driver"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "properties": {
+                  "kind": {
+                    "const": "driver-compatible"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "subtype": {
+                "$ref": "#/$defs/driverSubtype"
+              }
+            }
+          }
         }
       ],
       "properties": {
@@ -616,6 +772,9 @@
         "selector": {
           "$ref": "#/$defs/selector"
         },
+        "subtype": {
+          "type": "object"
+        },
         "tombstone": {}
       },
       "required": [
@@ -624,6 +783,7 @@
         "canonicalKey",
         "lifecycle",
         "selector",
+        "subtype",
         "tombstone"
       ],
       "type": "object"

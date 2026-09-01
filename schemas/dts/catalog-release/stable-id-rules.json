@@ -15,6 +15,14 @@
       "driver-compatible",
       "node-type-name"
     ],
+    "driverNatures": [
+      "physical-device",
+      "logical-service"
+    ],
+    "driverInstanceCardinalities": [
+      "multiple",
+      "singleton-per-project"
+    ],
     "definitionLifecycles": [
       "active",
       "deprecated",
@@ -35,7 +43,47 @@
       "algorithm": "sha256",
       "canonicalization": "parameter-catalog-contract-serialize",
       "contentPointer": "/content"
+    },
+    "releaseAggregateDigest": {
+      "algorithm": "sha256",
+      "canonicalization": "parameter-catalog-contract-serialize",
+      "digestPointer": "/manifest/release/digest",
+      "modelPointers": [
+        "/manifest/schemaVersion",
+        "/manifest/release/id",
+        "/manifest/release/version",
+        "/manifest/release/sequence",
+        "/manifest/release/predecessor",
+        "/manifest/toolchain",
+        "/manifest/files",
+        "/documents"
+      ],
+      "sortedCollections": [
+        {
+          "pointer": "/manifest/files",
+          "keyPointer": "/path"
+        },
+        {
+          "pointer": "/documents",
+          "keyPointer": "/path"
+        }
+      ]
     }
+  },
+  "definitionRevisionRules": {
+    "algorithm": "sha256",
+    "canonicalization": "parameter-catalog-contract-serialize",
+    "revisionPointer": "/content/revision",
+    "digestPointer": "/content/revision/contentDigest",
+    "contentPointers": [
+      "/lifecycle",
+      "/displayName",
+      "/documentation",
+      "/unit",
+      "/valueSchema",
+      "/matching",
+      "/examples"
+    ]
   },
   "lineageRules": {
     "targetReleasePointer": "/targetReleaseId",
@@ -63,8 +111,10 @@
       ],
       "immutableValuePointers": [
         "/content/kind",
-        "/content/canonicalKey"
-      ]
+        "/content/canonicalKey",
+        "/content/subtype"
+      ],
+      "uniquePerRelease": true
     },
     {
       "documentKind": "alias",
@@ -75,7 +125,8 @@
       ],
       "immutableValuePointers": [
         "/content/subjectId"
-      ]
+      ],
+      "uniquePerRelease": true
     },
     {
       "documentKind": "definition",
@@ -87,7 +138,8 @@
       "immutableValuePointers": [
         "/content/subjectId",
         "/content/propertyKey"
-      ]
+      ],
+      "uniquePerRelease": true
     },
     {
       "documentKind": "definition",
@@ -98,12 +150,25 @@
       ],
       "immutableValuePointers": [
         "/content/revision/contentDigest"
-      ]
+      ],
+      "uniquePerRelease": true
     }
   ],
+  "selectorRules": {
+    "canonicalSubjectIdPointer": "/content/id",
+    "canonicalKindPointer": "/content/selector/kind",
+    "canonicalValuePointer": "/content/selector/value",
+    "aliasKindPointer": "/content/selectorKind",
+    "aliasValuePointer": "/content/normalizedSelector",
+    "requirePermanentCanonicalOwnership": true,
+    "forbidAliasCanonicalCollision": true
+  },
   "membershipRules": {
     "requirePredecessorSubjects": true,
     "requirePredecessorAliases": true,
-    "activeAliasRequiresActiveSubject": true
+    "requirePredecessorDefinitions": true,
+    "activeAliasRequiresActiveSubject": true,
+    "requireAliasSubject": true,
+    "requireDefinitionSubject": true
   }
 }

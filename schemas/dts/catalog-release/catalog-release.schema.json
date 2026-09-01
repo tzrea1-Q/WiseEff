@@ -37,7 +37,7 @@
     },
     "relativePath": {
       "type": "string",
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]*$"
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
     },
     "provenance": {
       "type": "object",
@@ -103,6 +103,49 @@
         }
       }
     },
+    "driverSubtype": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nature",
+        "cardinality"
+      ],
+      "properties": {
+        "nature": {
+          "enum": [
+            "physical-device",
+            "logical-service"
+          ]
+        },
+        "cardinality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "multiple",
+                "singleton-per-project"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nodeTypeSubtype": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family"
+      ],
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/contractString"
+        }
+      }
+    },
     "subjectContent": {
       "type": "object",
       "additionalProperties": false,
@@ -112,6 +155,7 @@
         "canonicalKey",
         "lifecycle",
         "selector",
+        "subtype",
         "tombstone"
       ],
       "properties": {
@@ -135,6 +179,9 @@
         },
         "selector": {
           "$ref": "#/$defs/selector"
+        },
+        "subtype": {
+          "type": "object"
         },
         "tombstone": {}
       },
@@ -161,6 +208,54 @@
             "properties": {
               "tombstone": {
                 "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "driver"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "driver-compatible"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "subtype": {
+                "$ref": "#/$defs/driverSubtype"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "node-type-name"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "subtype": {
+                "$ref": "#/$defs/nodeTypeSubtype"
               }
             }
           }
