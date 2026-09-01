@@ -1,4 +1,4 @@
-# Wayfinder 规范草案：用唯一 canonical definition model 替换参数目录（#668）
+# Wayfinder 实现规格：用唯一 canonical definition model 替换参数目录（#668）
 
 > English: [English](../../../exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 

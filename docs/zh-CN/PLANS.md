@@ -49,7 +49,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格草案，消费 #669–#679 不可变决策，固定 Catalog Kernel、Release Verification、cutover 与业务模块 seams、canonical schema/API/UI、P0–P16 和证据门禁。在所有者确认 seams、ticket 粒度和依赖边之前停在 `/to-tickets` 前；不声称已有生产实现或发布证据。
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格，消费 #669–#679 不可变决策，并固定 Catalog Kernel、Release Verification、cutover 与业务模块 seams、canonical schema/API/UI、P0–P16 和证据门禁。规格已经由父会话验收；四个 seams、ticket 粒度和依赖边已经冻结。当前仅因 G0 候选尚未合入 `main` 而禁止执行 `/to-tickets`。不声称已有生产实现或发布证据。
 - `exec-plans/completed/2026-08-29-effective-driver-populated-upgrade-repair.md`：通过追加式修复迁移、默认 effective catalog projection 与升级 catalog readiness 门禁，补齐 Issue #649 的自托管存量数据库升级缺口。
 
 - `exec-plans/active/2026-08-28-node-write-observation-outcomes.md`：在服务、Bridge、API、mock 与 UI 中把普通节点写命令执行和写后观测拆开；保留快照/回滚，同时停止对新写入做基于相等性的 mismatch 判定。真实 HDC/ADB readiness 继续属于条件目标环境证据。

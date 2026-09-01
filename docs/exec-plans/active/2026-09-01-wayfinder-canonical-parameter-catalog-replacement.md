@@ -1,4 +1,4 @@
-# Wayfinder specification draft: canonical parameter catalog replacement (#668)
+# Wayfinder implementation specification: canonical parameter catalog replacement (#668)
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
