@@ -1916,6 +1916,309 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
     expect(residue.rows[0]?.count).toBe("0");
   });
 
+  it("rejects a successor when its predecessor materialization came from a released savepoint", async () => {
+    await client.query(`
+      begin;
+      savepoint materialize_predecessor;
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-savepoint-predecessor', 'savepoint-predecessor',
+        'sha256:savepoint-predecessor', 'sha256:savepoint-predecessor-compiled',
+        'sha256:savepoint-predecessor-toolchain'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-savepoint-predecessor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-savepoint-predecessor', 'sha256:savepoint-predecessor-compiled-fp',
+        'sha256:savepoint-predecessor-database-fp', 'savepoint-predecessor-attempt',
+        'savepoint-predecessor-audit'
+      );
+      release savepoint materialize_predecessor;
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-savepoint-successor', 'savepoint-successor', 'sha256:savepoint-successor',
+        'crel-savepoint-predecessor', 'sha256:savepoint-successor-compiled',
+        'sha256:savepoint-successor-toolchain'
+      );
+    `);
+
+    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    expect(error.code).toBe("23514");
+    expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+    await client.query("rollback");
+
+    const residue = await client.query<{
+      materializations: string;
+      releases: string;
+      subjects: string;
+    }>(`
+      select
+        (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-savepoint-predecessor', 'crel-savepoint-successor')) as releases,
+        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-savepoint-predecessor') as subjects,
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-savepoint-predecessor') as materializations
+    `);
+    expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+  });
+
+  it("rejects a successor materialized directly in the same top-level transaction", async () => {
+    await client.query(`
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-same-xact-predecessor', 'same-xact-predecessor',
+        'sha256:same-xact-predecessor', 'sha256:same-xact-predecessor-compiled',
+        'sha256:same-xact-predecessor-toolchain'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-same-xact-predecessor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, materializing_transaction_id, compiled_fingerprint,
+        database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-same-xact-predecessor', '1'::xid8, 'sha256:same-xact-predecessor-compiled-fp',
+        'sha256:same-xact-predecessor-database-fp', 'same-xact-predecessor-attempt',
+        'same-xact-predecessor-audit'
+      );
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-same-xact-successor', 'same-xact-successor', 'sha256:same-xact-successor',
+        'crel-same-xact-predecessor', 'sha256:same-xact-successor-compiled',
+        'sha256:same-xact-successor-toolchain'
+      );
+    `);
+
+    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    expect(error.code).toBe("23514");
+    expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+    await client.query("rollback");
+
+    const residue = await client.query<{
+      materializations: string;
+      releases: string;
+      subjects: string;
+    }>(`
+      select
+        (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as releases,
+        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-same-xact-predecessor') as subjects,
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-same-xact-predecessor') as materializations
+    `);
+    expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+  });
+
+  it("accepts a complete predecessor materialized by a previously committed transaction", async () => {
+    await client.query(`
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-prior-xact-predecessor', 'prior-xact-predecessor',
+        'sha256:prior-xact-predecessor', 'sha256:prior-xact-predecessor-compiled',
+        'sha256:prior-xact-predecessor-toolchain'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-prior-xact-predecessor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-prior-xact-predecessor', 'sha256:prior-xact-predecessor-compiled-fp',
+        'sha256:prior-xact-predecessor-database-fp', 'prior-xact-predecessor-attempt',
+        'prior-xact-predecessor-audit'
+      );
+      set constraints all immediate;
+      commit;
+
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest
+      ) values (
+        'crel-prior-xact-successor', 'prior-xact-successor', 'sha256:prior-xact-successor',
+        'crel-prior-xact-predecessor', 'sha256:prior-xact-successor-compiled',
+        'sha256:prior-xact-successor-toolchain'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-prior-xact-successor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-prior-xact-successor', 'sha256:prior-xact-successor-compiled-fp',
+        'sha256:prior-xact-successor-database-fp', 'prior-xact-successor-attempt',
+        'prior-xact-successor-audit'
+      );
+      set constraints all immediate;
+      commit;
+    `);
+
+    const materializations = await client.query<{ count: string }>(`
+      select count(*)::text as count
+      from parameter_catalog.catalog_materializations
+      where release_id in ('crel-prior-xact-predecessor', 'crel-prior-xact-successor')
+    `);
+    expect(materializations.rows[0]?.count).toBe("2");
+  });
+
+  it("rejects a concurrent successor while predecessor materialization is uncommitted and leaves zero candidate residue", async () => {
+    const successor = await connect(database.url);
+    try {
+      await client.query(`
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-concurrent-rollback-predecessor', 'concurrent-rollback-predecessor',
+          'sha256:concurrent-rollback-predecessor',
+          'sha256:concurrent-rollback-predecessor-compiled',
+          'sha256:concurrent-rollback-predecessor-toolchain'
+        );
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values (
+          'crel-concurrent-rollback-predecessor', 'csub-driver', 'active', '{}', '{}'
+        );
+        set constraints all immediate;
+        commit;
+
+        begin;
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+        ) values (
+          'crel-concurrent-rollback-predecessor',
+          'sha256:concurrent-rollback-predecessor-compiled-fp',
+          'sha256:concurrent-rollback-predecessor-database-fp',
+          'concurrent-rollback-predecessor-attempt', 'concurrent-rollback-predecessor-audit'
+        );
+      `);
+
+      await successor.query("begin");
+      const successorAttempt = successor.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, predecessor_release_id,
+          compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-concurrent-rollback-successor', 'concurrent-rollback-successor',
+          'sha256:concurrent-rollback-successor', 'crel-concurrent-rollback-predecessor',
+          'sha256:concurrent-rollback-successor-compiled',
+          'sha256:concurrent-rollback-successor-toolchain'
+        )
+      `).then(
+        (result) => ({ result, error: null }),
+        (error: pg.DatabaseError) => ({ result: null, error })
+      );
+      await waitForDatabaseLock(client, successor.processID);
+      await client.query("rollback");
+
+      await expect(successorAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null
+      });
+
+      const error = await captureDatabaseError(successor.query("set constraints all immediate"));
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+      await successor.query("rollback");
+
+      const residue = await client.query<{
+        materializations: string;
+        releases: string;
+        subjects: string;
+      }>(`
+        select
+          (select count(*)::text from parameter_catalog.catalog_releases where id = 'crel-concurrent-rollback-successor') as releases,
+          (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-concurrent-rollback-successor') as subjects,
+          (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-concurrent-rollback-predecessor') as materializations
+      `);
+      expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      await successor.query("rollback").catch(() => undefined);
+      await successor.end();
+    }
+  });
+
+  it("accepts a concurrent successor only after the predecessor materialization commits", async () => {
+    const successor = await connect(database.url);
+    try {
+      await client.query(`
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-concurrent-commit-predecessor', 'concurrent-commit-predecessor',
+          'sha256:concurrent-commit-predecessor',
+          'sha256:concurrent-commit-predecessor-compiled',
+          'sha256:concurrent-commit-predecessor-toolchain'
+        );
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values (
+          'crel-concurrent-commit-predecessor', 'csub-driver', 'active', '{}', '{}'
+        );
+        set constraints all immediate;
+        commit;
+
+        begin;
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+        ) values (
+          'crel-concurrent-commit-predecessor',
+          'sha256:concurrent-commit-predecessor-compiled-fp',
+          'sha256:concurrent-commit-predecessor-database-fp',
+          'concurrent-commit-predecessor-attempt', 'concurrent-commit-predecessor-audit'
+        );
+      `);
+
+      await successor.query("begin");
+      const successorAttempt = successor.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_version, release_digest, predecessor_release_id,
+          compiled_model_digest, toolchain_digest
+        ) values (
+          'crel-concurrent-commit-successor', 'concurrent-commit-successor',
+          'sha256:concurrent-commit-successor', 'crel-concurrent-commit-predecessor',
+          'sha256:concurrent-commit-successor-compiled',
+          'sha256:concurrent-commit-successor-toolchain'
+        )
+      `).then(
+        (result) => ({ result, error: null }),
+        (error: pg.DatabaseError) => ({ result: null, error })
+      );
+      await waitForDatabaseLock(client, successor.processID);
+
+      await client.query("set constraints all immediate");
+      await client.query("commit");
+
+      await expect(successorAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null
+      });
+      await successor.query("set constraints all immediate");
+      await successor.query("commit");
+
+      const state = await client.query<{ materializations: string; releases: string }>(`
+        select
+          (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-concurrent-commit-predecessor', 'crel-concurrent-commit-successor')) as releases,
+          (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-concurrent-commit-predecessor') as materializations
+      `);
+      expect(state.rows).toEqual([{ materializations: "1", releases: "2" }]);
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      await successor.query("rollback").catch(() => undefined);
+      await successor.end();
+    }
+  });
+
   it("rejects R3 when its R2 predecessor is not already materialized and complete", async () => {
     await client.query(`
       begin;

@@ -102,12 +102,15 @@ language plpgsql
 set search_path = pg_catalog, parameter_catalog
 as $$
 begin
+  -- MVCC exposes another transaction's materialization row only after commit.
+  -- Excluding the trigger-recorded top-level writer ID therefore proves this
+  -- is neither the current transaction nor one of its released savepoints.
   if new.predecessor_release_id is not null
      and not exists (
        select 1
        from parameter_catalog.catalog_materializations materialization
        where materialization.release_id = new.predecessor_release_id
-         and materialization.xmin::text <> pg_catalog.pg_current_xact_id()::text
+         and materialization.materializing_transaction_id <> pg_catalog.pg_current_xact_id()
      ) then
     raise exception using
       errcode = '23514',
@@ -341,6 +344,7 @@ alter table parameter_catalog.parameter_definitions
 
 create table parameter_catalog.catalog_materializations (
   release_id text primary key references parameter_catalog.catalog_releases(id) on delete restrict,
+  materializing_transaction_id xid8 not null,
   compiled_fingerprint text not null check (compiled_fingerprint <> '' and btrim(compiled_fingerprint) = compiled_fingerprint),
   database_fingerprint text not null check (database_fingerprint <> '' and btrim(database_fingerprint) = database_fingerprint),
   attempt_id text not null check (attempt_id <> '' and btrim(attempt_id) = attempt_id),
@@ -355,6 +359,11 @@ security definer
 set search_path = pg_catalog, parameter_catalog
 as $$
 begin
+  -- Record the top-level writer transaction, not the tuple xmin. PostgreSQL
+  -- gives tuples written inside savepoints a subtransaction xmin, while this
+  -- value remains the owning top-level transaction ID.
+  new.materializing_transaction_id := pg_catalog.pg_current_xact_id();
+
   perform 1
   from parameter_catalog.catalog_releases
   where id = new.release_id
