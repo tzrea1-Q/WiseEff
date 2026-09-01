@@ -61,11 +61,13 @@
       "sortedCollections": [
         {
           "pointer": "/manifest/files",
-          "keyPointer": "/path"
+          "keyPointer": "/path",
+          "comparator": "ecmascript-utf16-code-unit"
         },
         {
           "pointer": "/documents",
-          "keyPointer": "/path"
+          "keyPointer": "/path",
+          "comparator": "ecmascript-utf16-code-unit"
         }
       ]
     }
@@ -83,7 +85,16 @@
       "/valueSchema",
       "/matching",
       "/examples"
-    ]
+    ],
+    "transitionRules": {
+      "definitionIdPointer": "/content/id",
+      "revisionIdPointer": "/content/revision/id",
+      "revisionNumberPointer": "/content/revision/number",
+      "contentDigestPointer": "/content/revision/contentDigest",
+      "unchangedContentRequiresSameRevision": true,
+      "changedContentRequiresFreshRevisionId": true,
+      "changedContentRevisionIncrement": 1
+    }
   },
   "lineageRules": {
     "targetReleasePointer": "/targetReleaseId",
@@ -156,12 +167,53 @@
   ],
   "selectorRules": {
     "canonicalSubjectIdPointer": "/content/id",
+    "subjectKindPointer": "/content/kind",
     "canonicalKindPointer": "/content/selector/kind",
     "canonicalValuePointer": "/content/selector/value",
     "aliasKindPointer": "/content/selectorKind",
     "aliasValuePointer": "/content/normalizedSelector",
+    "ownedDocumentRules": [
+      {
+        "documentKind": "alias",
+        "ownerSubjectIdPointer": "/content/subjectId",
+        "selectorKindPointer": "/content/selectorKind"
+      },
+      {
+        "documentKind": "definition",
+        "ownerSubjectIdPointer": "/content/subjectId",
+        "selectorKindPointer": "/content/revision/matching/selectorKind"
+      }
+    ],
+    "selectorKindBySubjectKind": {
+      "driver": "driver-compatible",
+      "node-type": "node-type-name"
+    },
     "requirePermanentCanonicalOwnership": true,
     "forbidAliasCanonicalCollision": true
+  },
+  "retirementRules": {
+    "releaseIdPointer": "/manifest/release/id",
+    "documentRules": [
+      {
+        "documentKind": "subject",
+        "idPointer": "/content/id",
+        "lifecyclePointer": "/content/lifecycle",
+        "selectorPointer": "/content/selector/value"
+      },
+      {
+        "documentKind": "alias",
+        "idPointer": "/content/id",
+        "lifecyclePointer": "/content/lifecycle",
+        "selectorPointer": "/content/normalizedSelector"
+      }
+    ],
+    "tombstonePointer": "/content/tombstone",
+    "withdrawnByReleaseIdPointer": "/content/tombstone/withdrawnByReleaseId",
+    "previousSelectorPointer": "/content/tombstone/previousSelector",
+    "successorIdPointer": "/content/tombstone/successorId",
+    "requireActualRetirementRelease": true,
+    "requireExactPredecessorSelector": true,
+    "requireActiveSameKindSuccessor": true
   },
   "membershipRules": {
     "requirePredecessorSubjects": true,

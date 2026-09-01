@@ -410,7 +410,8 @@
         }
       },
       "required": [
-        "sourceProperty"
+        "sourceProperty",
+        "selectorKind"
       ],
       "type": "object"
     },
@@ -537,7 +538,16 @@
             "/examples"
           ],
           "digestPointer": "/content/revision/contentDigest",
-          "revisionPointer": "/content/revision"
+          "revisionPointer": "/content/revision",
+          "transitionRules": {
+            "changedContentRequiresFreshRevisionId": true,
+            "changedContentRevisionIncrement": 1,
+            "contentDigestPointer": "/content/revision/contentDigest",
+            "definitionIdPointer": "/content/id",
+            "revisionIdPointer": "/content/revision/id",
+            "revisionNumberPointer": "/content/revision/number",
+            "unchangedContentRequiresSameRevision": true
+          }
         },
         "idFormat": {
           "controlFree": true,
@@ -641,10 +651,12 @@
             ],
             "sortedCollections": [
               {
+                "comparator": "ecmascript-utf16-code-unit",
                 "keyPointer": "/path",
                 "pointer": "/manifest/files"
               },
               {
+                "comparator": "ecmascript-utf16-code-unit",
                 "keyPointer": "/path",
                 "pointer": "/documents"
               }
@@ -659,6 +671,30 @@
           "requirePredecessorDefinitions": true,
           "requirePredecessorSubjects": true
         },
+        "retirementRules": {
+          "documentRules": [
+            {
+              "documentKind": "subject",
+              "idPointer": "/content/id",
+              "lifecyclePointer": "/content/lifecycle",
+              "selectorPointer": "/content/selector/value"
+            },
+            {
+              "documentKind": "alias",
+              "idPointer": "/content/id",
+              "lifecyclePointer": "/content/lifecycle",
+              "selectorPointer": "/content/normalizedSelector"
+            }
+          ],
+          "previousSelectorPointer": "/content/tombstone/previousSelector",
+          "releaseIdPointer": "/manifest/release/id",
+          "requireActiveSameKindSuccessor": true,
+          "requireActualRetirementRelease": true,
+          "requireExactPredecessorSelector": true,
+          "successorIdPointer": "/content/tombstone/successorId",
+          "tombstonePointer": "/content/tombstone",
+          "withdrawnByReleaseIdPointer": "/content/tombstone/withdrawnByReleaseId"
+        },
         "schemaVersion": "1.0.0",
         "selectorRules": {
           "aliasKindPointer": "/content/selectorKind",
@@ -667,7 +703,24 @@
           "canonicalSubjectIdPointer": "/content/id",
           "canonicalValuePointer": "/content/selector/value",
           "forbidAliasCanonicalCollision": true,
-          "requirePermanentCanonicalOwnership": true
+          "ownedDocumentRules": [
+            {
+              "documentKind": "alias",
+              "ownerSubjectIdPointer": "/content/subjectId",
+              "selectorKindPointer": "/content/selectorKind"
+            },
+            {
+              "documentKind": "definition",
+              "ownerSubjectIdPointer": "/content/subjectId",
+              "selectorKindPointer": "/content/revision/matching/selectorKind"
+            }
+          ],
+          "requirePermanentCanonicalOwnership": true,
+          "selectorKindBySubjectKind": {
+            "driver": "driver-compatible",
+            "node-type": "node-type-name"
+          },
+          "subjectKindPointer": "/content/kind"
         }
       },
       "description": "Normative pre-compile stable identity and lineage rules."

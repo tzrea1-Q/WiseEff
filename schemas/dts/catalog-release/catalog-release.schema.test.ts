@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   catalogSubjectKinds,
@@ -66,6 +66,7 @@ interface StableIdRules {
       sortedCollections: Array<{
         pointer: string;
         keyPointer: string;
+        comparator: "ecmascript-utf16-code-unit";
       }>;
     };
   };
@@ -75,6 +76,15 @@ interface StableIdRules {
     revisionPointer: string;
     digestPointer: string;
     contentPointers: string[];
+    transitionRules: {
+      definitionIdPointer: string;
+      revisionIdPointer: string;
+      revisionNumberPointer: string;
+      contentDigestPointer: string;
+      unchangedContentRequiresSameRevision: boolean;
+      changedContentRequiresFreshRevisionId: boolean;
+      changedContentRevisionIncrement: number;
+    };
   };
   lineageRules: {
     targetReleasePointer: string;
@@ -95,12 +105,38 @@ interface StableIdRules {
   identityRules: StableIdentityRule[];
   selectorRules: {
     canonicalSubjectIdPointer: string;
+    subjectKindPointer: string;
     canonicalKindPointer: string;
     canonicalValuePointer: string;
     aliasKindPointer: string;
     aliasValuePointer: string;
+    ownedDocumentRules: Array<{
+      documentKind: "alias" | "definition";
+      ownerSubjectIdPointer: string;
+      selectorKindPointer: string;
+    }>;
+    selectorKindBySubjectKind: {
+      driver: "driver-compatible";
+      "node-type": "node-type-name";
+    };
     requirePermanentCanonicalOwnership: boolean;
     forbidAliasCanonicalCollision: boolean;
+  };
+  retirementRules: {
+    releaseIdPointer: string;
+    documentRules: Array<{
+      documentKind: "subject" | "alias";
+      idPointer: string;
+      lifecyclePointer: string;
+      selectorPointer: string;
+    }>;
+    tombstonePointer: string;
+    withdrawnByReleaseIdPointer: string;
+    previousSelectorPointer: string;
+    successorIdPointer: string;
+    requireActualRetirementRelease: boolean;
+    requireExactPredecessorSelector: boolean;
+    requireActiveSameKindSuccessor: boolean;
   };
   membershipRules: {
     requirePredecessorSubjects: boolean;
@@ -187,6 +223,9 @@ const pointerValue = (value: unknown, pointer: string): unknown => {
 const stableKey = (value: unknown): string =>
   serializeContract(value as ContractJsonValue).trimEnd();
 
+const compareContractKeys = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
 const normalizedReleaseModel = (node: ReleaseNode): JsonObject => {
   const rule = stableIdRules.manifestRules.releaseAggregateDigest;
   return Object.fromEntries(
@@ -199,7 +238,8 @@ const normalizedReleaseModel = (node: ReleaseNode): JsonObject => {
       return [
         pointer,
         value.toSorted((left, right) =>
-          String(pointerValue(left, sorting.keyPointer)).localeCompare(
+          compareContractKeys(
+            String(pointerValue(left, sorting.keyPointer)),
             String(pointerValue(right, sorting.keyPointer)),
           ),
         ),
@@ -486,6 +526,30 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
   }
 
   for (const node of releases) {
+    const subjectKind = new Map(
+      node.documents
+        .filter((document) => document.kind === "subject")
+        .map((document) => [
+          pointerValue(document, selectorRules.canonicalSubjectIdPointer),
+          pointerValue(document, selectorRules.subjectKindPointer),
+        ]),
+    );
+    for (const ownedRule of selectorRules.ownedDocumentRules) {
+      for (const document of node.documents.filter(
+        (candidate) => candidate.kind === ownedRule.documentKind,
+      )) {
+        const ownerKind = subjectKind.get(
+          pointerValue(document, ownedRule.ownerSubjectIdPointer),
+        );
+        if (
+          (ownerKind === "driver" || ownerKind === "node-type") &&
+          pointerValue(document, ownedRule.selectorKindPointer) !==
+            selectorRules.selectorKindBySubjectKind[ownerKind]
+        ) {
+          violations.push("owned-selector-kind-mismatch");
+        }
+      }
+    }
     const subjectLifecycle = new Map(
       node.documents
         .filter((document) => document.kind === "subject")
@@ -524,6 +588,184 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     if (typeof predecessorId !== "string") continue;
     const predecessor = releasesById.get(predecessorId);
     if (predecessor === undefined) continue;
+    const retirementRules = stableIdRules.retirementRules;
+    for (const documentRule of retirementRules.documentRules) {
+      const predecessorById = new Map(
+        predecessor.documents
+          .filter(
+            (document) => document.kind === documentRule.documentKind,
+          )
+          .map((document) => [
+            pointerValue(document, documentRule.idPointer),
+            document,
+          ]),
+      );
+      for (const document of node.documents.filter(
+        (candidate) => candidate.kind === documentRule.documentKind,
+      )) {
+        if (pointerValue(document, documentRule.lifecyclePointer) !== "retired") {
+          continue;
+        }
+        const predecessorDocument = predecessorById.get(
+          pointerValue(document, documentRule.idPointer),
+        );
+        if (predecessorDocument === undefined) continue;
+        const predecessorWasRetired =
+          pointerValue(predecessorDocument, documentRule.lifecyclePointer) ===
+          "retired";
+        const expectedRetirementRelease = predecessorWasRetired
+          ? pointerValue(
+              predecessorDocument,
+              retirementRules.withdrawnByReleaseIdPointer,
+            )
+          : pointerValue(node, retirementRules.releaseIdPointer);
+        if (
+          retirementRules.requireActualRetirementRelease &&
+          pointerValue(
+            document,
+            retirementRules.withdrawnByReleaseIdPointer,
+          ) !== expectedRetirementRelease
+        ) {
+          violations.push("retirement-release-mismatch");
+        }
+        if (
+          retirementRules.requireExactPredecessorSelector &&
+          pointerValue(document, retirementRules.previousSelectorPointer) !==
+            pointerValue(predecessorDocument, documentRule.selectorPointer)
+        ) {
+          violations.push("retirement-previous-selector-mismatch");
+        }
+        const successorId = pointerValue(
+          document,
+          retirementRules.successorIdPointer,
+        );
+        if (
+          !retirementRules.requireActiveSameKindSuccessor ||
+          successorId === undefined
+        ) {
+          continue;
+        }
+        const successorCandidates = node.documents.filter(
+          (candidate) =>
+            pointerValue(candidate, "/content/id") === successorId,
+        );
+        if (successorCandidates.length === 0) {
+          violations.push("retirement-successor-missing");
+          continue;
+        }
+        const sameKindSuccessor = successorCandidates.find(
+          (candidate) => candidate.kind === documentRule.documentKind,
+        );
+        if (sameKindSuccessor === undefined) {
+          violations.push("retirement-successor-kind-mismatch");
+          continue;
+        }
+        if (
+          sameKindSuccessor === document ||
+          pointerValue(sameKindSuccessor, documentRule.lifecyclePointer) !==
+            "active"
+        ) {
+          violations.push("retirement-successor-invalid");
+        }
+      }
+    }
+    const revisionTransition = stableIdRules.definitionRevisionRules.transitionRules;
+    const predecessorDefinitions = new Map(
+      predecessor.documents
+        .filter((document) => document.kind === "definition")
+        .map((document) => [
+          pointerValue(document, revisionTransition.definitionIdPointer),
+          document,
+        ]),
+    );
+    for (const definition of node.documents.filter(
+      (document) => document.kind === "definition",
+    )) {
+      const definitionId = pointerValue(
+        definition,
+        revisionTransition.definitionIdPointer,
+      );
+      const predecessorDefinition = predecessorDefinitions.get(definitionId);
+      if (predecessorDefinition === undefined) continue;
+      const currentRevisionId = pointerValue(
+        definition,
+        revisionTransition.revisionIdPointer,
+      );
+      const predecessorRevisionId = pointerValue(
+        predecessorDefinition,
+        revisionTransition.revisionIdPointer,
+      );
+      const currentRevisionNumber = pointerValue(
+        definition,
+        revisionTransition.revisionNumberPointer,
+      );
+      const predecessorRevisionNumber = pointerValue(
+        predecessorDefinition,
+        revisionTransition.revisionNumberPointer,
+      );
+      const contentChanged =
+        pointerValue(definition, revisionTransition.contentDigestPointer) !==
+        pointerValue(
+          predecessorDefinition,
+          revisionTransition.contentDigestPointer,
+        );
+      if (
+        !contentChanged &&
+        revisionTransition.unchangedContentRequiresSameRevision &&
+        (currentRevisionId !== predecessorRevisionId ||
+          currentRevisionNumber !== predecessorRevisionNumber)
+      ) {
+        violations.push("definition-revision-created-without-content-change");
+      }
+      if (!contentChanged) continue;
+      if (revisionTransition.changedContentRequiresFreshRevisionId) {
+        const ancestorRevisionIds = new Set<unknown>();
+        const visitedAncestorReleaseIds = new Set<unknown>();
+        let ancestor: ReleaseNode | undefined = predecessor;
+        while (ancestor !== undefined) {
+          const ancestorReleaseId = pointerValue(
+            ancestor,
+            lineage.releaseIdPointer,
+          );
+          if (visitedAncestorReleaseIds.has(ancestorReleaseId)) break;
+          visitedAncestorReleaseIds.add(ancestorReleaseId);
+          const ancestorDefinition = ancestor.documents.find(
+            (document) =>
+              document.kind === "definition" &&
+              pointerValue(document, revisionTransition.definitionIdPointer) ===
+                definitionId,
+          );
+          if (ancestorDefinition !== undefined) {
+            ancestorRevisionIds.add(
+              pointerValue(
+                ancestorDefinition,
+                revisionTransition.revisionIdPointer,
+              ),
+            );
+          }
+          const ancestorPredecessorId = pointerValue(
+            ancestor,
+            lineage.predecessorIdPointer,
+          );
+          ancestor =
+            typeof ancestorPredecessorId === "string"
+              ? releasesById.get(ancestorPredecessorId)
+              : undefined;
+        }
+        if (ancestorRevisionIds.has(currentRevisionId)) {
+          violations.push("definition-revision-id-reused-for-content-change");
+        }
+      }
+      if (
+        typeof currentRevisionNumber === "number" &&
+        typeof predecessorRevisionNumber === "number" &&
+        currentRevisionNumber !==
+          predecessorRevisionNumber +
+            revisionTransition.changedContentRevisionIncrement
+      ) {
+        violations.push("definition-revision-sequence-gap");
+      }
+    }
     for (const [kind, required, violation] of [
       [
         "subject",
@@ -622,7 +864,10 @@ const releaseDocuments = (): BundleDocument[] => {
           displayName: "Input voltage limit",
           documentation: "Maximum accepted input voltage.",
           valueSchema: { type: "integer", minimum: 0 },
-          matching: { sourceProperty: "input-voltage-limit" },
+          matching: {
+            sourceProperty: "input-voltage-limit",
+            selectorKind: "driver-compatible",
+          },
         },
       },
     },
@@ -830,6 +1075,74 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(rewritten)).toContain("definition-id-reassigned");
   });
 
+  it("advances DefinitionRevision exactly once only when persisted content changes", () => {
+    const rewriteDefinition = (
+      bundle: CatalogReleaseBundle,
+      input: { documentation?: string; id: string; number: number },
+    ): void => {
+      const release = bundle.releases[1];
+      const definition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!definition) throw new Error("missing definition fixture");
+      const revision = definition.content.revision as JsonObject;
+      if (input.documentation !== undefined) {
+        revision.documentation = input.documentation;
+      }
+      revision.id = input.id;
+      revision.number = input.number;
+      revision.contentDigest = definitionRevisionContentDigest(definition);
+      refreshDocumentAndReleaseDigests(release, definition);
+    };
+
+    const validAdvance = validBundle();
+    rewriteDefinition(validAdvance, {
+      documentation: "One persisted content change.",
+      id: "drev_01KVIN4",
+      number: 2,
+    });
+    expect(validateBundle(validAdvance)).toEqual([]);
+
+    const unchangedNewRevision = validBundle();
+    rewriteDefinition(unchangedNewRevision, {
+      id: "drev_01KVIN4",
+      number: 2,
+    });
+    expect(validateBundle(unchangedNewRevision)).toContain(
+      "definition-revision-created-without-content-change",
+    );
+
+    const reusedRevisionId = validBundle();
+    rewriteDefinition(reusedRevisionId, {
+      documentation: "Changed while reusing the predecessor revision ID.",
+      id: "drev_01KVIN3",
+      number: 2,
+    });
+    expect(validateBundle(reusedRevisionId)).toContain(
+      "definition-revision-id-reused-for-content-change",
+    );
+
+    const skippedRevision = validBundle();
+    rewriteDefinition(skippedRevision, {
+      documentation: "Changed while skipping a revision number.",
+      id: "drev_01KVIN5",
+      number: 3,
+    });
+    expect(validateBundle(skippedRevision)).toContain(
+      "definition-revision-sequence-gap",
+    );
+
+    const backReference = validBundle();
+    rewriteDefinition(backReference, {
+      documentation: "Changed while pointing back to the predecessor revision.",
+      id: "drev_01KVIN3",
+      number: 1,
+    });
+    expect(validateBundle(backReference)).toContain(
+      "definition-revision-id-reused-for-content-change",
+    );
+  });
+
   it("binds the aggregate digest to the normalized complete release model", () => {
     const changedToolchain = validBundle();
     changedToolchain.releases[1].manifest.toolchain.compiler =
@@ -852,6 +1165,40 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(changedProvenance)).toContain(
       "release-aggregate-digest-mismatch",
     );
+  });
+
+  it("orders release collections by the S0 code-unit comparator across locale and input order", () => {
+    const release = structuredClone(validBundle().releases[1]);
+    const paths = ["subjects/Z.json", "subjects/a.json", "subjects/z.json"];
+    for (const [index, document] of release.documents.entries()) {
+      document.path = paths[index];
+      release.manifest.files[index].path = paths[index];
+    }
+    const expected = releaseAggregateDigest(release);
+    expect(expected).toBe(
+      "sha256:6f36a42a4bbf9219d3ac3f730d646330744026162fabd0830bf72f6ca51da222",
+    );
+    expect(
+      stableIdRules.manifestRules.releaseAggregateDigest.sortedCollections.map(
+        (collection) => collection.comparator,
+      ),
+    ).toEqual([
+      "ecmascript-utf16-code-unit",
+      "ecmascript-utf16-code-unit",
+    ]);
+
+    release.documents.reverse();
+    release.manifest.files.reverse();
+    expect(releaseAggregateDigest(release)).toBe(expected);
+
+    const localeCompare = vi
+      .spyOn(String.prototype, "localeCompare")
+      .mockImplementation(() => 0);
+    try {
+      expect(releaseAggregateDigest(release)).toBe(expected);
+    } finally {
+      localeCompare.mockRestore();
+    }
   });
 
   it("rejects stable-ID and natural-key reassignment across release lineage", () => {
@@ -989,6 +1336,152 @@ describe("immutable Catalog Release bundle contract", () => {
     );
   });
 
+  it("binds retirement tombstones to the actual release, predecessor selector, and legal successor", () => {
+    const retiredBundle = validBundle();
+    const release = retiredBundle.releases[1];
+    const subject = release.documents.find(
+      (document) => document.kind === "subject",
+    );
+    const alias = release.documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!subject || !alias) throw new Error("missing retirement fixtures");
+    subject.content.lifecycle = "retired";
+    subject.content.tombstone = {
+      reason: "superseded",
+      withdrawnByReleaseId: "crel_02",
+      previousSelector: "southchip,sc8562",
+    };
+    alias.content.lifecycle = "retired";
+    alias.content.tombstone = {
+      reason: "superseded",
+      withdrawnByReleaseId: "crel_02",
+      previousSelector: "southchip,sc8551",
+    };
+    refreshDocumentAndReleaseDigests(release, subject);
+    refreshDocumentAndReleaseDigests(release, alias);
+    expect(validateBundle(retiredBundle)).toEqual([]);
+
+    const continuedRetirement = structuredClone(retiredBundle);
+    const secondRelease = continuedRetirement.releases[1];
+    const thirdRelease = structuredClone(secondRelease);
+    thirdRelease.manifest.release = {
+      id: "crel_03",
+      version: "1.2.0",
+      sequence: 3,
+      digest: sha256("0"),
+      predecessor: {
+        id: secondRelease.manifest.release.id,
+        digest: secondRelease.manifest.release.digest,
+      },
+    };
+    thirdRelease.manifest.release.digest = releaseAggregateDigest(thirdRelease);
+    continuedRetirement.releases.push(thirdRelease);
+    continuedRetirement.targetReleaseId = thirdRelease.manifest.release.id;
+    expect(validateBundle(continuedRetirement)).toEqual([]);
+
+    const forgedContinuedRetirement = structuredClone(continuedRetirement);
+    const forgedThirdSubject = forgedContinuedRetirement.releases[2].documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!forgedThirdSubject) throw new Error("missing subject fixture");
+    (forgedThirdSubject.content.tombstone as JsonObject).withdrawnByReleaseId =
+      "crel_03";
+    refreshDocumentAndReleaseDigests(
+      forgedContinuedRetirement.releases[2],
+      forgedThirdSubject,
+    );
+    expect(validateBundle(forgedContinuedRetirement)).toContain(
+      "retirement-release-mismatch",
+    );
+
+    const forgedRelease = structuredClone(retiredBundle);
+    const forgedSubject = forgedRelease.releases[1].documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!forgedSubject) throw new Error("missing subject fixture");
+    (forgedSubject.content.tombstone as JsonObject).withdrawnByReleaseId =
+      "crel_01";
+    refreshDocumentAndReleaseDigests(forgedRelease.releases[1], forgedSubject);
+    expect(validateBundle(forgedRelease)).toContain(
+      "retirement-release-mismatch",
+    );
+
+    const wrongSelector = structuredClone(retiredBundle);
+    const wrongAlias = wrongSelector.releases[1].documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!wrongAlias) throw new Error("missing alias fixture");
+    (wrongAlias.content.tombstone as JsonObject).previousSelector =
+      "southchip,forged";
+    refreshDocumentAndReleaseDigests(wrongSelector.releases[1], wrongAlias);
+    expect(validateBundle(wrongSelector)).toContain(
+      "retirement-previous-selector-mismatch",
+    );
+
+    const danglingSuccessor = structuredClone(retiredBundle);
+    const danglingSubject = danglingSuccessor.releases[1].documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!danglingSubject) throw new Error("missing subject fixture");
+    (danglingSubject.content.tombstone as JsonObject).successorId =
+      "csub_missing";
+    refreshDocumentAndReleaseDigests(
+      danglingSuccessor.releases[1],
+      danglingSubject,
+    );
+    expect(validateBundle(danglingSuccessor)).toContain(
+      "retirement-successor-missing",
+    );
+
+    const wrongKindSuccessor = structuredClone(retiredBundle);
+    const wrongKindSubject = wrongKindSuccessor.releases[1].documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!wrongKindSubject) throw new Error("missing subject fixture");
+    (wrongKindSubject.content.tombstone as JsonObject).successorId =
+      "cali_01KSC8551";
+    refreshDocumentAndReleaseDigests(
+      wrongKindSuccessor.releases[1],
+      wrongKindSubject,
+    );
+    expect(validateBundle(wrongKindSuccessor)).toContain(
+      "retirement-successor-kind-mismatch",
+    );
+
+    const legalSuccessor = structuredClone(retiredBundle);
+    const successorRelease = legalSuccessor.releases[1];
+    const retiredSubject = successorRelease.documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!retiredSubject) throw new Error("missing subject fixture");
+    const successor = structuredClone(retiredSubject);
+    successor.path = "subjects/sc8562-successor.json";
+    successor.content.id = "csub_01KSC8562_SUCCESSOR";
+    successor.content.canonicalKey = "driver:sc8562-successor";
+    successor.content.lifecycle = "active";
+    successor.content.selector = {
+      kind: "driver-compatible",
+      value: "southchip,sc8562-successor",
+      provenance: { source: "catalog-review" },
+    };
+    successor.content.tombstone = null;
+    successor.digest = `sha256:${createHash("sha256")
+      .update(serializeContract(successor.content as ContractJsonValue))
+      .digest("hex")}`;
+    successorRelease.documents.push(successor);
+    successorRelease.manifest.files.push({
+      path: successor.path,
+      kind: successor.kind,
+      digest: successor.digest,
+      mediaType: "application/json",
+    });
+    (retiredSubject.content.tombstone as JsonObject).successorId =
+      successor.content.id;
+    refreshDocumentAndReleaseDigests(successorRelease, retiredSubject);
+    expect(validateBundle(legalSuccessor)).toEqual([]);
+  });
+
   it("protects permanent selector ownership and forbids Alias/canonical collisions", () => {
     const reassignedCanonicalSelector = validBundle();
     const selectorRelease = reassignedCanonicalSelector.releases[1];
@@ -1061,6 +1554,106 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(invalidNodeType)).toEqual(["schema-invalid"]);
   });
 
+  it("matches Alias and Definition selector kinds to their owning Subject kind", () => {
+    const invalidDriverAlias = validBundle();
+    const driverAliasRelease = invalidDriverAlias.releases[1];
+    const driverAlias = driverAliasRelease.documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!driverAlias) throw new Error("missing alias fixture");
+    driverAlias.content.selectorKind = "node-type-name";
+    refreshDocumentAndReleaseDigests(driverAliasRelease, driverAlias);
+    expect(validateBundle(invalidDriverAlias)).toContain(
+      "owned-selector-kind-mismatch",
+    );
+
+    const invalidDriverDefinition = validBundle();
+    const driverDefinitionRelease = invalidDriverDefinition.releases[1];
+    const driverDefinition = driverDefinitionRelease.documents.find(
+      (document) => document.kind === "definition",
+    );
+    if (!driverDefinition) throw new Error("missing definition fixture");
+    const driverRevision = driverDefinition.content.revision as JsonObject;
+    driverRevision.matching = {
+      ...(driverRevision.matching as JsonObject),
+      selectorKind: "node-type-name",
+    };
+    driverRevision.contentDigest = definitionRevisionContentDigest(
+      driverDefinition,
+    );
+    refreshDocumentAndReleaseDigests(
+      driverDefinitionRelease,
+      driverDefinition,
+    );
+    expect(validateBundle(invalidDriverDefinition)).toContain(
+      "owned-selector-kind-mismatch",
+    );
+
+    const nodeTypeBundle = validBundle();
+    for (const release of nodeTypeBundle.releases) {
+      const subject = release.documents.find(
+        (document) => document.kind === "subject",
+      );
+      const alias = release.documents.find(
+        (document) => document.kind === "alias",
+      );
+      const definition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!subject || !alias || !definition) {
+        throw new Error("missing NodeType ownership fixture");
+      }
+      subject.content.kind = "node-type";
+      subject.content.canonicalKey = "node-type:sc8562";
+      subject.content.selector = {
+        kind: "node-type-name",
+        value: "sc8562",
+        provenance: { source: "catalog-review" },
+      };
+      subject.content.subtype = { family: "device" };
+      alias.content.selectorKind = "node-type-name";
+      const revision = definition.content.revision as JsonObject;
+      revision.matching = {
+        ...(revision.matching as JsonObject),
+        selectorKind: "node-type-name",
+      };
+      revision.contentDigest = definitionRevisionContentDigest(definition);
+      refreshDocumentAndReleaseDigests(release, subject);
+      refreshDocumentAndReleaseDigests(release, alias);
+      refreshDocumentAndReleaseDigests(release, definition);
+    }
+    const nodeTypePredecessor = nodeTypeBundle.releases[1].manifest.release.predecessor;
+    if (!nodeTypePredecessor) throw new Error("missing NodeType predecessor");
+    nodeTypePredecessor.digest = nodeTypeBundle.releases[0].manifest.release.digest;
+    nodeTypeBundle.releases[1].manifest.release.digest = releaseAggregateDigest(
+      nodeTypeBundle.releases[1],
+    );
+    expect(validateBundle(nodeTypeBundle)).toEqual([]);
+
+    for (const kind of ["alias", "definition"] as const) {
+      const invalidNodeType = structuredClone(nodeTypeBundle);
+      const release = invalidNodeType.releases[1];
+      const document = release.documents.find(
+        (candidate) => candidate.kind === kind,
+      );
+      if (!document) throw new Error(`missing ${kind} fixture`);
+      if (kind === "alias") {
+        document.content.selectorKind = "driver-compatible";
+      } else {
+        const revision = document.content.revision as JsonObject;
+        revision.matching = {
+          ...(revision.matching as JsonObject),
+          selectorKind: "driver-compatible",
+        };
+        revision.contentDigest = definitionRevisionContentDigest(document);
+      }
+      refreshDocumentAndReleaseDigests(release, document);
+      expect(validateBundle(invalidNodeType)).toContain(
+        "owned-selector-kind-mismatch",
+      );
+    }
+  });
+
   it("requires one kind-matched immutable Subject subtype snapshot", () => {
     const driverBundle = validBundle();
     for (const release of driverBundle.releases) {
@@ -1095,7 +1688,15 @@ describe("immutable Catalog Release bundle contract", () => {
       const subject = release.documents.find(
         (document) => document.kind === "subject",
       );
-      if (!subject) throw new Error("missing NodeType fixture");
+      const alias = release.documents.find(
+        (document) => document.kind === "alias",
+      );
+      const definition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!subject || !alias || !definition) {
+        throw new Error("missing NodeType fixture");
+      }
       subject.content.kind = "node-type";
       subject.content.canonicalKey = "node-type:sc8562";
       subject.content.selector = {
@@ -1104,7 +1705,16 @@ describe("immutable Catalog Release bundle contract", () => {
         provenance: { source: "catalog-review" },
       };
       subject.content.subtype = { family: "device" };
+      alias.content.selectorKind = "node-type-name";
+      const revision = definition.content.revision as JsonObject;
+      revision.matching = {
+        ...(revision.matching as JsonObject),
+        selectorKind: "node-type-name",
+      };
+      revision.contentDigest = definitionRevisionContentDigest(definition);
       refreshDocumentAndReleaseDigests(release, subject);
+      refreshDocumentAndReleaseDigests(release, alias);
+      refreshDocumentAndReleaseDigests(release, definition);
     }
     const nodeTypePredecessor = nodeTypeBundle.releases[1].manifest.release.predecessor;
     if (!nodeTypePredecessor) throw new Error("missing NodeType predecessor");
@@ -1176,7 +1786,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "fa191b6e92e1f2dbbafad87a1d1c93bc048463ad0ad914a447d5da1fe2df5a9f",
+      "0c5e4ac087a6abf3c0e05f11df2e918c11d4d007e64ebda6b0402e5b1c1d9690",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;
