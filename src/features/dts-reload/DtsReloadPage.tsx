@@ -53,7 +53,7 @@ import type {
   DeviceBridgePairingCode,
   LocalBridgeHealthState
 } from "@/infrastructure/http/deviceBridgeClient";
-import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
+import { DEVICE_UNAVAILABLE_MESSAGE, toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import { cn } from "@/lib/utils";
 
 function dtsReloadModuleFilterId(candidate: Pick<DtsReloadCandidate, "bindingId" | "moduleId">): string {
@@ -654,6 +654,7 @@ export function DtsReloadPage({
   }, [run?.id]);
 
   const confirmRun = pendingDeployRun ?? run;
+  const visiblePageError = errorMessage.startsWith(DEVICE_UNAVAILABLE_MESSAGE) ? "" : errorMessage;
 
   const projectName = projects.find((project) => project.id === projectId)?.name ?? projectId;
   const bridgeStatusPill =
@@ -675,9 +676,9 @@ export function DtsReloadPage({
           </p>
         ) : null}
 
-        {errorMessage ? (
+        {visiblePageError ? (
           <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
-            {errorMessage}
+            {visiblePageError}
           </p>
         ) : null}
 

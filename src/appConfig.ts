@@ -117,15 +117,6 @@ export const navigationItems: PageConfig[] = [
     subtitle: PARAMETER_ADMIN_UI.adminSubtitle
   },
   {
-    key: "node-debugging",
-    path: "/node-debugging",
-    label: "节点调试",
-    group: "调试平台",
-    icon: TerminalSquare,
-    title: "节点调试平台",
-    subtitle: "通过 HDC / ADB 读写设备节点，完成调试验证"
-  },
-  {
     key: "dts-reload",
     path: "/dts-reload",
     label: "参数调试",
@@ -133,6 +124,15 @@ export const navigationItems: PageConfig[] = [
     icon: Settings2,
     title: "参数调试",
     subtitle: "DTS参数热重载，无需手动编译"
+  },
+  {
+    key: "node-debugging",
+    path: "/node-debugging",
+    label: "节点调试",
+    group: "调试平台",
+    icon: TerminalSquare,
+    title: "节点调试平台",
+    subtitle: "通过 HDC / ADB 读写设备节点，完成调试验证"
   },
   {
     key: "debugging-admin",

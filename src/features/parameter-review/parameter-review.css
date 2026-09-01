@@ -306,13 +306,6 @@
   font-size: var(--text-xl);
 }
 
-.review-shortcut-hint {
-  margin: var(--space-2) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-sm);
-}
-
 .review-table-wrap tbody tr {
   cursor: pointer;
 }

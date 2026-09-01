@@ -5217,6 +5217,11 @@ td small {
   min-width: 8.5rem;
 }
 
+.user-permissions-delete-button {
+  justify-self: start;
+  min-width: 0;
+}
+
 .user-permissions-disabled-reason {
   max-width: 13rem;
   color: var(--text-muted);
@@ -10743,6 +10748,10 @@ td small {
   display: none !important;
 }
 
+.feedback-admin-dialog {
+  max-height: calc(100vh - var(--space-8));
+}
+
 .feedback-attachment-preview-dialog {
   display: grid;
   gap: 0;
@@ -14498,7 +14507,7 @@ body.xiaoze-popup-drag-active {
 
   .param-admin-shell .project-admin-library-table .data-table-scroll > table,
   .param-admin-shell .project-admin-library-table .project-admin-library-grid {
-    width: max-content;
+    width: 100%;
     min-width: 1080px;
     max-width: none;
     table-layout: auto;
@@ -25536,7 +25545,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
   .param-admin-shell .project-admin-library-table .project-admin-library-grid {
-    width: max-content;
+    width: 100%;
     min-width: 1080px;
     max-width: none;
   }
