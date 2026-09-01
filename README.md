@@ -194,3 +194,5 @@ Production builds must not use mock data as a business data source. Backend writ
 - `ops/self-hosted/`: self-hosted Linux runtime templates, checks, storage, release, and smoke guidance.
 
 Developers should start with `CONTRIBUTING.md` and `docs/developer/README.md`. API usage starts at `docs/api/README.md`; security review starts at `docs/security/README.md`; runbooks start at `docs/runbooks/README.md`.
+
+The replacement parameter-catalog authority is defined by [ADR-0040](docs/adr/0040-canonical-parameter-catalog-relational-model.md); its immutable release, synchronization, verification, replay, and rollback contract is defined by [ADR-0041](docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md).
