@@ -25,6 +25,7 @@
 - [docs/zh-CN/design-docs/domain-model.md](domain-model.md)
 - [Catalog Kernel 接口与事务边界——锁定目标合同](catalog-kernel-interface-and-transaction-boundary.md)
 - [docs/zh-CN/design-docs/api-contract.md](api-contract.md)
+- [参数目录 API 与 legacy 标识符迁移——锁定决策](parameter-catalog-api-transition.md)
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
 - [自托管一键升级——本地实现，目标演练待完成](2026-08-20-self-hosted-one-command-upgrade-design.md)

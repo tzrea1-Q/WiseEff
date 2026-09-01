@@ -18,6 +18,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
 | Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; not current runtime behavior. |
 | Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
+| Locked decision | [Parameter Catalog API and Legacy-Identifier Transition](parameter-catalog-api-transition.md) | Canonical `/api/v2/catalog/*` resources, permissions, DTO states, typed legacy-ID mapping, consumer migration, and bounded retirement rules. |
 | Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
 | Implemented locally | [Self-Hosted One-Command Upgrade](2026-08-20-self-hosted-one-command-upgrade-design.md) | Source-checkout upgrade seam: immutable target, prebuild, quiescence, verified recovery point, full data-preserving restart, resume/recovery. Non-customer target rehearsal remains required evidence. |
