@@ -14,7 +14,8 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "9067a91ba5058dece8273bbc9b2e0271fa6e85bb";
+const repairCommit = "15a45d41fc19d17026e128148c4b511ff14a49d0";
+const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
   "docs/references/parameter-catalog-rehearsal-fixture.md":
@@ -80,17 +81,17 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "fc6f0ccd5e760f8eff80c68f10c71e4e24480ddece3cf60b2f1a7a5dca6d5c28",
+    sha256: "88c65b4986a30c0292a9d02be0f57273593ed4af85718c79d1fb78d0e15a120a",
   },
   {
     path: "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
     mode: "100644",
-    sha256: "8c4f2fb040290c4d6d58a143a061c5340d656e1e28dfb549715b2dbef7d97abf",
+    sha256: "1e3e9af4ff73e7d64a7e53c335ed92a68797529b1e6e0bf349c1ec794d88e195",
   },
   {
     path: "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
     mode: "100755",
-    sha256: "13f9b08cd0eed535d7f61754878a8ad3d98521997f18d32e2b5a836937887e52",
+    sha256: "c07119b937edcb0664f9dae984c14b25544283db26059bf8d375519076f2d8ee",
   },
   {
     path: "scripts/wayfinder/sql/columns.sql",
@@ -155,15 +156,13 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "f29b1715bd8d67d91367215028c3d4c5cd808bedde8f3afd9b92a22e2fccbc68";
+  "a85cb3831858e6a02dac792dee339a33d0e494b340f1186fe98b4144ec28ce5c";
 const repairChangedPaths = [
-  "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
+  "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
+  "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
 ] as const;
 const allowedPostRepairPaths = [
-  "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts",
-  "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
-  "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
-  "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
+  sourceLockPath,
 ] as const;
 
 const secretPattern = new RegExp(
@@ -292,6 +291,22 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       .trim()
       .split("\n")
       .filter(Boolean);
+    expect(postRepairCommits).toHaveLength(1);
+    const sourceLockCommit = postRepairCommits[0]!;
+    expect(sourceLockCommit).toBe(runGitText(["rev-parse", "HEAD"]).trim());
+    expect(runGitText(["show", "-s", "--format=%P", sourceLockCommit]).trim()).toBe(
+      repairCommit,
+    );
+    expect(
+      runGitText([
+        "diff-tree",
+        "--no-commit-id",
+        "--name-status",
+        "-r",
+        repairCommit,
+        sourceLockCommit,
+      ]).trim(),
+    ).toBe(`M\t${sourceLockPath}`);
     let parent = repairCommit;
     for (const commit of postRepairCommits) {
       expect(runGitText(["show", "-s", "--format=%P", commit]).trim()).toBe(parent);
@@ -432,9 +447,8 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       expect(fixtureDoc).toContain("source-lock");
     }
 
-    const lockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
-    expect(sourceLock.some((entry) => entry.path === lockPath)).toBe(false);
-    const lockStat = await lstat(path.join(projectRoot, lockPath));
+    expect(sourceLock.some((entry) => entry.path === sourceLockPath)).toBe(false);
+    const lockStat = await lstat(path.join(projectRoot, sourceLockPath));
     expect(lockStat.isFile()).toBe(true);
     expect(lockStat.isSymbolicLink()).toBe(false);
   });
