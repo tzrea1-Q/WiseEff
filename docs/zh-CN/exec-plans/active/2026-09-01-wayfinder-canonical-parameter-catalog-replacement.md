@@ -147,7 +147,7 @@ Relation vocabulary 是完整且 schema-qualified 的 37 项：`parameter_catalo
 
 Checker 同时登记全部 legacy relation、legacy identifier spelling 与 retired route fragment；private module import 使用 default-deny，仅显式 public seam allow-list 可通过。任何 unresolved AST/dataflow receiver/target 或 unresolved dynamic SQL relation 本身就是 violation 并 fail closed，绝不能当 unknown 跳过。每个 violation occurrence 的 replacement-resistant record 绑定 mandatory `--trusted-base-sha`、trusted baseline blob OID、byte span、token/evidence、file、owner family 与 rule。Checker 比较完整 occurrence multiset，删除一个 identical occurrence 再新增另一个不能保持 baseline set。Initializer 要求 clean index/worktree 和 exact caller-authorized HEAD，只向 private staging directory 写 fixture 与 11 个 shards；在那里完成全量 path set/schema/count/checksum validation 后再全部 atomic publish，或一个都不写。CI/Hosted 必须 fetch 并验证 named trusted base；`.github/workflows/ci.yml` 与 `package.json` 只为该 wiring 加入 S0-RAT allowed production paths。Local mutable `origin/main` 不是可信 evidence，S0-RAT 完成前必须得到 Hosted execution evidence。
 
-Reviewed baseline 精确包含 3,519 个 violations；其中 577 个 duplicate base-ID groups 共含 1,975 个 occurrences。Ordinal suffix 只能区分当前顺序：删除一处并在别处增加 equivalent occurrence 仍可能复用 ordinal 并逃过 delta。因此上述 trusted blob/span/evidence occurrence record 与完整 replacement-resistant multiset comparison 是必须合同，不是可选 hardening。
+Reviewed baseline 精确包含 3,350 个 violations；其中 548 个 duplicate base-ID groups 共含 1,888 个 occurrences。Ordinal suffix 只能区分当前顺序：删除一处并在别处增加 equivalent occurrence 仍可能复用 ordinal 并逃过 delta。因此上述 trusted blob/span/evidence occurrence record 与完整 replacement-resistant multiset comparison 是必须合同，不是可选 hardening。
 
 ### S0-FIX append-only repair 与执行安全
 
