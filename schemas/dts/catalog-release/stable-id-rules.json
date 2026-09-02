@@ -81,10 +81,23 @@
     "sourceDocumentDigest": {
       "algorithm": "sha256",
       "bytes": "exact-source-bytes",
-      "pathPointer": "/source/path",
-      "mediaTypePointer": "/source/mediaType",
-      "digestPointer": "/source/digest",
-      "mediaType": "application/yaml"
+      "inventoryPointer": "/sources",
+      "sourcePathPointer": "/path",
+      "sourceMediaTypePointer": "/mediaType",
+      "sourceEncodingPointer": "/encoding",
+      "sourceBytesPointer": "/bytes",
+      "manifestPointer": "/manifest/files",
+      "manifestPathPointer": "/path",
+      "manifestMediaTypePointer": "/mediaType",
+      "manifestDigestPointer": "/digest",
+      "mediaType": "application/yaml",
+      "encoding": "base64"
+    },
+    "publicationTime": {
+      "pointer": "/manifest/release/publishedAt",
+      "format": "rfc3339-utc-seconds",
+      "source": "compiler-reviewed-release-metadata",
+      "forbidInstallationOrSynchronizationClock": true
     },
     "normalizedDocumentDigest": {
       "algorithm": "sha256",
@@ -101,10 +114,12 @@
         "/manifest/release/id",
         "/manifest/release/version",
         "/manifest/release/sequence",
+        "/manifest/release/publishedAt",
         "/manifest/release/predecessor",
         "/manifest/toolchain",
         "/manifest/files",
         "/manifest/documents",
+        "/sources",
         "/documents"
       ],
       "sortedCollections": [
@@ -120,6 +135,13 @@
           "keyPointers": [
             "/kind",
             "/documentId"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        },
+        {
+          "pointer": "/sources",
+          "keyPointers": [
+            "/path"
           ],
           "comparator": "ecmascript-utf16-code-unit"
         },

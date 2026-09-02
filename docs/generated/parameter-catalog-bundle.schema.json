@@ -381,6 +381,11 @@
             "predecessor": {
               "$ref": "#/$defs/predecessor"
             },
+            "publishedAt": {
+              "description": "Immutable compiler-reviewed publication timestamp in canonical RFC 3339 UTC second precision; never an install or synchronization clock.",
+              "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$",
+              "type": "string"
+            },
             "sequence": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -394,6 +399,7 @@
             "id",
             "version",
             "sequence",
+            "publishedAt",
             "digest",
             "predecessor"
           ],
@@ -526,10 +532,19 @@
         },
         "manifest": {
           "$ref": "#/$defs/manifest"
+        },
+        "sources": {
+          "description": "Exact raw-byte inventory for the manifest-listed YAML source set.",
+          "items": {
+            "$ref": "#/$defs/sourceInventoryEntry"
+          },
+          "minItems": 1,
+          "type": "array"
         }
       },
       "required": [
         "manifest",
+        "sources",
         "documents"
       ],
       "type": "object"
@@ -575,6 +590,34 @@
         "path",
         "mediaType",
         "digest"
+      ],
+      "type": "object"
+    },
+    "sourceInventoryEntry": {
+      "additionalProperties": false,
+      "description": "The exact bytes of one manifest-listed authoritative YAML source, encoded losslessly for transport.",
+      "properties": {
+        "bytes": {
+          "description": "Canonical padded base64 encoding of the exact, non-empty YAML source bytes.",
+          "minLength": 4,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "type": "string"
+        },
+        "encoding": {
+          "const": "base64"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "required": [
+        "path",
+        "mediaType",
+        "encoding",
+        "bytes"
       ],
       "type": "object"
     },
@@ -755,6 +798,12 @@
             "contentPointer": "/content",
             "digestPointer": "/normalizedDigest"
           },
+          "publicationTime": {
+            "forbidInstallationOrSynchronizationClock": true,
+            "format": "rfc3339-utc-seconds",
+            "pointer": "/manifest/release/publishedAt",
+            "source": "compiler-reviewed-release-metadata"
+          },
           "releaseAggregateDigest": {
             "algorithm": "sha256",
             "canonicalization": "parameter-catalog-contract-serialize",
@@ -764,10 +813,12 @@
               "/manifest/release/id",
               "/manifest/release/version",
               "/manifest/release/sequence",
+              "/manifest/release/publishedAt",
               "/manifest/release/predecessor",
               "/manifest/toolchain",
               "/manifest/files",
               "/manifest/documents",
+              "/sources",
               "/documents"
             ],
             "sortedCollections": [
@@ -789,6 +840,13 @@
               {
                 "comparator": "ecmascript-utf16-code-unit",
                 "keyPointers": [
+                  "/path"
+                ],
+                "pointer": "/sources"
+              },
+              {
+                "comparator": "ecmascript-utf16-code-unit",
+                "keyPointers": [
                   "/kind",
                   "/content/id"
                 ],
@@ -799,10 +857,17 @@
           "sourceDocumentDigest": {
             "algorithm": "sha256",
             "bytes": "exact-source-bytes",
-            "digestPointer": "/source/digest",
+            "encoding": "base64",
+            "inventoryPointer": "/sources",
+            "manifestDigestPointer": "/digest",
+            "manifestMediaTypePointer": "/mediaType",
+            "manifestPathPointer": "/path",
+            "manifestPointer": "/manifest/files",
             "mediaType": "application/yaml",
-            "mediaTypePointer": "/source/mediaType",
-            "pathPointer": "/source/path"
+            "sourceBytesPointer": "/bytes",
+            "sourceEncodingPointer": "/encoding",
+            "sourceMediaTypePointer": "/mediaType",
+            "sourcePathPointer": "/path"
           },
           "sourceMatchPointers": [
             "/source/path",

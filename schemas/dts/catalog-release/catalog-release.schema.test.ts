@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -85,10 +86,23 @@ interface StableIdRules {
     sourceDocumentDigest: {
       algorithm: "sha256";
       bytes: "exact-source-bytes";
-      pathPointer: string;
-      mediaTypePointer: string;
-      digestPointer: string;
+      inventoryPointer: string;
+      sourcePathPointer: string;
+      sourceMediaTypePointer: string;
+      sourceEncodingPointer: string;
+      sourceBytesPointer: string;
+      manifestPointer: string;
+      manifestPathPointer: string;
+      manifestMediaTypePointer: string;
+      manifestDigestPointer: string;
       mediaType: "application/yaml";
+      encoding: "base64";
+    };
+    publicationTime: {
+      pointer: string;
+      format: "rfc3339-utc-seconds";
+      source: "compiler-reviewed-release-metadata";
+      forbidInstallationOrSynchronizationClock: true;
     };
     normalizedDocumentDigest: {
       algorithm: "sha256";
@@ -235,6 +249,13 @@ interface BundleDocument {
   content: JsonObject;
 }
 
+interface SourceInventoryEntry {
+  path: string;
+  mediaType: "application/yaml";
+  encoding: "base64";
+  bytes: string;
+}
+
 interface ReleaseNode {
   manifest: {
     schemaVersion: string;
@@ -242,6 +263,7 @@ interface ReleaseNode {
       id: string;
       version: string;
       sequence: number;
+      publishedAt: string;
       digest: string;
       predecessor: null | { id: string; digest: string };
     };
@@ -262,6 +284,7 @@ interface ReleaseNode {
       normalizedDigest: string;
     }>;
   };
+  sources: SourceInventoryEntry[];
   documents: BundleDocument[];
 }
 
@@ -281,7 +304,9 @@ const readJson = <Value>(relativePath: string): Value =>
     readFileSync(new URL(relativePath, import.meta.url), "utf8"),
   ) as Value;
 
-const catalogReleaseSchema = readJson<JsonObject>("./catalog-release.schema.json");
+const catalogReleaseSchema = readJson<JsonObject>(
+  "./catalog-release.schema.json",
+);
 const manifestSchema = readJson<JsonObject>("./manifest.schema.json");
 const stableIdRules = readJson<StableIdRules>("./stable-id-rules.json");
 const generatedSchemaBytes = readFileSync(
@@ -366,7 +391,9 @@ const normalizedReleaseModel = (node: ReleaseNode): JsonObject => {
               sorting.keyPointers.map((pointer) => pointerValue(left, pointer)),
             ),
             stableKey(
-              sorting.keyPointers.map((pointer) => pointerValue(right, pointer)),
+              sorting.keyPointers.map((pointer) =>
+                pointerValue(right, pointer),
+              ),
             ),
           ),
         ),
@@ -377,8 +404,19 @@ const normalizedReleaseModel = (node: ReleaseNode): JsonObject => {
 
 const releaseAggregateDigest = (node: ReleaseNode): string =>
   `sha256:${createHash("sha256")
-    .update(serializeContract(normalizedReleaseModel(node) as ContractJsonValue))
+    .update(
+      serializeContract(normalizedReleaseModel(node) as ContractJsonValue),
+    )
     .digest("hex")}`;
+
+const isCanonicalPublicationTime = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().replace(".000Z", "Z") === value
+  );
+};
 
 const definitionRevisionContentModel = (
   document: BundleDocument,
@@ -393,9 +431,7 @@ const definitionRevisionContentModel = (
   return Object.fromEntries(entries);
 };
 
-const definitionRevisionContentDigest = (
-  document: BundleDocument,
-): string =>
+const definitionRevisionContentDigest = (document: BundleDocument): string =>
   `sha256:${createHash("sha256")
     .update(
       serializeContract(
@@ -407,7 +443,10 @@ const definitionRevisionContentDigest = (
 const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
   const violations: string[] = [];
   const lineage = stableIdRules.lineageRules;
-  const releases = pointerValue(bundle, lineage.releaseCollectionPointer) as ReleaseNode[];
+  const releases = pointerValue(
+    bundle,
+    lineage.releaseCollectionPointer,
+  ) as ReleaseNode[];
   const targetReleaseId = pointerValue(bundle, lineage.targetReleasePointer);
   const releasesById = new Map<string, ReleaseNode>();
   const releaseVersions = new Map<string, string>();
@@ -419,8 +458,14 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
 
   for (const node of releases) {
     const releaseId = pointerValue(node, lineage.releaseIdPointer) as string;
-    const releaseVersion = pointerValue(node, lineage.releaseVersionPointer) as string;
-    const releaseDigest = pointerValue(node, lineage.releaseDigestPointer) as string;
+    const releaseVersion = pointerValue(
+      node,
+      lineage.releaseVersionPointer,
+    ) as string;
+    const releaseDigest = pointerValue(
+      node,
+      lineage.releaseDigestPointer,
+    ) as string;
     if (releasesById.has(releaseId)) violations.push("release-id-unique");
     if (
       lineage.requireUniqueReleaseVersion &&
@@ -439,6 +484,16 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     releasesById.set(releaseId, node);
     releaseVersions.set(releaseVersion, releaseId);
     releaseDigests.set(releaseDigest, releaseId);
+    if (
+      !isCanonicalPublicationTime(
+        pointerValue(
+          node,
+          stableIdRules.manifestRules.publicationTime.pointer,
+        ),
+      )
+    ) {
+      violations.push("manifest-content-exact");
+    }
     const documentsByKind = new Map<
       BundleDocument["kind"],
       Map<unknown, BundleDocument>
@@ -454,28 +509,89 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     documentsByReleaseId.set(releaseId, documentsByKind);
 
     if (stableIdRules.manifestRules.exactSourceSet) {
+      const sourceRule = stableIdRules.manifestRules.sourceDocumentDigest;
+      const sourceInventoryEntries = pointerValue(
+        node,
+        sourceRule.inventoryPointer,
+      ) as SourceInventoryEntry[];
+      const manifestFiles = pointerValue(
+        node,
+        sourceRule.manifestPointer,
+      ) as ReleaseNode["manifest"]["files"];
       const listed = new Map(
-        node.manifest.files.map((file) => [file.path, file] as const),
+        manifestFiles.map(
+          (file) =>
+            [
+              String(pointerValue(file, sourceRule.manifestPathPointer)),
+              file,
+            ] as const,
+        ),
+      );
+      const inventoried = new Map(
+        sourceInventoryEntries.map(
+          (source) =>
+            [
+              String(pointerValue(source, sourceRule.sourcePathPointer)),
+              source,
+            ] as const,
+        ),
       );
       const bundledSourcePaths = new Set(
         node.documents.map((document) => document.source.path),
       );
       if (
-        listed.size !== node.manifest.files.length ||
+        listed.size !== manifestFiles.length ||
+        inventoried.size !== sourceInventoryEntries.length ||
+        listed.size !== inventoried.size ||
         listed.size !== bundledSourcePaths.size
       ) {
         violations.push("manifest-content-exact");
       } else {
+        for (const [path, file] of listed) {
+          const source = inventoried.get(path);
+          if (
+            source === undefined ||
+            pointerValue(source, sourceRule.sourceMediaTypePointer) !==
+              pointerValue(file, sourceRule.manifestMediaTypePointer) ||
+            pointerValue(source, sourceRule.sourceEncodingPointer) !==
+              sourceRule.encoding
+          ) {
+            violations.push("manifest-content-exact");
+            break;
+          }
+          const exactBytes = Buffer.from(
+            String(pointerValue(source, sourceRule.sourceBytesPointer)),
+            sourceRule.encoding,
+          );
+          if (
+            exactBytes.toString(sourceRule.encoding) !==
+            pointerValue(source, sourceRule.sourceBytesPointer)
+          ) {
+            violations.push("manifest-content-exact");
+            break;
+          }
+          const actualDigest = `sha256:${createHash("sha256")
+            .update(exactBytes)
+            .digest("hex")}`;
+          if (
+            actualDigest !==
+            pointerValue(file, sourceRule.manifestDigestPointer)
+          ) {
+            violations.push("manifest-content-exact");
+            break;
+          }
+        }
         for (const document of node.documents) {
           const file = listed.get(document.source.path);
           if (
             file === undefined ||
-            stableIdRules.manifestRules.sourceMatchPointers.some(
-              (pointer) => {
-                const filePointer = pointer.replace(/^\/source/, "");
-                return pointerValue(file, filePointer) !== pointerValue(document, pointer);
-              },
-            )
+            stableIdRules.manifestRules.sourceMatchPointers.some((pointer) => {
+              const filePointer = pointer.replace(/^\/source/, "");
+              return (
+                pointerValue(file, filePointer) !==
+                pointerValue(document, pointer)
+              );
+            })
           ) {
             violations.push("manifest-content-exact");
             break;
@@ -487,15 +603,18 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     if (stableIdRules.manifestRules.exactDocumentSet) {
       const listed = new Map(
         node.manifest.documents.map(
-          (document) => [`${document.kind}:${document.documentId}`, document] as const,
+          (document) =>
+            [`${document.kind}:${document.documentId}`, document] as const,
         ),
       );
       const bundled = new Map(
         node.documents.map(
-          (document) => [
-            `${document.kind}:${String(pointerValue(document, "/content/id"))}`,
-            document,
-          ] as const),
+          (document) =>
+            [
+              `${document.kind}:${String(pointerValue(document, "/content/id"))}`,
+              document,
+            ] as const,
+        ),
       );
       if (
         listed.size !== node.manifest.documents.length ||
@@ -529,9 +648,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       const actualDigest = `sha256:${createHash("sha256")
         .update(canonicalContent)
         .digest("hex")}`;
-      if (
-        pointerValue(document, digestRule.digestPointer) !== actualDigest
-      ) {
+      if (pointerValue(document, digestRule.digestPointer) !== actualDigest) {
         violations.push("document-digest-mismatch");
       }
       if (
@@ -585,7 +702,10 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     }
   }
 
-  if (typeof targetReleaseId !== "string" || !releasesById.has(targetReleaseId)) {
+  if (
+    typeof targetReleaseId !== "string" ||
+    !releasesById.has(targetReleaseId)
+  ) {
     violations.push("target-release-present");
   }
 
@@ -606,10 +726,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         if (state === "visited") break;
         traversalState.set(releaseId, "visiting");
         path.push(releaseId);
-        const predecessorId = pointerValue(
-          node,
-          lineage.predecessorIdPointer,
-        );
+        const predecessorId = pointerValue(node, lineage.predecessorIdPointer);
         releaseId =
           typeof predecessorId === "string" ? predecessorId : undefined;
       }
@@ -621,7 +738,8 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
 
   const targetAncestors = new Set<string>();
   const lineageFromTarget: ReleaseNode[] = [];
-  let cursor = typeof targetReleaseId === "string" ? targetReleaseId : undefined;
+  let cursor =
+    typeof targetReleaseId === "string" ? targetReleaseId : undefined;
   while (cursor !== undefined && !targetAncestors.has(cursor)) {
     targetAncestors.add(cursor);
     const node = releasesById.get(cursor);
@@ -642,12 +760,16 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       break;
     }
     if (lineage.requireGapFreeSequence) {
-      const sequence = pointerValue(node, lineage.releaseSequencePointer) as number;
+      const sequence = pointerValue(
+        node,
+        lineage.releaseSequencePointer,
+      ) as number;
       const predecessorSequence = pointerValue(
         predecessor,
         lineage.releaseSequencePointer,
       ) as number;
-      if (predecessorSequence + 1 !== sequence) violations.push("release-sequence-gap");
+      if (predecessorSequence + 1 !== sequence)
+        violations.push("release-sequence-gap");
     }
     if (
       lineage.requirePredecessorDigestMatch &&
@@ -665,7 +787,8 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     violations.push("release-lineage-connected");
   }
   const lineageFromRoot = lineageFromTarget.toReversed();
-  const revisionTransition = stableIdRules.definitionRevisionRules.transitionRules;
+  const revisionTransition =
+    stableIdRules.definitionRevisionRules.transitionRules;
   const publishedRevisionIdsByDefinition = new Map<unknown, Set<unknown>>();
   const reusedChangedRevisionKeys = new Set<string>();
   for (const node of lineageFromRoot) {
@@ -688,12 +811,14 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         definition,
         revisionTransition.revisionIdPointer,
       );
-      let publishedRevisionIds = publishedRevisionIdsByDefinition.get(
-        definitionId,
-      );
+      let publishedRevisionIds =
+        publishedRevisionIdsByDefinition.get(definitionId);
       if (!publishedRevisionIds) {
         publishedRevisionIds = new Set();
-        publishedRevisionIdsByDefinition.set(definitionId, publishedRevisionIds);
+        publishedRevisionIdsByDefinition.set(
+          definitionId,
+          publishedRevisionIds,
+        );
       }
       const predecessorDefinition = predecessorDefinitions?.get(definitionId);
       const contentChanged =
@@ -721,10 +846,14 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       )) {
         const id = pointerValue(document, identityRule.idPointer);
         const naturalKey = stableKey(
-          identityRule.naturalKeyPointers.map((pointer) => pointerValue(document, pointer)),
+          identityRule.naturalKeyPointers.map((pointer) =>
+            pointerValue(document, pointer),
+          ),
         );
         const immutableValue = stableKey(
-          identityRule.immutableValuePointers.map((pointer) => pointerValue(document, pointer)),
+          identityRule.immutableValuePointers.map((pointer) =>
+            pointerValue(document, pointer),
+          ),
         );
         if (typeof id !== "string") continue;
         if (identityRule.uniquePerRelease && releaseIds.has(id)) {
@@ -747,7 +876,9 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
           violations.push(`${identityRule.documentKind}-id-reassigned`);
         }
         if (bindingToId.has(naturalKey) && bindingToId.get(naturalKey) !== id) {
-          violations.push(`${identityRule.documentKind}-natural-key-reassigned`);
+          violations.push(
+            `${identityRule.documentKind}-natural-key-reassigned`,
+          );
         }
         idToBinding.set(id, binding);
         bindingToId.set(naturalKey, id);
@@ -874,15 +1005,13 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     const currentReleaseId = pointerValue(node, lineage.releaseIdPointer);
     const definitionsById =
       typeof currentReleaseId === "string"
-        ? documentsByReleaseId.get(currentReleaseId)?.get("definition") ??
-          new Map()
+        ? (documentsByReleaseId.get(currentReleaseId)?.get("definition") ??
+          new Map())
         : new Map();
     for (const definition of definitionsById.values()) {
       if (
-        pointerValue(
-          definition,
-          definitionLifecycleRules.lifecyclePointer,
-        ) !== definitionLifecycleRules.deprecatedLifecycle
+        pointerValue(definition, definitionLifecycleRules.lifecyclePointer) !==
+        definitionLifecycleRules.deprecatedLifecycle
       ) {
         continue;
       }
@@ -913,10 +1042,8 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     >();
     for (const definition of definitionsById.values()) {
       if (
-        pointerValue(
-          definition,
-          definitionLifecycleRules.lifecyclePointer,
-        ) !== definitionLifecycleRules.deprecatedLifecycle
+        pointerValue(definition, definitionLifecycleRules.lifecyclePointer) !==
+        definitionLifecycleRules.deprecatedLifecycle
       ) {
         continue;
       }
@@ -928,11 +1055,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       const path: unknown[] = [];
       const pathIndexes = new Map<unknown, number>();
       let definitionId: unknown = startDefinitionId;
-      let outcome:
-        | "active-terminal"
-        | "cycle"
-        | "missing"
-        | "terminal-invalid";
+      let outcome: "active-terminal" | "cycle" | "missing" | "terminal-invalid";
       while (true) {
         const knownOutcome = successorOutcomes.get(definitionId);
         if (knownOutcome) {
@@ -985,14 +1108,16 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     for (const documentRule of retirementRules.documentRules) {
       const predecessorById =
         typeof predecessorId === "string"
-          ? documentsByReleaseId
+          ? (documentsByReleaseId
               .get(predecessorId)
-              ?.get(documentRule.documentKind) ?? new Map()
+              ?.get(documentRule.documentKind) ?? new Map())
           : new Map();
       for (const document of node.documents.filter(
         (candidate) => candidate.kind === documentRule.documentKind,
       )) {
-        if (pointerValue(document, documentRule.lifecyclePointer) !== "retired") {
+        if (
+          pointerValue(document, documentRule.lifecyclePointer) !== "retired"
+        ) {
           continue;
         }
         const predecessorDocument = predecessorById.get(
@@ -1031,10 +1156,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
                   predecessorDocument,
                   retirementRules.previousSelectorPointer,
                 )
-              : pointerValue(
-                  predecessorDocument,
-                  documentRule.selectorPointer,
-                ))
+              : pointerValue(predecessorDocument, documentRule.selectorPointer))
         ) {
           violations.push("retirement-previous-selector-mismatch");
         }
@@ -1049,8 +1171,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
           continue;
         }
         const successorCandidates = node.documents.filter(
-          (candidate) =>
-            pointerValue(candidate, "/content/id") === successorId,
+          (candidate) => pointerValue(candidate, "/content/id") === successorId,
         );
         if (successorCandidates.length === 0) {
           violations.push("retirement-successor-missing");
@@ -1172,7 +1293,6 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
         violations.push(violation);
       }
     }
-
   }
 
   return [...new Set(violations)].sort();
@@ -1231,20 +1351,42 @@ const validateCanonicalIdentities = (
 const validateBundle = (bundle: CatalogReleaseBundle): string[] => {
   const canonicalIdentityViolations = validateCanonicalIdentities(bundle);
   if (!validateSchema(bundle)) {
-    return [...new Set([...canonicalIdentityViolations, "schema-invalid"])].sort();
+    return [
+      ...new Set([...canonicalIdentityViolations, "schema-invalid"]),
+    ].sort();
   }
-  return [...new Set([
-    ...canonicalIdentityViolations,
-    ...validateStableRules(bundle),
-  ])].sort();
+  return [
+    ...new Set([
+      ...canonicalIdentityViolations,
+      ...validateStableRules(bundle),
+    ]),
+  ].sort();
 };
 
 const sha256 = (marker: string): string => `sha256:${marker.repeat(64)}`;
 
+const exactYamlBytes = (path: string): Buffer =>
+  Buffer.from(
+    [
+      "$schema: https://devicetree.org/meta-schemas/core.yaml#",
+      `$id: https://wiseeff.dev/catalog-test/${path}`,
+      `title: Catalog contract fixture for ${path}`,
+      "type: object",
+      "additionalProperties: true",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
 const sourceDigest = (path: string): string =>
-  `sha256:${createHash("sha256")
-    .update(`# exact YAML source: ${path}\n`)
-    .digest("hex")}`;
+  `sha256:${createHash("sha256").update(exactYamlBytes(path)).digest("hex")}`;
+
+const sourceInventory = (path: string): SourceInventoryEntry => ({
+  path,
+  mediaType: "application/yaml",
+  encoding: "base64",
+  bytes: exactYamlBytes(path).toString("base64"),
+});
 
 const yamlSource = (path: string): BundleDocument["source"] => ({
   path,
@@ -1345,6 +1487,8 @@ const releaseNode = (
         id,
         version,
         sequence,
+        publishedAt:
+          sequence === 1 ? "2026-09-01T00:00:00Z" : "2026-09-01T00:01:00Z",
         digest: sha256("0"),
         predecessor,
       },
@@ -1367,6 +1511,7 @@ const releaseNode = (
         normalizedDigest: document.normalizedDigest,
       })),
     },
+    sources: [sourceInventory(documents[0].source.path)],
     documents,
   };
   node.manifest.release.digest = releaseAggregateDigest(node);
@@ -1398,7 +1543,9 @@ const refreshDocumentAndReleaseDigests = (
     (file) => file.path === document.source.path,
   );
   if (!manifestFile) {
-    throw new Error(`missing manifest file ${document.source.path}:${document.kind}`);
+    throw new Error(
+      `missing manifest file ${document.source.path}:${document.kind}`,
+    );
   }
   const manifestDocument = release.manifest.documents.find(
     (candidate) =>
@@ -1432,6 +1579,7 @@ const addDocumentToRelease = (
       mediaType: document.source.mediaType,
       digest: document.source.digest,
     });
+    release.sources.push(sourceInventory(document.source.path));
   }
   release.manifest.documents.push({
     sourcePath: document.source.path,
@@ -1516,6 +1664,21 @@ const bundledConsumerSchema = (): JsonObject => {
 };
 
 describe("immutable Catalog Release bundle contract", () => {
+  it("requires exact raw YAML bytes and immutable publication time in every release", () => {
+    expect(
+      pointerValue(catalogReleaseSchema, "/$defs/releaseNode/required"),
+    ).toContain("sources");
+    expect(
+      pointerValue(manifestSchema, "/$defs/releaseIdentity/required"),
+    ).toContain("publishedAt");
+    expect(
+      stableIdRules.manifestRules.releaseAggregateDigest.modelPointers,
+    ).toContain("/manifest/release/publishedAt");
+    expect(
+      stableIdRules.manifestRules.releaseAggregateDigest.modelPointers,
+    ).toContain("/sources");
+  });
+
   it("separates exact YAML source provenance from normalized document digests", () => {
     const bundle = validBundle();
     expect(validateBundle(bundle)).toEqual([]);
@@ -1528,6 +1691,9 @@ describe("immutable Catalog Release bundle contract", () => {
           digest: sourceDigest("schemas/dts/vendor/wiseeff/sc8562.yaml"),
         },
       ]);
+      expect(release.sources).toEqual([
+        sourceInventory("schemas/dts/vendor/wiseeff/sc8562.yaml"),
+      ]);
       for (const document of release.documents) {
         expect(document.source).toEqual(release.manifest.files[0]);
         expect(document.normalizedDigest).not.toBe(document.source.digest);
@@ -1536,7 +1702,9 @@ describe("immutable Catalog Release bundle contract", () => {
 
     const mismatchedSource = validBundle();
     mismatchedSource.releases[1].documents[0].source.digest = sha256("f");
-    expect(validateBundle(mismatchedSource)).toContain("manifest-content-exact");
+    expect(validateBundle(mismatchedSource)).toContain(
+      "manifest-content-exact",
+    );
 
     const mismatchedNormalizedDocument = validBundle();
     mismatchedNormalizedDocument.releases[1].documents[0].content.canonicalKey =
@@ -1544,12 +1712,105 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(mismatchedNormalizedDocument)).toContain(
       "document-digest-mismatch",
     );
+
+    const mutatedBytes = validBundle();
+    const mutatedSource = mutatedBytes.releases[1].sources[0];
+    const exactBytes = Buffer.from(mutatedSource.bytes, "base64");
+    exactBytes[exactBytes.length - 2] ^= 1;
+    mutatedSource.bytes = exactBytes.toString("base64");
+    mutatedBytes.releases[1].manifest.release.digest = releaseAggregateDigest(
+      mutatedBytes.releases[1],
+    );
+    expect(validateSchema(mutatedBytes)).toBe(true);
+    expect(validateBundle(mutatedBytes)).toContain("manifest-content-exact");
+
+    const staleDigest = validBundle();
+    const staleRelease = staleDigest.releases[1];
+    staleRelease.manifest.files[0].digest = sha256("f");
+    for (const document of staleRelease.documents) {
+      document.source.digest = sha256("f");
+    }
+    staleRelease.manifest.release.digest = releaseAggregateDigest(staleRelease);
+    expect(validateSchema(staleDigest)).toBe(true);
+    expect(validateBundle(staleDigest)).toContain("manifest-content-exact");
+
+    const duplicatePathWithDifferentBytes = validBundle();
+    const duplicateRelease = duplicatePathWithDifferentBytes.releases[1];
+    duplicateRelease.sources.push({
+      ...duplicateRelease.sources[0],
+      bytes: Buffer.from("title: conflicting YAML bytes\n", "utf8").toString(
+        "base64",
+      ),
+    });
+    duplicateRelease.manifest.release.digest =
+      releaseAggregateDigest(duplicateRelease);
+    expect(validateSchema(duplicatePathWithDifferentBytes)).toBe(true);
+    expect(validateBundle(duplicatePathWithDifferentBytes)).toContain(
+      "manifest-content-exact",
+    );
+
+    const nonCanonicalBase64 = validBundle();
+    nonCanonicalBase64.releases[1].sources[0].bytes = "Zh==";
+    nonCanonicalBase64.releases[1].manifest.release.digest =
+      releaseAggregateDigest(nonCanonicalBase64.releases[1]);
+    expect(validateSchema(nonCanonicalBase64)).toBe(true);
+    expect(validateBundle(nonCanonicalBase64)).toContain(
+      "manifest-content-exact",
+    );
+  });
+
+  it("binds canonical compiler-reviewed publication time into release identity", () => {
+    const bundle = validBundle();
+    expect(validateBundle(bundle)).toEqual([]);
+    expect(
+      bundle.releases.map((release) => release.manifest.release.publishedAt),
+    ).toEqual(["2026-09-01T00:00:00Z", "2026-09-01T00:01:00Z"]);
+    expect(stableIdRules.manifestRules.publicationTime).toEqual({
+      pointer: "/manifest/release/publishedAt",
+      format: "rfc3339-utc-seconds",
+      source: "compiler-reviewed-release-metadata",
+      forbidInstallationOrSynchronizationClock: true,
+    });
+
+    const missing = validBundle() as unknown as JsonObject;
+    delete (
+      (missing.releases as ReleaseNode[])[1].manifest.release as Partial<
+        ReleaseNode["manifest"]["release"]
+      >
+    ).publishedAt;
+    expect(validateBundle(missing as unknown as CatalogReleaseBundle)).toEqual([
+      "schema-invalid",
+    ]);
+
+    const nonCanonical = validBundle();
+    nonCanonical.releases[1].manifest.release.publishedAt =
+      "2026-09-01T08:01:00+08:00";
+    expect(validateBundle(nonCanonical)).toEqual(["schema-invalid"]);
+
+    const invalidCalendarDate = validBundle();
+    invalidCalendarDate.releases[1].manifest.release.publishedAt =
+      "2026-02-31T00:01:00Z";
+    invalidCalendarDate.releases[1].manifest.release.digest =
+      releaseAggregateDigest(invalidCalendarDate.releases[1]);
+    expect(validateSchema(invalidCalendarDate)).toBe(true);
+    expect(validateBundle(invalidCalendarDate)).toContain(
+      "manifest-content-exact",
+    );
+
+    const tampered = validBundle();
+    tampered.releases[1].manifest.release.publishedAt = "2026-09-01T00:02:00Z";
+    expect(validateBundle(tampered)).toContain(
+      "release-aggregate-digest-mismatch",
+    );
   });
 
   it("accepts a closed, complete bundle through the public schema and stable-rule seam", () => {
     const bundle = validBundle();
 
-    expect(validateBundle(bundle), JSON.stringify(validateSchema.errors)).toEqual([]);
+    expect(
+      validateBundle(bundle),
+      JSON.stringify(validateSchema.errors),
+    ).toEqual([]);
     expect(stableIdRules.closedEnums).toEqual({
       catalogSubjectKinds: [...catalogSubjectKinds],
       catalogSubjectSelectorKinds: [...catalogSubjectSelectorKinds],
@@ -1623,6 +1884,7 @@ describe("immutable Catalog Release bundle contract", () => {
       release.documents[0].source.path = path;
       release.manifest.files[0].path = path;
       release.manifest.documents[0].sourcePath = path;
+      release.sources[0].path = path;
       release.manifest.release.digest = releaseAggregateDigest(release);
 
       expect(validateBundle(malformed), path).toEqual(["schema-invalid"]);
@@ -1670,11 +1932,12 @@ describe("immutable Catalog Release bundle contract", () => {
       (document) => document.kind === "definition",
     );
     if (!rewrittenDefinition) throw new Error("missing definition fixture");
-    const rewrittenRevision = rewrittenDefinition.content.revision as JsonObject;
-    rewrittenRevision.documentation = "Changed under the same revision identity.";
-    rewrittenRevision.contentDigest = definitionRevisionContentDigest(
-      rewrittenDefinition,
-    );
+    const rewrittenRevision = rewrittenDefinition.content
+      .revision as JsonObject;
+    rewrittenRevision.documentation =
+      "Changed under the same revision identity.";
+    rewrittenRevision.contentDigest =
+      definitionRevisionContentDigest(rewrittenDefinition);
     refreshDocumentAndReleaseDigests(rewrittenRelease, rewrittenDefinition);
     expect(validateBundle(rewritten)).toContain("definition-id-reassigned");
   });
@@ -1748,7 +2011,9 @@ describe("immutable Catalog Release bundle contract", () => {
   });
 
   it("requires closed self-contained JSON Schema 2020-12 value contracts", () => {
-    const bundleWithValueSchema = (valueSchema: JsonObject): CatalogReleaseBundle => {
+    const bundleWithValueSchema = (
+      valueSchema: JsonObject,
+    ): CatalogReleaseBundle => {
       const bundle = validBundle();
       const release = bundle.releases[1];
       const definition = release.documents.find(
@@ -1819,9 +2084,8 @@ describe("immutable Catalog Release bundle contract", () => {
     missingRevision.id = "drev_01KVIN4";
     missingRevision.number = 2;
     missingRevision.lifecycle = "deprecated";
-    missingRevision.contentDigest = definitionRevisionContentDigest(
-      missingDefinition,
-    );
+    missingRevision.contentDigest =
+      definitionRevisionContentDigest(missingDefinition);
     refreshDocumentAndReleaseDigests(missingRelease, missingDefinition);
     expect(validateBundle(deprecatedWithoutSuccessor)).toEqual([
       "schema-invalid",
@@ -1848,7 +2112,8 @@ describe("immutable Catalog Release bundle contract", () => {
     const successorRevision = successor.content.revision as JsonObject;
     successorRevision.id = "drev_01KVIN_SUCCESSOR1";
     successorRevision.number = 1;
-    successorRevision.contentDigest = definitionRevisionContentDigest(successor);
+    successorRevision.contentDigest =
+      definitionRevisionContentDigest(successor);
     addDocumentToRelease(release, successor);
 
     const revision = definition.content.revision as JsonObject;
@@ -1885,9 +2150,8 @@ describe("immutable Catalog Release bundle contract", () => {
     if (!danglingDefinition) throw new Error("missing deprecated fixture");
     const danglingRevision = danglingDefinition.content.revision as JsonObject;
     danglingRevision.successorDefinitionId = "pdef_missing";
-    danglingRevision.contentDigest = definitionRevisionContentDigest(
-      danglingDefinition,
-    );
+    danglingRevision.contentDigest =
+      definitionRevisionContentDigest(danglingDefinition);
     refreshDocumentAndReleaseDigests(danglingRelease, danglingDefinition);
     expect(validateBundle(danglingSuccessor)).toContain(
       "definition-successor-missing",
@@ -1901,7 +2165,8 @@ describe("immutable Catalog Release bundle contract", () => {
     if (!selfDefinition) throw new Error("missing deprecated fixture");
     const selfRevision = selfDefinition.content.revision as JsonObject;
     selfRevision.successorDefinitionId = selfDefinition.content.id;
-    selfRevision.contentDigest = definitionRevisionContentDigest(selfDefinition);
+    selfRevision.contentDigest =
+      definitionRevisionContentDigest(selfDefinition);
     refreshDocumentAndReleaseDigests(selfRelease, selfDefinition);
     expect(validateBundle(selfSuccessor)).toContain(
       "definition-successor-invalid",
@@ -1915,9 +2180,8 @@ describe("immutable Catalog Release bundle contract", () => {
     if (!activeDefinition) throw new Error("missing active Definition fixture");
     const activeRevision = activeDefinition.content.revision as JsonObject;
     activeRevision.successorDefinitionId = "pdef_01KVIN_SUCCESSOR";
-    activeRevision.contentDigest = definitionRevisionContentDigest(
-      activeDefinition,
-    );
+    activeRevision.contentDigest =
+      definitionRevisionContentDigest(activeDefinition);
     refreshDocumentAndReleaseDigests(activeRelease, activeDefinition);
     expect(validateBundle(activeWithSuccessor)).toEqual(["schema-invalid"]);
   });
@@ -2049,9 +2313,10 @@ describe("immutable Catalog Release bundle contract", () => {
       mediaType: "application/yaml",
       digest: sourceDigest(path),
     }));
+    release.sources = paths.map(sourceInventory);
     const expected = releaseAggregateDigest(release);
     expect(expected).toBe(
-      "sha256:997cdf083f04074bf6e56ed39ed3fd6b0587a0a02ed9248e6801cca972a71171",
+      "sha256:d5706173bc51e186db183bda2f24eeb9043a9d4e25e62bf257fb300fc1d96bba",
     );
     expect(
       stableIdRules.manifestRules.releaseAggregateDigest.sortedCollections.map(
@@ -2061,11 +2326,13 @@ describe("immutable Catalog Release bundle contract", () => {
       "ecmascript-utf16-code-unit",
       "ecmascript-utf16-code-unit",
       "ecmascript-utf16-code-unit",
+      "ecmascript-utf16-code-unit",
     ]);
 
     release.documents.reverse();
     release.manifest.files.reverse();
     release.manifest.documents.reverse();
+    release.sources.reverse();
     expect(releaseAggregateDigest(release)).toBe(expected);
 
     const localeCompare = vi
@@ -2138,7 +2405,9 @@ describe("immutable Catalog Release bundle contract", () => {
       id: "crel_missing",
       digest: sha256("f"),
     };
-    expect(validateBundle(missingPredecessor)).toContain("release-lineage-connected");
+    expect(validateBundle(missingPredecessor)).toContain(
+      "release-lineage-connected",
+    );
 
     expect(stableIdRules.lineageRules.traversal).toEqual({
       strategy: "iterative-indexed",
@@ -2243,6 +2512,7 @@ describe("immutable Catalog Release bundle contract", () => {
       id: "crel_03",
       version: "1.2.0",
       sequence: 3,
+      publishedAt: "2026-09-01T00:02:00Z",
       digest: sha256("0"),
       predecessor: {
         id: secondRelease.manifest.release.id,
@@ -2255,9 +2525,10 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(continuedRetirement)).toEqual([]);
 
     const forgedContinuedRetirement = structuredClone(continuedRetirement);
-    const forgedThirdSubject = forgedContinuedRetirement.releases[2].documents.find(
-      (document) => document.kind === "subject",
-    );
+    const forgedThirdSubject =
+      forgedContinuedRetirement.releases[2].documents.find(
+        (document) => document.kind === "subject",
+      );
     if (!forgedThirdSubject) throw new Error("missing subject fixture");
     (forgedThirdSubject.content.tombstone as JsonObject).withdrawnByReleaseId =
       "crel_03";
@@ -2283,6 +2554,7 @@ describe("immutable Catalog Release bundle contract", () => {
       id: "crel_03",
       version: "1.2.0",
       sequence: 3,
+      publishedAt: "2026-09-01T00:02:00Z",
       digest: sha256("0"),
       predecessor: {
         id: rewrittenSecond.manifest.release.id,
@@ -2388,7 +2660,8 @@ describe("immutable Catalog Release bundle contract", () => {
         document.kind === "subject" &&
         document.content.id === "csub_01KSC8562_SUCCESSOR",
     );
-    if (!nodeTypeSuccessor) throw new Error("missing successor Subject fixture");
+    if (!nodeTypeSuccessor)
+      throw new Error("missing successor Subject fixture");
     nodeTypeSuccessor.content.kind = "node-type";
     nodeTypeSuccessor.content.canonicalKey = "node-type:sc8562-successor";
     nodeTypeSuccessor.content.selector = {
@@ -2397,10 +2670,7 @@ describe("immutable Catalog Release bundle contract", () => {
       provenance: { source: "catalog-review" },
     };
     nodeTypeSuccessor.content.subtype = {};
-    refreshDocumentAndReleaseDigests(
-      semanticSubjectRelease,
-      nodeTypeSuccessor,
-    );
+    refreshDocumentAndReleaseDigests(semanticSubjectRelease, nodeTypeSuccessor);
     expect(validateBundle(wrongSemanticSubject)).toContain(
       "retirement-successor-kind-mismatch",
     );
@@ -2653,13 +2923,9 @@ describe("immutable Catalog Release bundle contract", () => {
       ...(driverRevision.matching as JsonObject),
       selectorKind: "node-type-name",
     };
-    driverRevision.contentDigest = definitionRevisionContentDigest(
-      driverDefinition,
-    );
-    refreshDocumentAndReleaseDigests(
-      driverDefinitionRelease,
-      driverDefinition,
-    );
+    driverRevision.contentDigest =
+      definitionRevisionContentDigest(driverDefinition);
+    refreshDocumentAndReleaseDigests(driverDefinitionRelease, driverDefinition);
     expect(validateBundle(invalidDriverDefinition)).toContain(
       "owned-selector-kind-mismatch",
     );
@@ -2697,9 +2963,11 @@ describe("immutable Catalog Release bundle contract", () => {
       refreshDocumentAndReleaseDigests(release, alias);
       refreshDocumentAndReleaseDigests(release, definition);
     }
-    const nodeTypePredecessor = nodeTypeBundle.releases[1].manifest.release.predecessor;
+    const nodeTypePredecessor =
+      nodeTypeBundle.releases[1].manifest.release.predecessor;
     if (!nodeTypePredecessor) throw new Error("missing NodeType predecessor");
-    nodeTypePredecessor.digest = nodeTypeBundle.releases[0].manifest.release.digest;
+    nodeTypePredecessor.digest =
+      nodeTypeBundle.releases[0].manifest.release.digest;
     nodeTypeBundle.releases[1].manifest.release.digest = releaseAggregateDigest(
       nodeTypeBundle.releases[1],
     );
@@ -2742,7 +3010,8 @@ describe("immutable Catalog Release bundle contract", () => {
       };
       refreshDocumentAndReleaseDigests(release, subject);
     }
-    const driverPredecessor = driverBundle.releases[1].manifest.release.predecessor;
+    const driverPredecessor =
+      driverBundle.releases[1].manifest.release.predecessor;
     if (!driverPredecessor) throw new Error("missing driver predecessor");
     driverPredecessor.digest = driverBundle.releases[0].manifest.release.digest;
     driverBundle.releases[1].manifest.release.digest = releaseAggregateDigest(
@@ -2791,9 +3060,11 @@ describe("immutable Catalog Release bundle contract", () => {
       refreshDocumentAndReleaseDigests(release, alias);
       refreshDocumentAndReleaseDigests(release, definition);
     }
-    const nodeTypePredecessor = nodeTypeBundle.releases[1].manifest.release.predecessor;
+    const nodeTypePredecessor =
+      nodeTypeBundle.releases[1].manifest.release.predecessor;
     if (!nodeTypePredecessor) throw new Error("missing NodeType predecessor");
-    nodeTypePredecessor.digest = nodeTypeBundle.releases[0].manifest.release.digest;
+    nodeTypePredecessor.digest =
+      nodeTypeBundle.releases[0].manifest.release.digest;
     nodeTypeBundle.releases[1].manifest.release.digest = releaseAggregateDigest(
       nodeTypeBundle.releases[1],
     );
@@ -2843,7 +3114,9 @@ describe("immutable Catalog Release bundle contract", () => {
       cardinality: { kind: "multiple" },
     };
     refreshDocumentAndReleaseDigests(reassignedRelease, reassignedSubject);
-    expect(validateBundle(reassignedSubtype)).toContain("subject-id-reassigned");
+    expect(validateBundle(reassignedSubtype)).toContain(
+      "subject-id-reassigned",
+    );
   });
 
   it("accepts a complete logical-service singleton Driver lineage", () => {
@@ -2958,9 +3231,9 @@ describe("immutable Catalog Release bundle contract", () => {
       const acceptedSubject = accepted.releases[1].documents.find(
         (document) => document.kind === "subject",
       );
-      expect(
-        pointerValue(acceptedSubject, "/content/selector/value"),
-      ).toBe(acceptedValue);
+      expect(pointerValue(acceptedSubject, "/content/selector/value")).toBe(
+        acceptedValue,
+      );
     }
 
     for (const [input, reason] of [
@@ -3048,8 +3321,7 @@ describe("immutable Catalog Release bundle contract", () => {
     const predecessor =
       compatibleAlias.releases[1].manifest.release.predecessor;
     if (!predecessor) throw new Error("missing release predecessor");
-    predecessor.digest =
-      compatibleAlias.releases[0].manifest.release.digest;
+    predecessor.digest = compatibleAlias.releases[0].manifest.release.digest;
     compatibleAlias.releases[1].manifest.release.digest =
       releaseAggregateDigest(compatibleAlias.releases[1]);
 
@@ -3185,14 +3457,15 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "722f406ec08f094af5980cca51fb2fa5982b89fa64eb2ec56cbda044a7a43c3d",
+      "4a1b82ed3ea4c158d242371755138c9fc580f3ccadc7f3d9a0f3a7186c950038",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;
     const standaloneAjv = new Ajv2020({ allErrors: true, strict: true });
     const validateStandalone = standaloneAjv.compile(standaloneSchema);
-    expect(validateStandalone(validBundle()), JSON.stringify(validateStandalone.errors)).toBe(
-      true,
-    );
+    expect(
+      validateStandalone(validBundle()),
+      JSON.stringify(validateStandalone.errors),
+    ).toBe(true);
   });
 });
