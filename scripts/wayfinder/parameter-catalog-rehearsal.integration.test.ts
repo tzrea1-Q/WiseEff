@@ -190,7 +190,14 @@ describe("parameter catalog rehearsal SQL containment", () => {
       );
       await writeFile(
         validationFile,
-        "select count(*) from pg_catalog.pg_namespace; select 'commit work is documentation';\n",
+        [
+          "select count(*) from pg_catalog.pg_namespace;",
+          String.raw`select E'ordinary\\path', 'ordinary\path';`,
+          String.raw`-- a documented \gexec is not executable here`,
+          String.raw`/* nor is a documented \connect inside a block comment */`,
+          "select 'commit work is documentation';",
+          "",
+        ].join("\n"),
       );
 
       const result = runResult("bash", [
@@ -747,12 +754,12 @@ describe("parameter catalog rehearsal artifact containment", () => {
           "#!/usr/bin/env bash",
           "set -euo pipefail",
           'payload="$(command cat)"',
+          'if [[ "$*" == *"user_namespaces"* ]]; then printf "0\\n"; exit 0; fi',
           'if [[ "$*" == *"from pg_database"* ]]; then',
           '  printf "mutated caller archive\\n" > "${WAYFINDER_CALLER_ARCHIVE:?}"',
           '  printf "1\\n"',
           "  exit 0",
           "fi",
-          'if [[ "$*" == *"user_namespaces"* ]]; then printf "0\\n"; exit 0; fi',
           'printf "%s" "${payload}" > "${WAYFINDER_CAPTURED_IMPORT:?}"',
           'printf "__WISEEFF_IMPORT_METRICS__|1|1|10|1\\n"',
           "exit 0",
@@ -1041,6 +1048,69 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
     );
 
     it(
+      "refuses standalone FDWs and disconnected subscriptions before export",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-external-source-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_external_source", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              const client = new pg.Client({ connectionString });
+              await client.connect();
+              try {
+                await client.query(
+                  "create foreign data wrapper wf671_standalone_fdw no handler",
+                );
+                await client.query(`
+                  create subscription wf671_disconnected_subscription
+                  connection 'host=127.0.0.1 port=1 dbname=postgres user=wiseeff'
+                  publication wf671_absent_publication
+                  with (connect = false, create_slot = false, enabled = false)
+                `);
+
+                const result = runResult("bash", [
+                  exporter,
+                  "--container",
+                  containerName,
+                  "--database",
+                  databaseName(connectionString),
+                  "--fixture-mode",
+                  "populated",
+                  "--output-dir",
+                  artifactDir,
+                ]);
+                expect(result.status).not.toBe(0);
+                expect(result.stderr).toContain(
+                  "Source database contains external or credential-bearing objects",
+                );
+                await expect(readFile(path.join(artifactDir, "schema.sql"), "utf8"))
+                  .rejects.toMatchObject({ code: "ENOENT" });
+              } finally {
+                await client.query(
+                  "alter subscription wf671_disconnected_subscription disable",
+                );
+                await client.query(
+                  "alter subscription wf671_disconnected_subscription set (slot_name = NONE)",
+                );
+                await client.query("drop subscription wf671_disconnected_subscription");
+                await client.end();
+              }
+            },
+          );
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
       "rejects external SQL capabilities against the real PostgreSQL target before any side effect",
       async () => {
         const tempRoot = await mkdtemp(
@@ -1123,17 +1193,15 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
     );
 
     it(
-      "rejects a checksum-consistent psql shell escape before a real database session",
+      "lexically rejects inline psql commands but accepts backslashes in SQL strings and comments",
       async () => {
         const tempRoot = await mkdtemp(
-          path.join(os.tmpdir(), "wiseeff-wayfinder671-psql-shell-"),
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-psql-lexer-"),
         );
         const artifactDir = path.join(tempRoot, "artifact");
-        const marker = `/tmp/wiseeff-wayfinder671-psql-shell-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-        const restoreDatabase = `wiseeff_wayfinder671_restore_psql_shell_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
         try {
           await withTempDatabase(
-            { prefix: "wayfinder671_psql_shell", migrate: false },
+            { prefix: "wayfinder671_psql_lexer", migrate: false },
             async ({ db, connectionString }) => {
               await applyMigrations(db, migrationsDir, {
                 through: "0128_repair_driver_placement_subject_cutover.sql",
@@ -1151,10 +1219,91 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               ]);
             },
           );
-          await chmod(path.join(artifactDir, "schema.sql"), 0o600);
+          const schemaPath = path.join(artifactDir, "schema.sql");
+          const baseSchema = await readFile(schemaPath, "utf8");
+          await chmod(schemaPath, 0o600);
+
+          for (const inlineCommand of [
+            String.raw`select 'select 1' \gexec`,
+            String.raw`select 1 \gset wf671_`,
+            String.raw`select 1; \! true`,
+            String.raw`select 1; \connect postgres`,
+          ]) {
+            await writeFile(schemaPath, `${baseSchema}\n${inlineCommand}\n`);
+            await refreshArtifactChecksums(artifactDir);
+            const result = runResult("bash", [
+              importer,
+              "--validate-artifact-only",
+              ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+            ]);
+            expect(result.status, inlineCommand).not.toBe(0);
+            expect(result.stderr).toContain(
+              "Unsafe psql meta-command detected in schema.sql",
+            );
+          }
+
           await writeFile(
-            path.join(artifactDir, "schema.sql"),
-            `${await readFile(path.join(artifactDir, "schema.sql"), "utf8")}\n\\! touch ${marker}\n`,
+            schemaPath,
+            [
+              baseSchema,
+              String.raw`select 'ordinary\path', E'escaped\\path';`,
+              String.raw`-- documented \gexec is not executable`,
+              String.raw`/* documented \connect and \! are not executable */`,
+              "",
+            ].join("\n"),
+          );
+          await refreshArtifactChecksums(artifactDir);
+          const safeResult = runResult("bash", [
+            importer,
+            "--validate-artifact-only",
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+          ]);
+          expect(safeResult.status, safeResult.stderr).toBe(0);
+          expect(safeResult.stdout).toBe("ARTIFACT_OK\n");
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "rejects checksum-consistent inline gexec before any real PostgreSQL side effect",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-psql-gexec-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_psql_gexec_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_psql_gexec", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          const schemaPath = path.join(artifactDir, "schema.sql");
+          await chmod(schemaPath, 0o600);
+          await writeFile(
+            schemaPath,
+            [
+              await readFile(schemaPath, "utf8"),
+              String.raw`select 'create table public.wf671_inline_meta_side_effect(id integer)' \gexec`,
+              "",
+            ].join("\n"),
           );
           await refreshArtifactChecksums(artifactDir);
           await withAdminClient(async (admin) => {
@@ -1171,24 +1320,25 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           ]);
           expect(result.status).not.toBe(0);
           expect(result.stderr).toContain("Unsafe psql meta-command detected in schema.sql");
-          expect(
-            spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
-              .status,
-          ).toBe(0);
+
           const client = new pg.Client({
             connectionString: adminConnectionString(restoreDatabase),
           });
           await client.connect();
           try {
-            const state = await client.query<{ ledger: string | null }>(
-              "select to_regclass('public.schema_migrations')::text as ledger",
-            );
-            expect(state.rows).toEqual([{ ledger: null }]);
+            const state = await client.query<{
+              ledger: string | null;
+              side_effect: string | null;
+            }>(`
+              select
+                to_regclass('public.schema_migrations')::text as ledger,
+                to_regclass('public.wf671_inline_meta_side_effect')::text as side_effect
+            `);
+            expect(state.rows).toEqual([{ ledger: null, side_effect: null }]);
           } finally {
             await client.end();
           }
         } finally {
-          spawnSync("docker", ["exec", containerName, "rm", "-f", marker]);
           await withAdminClient(async (admin) => {
             await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
@@ -1232,6 +1382,24 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             verifierPath,
             `${await readFile(verifierPath, "utf8")}\nselect 'PGPASS' || 'WORD=wf671-sensitive' as emitted;\n`,
           );
+          const schemaPath = path.join(artifactDir, "schema.sql");
+          await chmod(schemaPath, 0o600);
+          await writeFile(
+            schemaPath,
+            [
+              await readFile(schemaPath, "utf8"),
+              "create foreign data wrapper wf671_cleanup_fdw no handler;",
+              "create server wf671_cleanup_server foreign data wrapper wf671_cleanup_fdw;",
+              "create user mapping for current_user server wf671_cleanup_server;",
+              [
+                "create subscription wf671_cleanup_subscription",
+                "connection 'host=127.0.0.1 port=1 dbname=postgres user=wiseeff'",
+                "publication wf671_absent_publication",
+                "with (connect = false, create_slot = false, enabled = false);",
+              ].join(" "),
+              "",
+            ].join("\n"),
+          );
           await refreshFixtureVerifierManifest(artifactDir);
           await withAdminClient(async (admin) => {
             await admin.query(`create database ${restoreDatabase}`);
@@ -1247,27 +1415,63 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           ]);
           expect(result.status).not.toBe(0);
           expect(result.stderr).toContain("Sensitive-token pattern detected in import.log");
+          expect(result.stderr.match(/^CLEANUP_OK$/gm)).toHaveLength(1);
+          expect(result.stderr.match(/^CLEANUP_FAILED$/gm) ?? []).toHaveLength(0);
 
           const client = new pg.Client({
             connectionString: adminConnectionString(restoreDatabase),
           });
           await client.connect();
           try {
-            const state = await client.query<{ ledger: string | null; objects: string }>(`
-              select
-                to_regclass('public.schema_migrations')::text as ledger,
-                (
-                  select count(*)::text
-                  from pg_class c
-                  join pg_namespace n on n.oid = c.relnamespace
-                  where n.nspname = 'public'
-                ) as objects
+            const state = await client.query<{ objects: string }>(`
+              with user_namespaces as (
+                select oid
+                from pg_namespace
+                where nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+                  and nspname !~ '^pg_(temp|toast_temp)_'
+              ), object_counts(value) as (
+                values
+                  ((select count(*) from pg_namespace where oid in (select oid from user_namespaces) and nspname <> 'public')),
+                  ((select count(*) from pg_class where relnamespace in (select oid from user_namespaces))),
+                  ((select count(*) from pg_proc where pronamespace in (select oid from user_namespaces))),
+                  ((select count(*) from pg_extension where extname <> 'plpgsql')),
+                  ((select count(*) from pg_publication)),
+                  ((select count(*) from pg_subscription where subdbid = (select oid from pg_database where datname = current_database()))),
+                  ((select count(*) from pg_foreign_data_wrapper)),
+                  ((select count(*) from pg_foreign_server)),
+                  ((select count(*) from pg_user_mapping))
+              )
+              select coalesce(sum(value), 0)::text as objects from object_counts
             `);
-            expect(state.rows).toEqual([{ ledger: null, objects: "0" }]);
+            expect(state.rows).toEqual([{ objects: "0" }]);
           } finally {
             await client.end();
           }
         } finally {
+          const cleanupClient = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          try {
+            await cleanupClient.connect();
+            const subscription = await cleanupClient.query<{ present: boolean }>(`
+              select exists (
+                select 1 from pg_subscription
+                where subdbid = (select oid from pg_database where datname = current_database())
+                  and subname = 'wf671_cleanup_subscription'
+              ) as present
+            `);
+            if (subscription.rows[0]?.present) {
+              await cleanupClient.query("alter subscription wf671_cleanup_subscription disable");
+              await cleanupClient.query(
+                "alter subscription wf671_cleanup_subscription set (slot_name = NONE)",
+              );
+              await cleanupClient.query("drop subscription wf671_cleanup_subscription");
+            }
+          } catch {
+            // The database may not have been created if fixture preparation failed.
+          } finally {
+            await cleanupClient.end().catch(() => undefined);
+          }
           await withAdminClient(async (admin) => {
             await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
@@ -1813,6 +2017,121 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
         }
       },
       60_000,
+    );
+
+    it(
+      "rejects every checked-empty external object class before import",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-external-target-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const fixtures = [
+          [
+            "standalone_fdw",
+            ["create foreign data wrapper wf671_external_fdw no handler"],
+          ],
+          [
+            "foreign_server",
+            [
+              "create foreign data wrapper wf671_external_fdw no handler",
+              "create server wf671_external_server foreign data wrapper wf671_external_fdw",
+            ],
+          ],
+          [
+            "user_mapping",
+            [
+              "create foreign data wrapper wf671_external_fdw no handler",
+              "create server wf671_external_server foreign data wrapper wf671_external_fdw",
+              "create user mapping for current_user server wf671_external_server",
+            ],
+          ],
+          [
+            "subscription",
+            [[
+              "create subscription wf671_external_subscription",
+              "connection 'host=127.0.0.1 port=1 dbname=postgres user=wiseeff'",
+              "publication wf671_absent_publication",
+              "with (connect = false, create_slot = false, enabled = false)",
+            ].join(" ")],
+          ],
+        ] as const;
+
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_external_target_source", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+
+          for (const [fixtureName, statements] of fixtures) {
+            const restoreDatabase = `wiseeff_wayfinder671_restore_external_${fixtureName}_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+            await withAdminClient(async (admin) => {
+              await admin.query(`create database ${restoreDatabase}`);
+            });
+            const client = new pg.Client({
+              connectionString: adminConnectionString(restoreDatabase),
+            });
+            try {
+              await client.connect();
+              for (const statement of statements) await client.query(statement);
+
+              const result = runResult("bash", [
+                importer,
+                "--container",
+                containerName,
+                "--database",
+                restoreDatabase,
+                ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+              ]);
+              expect(result.status, fixtureName).not.toBe(0);
+              expect(result.stderr).toContain(
+                "Target database contains user-defined objects; refusing to overwrite or merge.",
+              );
+              const state = await client.query<{ objects: string }>(`
+                select (
+                  (select count(*) from pg_subscription where subdbid = (select oid from pg_database where datname = current_database()))
+                  + (select count(*) from pg_foreign_data_wrapper)
+                  + (select count(*) from pg_foreign_server)
+                  + (select count(*) from pg_user_mapping)
+                )::text as objects
+              `);
+              expect(Number(state.rows[0]?.objects), fixtureName).toBeGreaterThan(0);
+            } finally {
+              if (fixtureName === "subscription") {
+                await client.query("alter subscription wf671_external_subscription disable")
+                  .catch(() => undefined);
+                await client.query(
+                  "alter subscription wf671_external_subscription set (slot_name = NONE)",
+                ).catch(() => undefined);
+                await client.query("drop subscription if exists wf671_external_subscription")
+                  .catch(() => undefined);
+              }
+              await client.end().catch(() => undefined);
+              await withAdminClient(async (admin) => {
+                await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+              });
+            }
+          }
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      120_000,
     );
 
     it(

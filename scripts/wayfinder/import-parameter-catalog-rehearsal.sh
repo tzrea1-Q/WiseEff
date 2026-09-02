@@ -120,6 +120,111 @@ sha256_file() {
   fi
 }
 
+validate_no_psql_meta_commands() {
+  local sql_file="$1"
+  node --input-type=module - "${sql_file}" <<'NODE'
+import fs from "node:fs";
+
+const source = fs.readFileSync(process.argv[2], "utf8");
+let index = 0;
+let state = "sql";
+let blockCommentDepth = 0;
+let dollarTag = "";
+
+function fail() {
+  process.exit(1);
+}
+
+while (index < source.length) {
+  if (state === "line-comment") {
+    if (source[index] === "\n") state = "sql";
+    index += 1;
+    continue;
+  }
+  if (state === "block-comment") {
+    if (source.startsWith("/*", index)) {
+      blockCommentDepth += 1;
+      index += 2;
+    } else if (source.startsWith("*/", index)) {
+      blockCommentDepth -= 1;
+      index += 2;
+      if (blockCommentDepth === 0) state = "sql";
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "single-quote" || state === "escape-string") {
+    if (state === "escape-string" && source[index] === "\\") {
+      index += Math.min(2, source.length - index);
+    } else if (source[index] === "'" && source[index + 1] === "'") {
+      index += 2;
+    } else if (source[index] === "'") {
+      state = "sql";
+      index += 1;
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "quoted-identifier") {
+    if (source[index] === '"' && source[index + 1] === '"') {
+      index += 2;
+    } else if (source[index] === '"') {
+      state = "sql";
+      index += 1;
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "dollar-quote") {
+    if (source.startsWith(dollarTag, index)) {
+      index += dollarTag.length;
+      dollarTag = "";
+      state = "sql";
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+
+  if (source.startsWith("--", index)) {
+    state = "line-comment";
+    index += 2;
+  } else if (source.startsWith("/*", index)) {
+    state = "block-comment";
+    blockCommentDepth = 1;
+    index += 2;
+  } else if ((source[index] === "E" || source[index] === "e") && source[index + 1] === "'") {
+    state = "escape-string";
+    index += 2;
+  } else if (source[index] === "'") {
+    state = "single-quote";
+    index += 1;
+  } else if (source[index] === '"') {
+    state = "quoted-identifier";
+    index += 1;
+  } else if (source[index] === "$") {
+    const tag = source.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/u)?.[0];
+    if (tag) {
+      dollarTag = tag;
+      state = "dollar-quote";
+      index += tag.length;
+    } else {
+      index += 1;
+    }
+  } else if (source[index] === "\\") {
+    fail();
+  } else {
+    index += 1;
+  }
+}
+
+if (!["sql", "line-comment"].includes(state)) fail();
+NODE
+}
+
 path_identity() {
   node --input-type=module - "$1" <<'NODE'
 import fs from "node:fs";
@@ -311,7 +416,7 @@ for file in SHA256SUMS "${checksum_files[@]}"; do
   fi
 done
 for file in schema.sql profile-schema.sql synthetic-fixture.sql synthetic-fixture-verify.sql; do
-  if LC_ALL=C grep -anE '^[[:space:]]*\\' "${artifact_dir}/${file}" >/dev/null; then
+  if ! validate_no_psql_meta_commands "${artifact_dir}/${file}"; then
     printf 'Unsafe psql meta-command detected in %s.\n' "${file}" >&2
     exit 1
   fi
@@ -478,7 +583,10 @@ target_user_object_count() {
           ((select count(*) from pg_largeobject_metadata)),
           ((select count(*) from pg_event_trigger)),
           ((select count(*) from pg_publication)),
-          ((select count(*) from pg_foreign_server))
+          ((select count(*) from pg_subscription where subdbid = (select oid from pg_database where datname = current_database()))),
+          ((select count(*) from pg_foreign_data_wrapper)),
+          ((select count(*) from pg_foreign_server)),
+          ((select count(*) from pg_user_mapping))
       )
       select coalesce(sum(value), 0) from object_counts"
 }
@@ -503,6 +611,18 @@ import_committed="false"
 
 reset_target_to_checked_empty() {
   target_psql <<'SQL'
+select format('alter subscription %I disable', subname)
+from pg_subscription
+where subdbid = (select oid from pg_database where datname = current_database())
+\gexec
+select format('alter subscription %I set (slot_name = NONE)', subname)
+from pg_subscription
+where subdbid = (select oid from pg_database where datname = current_database())
+\gexec
+select format('drop subscription %I', subname)
+from pg_subscription
+where subdbid = (select oid from pg_database where datname = current_database())
+\gexec
 begin;
 do $wayfinder_cleanup$
 declare item record;
@@ -518,6 +638,21 @@ begin
     execute format('drop publication %I', item.name);
   end loop;
   for item in
+    select
+      case when um.umuser = 0 then 'PUBLIC'
+        else format('%I', pg_get_userbyid(um.umuser))
+      end as role_sql,
+      fs.srvname as server_name
+    from pg_user_mapping um
+    inner join pg_foreign_server fs on fs.oid = um.umserver
+  loop
+    execute format(
+      'drop user mapping for %s server %I',
+      item.role_sql,
+      item.server_name
+    );
+  end loop;
+  for item in
     select srvname as name from pg_foreign_server
   loop
     execute format('drop server %I cascade', item.name);
@@ -526,6 +661,11 @@ begin
     select extname as name from pg_extension where extname <> 'plpgsql'
   loop
     execute format('drop extension %I cascade', item.name);
+  end loop;
+  for item in
+    select fdwname as name from pg_foreign_data_wrapper
+  loop
+    execute format('drop foreign data wrapper %I cascade', item.name);
   end loop;
   for item in
     select nspname as name
@@ -650,20 +790,30 @@ if LC_ALL=C grep -aEiq "${secret_pattern}" "${import_log}"; then
   import_status=1
 fi
 if [[ "${import_status}" != "0" ]]; then
-  remaining_objects="$(target_user_object_count || true)"
   printf '%s\n' 'IMPORT_FAILED' >&2
-  if [[ "${remaining_objects}" != "0" ]]; then
-    printf '%s\n' 'CLEANUP_FAILED' >&2
-    exit 1
+  cleanup_failed="false"
+  if [[ "${import_committed}" == "true" ]]; then
+    if reset_target_to_checked_empty \
+      && [[ "$(target_user_object_count || true)" == "0" ]]; then
+      import_committed="false"
+    else
+      cleanup_failed="true"
+    fi
+  elif [[ "$(target_user_object_count || true)" != "0" ]]; then
+    cleanup_failed="true"
   fi
   if ! cleanup_owned_directory \
     "${import_temp_dir}" "${import_temp_identity}" "${import_temp_token}" import.log \
     || ! cleanup_owned_directory \
       "${artifact_snapshot_dir}" "${artifact_snapshot_identity}" "${artifact_snapshot_token}" \
       "${artifact_snapshot_files[@]}"; then
-    exit 1
+    cleanup_failed="true"
   fi
   trap - EXIT
+  if [[ "${cleanup_failed}" == "true" ]]; then
+    printf '%s\n' 'CLEANUP_FAILED' >&2
+    exit 1
+  fi
   printf '%s\n' 'CLEANUP_OK' >&2
   exit "${import_status}"
 fi

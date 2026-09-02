@@ -208,6 +208,111 @@ scan_file_for_secrets() {
   fi
 }
 
+validate_no_psql_meta_commands() {
+  local sql_file="$1"
+  node --input-type=module - "${sql_file}" <<'NODE'
+import fs from "node:fs";
+
+const source = fs.readFileSync(process.argv[2], "utf8");
+let index = 0;
+let state = "sql";
+let blockCommentDepth = 0;
+let dollarTag = "";
+
+function fail() {
+  process.exit(1);
+}
+
+while (index < source.length) {
+  if (state === "line-comment") {
+    if (source[index] === "\n") state = "sql";
+    index += 1;
+    continue;
+  }
+  if (state === "block-comment") {
+    if (source.startsWith("/*", index)) {
+      blockCommentDepth += 1;
+      index += 2;
+    } else if (source.startsWith("*/", index)) {
+      blockCommentDepth -= 1;
+      index += 2;
+      if (blockCommentDepth === 0) state = "sql";
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "single-quote" || state === "escape-string") {
+    if (state === "escape-string" && source[index] === "\\") {
+      index += Math.min(2, source.length - index);
+    } else if (source[index] === "'" && source[index + 1] === "'") {
+      index += 2;
+    } else if (source[index] === "'") {
+      state = "sql";
+      index += 1;
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "quoted-identifier") {
+    if (source[index] === '"' && source[index + 1] === '"') {
+      index += 2;
+    } else if (source[index] === '"') {
+      state = "sql";
+      index += 1;
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+  if (state === "dollar-quote") {
+    if (source.startsWith(dollarTag, index)) {
+      index += dollarTag.length;
+      dollarTag = "";
+      state = "sql";
+    } else {
+      index += 1;
+    }
+    continue;
+  }
+
+  if (source.startsWith("--", index)) {
+    state = "line-comment";
+    index += 2;
+  } else if (source.startsWith("/*", index)) {
+    state = "block-comment";
+    blockCommentDepth = 1;
+    index += 2;
+  } else if ((source[index] === "E" || source[index] === "e") && source[index + 1] === "'") {
+    state = "escape-string";
+    index += 2;
+  } else if (source[index] === "'") {
+    state = "single-quote";
+    index += 1;
+  } else if (source[index] === '"') {
+    state = "quoted-identifier";
+    index += 1;
+  } else if (source[index] === "$") {
+    const tag = source.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/u)?.[0];
+    if (tag) {
+      dollarTag = tag;
+      state = "dollar-quote";
+      index += tag.length;
+    } else {
+      index += 1;
+    }
+  } else if (source[index] === "\\") {
+    fail();
+  } else {
+    index += 1;
+  }
+}
+
+if (!["sql", "line-comment"].includes(state)) fail();
+NODE
+}
+
 path_identity() {
   node --input-type=module - "$1" <<'NODE'
 import fs from "node:fs";
@@ -610,8 +715,11 @@ fi
 
 unsafe_external_objects="$(db_psql -Atc "
   select
-    (select count(*) from pg_user_mapping)
+    (select count(*) from pg_subscription
+      where subdbid = (select oid from pg_database where datname = current_database()))
+    + (select count(*) from pg_foreign_data_wrapper)
     + (select count(*) from pg_foreign_server)
+    + (select count(*) from pg_user_mapping)
 ")"
 if [[ "${unsafe_external_objects}" != "0" ]]; then
   printf '%s\n' 'Source database contains external or credential-bearing objects; refusing to export.' >&2
@@ -838,7 +946,7 @@ for file in "${artifact_files[@]}"; do
   scan_file_for_secrets "${stage_dir}/${file}" "${file}"
 done
 for file in schema.sql profile-schema.sql synthetic-fixture.sql synthetic-fixture-verify.sql; do
-  if LC_ALL=C grep -anE '^[[:space:]]*\\' "${stage_dir}/${file}" >/dev/null; then
+  if ! validate_no_psql_meta_commands "${stage_dir}/${file}"; then
     printf 'Unsafe psql meta-command detected in %s.\n' "${file}" >&2
     exit 1
   fi
