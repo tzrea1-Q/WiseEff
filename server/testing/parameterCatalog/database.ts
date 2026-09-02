@@ -471,6 +471,10 @@ async function dropIdleCatalogDatabase(name: string): Promise<boolean> {
   return withAdminClient((admin) => dropIdleCatalogDatabaseWithAdmin(admin, name));
 }
 
+const HARNESS_RUN_NAME_PATTERN = new RegExp(
+  `^${CATALOG_DATABASE_PREFIX}[rp][0-9]+_`,
+);
+
 export async function cleanupLeftoverParameterCatalogDatabases(): Promise<string[]> {
   const dropped: string[] = [];
   const workerPrefix = parameterCatalogWorkerDatabasePrefix();
@@ -486,8 +490,9 @@ export async function cleanupLeftoverParameterCatalogDatabases(): Promise<string
     );
     for (const row of leftovers.rows) {
       const ownWorker = row.datname.startsWith(workerPrefix);
-      const otherRun = !row.datname.startsWith(runPrefix);
-      if (!ownWorker && !otherRun) {
+      const otherHarnessRun =
+        HARNESS_RUN_NAME_PATTERN.test(row.datname) && !row.datname.startsWith(runPrefix);
+      if (!ownWorker && !otherHarnessRun) {
         continue;
       }
       if (await dropIdleCatalogDatabaseWithAdmin(admin, row.datname)) {
