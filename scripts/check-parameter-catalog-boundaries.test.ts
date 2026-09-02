@@ -702,6 +702,8 @@ describe("parameter catalog boundary checker", () => {
     expect(workflow).toContain(
       'npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"',
     );
+    const buildAndTest = workflow.split("\n  build-and-test:")[1] ?? "";
+    expect(buildAndTest).toContain("fetch-depth: 0");
   });
 
   it("stages privately, validates the complete artifact set, and rolls back a partial publish", async () => {

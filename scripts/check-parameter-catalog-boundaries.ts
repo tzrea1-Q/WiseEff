@@ -365,6 +365,29 @@ function occurrencePositionKey(
   ].join("\0");
 }
 
+function findNearestAllowlistAncestor(repoRoot: string, startRev: string): string | undefined {
+  let commits: string[];
+  try {
+    commits = gitOutput(
+      repoRoot,
+      ["rev-list", "--first-parent", "--skip=1", startRev],
+      "allow-list ancestor walk",
+    )
+      .split("\n")
+      .filter(Boolean);
+  } catch {
+    return undefined;
+  }
+  for (const sha of commits) {
+    const complete = consumerShardDefinitions.every((definition) => {
+      const path = `${allowlistShardDirectory}/${definition.shardFile}`;
+      return gitObjectContents(repoRoot, sha, path) !== undefined;
+    });
+    if (complete) return sha;
+  }
+  return undefined;
+}
+
 function loadTrustedParentAllowances(
   repoRoot: string,
   trustedBaseSha: string,
@@ -411,6 +434,10 @@ function loadTrustedParentAllowances(
   });
   const present = shardDocuments.filter(({ contents }) => contents !== undefined);
   if (present.length === 0) {
+    const parentWithShards = findNearestAllowlistAncestor(repoRoot, "HEAD");
+    if (parentWithShards) {
+      return loadTrustedParentAllowances(repoRoot, parentWithShards, fixture);
+    }
     if (trustedBaseSha === fixture.trustedBaseSha) return undefined;
     throw new Error(`Trusted base ${trustedBaseSha} has no parameter-catalog allow-list shards.`);
   }
