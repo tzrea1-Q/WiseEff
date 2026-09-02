@@ -136,15 +136,7 @@
     },
     "nodeTypeSubtype": {
       "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "family"
-      ],
-      "properties": {
-        "family": {
-          "$ref": "#/$defs/contractString"
-        }
-      }
+      "additionalProperties": false
     },
     "subjectContent": {
       "type": "object",

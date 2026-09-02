@@ -9,6 +9,11 @@ import {
   catalogSubjectKinds,
   catalogSubjectSelectorKinds,
   definitionLifecycles,
+  driverInstanceCardinalities,
+  driverNatures,
+  parseCanonicalCompatibleSelector,
+  parseCanonicalNodeName,
+  parseCanonicalPropertyKey,
   serializeContract,
   subjectLifecycles,
   type ContractJsonValue,
@@ -36,6 +41,25 @@ interface StableIdentityRule {
 
 interface StableIdRules {
   schemaVersion: string;
+  s0IdContract: {
+    mergedImplementationSha: string;
+    packageEntrypoint: string;
+    serializationGolden: {
+      path: string;
+      gitBlobOid: string;
+      byteLength: number;
+      rawSha256: string;
+    };
+    constructors: {
+      compatible: "parseCanonicalCompatibleSelector";
+      nodeName: "parseCanonicalNodeName";
+      propertyKey: "parseCanonicalPropertyKey";
+    };
+    enumRegistries: {
+      driverNatures: "driverNatures";
+      driverInstanceCardinalities: "driverInstanceCardinalities";
+    };
+  };
   idFormat: {
     type: "string";
     minLength: number;
@@ -663,7 +687,7 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
 
   const selectorRules = stableIdRules.selectorRules;
   const canonicalSelectorOwners = new Map<string, string>();
-  const aliasSelectors = new Set<string>();
+  const aliasSelectorOwners = new Map<string, string>();
   for (const node of releases) {
     for (const subject of node.documents.filter(
       (document) => document.kind === "subject",
@@ -691,17 +715,28 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     for (const alias of node.documents.filter(
       (document) => document.kind === "alias",
     )) {
-      aliasSelectors.add(
-        stableKey([
-          pointerValue(alias, selectorRules.aliasKindPointer),
-          pointerValue(alias, selectorRules.aliasValuePointer),
-        ]),
-      );
+      const selectorKey = stableKey([
+        pointerValue(alias, selectorRules.aliasKindPointer),
+        pointerValue(alias, selectorRules.aliasValuePointer),
+      ]);
+      const subjectId = pointerValue(alias, "/content/subjectId");
+      if (
+        typeof subjectId === "string" &&
+        aliasSelectorOwners.has(selectorKey) &&
+        aliasSelectorOwners.get(selectorKey) !== subjectId
+      ) {
+        violations.push("alias-selector-owner-conflict");
+      }
+      if (typeof subjectId === "string") {
+        aliasSelectorOwners.set(selectorKey, subjectId);
+      }
     }
   }
   if (
     selectorRules.forbidAliasCanonicalCollision &&
-    [...aliasSelectors].some((selector) => canonicalSelectorOwners.has(selector))
+    [...aliasSelectorOwners.keys()].some((selector) =>
+      canonicalSelectorOwners.has(selector),
+    )
   ) {
     violations.push("alias-canonical-selector-collision");
   }
@@ -1073,9 +1108,65 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
   return [...new Set(violations)].sort();
 };
 
+const validateCanonicalIdentities = (
+  bundle: CatalogReleaseBundle,
+): string[] => {
+  const violations: string[] = [];
+  for (const release of bundle.releases) {
+    for (const subject of release.documents.filter(
+      (document) => document.kind === "subject",
+    )) {
+      const selectorKind = pointerValue(subject, "/content/selector/kind");
+      const selectorValue = pointerValue(subject, "/content/selector/value");
+      const result =
+        selectorKind === "driver-compatible"
+          ? parseCanonicalCompatibleSelector(selectorValue)
+          : selectorKind === "node-type-name"
+            ? parseCanonicalNodeName(selectorValue)
+            : null;
+      if (result === null) continue;
+      if (!result.ok) {
+        violations.push(`subject-selector-${result.error}`);
+      }
+    }
+    for (const alias of release.documents.filter(
+      (document) => document.kind === "alias",
+    )) {
+      const selectorKind = pointerValue(alias, "/content/selectorKind");
+      const selectorValue = pointerValue(alias, "/content/normalizedSelector");
+      const result =
+        selectorKind === "driver-compatible"
+          ? parseCanonicalCompatibleSelector(selectorValue)
+          : selectorKind === "node-type-name"
+            ? parseCanonicalNodeName(selectorValue)
+            : null;
+      if (result !== null && !result.ok) {
+        violations.push(`alias-selector-${result.error}`);
+      }
+    }
+    for (const definition of release.documents.filter(
+      (document) => document.kind === "definition",
+    )) {
+      const result = parseCanonicalPropertyKey(
+        pointerValue(definition, "/content/propertyKey"),
+      );
+      if (!result.ok) {
+        violations.push(`definition-property-key-${result.error}`);
+      }
+    }
+  }
+  return [...new Set(violations)].sort();
+};
+
 const validateBundle = (bundle: CatalogReleaseBundle): string[] => {
-  if (!validateSchema(bundle)) return ["schema-invalid"];
-  return validateStableRules(bundle);
+  const canonicalIdentityViolations = validateCanonicalIdentities(bundle);
+  if (!validateSchema(bundle)) {
+    return [...new Set([...canonicalIdentityViolations, "schema-invalid"])].sort();
+  }
+  return [...new Set([
+    ...canonicalIdentityViolations,
+    ...validateStableRules(bundle),
+  ])].sort();
 };
 
 const sha256 = (marker: string): string => `sha256:${marker.repeat(64)}`;
@@ -1239,6 +1330,50 @@ const addDocumentToRelease = (
   release.manifest.release.digest = releaseAggregateDigest(release);
 };
 
+const asNodeTypeBundle = (selectorValue: unknown): CatalogReleaseBundle => {
+  const bundle = validBundle();
+  for (const release of bundle.releases) {
+    const subject = release.documents.find(
+      (document) => document.kind === "subject",
+    );
+    const alias = release.documents.find(
+      (document) => document.kind === "alias",
+    );
+    const definition = release.documents.find(
+      (document) => document.kind === "definition",
+    );
+    if (!subject || !alias || !definition) {
+      throw new Error("missing NodeType fixture");
+    }
+    subject.content.kind = "node-type";
+    subject.content.canonicalKey = "node-type:sc8562";
+    subject.content.selector = {
+      kind: "node-type-name",
+      value: selectorValue,
+      provenance: { source: "catalog-review" },
+    };
+    subject.content.subtype = {};
+    alias.content.selectorKind = "node-type-name";
+    alias.content.normalizedSelector = "sc8551";
+    const revision = definition.content.revision as JsonObject;
+    revision.matching = {
+      ...(revision.matching as JsonObject),
+      selectorKind: "node-type-name",
+    };
+    revision.contentDigest = definitionRevisionContentDigest(definition);
+    refreshDocumentAndReleaseDigests(release, subject);
+    refreshDocumentAndReleaseDigests(release, alias);
+    refreshDocumentAndReleaseDigests(release, definition);
+  }
+  const predecessor = bundle.releases[1].manifest.release.predecessor;
+  if (!predecessor) throw new Error("missing NodeType predecessor");
+  predecessor.digest = bundle.releases[0].manifest.release.digest;
+  bundle.releases[1].manifest.release.digest = releaseAggregateDigest(
+    bundle.releases[1],
+  );
+  return bundle;
+};
+
 const bundledConsumerSchema = (): JsonObject => {
   const manifestDefinition = structuredClone(manifestSchema);
   delete manifestDefinition.$schema;
@@ -1276,11 +1411,51 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(stableIdRules.closedEnums).toEqual({
       catalogSubjectKinds: [...catalogSubjectKinds],
       catalogSubjectSelectorKinds: [...catalogSubjectSelectorKinds],
-      driverNatures: ["physical-device", "logical-service"],
-      driverInstanceCardinalities: ["multiple", "singleton-per-project"],
+      driverNatures: [...driverNatures],
+      driverInstanceCardinalities: [...driverInstanceCardinalities],
       definitionLifecycles: [...definitionLifecycles],
       subjectLifecycles: [...subjectLifecycles],
     });
+    expect(
+      pointerValue(
+        catalogReleaseSchema,
+        "/$defs/driverSubtype/properties/nature/enum",
+      ),
+    ).toEqual([...driverNatures]);
+    expect(
+      pointerValue(
+        catalogReleaseSchema,
+        "/$defs/driverSubtype/properties/cardinality/properties/kind/enum",
+      ),
+    ).toEqual([...driverInstanceCardinalities]);
+  });
+
+  it("pins the exact merged S0-ID constructors, enums, and golden fingerprint", () => {
+    expect(stableIdRules.s0IdContract).toEqual({
+      mergedImplementationSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      packageEntrypoint: "server/modules/parameter-catalog-contract/index.ts",
+      serializationGolden: {
+        path: "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
+        gitBlobOid: "c856ec070286a32c59ff13d8aef545139435c96c",
+        byteLength: 1528,
+        rawSha256:
+          "0979a58a624cf160181425de92816fb1dd8bb285ea27896ba1f95287f6143d75",
+      },
+      constructors: {
+        compatible: "parseCanonicalCompatibleSelector",
+        nodeName: "parseCanonicalNodeName",
+        propertyKey: "parseCanonicalPropertyKey",
+      },
+      enumRegistries: {
+        driverNatures: "driverNatures",
+        driverInstanceCardinalities: "driverInstanceCardinalities",
+      },
+    });
+
+    const generated = JSON.parse(generatedSchemaBytes) as JsonObject;
+    expect(
+      pointerValue(generated, "/$defs/stableIdRules/const/s0IdContract"),
+    ).toEqual(stableIdRules.s0IdContract);
   });
 
   it("rejects malformed lifecycle/tombstone pairs and invented fields before compile", () => {
@@ -2080,7 +2255,7 @@ describe("immutable Catalog Release bundle contract", () => {
       value: "sc8562-successor",
       provenance: { source: "catalog-review" },
     };
-    nodeTypeSuccessor.content.subtype = { family: "device" };
+    nodeTypeSuccessor.content.subtype = {};
     refreshDocumentAndReleaseDigests(
       semanticSubjectRelease,
       nodeTypeSuccessor,
@@ -2109,7 +2284,7 @@ describe("immutable Catalog Release bundle contract", () => {
           value: "sc8562-successor",
           provenance: { source: "catalog-review" },
         },
-        subtype: { family: "device" },
+        subtype: {},
         tombstone: null,
       },
     });
@@ -2235,6 +2410,53 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(aliasCollision)).toContain(
       "alias-canonical-selector-collision",
     );
+
+    const caseDistinct = validBundle();
+    for (const release of caseDistinct.releases) {
+      const caseDistinctAlias = release.documents.find(
+        (document) => document.kind === "alias",
+      );
+      if (!caseDistinctAlias) throw new Error("missing alias fixture");
+      caseDistinctAlias.content.normalizedSelector = "SOUTHCHIP,SC8562";
+      refreshDocumentAndReleaseDigests(release, caseDistinctAlias);
+    }
+    const caseDistinctPredecessor =
+      caseDistinct.releases[1].manifest.release.predecessor;
+    if (!caseDistinctPredecessor) {
+      throw new Error("missing case-distinct predecessor");
+    }
+    caseDistinctPredecessor.digest =
+      caseDistinct.releases[0].manifest.release.digest;
+    caseDistinct.releases[1].manifest.release.digest = releaseAggregateDigest(
+      caseDistinct.releases[1],
+    );
+    expect(validateBundle(caseDistinct)).toEqual([]);
+  });
+
+  it("rejects an exact alias selector changing owners across lineage", () => {
+    const bundle = validBundle();
+    const release = bundle.releases[1];
+    const originalSubject = release.documents.find(
+      (document) => document.kind === "subject",
+    );
+    const alias = release.documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!originalSubject || !alias) {
+      throw new Error("missing alias ownership fixtures");
+    }
+    const conflictingOwner = structuredClone(originalSubject);
+    conflictingOwner.path = "subjects/conflicting-alias-owner.json";
+    conflictingOwner.content.id = "csub_conflicting_alias_owner";
+    conflictingOwner.content.canonicalKey = "driver:conflicting-alias-owner";
+    const selector = conflictingOwner.content.selector as JsonObject;
+    selector.value = "wiseeff,conflicting-alias-owner";
+    addDocumentToRelease(release, conflictingOwner);
+
+    alias.content.subjectId = conflictingOwner.content.id;
+    refreshDocumentAndReleaseDigests(release, alias);
+
+    expect(validateBundle(bundle)).toContain("alias-selector-owner-conflict");
   });
 
   it("rejects Subject kind and canonical selector kind mismatches", () => {
@@ -2320,7 +2542,7 @@ describe("immutable Catalog Release bundle contract", () => {
         value: "sc8562",
         provenance: { source: "catalog-review" },
       };
-      subject.content.subtype = { family: "device" };
+      subject.content.subtype = {};
       alias.content.selectorKind = "node-type-name";
       const revision = definition.content.revision as JsonObject;
       revision.matching = {
@@ -2414,7 +2636,7 @@ describe("immutable Catalog Release bundle contract", () => {
         value: "sc8562",
         provenance: { source: "catalog-review" },
       };
-      subject.content.subtype = { family: "device" };
+      subject.content.subtype = {};
       alias.content.selectorKind = "node-type-name";
       const revision = definition.content.revision as JsonObject;
       revision.matching = {
@@ -2459,6 +2681,14 @@ describe("immutable Catalog Release bundle contract", () => {
     };
     expect(validateBundle(invalidNodeTypeSubtype)).toEqual(["schema-invalid"]);
 
+    const nodeTypeFamily = structuredClone(nodeTypeBundle);
+    const familySubject = nodeTypeFamily.releases[1].documents.find(
+      (document) => document.kind === "subject",
+    );
+    if (!familySubject) throw new Error("missing NodeType fixture");
+    familySubject.content.subtype = { family: "device" };
+    expect(validateBundle(nodeTypeFamily)).toEqual(["schema-invalid"]);
+
     const reassignedSubtype = structuredClone(driverBundle);
     const reassignedRelease = reassignedSubtype.releases[1];
     const reassignedSubject = reassignedRelease.documents.find(
@@ -2471,6 +2701,270 @@ describe("immutable Catalog Release bundle contract", () => {
     };
     refreshDocumentAndReleaseDigests(reassignedRelease, reassignedSubject);
     expect(validateBundle(reassignedSubtype)).toContain("subject-id-reassigned");
+  });
+
+  it("defines NodeType without a family field or replacement classification", () => {
+    const nodeTypeBundle = validBundle();
+    for (const release of nodeTypeBundle.releases) {
+      const subject = release.documents.find(
+        (document) => document.kind === "subject",
+      );
+      const alias = release.documents.find(
+        (document) => document.kind === "alias",
+      );
+      const definition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!subject || !alias || !definition) {
+        throw new Error("missing NodeType fixture");
+      }
+      subject.content.kind = "node-type";
+      subject.content.canonicalKey = "node-type:sc8562";
+      subject.content.selector = {
+        kind: "node-type-name",
+        value: "sc8562",
+        provenance: { source: "catalog-review" },
+      };
+      subject.content.subtype = {};
+      alias.content.selectorKind = "node-type-name";
+      const revision = definition.content.revision as JsonObject;
+      revision.matching = {
+        ...(revision.matching as JsonObject),
+        selectorKind: "node-type-name",
+      };
+      revision.contentDigest = definitionRevisionContentDigest(definition);
+      refreshDocumentAndReleaseDigests(release, subject);
+      refreshDocumentAndReleaseDigests(release, alias);
+      refreshDocumentAndReleaseDigests(release, definition);
+    }
+    const predecessor = nodeTypeBundle.releases[1].manifest.release.predecessor;
+    if (!predecessor) throw new Error("missing NodeType predecessor");
+    predecessor.digest = nodeTypeBundle.releases[0].manifest.release.digest;
+    nodeTypeBundle.releases[1].manifest.release.digest = releaseAggregateDigest(
+      nodeTypeBundle.releases[1],
+    );
+
+    expect(validateBundle(nodeTypeBundle)).toEqual([]);
+    expect(JSON.stringify(catalogReleaseSchema)).not.toContain('"family"');
+    expect(JSON.stringify(stableIdRules)).not.toContain('"family"');
+    expect(generatedSchemaBytes).not.toContain('"family"');
+  });
+
+  it("consumes the S0-ID compatible constructor and preserves accepted bytes", () => {
+    for (const acceptedValue of [
+      "vendor,driver",
+      "simple",
+      "vendor+tag,driver.rev/1",
+    ]) {
+      const accepted = validBundle();
+      for (const release of accepted.releases) {
+        const subject = release.documents.find(
+          (document) => document.kind === "subject",
+        );
+        if (!subject) throw new Error("missing subject fixture");
+        const selector = subject.content.selector as JsonObject;
+        selector.value = acceptedValue;
+        refreshDocumentAndReleaseDigests(release, subject);
+      }
+      const acceptedPredecessor =
+        accepted.releases[1].manifest.release.predecessor;
+      if (!acceptedPredecessor) throw new Error("missing release predecessor");
+      acceptedPredecessor.digest = accepted.releases[0].manifest.release.digest;
+      accepted.releases[1].manifest.release.digest = releaseAggregateDigest(
+        accepted.releases[1],
+      );
+
+      expect(parseCanonicalCompatibleSelector(acceptedValue)).toEqual({
+        ok: true,
+        value: acceptedValue,
+      });
+      expect(validateBundle(accepted), acceptedValue).toEqual([]);
+      const acceptedSubject = accepted.releases[1].documents.find(
+        (document) => document.kind === "subject",
+      );
+      expect(
+        pointerValue(acceptedSubject, "/content/selector/value"),
+      ).toBe(acceptedValue);
+    }
+
+    for (const [input, reason] of [
+      [42, "not-string"],
+      ["", "empty"],
+      ["vendor,\0driver", "control-character"],
+      ["v\u00e9ndor,driver", "non-ascii"],
+      [" vendor,driver", "surrounding-whitespace"],
+      ["vendor, driver", "whitespace-forbidden"],
+      ['"vendor,driver"', "quoted-source-token"],
+      ["vendor,*", "wildcard-forbidden"],
+      ["vendor,driver,extra", "invalid-syntax"],
+    ] as const) {
+      const rejected = validBundle();
+      const release = rejected.releases[1];
+      const subject = release.documents.find(
+        (document) => document.kind === "subject",
+      );
+      if (!subject) throw new Error("missing subject fixture");
+      const selector = subject.content.selector as JsonObject;
+      selector.value = input;
+      refreshDocumentAndReleaseDigests(release, subject);
+
+      expect(parseCanonicalCompatibleSelector(input)).toEqual({
+        ok: false,
+        error: reason,
+      });
+      expect(validateBundle(rejected), String(input)).toContain(
+        `subject-selector-${reason}`,
+      );
+    }
+  });
+
+  it("consumes the S0-ID node-name constructor and preserves accepted bytes", () => {
+    for (const input of ["/", "charging_core", "usb-controller"]) {
+      const accepted = asNodeTypeBundle(input);
+      expect(parseCanonicalNodeName(input)).toEqual({
+        ok: true,
+        value: input,
+      });
+      expect(validateBundle(accepted), input).toEqual([]);
+      expect(
+        pointerValue(
+          accepted.releases[1].documents.find(
+            (document) => document.kind === "subject",
+          ),
+          "/content/selector/value",
+        ),
+      ).toBe(input);
+    }
+
+    for (const [input, reason] of [
+      ["node@1", "unit-address-present"],
+      ["a".repeat(32), "length-out-of-range"],
+      ["charging core", "whitespace-forbidden"],
+      ["'node'", "quoted-source-token"],
+      ["1node", "invalid-syntax"],
+    ] as const) {
+      const rejected = asNodeTypeBundle(input);
+      expect(parseCanonicalNodeName(input)).toEqual({
+        ok: false,
+        error: reason,
+      });
+      expect(validateBundle(rejected), input).toContain(
+        `subject-selector-${reason}`,
+      );
+    }
+  });
+
+  it("validates aliases with the same S0-ID constructors and exact bytes", () => {
+    const compatibleAlias = validBundle();
+    const compatibleAliasValue = "vendor+tag,legacy.rev/1";
+    for (const release of compatibleAlias.releases) {
+      const alias = release.documents.find(
+        (document) => document.kind === "alias",
+      );
+      if (!alias) throw new Error("missing alias fixture");
+      alias.content.normalizedSelector = compatibleAliasValue;
+      refreshDocumentAndReleaseDigests(release, alias);
+    }
+    const predecessor =
+      compatibleAlias.releases[1].manifest.release.predecessor;
+    if (!predecessor) throw new Error("missing release predecessor");
+    predecessor.digest =
+      compatibleAlias.releases[0].manifest.release.digest;
+    compatibleAlias.releases[1].manifest.release.digest =
+      releaseAggregateDigest(compatibleAlias.releases[1]);
+
+    expect(validateBundle(compatibleAlias)).toEqual([]);
+    expect(
+      pointerValue(
+        compatibleAlias.releases[1].documents.find(
+          (document) => document.kind === "alias",
+        ),
+        "/content/normalizedSelector",
+      ),
+    ).toBe(compatibleAliasValue);
+
+    const invalidCompatibleAlias = validBundle();
+    const compatibleRelease = invalidCompatibleAlias.releases[1];
+    const invalidCompatible = compatibleRelease.documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!invalidCompatible) throw new Error("missing alias fixture");
+    invalidCompatible.content.normalizedSelector = " vendor,legacy";
+    refreshDocumentAndReleaseDigests(compatibleRelease, invalidCompatible);
+    expect(validateBundle(invalidCompatibleAlias)).toContain(
+      "alias-selector-surrounding-whitespace",
+    );
+
+    const invalidNodeAlias = asNodeTypeBundle("sc8562");
+    const nodeRelease = invalidNodeAlias.releases[1];
+    const invalidNode = nodeRelease.documents.find(
+      (document) => document.kind === "alias",
+    );
+    if (!invalidNode) throw new Error("missing alias fixture");
+    invalidNode.content.normalizedSelector = "node@1";
+    refreshDocumentAndReleaseDigests(nodeRelease, invalidNode);
+    expect(validateBundle(invalidNodeAlias)).toContain(
+      "alias-selector-unit-address-present",
+    );
+  });
+
+  it("consumes the S0-ID property-key constructor and preserves accepted bytes", () => {
+    for (const input of ["iin_max", "init_para", "vendor,limit?"]) {
+      const accepted = validBundle();
+      for (const release of accepted.releases) {
+        const definition = release.documents.find(
+          (document) => document.kind === "definition",
+        );
+        if (!definition) throw new Error("missing definition fixture");
+        definition.content.propertyKey = input;
+        refreshDocumentAndReleaseDigests(release, definition);
+      }
+      const predecessor = accepted.releases[1].manifest.release.predecessor;
+      if (!predecessor) throw new Error("missing release predecessor");
+      predecessor.digest = accepted.releases[0].manifest.release.digest;
+      accepted.releases[1].manifest.release.digest = releaseAggregateDigest(
+        accepted.releases[1],
+      );
+
+      expect(parseCanonicalPropertyKey(input)).toEqual({
+        ok: true,
+        value: input,
+      });
+      expect(validateBundle(accepted), input).toEqual([]);
+      expect(
+        pointerValue(
+          accepted.releases[1].documents.find(
+            (document) => document.kind === "definition",
+          ),
+          "/content/propertyKey",
+        ),
+      ).toBe(input);
+    }
+
+    for (const [input, reason] of [
+      ["a".repeat(32), "length-out-of-range"],
+      ["STATUS", "structural-property"],
+      ["#custom", "structural-property"],
+      ["bad/property", "invalid-syntax"],
+      ["bad\tkey", "control-character"],
+    ] as const) {
+      const rejected = validBundle();
+      const release = rejected.releases[1];
+      const definition = release.documents.find(
+        (document) => document.kind === "definition",
+      );
+      if (!definition) throw new Error("missing definition fixture");
+      definition.content.propertyKey = input;
+      refreshDocumentAndReleaseDigests(release, definition);
+
+      expect(parseCanonicalPropertyKey(input)).toEqual({
+        ok: false,
+        error: reason,
+      });
+      expect(validateBundle(rejected), input).toContain(
+        `definition-property-key-${reason}`,
+      );
+    }
   });
 
   it("rejects a successor that silently omits a predecessor Definition snapshot", () => {
@@ -2496,7 +2990,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "0b68b23e7c6c18f5feb05a6de2ea3fad6b2db3cccb32bbf259763e54dfb4a378",
+      "e21b677c4a54cb127677aee36acbf95fe4a0e922194378b240db3713fe99066f",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;

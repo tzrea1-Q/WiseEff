@@ -1,5 +1,24 @@
 {
   "schemaVersion": "1.0.0",
+  "s0IdContract": {
+    "mergedImplementationSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+    "packageEntrypoint": "server/modules/parameter-catalog-contract/index.ts",
+    "serializationGolden": {
+      "path": "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
+      "gitBlobOid": "c856ec070286a32c59ff13d8aef545139435c96c",
+      "byteLength": 1528,
+      "rawSha256": "0979a58a624cf160181425de92816fb1dd8bb285ea27896ba1f95287f6143d75"
+    },
+    "constructors": {
+      "compatible": "parseCanonicalCompatibleSelector",
+      "nodeName": "parseCanonicalNodeName",
+      "propertyKey": "parseCanonicalPropertyKey"
+    },
+    "enumRegistries": {
+      "driverNatures": "driverNatures",
+      "driverInstanceCardinalities": "driverInstanceCardinalities"
+    }
+  },
   "idFormat": {
     "type": "string",
     "minLength": 1,
