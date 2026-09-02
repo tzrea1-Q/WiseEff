@@ -28,17 +28,34 @@ export async function openIndependentCatalogSessions(
     throw new Error("Independent catalog sessions require at least two dedicated pools");
   }
 
-  const sessions = await Promise.all(
-    Array.from({ length: count }, () => openDedicatedSession(connectionString)),
-  );
-  const pids = new Set(sessions.map((session) => session.backendPid));
-  if (pids.size !== sessions.length) {
-    await Promise.all(sessions.map((session) => session.close()));
-    throw new Error(
-      "Independent catalog sessions shared a backend PID; shared-session fixtures are not catalog evidence",
+  const opened: IndependentCatalogSession[] = [];
+  try {
+    const results = await Promise.allSettled(
+      Array.from({ length: count }, () => openDedicatedSession(connectionString)),
     );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        opened.push(result.value);
+      }
+    }
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failure) {
+      throw failure.reason;
+    }
+
+    const pids = new Set(opened.map((session) => session.backendPid));
+    if (pids.size !== opened.length) {
+      throw new Error(
+        "Independent catalog sessions shared a backend PID; shared-session fixtures are not catalog evidence",
+      );
+    }
+    return opened;
+  } catch (error) {
+    await Promise.all(opened.map((session) => session.close().catch(() => undefined)));
+    throw error;
   }
-  return sessions;
 }
 
 async function openDedicatedSession(
@@ -49,46 +66,53 @@ async function openDedicatedSession(
     max: 1,
     allowExitOnIdle: false,
   });
-  const client = await pool.connect();
+  let client: pg.PoolClient | undefined;
   try {
+    client = await pool.connect();
     const pid = await client.query<{ pid: number }>("select pg_backend_pid() as pid");
     const backendPid = pid.rows[0]?.pid;
     if (!backendPid) {
       throw new Error("Failed to read pg_backend_pid for an independent catalog session");
     }
 
+    const connected = client;
     let inTransaction = false;
+    let closed = false;
     const session: IndependentCatalogSession = {
       backendPid,
       query: <Row extends QueryResultRow>(text: string, values: unknown[] = []) =>
-        client.query<Row>(text, values),
+        connected.query<Row>(text, values),
       begin: async () => {
         if (inTransaction) {
           throw new Error("Catalog session is already inside a transaction");
         }
-        await client.query("begin");
+        await connected.query("begin");
         inTransaction = true;
       },
       commit: async () => {
-        await client.query("commit");
+        await connected.query("commit");
         inTransaction = false;
       },
       rollback: async () => {
-        await client.query("rollback");
+        await connected.query("rollback");
         inTransaction = false;
       },
       close: async () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
         if (inTransaction) {
-          await client.query("rollback").catch(() => undefined);
+          await connected.query("rollback").catch(() => undefined);
           inTransaction = false;
         }
-        client.release();
+        connected.release();
         await pool.end();
       },
     };
     return session;
   } catch (error) {
-    client.release();
+    client?.release();
     await pool.end().catch(() => undefined);
     throw error;
   }

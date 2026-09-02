@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import pg from "pg";
 
 import {
   cleanupLeftoverParameterCatalogDatabases,
@@ -10,7 +11,12 @@ import {
   type IndependentCatalogSession,
 } from "./sessions";
 
-describe("independent parameter catalog sessions", () => {
+const CATALOG_TEST_TIMEOUT_MS = 60_000;
+const CATALOG_HOOK_TIMEOUT_MS = 120_000;
+
+describe("independent parameter catalog sessions", {
+  timeout: CATALOG_TEST_TIMEOUT_MS,
+}, () => {
   let database: ParameterCatalogDatabase | undefined;
   let sessions: IndependentCatalogSession[] = [];
 
@@ -18,7 +24,7 @@ describe("independent parameter catalog sessions", () => {
     await Promise.all(sessions.map((session) => session.close().catch(() => undefined)));
     await database?.close().catch(() => undefined);
     await cleanupLeftoverParameterCatalogDatabases();
-  });
+  }, CATALOG_HOOK_TIMEOUT_MS);
 
   it("refuses to treat a single shared session as independent catalog evidence", async () => {
     database = await createDisposableParameterCatalogDatabase("sessions");
@@ -66,5 +72,50 @@ describe("independent parameter catalog sessions", () => {
       `select count(*)::bigint as n from parameter_catalog.catalog_releases where id = 'crel-session-a'`,
     );
     expect(Number(committed.rows[0]?.n)).toBe(1);
+  });
+
+  it("closes already-opened sessions when a later connect fails", async () => {
+    await Promise.all(sessions.map((session) => session.close().catch(() => undefined)));
+    sessions = [];
+    database ??= await createDisposableParameterCatalogDatabase("sessions");
+    const catalog = database;
+    const originalConnect = pg.Pool.prototype.connect;
+    let connectCount = 0;
+    const spy = vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(function (
+      this: pg.Pool,
+    ) {
+      connectCount += 1;
+      if (connectCount >= 2) {
+        return Promise.reject(new Error("injected catalog session connect failure"));
+      }
+      return Reflect.apply(originalConnect, this, []) as Promise<pg.PoolClient>;
+    });
+
+    try {
+      await expect(openIndependentCatalogSessions(catalog.url, 2)).rejects.toThrow(
+        /injected catalog session connect failure/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+
+    const observer = new pg.Client({ connectionString: catalog.url });
+    await observer.connect();
+    try {
+      await expect
+        .poll(async () => {
+          const leftover = await observer.query<{ n: string }>(
+            `select count(*)::bigint as n
+             from pg_catalog.pg_stat_activity
+             where datname = current_database()
+               and pid <> pg_backend_pid()
+               and backend_type = 'client backend'`,
+          );
+          return Number(leftover.rows[0]?.n);
+        })
+        .toBe(0);
+    } finally {
+      await observer.end();
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
@@ -15,7 +16,30 @@ import {
   type ParameterCatalogDatabase,
 } from "./index";
 
-describe("parameter catalog database harness", () => {
+const CATALOG_TEST_TIMEOUT_MS = 60_000;
+const CATALOG_HOOK_TIMEOUT_MS = 120_000;
+
+async function withPostgresAdmin<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
+  const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
+  await admin.connect();
+  try {
+    return await fn(admin);
+  } finally {
+    await admin.end();
+  }
+}
+
+async function databaseExists(name: string): Promise<boolean> {
+  return withPostgresAdmin(async (admin) => {
+    const result = await admin.query<{ exists: boolean }>(
+      "select exists(select 1 from pg_database where datname = $1) as exists",
+      [name],
+    );
+    return result.rows[0]?.exists === true;
+  });
+}
+
+describe("parameter catalog database harness", { timeout: CATALOG_TEST_TIMEOUT_MS }, () => {
   it("rejects PGLite, SQLite, and in-memory URLs as catalog evidence", () => {
     expect(() => assertRealPostgresUrl("pglite://memory")).toThrow(/PGLite|in-memory|fake/i);
     expect(() => assertRealPostgresUrl("postgres://localhost/pglite")).toThrow(
@@ -41,13 +65,15 @@ describe("parameter catalog database harness", () => {
   });
 });
 
-describe("disposable real-pgvector parameter catalog database", () => {
+describe("disposable real-pgvector parameter catalog database", {
+  timeout: CATALOG_TEST_TIMEOUT_MS,
+}, () => {
   let database: ParameterCatalogDatabase | undefined;
 
   afterAll(async () => {
     await database?.close().catch(() => undefined);
     await cleanupLeftoverParameterCatalogDatabases();
-  });
+  }, CATALOG_HOOK_TIMEOUT_MS);
 
   it("creates a checked-empty frozen-schema database on a real pgvector server", async () => {
     database = await createDisposableParameterCatalogDatabase("schema");
@@ -98,19 +124,48 @@ describe("disposable real-pgvector parameter catalog database", () => {
     await leftover.abandon();
     const dropped = await cleanupLeftoverParameterCatalogDatabases();
     expect(dropped).toContain(leftoverName);
+    expect(await databaseExists(leftoverName)).toBe(false);
+  });
 
-    const admin = new pg.Client({
-      connectionString: connectionStringFor("postgres"),
+  it("reaps only this run's idle leftovers and skips live backends", async () => {
+    const foreignName = `wiseeff_pcat_foreignrun_probe_${randomBytes(3).toString("hex")}`;
+    await withPostgresAdmin(async (admin) => {
+      await admin.query(`drop database if exists ${foreignName} with (force)`);
+      await admin.query(`create database ${foreignName}`);
     });
-    await admin.connect();
+
+    const live = await createCheckedEmptyDatabase("livebk");
+    const liveClient = new pg.Client({ connectionString: live.url });
+    await liveClient.connect();
     try {
-      const exists = await admin.query<{ exists: boolean }>(
-        "select exists(select 1 from pg_database where datname = $1) as exists",
-        [leftoverName],
-      );
-      expect(exists.rows[0]?.exists).toBe(false);
+      await live.abandon();
+      const droppedWhileLive = await cleanupLeftoverParameterCatalogDatabases();
+      expect(droppedWhileLive).not.toContain(live.name);
+      expect(droppedWhileLive).not.toContain(foreignName);
+      expect(await databaseExists(live.name)).toBe(true);
+      expect(await databaseExists(foreignName)).toBe(true);
+
+      await liveClient.end();
+      const droppedAfterDisconnect = await cleanupLeftoverParameterCatalogDatabases();
+      expect(droppedAfterDisconnect).toContain(live.name);
+      expect(droppedAfterDisconnect).not.toContain(foreignName);
+      expect(await databaseExists(live.name)).toBe(false);
     } finally {
-      await admin.end();
+      await liveClient.end().catch(() => undefined);
+      await cleanupLeftoverParameterCatalogDatabases().catch(() => undefined);
+      await withPostgresAdmin(async (admin) => {
+        await admin.query(`drop database if exists ${foreignName} with (force)`);
+      }).catch(() => undefined);
     }
+  });
+
+  it("drops abandoned schema clones and treats later close as safe", async () => {
+    const schemaDb = await createDisposableParameterCatalogDatabase("abandn");
+    const name = schemaDb.name;
+    await schemaDb.abandon();
+    await expect(schemaDb.close()).resolves.toBeUndefined();
+    await cleanupLeftoverParameterCatalogDatabases();
+    expect(await databaseExists(name)).toBe(false);
+    await expect(schemaDb.close()).resolves.toBeUndefined();
   });
 });

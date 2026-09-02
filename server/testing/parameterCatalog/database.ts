@@ -43,6 +43,7 @@ select coalesce(sum(value), 0)::bigint as object_count from object_counts
 `;
 
 const liveCatalogDatabases = new Set<string>();
+const abandonedCatalogDatabases = new Set<string>();
 
 export type CatalogServerIdentity = {
   version: string;
@@ -425,26 +426,67 @@ async function dropCatalogDatabase(name: string): Promise<void> {
     await admin.query(`drop database if exists ${name} with (force)`);
   });
   liveCatalogDatabases.delete(name);
+  abandonedCatalogDatabases.delete(name);
+}
+
+async function dropIdleCatalogDatabaseWithAdmin(
+  admin: pg.Client,
+  name: string,
+): Promise<boolean> {
+  if (liveCatalogDatabases.has(name)) {
+    return false;
+  }
+  assertSafeDatabaseName(name);
+  const liveBackends = await admin.query<{ exists: boolean }>(
+    `select exists(select 1 from pg_stat_activity where datname = $1) as exists`,
+    [name],
+  );
+  if (liveBackends.rows[0]?.exists === true) {
+    return false;
+  }
+  try {
+    // No force: if another live worker connects between the check and the drop,
+    // the drop fails and we leave their database alone.
+    await admin.query(`drop database if exists ${name}`);
+    abandonedCatalogDatabases.delete(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function dropIdleCatalogDatabase(name: string): Promise<boolean> {
+  return withAdminClient((admin) => dropIdleCatalogDatabaseWithAdmin(admin, name));
 }
 
 export async function cleanupLeftoverParameterCatalogDatabases(): Promise<string[]> {
   const dropped: string[] = [];
+  const thisRunPrefix = `${CATALOG_DATABASE_PREFIX}${currentRunToken()}_`;
+
   await withAdminClient(async (admin) => {
-    const rows = await admin.query<{ datname: string }>(
+    const leftovers = await admin.query<{ datname: string }>(
       `select datname
        from pg_database
-       where datname like '${CATALOG_DATABASE_PREFIX}%'
+       where datname like $1
        order by datname`,
+      [`${thisRunPrefix}%`],
     );
-    for (const row of rows.rows) {
-      if (liveCatalogDatabases.has(row.datname)) {
+    for (const row of leftovers.rows) {
+      if (await dropIdleCatalogDatabaseWithAdmin(admin, row.datname)) {
+        dropped.push(row.datname);
+      }
+    }
+
+    for (const name of [...abandonedCatalogDatabases]) {
+      if (dropped.includes(name)) {
         continue;
       }
-      assertSafeDatabaseName(row.datname);
-      await admin.query(`drop database if exists ${row.datname} with (force)`);
-      dropped.push(row.datname);
+      if (await dropIdleCatalogDatabaseWithAdmin(admin, name)) {
+        dropped.push(name);
+      }
     }
   });
+
   return dropped;
 }
 
@@ -462,6 +504,8 @@ function registerHandle(
       return;
     }
     closed = true;
+    abandonedCatalogDatabases.delete(name);
+    liveCatalogDatabases.delete(name);
     await drop();
   };
   return {
@@ -477,6 +521,10 @@ function registerHandle(
       }
       closed = true;
       liveCatalogDatabases.delete(name);
+      abandonedCatalogDatabases.add(name);
+      if (!name.startsWith(CATALOG_DATABASE_PREFIX)) {
+        await dropIdleCatalogDatabase(name);
+      }
     },
   };
 }
@@ -492,17 +540,19 @@ export async function createCheckedEmptyDatabase(
   await readCatalogServerIdentity(baseUrl);
   await cleanupLeftoverParameterCatalogDatabases();
   const name = catalogDatabaseName(label);
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${name}`);
-  });
-  const url = connectionStringFor(name);
+  liveCatalogDatabases.add(name);
   try {
+    await withAdminClient(async (admin) => {
+      await admin.query(`create database ${name}`);
+    });
+    const url = connectionStringFor(name);
     await assertCheckedEmptyDatabase(url);
     const identity = await readCatalogServerIdentity(url, {
       requireInstalledVector: false,
     });
     return registerHandle(name, url, identity, null, () => dropCatalogDatabase(name));
   } catch (error) {
+    liveCatalogDatabases.delete(name);
     await dropCatalogDatabase(name).catch(() => undefined);
     throw error;
   }
@@ -517,6 +567,8 @@ export async function createDisposableParameterCatalogDatabase(
 ): Promise<ParameterCatalogDatabase> {
   resolveCatalogDatabaseUrl();
   const ephemeral = await createEphemeralTestDatabase(`pc${label}`);
+  const name = databaseNameFromUrl(ephemeral.url);
+  liveCatalogDatabases.add(name);
   try {
     const identity = await readCatalogServerIdentity(ephemeral.url, {
       requireInstalledVector: true,
@@ -528,12 +580,14 @@ export async function createDisposableParameterCatalogDatabase(
       );
     }
     await assertCheckedEmptyCatalog(ephemeral.url);
-    const name = databaseNameFromUrl(ephemeral.url);
     return registerHandle(name, ephemeral.url, identity, schemaFingerprint, async () => {
       liveCatalogDatabases.delete(name);
+      abandonedCatalogDatabases.delete(name);
       await ephemeral.drop();
     });
   } catch (error) {
+    liveCatalogDatabases.delete(name);
+    abandonedCatalogDatabases.delete(name);
     await ephemeral.drop().catch(() => undefined);
     throw error;
   }

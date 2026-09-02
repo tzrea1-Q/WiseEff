@@ -14,7 +14,12 @@ import {
   verifyRehearsalFixtureChecksums,
 } from "./fixtureLoader";
 
-describe("checksum-locked parameter catalog fixture loader", () => {
+const CATALOG_TEST_TIMEOUT_MS = 60_000;
+const CATALOG_HOOK_TIMEOUT_MS = 120_000;
+
+describe("checksum-locked parameter catalog fixture loader", {
+  timeout: CATALOG_TEST_TIMEOUT_MS,
+}, () => {
   it("accepts the S0-FIX rehearsal SQL bytes and rejects mutated copies", async () => {
     await verifyRehearsalFixtureChecksums();
     expect(() =>
@@ -27,13 +32,15 @@ describe("checksum-locked parameter catalog fixture loader", () => {
   });
 });
 
-describe("checked-empty rehearsal fixture loading", () => {
+describe("checked-empty rehearsal fixture loading", {
+  timeout: CATALOG_TEST_TIMEOUT_MS,
+}, () => {
   const databases: ParameterCatalogDatabase[] = [];
 
   afterAll(async () => {
     await Promise.all(databases.map((database) => database.close().catch(() => undefined)));
     await cleanupLeftoverParameterCatalogDatabases();
-  });
+  }, CATALOG_HOOK_TIMEOUT_MS);
 
   it("refuses to load onto a dirty catalog", async () => {
     const database = await createDisposableParameterCatalogDatabase("dirty");

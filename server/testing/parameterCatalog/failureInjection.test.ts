@@ -23,13 +23,18 @@ async function countRelease(
   return Number(result.rows[0]?.n ?? 0);
 }
 
-describe("parameter catalog commit failure injection", () => {
+const CATALOG_TEST_TIMEOUT_MS = 60_000;
+const CATALOG_HOOK_TIMEOUT_MS = 120_000;
+
+describe("parameter catalog commit failure injection", {
+  timeout: CATALOG_TEST_TIMEOUT_MS,
+}, () => {
   let database: ParameterCatalogDatabase | undefined;
 
   afterAll(async () => {
     await database?.close().catch(() => undefined);
     await cleanupLeftoverParameterCatalogDatabases();
-  });
+  }, CATALOG_HOOK_TIMEOUT_MS);
 
   it("rolls back an injected application failure before COMMIT", async () => {
     database = await createDisposableParameterCatalogDatabase("failapp");
