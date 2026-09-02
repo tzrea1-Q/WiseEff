@@ -176,6 +176,10 @@ Organization 可以提交 observation、review evidence 或 repository change pr
 
 ## 影响
 
+### G0.1 compiler identity 补充
+
+Bundle publication、compilation 与 synchronization 必须消费 ADR-0040 和 active #668 规格定义的三个 S0-ID canonical constructors；manifest 不能提供第二套 normalization algorithm。Compiled bytes 保留接受后的原始 ASCII 值，非法 whitespace、quoting、Unicode、wildcard、unit-address、property shape 或 structural property 必须在任何数据库写入前拒绝。`DriverNature` 与 `DriverInstanceCardinality` 只能使用各自两个封闭值；NodeType 不携带 family。Canonical/alias selector collision 在完整 release 与 lineage 上按 accepted exact bytes + selector kind 检查，并覆盖并发 publication attempt。
+
 - 目标模型取代 ADR-0008 与 ADR-0009 的 organization-overlay 发布模型。在有界 cutover 真正移除旧路径前，这两份 ADR 仍描述 legacy runtime 行为；本决策不是提前删除或绕过迁移证据的授权。
 - ADR-0011 的 soft-deprecation 安全性继续保留，explicit retirement 成为另一种保留历史但退出 forward matching 的动作。
 - ADR-0040 取代对 ADR-0032 的任何“documentation 可原地修改”解释：documentation 变化要创建 DefinitionRevision 并推进 Definition head，但不制造 Binding 或 ProjectValue cutover。
