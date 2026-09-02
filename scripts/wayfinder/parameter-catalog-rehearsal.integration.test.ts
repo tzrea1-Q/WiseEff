@@ -1,6 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +115,7 @@ async function writeSafeArtifact(artifactDir: string) {
       "key,value",
       "format_version,2",
       "artifact_kind,parameter-catalog-populated-rehearsal-fixture",
+      "fixture_mode,populated",
       "data_rows_exported,0",
       "source_data_rows_exported,0",
       "synthetic_fixture_version,1",
@@ -182,6 +192,10 @@ describe("parameter catalog rehearsal SQL containment", () => {
       "dynamic-set-config",
       "select set_config('search_path', 'public', false);",
     ],
+    ["copy-to-program", "copy (select 'escape') to program 'touch /tmp/wf671';"],
+    ["copy-to-server-file", "copy (select 'escape') to '/tmp/wf671';"],
+    ["copy-from-server-file", "copy wf671_candidate from '/tmp/wf671';"],
+    ["copy-to-stdout", "copy (select 'escape') to stdout;"],
   ])("rejects %s before opening a database session", async (_name, sql) => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-unsafe-sql-"),
@@ -292,6 +306,56 @@ describe("parameter catalog rehearsal SQL containment", () => {
 });
 
 describe("parameter catalog rehearsal artifact containment", () => {
+  it("requires an explicit fixture mode before opening a database session", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-explicit-mode-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const databaseSessionMarker = path.join(tempRoot, "database-session-opened");
+    try {
+      await mkdir(fakeBin);
+      await writeFile(
+        fakeDocker,
+        [
+          "#!/usr/bin/env bash",
+          'printf %s invoked > "${WAYFINDER_DB_SESSION_MARKER:?}"',
+          "exit 97",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeDocker, 0o755);
+      const result = spawnSync(
+        "bash",
+        [
+          exporter,
+          "--container",
+          "wayfinder-explicit-mode-probe",
+          "--output-dir",
+          path.join(tempRoot, "artifact"),
+        ],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            WAYFINDER_DB_SESSION_MARKER: databaseSessionMarker,
+          },
+        },
+      );
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain(
+        "--fixture-mode must be explicitly set to populated or zero",
+      );
+      await expect(readFile(databaseSessionMarker, "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("accepts only the exact regular-file artifact world", async () => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-world-"),
@@ -382,6 +446,40 @@ describe("parameter catalog rehearsal artifact containment", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("rejects a manifest whose fixture mode and artifact kind disagree", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-mode-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      const manifestPath = path.join(artifactDir, "manifest.csv");
+      await writeFile(
+        manifestPath,
+        (await readFile(manifestPath, "utf8")).replace(
+          "fixture_mode,populated",
+          "fixture_mode,zero",
+        ),
+      );
+      await refreshArtifactChecksums(artifactDir);
+
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--artifact-dir",
+        artifactDir,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "Zero fixture manifest mode and import policy disagree",
+      );
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parameter catalog rehearsal cleanup containment", () => {
@@ -419,11 +517,275 @@ describe("parameter catalog rehearsal cleanup containment", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("never deletes a foreign output path created after the preflight check", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-export-race-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const invocationCounter = path.join(tempRoot, "docker-invocations");
+    const outputDir = path.join(tempRoot, "artifact");
+    const foreignFile = path.join(outputDir, "foreign-data");
+    try {
+      await mkdir(fakeBin);
+      await writeFile(
+        fakeDocker,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'counter="${WAYFINDER_DOCKER_INVOCATIONS:?}"',
+          'current="$(cat "${counter}" 2>/dev/null || printf 0)"',
+          'current="$((current + 1))"',
+          'printf "%s" "${current}" > "${counter}"',
+          'case "${current}" in',
+          "  1) printf 'on\\n' ;;",
+          "  2) ;;",
+          "  3)",
+          '    mkdir -p "${WAYFINDER_FOREIGN_OUTPUT:?}"',
+          '    printf "%s\\n" foreign > "${WAYFINDER_FOREIGN_OUTPUT}/foreign-data"',
+          "    exit 73",
+          "    ;;",
+          "  *) exit 97 ;;",
+          "esac",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeDocker, 0o755);
+
+      const result = spawnSync(
+        "bash",
+        [
+          exporter,
+          "--container",
+          "wayfinder-export-race-probe",
+          "--database",
+          "wiseeff",
+          "--fixture-mode",
+          "populated",
+          "--output-dir",
+          outputDir,
+        ],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            WAYFINDER_DOCKER_INVOCATIONS: invocationCounter,
+            WAYFINDER_FOREIGN_OUTPUT: outputDir,
+          },
+        },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("EXPORT_FAILED");
+      expect(await readFile(foreignFile, "utf8")).toBe("foreign\n");
+      expect(
+        (await readdir(tempRoot)).filter((entry) => entry.startsWith("artifact.tmp.")),
+      ).toEqual([]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe.skipIf(!(databaseAvailable && containerAvailable))(
   "parameter catalog rehearsal artifact",
   () => {
+    it(
+      "rejects external COPY effects against the real PostgreSQL target before any side effect",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-copy-side-effect-"),
+        );
+        const candidateFile = path.join(tempRoot, "candidate.sql");
+        const validationFile = path.join(tempRoot, "validation.sql");
+        const marker = `/tmp/wiseeff-wayfinder671-copy-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        const restoreDatabase = `wiseeff_wayfinder671_restore_copy_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+
+        try {
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const db = createDatabase({
+              query: async (text, values = []) => {
+                const result = await client.query(text, values);
+                return { rows: result.rows, rowCount: result.rowCount };
+              },
+            });
+            await applyMigrations(db, migrationsDir, {
+              through: "0128_repair_driver_placement_subject_cutover.sql",
+            });
+            const before = await client.query<{ count: string }>(
+              "select count(*)::text as count from schema_migrations",
+            );
+            expect(
+              spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
+                .status,
+            ).toBe(0);
+            await writeFile(
+              candidateFile,
+              `copy (select 'escape') to program 'touch ${marker}';\n`,
+            );
+            await writeFile(validationFile, "select 1;\n");
+
+            const result = runResult("bash", [
+              rehearser,
+              "--container",
+              containerName,
+              "--database",
+              restoreDatabase,
+              "--migration-file",
+              candidateFile,
+              "--validation-file",
+              validationFile,
+            ]);
+
+            expect(result.status).toBe(2);
+            expect(result.stderr).toContain(
+              "SQL input contains a forbidden transaction, session, or psql control",
+            );
+            expect(
+              spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
+                .status,
+            ).toBe(0);
+            const after = await client.query<{ count: string }>(
+              "select count(*)::text as count from schema_migrations",
+            );
+            expect(after.rows).toEqual(before.rows);
+          } finally {
+            await client.end();
+          }
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "exports, imports, verifies, and rolls back an explicit zero-inventory fixture",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-zero-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const candidateFile = path.join(tempRoot, "candidate.sql");
+        const validationFile = path.join(tempRoot, "validation.sql");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_zero_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_zero_source", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "zero",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+
+          expect(await readFile(path.join(artifactDir, "manifest.csv"), "utf8"))
+            .toContain("fixture_mode,zero\n");
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+          run("bash", [
+            importer,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--artifact-dir",
+            artifactDir,
+          ]);
+
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const zeroInventory = await client.query<{
+              parameter_specs: string;
+              driver_schemas: string;
+              bindings: string;
+              fixture_cases: string;
+            }>(`
+              select
+                (select count(*)::text from parameter_specs) as parameter_specs,
+                (select count(*)::text from driver_schemas) as driver_schemas,
+                (select count(*)::text from project_parameter_bindings) as bindings,
+                (select count(*)::text from wayfinder_rehearsal.fixture_cases)
+                  as fixture_cases
+            `);
+            expect(zeroInventory.rows).toEqual([
+              {
+                parameter_specs: "0",
+                driver_schemas: "0",
+                bindings: "0",
+                fixture_cases: "0",
+              },
+            ]);
+          } finally {
+            await client.end();
+          }
+
+          await writeFile(candidateFile, "create schema wf671_zero_candidate;\n");
+          await writeFile(
+            validationFile,
+            `
+              do $$
+              begin
+                if exists (select 1 from parameter_specs) then
+                  raise exception 'zero fixture unexpectedly contains parameter specs';
+                end if;
+              end
+              $$;
+            `,
+          );
+          const rehearsal = run("bash", [
+            rehearser,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--migration-file",
+            candidateFile,
+            "--validation-file",
+            validationFile,
+          ]);
+          expect(rehearsal.stdout).toContain("REHEARSAL_ROLLBACK_OK");
+          expect(rehearsal.stdout).toContain("fixture_mode=zero");
+          expect(rehearsal.stdout).toContain("fixture_cases=0");
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
     it(
       "imports a deterministic populated graph that replays the observed migration cohorts",
       async () => {
@@ -446,6 +808,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -667,6 +1031,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -723,6 +1089,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -800,6 +1168,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -871,6 +1241,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -960,6 +1332,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);
@@ -1133,6 +1507,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                 containerName,
                 "--database",
                 databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
                 "--output-dir",
                 artifactDir,
               ]);

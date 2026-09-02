@@ -1,8 +1,8 @@
-# Parameter Catalog Populated Rehearsal Fixture
+# Parameter Catalog Populated and Zero-Inventory Rehearsal Fixture
 
 > Chinese: [中文](../zh-CN/references/parameter-catalog-rehearsal-fixture.md)
 
-This checksum-locked Wayfinder asset produces an executable PostgreSQL rehearsal input for the future replacement parameter-catalog migration. It combines a read-only structural and aggregate profile of the populated self-hosted database with a deterministic, non-sensitive row-level graph. It is planning and migration-design evidence, not a production backup, production migration, or release-readiness claim.
+This checksum-locked Wayfinder asset produces executable PostgreSQL rehearsal inputs for the future replacement parameter-catalog migration. Explicit `populated` mode combines a read-only structural and aggregate profile with a deterministic, non-sensitive row-level graph. Explicit `zero` mode retains the schema/profile and migration ledger, injects no synthetic graph, and executes zero-catalog-inventory predicates. It is planning and migration-design evidence, not a production backup, production migration, or release-readiness claim.
 
 No source database row is copied. The populated graph is generated from checked-in SQL whose identifiers start with `wf671-` and whose values are explicit synthetic placeholders.
 
@@ -16,20 +16,20 @@ The artifact contains exactly these checksum-protected files:
 
 - `schema.sql`: source schema only, without owners, privileges, comments, or data statements;
 - `profile-schema.sql`: tables under `wayfinder_rehearsal` for the source profile and fixture case registry;
-- `synthetic-fixture.sql`: deterministic populated rows;
-- `synthetic-fixture-verify.sql`: fail-closed relational assertions;
+- `synthetic-fixture.sql`: deterministic populated rows, executed only in `populated` mode;
+- `synthetic-fixture-verify.sql`: fail-closed mode-aware relational assertions;
 - `relations.csv`, `columns.csv`, `constraints.csv`, `indexes.csv`, and `triggers.csv`;
 - `migration-inventory.csv`, `row-counts.csv`, `row-classes.csv`, and `invariant-counts.csv`;
-- `manifest.csv` with `format_version=2`, `source_data_rows_exported=0`, and `import_populates_synthetic_rows=true`;
+- `manifest.csv` with `format_version=2`, explicit `fixture_mode`, `source_data_rows_exported=0`, and a matching `import_populates_synthetic_rows` policy;
 - `SHA256SUMS`, with exactly one safe entry for every other required file.
 
-The importer treats this as a closed-world set. It rejects missing files, unknown entries, symlinks, directories, devices, sockets, FIFOs, other non-regular entries, missing or duplicate checksum entries, unsafe names, path traversal, checksum mismatch, and manifests that do not describe format 2 of the populated fixture. These checks happen before hashing or database access. The manifest retains the historical source/checksum and pins the exact `synthetic-fixture-verify.sql` checksum.
+The importer treats this as a closed-world set. It rejects missing files, unknown entries, symlinks, directories, devices, sockets, FIFOs, other non-regular entries, missing or duplicate checksum entries, unsafe names, path traversal, checksum mismatch, and manifests whose format, mode, artifact kind, or import policy disagree. These checks happen before database access. The manifest retains the historical source/checksum and pins the exact `synthetic-fixture-verify.sql` checksum.
 
-The exporter applies the same closed-world regular-file check to its registered repository SQL inputs and generated artifact set. It secret-scans every registered source and every generated schema, profile, manifest, output, and log before publishing the archive. Import repeats the scan over every registered artifact. A failure cleans every exporter-owned staging/output path; partial output is never retained.
+The exporter applies the same closed-world regular-file check to its registered repository SQL inputs and generated artifact set. It secret-scans every registered source and every generated schema, profile, manifest, output, and log before publishing the archive. Import repeats the scan over every registered artifact. Publication uses private staging, an ownership marker, and same-inode links. Failure cleanup removes only paths whose ownership is still provable; a concurrent foreign path is never deleted and instead makes cleanup fail closed.
 
 The source profile records relation structure, immutable migration names and checksums, exact relation counts, closed-enum/presence/alignment buckets, invariant counts, and logical/schema/file/archive SHA-256 checksums. PostgreSQL's per-run `\restrict` nonce is excluded only from the canonical dump checksum; the file checksum protects the exact dump bytes.
 
-On import, the schema, profile CSVs, safe migration names/checksums, synthetic graph, and graph verification execute in one transaction. The migration ledger uses a fixed synthetic timestamp, keeping the restored 0128 schema executable by later append-only migration tooling without exporting original deployment timestamps. Any late failure rolls the entire target back to checked-empty, verifies that cleanup, removes importer-owned temporary output, and only then emits `CLEANUP_OK`; cleanup failure fails the command.
+On import, the schema, profile CSVs, safe migration names/checksums, optional populated graph, and mode-aware verification execute in one transaction. The migration ledger uses a fixed synthetic timestamp, keeping the restored 0128 schema executable by later append-only migration tooling without exporting original deployment timestamps. Any late failure rolls the entire target back to checked-empty, verifies that cleanup, removes importer-owned temporary output, and only then emits `CLEANUP_OK`; cleanup failure fails the command.
 
 ## Deterministic populated graph
 
@@ -58,10 +58,13 @@ Run from an isolated checkout of this branch. The output directory, archive, and
 
 ```bash
 scripts/wayfinder/export-parameter-catalog-rehearsal.sh \
+  --fixture-mode populated \
   --compose-file ops/self-hosted/compose.yaml \
   --env-file /absolute/path/to/ops/self-hosted/.env \
   --output-dir /absolute/path/to/wiseeff-wayfinder-671-export-YYYYMMDDTHHMMSSZ
 ```
+
+Use `--fixture-mode zero` only with a source whose profiled parameter-catalog relations are empty. Baseline platform organizations created by historical migrations are allowed; the importer still requires every catalog relation and `fixture_cases` to remain empty.
 
 The exporter records the database's exact applied migration inventory; it does not require the latest repository migration. It refuses to continue unless the required catalog relations exist and PostgreSQL proves the diagnostic transaction is read-only.
 
@@ -85,6 +88,7 @@ Expected terminal markers include:
 IMPORT_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
 loaded_fixture_cases=10
+fixture_mode=populated
 loaded_migration_ledger_rows=126
 data_rows_exported=0
 source_data_rows_exported=0
@@ -115,7 +119,7 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
   --validation-file /absolute/path/to/candidate-validation.sql
 ```
 
-Before opening a database session, the PostgreSQL-aware input lexer rejects transaction, session, and psql escape. This includes `COMMIT WORK`, top-level `END`, prepared transactions, savepoints, `COPY ... FROM STDIN`, every psql meta-command (including `\i`, `\ir`, `\gexec`, `\gset`, `\copy`, `\connect`, `\!`, and `\q`), autocommit changes, role/search-path/session mutation, and dynamically executed control SQL. PostgreSQL comments, strings, quoted identifiers, nested block comments, dollar quoting, and PL/pgSQL block `BEGIN`/`END` are distinguished rather than checked by a text grep.
+Before opening a database session, the PostgreSQL-aware input lexer rejects transaction, session, and psql escape. This includes `COMMIT WORK`, top-level `END`, prepared transactions, savepoints, every SQL `COPY` form (including server files, `PROGRAM`, `STDIN`, and `STDOUT`), every psql meta-command (including `\i`, `\ir`, `\gexec`, `\gset`, `\copy`, `\connect`, `\!`, and `\q`), autocommit changes, role/search-path/session mutation, and all procedural dynamic `EXECUTE`. PostgreSQL comments, strings, quoted identifiers, nested block comments, dollar quoting, and PL/pgSQL block `BEGIN`/`END` are distinguished rather than checked by a text grep.
 
 The runner checksum-matches the locked verifier to the imported manifest, secret-scans both SQL inputs and every generated dump/log, and executes `synthetic-fixture-verify.sql` exactly three times: before candidate mutation; after candidate plus validation and immediately before rollback; and after rollback. It hashes canonical full database dumps before and after and succeeds only if both hashes are identical. All runner-owned temporary files and child processes must be gone before the one success marker `CLEANUP_OK` is emitted. Expected output includes:
 
@@ -128,10 +132,11 @@ target_database=wiseeff_wayfinder671_restore_<suffix>
 before_sha256=<64 lowercase hex characters>
 after_sha256=<the same value>
 fixture_cases=10
+fixture_mode=populated
 CLEANUP_OK
 ```
 
-This proves that a transaction-safe candidate can map and validate the populated graph without leaving durable changes. It does not prove that an as-yet undesigned replacement migration has correct destination semantics.
+In zero mode the corresponding output is `fixture_mode=zero` and `fixture_cases=0`. This proves that a transaction-safe candidate can execute either the populated or fresh zero-inventory path without leaving durable changes. It does not prove that an as-yet undesigned replacement migration has correct destination semantics.
 
 Candidate validation for `legacy-twin-r6-r8` must preserve both legacy IDs and their source attribution graphs. R6 may become only `Observation`, `ReviewEvidence`, or `Archive`; R8 may become only `Proposal`, `Observation`, or `Archive`. Property-key equality must never merge them, reattribute either row, infer a formal subject, activate either legacy row, or materialize one or more current Definitions. A future authoritative Platform definition can only come from the separately governed Catalog Release synchronizer, not from this twin.
 
@@ -143,7 +148,7 @@ The integration test requires a reachable real PostgreSQL instance and its Docke
 npm run test:scripts -- scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts
 ```
 
-It proves the source/artifact closed worlds, lexer/session/psql denial matrix, full generated-artifact secret scanning, cleanup failure behavior, atomic populated export/import, all fixture cohorts, strict manifest rejection, true empty-database rejection, candidate validation, same-key R6/R8 separation, rejection of a property-key merge candidate, three graph verifications, and canonical-dump rollback equality.
+It proves the source/artifact closed worlds, lexer/session/psql denial matrix, full generated-artifact secret scanning, ownership-safe cleanup behavior, atomic populated and zero export/import, all populated fixture cohorts, executable zero-inventory predicates, strict manifest rejection, true empty-database rejection, candidate validation, same-key R6/R8 separation, rejection of a property-key merge candidate, three mode-aware verifications, and canonical-dump rollback equality.
 
 When finished, drop only the explicitly named disposable database:
 

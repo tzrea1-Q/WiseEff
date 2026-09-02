@@ -177,6 +177,7 @@ manifest_value() {
 
 format_version="$(manifest_value format_version || true)"
 artifact_kind="$(manifest_value artifact_kind || true)"
+fixture_mode="$(manifest_value fixture_mode || true)"
 data_rows_exported_manifest="$(manifest_value data_rows_exported || true)"
 source_data_rows_exported="$(manifest_value source_data_rows_exported || true)"
 synthetic_fixture_version="$(manifest_value synthetic_fixture_version || true)"
@@ -185,17 +186,35 @@ historical_source_commit="$(manifest_value historical_source_commit || true)"
 historical_bundle_sha256="$(manifest_value historical_bundle_sha256 || true)"
 synthetic_fixture_verify_sha256="$(manifest_value synthetic_fixture_verify_sha256 || true)"
 if [[ "${format_version}" != "2" \
-   || "${artifact_kind}" != "parameter-catalog-populated-rehearsal-fixture" \
    || "${data_rows_exported_manifest}" != "0" \
    || "${source_data_rows_exported}" != "0" \
    || "${synthetic_fixture_version}" != "1" \
-   || "${import_populates_synthetic_rows}" != "true" \
    || "${historical_source_commit}" != "6c3adfc35c0e3be6d5d381013dace9408190380e" \
    || "${historical_bundle_sha256}" != "017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff" \
    || ! "${synthetic_fixture_verify_sha256}" =~ ^[0-9a-f]{64}$ ]]; then
-  printf '%s\n' 'Artifact manifest does not describe the required populated synthetic fixture.' >&2
+  printf '%s\n' 'Artifact manifest does not describe a supported rehearsal fixture.' >&2
   exit 1
 fi
+case "${fixture_mode}" in
+  populated)
+    if [[ "${artifact_kind}" != "parameter-catalog-populated-rehearsal-fixture" \
+       || "${import_populates_synthetic_rows}" != "true" ]]; then
+      printf '%s\n' 'Populated fixture manifest mode and import policy disagree.' >&2
+      exit 1
+    fi
+    ;;
+  zero)
+    if [[ "${artifact_kind}" != "parameter-catalog-zero-rehearsal-fixture" \
+       || "${import_populates_synthetic_rows}" != "false" ]]; then
+      printf '%s\n' 'Zero fixture manifest mode and import policy disagree.' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf '%s\n' 'Artifact manifest fixture_mode must be populated or zero.' >&2
+    exit 1
+    ;;
+esac
 if [[ "$(sha256_file "${artifact_dir}/synthetic-fixture-verify.sql")" \
    != "${synthetic_fixture_verify_sha256}" ]]; then
   printf '%s\n' 'Artifact manifest verifier checksum does not match synthetic-fixture-verify.sql.' >&2
@@ -286,7 +305,9 @@ import_status=0
     "insert into public.schema_migrations (name, applied_at, checksum)" \
     "select name, '2026-01-01T00:00:00Z'::timestamptz, checksum" \
     "from wayfinder_rehearsal.migration_inventory order by name;"
-  sed 's/\r$//' "${artifact_dir}/synthetic-fixture.sql"
+  if [[ "${fixture_mode}" == "populated" ]]; then
+    sed 's/\r$//' "${artifact_dir}/synthetic-fixture.sql"
+  fi
   sed 's/\r$//' "${artifact_dir}/synthetic-fixture-verify.sql"
   printf '%s\n' 'commit;'
 } | target_psql > "${import_log}" 2>&1 || import_status=$?
@@ -315,8 +336,12 @@ profile_rows="$(target_psql -Atc "select (select count(*) from wayfinder_rehears
 data_rows_exported="$(target_psql -Atc "select value from wayfinder_rehearsal.manifest where key='data_rows_exported'")"
 fixture_cases="$(target_psql -Atc "select count(*) from wayfinder_rehearsal.fixture_cases")"
 migration_ledger_rows="$(target_psql -Atc 'select count(*) from schema_migrations')"
+expected_fixture_cases="0"
+if [[ "${fixture_mode}" == "populated" ]]; then
+  expected_fixture_cases="10"
+fi
 
-if [[ "${restored_public_relations}" == "0" || "${profile_rows}" == "0" || "${data_rows_exported}" != "0" || "${fixture_cases}" != "10" ]]; then
+if [[ "${restored_public_relations}" == "0" || "${profile_rows}" == "0" || "${data_rows_exported}" != "0" || "${fixture_cases}" != "${expected_fixture_cases}" ]]; then
   printf '%s\n' 'Imported rehearsal failed structural/profile verification.' >&2
   exit 1
 fi
@@ -328,5 +353,6 @@ printf '%s\n' \
   "loaded_profile_rows=${profile_rows}" \
   "loaded_fixture_cases=${fixture_cases}" \
   "loaded_migration_ledger_rows=${migration_ledger_rows}" \
+  "fixture_mode=${fixture_mode}" \
   'data_rows_exported=0' \
   'source_data_rows_exported=0'

@@ -14,6 +14,7 @@ env_file=""
 database_name="wiseeff"
 database_user="wiseeff"
 output_dir=""
+fixture_mode=""
 historical_source_commit="6c3adfc35c0e3be6d5d381013dace9408190380e"
 historical_bundle_sha256="017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff"
 secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
@@ -51,8 +52,8 @@ artifact_files=(
 usage() {
   printf '%s\n' \
     'Usage:' \
-    '  export-parameter-catalog-rehearsal.sh --output-dir ABSOLUTE_PATH --container NAME [--database NAME] [--user NAME]' \
-    '  export-parameter-catalog-rehearsal.sh --output-dir ABSOLUTE_PATH --compose-file FILE --env-file FILE [--database NAME] [--user NAME]'
+    '  export-parameter-catalog-rehearsal.sh --fixture-mode populated|zero --output-dir ABSOLUTE_PATH --container NAME [--database NAME] [--user NAME]' \
+    '  export-parameter-catalog-rehearsal.sh --fixture-mode populated|zero --output-dir ABSOLUTE_PATH --compose-file FILE --env-file FILE [--database NAME] [--user NAME]'
 }
 
 while (($# > 0)); do
@@ -81,6 +82,10 @@ while (($# > 0)); do
       output_dir="${2:?missing value for --output-dir}"
       shift 2
       ;;
+    --fixture-mode)
+      fixture_mode="${2:?missing value for --fixture-mode}"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -95,6 +100,11 @@ done
 
 if [[ -z "${output_dir}" || "${output_dir}" != /* ]]; then
   printf '%s\n' '--output-dir must be an absolute path.' >&2
+  exit 2
+fi
+
+if [[ "${fixture_mode}" != "populated" && "${fixture_mode}" != "zero" ]]; then
+  printf '%s\n' '--fixture-mode must be explicitly set to populated or zero.' >&2
   exit 2
 fi
 
@@ -264,6 +274,15 @@ fi
 archive_path="${output_dir}.tar.gz"
 archive_checksum_path="${archive_path}.sha256"
 stage_dir="$(mktemp -d "${output_dir}.tmp.XXXXXX")"
+owner_marker_name=".wiseeff-wayfinder-export-owner"
+stage_owner_marker="${stage_dir}/${owner_marker_name}"
+output_owner_marker="${output_dir}/${owner_marker_name}"
+owner_token="$(basename "${stage_dir}")"
+output_owned="false"
+archive_temp=""
+archive_published="false"
+archive_checksum_temp=""
+archive_checksum_published="false"
 on_exit() {
   local exit_code=$?
   if [[ "${exit_code}" == "0" ]]; then
@@ -272,11 +291,46 @@ on_exit() {
   trap - EXIT
   local cleanup_failed="false"
   set +e
-  for owned_path in "${stage_dir}" "${output_dir}" "${archive_path}" "${archive_checksum_path}"; do
-    if [[ -e "${owned_path}" || -L "${owned_path}" ]]; then
+  if [[ "${archive_checksum_published}" == "true" ]]; then
+    if [[ -e "${archive_checksum_path}" && -e "${archive_checksum_temp}" \
+       && "${archive_checksum_path}" -ef "${archive_checksum_temp}" ]]; then
+      rm -f -- "${archive_checksum_path}"
+    elif [[ -e "${archive_checksum_path}" || -L "${archive_checksum_path}" ]]; then
+      cleanup_failed="true"
+    fi
+  fi
+  if [[ "${archive_published}" == "true" ]]; then
+    if [[ -e "${archive_path}" && -e "${archive_temp}" \
+       && "${archive_path}" -ef "${archive_temp}" ]]; then
+      rm -f -- "${archive_path}"
+    elif [[ -e "${archive_path}" || -L "${archive_path}" ]]; then
+      cleanup_failed="true"
+    fi
+  fi
+  if [[ "${output_owned}" == "true" ]]; then
+    for file in "${artifact_files[@]}" SHA256SUMS; do
+      if [[ -e "${output_dir}/${file}" && -e "${stage_dir}/${file}" \
+         && "${output_dir}/${file}" -ef "${stage_dir}/${file}" ]]; then
+        rm -f -- "${output_dir}/${file}"
+      elif [[ -e "${output_dir}/${file}" || -L "${output_dir}/${file}" ]]; then
+        cleanup_failed="true"
+      fi
+    done
+    if [[ -e "${output_owner_marker}" && -e "${stage_owner_marker}" \
+       && "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
+      rm -f -- "${output_owner_marker}"
+    elif [[ -e "${output_owner_marker}" || -L "${output_owner_marker}" ]]; then
+      cleanup_failed="true"
+    fi
+    if ! rmdir -- "${output_dir}" 2>/dev/null && [[ -d "${output_dir}" ]]; then
+      cleanup_failed="true"
+    fi
+  fi
+  for owned_path in "${archive_checksum_temp}" "${archive_temp}" "${stage_dir}"; do
+    if [[ -n "${owned_path}" && ( -e "${owned_path}" || -L "${owned_path}" ) ]]; then
       rm -rf -- "${owned_path}"
     fi
-    if [[ -e "${owned_path}" || -L "${owned_path}" ]]; then
+    if [[ -n "${owned_path}" && ( -e "${owned_path}" || -L "${owned_path}" ) ]]; then
       cleanup_failed="true"
     fi
   done
@@ -328,6 +382,15 @@ for report in "${reports[@]}"; do
 done
 rm "${combined_output}"
 
+if [[ "${fixture_mode}" == "zero" ]]; then
+  nonzero_relations="$(awk -F, 'NR > 1 && $1 != "organizations" && ($2 + 0) != 0 { print $1 }' "${stage_dir}/row-counts.csv")"
+  if [[ -n "${nonzero_relations}" ]]; then
+    printf 'Zero fixture mode requires empty source inventory; non-zero relations: %s\n' \
+      "$(printf '%s' "${nonzero_relations}" | paste -sd, -)" >&2
+    exit 1
+  fi
+fi
+
 db_dump_schema \
   --schema-only \
   --no-owner \
@@ -377,15 +440,21 @@ last_migration="$(tail -n 1 "${stage_dir}/migration-inventory.csv" | cut -d, -f1
 server_version_num="$(db_psql -Atc "select current_setting('server_version_num')")"
 export_commit="$(git -C "${repo_root}" rev-parse HEAD)"
 exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+artifact_kind="parameter-catalog-${fixture_mode}-rehearsal-fixture"
+import_populates_synthetic_rows="false"
+if [[ "${fixture_mode}" == "populated" ]]; then
+  import_populates_synthetic_rows="true"
+fi
 
 {
   printf 'key,value\n'
   printf 'format_version,2\n'
-  printf 'artifact_kind,parameter-catalog-populated-rehearsal-fixture\n'
+  printf 'artifact_kind,%s\n' "${artifact_kind}"
+  printf 'fixture_mode,%s\n' "${fixture_mode}"
   printf 'data_rows_exported,0\n'
   printf 'source_data_rows_exported,0\n'
   printf 'synthetic_fixture_version,1\n'
-  printf 'import_populates_synthetic_rows,true\n'
+  printf 'import_populates_synthetic_rows,%s\n' "${import_populates_synthetic_rows}"
   printf 'historical_source_commit,%s\n' "${historical_source_commit}"
   printf 'historical_bundle_sha256,%s\n' "${historical_bundle_sha256}"
   printf 'synthetic_fixture_verify_sha256,%s\n' "${synthetic_fixture_verify_checksum}"
@@ -433,11 +502,48 @@ done
   done | sort -k2
 ) > "${stage_dir}/SHA256SUMS"
 
-mv "${stage_dir}" "${output_dir}"
+printf '%s\n' "${owner_token}" > "${stage_owner_marker}"
+if ! mkdir -- "${output_dir}"; then
+  printf '%s\n' 'Output path appeared during export; refusing to publish into it.' >&2
+  exit 1
+fi
+output_owned="true"
+ln -- "${stage_owner_marker}" "${output_owner_marker}"
+for file in "${artifact_files[@]}" SHA256SUMS; do
+  ln -- "${stage_dir}/${file}" "${output_dir}/${file}"
+done
 
-tar -czf "${archive_path}" -C "${output_parent}" "$(basename "${output_dir}")"
+archive_temp="$(mktemp "${archive_path}.tmp.XXXXXX")"
+archive_members=()
+for file in "${artifact_files[@]}" SHA256SUMS; do
+  archive_members+=("$(basename "${output_dir}")/${file}")
+done
+tar -czf "${archive_temp}" -C "${output_parent}" "${archive_members[@]}"
+if ! ln -- "${archive_temp}" "${archive_path}"; then
+  printf '%s\n' 'Archive path appeared during export; refusing to overwrite it.' >&2
+  exit 1
+fi
+archive_published="true"
 archive_checksum="$(sha256_file "${archive_path}")"
-printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_checksum_path}"
+archive_checksum_temp="$(mktemp "${archive_checksum_path}.tmp.XXXXXX")"
+printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_checksum_temp}"
+if ! ln -- "${archive_checksum_temp}" "${archive_checksum_path}"; then
+  printf '%s\n' 'Archive checksum path appeared during export; refusing to overwrite it.' >&2
+  exit 1
+fi
+archive_checksum_published="true"
+
+if [[ ! -e "${output_owner_marker}" || ! "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
+  printf '%s\n' 'Exporter ownership marker changed during publication.' >&2
+  exit 1
+fi
+rm -f -- "${output_owner_marker}" "${stage_owner_marker}"
+rm -f -- "${archive_temp}" "${archive_checksum_temp}"
+rm -rf -- "${stage_dir}"
+if [[ -e "${stage_dir}" || -e "${archive_temp}" || -e "${archive_checksum_temp}" ]]; then
+  printf '%s\n' 'Exporter-owned temporary path cleanup failed.' >&2
+  exit 1
+fi
 trap - EXIT
 
 row_class_count="$(awk -F, '$1 == "parameter_specs" { print $2 }' "${output_dir}/row-counts.csv")"
@@ -451,6 +557,7 @@ printf '%s\n' \
   "schema_dump_canonical_sha256=${schema_dump_canonical_checksum}" \
   "schema_dump_file_sha256=${schema_dump_file_checksum}" \
   "source_parameter_spec_rows=${row_class_count}" \
+  "fixture_mode=${fixture_mode}" \
   'data_rows_exported=0' \
   'source_data_rows_exported=0' \
   'database_identity=withheld'

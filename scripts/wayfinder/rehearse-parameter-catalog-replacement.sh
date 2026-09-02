@@ -279,9 +279,7 @@ function inspect(source, context = "top") {
     if (hasSequence(values, ["start", "transaction"])) fail("Forbidden START TRANSACTION");
     if (hasSequence(values, ["prepare", "transaction"])) fail("Forbidden PREPARE TRANSACTION");
     if (hasSequence(values, ["release", "savepoint"])) fail("Forbidden RELEASE SAVEPOINT");
-    if (hasSequence(values, ["copy"]) && hasSequence(values, ["from", "stdin"])) {
-      fail("Forbidden COPY FROM STDIN");
-    }
+    if (first === "copy") fail("Forbidden SQL COPY");
     if (values.includes("set_config")) fail("Forbidden dynamic session configuration");
     if (first === "set") {
       const permitted = values[1] === "constraints" || values[1] === "local";
@@ -402,9 +400,22 @@ if [[ "${fixture_relation}" != "wayfinder_rehearsal.fixture_cases" ]]; then
   printf '%s\n' 'Target database does not contain the Wayfinder #671 fixture registry.' >&2
   exit 1
 fi
+fixture_mode="$(target_psql -Atc "
+  select case when count(*) = 1 then min(value) else '' end
+  from wayfinder_rehearsal.manifest
+  where key = 'fixture_mode'
+")"
+case "${fixture_mode}" in
+  populated) expected_fixture_cases="10" ;;
+  zero) expected_fixture_cases="0" ;;
+  *)
+    printf '%s\n' 'Target database fixture_mode must be populated or zero.' >&2
+    exit 1
+    ;;
+esac
 fixture_cases="$(target_psql -Atc 'select count(*) from wayfinder_rehearsal.fixture_cases')"
-if [[ "${fixture_cases}" != "10" ]]; then
-  printf '%s\n' 'Target database does not contain the complete Wayfinder #671 fixture.' >&2
+if [[ "${fixture_cases}" != "${expected_fixture_cases}" ]]; then
+  printf '%s\n' 'Target database fixture registry does not match its declared mode.' >&2
   exit 1
 fi
 
@@ -469,5 +480,6 @@ printf '%s\n' \
   "target_database=${database_name}" \
   "before_sha256=${before_sha256}" \
   "after_sha256=${after_sha256}" \
+  "fixture_mode=${fixture_mode}" \
   "fixture_cases=${fixture_cases}" \
   'CLEANUP_OK'

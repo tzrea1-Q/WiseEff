@@ -1,3 +1,9 @@
+select count(*) = 1 and min(value) = 'populated' as wf671_populated_mode
+from wayfinder_rehearsal.manifest
+where key = 'fixture_mode'
+\gset
+
+\if :wf671_populated_mode
 -- Fail the import unless the deterministic populated graph is complete.
 do $$
 declare
@@ -359,3 +365,95 @@ begin
   end if;
 end
 $$;
+\else
+-- Zero mode exercises the executable fresh-install path without injecting the
+-- populated ten-case graph. The profile and migration ledger remain present,
+-- while every profiled catalog relation must stay empty.
+do $$
+declare
+  actual bigint;
+  nonzero_relations text;
+begin
+  select count(*) into actual from wayfinder_rehearsal.fixture_cases;
+  if actual <> 0 then
+    raise exception 'Wayfinder zero fixture case registry: expected 0 rows, got %', actual;
+  end if;
+
+  select
+    (select count(*) from wayfinder_rehearsal.relations)
+    + (select count(*) from wayfinder_rehearsal.columns)
+    + (select count(*) from wayfinder_rehearsal.constraints)
+    + (select count(*) from wayfinder_rehearsal.indexes)
+    + (select count(*) from wayfinder_rehearsal.triggers)
+    + (select count(*) from wayfinder_rehearsal.migration_inventory)
+    + (select count(*) from wayfinder_rehearsal.row_counts)
+    + (select count(*) from wayfinder_rehearsal.row_classes)
+    + (select count(*) from wayfinder_rehearsal.invariant_counts)
+  into actual;
+  if actual = 0 then
+    raise exception 'Wayfinder source profile is empty';
+  end if;
+
+  select string_agg(relation_name, ', ' order by relation_name)
+  into nonzero_relations
+  from wayfinder_rehearsal.row_counts
+  where relation_name <> 'organizations'
+    and row_count <> 0;
+  if nonzero_relations is not null then
+    raise exception 'Wayfinder zero source profile contains rows in: %', nonzero_relations;
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from schema_migrations
+    except
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+  ) unexpected;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger has % unexpected rows', actual;
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+    except
+    select name, checksum from schema_migrations
+  ) missing;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger is missing % rows', actual;
+  end if;
+
+  select coalesce(sum(row_count), 0) into actual
+  from (
+    select count(*)::bigint as row_count from projects
+    union all select count(*) from parameter_specs
+    union all select count(*) from parameter_spec_versions
+    union all select count(*) from attribution_subjects
+    union all select count(*) from driver_registrations
+    union all select count(*) from node_type_definitions
+    union all select count(*) from driver_schemas
+    union all select count(*) from driver_schema_versions
+    union all select count(*) from dts_property_specs
+    union all select count(*) from parameter_modules
+    union all select count(*) from parameter_module_mappings
+    union all select count(*) from driver_registration_placements
+    union all select count(*) from dts_config_set
+    union all select count(*) from dts_config_revisions
+    union all select count(*) from dts_logical_nodes
+    union all select count(*) from project_parameter_bindings
+    union all select count(*) from project_parameter_binding_revisions
+    union all select count(*) from parameter_drafts
+    union all select count(*) from parameter_change_requests
+    union all select count(*) from parameter_history_entries
+    union all select count(*) from parameter_spec_review_tasks
+    union all select count(*) from identity_mapping_tasks
+    union all select count(*) from legacy_parameter_migration_evidence
+    union all select count(*) from driver_schema_overlays
+    union all select count(*) from driver_schema_overlay_properties
+  ) inventory;
+  if actual <> 0 then
+    raise exception 'Wayfinder zero fixture inventory: expected 0 rows, got %', actual;
+  end if;
+end
+$$;
+\endif
