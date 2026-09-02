@@ -9,6 +9,8 @@ export {
   createCheckedEmptyDatabase,
   createDisposableParameterCatalogDatabase,
   databaseNameFromUrl,
+  parameterCatalogRunDatabasePrefix,
+  parameterCatalogWorkerDatabasePrefix,
   readCanonicalSchemaFingerprint,
   readCatalogServerIdentity,
   resolveCatalogDatabaseUrl,

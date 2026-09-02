@@ -154,13 +154,25 @@ function currentRunToken(): string {
   );
 }
 
+function currentWorkerId(): string {
+  return (
+    (process.env.VITEST_POOL_ID?.trim() || String(process.pid)).replace(/[^a-z0-9_]/gi, "") ||
+    "0"
+  );
+}
+
+export function parameterCatalogRunDatabasePrefix(): string {
+  return `${CATALOG_DATABASE_PREFIX}${currentRunToken()}_`;
+}
+
+export function parameterCatalogWorkerDatabasePrefix(): string {
+  return `${parameterCatalogRunDatabasePrefix()}${currentWorkerId()}_`;
+}
+
 function catalogDatabaseName(label: string): string {
   const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 8).toLowerCase() || "empty";
   const rand = randomBytes(4).toString("hex");
-  const name = `${CATALOG_DATABASE_PREFIX}${currentRunToken()}_${safeLabel}_${rand}`.slice(
-    0,
-    63,
-  );
+  const name = `${parameterCatalogWorkerDatabasePrefix()}${safeLabel}_${rand}`.slice(0, 63);
   assertSafeDatabaseName(name);
   return name;
 }
@@ -461,7 +473,8 @@ async function dropIdleCatalogDatabase(name: string): Promise<boolean> {
 
 export async function cleanupLeftoverParameterCatalogDatabases(): Promise<string[]> {
   const dropped: string[] = [];
-  const thisRunPrefix = `${CATALOG_DATABASE_PREFIX}${currentRunToken()}_`;
+  const workerPrefix = parameterCatalogWorkerDatabasePrefix();
+  const runPrefix = parameterCatalogRunDatabasePrefix();
 
   await withAdminClient(async (admin) => {
     const leftovers = await admin.query<{ datname: string }>(
@@ -469,9 +482,14 @@ export async function cleanupLeftoverParameterCatalogDatabases(): Promise<string
        from pg_database
        where datname like $1
        order by datname`,
-      [`${thisRunPrefix}%`],
+      [`${CATALOG_DATABASE_PREFIX}%`],
     );
     for (const row of leftovers.rows) {
+      const ownWorker = row.datname.startsWith(workerPrefix);
+      const otherRun = !row.datname.startsWith(runPrefix);
+      if (!ownWorker && !otherRun) {
+        continue;
+      }
       if (await dropIdleCatalogDatabaseWithAdmin(admin, row.datname)) {
         dropped.push(row.datname);
       }

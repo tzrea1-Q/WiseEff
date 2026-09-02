@@ -12,6 +12,8 @@ import {
   countUserDefinedObjects,
   createCheckedEmptyDatabase,
   createDisposableParameterCatalogDatabase,
+  parameterCatalogRunDatabasePrefix,
+  parameterCatalogWorkerDatabasePrefix,
   readCanonicalSchemaFingerprint,
   type ParameterCatalogDatabase,
 } from "./index";
@@ -127,34 +129,44 @@ describe("disposable real-pgvector parameter catalog database", {
     expect(await databaseExists(leftoverName)).toBe(false);
   });
 
-  it("reaps only this run's idle leftovers and skips live backends", async () => {
-    const foreignName = `wiseeff_pcat_foreignrun_probe_${randomBytes(3).toString("hex")}`;
-    await withPostgresAdmin(async (admin) => {
-      await admin.query(`drop database if exists ${foreignName} with (force)`);
-      await admin.query(`create database ${foreignName}`);
-    });
-
+  it("reaps this worker and other-run leftovers, skipping live backends and siblings", async () => {
+    expect(parameterCatalogWorkerDatabasePrefix().startsWith(parameterCatalogRunDatabasePrefix())).toBe(
+      true,
+    );
     const live = await createCheckedEmptyDatabase("livebk");
+    expect(live.name.startsWith(parameterCatalogWorkerDatabasePrefix())).toBe(true);
     const liveClient = new pg.Client({ connectionString: live.url });
     await liveClient.connect();
+    const foreignName = `wiseeff_pcat_foreignrun_probe_${randomBytes(3).toString("hex")}`;
+    const siblingName = `${parameterCatalogRunDatabasePrefix()}sibling_probe_${randomBytes(3).toString("hex")}`;
+    await withPostgresAdmin(async (admin) => {
+      await admin.query(`drop database if exists ${foreignName} with (force)`);
+      await admin.query(`drop database if exists ${siblingName} with (force)`);
+      await admin.query(`create database ${foreignName}`);
+      await admin.query(`create database ${siblingName}`);
+    });
     try {
       await live.abandon();
       const droppedWhileLive = await cleanupLeftoverParameterCatalogDatabases();
       expect(droppedWhileLive).not.toContain(live.name);
-      expect(droppedWhileLive).not.toContain(foreignName);
+      expect(droppedWhileLive).not.toContain(siblingName);
+      expect(droppedWhileLive).toContain(foreignName);
       expect(await databaseExists(live.name)).toBe(true);
-      expect(await databaseExists(foreignName)).toBe(true);
+      expect(await databaseExists(siblingName)).toBe(true);
+      expect(await databaseExists(foreignName)).toBe(false);
 
       await liveClient.end();
       const droppedAfterDisconnect = await cleanupLeftoverParameterCatalogDatabases();
       expect(droppedAfterDisconnect).toContain(live.name);
-      expect(droppedAfterDisconnect).not.toContain(foreignName);
+      expect(droppedAfterDisconnect).not.toContain(siblingName);
       expect(await databaseExists(live.name)).toBe(false);
+      expect(await databaseExists(siblingName)).toBe(true);
     } finally {
       await liveClient.end().catch(() => undefined);
       await cleanupLeftoverParameterCatalogDatabases().catch(() => undefined);
       await withPostgresAdmin(async (admin) => {
         await admin.query(`drop database if exists ${foreignName} with (force)`);
+        await admin.query(`drop database if exists ${siblingName} with (force)`);
       }).catch(() => undefined);
     }
   });
