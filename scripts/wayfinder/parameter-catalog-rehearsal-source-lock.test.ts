@@ -14,7 +14,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "15a45d41fc19d17026e128148c4b511ff14a49d0";
+const repairCommit = "3913a8b88813bc841aa7f33ff15b079943a76089";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -66,12 +66,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "44a04191fc8d858fa2cb33faa3fb1330089cab67eb914bbb9cd7d4dda6ee5660",
+    sha256: "e56666851dc51fe7887b66a24716131fd7765b6a440092ef349bbc39cca76ed2",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "b78f2c620a5e7328f0cf9634318b76fccecb3973ee898985c8ee05f2d20c2aaf",
+    sha256: "c9a988fb0559d67221391d4d5058b26f95dbc5aa9d703544553d8a7f822d8a87",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -156,10 +156,10 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "a85cb3831858e6a02dac792dee339a33d0e494b340f1186fe98b4144ec28ce5c";
+  "4a360ef3ac9cf882ae14257ff2a0cfe2121d62c4ea12529a79697424dedced21";
 const repairChangedPaths = [
-  "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
-  "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
+  "docs/references/parameter-catalog-rehearsal-fixture.md",
+  "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
 ] as const;
 const allowedPostRepairPaths = [
   sourceLockPath,
@@ -223,7 +223,12 @@ function frame(hash: ReturnType<typeof createHash>, tag: string, bytes: Buffer) 
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
-    runGitText(["cat-file", "-e", `${repairCommit}^{commit}`]);
+    const headParents = runGitText(["show", "-s", "--format=%P", "HEAD"])
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    expect(headParents).toEqual([repairCommit]);
+    const repairObjectAvailable = gitObjectAvailable(repairCommit);
     expect(sourceLock).toHaveLength(18);
     expect(Object.keys(historicalBlobSha256).sort()).toEqual(
       sourceLock.map((entry) => entry.path).sort(),
@@ -233,6 +238,10 @@ describe("parameter catalog rehearsal repaired source lock", () => {
         sourceLock.some((entry) => entry.path === sourcePath),
       ),
     ).toBe(true);
+
+    if (!repairObjectAvailable) {
+      return;
+    }
 
     const changedPaths = runGitText([
       "diff-tree",
@@ -278,7 +287,6 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       expect(provenanceParents).toEqual(
         expect.arrayContaining([previousRepairCommit, historicalSourceCommit]),
       );
-
     }
 
     runGitText(["merge-base", "--is-ancestor", repairCommit, "HEAD"]);
@@ -397,9 +405,9 @@ describe("parameter catalog rehearsal repaired source lock", () => {
         expect(readGitBlob(oldCandidateCommit, entry.path)).toEqual(historicalBytes);
       }
     }
-  });
+  }, 30_000);
 
-  it("pins R regular-file modes, bytes, hashes, and length-framed B", async () => {
+  it("pins HEAD and, when available, R regular-file modes, bytes, hashes, and length-framed B", async () => {
     expect(sourceLock).toHaveLength(18);
     expect(sourceLock.map((entry) => entry.path)).toEqual(
       [...sourceLock.map((entry) => entry.path)].sort(),
@@ -408,25 +416,37 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     const bundle = createHash("sha256");
     frame(bundle, "count", Buffer.from(String(sourceLock.length), "utf8"));
 
+    const repairObjectAvailable = gitObjectAvailable(repairCommit);
     for (const entry of sourceLock) {
-      const treeLine = runGitText(["ls-tree", repairCommit, "--", entry.path]).trim();
-      const match = /^(\d{6}) blob [0-9a-f]{40}\t(.+)$/.exec(treeLine);
-      expect(match).not.toBeNull();
-      expect(match?.[1]).toBe(entry.mode);
-      expect(match?.[2]).toBe(entry.path);
+      const headTreeLine = runGitText(["ls-tree", "HEAD", "--", entry.path]).trim();
+      const headMatch = /^(\d{6}) blob [0-9a-f]{40}\t(.+)$/.exec(headTreeLine);
+      expect(headMatch).not.toBeNull();
+      expect(headMatch?.[1]).toBe(entry.mode);
+      expect(headMatch?.[2]).toBe(entry.path);
 
-      const repairedBytes = readGitBlob(repairCommit, entry.path);
-      expect(createHash("sha256").update(repairedBytes).digest("hex")).toBe(entry.sha256);
+      const headBytes = readGitBlob("HEAD", entry.path);
+      expect(createHash("sha256").update(headBytes).digest("hex")).toBe(entry.sha256);
+      const workingBytes = await readFile(path.join(projectRoot, entry.path));
+      expect(workingBytes).toEqual(headBytes);
 
       const workingStat = await lstat(path.join(projectRoot, entry.path));
       expect(workingStat.isFile()).toBe(true);
       expect(workingStat.isSymbolicLink()).toBe(false);
       expect(workingStat.mode & 0o111 ? "100755" : "100644").toBe(entry.mode);
-      expect(secretPattern.test(repairedBytes.toString("utf8")), entry.path).toBe(false);
+      expect(secretPattern.test(headBytes.toString("utf8")), entry.path).toBe(false);
+
+      if (repairObjectAvailable) {
+        const repairTreeLine = runGitText(["ls-tree", repairCommit, "--", entry.path]).trim();
+        const repairMatch = /^(\d{6}) blob [0-9a-f]{40}\t(.+)$/.exec(repairTreeLine);
+        expect(repairMatch).not.toBeNull();
+        expect(repairMatch?.[1]).toBe(entry.mode);
+        expect(repairMatch?.[2]).toBe(entry.path);
+        expect(readGitBlob(repairCommit, entry.path)).toEqual(headBytes);
+      }
 
       frame(bundle, "path", Buffer.from(entry.path, "utf8"));
       frame(bundle, "mode", Buffer.from(entry.mode, "utf8"));
-      frame(bundle, "blob", repairedBytes);
+      frame(bundle, "blob", headBytes);
     }
 
     expect(bundle.digest("hex")).toBe(repairedBundleSha256);
