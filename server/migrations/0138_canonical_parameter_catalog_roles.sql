@@ -40,55 +40,70 @@
 --     production roles fail legacy structural writes on public parameter
 --     tables; leftover SECURITY DEFINER functions are not executable writers
 
+select pg_catalog.pg_advisory_lock(689013800138);
+
 do $$
+declare
+  attempt integer;
+  role_name text;
+  role_comment text;
 begin
-  perform pg_catalog.pg_advisory_lock(689013800138);
-  begin
-    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_migration_owner') then
-      create role catalog_migration_owner;
-    end if;
-    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_synchronizer_role') then
-      create role catalog_synchronizer_role;
-    end if;
-    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'parameter_governance_writer_role') then
-      create role parameter_governance_writer_role;
-    end if;
+  for attempt in 1..20 loop
+    begin
+      foreach role_name in array array[
+        'catalog_migration_owner',
+        'catalog_synchronizer_role',
+        'parameter_governance_writer_role'
+      ] loop
+        if not exists (select 1 from pg_catalog.pg_roles where rolname = role_name) then
+          execute format(
+            'create role %I nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls',
+            role_name
+          );
+        elsif exists (
+          select 1
+          from pg_catalog.pg_roles
+          where rolname = role_name
+            and (
+              rolcanlogin or rolsuper or rolcreatedb or rolcreaterole
+              or rolinherit or rolreplication or rolbypassrls
+            )
+        ) then
+          execute format(
+            'alter role %I with nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls',
+            role_name
+          );
+        end if;
 
-    execute $sql$
-      alter role catalog_migration_owner with
-        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
-    $sql$;
-    execute $sql$
-      alter role catalog_synchronizer_role with
-        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
-    $sql$;
-    execute $sql$
-      alter role parameter_governance_writer_role with
-        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
-    $sql$;
+        if pg_catalog.pg_has_role(current_user, role_name, 'member') then
+          execute format('revoke %I from current_user', role_name);
+        end if;
+      end loop;
 
-    execute $sql$revoke catalog_migration_owner from current_user$sql$;
-    execute $sql$revoke catalog_synchronizer_role from current_user$sql$;
-    execute $sql$revoke parameter_governance_writer_role from current_user$sql$;
+      foreach role_comment in array array[
+        'catalog_migration_owner|NOLOGIN owner of parameter_catalog relations. Production logins cannot SET ROLE to this role.',
+        'catalog_synchronizer_role|NOLOGIN Catalog synchronizer: insert immutable Catalog rows and column-limited head updates only.',
+        'parameter_governance_writer_role|NOLOGIN Parameter Governance writer: governance DML, success-audit append, and execute-only current-release guard.'
+      ] loop
+        role_name := split_part(role_comment, '|', 1);
+        if coalesce(shobj_description(to_regrole(role_name), 'pg_authid'), '')
+             is distinct from split_part(role_comment, '|', 2) then
+          execute format('comment on role %I is %L', role_name, split_part(role_comment, '|', 2));
+        end if;
+      end loop;
 
-    execute $sql$
-      comment on role catalog_migration_owner is
-        'NOLOGIN owner of parameter_catalog relations. Production logins cannot SET ROLE to this role.'
-    $sql$;
-    execute $sql$
-      comment on role catalog_synchronizer_role is
-        'NOLOGIN Catalog synchronizer: insert immutable Catalog rows and column-limited head updates only.'
-    $sql$;
-    execute $sql$
-      comment on role parameter_governance_writer_role is
-        'NOLOGIN Parameter Governance writer: governance DML, success-audit append, and execute-only current-release guard.'
-    $sql$;
-  exception
-    when others then
-      perform pg_catalog.pg_advisory_unlock(689013800138);
-      raise;
-  end;
-  perform pg_catalog.pg_advisory_unlock(689013800138);
+      exit;
+    exception
+      when duplicate_object then
+        null;
+      when others then
+        if sqlerrm like '%tuple concurrently updated%' and attempt < 20 then
+          perform pg_catalog.pg_sleep(0.05 * attempt);
+        else
+          raise;
+        end if;
+    end;
+  end loop;
 end;
 $$;
 
@@ -318,3 +333,5 @@ alter default privileges in schema parameter_catalog
   revoke all on sequences from public;
 alter default privileges in schema parameter_catalog
   revoke all on functions from public;
+
+select pg_catalog.pg_advisory_unlock(689013800138);
