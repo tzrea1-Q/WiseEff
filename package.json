@@ -82,6 +82,8 @@
     "logs:eval": "tsx scripts/run-log-analysis-eval.ts",
     "logs:eval:quality": "tsx scripts/run-log-analysis-quality-eval.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "catalog:lane:env": "tsx scripts/catalog-lane-env.ts",
+    "catalog:lane:accept": "tsx scripts/catalog-lane-env.ts accept",
     "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
     "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",
