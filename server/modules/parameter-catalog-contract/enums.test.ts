@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import * as contract from "./index";
 import {
   catalogInstallModes,
   catalogSubjectSelectorKinds,
@@ -8,6 +9,8 @@ import {
   cutoverPhases,
   definitionProposalStatuses,
   definitionLifecycles,
+  driverInstanceCardinalities,
+  driverNatures,
   emptyReasons,
   legacyIdentifierTypes,
   legacyRetirementStages,
@@ -22,8 +25,13 @@ import {
   verificationModes,
   verificationPurposes,
   type CatalogSubjectKind,
+  type DriverInstanceCardinality,
+  type DriverNature,
   catalogSubjectKinds
 } from "./index";
+
+// @ts-expect-error NodeType has no family classification in the canonical contract.
+import type { NodeTypeFamily } from "./index";
 
 const driverKind: CatalogSubjectKind = "driver";
 
@@ -32,6 +40,20 @@ const inventedSubjectKind: CatalogSubjectKind = "device";
 
 void driverKind;
 void inventedSubjectKind;
+
+const driverNature: DriverNature = "physical-device";
+const driverInstanceCardinality: DriverInstanceCardinality = "singleton-per-project";
+
+// @ts-expect-error Driver nature is a closed two-item union.
+const inventedDriverNature: DriverNature = "virtual-device";
+
+// @ts-expect-error Driver cardinality is a closed two-item union.
+const inventedDriverCardinality: DriverInstanceCardinality = "singleton-per-node";
+
+void driverNature;
+void driverInstanceCardinality;
+void inventedDriverNature;
+void inventedDriverCardinality;
 
 const describeSubjectKind = (kind: CatalogSubjectKind): string => {
   switch (kind) {
@@ -68,6 +90,15 @@ describe("parameter catalog closed literals", () => {
       "withdrawn"
     ]);
     expect(describeSubjectKind("node-type")).toBe("NodeType");
+  });
+
+  it("freezes Driver facts and exposes no NodeType family", () => {
+    expect(driverNatures).toEqual(["physical-device", "logical-service"]);
+    expect(driverInstanceCardinalities).toEqual([
+      "multiple",
+      "singleton-per-project"
+    ]);
+    expect(contract).not.toHaveProperty("NodeTypeFamily");
   });
 
   it("freezes verification, comparison, retirement, and empty-state literals", () => {
@@ -163,6 +194,8 @@ describe("parameter catalog closed literals", () => {
   it("freezes every exported enum registry without a mutable canonical copy", () => {
     for (const registry of [
       catalogSubjectKinds,
+      driverNatures,
+      driverInstanceCardinalities,
       subjectLifecycles,
       definitionLifecycles,
       registrationStatuses,

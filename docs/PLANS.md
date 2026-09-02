@@ -38,7 +38,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`: complete implementation specification for Wayfinder #668. G0 merged through PR #682 at exact baseline `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`. Phase A Publisher completed on 2026-09-01: 53 launch Issues were published as #683-#735, while S13-PROGRAM and S14-PROGRAM remain deferred. The frozen GitHub state is 11 historical / 53 launch / 64 global children and 18 historical / 136 launch / 0 cross-boundary / 154 global native relationships; 27 ID and 18 RE gates remain body-only. `ACTUAL_LAUNCH_READY_SET` is empty. S0-ID is the future frontier, but Phase B and Phase C have not run, so no Issue is enabled for an agent. No production implementation or release evidence is claimed.
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`: complete implementation specification for Wayfinder #668. G0 merged through PR #682; Phase A published #683-#735, Phase B/Phase C completed, and S0-ID merged through PR #737 at `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`. The owner-authorized G0.1 correction now freezes the canonical identity constructors, closed Driver subtype enums, distinct public seven-kind and internal 49-kind legacy registries, complete S0-RAT scan contract, repaired S0-FIX provenance, and fail-closed S2-SCH PostgreSQL gate before Wave 2 integration. The launch graph remains 53 nodes with `CD=90`, `CF=54`, `ID=27`, `RE=18`; S13-PROGRAM and S14-PROGRAM remain deferred. G0.1 is contract work only and claims no target, release, or production evidence.
 
 #### Wayfinder #668 Phase A launch map
 

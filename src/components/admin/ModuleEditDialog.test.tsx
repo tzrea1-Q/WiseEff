@@ -30,6 +30,8 @@ describe("ModuleEditDialog", () => {
     const cardinality = within(dialog).getByLabelText("实例基数");
     expect(nature.tagName).toBe("SELECT");
     expect(cardinality.tagName).toBe("SELECT");
+    expect(within(dialog).getByRole("region", { name: "驱动属性" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "基础信息" })).toBeInTheDocument();
     expect(nature).toHaveValue("physical-device");
     expect(cardinality).toHaveValue("singleton-per-project");
     expect(
@@ -189,6 +191,9 @@ describe("ModuleEditDialog", () => {
         }}
         existingNames={[]}
         canAdmin
+        driverNature="physical-device"
+        instanceCardinality="multiple"
+        compatibleMappings={[]}
         modules={[
           {
             id: "biz-1",
@@ -230,6 +235,10 @@ describe("ModuleEditDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "SC8562" });
+    expect(within(dialog).getByRole("region", { name: "驱动属性" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "业务归属" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "基础信息" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "compatible 匹配规则" })).toBeInTheDocument();
     expect(within(dialog).getByText(/自动发现的驱动组跟随此默认分类/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "从注册回放放置" }));
     expect(onReplayPlacement).toHaveBeenCalled();

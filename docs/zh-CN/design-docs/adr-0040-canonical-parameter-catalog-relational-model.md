@@ -487,6 +487,14 @@ Definition、DefinitionRevision、Proposal、publication intent、stable ID、re
 
 ## 后果
 
+### G0.1 封闭 subtype 与 identity 补充
+
+2026-09-02 由所有者授权的 G0.1 修正把本 ADR 先前仅作描述的值域封闭：`Driver.nature` 精确为 `physical-device | logical-service`，`Driver.instance_cardinality` 精确为 `multiple | singleton-per-project`；NodeType 不存在 family 字段或 family enum。
+
+Canonical compatible、node-name 与 property-key 是 validation-only identity：接受值逐 byte 保存，不 trim、不转换大小写、不做 NFC/NFKC 或任何其他 Unicode normalization、不去引号、不去 `@`/unit-address。三者都拒绝 empty、non-ASCII、ASCII whitespace/control/DEL 与 matching-quoted raw token。Compatible 使用 `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$` 并禁止 wildcard。Node name 只接受 `/` 或 `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`，`@` 以 unit-address presence 拒绝。Property key 使用 `^[A-Za-z0-9,._+?#-]{1,31}$`，并按 ASCII case-insensitive 拒绝 `compatible`、`device_type`、`gpio-controller`、`interrupt-controller`、`linux,phandle`、`phandle`、`ranges`、`reg`、`status`、`#address-cells`、`#gpio-cells`、`#interrupt-cells`、`#size-cells` 以及任意 `#` 前缀。Failure classification 严格按 active #668 规格固定的顺序执行，且 reason set 封闭。
+
+Canonical/alias ownership 按 selector kind 与接受后的 exact bytes 比较。同 owner 的 identical repeated claim 是 idempotent；same-key/different-owner 或 canonical/alias collision 是 typed conflict。S0-ID 独占 constructors 与精确 closed union `not-string | empty | control-character | non-ascii | surrounding-whitespace | whitespace-forbidden | quoted-source-token | wildcard-forbidden | unit-address-present | length-out-of-range | invalid-syntax | structural-property`；S1 bundle validation、S2 constraints、compiler、synchronizer、matcher 与 migration 只能消费，不能重做 normalization。确定的 reason precedence 与 golden vectors 以 active #668 实现规格为准。
+
 - Catalog synchronizer 成为 deep module：发布校验、不可变 revision 创建、稳定 head 推进、权限边界与 release verification 隐藏在一个 seam 后，不再由 Proposal、ingest、startup 或 review 服务重复协调。
 - Stable CatalogSubject 与 alias root 本身绝不回答 current lifecycle 问题。Synchronizer 隐藏完整 release membership 验证，并提供一个 current-release-anchored read model 与 exact-release replay。
 - Organization 不能创作结构真相。Registration/Placement、Observation、Binding、ProjectValue 可以独立演进而不复制定义。

@@ -5,6 +5,14 @@
     "unexplained-difference",
     "unqueryable/protected-reference-missing"
   ],
+  "driverInstanceCardinalities": [
+    "multiple",
+    "singleton-per-project"
+  ],
+  "driverNatures": [
+    "physical-device",
+    "logical-service"
+  ],
   "ids": {
     "definitionRevisionId": "drev_01KVIN3",
     "parameterDefinitionId": "pdef_01KVIN",

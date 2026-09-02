@@ -5,6 +5,8 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
  * The server `message` field is English operator prose and must not surface in
  * product toasts verbatim; the request id keeps failures reportable.
  */
+export const DEVICE_UNAVAILABLE_MESSAGE = "设备当前不可用或被其他会话占用，请稍后重试。";
+
 const CODE_MESSAGES: Record<string, string> = {
   UNAUTHENTICATED: "登录状态已失效，请重新登录。",
   FORBIDDEN: "当前角色没有执行该操作的权限。",
@@ -13,7 +15,7 @@ const CODE_MESSAGES: Record<string, string> = {
   CONFLICT: "数据已被其他人修改，请刷新后基于最新状态重试。",
   APPROVAL_REQUIRED: "该操作需要审批通过后才能执行。",
   INVALID_APPROVAL_STATE: "审批状态已变化，无法执行该操作，请刷新查看最新审批状态。",
-  DEVICE_UNAVAILABLE: "设备当前不可用或被其他会话占用，请稍后重试。",
+  DEVICE_UNAVAILABLE: DEVICE_UNAVAILABLE_MESSAGE,
   PROTOCOL_UNSUPPORTED: "目标设备不支持该调试协议。",
   DEBUG_BINDING_NOT_CONFIGURED: "该参数尚未配置调试节点绑定，无法执行设备操作。",
   DEBUG_BINDING_DISABLED: "该参数的调试节点绑定已被停用。",
