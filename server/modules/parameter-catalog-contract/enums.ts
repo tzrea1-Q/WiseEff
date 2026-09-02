@@ -6,6 +6,19 @@ const freezeRegistry = <const Values extends readonly unknown[]>(values: Values)
 export const catalogSubjectKinds = freezeRegistry(["driver", "node-type"]);
 export type CatalogSubjectKind = (typeof catalogSubjectKinds)[number];
 
+export const driverNatures = freezeRegistry([
+  "physical-device",
+  "logical-service"
+]);
+export type DriverNature = (typeof driverNatures)[number];
+
+export const driverInstanceCardinalities = freezeRegistry([
+  "multiple",
+  "singleton-per-project"
+]);
+export type DriverInstanceCardinality =
+  (typeof driverInstanceCardinalities)[number];
+
 export const subjectLifecycles = freezeRegistry(["active", "retired"]);
 export type SubjectLifecycle = (typeof subjectLifecycles)[number];
 
@@ -122,17 +135,6 @@ export type CutoverPhase = (typeof cutoverPhases)[number];
 
 export const legacyRetirementStages = freezeRegistry(["R-L0", "R-L1", "R-L2", "R-L3"]);
 export type LegacyRetirementStage = (typeof legacyRetirementStages)[number];
-
-export const legacyIdentifierTypes = freezeRegistry([
-  "parameter-spec",
-  "parameter-spec-version",
-  "project-parameter-binding",
-  "project-parameter-binding-revision",
-  "parameter-subject",
-  "parameter-placement",
-  "parameter-module"
-]);
-export type LegacyIdentifierType = (typeof legacyIdentifierTypes)[number];
 
 export const emptyReasons = freezeRegistry([
   "no-registrations",

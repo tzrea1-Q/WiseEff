@@ -119,18 +119,6 @@ export type CatalogSelectionFingerprint = Branded<
 export const CatalogSelectionFingerprint = (value: string): CatalogSelectionFingerprint =>
   brandString<"CatalogSelectionFingerprint">(value);
 
-export type PropertyKey = Branded<string, "PropertyKey">;
-export const PropertyKey = (value: string): PropertyKey =>
-  brandString<"PropertyKey">(value);
-
-export type DriverCompatible = Branded<string, "DriverCompatible">;
-export const DriverCompatible = (value: string): DriverCompatible =>
-  brandString<"DriverCompatible">(value);
-
-export type NormalizedNodeTypeName = Branded<string, "NormalizedNodeTypeName">;
-export const NormalizedNodeTypeName = (value: string): NormalizedNodeTypeName =>
-  brandString<"NormalizedNodeTypeName">(value);
-
 export type MaintenanceAttemptId = Branded<string, "MaintenanceAttemptId">;
 export const MaintenanceAttemptId = (value: string): MaintenanceAttemptId =>
   brandString<"MaintenanceAttemptId">(value);

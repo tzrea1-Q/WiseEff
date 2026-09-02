@@ -30,7 +30,8 @@ describe("ParameterReviewPage landmarks and keyboard", () => {
     const detail = screen.getByRole("complementary", { name: "审阅详情" });
     expect(within(detail).getByRole("heading", { level: 2, name: "审阅详情" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "审阅队列" })).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent(/快捷键/);
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/快捷键/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Committer/)).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "审阅队列" })).not.toHaveTextContent("User");
   });
