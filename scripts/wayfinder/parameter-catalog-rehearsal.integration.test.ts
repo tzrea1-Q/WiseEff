@@ -209,6 +209,86 @@ describe("parameter catalog rehearsal SQL containment", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["concatenated string", "do $$ begin execute 'com' || 'mit work'; end $$;"],
+    ["concat expression", "do $$ begin execute concat('com', 'mit work'); end $$;"],
+    [
+      "format expression",
+      "do $$ begin execute format('%s %s', 'commit', 'work'); end $$;",
+    ],
+    [
+      "escape-string expression",
+      String.raw`do $$ begin execute E'com\\x6dit work'; end $$;`,
+    ],
+    [
+      "Unicode-escape expression",
+      String.raw`do $$ begin execute U&'com\\006Dit work'; end $$;`,
+    ],
+  ])(
+    "rejects procedural EXECUTE via %s before any database side effect",
+    async (_name, sql) => {
+      const tempRoot = await mkdtemp(
+        path.join(os.tmpdir(), "wiseeff-wayfinder671-dynamic-execute-"),
+      );
+      const fakeBin = path.join(tempRoot, "bin");
+      const fakeDocker = path.join(fakeBin, "docker");
+      const databaseSessionMarker = path.join(tempRoot, "database-session-opened");
+      const candidateFile = path.join(tempRoot, "candidate.sql");
+      const validationFile = path.join(tempRoot, "validation.sql");
+
+      try {
+        await mkdir(fakeBin);
+        await writeFile(
+          fakeDocker,
+          [
+            "#!/usr/bin/env bash",
+            'printf %s invoked > "${WAYFINDER_DB_SESSION_MARKER:?}"',
+            "exit 97",
+            "",
+          ].join("\n"),
+        );
+        await chmod(fakeDocker, 0o755);
+        await writeFile(candidateFile, `${sql}\n`);
+        await writeFile(validationFile, "select 1;\n");
+
+        const result = spawnSync(
+          "bash",
+          [
+            rehearser,
+            "--container",
+            "wayfinder-dynamic-execute-probe",
+            "--database",
+            "wiseeff_wayfinder671_restore_dynamic_execute_probe",
+            "--migration-file",
+            candidateFile,
+            "--validation-file",
+            validationFile,
+          ],
+          {
+            cwd: projectRoot,
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              PATH: `${fakeBin}:${process.env.PATH}`,
+              WAYFINDER_DB_SESSION_MARKER: databaseSessionMarker,
+            },
+          },
+        );
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain(
+          "SQL input contains a forbidden transaction, session, or psql control",
+        );
+        expect(result.stdout).toBe("");
+        await expect(readFile(databaseSessionMarker, "utf8")).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
+        await rm(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("parameter catalog rehearsal artifact containment", () => {

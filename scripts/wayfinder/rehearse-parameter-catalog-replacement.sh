@@ -294,6 +294,9 @@ function inspect(source, context = "top") {
       for (const control of ["commit", "rollback", "abort", "savepoint"]) {
         if (values.includes(control)) fail(`Forbidden procedural SQL control: ${control}`);
       }
+      if (values.includes("execute")) {
+        fail("Forbidden procedural dynamic EXECUTE");
+      }
     }
 
     if (values.includes("execute")) {
