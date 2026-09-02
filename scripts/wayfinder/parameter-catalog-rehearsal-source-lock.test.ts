@@ -11,7 +11,8 @@ const historicalSourceCommit = "6c3adfc35c0e3be6d5d381013dace9408190380e";
 const historicalBundleSha256 =
   "017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff";
 const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
-const repairCommit = "3685d5dec5732760baeb16782a21c18b48c943d3";
+const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
+const repairCommit = "39c64406ca4e6bb35d4da314f6c17fef1dc5b9ae";
 
 type SourceLockEntry = {
   path: string;
@@ -43,12 +44,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
     mode: "100644",
-    sha256: "286d9411ddec6ebc6bf9bc4a3cd51eab09c5758ad07aa17fa214676372eb9368",
+    sha256: "67433f6ec316b9c2cb1a82605100182315c60e41d5c13b20df671eec5df9b3d3",
   },
   {
     path: "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
     mode: "100755",
-    sha256: "ec67fa622daa42fb39f05bcb8909eebbb370ff339856a09eadc4a6ba2e683200",
+    sha256: "d1f2627ae2ead2b23d2ee306f08a86c8c439b8cf00f33ea4d3b271e955842f86",
   },
   {
     path: "scripts/wayfinder/sql/columns.sql",
@@ -113,15 +114,10 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "36ad27359051410c348c1172891d47c5d41831e87b5278738d61fb3ea07891ae";
+  "89563a1498779e80e696dd72320a8dae03e5a4fdc85ebda107c28f3eb91c964f";
 const repairChangedPaths = [
-  "docs/references/parameter-catalog-rehearsal-fixture.md",
-  "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
-  "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
-  "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
   "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
-  "scripts/wayfinder/sql/synthetic-fixture-verify.sql",
 ] as const;
 
 const secretPattern = new RegExp(
@@ -166,8 +162,15 @@ describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", `${historicalSourceCommit}^{commit}`]);
     runGitText(["cat-file", "-e", `${oldCandidateCommit}^{commit}`]);
+    runGitText(["cat-file", "-e", `${previousSourceLockCommit}^{commit}`]);
     runGitText(["cat-file", "-e", `${repairCommit}^{commit}`]);
     runGitText(["merge-base", "--is-ancestor", oldCandidateCommit, repairCommit]);
+    runGitText([
+      "merge-base",
+      "--is-ancestor",
+      previousSourceLockCommit,
+      repairCommit,
+    ]);
 
     const changedPaths = runGitText([
       "diff-tree",
