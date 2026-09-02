@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
 import {
+  S2_SCH_0137_FINGERPRINT,
   S2_SCH_CONTRACT_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
@@ -79,6 +80,7 @@ describe("disposable real-pgvector parameter catalog database", {
 
   it("creates a checked-empty frozen-schema database on a real pgvector server", async () => {
     database = await createDisposableParameterCatalogDatabase("schema");
+    expect(S2_SCH_CONTRACT_FINGERPRINT).not.toBe(S2_SCH_0137_FINGERPRINT);
     expect(database.schemaFingerprint).toBe(S2_SCH_CONTRACT_FINGERPRINT);
     expect(database.serverVersion.length).toBeGreaterThan(0);
     expect(database.pgvectorVersion).toMatch(/^\d+\.\d+/);

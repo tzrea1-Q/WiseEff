@@ -3,9 +3,13 @@ import pg from "pg";
 
 import { createEphemeralTestDatabase } from "../testDatabase";
 
-/** Frozen S2-SCH canonical schema fingerprint consumed by this harness. */
-export const S2_SCH_CONTRACT_FINGERPRINT =
+/** 0137-only S2-SCH freeze. Live cloned databases also include 0138 DEFINER reachability. */
+export const S2_SCH_0137_FINGERPRINT =
   "f2ad57b2af5c6e0d50841284bacf5aff927dd1dbf09039099144e20216c82453";
+
+/** Canonical catalog schema fingerprint of origin/main through 0138. */
+export const S2_SCH_CONTRACT_FINGERPRINT =
+  "b3f1745aa2730755a2115b4bc6f4f7361ec060369256d2f1e7f3d5947c0cf2fc";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
