@@ -1,0 +1,455 @@
+-- Fail the import unless the selected deterministic fixture graph is complete.
+-- This is deliberately pure SQL: executable artifacts never carry psql meta-commands.
+do $wayfinder_fixture_verify$
+declare
+  actual bigint;
+  fixture_mode text;
+  nonzero_relations text;
+begin
+  select value into fixture_mode
+  from wayfinder_rehearsal.manifest
+  where key = 'fixture_mode';
+  if fixture_mode = 'populated' then
+  select count(*) into actual from wayfinder_rehearsal.fixture_cases;
+  if actual <> 10 then
+    raise exception 'Wayfinder fixture case registry: expected 10 rows, got %', actual;
+  end if;
+
+  with expected(case_name, relation_family, expected_rows) as (
+    values
+      ('formal-platform-driver-definition', 'definition', 1::bigint),
+      ('formal-platform-node-type-definition', 'definition', 1::bigint),
+      ('platform-subjectless-dts-draft', 'definition', 1::bigint),
+      ('organization-manual-node-type-draft', 'definition', 1::bigint),
+      ('driver-schema-root', 'schema', 2::bigint),
+      ('organization-registration-placement', 'topology', 1::bigint),
+      ('binding-module-identity-mismatch', 'binding-anomaly', 1::bigint),
+      ('inactive-definition-binding', 'binding-anomaly', 1::bigint),
+      ('pinned-binding-revision', 'binding-revision', 3::bigint),
+      ('legacy-twin-r6-r8', 'migration-identity-hazard', 2::bigint)
+  ), drift as (
+    (select * from expected
+     except
+     select case_name, relation_family, expected_rows
+     from wayfinder_rehearsal.fixture_cases)
+    union all
+    (select case_name, relation_family, expected_rows
+     from wayfinder_rehearsal.fixture_cases
+     except
+     select * from expected)
+  )
+  select count(*) into actual from drift;
+  if actual <> 0 then
+    raise exception 'Wayfinder fixture case registry metadata drifted by % rows', actual;
+  end if;
+
+  select
+    (select count(*) from wayfinder_rehearsal.relations)
+    + (select count(*) from wayfinder_rehearsal.columns)
+    + (select count(*) from wayfinder_rehearsal.constraints)
+    + (select count(*) from wayfinder_rehearsal.indexes)
+    + (select count(*) from wayfinder_rehearsal.triggers)
+    + (select count(*) from wayfinder_rehearsal.migration_inventory)
+    + (select count(*) from wayfinder_rehearsal.row_counts)
+    + (select count(*) from wayfinder_rehearsal.row_classes)
+    + (select count(*) from wayfinder_rehearsal.invariant_counts)
+  into actual;
+  if actual = 0 then
+    raise exception 'Wayfinder source profile is empty';
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from schema_migrations
+    except
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+  ) unexpected;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger has % unexpected rows', actual;
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+    except
+    select name, checksum from schema_migrations
+  ) missing;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger is missing % rows', actual;
+  end if;
+
+  select count(*) into actual from parameter_specs;
+  if actual <> 6 then
+    raise exception 'Wayfinder parameter specs: expected 6 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from parameter_spec_versions;
+  if actual <> 6 then
+    raise exception 'Wayfinder parameter spec versions: expected 6 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from organizations;
+  if actual <> 1 then
+    raise exception 'Wayfinder organizations: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from projects;
+  if actual <> 1 then
+    raise exception 'Wayfinder projects: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_config_set;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS config sets: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_config_revisions;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS config revisions: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from attribution_subjects;
+  if actual <> 3 then
+    raise exception 'Wayfinder attribution subjects: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_registrations;
+  if actual <> 1 then
+    raise exception 'Wayfinder driver registrations: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from node_type_definitions;
+  if actual <> 2 then
+    raise exception 'Wayfinder node type definitions: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_schemas;
+  if actual <> 2 then
+    raise exception 'Wayfinder driver schemas: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_schema_versions;
+  if actual <> 2 then
+    raise exception 'Wayfinder driver schema versions: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_property_specs;
+  if actual <> 4 then
+    raise exception 'Wayfinder DTS property specs: expected 4 rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  where ps.source_kind = 'dts'
+    and ps.definition_lifecycle = 'active'
+    and ps.attribution_subject_id is not null
+    and dps.driver_schema_id is not null;
+  if actual <> 2 then
+    raise exception 'Wayfinder formal definitions: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  join driver_registrations registration
+    on registration.attribution_subject_id = subject.id
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join driver_schemas ds
+    on ds.id = dps.driver_schema_id
+   and ds.attribution_subject_id = subject.id
+  where ps.organization_id is null
+    and ps.definition_lifecycle = 'active'
+    and subject.subject_kind = 'driver-registration';
+  if actual <> 1 then
+    raise exception 'Wayfinder formal Platform Driver definitions: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  join node_type_definitions node_type
+    on node_type.attribution_subject_id = subject.id
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join driver_schemas ds
+    on ds.id = dps.driver_schema_id
+   and ds.attribution_subject_id = subject.id
+  where ps.organization_id is null
+    and ps.definition_lifecycle = 'active'
+    and subject.subject_kind = 'node-type-definition';
+  if actual <> 1 then
+    raise exception 'Wayfinder formal Platform NodeType definitions: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  where ps.source_kind = 'dts'
+    and ps.definition_lifecycle = 'draft'
+    and ps.organization_id is null
+    and ps.attribution_subject_id is null
+    and dps.driver_schema_id is null;
+  if actual <> 1 then
+    raise exception 'Wayfinder subjectless DTS drafts: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  join node_type_definitions node_type
+    on node_type.attribution_subject_id = subject.id
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  where ps.source_kind = 'manual'
+    and ps.definition_lifecycle = 'draft'
+    and ps.organization_id = 'wf671-org'
+    and subject.organization_id = 'wf671-org'
+    and subject.subject_kind = 'node-type-definition'
+    and dps.driver_schema_id is null;
+  if actual <> 1 then
+    raise exception 'Wayfinder organization NodeType drafts: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs
+  where property_key = 'synthetic.legacy-twin';
+  if actual <> 2 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 2 same-key rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  where ps.id = 'wf671-platform-subjectless-draft'
+    and ps.property_key = 'synthetic.legacy-twin'
+    and ps.source_kind = 'dts'
+    and ps.organization_id is null
+    and ps.attribution_subject_id is null
+    and ps.definition_lifecycle = 'draft'
+    and dps.property_key = ps.property_key
+    and dps.driver_schema_id is null
+    and not exists (
+      select 1
+      from project_parameter_bindings binding
+      where binding.parameter_spec_id = ps.id
+    );
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 1 R6 staging row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  join node_type_definitions node_type
+    on node_type.attribution_subject_id = subject.id
+  where ps.id = 'wf671-org-manual-node-draft'
+    and ps.property_key = 'synthetic.legacy-twin'
+    and ps.source_kind = 'manual'
+    and ps.organization_id = 'wf671-org'
+    and ps.definition_lifecycle = 'draft'
+    and subject.organization_id = ps.organization_id
+    and subject.subject_kind = 'node-type-definition'
+    and dps.property_key = ps.property_key
+    and dps.driver_schema_id is null
+    and exists (
+      select 1
+      from project_parameter_bindings binding
+      where binding.parameter_spec_id = ps.id
+        and binding.module_id = 'wf671-org-node-module'
+    );
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin: expected 1 R8 proposal row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from parameter_specs r6
+  join parameter_specs r8
+    on r8.property_key = r6.property_key
+   and r8.id = 'wf671-org-manual-node-draft'
+  join parameter_spec_versions r6_version on r6_version.parameter_spec_id = r6.id
+  join parameter_spec_versions r8_version on r8_version.parameter_spec_id = r8.id
+  where r6.id = 'wf671-platform-subjectless-draft'
+    and r6.id <> r8.id
+    and r6.specification_key <> r8.specification_key
+    and r6_version.id <> r8_version.id
+    and r6.organization_id is null
+    and r8.organization_id = 'wf671-org'
+    and r6.attribution_subject_id is null
+    and r8.attribution_subject_id = 'wf671-org-node-subject';
+  if actual <> 1 then
+    raise exception 'Wayfinder R6/R8 legacy twin did not preserve distinct identities and owner graphs';
+  end if;
+
+  select count(*) into actual
+  from parameter_specs ps
+  join dts_property_specs dps on dps.parameter_spec_id = ps.id
+  join attribution_subjects subject on subject.id = ps.attribution_subject_id
+  where ps.property_key = 'synthetic.legacy-twin'
+    and ps.organization_id is null
+    and ps.definition_lifecycle = 'active'
+    and dps.driver_schema_id is not null
+    and subject.organization_id is null;
+  if actual <> 0 then
+    raise exception 'Wayfinder R6/R8 legacy twin property key must not infer a formal Platform subject';
+  end if;
+
+  select count(*) into actual
+  from driver_schemas ds
+  join parameter_specs ps on ps.id = ds.parameter_spec_id
+  where ps.property_key is null;
+  if actual <> 2 then
+    raise exception 'Wayfinder schema roots: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_registration_placements;
+  if actual <> 1 then
+    raise exception 'Wayfinder driver placements: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from parameter_modules;
+  if actual <> 3 then
+    raise exception 'Wayfinder parameter modules: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from parameter_module_mappings;
+  if actual <> 2 then
+    raise exception 'Wayfinder module mappings: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_logical_nodes;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS logical nodes: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from project_parameter_bindings;
+  if actual <> 3 then
+    raise exception 'Wayfinder project parameter bindings: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from project_parameter_binding_revisions;
+  if actual <> 3 then
+    raise exception 'Wayfinder binding revisions: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from project_parameter_bindings ppb
+  join parameter_specs ps on ps.id = ppb.parameter_spec_id
+  join parameter_modules pm on pm.id = ppb.module_id
+  where pm.attribution_subject_id is distinct from ps.attribution_subject_id;
+  if actual <> 1 then
+    raise exception 'Wayfinder binding/module identity mismatches: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from project_parameter_bindings ppb
+  join parameter_specs ps on ps.id = ppb.parameter_spec_id
+  where ps.definition_lifecycle <> 'active';
+  if actual <> 1 then
+    raise exception 'Wayfinder inactive-definition bindings: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from project_parameter_binding_revisions pbr
+  join project_parameter_bindings pb on pb.id = pbr.binding_id
+  join parameter_spec_versions psv on psv.id = pbr.parameter_spec_version_id
+  where psv.parameter_spec_id = pb.parameter_spec_id;
+  if actual <> 3 then
+    raise exception 'Wayfinder pinned binding revisions: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from users
+  where id like 'wf671-%'
+     or email like '%@example.invalid';
+  if actual <> 0 then
+    raise exception 'Wayfinder fixture must not create users, got %', actual;
+  end if;
+  elsif fixture_mode = 'zero' then
+-- Zero mode exercises the executable fresh-install path without injecting the
+-- populated ten-case graph. The profile and migration ledger remain present,
+-- while every profiled catalog relation must stay empty.
+  select count(*) into actual from wayfinder_rehearsal.fixture_cases;
+  if actual <> 0 then
+    raise exception 'Wayfinder zero fixture case registry: expected 0 rows, got %', actual;
+  end if;
+
+  select
+    (select count(*) from wayfinder_rehearsal.relations)
+    + (select count(*) from wayfinder_rehearsal.columns)
+    + (select count(*) from wayfinder_rehearsal.constraints)
+    + (select count(*) from wayfinder_rehearsal.indexes)
+    + (select count(*) from wayfinder_rehearsal.triggers)
+    + (select count(*) from wayfinder_rehearsal.migration_inventory)
+    + (select count(*) from wayfinder_rehearsal.row_counts)
+    + (select count(*) from wayfinder_rehearsal.row_classes)
+    + (select count(*) from wayfinder_rehearsal.invariant_counts)
+  into actual;
+  if actual = 0 then
+    raise exception 'Wayfinder source profile is empty';
+  end if;
+
+  select string_agg(relation_name, ', ' order by relation_name)
+  into nonzero_relations
+  from wayfinder_rehearsal.row_counts
+  where relation_name <> 'organizations'
+    and row_count <> 0;
+  if nonzero_relations is not null then
+    raise exception 'Wayfinder zero source profile contains rows in: %', nonzero_relations;
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from schema_migrations
+    except
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+  ) unexpected;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger has % unexpected rows', actual;
+  end if;
+
+  select count(*) into actual
+  from (
+    select name, checksum from wayfinder_rehearsal.migration_inventory
+    except
+    select name, checksum from schema_migrations
+  ) missing;
+  if actual <> 0 then
+    raise exception 'Wayfinder migration ledger is missing % rows', actual;
+  end if;
+
+  select coalesce(sum(row_count), 0) into actual
+  from (
+    select count(*)::bigint as row_count from projects
+    union all select count(*) from parameter_specs
+    union all select count(*) from parameter_spec_versions
+    union all select count(*) from attribution_subjects
+    union all select count(*) from driver_registrations
+    union all select count(*) from node_type_definitions
+    union all select count(*) from driver_schemas
+    union all select count(*) from driver_schema_versions
+    union all select count(*) from dts_property_specs
+    union all select count(*) from parameter_modules
+    union all select count(*) from parameter_module_mappings
+    union all select count(*) from driver_registration_placements
+    union all select count(*) from dts_config_set
+    union all select count(*) from dts_config_revisions
+    union all select count(*) from dts_logical_nodes
+    union all select count(*) from project_parameter_bindings
+    union all select count(*) from project_parameter_binding_revisions
+    union all select count(*) from parameter_drafts
+    union all select count(*) from parameter_change_requests
+    union all select count(*) from parameter_history_entries
+    union all select count(*) from parameter_spec_review_tasks
+    union all select count(*) from identity_mapping_tasks
+    union all select count(*) from legacy_parameter_migration_evidence
+    union all select count(*) from driver_schema_overlays
+    union all select count(*) from driver_schema_overlay_properties
+  ) inventory;
+  if actual <> 0 then
+    raise exception 'Wayfinder zero fixture inventory: expected 0 rows, got %', actual;
+  end if;
+  else
+    raise exception 'Unsupported Wayfinder fixture mode: %', fixture_mode;
+  end if;
+end
+$wayfinder_fixture_verify$;
