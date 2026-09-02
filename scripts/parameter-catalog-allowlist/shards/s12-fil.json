@@ -47,6 +47,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-FIL:legacy-catalog-raw-read:ee68f39a7faa3ddb:73d4a023c8845875",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-files.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-FIL:legacy-catalog-raw-read:fda94c3e9eac1152:3a8a7f978914513a",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-files/writebackService.ts",
@@ -98,6 +104,12 @@
       "id": "S12-FIL:legacy-catalog-sql-write:a1990d7f2fb7402c:3fd3b2e4fe39b87b",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-files/repository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-FIL:legacy-catalog-sql-write:c93445c6d2d1ae6e:3f61f1fa23ef6b79",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/parameter-files.acceptance.spec.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {

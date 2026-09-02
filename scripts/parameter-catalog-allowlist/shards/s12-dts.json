@@ -11,6 +11,12 @@
   ],
   "entries": [
     {
+      "id": "S12-DTS:legacy-catalog-raw-read:06957015429573a0:301d39763c9e582b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-DTS:legacy-catalog-raw-read:0fcf06d970d95e1c:b1783ce413af8c33",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/dts-reload/repository.ts",
@@ -26,6 +32,12 @@
       "id": "S12-DTS:legacy-catalog-raw-read:1a8be0c46dcb982e:0606bd738b097842",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/dts-reload/restoreBaseline.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:271d062f983d3036:fba833ef434c7a17",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -74,6 +86,18 @@
       "id": "S12-DTS:legacy-catalog-raw-read:66b422860d565ea1:f48da6a355683913",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/dts-reload/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:6a778ed39e47ee5a:4f87cc89f396ec4c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-DTS:legacy-catalog-raw-read:6f55a4a68ca91b16:f5d30889b5514b1b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {

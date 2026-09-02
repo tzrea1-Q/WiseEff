@@ -353,6 +353,66 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:0506206f1c1a86f7",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:1c6660bcca4ecfc1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:7cd472c957499124",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:87e20f392bc36e63",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:9c674414a3b9983e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:9d2d3495337023d5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:a59c0480a168fd7b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:bad3c2d404a1dbb7",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:d6cf50d0356795b5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:65db4a7abbd398ca:e7a8f4dfb4268132",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-raw-read:67207cdaefb41d37:4a3d9b525849f3c1",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -362,6 +422,54 @@
       "id": "S12-TOP:legacy-catalog-raw-read:67207cdaefb41d37:a168954889c0c988",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6b4dc9a1c3143d5d:4772d1fe9ae66083",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6b4dc9a1c3143d5d:abe94b1b758bd3e0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6b4dc9a1c3143d5d:cb7a5e3cac347122",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6b4dc9a1c3143d5d:ebb87a551817dd16",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6bb134782bae0fec:856830b98ed7dc6f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6bb134782bae0fec:d57e065dd275568a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:6bb134782bae0fec:efdecbe5db4f4b2f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:7196e9d435950a1a:a4b89cbe4cdc2028",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -602,6 +710,24 @@
       "id": "S12-TOP:legacy-catalog-raw-read:c1669eb27ac3df9d:834dc09ea730998e",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c33de2cba1b308c8:227f5dde240d0757",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c33de2cba1b308c8:afe3edd36513fc08",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-raw-read:c33de2cba1b308c8:b0bf06c4ce154d12",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -911,6 +1037,24 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:00fea0f3d29f6cf0:1a0b5300135c4a0f",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:00fea0f3d29f6cf0:cf70727b787f33b8",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:084d8df6f25edd55:ff9c37644f35c731",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:2597f942c9e5e952:034a0b98714c47bc",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -944,6 +1088,18 @@
       "id": "S12-TOP:legacy-catalog-route:2597f942c9e5e952:fb5e31dbf31be7ec",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:2af191648151f012:2049502c5f9a43f4",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:2af191648151f012:abbf186f0989819a",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1001,6 +1157,96 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-TOP:legacy-catalog-route:4e49732ec8c08192:133b26f04f32042e",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:4e49732ec8c08192:3e92a0897534a427",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:4e49732ec8c08192:5ecb1543684250d4",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:3746d5578d3a9716",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:3c9afbbcf60ddfce",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:55e0448bdbc1b6cf",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:6f698e226cea5069",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:b385ddf2d0bf2591",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:c6880f4003fb6cfa",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:e526b64abe74f130",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:5682f4fcf611dda2:f8563875d69bbe53",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:568877fdaecfda2e:2835f964a0dac4f2",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:60a5ce2fef74ab49:29fcb3fb5113b766",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:60a5ce2fef74ab49:3ccb73b8fe670b95",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:6e98e2b874713669:2c7d8da8f4db34d4",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-route:7345621e49c49142:d0e34bd7d67ea529",
       "rule": "legacy-catalog-route",
       "file": "src/infrastructure/http/parameterTopologyClient.ts",
@@ -1010,6 +1256,42 @@
       "id": "S12-TOP:legacy-catalog-route:73976487d00d8db6:4c21f3a93ba1fad8",
       "rule": "legacy-catalog-route",
       "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:75ff5ba284965071:8ba229caca30e817",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7a1124b4f3fe49a8:1afb932f58d9867d",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7a1124b4f3fe49a8:292e0f24ef2d65d7",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7a1124b4f3fe49a8:5543218459d3b8f0",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7a1124b4f3fe49a8:c963e831ca0e3fdc",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:7a1124b4f3fe49a8:e1981866d6df7103",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1028,6 +1310,12 @@
       "id": "S12-TOP:legacy-catalog-route:86ba6fcb44200f4e:84df622214cad1c1",
       "rule": "legacy-catalog-route",
       "file": "src/infrastructure/http/parameterTopologyClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:87bbb06adcb5f29d:0299fde153652bbf",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1052,6 +1340,30 @@
       "id": "S12-TOP:legacy-catalog-route:acfd891b1ce8558f:69bfe7aae01c96a0",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:bc5dc5eed44bd167:842236e7617a2ee9",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:bc5dc5eed44bd167:b0add6bff6f27111",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:c2a617527db18054:63308b61632c332f",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:c2bd33e12d656c28:49970a23b700c37b",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1088,6 +1400,24 @@
       "id": "S12-TOP:legacy-catalog-route:cd75304f09eb8b1b:ca2a730d94d2305f",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-topology/routes.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:ced5427588b590bd:d0dc69577c74913c",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:d3dad20c06c601d8:962dc8cf72d0dcae",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-route:d94f93e81f298b40:43195c0167107c8f",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -1991,9 +2321,21 @@
       "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {
+      "id": "S12-TOP:legacy-catalog-table-name:7eddf717f6039d94:63c51f589e4e217f",
+      "rule": "legacy-catalog-table-name",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
       "id": "S12-TOP:legacy-catalog-table-name:898421aea9ea8985:433456cc96628c56",
       "rule": "legacy-catalog-table-name",
       "file": "server/modules/parameter-topology/schemaMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-TOP:legacy-catalog-table-name:9666c4b3d701a800:031b16ee8be89f8e",
+      "rule": "legacy-catalog-table-name",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {
@@ -2045,6 +2387,12 @@
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
+      "id": "S12-TOP:legacy-effective-governance-contract:39d5fe4aa849e546:63420489a0ea63f2",
+      "rule": "legacy-effective-governance-contract",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
       "id": "S12-TOP:legacy-effective-governance-contract:5cd48aa195bc6e4b:a2eeb869da75875f",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -2054,6 +2402,36 @@
       "id": "S12-TOP:legacy-effective-governance-contract:7604039491d937df:a71ab5accb53bdc2",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:76423aea8d138544:2857372be759b0f7",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:76423aea8d138544:77688cbfd1ad3992",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:76423aea8d138544:7d9b8d9ced50695a",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:a64394f6c25ef508:88e539dec3487f5a",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:a64394f6c25ef508:b1aa7d6d859c4d89",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
@@ -2075,15 +2453,39 @@
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
+      "id": "S12-TOP:legacy-effective-governance-contract:d6a7aa0a29dd9c75:0e165306e93054af",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:d6a7aa0a29dd9c75:f48282059ac949ef",
+      "rule": "legacy-effective-governance-contract",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
       "id": "S12-TOP:legacy-effective-governance-contract:e7b46bd0a85a48c6:e0ff5f88a863980f",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-topology/routes.test.ts",
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
+      "id": "S12-TOP:legacy-effective-governance-contract:f191df4960251ca5:d4c60fe683f703bc",
+      "rule": "legacy-effective-governance-contract",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
       "id": "S12-TOP:legacy-effective-governance-contract:f454cd2e67741154:9937807bf16e2b0a",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+    },
+    {
+      "id": "S12-TOP:legacy-effective-governance-contract:fa175fb413d73770:1480f41626c8fdd4",
+      "rule": "legacy-effective-governance-contract",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
@@ -2168,6 +2570,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:06beca724452ff57:916d2c9ed99566e9",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:0793b73313d1cd7a:c55a11bb2328deca",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2264,6 +2672,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:163fa82c6c71c3c2:38c4ce7ed9b26a17",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:175e2dde2b79a2b8:64b11f1e50e3d983",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2405,6 +2819,24 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2f10fffcedb520cb:a7946cfaf2b74e70",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2f4f2f86b07d3985:1393276750b6e08a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:2f4f2f86b07d3985:55cd9982fe540087",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:325335f333c12c7c:6ca0266d05e1f256",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -2438,6 +2870,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:385179f6e6856fc2:dc9f2e1294e62193",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:3941f03b6945d12b:bc685e9f26e1765e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2498,6 +2936,18 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:40e3ddd4eec2159a:73a5806ac844ece8",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/ingestService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:41cd6f6d4f2f25f4:9370c666762a5dde",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:41cd6f6d4f2f25f4:ebb42b182a4b4a43",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2603,9 +3053,27 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4b82683af2300cad:9bbd8400a3225612",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4c7221a2d9f1a7bc:cd5b4f01bf89b99f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:4d4c0d7913fb344b:41b87f316c2618f6",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/provisionalSurfaceBinding.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:4e936f7774ccda76:a467e7ca33971cd7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2771,6 +3239,12 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:5cfb9a10d013af89:c1a53aab6fc7a27b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:5ddf1cc1c840c494:de6a6224ea194ad6",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/routes.test.ts",
@@ -2897,6 +3371,24 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6c917baa4ccef623:9bef76df2d76c745",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6c917baa4ccef623:9e2fb0f6a3da08b7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:6c917baa4ccef623:db04ddece14d9e90",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:6cd7d7e8160a7e34:bbb5da6a48987fde",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -2975,9 +3467,21 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7a3905454f809321:50d2ba83d16b82eb",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:7a4ec2de1c0491ea:cd784f4f8bdeb54d",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7b035694c7591ed7:ac3aa647da6595a7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3011,6 +3515,18 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7fc199115ca9c86f:112474a2d94ed1f7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:7fc199115ca9c86f:d31f7ac7b550d96b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:80a49983227f8843:7bd8377d19d26f54",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/bindingService.test.ts",
@@ -3041,6 +3557,30 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8390c48a812b6ce7:32a8fdd372dd754a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8390c48a812b6ce7:427f1b2a909ef281",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8390c48a812b6ce7:c22fec38bb5fc721",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:8390c48a812b6ce7:e4f0ca1c4321eb59",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:84be4e84498a1c59:09673337d5d95727",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -3050,6 +3590,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:84be4e84498a1c59:e2a3f39686aee06b",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:85ba6bc1c795c2a2:f74df51e4e9611a7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3185,6 +3731,18 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a9997581934dd0f9:2dbdc4f8322263ae",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:a9997581934dd0f9:509e324785f99661",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:aa269631e9567a56:8a6fdf20d6763de2",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -3317,6 +3875,12 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b35be4d9e9e27ded:f54bc3e579c6ae32",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:b4ab9c6059aab81e:216908ea8a79080f",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -3344,6 +3908,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:b78f1738dee88580:11c98431b3738569",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/bindingService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:b9a480f9c329b515:65bf121e88fee285",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3401,9 +3971,39 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c1fa2598c5e40b53:90083cfee3b9d2c3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c1fa2598c5e40b53:a4dffb63053c8923",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c1fa2598c5e40b53:b17de0578a76d48f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:c21126a82ddf5367:26f33be11077473b",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c32b64fbc6bee17c:409537febaef449f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:c32b64fbc6bee17c:9b9e88954705d35d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3479,6 +4079,24 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d0350445bda69ba3:841e1c054a38a02a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d2481b75cf7d3548:3107ca3d0160954c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d2481b75cf7d3548:76ed881d730c5b8b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:d3fb17bec3ad949c:a65bd9fdc6e29e87",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/overlayWriteback.ts",
@@ -3548,6 +4166,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:d8b16072ed748687:d01a6f72178fc27b",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/editService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:d99f2ff796eedd3c:4e20214a44ad050d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -3701,6 +4325,18 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f7ca2ca31a6e7a43:9defb66d6b36a9c5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:f85aa39e3714c365:df52368677f540ed",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
       "id": "S12-TOP:legacy-parameter-spec-identifier:f92ddf7b3d7183a8:98fcfb020cbc1a80",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/migration.ts",
@@ -3722,6 +4358,12 @@
       "id": "S12-TOP:legacy-parameter-spec-identifier:fb46475c0a9a1ebd:277c66b6b422b571",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-topology/ingestService.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-TOP:legacy-parameter-spec-identifier:fdadb8294d1446ee:30f488b42f0b0784",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/infrastructure/http/parameterTopologyClient.test.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {

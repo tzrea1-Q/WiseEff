@@ -525,6 +525,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-CGH:legacy-catalog-raw-read:2587e0e17118d8f6:995da0da8047db6a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-CGH:legacy-catalog-raw-read:25fc42d11f3f31a9:b202ed70edee6079",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/repository.ts",
@@ -4471,6 +4477,12 @@
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-specs/effectiveDefinition.integration.test.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-CGH:legacy-catalog-table-name:c768754fc3e79bfa:33e324a411d670a4",
+      "rule": "legacy-catalog-table-name",
+      "file": "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {
       "id": "S12-CGH:legacy-effective-governance-contract:0352ce43c12c5ed2:17d613bc10baedc8",

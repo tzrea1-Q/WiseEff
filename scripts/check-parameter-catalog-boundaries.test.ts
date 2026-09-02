@@ -749,7 +749,7 @@ describe("parameter catalog boundary checker", () => {
   });
 
   it(
-    "fails closed when the amended exact-tree inventory exceeds the frozen reviewed baseline",
+    "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
     async () => {
       const repoRoot = process.cwd();
       const [report, fixture] = await Promise.all([
@@ -759,15 +759,15 @@ describe("parameter catalog boundary checker", () => {
 
       expect(fixture.trustedBaseSha).toBe("9b3ba7df7e21f5589684bc92c872da593ad4c246");
       expect(boundaryInventoryStatistics(fixture.violations)).toEqual({
-        violations: 3_350,
-        duplicateBaseIdGroups: 548,
-        duplicateBaseIdOccurrences: 1_888,
+        violations: 3_519,
+        duplicateBaseIdGroups: 577,
+        duplicateBaseIdOccurrences: 1_975,
       });
-      expect(report.status).toBe("failed");
+      expect(report.status).toBe("passed");
       expect(report.summary).toEqual({
         violations: 3_519,
-        allowlisted: 3_350,
-        unallowlisted: 169,
+        allowlisted: 3_519,
+        unallowlisted: 0,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

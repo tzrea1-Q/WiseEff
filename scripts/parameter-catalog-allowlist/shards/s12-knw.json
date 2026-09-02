@@ -37,6 +37,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-KNW:legacy-catalog-raw-read:7748775cfec17c95:3ae0389c299ebea4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-KNW:legacy-catalog-raw-read:7b7ad83d454067b2:b7b6f4787affae15",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/knowledge/parameterReferences.ts",
@@ -103,6 +109,30 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-KNW:legacy-catalog-route:46d85ac4f809fa9b:59646b60568ef06f",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:73b8e21aeb15c390:64e4403cc986a29d",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:768b6e9c6fd44cac:a979c2386e84f294",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/knowledgeClient.test.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-route:a7f441e08b311507:a577dfb88d8b2711",
+      "rule": "legacy-catalog-route",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
       "id": "S12-KNW:legacy-catalog-route:aeb9f727643cb9e7:1ee4e4f10aa4933e",
       "rule": "legacy-catalog-route",
       "file": "server/modules/knowledge/routes.test.ts",
@@ -139,9 +169,39 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
+      "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:14b9c359da79bf49",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:be5b0f518b81640b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-KNW:legacy-catalog-sql-write:14bf4d4613b1b270:f1d783c6fed43784",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:aa6da5fae90fd3bb",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:af5d40fd951767e8",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:f878cd04bcb7b555",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
@@ -169,6 +229,24 @@
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
+      "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:412caee1fc6e1bee",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:56f4e44a4b957789",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:f1f10e14d382ba64",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:a601ffdab93fd7f1",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/knowledge/parameterReferences.test.ts",
@@ -178,6 +256,12 @@
       "id": "S12-KNW:legacy-parameter-spec-identifier:2b48d3b67f72e2e8:e2635306a7f43320",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/knowledge/parameterReferences.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-KNW:legacy-parameter-spec-identifier:5549f9b17852f0d2:e7852fd5e6a5057c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {

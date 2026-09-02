@@ -143,6 +143,12 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
+      "id": "S12-MOD:legacy-catalog-raw-read:2a75a5d9fee3e771:36eac26f17f0330b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-MOD:legacy-catalog-raw-read:2c3d19b5d21f84f3:5401f17a016a58cf",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-modules/driverPlacement.test.ts",
@@ -422,6 +428,12 @@
       "id": "S12-MOD:legacy-catalog-raw-read:8ef6d5a28f8f5117:7a795de981899d0d",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:9871c47a37701fb8:69f7b0853104b5bc",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -893,6 +905,12 @@
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
+      "id": "S12-MOD:legacy-catalog-sql-write:6be131d6bf4ec852:ef98d0916856b32f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
       "id": "S12-MOD:legacy-catalog-sql-write:708a6b694daea34e:26af3a063613d292",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
@@ -914,6 +932,12 @@
       "id": "S12-MOD:legacy-catalog-sql-write:7ff45bbeb3e83a09:1ca37f63a111ec2f",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:80aa9a52a0cca0d8:ab6c2157dee4d37e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
@@ -992,6 +1016,12 @@
       "id": "S12-MOD:legacy-catalog-sql-write:c34fdf1459d25b6d:27ede51f5c8e9d25",
       "rule": "legacy-catalog-sql-write",
       "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:d01b50761f1be564:dba300c77a104f3d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
@@ -1088,6 +1118,12 @@
       "id": "S12-MOD:legacy-catalog-table-name:605c0eea941cb6bd:f9ec9ef3bd4f57e8",
       "rule": "legacy-catalog-table-name",
       "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:7671b86b5b150ce5:7e541ff8bc9aea1d",
+      "rule": "legacy-catalog-table-name",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
       "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
     },
     {

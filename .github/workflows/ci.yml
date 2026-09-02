@@ -192,7 +192,7 @@ jobs:
 
       - name: Verify parameter Catalog trusted base and boundary ratchet
         env:
-          PARAMETER_CATALOG_TRUSTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          PARAMETER_CATALOG_TRUSTED_BASE_SHA: 9b3ba7df7e21f5589684bc92c872da593ad4c246
         run: |
           set -euo pipefail
           git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"

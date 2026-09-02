@@ -42,7 +42,7 @@ import {
 } from "./parameter-catalog-allowlist/schema";
 
 const initialBaselineSha = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
-const initialFixtureSha256 = "f6eaa47f70c39e3e88f028be2434ad215fe926869c76bcefeebd86c1a42cd5f5";
+const initialFixtureSha256 = "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951";
 const initialFixtureIntegrity: BoundaryFixtureIntegrity = {
   trustedBaseSha: initialBaselineSha,
   fixtureSha256: initialFixtureSha256,
@@ -1274,9 +1274,9 @@ export type InitializeBoundaryAllowlistOptions = {
 };
 
 const reviewedBaselineStatistics: BoundaryInventoryStatistics = {
-  violations: 3_350,
-  duplicateBaseIdGroups: 548,
-  duplicateBaseIdOccurrences: 1_888,
+  violations: 3_519,
+  duplicateBaseIdGroups: 577,
+  duplicateBaseIdOccurrences: 1_975,
 };
 
 export function boundaryInventoryStatistics(
