@@ -1,0 +1,2549 @@
+{
+  "schemaVersion": 2,
+  "family": "S12-PRJ",
+  "paths": [
+    "server/modules/parameters/**",
+    "server/modules/parameter-drafts/**",
+    "src/application/ports/ParameterRepository.ts",
+    "src/infrastructure/http/parameterClient.ts",
+    "src/infrastructure/http/parameterDtos.ts",
+    "server/modules/parameters/parameterCatalogComparisonContribution.ts",
+    "src/infrastructure/http/parameterClient.test.ts",
+    "src/infrastructure/http/parameterDtos.test.ts",
+    "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"
+  ],
+  "entries": [
+    {
+      "id": "S12-PRJ:legacy-catalog-module-import:383611c1b30db6d9:ec689bb67a11c7e8",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameters/governanceWritebackProvenance.integration.test.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-module-import:961a1df25db3a513:dee90f0fcc5f573e",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-module-import:efa83e3e8e390daa:f6fb2c262ab929ef",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:07f5b008a7298b0d:ab6c0a0485552b54",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:0ad6f4a7ac0848ce:335177c9f1ff1597",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:0d7bfbf2a6a6c4d7:53060ac61faa440d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:0d7bfbf2a6a6c4d7:53317b0b657f75aa",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:126de2101fe66e9e:310c9973cb821941",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:126de2101fe66e9e:3b1a539c27ed5b66",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:156ee90e3c4a0904:3dee01bb81d91be1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:167f3bed880db874:2161b3376f461ff4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:167f3bed880db874:2a9d458fa19a29f9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:167f3bed880db874:a91971baee23bf43",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:167f3bed880db874:d4865e1430720945",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:1e696bd72c0dbb67:bbca0c268439e22c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:222b98056388cf6f:beec2039ca9e0435",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:23662091f62e1d56:1d141271b730574c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:2bb0408e61c36ff3:b253ae1d933881fb",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:2e54844fd2528e37:f18c5afdb9695ec6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:2e54844fd2528e37:f2b7ac37ec4b3a46",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:31579f768f17450d:67eb8a9730f0d720",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:31579f768f17450d:75b666d35a948009",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:31579f768f17450d:96532315d44571ca",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:31579f768f17450d:c2aeae14e558e5bc",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:31579f768f17450d:f6060c384130e854",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:3624f96c26eaea7c:63417b09e48332a1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:3624f96c26eaea7c:6f29bac2b71bbc36",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:375d7ddd3ad391c1:d963cd2e4d45f9c5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:375d7ddd3ad391c1:e5269cbf07f6d2e9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:377d3a3ae33ec7af:1602c376f58eed3b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:377d3a3ae33ec7af:3d14edf6911e00f6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:37a35fc648d27c3b:69b60a42d71d5737",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:3886cc5a4a271268:44a7debba0341795",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:3886cc5a4a271268:cc04419b7ca45070",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:39395309de305faa:25e7996fb7741a3a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:3ea1cf2429031b63:200d6f43b6fc268d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:41e93afa29745679:71f0e4ee91811da4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:41e93afa29745679:ed95db13acbe5612",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:49846df4fadfd713:65a700afdf96a61d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:49846df4fadfd713:82443187c4848ef0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:49846df4fadfd713:b5cf5e8fdc3c858a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:49846df4fadfd713:c3c423f3b619dc2c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:5146350c480107f9:cb120dcbfe3703ba",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationService.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:5449d403910291f0:97339d34131ed802",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:5449d403910291f0:ee0f1b5601f9cc2a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:584aa57d77376648:4c9c4fd9b17885e4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:584aa57d77376648:7ee256bce120804b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:613007d0d70a4003:0a30c88b9f209be9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:11d2249984064946",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:24f362f0f6789ba5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:4191961ca82a308b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:62f424d8c2ac0154:a6f63e60236e8287",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:62f424d8c2ac0154:a826cef5cd24eb9d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:65767086b067e941:033530be44354c0c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:677e13d1676823f3:2232f39a2af7b6a6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:677e13d1676823f3:4b14ba97f4814818",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:677e13d1676823f3:6a7c8606bd377e25",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:677e13d1676823f3:7675cf4f7145fe92",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:677e13d1676823f3:91be2804ac72824d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:695140f95cd526e8:8194df21d5c7b722",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:72337a91c3e1dd63:2bf04121d0be0f5d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:733e53defe486592:a99be9daa33cb37b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:7359fb6af8d2159a:fdf703ceb078aa38",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/governanceWritebackProvenance.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:73dc89f8f82a3a62:c17523a8755b72d5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:7905f8c93ab28826:bb813634ba001d89",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:7ca0a5b126dc0d1e:cd1711918d7e35c6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:7ff8735f4f8cd945:e9b607996fb16311",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8233e181b5466f9e:9e5839c7cc174fee",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8331ac6cf94385be:3a5afd368f8c7d5c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8729bc556089f3f2:75d6f8300166184b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:880f90fbe8cf65b6:3ca9da9bf75e60ee",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:89b7febb8fb1dd3c:220bb8acbeb5f864",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:89b7febb8fb1dd3c:9edf3f8cf2aee45c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8c1f918f93f62836:328f86151ad90f68",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8c1f918f93f62836:e27261dcefd45a8a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8d2f1ec98ad48f9d:3ff078134ee365be",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8d6ac96d76bd15bf:dc542599f8c8fd07",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8e916c324a6f3da3:01b3387c1f714d51",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:8e916c324a6f3da3:a20fa5c849f1e6c2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:901c8698ea94b3d4:74b95d9bdbef43d7",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:9687ae92bb1d5941:3995107341d3752b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/governanceWritebackProvenance.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:9be361f22fbed81a:454255bb7204caea",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:9c38899332926c7e:f5eb5a12a2ba2f8e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:9db6636d4687fcc5:bc122753f9cd8cd4",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a2881b6ef0c8af61:571a6d399e90ff82",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a49742898006f161:9309825888b0e108",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a66a850def44e91e:d5694292cc7bad5b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1Parameters.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a6db1378168a57ec:5250705af3311108",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a6db1378168a57ec:b9c2cb2addfea90d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:a85c62e9de97e096:76e941197071af5b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:acc092fa655537db:267cb0038b888e4f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ad35e543100cbae9:8aab73ce3abaf215",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:b2fb856134267f3e:1247bf6217ee95b9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:b3ec56550f370ddc:3518f6dd5b83cd24",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:b5bffc799da8126c:dc6c74fa8c984739",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:bdfeb56852f7a659:ff6cf26bfbb47ea2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:bee7facb82599ee3:4b6c528c29527f9f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:173ba9e1158c0b46",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:2571e731907bda24",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:4da40cbb41ac1fbf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:715db2bfd9010cca",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:730b79a94e8c9f64",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:a5c4cf63d674fd42",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:ebcfcc9bb2dff817",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c3e37057ac2e212f:f60b978614d3a7b2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:c895c8a0be82bb93:0304cfa32492b678",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:cf4409e2e7e85df6:2cef21174f0a906f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:cf4409e2e7e85df6:4f453a30f80eff3c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:d6479958b985ab48:9e39315eb632717c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:d8c4f11e3b558164:d90ec693dcdf9296",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:d9c85402ed45c50c:4c6d576a12f0b96e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:dac7a73f8ccad0b7:5a8ca4e173b8afc2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:df86d8cda56649a7:51709f9dcb4b1645",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:e0117283b429beb3:22864fdc339f9e5a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:e203e0600bfcd53a:75f1ca90aaf7cc9f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:e203e0600bfcd53a:b1122269f981e8e0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/seedM1BindingRevisionHistory.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:e7f9c4781f5a5d94:7c5644c2aeaef8bc",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:e7f9c4781f5a5d94:bf5d3af39e66ca59",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ea9c4c98f497e48f:856d938c4df55a79",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ea9c4c98f497e48f:c9df287afd23cd28",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ea9c4c98f497e48f:d7e39ae9dcc2e9c0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ec3de2ecf3040135:444d2c93d5663a86",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ec3de2ecf3040135:9ca7c7820cf5b5ce",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ec5b11172c617fd6:96d898606e3cf67d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:ec5b11172c617fd6:bb3a6972e50aaa80",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f10abdb49365ad4e:34bc4b50543e453d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f10abdb49365ad4e:ae5700d1790e4686",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f550a7f148e1edc6:5faff5ef1dd071b6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f550a7f148e1edc6:7121fa40163b96ab",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f550a7f148e1edc6:aac165bdd2380f94",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f5855f1f0621412b:4f60a385dd1e3c3f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f5855f1f0621412b:67376d78992dd026",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-raw-read:f5855f1f0621412b:f0692e65c77e5fe5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:06954742615cb7d1:4a38712c98a0d2d2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/serviceReviewWorkflow.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:07542ff0fe3d51ab:e1b3648ea7cf647b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:07542ff0fe3d51ab:eda8125d8cdf2a45",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:0c7c32a523b5a7f3:dc79915d46935a4b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:178d51ada5b4fcbc:6418d21c73668a14",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/reviewWorkflowRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:1b15adc302b5581a:5d9494173ea1e14b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:1c11816465928a0b:5d25e3364a17c9d0",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:1c11816465928a0b:614fbfa772be667a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:1c11816465928a0b:74ff347fd7899d2e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:1c11816465928a0b:81301ae7699906b5",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:2994c01958c4cbe4:687e935067e58153",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:308e7327a7feca85:a0456587d256e000",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:3154b0922d8291ad:6738a8b530d5be55",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/governanceWritebackProvenance.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:35f26b4e5a8799eb:e00d8d660340a3f7",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:360e492622474de0:d0e25073961bae78",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/moduleRename.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:3dbb4006822c767d:85c7667835ca1412",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1Parameters.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:452e3ed708238d3d:33d5f06e399e5d52",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:054cfb5b08f63f60",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:137fd5765af12867",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:4c280e2063e4acf6",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:539ab58be3d5b341",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:6d260f809d4dc1a8",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:ad8233bb078ce482",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:bb33993f9bf0dd66",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:4b3e09939a25b353:f6830aa8c4d47414",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:569008eb3a38ff7f:aad8f7e077fee155",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1Parameters.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:57a9c771a1f9332f:41c2c053acf8d10d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1Parameters.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:5924f89c0fbb331f:1a028ed2ff1f0eaf",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/semanticParameterRisk.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:5b15ac09c16a6e93:5248b06d8ff78148",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:5b15ac09c16a6e93:fe18e618b774e57e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:63a193a2ced5c6d1:51bfefb035849dd7",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:696d6b6e57697e7b:e1306333a52ef5d6",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/insertFileSyncConflict.postCutover.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:754c478ce8c554c4:5e8f6dc0215a7580",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/semanticParameterRisk.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:772f11de3d819720:4cb49a8957365658",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:772f11de3d819720:5077be58d0278fe6",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:772f11de3d819720:53a817fba650ed11",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:772f11de3d819720:a2996b4a06fce55f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:8cd249ca8f841a9a:459190400d49cd94",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:8cd249ca8f841a9a:8f421fdced5a690c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:8cd249ca8f841a9a:cfe91d79f44535d2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:8e158ec86720f81e:c863fe40a5fed742",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:9128c6135250ad5a:13aafc39da23b919",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:9128c6135250ad5a:62821ad85fc112e1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:9a170046193114f3:1bfc83e4590cb9a4",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:9f64696a65b176f6:f3aa54136ff2aded",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:a30647e6d76094e6:0bd32f0f6b4442e8",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:a30647e6d76094e6:651733b04f17002c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1SemanticTopology.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:b3ed16461ecb4ee1:1a3fcb2dcfb2e9e0",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:c773fa4021cf7eba:3f0204fc34ec7d19",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:c85054f9474b52da:ffb740675458c33a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:cda17c48aba36464:ccff1d25bdb4d2f1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:cfd54800974e3f2f:30713395acc32a70",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:d0f1760d7b6b232a:2e7f84b2cf8ee6de",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:d0f1760d7b6b232a:52f0b2ae21c47bb7",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:dce110ff7d19b5a6:ffec0823ae9f4566",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:df39475ab8fba19f:653d5865d3d35f27",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:df39475ab8fba19f:6c01b515831b0e01",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:e257d691a59aa403:3bddb000a2e518a0",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:e257d691a59aa403:7a65a0bb14eaacb3",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/createParameterModuleForAuth.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:e5e19e0341db620d:db6297c9cc68c51b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/submissionProvenance.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:ec6babc3955ad0dc:c100c96f15c66db3",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/seedM1Parameters.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f0a62ea74d99e674:0062a5796a04af78",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f0a62ea74d99e674:f1b8eee810f20b8b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f3ad6af37625ee5e:a8a5fd8c19565d2a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f4b8adc63230662f:72b4e600aad9a95f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/semanticParameterRisk.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f6c9df9a8a2d2104:bad4541e16513263",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/repository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f9320802fc0a3e41:55787c85334b81fb",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/importBatchRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:f9ee1a74ccded55e:5c16918e52dff3b8",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/parameterModuleRepository.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:fbbf91aebcb05351:9fb40a3f000fd396",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-sql-write:fbbf91aebcb05351:f3bdc217d9411e53",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:0bced0d7babd6193:dba75d6b98a2deeb",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/semanticParameterIdentityNames.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:1ce34ef90abf23ed:1febe504c76af411",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/semanticParameterIdentityNames.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:3841a7e15f8b654b:531006f74cc71fb1",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/semanticParameterIdentityNames.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:48e3a6ec0cdb78ef:f34018c1c1e7a6af",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/semanticParameterIdentityNames.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:70dbf353172d6ad1:8c5e0488016a9631",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:95d31a5fb0a45f64:300bc160bbb946f9",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:9f1daddb79d2e681:1596c841671e9d43",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:b36a1b9f9b9a52ae:83432fd8cc52359a",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:b36a1b9f9b9a52ae:a80a99ff122a6311",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-catalog-table-name:c0210c24f42ac5c9:7ed3d462c01629a6",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:03fbd2167080acba:99165489cc827165",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:0b57bc3820da4a8c:f8db57dd62441a99",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:0b65301400f94bf6:d9f713dabb546e54",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:0cddf092799221d8:323b873d011c090d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:0cddf092799221d8:6f3797d7b838004e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:0cddf092799221d8:d4f8c38bdfa20583",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:110a64be3809d604:234946c1c33755b1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:115548d2d6d8e5b5:84a1c9d0f17d3b1a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:142d177fb3b9bc6f:8f5e6644b8612ae6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:15f15851d7197b63:ceabb5bf953cf6e0",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1676e780c4620956:22827879297eeea1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:17acada8ec4fec0d:fe154a4d670f352d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:18361ad392c6c579:482d2a1b53950e9f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:195864d11ba1a328:10f6d39753333dec",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1b1b2fc7dcf55970:924d6a8a00ef01f3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1d2ac3516913b887:dc4ba8801d085c90",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1e0f2eda2287d6b2:76b9303d488a6f65",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1ea62538822b94d1:e1b1863845b02493",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:1f696cd37a3c7282:fc4071d7ce958859",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:27e77199ecc87c9b:9c4799ad53c0e23f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:27e8266f356e2991:38228da51211d924",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:2837fe5bd77835cb:5508e2d4b9c7d029",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:2954119a5eaf9a08:e0d05b91053017f5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:2a69eff268c6723e:8d3614b9edd93490",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/schemas.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:2ff8e010ebafaf54:42c693718a31aa87",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:2ff8e010ebafaf54:be55d2929cb47d12",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:309fd26274968b03:7831e4cd1d53a40a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:331856951b2a66d4:592045a41e1cd666",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:3599f5b664ecd6f0:54d5f47ab66dc394",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:394625b93aad4e64:e06847f4f85de083",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:39b96eff039157c2:afe082dd96073995",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:3a49adbe0f853c2c:359ba22723840e80",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:3a49adbe0f853c2c:47a20718c3a45f40",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:3a49adbe0f853c2c:f83fa1580878bf27",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:3e1e0a912c274fd4:3caba44c685c072b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:419584f275a7aae2:5cb3de539921bcc6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/insertFileSyncConflict.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:42196f1eadaec807:f0b803659e8ec724",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:441aeeb6428b1b14:6d7cb12491fbd3bf",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:45e7a211ae94b59e:ead681d0f6aa7b89",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationTypes.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:470d96579bd37275:b9464ecfdb8616b0",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:473fa83ba06fe535:4b9d17fcafcceea8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:4848fa6bb2f4a579:e27867d926a47e7d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:48e5d2441dc5259f:bceb1b3d76b26065",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:4fb7abbca49d1b98:4fabb588d808c258",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:51d047d0a4458a25:1b774d87da65ef26",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:53bab5d25b611e67:5c4e4e7ae7b9cb35",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:53f9bc7acc4721eb:e6248225ab0a05b5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:5635fa3b6e75c568:746e102ddc5d5f2d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:60eb9cedbdd6bdcd:a5e6b2ab47fbd09e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/schemas.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:61ee88c3d1ec5c27:4c8a6c3008c5b543",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:64308ebc2ce21295:d2ba1ca10e1dc2ad",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:65fa7ee681d3d296:f856e5dca0513bd4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:6651dab0a1dcd626:e8139aca5beaf809",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:67c7055f5e11eba1:25a89758e25fa344",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:67c7055f5e11eba1:d36c6ded2597a0a1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:6b02432c6045e525:ffdc8b3a9686a702",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:6bdb2d9d958e0d66:c1832172ba461fea",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:6c98e5dd9fb75d02:f0cd41b4e54add3e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:6cd6a6dea2310eea:25cffc930f252a88",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:71859497f3ee4b32:aafac90936881c4f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:71f52ded193b8aa6:3559bbbdd2da3f81",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:71f52ded193b8aa6:e2a3ffdc260c4ace",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:7243c578a79881b4:4baff4bc98d8aeed",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:7243c578a79881b4:5bb77837834be67c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:72a19ce24b2777c6:8af60293b42f5596",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:756d58616ef7ea3f:e8f9d8e82ae8cfda",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:78d78a75e6128a5f:86cade531d4d52de",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:79626f17f6eb7c7b:4937af1f36568cd8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:7f9f0551c562a440:6da9700c2c2cdac5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:83e23510eaf9d748:53eed5f9ff355ac7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/schemas.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:868d0a10bde06489:26db23732ced835f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:869d647cffb501be:ea14797c86a7b581",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:8c90e4ebf01768c5:0b2415c75d581e76",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9640f5e5821f0851:2f0f431b9a16b3ce",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationTypes.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:98148a0b91883cbd:64563a3f41f0ae46",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:985d2c2e940921d3:ee56b4de5c10b1b3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9874e30791b27b91:4a68bb068c7c02e2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/insertFileSyncConflict.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9a39330722f954e0:0affb7ca9edb5e7c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9a39330722f954e0:59151a8adfdc1762",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9a39330722f954e0:5ec188786f1df8c8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9a39330722f954e0:f8de77eff7155f52",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:9e695bc0b5a40b1a:7e93a787b67c7251",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:a289fae6ba3e6440:a26e59b02ba4f83e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:a2facdd4e4d8c309:a9531a93dfef1fcb",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:a442a02a9d11bbe2:e0fcb2df29c5e637",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:a6bed055036e5823:d7bcc89e11a87a21",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:aa0faebd0f569a99:55f4155096851610",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ab3e903f345f283d:c0a771171fae2874",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ad5af35a82ca4e9a:a5d53c1f04dd34a2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ada47df80648e27b:409585ddf9a998c9",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ae30fde830904fad:4afb14d176ad077b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b0caba21a3ad0045:5376851dadfeacc2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b46807948a7a5761:0b87309c27638c2a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b4ec13f5ae03bf13:f30306184bffe014",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b5cdf543adc2539c:54a1db93e3028e98",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b78ea8fec989cd74:741dbe7b895e9d99",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b88166889be25f1b:cbe05852f3e6a0c2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:b9fae33ff34fd5d3:1bab63ef3273a3b7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ba7160292ce59730:9e1b97cb8cd49845",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:ba95e52bd53d2559:4037f7cd3ff0c66c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:bda8457ac9f07c04:774b52cc8d54a0cc",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:c05a748b77e40dac:0e5b04db212325ca",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:c05a748b77e40dac:a3e31921fb1d56cf",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:c1200aeadf36e6fc:87aa393d8e5ed07c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/insertFileSyncConflict.postCutover.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:c780c27cdfe63d66:4046ffd96b5f0720",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:c9469c201522e1e2:e7dd4010a25b4a4d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:caed939e1bbdc345:a1855b88bff96e1e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:caed939e1bbdc345:f7e0d95e763f4c6a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:cdf322a13d0729bc:0ea75070f7203ca1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/specVersionSelection.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:cf3a41009e5c40b9:f036d6022947c9e3",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:cf84fb6f809d352e:53867564c3eacd0b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:cf84fb6f809d352e:6e2633524ae56a3d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:d07cde452d360641:76f9705eb4a81af8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:d354df38ab5128c1:1a4bab1918e7a3d8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:d47751a1ba2217d4:3cadb12d1d981ad5",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:d8c97f4c2a94cf43:25aa16170296f39f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:d8c97f4c2a94cf43:9e1a87c53fc70694",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/routes.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:da44933975fe57e6:7a16fb83d7bb5f68",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:df41cbcd06072864:d4cda94448541c6d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:df787f116fd07833:7587e84236c08070",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e2326d8b1f569f4b:e44ea5e1f1d02a2b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e28e4a90def877c9:27205166d68a3527",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/schemas.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e4277b992489a04e:8ce6fca5db1164b7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e58690c0c037b6ad:ac050add9fb6de3e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e6d59bd44063050b:23b62f412e0d3771",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e6d59bd44063050b:a4940b4c88874e08",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e6d59bd44063050b:d0fce51ed109a0d8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:e9174a0fc0f86846:e06af308cf5e6342",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/types.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:eb506699a35ae4e7:0b0ced049929018e",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:f7fdc96f2d0cf8ee:b274c83601a1b444",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:f8901f733a72153a:e36171fc479c02fe",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/types.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:facacf1105f8f17c:48aaa865e4bb0b58",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fbb918d8ca1ac3bf:01df0bf73c6079d2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fbb918d8ca1ac3bf:05ac7622a6a92697",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fcf9baa3a2549410:8f8fe49821739a7f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/initializationService.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fd0613bd273714f5:e037b630db1cf948",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fd1aee24f37fadaa:48d497e5833a0f41",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:legacy-parameter-spec-identifier:fd1aee24f37fadaa:5481c7147a24581a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:17186471271d49c7",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:299d6324af3943e6",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:3eea991b1f9eb3fa",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:8a49e80e4b649fdd",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:95a7f03552b6d98b",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:b7949f505e1e704a",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:0932f0d954db52f8:f66a10047b0d2688",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:1561e009f31d45bb",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:164cfd2ce519861d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:258f5803d04a2529",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:4992fda20e3c1b7d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:4f463528cecd1536",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:58e90ea74c6a590e",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:5f38e0e3e07d0c0d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:8092684f49bdf4b0",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:a564bb905f05e29f",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:b03e4ec1baeaed9d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:b1f7e514a0f5ab16",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:b2d877f3d435bf64",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:c6857ecb1893c7c2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:098578fae65773da:d1e5998131f991de",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:1672137d914581a2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:60fd11904b6411f3",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:76d7ca2a986549f6",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:0b7b17a95ea5e64e",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:59e521ff8cc28d97",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:77aca0aea74ebf8d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:8644bc011f134cf5",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:a0925e142b8eb4ed",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:2e845ed990065511:8547e1a8cebfea72",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/semanticParameterReads.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:37a1996d1a937838",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:5cdab7ab69a983fc",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:6a83c33633ffb34a",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:7c970e0e46f009e5",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:91fd71c28e340b15",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9a95911be58d9752",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9d7d1c15d5cd9b9b",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:a97b6df63bfa1075",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:e87d7ebd4f61b676",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:ea846d21dd7ac3d3",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:461d7b00350248c1:a6bcef11d4635b60",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:461d7b00350248c1:bd6fc8cc95b8d58f",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:49d146e47218a441:8436a1078d13bbfb",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:5869ea00b60466bc:7b560e1d871b9120",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:64a8d2cbafc6a08a:347f2ea33343631c",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/parameterModuleRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:6bd92233449485fa:03992615466d433f",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:6bd92233449485fa:301fca27adb22aa4",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/reviewWorkflowRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:6c06e3512dc71dd0:293669861979a260",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:7be6a6f29877a28f:99d10b9e72b3b25e",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:7be6a6f29877a28f:adde797517102eee",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/fileSyncConflictRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:8efb88b3e7330250:9fef964e60c21ac7",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/insertFileSyncConflict.postCutover.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:919ccfa63caaf008:e59e888c99d1fa72",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:9ecad7cb02c2a54c:0e7e98887cd5a468",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/initializationRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:a7cacd61d25601d5:58c5966474a217e2",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:a7d0091be98d42c2:bf48553de0869d22",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:a7d0091be98d42c2:c274e63d1784117e",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:ab5253d5c55a8542:008327309c25b280",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/serviceReviewWorkflow.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:c5755b6599fda328:dc521219ce9e3ae1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:c5755b6599fda328:feb2f59e532f0e31",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:c5755b6599fda328:ff29b9ad19e2220a",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/importBatchRepository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:b5bb30f0eb620ac1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:cd52ee39c8a051f4",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:e6547c8da21e8b6b",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-drafts/repository.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:cf45d0c4c788978c:e9b7df91be5aac82",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/service.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:0512318361c5d575",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:5ce0ff879bb3df19",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:70db5b0b7de89e35",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:ce768574b34c1ef1",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:e1f66c261f50b973",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:ed5d1907c25d4f75",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-PRJ:unresolved-boundary-expression:d56630e51c093bc2:f15f98e42774c23d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameters/dashboard/legacyDashboardAdapter.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    }
+  ]
+}

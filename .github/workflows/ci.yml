@@ -144,6 +144,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -189,6 +191,15 @@ jobs:
 
       - name: Script tests
         run: npm run test:scripts
+
+      - name: Verify parameter Catalog trusted base and boundary ratchet
+        env:
+          PARAMETER_CATALOG_TRUSTED_BASE_SHA: 9b3ba7df7e21f5589684bc92c872da593ad4c246
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          test "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
 
       - name: Device bridge tests
         run: npm run bridge:test
