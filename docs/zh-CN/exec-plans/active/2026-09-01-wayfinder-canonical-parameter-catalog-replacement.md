@@ -79,21 +79,21 @@ Phase A 于 2026-09-01 从 publisher branch `codex/wayfinder-668-to-tickets-2026
 - `DriverNature` 精确为 `physical-device | logical-service`。
 - `DriverInstanceCardinality` 精确为 `multiple | singleton-per-project`。
 - 不存在 `NodeTypeFamily`。S1-BND 与 S2-SCH 必须删除所有 `family` 字段、枚举、列、fixture 与验证规则，不能另造替代分类。
-- S0-ID 是 `normalization.ts` 中 `parseCanonicalCompatibleSelector`、`parseCanonicalNodeName`、`parseCanonicalPropertyKey` 及其 golden tests 的唯一 owner。成功 construction 原样返回输入 bytes；禁止 trim、大小写转换、NFC/NFKC 或任何其他 Unicode normalization、去引号或去 `@`/unit-address。
-- 三个 constructor 都拒绝空串、non-ASCII、任意 ASCII whitespace、ASCII control/DEL，以及由匹配单/双引号包裹的 raw token。共同的封闭 failure reasons 为 `empty`、`non-ascii`、`ascii-whitespace`、`control-character`、`quoted-raw-token`，再加下列 kind-specific reason。
-- compatible 必须匹配 `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$`。`*` 总是返回 `wildcard-forbidden`；其他 shape failure 返回 `invalid-compatible`。
-- node name 允许精确 root token `/`；其他值必须匹配 `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`。任何 `@` 返回 `unit-address-present`；其他 shape failure 返回 `invalid-node-name`。
-- property key 必须匹配 `^[A-Za-z0-9,._+?#-]{1,31}$`。ASCII case-insensitive structural deny-list 精确为 `compatible`、`device_type`、`gpio-controller`、`interrupt-controller`、`linux,phandle`、`phandle`、`ranges`、`reg`、`status`、`#address-cells`、`#gpio-cells`、`#interrupt-cells`、`#size-cells`，且任意 `#` 开头值都拒绝。deny 返回 `structural-property-forbidden`，其他 shape failure 返回 `invalid-property-key`。case-insensitive deny 绝不能改变接受值的原始 bytes。
-- Failure classification 的精确顺序是：`empty`；`non-ascii`；`ascii-whitespace`；其余 `control-character`；`quoted-raw-token`；然后按已列顺序执行 kind-specific checks（`wildcard-forbidden` 先于 `invalid-compatible`，`unit-address-present` 先于 `invalid-node-name`，`structural-property-forbidden` 先于 `invalid-property-key`）。
+- S0-ID 是 `normalization.ts` 中 `parseCanonicalCompatibleSelector`、`parseCanonicalNodeName`、`parseCanonicalPropertyKey` 及其 golden tests 的唯一 owner。每个 constructor 接受 `unknown`；非 string 返回 `not-string`。成功 construction 原样返回输入 bytes；禁止 trim、大小写转换、NFC/NFKC 或任何其他 Unicode normalization、去引号或去 `@`/unit-address。
+- 封闭 failure-reason union 精确为 `not-string | empty | control-character | non-ascii | surrounding-whitespace | whitespace-forbidden | quoted-source-token | wildcard-forbidden | unit-address-present | length-out-of-range | invalid-syntax | structural-property`。
+- compatible 必须匹配 `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$`。`*` 返回 `wildcard-forbidden`；其他 grammar failure 返回 `invalid-syntax`。
+- node name 允许精确 root token `/`；其他值必须匹配 `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`。任何 `@` 返回 `unit-address-present`；长度超过 31 bytes 返回 `length-out-of-range`；其他 grammar failure 返回 `invalid-syntax`。
+- property key 必须匹配 `^[A-Za-z0-9,._+?#-]{1,31}$`。长度超过 31 bytes 返回 `length-out-of-range`。ASCII case-insensitive structural deny-list 精确为 `compatible`、`device_type`、`gpio-controller`、`interrupt-controller`、`linux,phandle`、`phandle`、`ranges`、`reg`、`status`、`#address-cells`、`#gpio-cells`、`#interrupt-cells`、`#size-cells`，且任意 `#` 开头值都拒绝。deny 返回 `structural-property`，其他 grammar failure 返回 `invalid-syntax`。case-insensitive deny 绝不能改变接受值的原始 bytes。
+- Failure classification 的精确顺序是：`not-string`；`empty`；`control-character`；`non-ascii`；`surrounding-whitespace`；`whitespace-forbidden`；`quoted-source-token`；再进入 kind-specific checks。Compatible 先检查 `wildcard-forbidden`，再到 `invalid-syntax`。Node 依次检查 `unit-address-present`、`length-out-of-range`、`invalid-syntax`。Property 依次检查 `length-out-of-range`、`structural-property`、`invalid-syntax`。
 - Canonical/alias collision 使用 selector kind 加接受后的 exact bytes。ASCII case difference 保持不同，只有明确的 property structural deny-list 例外。Constructor 不静默选 winner；同一 owner 的 identical claim 是 idempotent，同 key/different owner 或 canonical/alias claim 是 typed conflict。
 
 最小 golden vectors 属于规范合同：
 
 | Constructor | 接受且保持 exact bytes | 拒绝与 exact reason |
 | --- | --- | --- |
-| compatible | `vendor,driver`；`simple`；`vendor+tag,driver.rev/1` | `` -> `empty`；` vendor,driver` -> `ascii-whitespace`；`vendor,*` -> `wildcard-forbidden`；`"vendor,driver"` -> `quoted-raw-token`；`vendor,driver,extra` -> `invalid-compatible`；`v\u00e9ndor,driver` -> `non-ascii` |
-| node name | `/`；`charging_core`；`usb-controller` | `node@1` -> `unit-address-present`；`charging core` -> `ascii-whitespace`；`'node'` -> `quoted-raw-token`；`1node` -> `invalid-node-name` |
-| property key | `iin_max`；`init_para`；`vendor,limit?` | `STATUS` -> `structural-property-forbidden`；`#custom` -> `structural-property-forbidden`；`bad/property` -> `invalid-property-key`；`bad\tkey` -> `ascii-whitespace` |
+| compatible | `vendor,driver`；`simple`；`vendor+tag,driver.rev/1` | `42`（number）-> `not-string`；`` -> `empty`；`vendor,\u0000driver` -> `control-character`；`v\u00e9ndor,driver` -> `non-ascii`；` vendor,driver` -> `surrounding-whitespace`；`vendor, driver` -> `whitespace-forbidden`；`"vendor,driver"` -> `quoted-source-token`；`vendor,*` -> `wildcard-forbidden`；`vendor,driver,extra` -> `invalid-syntax` |
+| node name | `/`；`charging_core`；`usb-controller` | `node@1` -> `unit-address-present`；`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` -> `length-out-of-range`；`charging core` -> `whitespace-forbidden`；`'node'` -> `quoted-source-token`；`1node` -> `invalid-syntax` |
+| property key | `iin_max`；`init_para`；`vendor,limit?` | `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` -> `length-out-of-range`；`STATUS` -> `structural-property`；`#custom` -> `structural-property`；`bad/property` -> `invalid-syntax`；`bad\tkey` -> `control-character` |
 
 ### 公开 lookup kind 与内部 migration source kind
 
@@ -121,6 +121,8 @@ Cutover classifier 把它们分为 11 个 mapping classes；每类都固定 owne
 | Reconciliation, cutover, review, observation, and history row | `parameter-definition-reconciliation-run`、`parameter-definition-reconciliation-item`、`parameter-spec-version-cutover-run`、`parameter-spec-version-cutover-item`、`parameter-spec-property-key-cutover-run`、`parameter-spec-property-key-cutover-item`、`parameter-identity-migration-run`、`parameter-identity-migration-phase`、`parameter-identity-cutover`、`parameter-history-entry`、`legacy-parameter-migration-evidence` | owning run/organization/project + immutable epoch/sequence | MigrationHistory、Review/Observation evidence、Audit reference 或 Archive |
 | Policy, audit, and unresolved protected reference | `parameter-policy-target`、`audit-subject-link`、`unresolved-protected-reference` | policy/audit principal + target owner；unresolved 保留 source owner evidence | existing Policy/Audit target 或 Archive；unresolved 继续阻止 release |
 
+Owner/source derivation 同样封闭。Platform 精确表示为 `(owner_scope_kind=platform, owner_scope_id=platform)`。Organization 与 Project 使用 source row 的 exact organization/project ID。无 owner 的 child 继承 parent；parent 缺失或冲突就是 R0。Composite `source_id` 必须对有序字段使用 `serializeContract`；禁止 delimiter 拼接与 hash-only identity。`unresolved-protected-reference` source 必须包含 consumer table、consumer primary key、column 与 raw referenced ID。Registry 将每个 source-kind literal 固定映射到 physical table、primary key 与 owner extractor；caller 不得自报 table name 或选择 extractor。
+
 S2-SCH 的内部 typed target 至少还必须覆盖 Observation、ObservationMatch、ReviewItem/ReviewResolution/ReviewEvidence、PublicationIntent、Policy、Audit 与 MigrationHistory，不能只包含核心 Catalog/Registration/Binding/Value target。公开 lookup response 不暴露内部 source-kind registry 或 Archive candidate。
 
 ### S0-RAT boundary registry 修正
@@ -145,6 +147,8 @@ Relation vocabulary 是完整且 schema-qualified 的 37 项：`parameter_catalo
 
 Checker 同时登记全部 legacy relation、legacy identifier spelling 与 retired route fragment；private module import 使用 default-deny，仅显式 public seam allow-list 可通过。每个 violation occurrence 的 replacement-resistant record 绑定 mandatory `--trusted-base-sha`、trusted baseline blob OID、byte span、token/evidence、file、owner family 与 rule。Checker 比较完整 occurrence multiset，删除一个 identical occurrence 再新增另一个不能保持 baseline set。Initializer 要求 clean index/worktree，并将 fixture 与 11 个 shards 原子 staged，或一个都不写。CI/Hosted 必须 fetch 并验证 named trusted base；`.github/workflows/ci.yml` 与 `package.json` 只为该 wiring 加入 S0-RAT allowed production paths。Local mutable `origin/main` 不是可信 evidence，S0-RAT 完成前必须得到 Hosted execution evidence。
 
+Reviewed baseline 精确包含 3,350 个 violations；其中 548 个 duplicate base-ID groups 共含 1,888 个 occurrences。Ordinal suffix 只能区分当前顺序：删除一处并在别处增加 equivalent occurrence 仍可能复用 ordinal 并逃过 delta。因此上述 trusted blob/span/evidence occurrence record 与完整 replacement-resistant multiset comparison 是必须合同，不是可选 hardening。
+
 ### S0-FIX append-only repair 与执行安全
 
 历史 source `6c3adfc35c0e3be6d5d381013dace9408190380e` 和旧 bundle checksum 继续作为 immutable audit evidence，不能当作 safe executable input。S0-FIX 产生 two-commit append-only repair：
@@ -152,7 +156,7 @@ Checker 同时登记全部 legacy relation、legacy identifier spelling 与 reti
 1. repair commit `R` 只修改原有 18 个 fixture files，并关闭已审查的安全缺陷；
 2. 第 19 个 external source-lock test 固定 `R`、exact 18 paths、file modes、per-file hashes 和新的 length-framed bundle checksum `B`，避免 checksum self-reference。
 
-PostgreSQL-aware lexer 拒绝 psql meta-command 与 transaction/session escape，包括 alternate transaction spelling、用 comment 隐藏控制语句、include/execute command、autocommit 修改、role/search-path/session mutation 和 dynamically executed control SQL。Fixture verification 在 mutation 前、forward rehearsal 后、rollback 后各执行一次。Cleanup fail closed：每个创建的 database/object/process 都必须清理，cleanup failure 令执行失败，成功时精确输出 `CLEANUP_OK`。Closed-world secret scan 覆盖所有 source 与 generated artifact，包括 schema/output/log。Required gates 包含 focused safety tests、`npm run test:scripts` 与 real PostgreSQL；synthetic rehearsal 仍只是 synthetic，不升级为 target、release 或 production evidence。
+PostgreSQL-aware lexer 拒绝 transaction/session escape，并显式 deny `COMMIT WORK`、`END`、`PREPARE TRANSACTION`、`SAVEPOINT`、`RELEASE SAVEPOINT`、`COPY ... FROM STDIN`、`\i`、`\ir`、`\gexec`、`\gset`、`\copy`、`\connect`、`\!` 与 `\q`，包括 alternate spelling、用 comment 隐藏控制语句、autocommit 修改、role/search-path/session mutation 和 dynamically executed control SQL。`synthetic-fixture-verify.sql` 精确执行三次：candidate mutation 前；candidate application + validation 后且 rollback 前；rollback 后。Cleanup fail closed：每个创建的 database/object/process 都必须清理，cleanup failure 令执行失败，成功时精确输出 `CLEANUP_OK`。Closed-world secret scan 覆盖所有 source 与 generated artifact，包括 schema/output/log。Required gates 包含 focused safety tests、`npm run test:scripts` 与 real PostgreSQL；synthetic rehearsal 仍只是 synthetic，不升级为 target、release 或 production evidence。
 
 ### S1/S2 消费与完成门禁
 
