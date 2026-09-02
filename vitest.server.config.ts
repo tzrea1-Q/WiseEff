@@ -20,8 +20,9 @@ export default defineConfig({
     globalSetup: ["./server/testing/globalSetup.ts"],
     passWithNoTests: true,
     // Migration / temp-DB integration cases routinely exceed Vitest's 5s default under CI load.
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    // Parameter-catalog disposable clones (S2-PGH) also pay a first-run template build.
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
     pool: "forks",
     // Worker count balances per-worker database clones against connection pressure;
     // override with VITEST_SERVER_MAX_WORKERS when profiling.
