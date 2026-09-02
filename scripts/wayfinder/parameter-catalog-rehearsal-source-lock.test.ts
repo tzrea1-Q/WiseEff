@@ -15,7 +15,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "d521068ff7ab95098deea471a17935ffda10a70e";
+const repairCommit = "b7ed7b9d3fb15ffedee3f3231c2ba6580c4c7983";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -67,12 +67,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "5dcfb40686d0d90f8d01db9c4ba1553d66506c2deacca0450f4ebd46f09687f3",
+    sha256: "772d4750451ba84462cdf30d6c24a6517909de2b69ba3727a71df48386b515e2",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "5c71ca472f5b970b59445d723c1857ec329d89137d7043d192ed22b9c6ad8467",
+    sha256: "2b9227c999a0412aad427067bfd759e7eedb2b967779b5296e32bd8c561afdad",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -157,11 +157,15 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "19c2cadb96d148a9244e7237d45d9182a2074f24c0bce791754313bd282c691b";
+  "684273707dfd8c887b76c33d6843b7041eb6abae188263b6d59d61b47803a032";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
 ] as const;
+const lockedSourcePaths = [
+  ...sourceLock.map((entry) => entry.path),
+  sourceLockPath,
+];
 
 const secretPattern = new RegExp(
   [
@@ -467,7 +471,12 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     expect(commitChangedPaths(repairCommit, sourceLockCommit)).toEqual(
       [`M\t${sourceLockPath}`],
     );
-    const lockTreeEntry = treeEntry(sourceLockCommit, sourceLockPath);
+    const lockTreeEntries = new Map(
+      lockedSourcePaths.map((sourcePath) => [
+        sourcePath,
+        treeEntry(sourceLockCommit, sourcePath),
+      ] as const),
+    );
     for (const commit of postRepairCommits) {
       if (commit === sourceLockCommit) {
         continue;
@@ -478,15 +487,23 @@ describe("parameter catalog rehearsal repaired source lock", () => {
           isAncestor(sourceLockCommit, parent),
         );
         expect(lineageParents.length).toBeGreaterThan(0);
-        const mergeTreeEntry = treeEntry(commit, sourceLockPath);
-        expect(mergeTreeEntry).toBe(lockTreeEntry);
+        for (const sourcePath of lockedSourcePaths) {
+          const goldenEntry = lockTreeEntries.get(sourcePath);
+          expect(goldenEntry).toBeDefined();
+          expect(treeEntry(commit, sourcePath)).toBe(goldenEntry);
+        }
         for (const lineageParent of lineageParents) {
-          expect(treeEntry(lineageParent, sourceLockPath)).toBe(mergeTreeEntry);
+          for (const sourcePath of lockedSourcePaths) {
+            const goldenEntry = lockTreeEntries.get(sourcePath);
+            expect(goldenEntry).toBeDefined();
+            expect(treeEntry(lineageParent, sourcePath)).toBe(goldenEntry);
+          }
         }
         continue;
       }
-      expect(commitTouchedPaths(commit).some((entry) =>
-        entry.endsWith(`\t${sourceLockPath}`),
+      const touchedPaths = commitTouchedPaths(commit);
+      expect(lockedSourcePaths.some((sourcePath) =>
+        touchedPaths.some((entry) => entry.endsWith(`\t${sourcePath}`)),
       )).toBe(false);
     }
   });
