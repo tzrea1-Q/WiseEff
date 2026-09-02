@@ -14,7 +14,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "3913a8b88813bc841aa7f33ff15b079943a76089";
+const repairCommit = "163261fd5de3670a8afbe5ab6241edb4879a42c9";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -66,12 +66,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "e56666851dc51fe7887b66a24716131fd7765b6a440092ef349bbc39cca76ed2",
+    sha256: "940d380eda5844d22197ed9e8783c1ddfa270fa085aabc6bf93d2f869efec408",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "c9a988fb0559d67221391d4d5058b26f95dbc5aa9d703544553d8a7f822d8a87",
+    sha256: "8e8755bb429f38fd36de2ef55509b23aab7cb59b2f2b49f4e732803cde9e2957",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -156,7 +156,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "4a360ef3ac9cf882ae14257ff2a0cfe2121d62c4ea12529a79697424dedced21";
+  "085b7a97031a78765f9dc85a949036b1e5e4fba2d8e570f5309fe047310b9b91";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
@@ -223,10 +223,10 @@ function frame(hash: ReturnType<typeof createHash>, tag: string, bytes: Buffer) 
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
-    const headParents = runGitText(["show", "-s", "--format=%P", "HEAD"])
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+    const headParents = runGitText(["cat-file", "-p", "HEAD"])
+      .split("\n")
+      .filter((line) => line.startsWith("parent "))
+      .map((line) => line.slice("parent ".length));
     expect(headParents).toEqual([repairCommit]);
     const repairObjectAvailable = gitObjectAvailable(repairCommit);
     expect(sourceLock).toHaveLength(18);
