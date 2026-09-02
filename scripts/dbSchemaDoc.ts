@@ -72,21 +72,30 @@ type IndexRow = {
 };
 
 type EnumRow = {
+  schema_name: string;
   typname: string;
   labels: string[];
 };
 
-async function listTables(db: Database): Promise<string[]> {
-  const result = await db.query<{ table_name: string }>(
-    `select table_name
+type TableRow = {
+  schema_name: string;
+  table_name: string;
+};
+
+async function listTables(db: Database): Promise<TableRow[]> {
+  const result = await db.query<TableRow>(
+    `select table_schema as schema_name, table_name
      from information_schema.tables
-     where table_schema = 'public' and table_type = 'BASE TABLE'
-     order by table_name`
+     where table_type = 'BASE TABLE'
+       and table_schema not in ('pg_catalog', 'information_schema')
+       and table_schema not like 'pg_toast%'
+       and table_schema not like 'pg_temp_%'
+     order by table_schema, table_name`
   );
-  return result.rows.map((row) => row.table_name);
+  return result.rows;
 }
 
-async function listColumns(db: Database, table: string): Promise<ColumnRow[]> {
+async function listColumns(db: Database, schema: string, table: string): Promise<ColumnRow[]> {
   const result = await db.query<ColumnRow>(
     `select a.attname as column_name,
             format_type(a.atttypid, a.atttypmod) as data_type,
@@ -96,58 +105,75 @@ async function listColumns(db: Database, table: string): Promise<ColumnRow[]> {
      join pg_class c on c.oid = a.attrelid
      join pg_namespace n on n.oid = c.relnamespace
      left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
-     where n.nspname = 'public' and c.relname = $1 and a.attnum > 0 and not a.attisdropped
+     where n.nspname = $1 and c.relname = $2 and a.attnum > 0 and not a.attisdropped
      order by a.attnum`,
-    [table]
+    [schema, table]
   );
   return result.rows;
 }
 
-async function listConstraints(db: Database, table: string): Promise<ConstraintRow[]> {
+async function listConstraints(db: Database, schema: string, table: string): Promise<ConstraintRow[]> {
   const result = await db.query<ConstraintRow>(
     `select c.conname, pg_get_constraintdef(c.oid) as definition
      from pg_constraint c
      join pg_class rel on rel.oid = c.conrelid
      join pg_namespace nsp on nsp.oid = rel.relnamespace
-     where nsp.nspname = 'public' and rel.relname = $1
+     where nsp.nspname = $1 and rel.relname = $2
      order by c.conname`,
-    [table]
+    [schema, table]
   );
   return result.rows;
 }
 
-async function listIndexes(db: Database, table: string): Promise<IndexRow[]> {
+async function listIndexes(db: Database, schema: string, table: string): Promise<IndexRow[]> {
   const result = await db.query<IndexRow>(
     `select indexname, indexdef
      from pg_indexes
-     where schemaname = 'public' and tablename = $1
+     where schemaname = $1 and tablename = $2
      order by indexname`,
-    [table]
+    [schema, table]
   );
   return result.rows;
 }
 
 async function listEnums(db: Database): Promise<EnumRow[]> {
-  const result = await db.query<{ typname: string; label: string }>(
-    `select t.typname, e.enumlabel as label
+  const result = await db.query<{ schema_name: string; typname: string; label: string }>(
+    `select n.nspname as schema_name, t.typname, e.enumlabel as label
      from pg_type t
      join pg_enum e on e.enumtypid = t.oid
      join pg_namespace n on n.oid = t.typnamespace
-     where n.nspname = 'public'
-     order by t.typname, e.enumsortorder`
+     where n.nspname not in ('pg_catalog', 'information_schema')
+       and n.nspname not like 'pg_toast%'
+       and n.nspname not like 'pg_temp_%'
+     order by n.nspname, t.typname, e.enumsortorder`
   );
-  const byType = new Map<string, string[]>();
+  const byType = new Map<string, EnumRow>();
   for (const row of result.rows) {
-    byType.set(row.typname, [...(byType.get(row.typname) ?? []), row.label]);
+    const key = `${row.schema_name}\0${row.typname}`;
+    const current = byType.get(key) ?? {
+      schema_name: row.schema_name,
+      typname: row.typname,
+      labels: [],
+    };
+    current.labels.push(row.label);
+    byType.set(key, current);
   }
-  return [...byType.entries()].map(([typname, labels]) => ({ typname, labels }));
+  return [...byType.values()];
 }
 
 function escapeCell(value: string) {
   return value.replaceAll("|", "\\|");
 }
 
-async function renderFromDatabase(db: Database): Promise<string> {
+function displayRelationName(schema: string, name: string): string {
+  return schema === "public" ? name : `${schema}.${name}`;
+}
+
+function relationAnchor(schema: string, name: string): string {
+  return displayRelationName(schema, name).replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+export async function renderDbSchemaFromDatabase(db: Database): Promise<string> {
   const migrationFiles = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   const lastMigration = migrationFiles.at(-1) ?? "none";
   const tables = await listTables(db);
@@ -169,17 +195,20 @@ async function renderFromDatabase(db: Database): Promise<string> {
   lines.push(`## Tables (${tables.length})`);
   lines.push("");
   for (const table of tables) {
-    lines.push(`- [\`${table}\`](#${table.replaceAll("_", "")})`);
+    const displayName = displayRelationName(table.schema_name, table.table_name);
+    lines.push(`- [\`${displayName}\`](#${relationAnchor(table.schema_name, table.table_name)})`);
   }
   lines.push("");
 
   for (const table of tables) {
-    const columns = await listColumns(db, table);
-    const constraints = await listConstraints(db, table);
+    const columns = await listColumns(db, table.schema_name, table.table_name);
+    const constraints = await listConstraints(db, table.schema_name, table.table_name);
     const constraintNames = new Set(constraints.map((constraint) => constraint.conname));
-    const indexes = (await listIndexes(db, table)).filter((index) => !constraintNames.has(index.indexname));
+    const indexes = (await listIndexes(db, table.schema_name, table.table_name)).filter(
+      (index) => !constraintNames.has(index.indexname),
+    );
 
-    lines.push(`### ${table}`);
+    lines.push(`### ${displayRelationName(table.schema_name, table.table_name)}`);
     lines.push("");
     lines.push("| Column | Type | Nullable | Default |");
     lines.push("| --- | --- | --- | --- |");
@@ -213,7 +242,11 @@ async function renderFromDatabase(db: Database): Promise<string> {
     lines.push("## Enum types");
     lines.push("");
     for (const item of enums) {
-      lines.push(`- \`${item.typname}\`: ${item.labels.map((label) => `\`${label}\``).join(", ")}`);
+      lines.push(
+        `- \`${displayRelationName(item.schema_name, item.typname)}\`: ${item.labels
+          .map((label) => `\`${label}\``)
+          .join(", ")}`,
+      );
     }
     lines.push("");
   }
@@ -241,7 +274,7 @@ export async function renderDbSchemaDoc(): Promise<string> {
       }
     });
     await applyMigrations(db, migrationsDir);
-    return await renderFromDatabase(db);
+    return await renderDbSchemaFromDatabase(db);
   } finally {
     await client.end().catch(() => undefined);
     await admin.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined);
