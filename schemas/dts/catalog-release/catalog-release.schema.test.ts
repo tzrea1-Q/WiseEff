@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  canonicalIdentityFailureReasons,
   catalogSubjectKinds,
   catalogSubjectSelectorKinds,
   definitionLifecycles,
@@ -1834,7 +1835,7 @@ describe("immutable Catalog Release bundle contract", () => {
   });
 
   it("pins the exact merged S0-ID constructors, enums, and golden fingerprint", () => {
-    expect(stableIdRules.s0IdContract).toEqual({
+    const expectedS0IdContract = {
       mergedImplementationSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
       packageEntrypoint: "server/modules/parameter-catalog-contract/index.ts",
       serializationGolden: {
@@ -1853,7 +1854,40 @@ describe("immutable Catalog Release bundle contract", () => {
         driverNatures: "driverNatures",
         driverInstanceCardinalities: "driverInstanceCardinalities",
       },
-    });
+    } as const;
+    expect(stableIdRules.s0IdContract).toEqual(expectedS0IdContract);
+
+    const goldenBytes = readFileSync(
+      resolve(expectedS0IdContract.serializationGolden.path),
+    );
+    expect(goldenBytes.byteLength).toBe(
+      expectedS0IdContract.serializationGolden.byteLength,
+    );
+    expect(createHash("sha256").update(goldenBytes).digest("hex")).toBe(
+      expectedS0IdContract.serializationGolden.rawSha256,
+    );
+    expect(
+      createHash("sha1")
+        .update(`blob ${goldenBytes.byteLength}\0`)
+        .update(goldenBytes)
+        .digest("hex"),
+    ).toBe(expectedS0IdContract.serializationGolden.gitBlobOid);
+
+    expect(canonicalIdentityFailureReasons).toEqual([
+      "not-string",
+      "empty",
+      "control-character",
+      "non-ascii",
+      "surrounding-whitespace",
+      "whitespace-forbidden",
+      "quoted-source-token",
+      "wildcard-forbidden",
+      "unit-address-present",
+      "length-out-of-range",
+      "invalid-syntax",
+      "structural-property",
+    ]);
+    expect(canonicalIdentityFailureReasons).toHaveLength(12);
 
     const generated = JSON.parse(generatedSchemaBytes) as JsonObject;
     expect(
@@ -3440,14 +3474,14 @@ describe("immutable Catalog Release bundle contract", () => {
     successor.documents = successor.documents.filter(
       (document) => document.kind !== "definition",
     );
-    successor.manifest.files = successor.manifest.files.filter(
-      (file) => file.kind !== "definition",
+    successor.manifest.documents = successor.manifest.documents.filter(
+      (document) => document.kind !== "definition",
     );
     successor.manifest.release.digest = releaseAggregateDigest(successor);
 
-    expect(validateBundle(omittedDefinition)).toContain(
+    expect(validateBundle(omittedDefinition)).toEqual([
       "predecessor-definition-snapshot-complete",
-    );
+    ]);
   });
 
   it("generates one byte-stable standalone consumer schema and pins its digest", () => {
