@@ -12,7 +12,9 @@ const historicalBundleSha256 =
   "017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff";
 const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
-const repairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
+const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
+const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
+const repairCommit = "8ec62adc26b913e034d7e68d3a17249bcf345848";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
   "docs/references/parameter-catalog-rehearsal-fixture.md":
@@ -63,32 +65,32 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "77c1e12131e463067334d5f12b00c5a1988bfa65dbc741ab70842e50028f424c",
+    sha256: "de01189f8e95306e36945f384e3948d4e7edbcd6da53dfa316ca01f59314fbf1",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "bb5b1d430fa4da628d0680b6444cefe2ae20552efb8aa5da6031e243adc19abf",
+    sha256: "fc22916a44e5c2919ba4a4a4702725e34fc3e8447884debc8eb5a7b1e964e606",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "d99dce5f77fd9b093ce8642e3ba12747a910a7d7a289685b07f82a0acd355465",
+    sha256: "eaed4deeddd8c296f24cf205a2febcfb7048d4f9131dabe5038aab16111f2f27",
   },
   {
     path: "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "fcef41de309ec09ec99897ddede8af7f303f2a42a6597bb63182b65ff2a5f159",
+    sha256: "d321d5082ce3b2bac95afe7f821dfb587a22308e81ae4d44c7b27b12d4eb751a",
   },
   {
     path: "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
     mode: "100644",
-    sha256: "dc7758569deaeea1bd11767c732ba827ca5521583d5b7ec256c9f36ad0fa805c",
+    sha256: "81b7c2729436b94df23c127290d9ebbc8eb0e0501b47227bb4a9f97f17dace39",
   },
   {
     path: "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
     mode: "100755",
-    sha256: "31c2eb3fc6eea36886531f8af938969aaf3f472e83e4ec090f23bcf815c92664",
+    sha256: "f97be4088437a451f28e97d80920f2b003c29b0956fb904c1b78d71be63da0e1",
   },
   {
     path: "scripts/wayfinder/sql/columns.sql",
@@ -153,7 +155,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "6029bd517da385b6067c8c4783c95b4a728c30e63dca07f00e1283c112744c6e";
+  "38e949b3f966d316dabe10cd0fb9a2c9998e88f2b37e4a666efb0698ab3ff092";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
@@ -161,7 +163,6 @@ const repairChangedPaths = [
   "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
   "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
-  "scripts/wayfinder/sql/synthetic-fixture-verify.sql",
 ] as const;
 
 const secretPattern = new RegExp(
@@ -217,6 +218,8 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     runGitText(["cat-file", "-e", `${historicalSourceCommit}^{commit}`]);
     runGitText(["cat-file", "-e", `${oldCandidateCommit}^{commit}`]);
     runGitText(["cat-file", "-e", `${previousSourceLockCommit}^{commit}`]);
+    runGitText(["cat-file", "-e", `${previousRepairCommit}^{commit}`]);
+    runGitText(["cat-file", "-e", `${provenanceMergeCommit}^{commit}`]);
     runGitText(["cat-file", "-e", `${repairCommit}^{commit}`]);
     runGitText(["merge-base", "--is-ancestor", oldCandidateCommit, repairCommit]);
     runGitText([
@@ -225,23 +228,20 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       previousSourceLockCommit,
       repairCommit,
     ]);
-    runGitText(["merge-base", "--is-ancestor", historicalSourceCommit, "HEAD"]);
+    runGitText(["merge-base", "--is-ancestor", provenanceMergeCommit, repairCommit]);
+    runGitText(["merge-base", "--is-ancestor", historicalSourceCommit, repairCommit]);
 
-    const lineage = runGitText([
-      "rev-list",
-      "--ancestry-path",
-      `${repairCommit}..HEAD`,
+    const provenanceParents = runGitText([
+      "show",
+      "-s",
+      "--format=%P",
+      provenanceMergeCommit,
     ])
       .trim()
-      .split("\n")
-      .filter(Boolean);
-    const provenanceMerge = lineage.find((commit) => {
-      const parents = runGitText(["show", "-s", "--format=%P", commit])
-        .trim()
-        .split(" ");
-      return parents.includes(repairCommit) && parents.includes(historicalSourceCommit);
-    });
-    expect(provenanceMerge).toBeDefined();
+      .split(" ");
+    expect(provenanceParents).toEqual(
+      expect.arrayContaining([previousRepairCommit, historicalSourceCommit]),
+    );
 
     const changedPaths = runGitText([
       "diff-tree",
