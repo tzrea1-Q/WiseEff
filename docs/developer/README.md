@@ -6,7 +6,7 @@ These docs are the daily development entry point for WiseEff. They are intention
 
 ## Reading Order
 
-1. [Local Development](local-development.md): local dependencies, `.env`, database seeds, API mode, worker, and frontend startup.
+1. [Local Development](local-development.md): local dependencies, `.env`, database seeds, API mode, worker, frontend startup, and catalog launch-lane PostgreSQL. Remaining Wayfinder #668 tickets also follow [Catalog Launch Operating Rules](../agents/catalog-launch-operating-rules.md).
 2. [Environment Variables](environment-variables.md): local, staging, production, object store, Agent, HDC, and smoke variables.
 3. [Verification Matrix](verification-matrix.md): which command proves which scope of work.
 4. [Frontend](../FRONTEND.md): frontend runtime and port/API boundaries.

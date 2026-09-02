@@ -11,6 +11,9 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm test -- path/to/test.tsx` | Focused frontend behavior | Editing a component, page, domain helper, or frontend runtime. |
 | `npm run test:server -- path/to/test.ts` | Focused backend behavior | Editing server modules or migrations helpers. |
 | `npm run test:scripts -- path/to/test.ts` | Focused ops/governance script behavior in a Node environment | Editing `scripts/**` or `ops/**` automation or their tests. |
+| `npm run catalog:lane:env -- provision --issue <n>` | Isolated pgvector database `wiseeff_lane_<n>` on `127.0.0.1:55438`; rejects compose `5432/wiseeff` | Before any Wayfinder #668 PostgreSQL node. |
+| `npm run catalog:lane:env -- doctor --issue <n>` | pgvector present; `catalog_migration_owner` canary against `public.parameter_specs` when roles exist | Before Hosted for RBAC/migration/catalog-kernel PG evidence. |
+| `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | Issue-owned focused tests on the dedicated lane DB; zero collected files is a hard failure | Exact-candidate local gate. Hosted remains H and does not replace this PG/L evidence. |
 | `npm test` | Frontend/unit suite (`src/**` only, jsdom) | Frontend-affecting changes. |
 | `npm run test:server` | Backend/unit suite | Backend-affecting changes. |
 | `npm run test:scripts` | Ops/governance script suite (`scripts/**`, `ops/**`, Node) | Script or ops automation changes. |

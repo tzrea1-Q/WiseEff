@@ -25,3 +25,4 @@
 - [docs/zh-CN/developer/verification-matrix.md](verification-matrix.md)
 - [docs/zh-CN/developer/user-operation-coverage-matrix.md](user-operation-coverage-matrix.md)
 - [docs/zh-CN/developer/browser-acceptance-coverage-map.md](browser-acceptance-coverage-map.md)
+- [docs/zh-CN/agents/catalog-launch-operating-rules.md](../agents/catalog-launch-operating-rules.md)

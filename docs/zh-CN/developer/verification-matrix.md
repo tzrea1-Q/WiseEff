@@ -23,6 +23,9 @@
 
 | 命令 | 证明内容 | 使用场景 |
 | --- | --- | --- |
+| `npm run catalog:lane:env -- provision --issue <n>` | 在 `127.0.0.1:55438` 上隔离 pgvector 数据库 `wiseeff_lane_<n>`；拒绝 compose `5432/wiseeff` | 任何 Wayfinder #668 PostgreSQL 节点开始前。 |
+| `npm run catalog:lane:env -- doctor --issue <n>` | pgvector 可用；角色存在时 `catalog_migration_owner` 能对 `public.parameter_specs` 做 canary | RBAC/migration/catalog-kernel PG 证据的 Hosted 前。 |
+| `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | 在专用 lane DB 上跑 Issue 点名 focused tests；收集到 0 个文件是硬失败 | 精确候选的本地门禁。Hosted 仍只是 H，不能替代该 PG/L 证据。 |
 | `npm run dtc:check -- --required` | PATH 上存在真实 Device Tree Compiler | M1 seed、DTS 校验或自托管镜像验收前使用。 |
 | `npm run dtc:seed:compile` | Aurora、Nebula、Atlas 三份已提交 overlay 均通过真实 `dtc -@` 编译 | 修改 DTS fixture、seed 生成、验证门禁或 dtc 部署流程后使用。 |
 | `npm run dts:toolchain:bootstrap` | 项目 venv 安装钉扎 dtschema；dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（复用宿主或构建钉扎 commit 到 `.wiseeff-tools/dts-toolchain`） | 首次本地设置，或修改 requirements/version pin 后。 |

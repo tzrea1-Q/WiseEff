@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-状态：**Phase A、Phase B、Phase C、G0.1 与第一轮受控实现均已完成；所有者授权的 G0.2 执行修订正在进行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 与 G0.1 已通过 PR #682、#738 合入；修正后的 S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。G0.2 只改变执行顺序和预算，不增加 launch node，也不改变任何 CD、CF、ID 或 RE 边。
+状态：**Phase A、Phase B、Phase C、G0.1 与第一轮受控实现均已完成；G0.2 已采纳；所有者授权的 G0.3 效率修订正在进行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 与 G0.1 已通过 PR #682、#738 合入；修正后的 S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。G0.2 与 G0.3 只改变执行顺序和预算，不增加 launch node，也不改变任何 CD、CF、ID 或 RE 边。
 
 验收发布基线：`origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`。本规格描述目标合同，不宣称主线已经实现，不预留 migration 编号，也不构成发布批准。
 
@@ -193,6 +193,23 @@ npm run test:server -- \
 | 截止时间 | 12 小时目标是 throughput target，不是 gate waiver。完整目标装不进 critical-path lower bound 时，父会话必须发布更小的代码/证据里程碑。S13-PROGRAM 与 S14-PROGRAM 保持 Temporal；没有真实 elapsed-time、target、release 与 production evidence 时不得声明完成 |
 
 每个 wave 开始前，父会话记录 lane membership、risk classes、精确 editable/read-only/forbidden paths、shared resources、merge order、evidence levels 和 stop boundary。R3 必须在生成最终 lineage、checksum、migration、recovery 或 release artifact 前完成有限 threat matrix。Standards 与 Spec review 并行执行；两者都返回后才能汇总为一个 repair packet。封印后任何字节变更都会使 seal 与 Hosted evidence 失效，并让 lane 回到 Scratch。
+
+## G0.3 效率修订（2026-09-03）
+
+G0.2 保住了证据诚实，但把开发调度得过串。G0.2 之后的几小时里，墙钟更多花在把 Hosted 当调试器、给同一受信基线生成第二份 fingerprint、共用 `5432/wiseeff` 库、以及空手等 CI，而不是推进剩余 launch nodes。G0.3 只修订执行。全部 55 个 accepted nodes、53 个 launch Issues、seams、ownership、requirements 以及 `CD=90`、`CF=54`、`ID=27`、`RE=18` 边保持不变。local 与 Hosted 输出仍不得标成 T/R。
+
+G0.3 覆盖下表列出的 G0.2 run-profile 行；未列出的 G0.2 行继续有效。Catalog launch Issues 遵守[目录 launch 操作规则](../../agents/catalog-launch-operating-rules.md)，不改冻结的 Issue 正文。
+
+| 控制项 | G0.3 设置 |
+| --- | --- |
+| 容量 | 路径不相交的 Scratch WIP 为 4。共享 migration、generated schema、OpenAPI 或 fingerprint 的 lane 保持 WIP 2。进入 review 时，已完成实现的智能体仍释放 slot，使 Standards 与 Spec 并行 |
+| 合入与开发 | 同一时间一个功能 Hosted PR。后序 lane 在 merge lane 处于 `HOSTED` 时继续做到 `SEALED`，并在自己的 Hosted 前立即 refresh |
+| 独立 merge wave | 纯流程 PR（协议、操作规则、双语文档、`scripts/catalog-lane-env.ts`）可与当前功能 Hosted PR 并存 |
+| 本地验收 | 通过 `npm run catalog:lane:env -- provision --issue <n>` 使用专用 lane DB。通过 `npm run catalog:lane:accept` 运行 Issue 点名命令。RBAC/migration 节点以 `catalog_migration_owner` 跑 role canary。收集到 0 个测试是硬失败。默认 compose `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` 禁止作为 catalog evidence |
+| 盘点锁定 | 在 `THREAT-READY` 对受信基线完整扫描；只生成一次 fingerprint。同一不变量第二次补丁触发 circuit breaker。若只有一个选项能通过 Hosted，父会话记录该选择并继续 |
+| Hosted 重叠 | Hosted 期间父会话派发或继续至少一条不相交 lane，或记录当前没有 |
+| 无关 flake | 一次 `gh run rerun --failed`。不得修补无关测试 |
+| 模型 | 仍优先使用 G0.2 model slug。spawn allowlist 无法提供时，父会话记录替代模型并继续，不得空转 |
 
 ## Problem Statement
 
@@ -940,7 +957,7 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 
 | Area | Disposition | English paths | Chinese paths | Owner / gate |
 | --- | --- | --- | --- | --- |
-| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md` | G0.2 拥有 delivery lifecycle/budgets；首个模块 merge 时登记四深模块、依赖和 readiness |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/catalog-launch-operating-rules.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md`; `docs/zh-CN/agents/catalog-launch-operating-rules.md` | G0.2/G0.3 拥有 delivery lifecycle/budgets；首个模块 merge 时登记四深模块、依赖和 readiness |
 | Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | G0.2 登记 run profile；父会话维护一份计划、多 ticket evidence |
 | Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 首个 model slice；只写 domain term，不把实现细节塞进 CONTEXT |
 | ADR/index and accepted decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0；引用 immutable SHA，不改历史决策语义 |
@@ -964,8 +981,9 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 ### Git & PR Workflow
 
 - G0.2 在 `codex/wayfinder-execution-protocol-v2` 上开发，accepted base 为 `origin/main@5b7b53b316f648a7a49908b3ebd9ffb459d9e958`；它只修改文档/流程，不声称实现或 runtime evidence。
-- 未来每个 ticket agent 从当时最新 `origin/main` 创建独立 worktree，分支模板固定为 `codex/pcat-<issue-number>-<slug>`，先读本规格、AGENTS、对应 ADR/contract 与 owning-module 文档，并接收 G0.2 task packet 和 stop boundary。
+- G0.3 在 `codex/wayfinder-g03-delivery-efficiency` 上开发，accepted base 为 `origin/main@bd9648d2e6706bd81230bfd5be73229ba44e4212`；它修改文档/流程并增加 catalog-lane helper，不声称 launch-node 产品或 T/R evidence。
+- 未来每个 ticket agent 从当时最新 `origin/main` 创建独立 worktree，分支模板固定为 `codex/pcat-<issue-number>-<slug>`，先读本规格、AGENTS、对应 ADR/contract 与 owning-module 文档，并接收 G0.3 task packet、[目录 launch 操作规则](../../agents/catalog-launch-operating-rules.md) 和 stop boundary。
 - 这是一份计划、多个 ticket Scratch branches。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
-- 父 agent/会话所有者按 G0.2 run profile 与仓库交付协议，以确定的 merge order 集成，独占 final PR creation、Hosted triage、merge、attestation 和 main synchronization。
+- 父 agent/会话所有者按 G0.3 run profile 与仓库交付协议，以确定的 merge order 集成，独占 final PR creation、Hosted triage、merge、attestation 和 main synchronization。
 - 多分支并行必须先 claim migration/ADR/acceptance ID，refresh 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
 - Phase A Publisher、Phase B、Phase C 与 G0.1 已完成；修正后的 S0-ID、S0-FIX、S1-BND 已分别通过 PR #739、#743、#741 关闭。未来派发以 live GitHub frontier 为准，而不是依赖本历史句子。

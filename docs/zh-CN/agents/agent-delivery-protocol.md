@@ -101,9 +101,9 @@ Seal: base, head, tree/path-set, lineage, generated hashes, fingerprint,
 5. 哪条 lane 可以打开下一个 PR 并运行 Hosted；
 6. 后续每条 lane 在前序 merge 后需要的 refresh。
 
-为 integration 与 review 预留容量。Foundation 和 R3 默认 development WIP=2。R2/R3 lane 进入 pre-seal review 时，已完成实现的智能体释放 slot，使 Standards 与 Spec review 能够并行。只有路径所有权不相交、仍有 review capacity 且 program run profile 允许时，独立 R1/R2 leaf 才能增加 lane。
+为 integration 与 review 预留容量。共享 migration、generated schema、OpenAPI 或 fingerprint 的 Foundation/R3 默认 development WIP=2。路径不相交的 R1/R2，以及不共享这些文件的 R3，在仍有 review capacity 时可将 development WIP 提到 4。R2/R3 lane 进入 pre-seal review 时，已完成实现的智能体释放 slot，使 Standards 与 Spec review 能够并行。Hosted 运行期间，父会话必须派发或继续至少一条不相交 Scratch/review lane，或记录当前没有不相交工作。
 
-只有下一个 merge lane 可以进入 `HOSTED`；后续 lane 停在 `PRESEAL-REVIEW` 或 `SEALED`。这样不会在前序 merge 后立刻让一次绿色 CI 过期。
+只有下一个 merge lane 可以进入 `HOSTED`。后续 lane 在该 Hosted 进行时继续走 `SCRATCH`、`PRESEAL-REVIEW` 和 `SEALED`，并在自己的 Hosted 前立即 refresh，而不是空转到前序合入。这样既避免绿色 CI 立即过期，也不冻结开发。
 
 ## 步骤 3：在 Scratch 中开发
 
@@ -221,12 +221,24 @@ Issue 明确要求的命令保持 mandatory，除非 accepted amendment 显式 r
 
 以下预算用于触发重新设计，不用于降低质量：
 
-- foundation/R3 development WIP：2；
-- open final PR：program-wide 1 个；只有 accepted run profile 明确标识独立 merge waves 时才可增加；
+- development WIP：共享 migration、generated schema、OpenAPI 或 fingerprint 时为 2；路径不相交时为 4；
+- open final feature PR：program-wide 1 个；只有 accepted run profile 明确标识独立 merge waves 时才可增加；
+- 纯流程 PR（协议、操作规则、文档、不修改 launch-node 产品路径的 helper 脚本）：独立 merge wave，可与当前功能 Hosted PR 并存；
 - final Hosted：1 次，仅 Hosted-only failure 或 mandatory refresh 可例外到 2 次；
 - 同一不变量的 P0/P1 repair cycles：2，之后回到 threat matrix；
 - final fingerprint generation：1，例外最多 2；
 - unrelated full-suite rerun：0；
+- Hosted 等待期间既无其它已派发 lane、也未记录“没有不相交工作”：0；
 - 用户 stop boundary 后的 downstream dispatch：0。
 
 Program 只有在 accepted run profile 中事先记录成本与理由，才能覆盖预算。
+
+## 效率不变量
+
+这些规则用于在不削弱证据层的前提下减少墙钟等待。
+
+1. **合入串行，开发不串行。** 只有下一条功能 merge lane 打开 PR 并运行 Hosted。其它 ready lanes 继续在 Scratch 中实现、审查和封印。
+2. **Hosted 只做确认，不做发现。** PostgreSQL 或 RBAC 节点必须在预检时使用专用 lane 数据库，并以 Hosted 将使用的 Catalog 角色跑过 Issue 点名命令。默认 compose 应用库 `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` 不能作为 catalog-lane evidence。收集到 0 个测试文件是硬失败。
+3. **盘点一次锁定。** occurrence 计数、allow-list、schema fingerprint 和 lock 文件在 `THREAT-READY` 对受信基线完整扫描后锁定。同一不变量的第二次补丁触发 circuit breaker。若只有一个选项能通过 Hosted，父会话记录该选择并继续。
+4. **无关 flake 只隔离重跑一次。** 使用一次 `gh run rerun --failed`。不得在本 lane 修补无关测试。
+5. **Catalog launch nodes** 同时遵守[目录 launch 操作规则](catalog-launch-operating-rules.md)。
