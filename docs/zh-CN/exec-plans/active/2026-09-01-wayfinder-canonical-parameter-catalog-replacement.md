@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-状态：**Phase A、Phase B、Phase C 和最初的 S0-ID 实现均已完成；所有者授权的 G0.1 合同修订正在进行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 已通过 PR #682 合入，53 个 launch Issues 已发布，S0-ID 已通过 PR #737 合入 `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`。G0.1 只修正 Wave 2 独立审查发现的合同欠定义，不增加 launch node，也不改变任何 CD、CF、ID 或 RE 边。
+状态：**Phase A、Phase B、Phase C、G0.1 与第一轮受控实现均已完成；所有者授权的 G0.2 执行修订正在进行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 与 G0.1 已通过 PR #682、#738 合入；修正后的 S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。G0.2 只改变执行顺序和预算，不增加 launch node，也不改变任何 CD、CF、ID 或 RE 边。
 
 验收发布基线：`origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`。本规格描述目标合同，不宣称主线已经实现，不预留 migration 编号，也不构成发布批准。
 
@@ -171,6 +171,28 @@ npm run test:server -- \
 ```
 
 命令必须在 real PostgreSQL + pgvector 上选中并执行全部四个文件。PostgreSQL 缺失、pgvector 缺失、suite skipped 或 selected tests 为 0 都是 hard failure。Documentation Impact Matrix 继续把 `docs/design-docs/domain-model.md` 与中文 companion 分配给 S10-DCP；G0.1 只记录后续 update gate，不修改它们。
+
+## G0.2 交付协议修订（2026-09-02）
+
+第一轮受控实现证明 correctness gates 必不可少，但调度方式存在浪费：S0-FIX 多次生成并废弃 lineage lock，独立 P1 finding 串行到达，候选尚未真正封印时就启动 PR/Hosted，后序 lane 的证据也可能在前序 merge 后立即过期。本修订采用仓库[智能体交付执行协议](../../agents/agent-delivery-protocol.md)约束剩余 launch nodes。它只修改流程；全部 55 个 accepted nodes、53 个 launch Issues、seams、ownership、requirements 以及 `CD=90`、`CF=54`、`ID=27`、`RE=18` 边保持不变。
+
+#668 run profile 冻结如下：
+
+| 控制项 | Program 设置 |
+| --- | --- |
+| 实现模型 | `gpt-5.6-luna`，reasoning `xhigh`；使用 `fork_turns: "none"` 或最小有界 fork，并提供显式 task packet，确保 model override 真正生效 |
+| 审查模型 | 独立 Standards 与 Spec reviewer 使用 `gpt-5.6-sol`、reasoning `xhigh`，审查同一个精确 Scratch SHA |
+| 容量 | Foundation/R3 最多两条 implementation lanes；进入 review 时，已完成实现的智能体释放 slot，使两位 reviewer 能够并行 |
+| PR 边界 | Scratch branch 可以 push 备份但不开 PR；仅当两份 pre-seal review 均通过且 merge-position refresh 为 green 后，父会话才打开 PR |
+| Seal 预算 | 目标只生成一次最终 fingerprint/lock；同一不变量出现第二轮 P1/P0 时回到 threat matrix，不继续叠加补丁 |
+| Merge 与 Hosted 顺序 | 派发前冻结 merge order；只有下一条待合入 lane 可以运行 final Hosted；后序 lane 最迟停在 `SEALED`，每个 predecessor merge 后再 refresh |
+| 测试调度 | Inner loop 只运行 focused Red/Green。每个明确 node command 和必需 local/PG/browser evidence level 在精确候选上各运行一次。只有命名 Hosted job 执行完全相同命令或 proven superset 时，broad command 才可只在 Hosted 执行；它仍是 Hosted evidence，不能冒充 local/PG/browser/target evidence |
+| CI 预算 | 目标为一次 PR creation、零次 synchronize event 和一次 Hosted；只有 Hosted-only failure 或 mandatory main refresh 才可例外增加一次 synchronize/第二次 run；取消过期 run，flaky failure 只隔离一次，绝不重复无关 full suite |
+| 报告 | 每轮报告 lane states、merged/sealed/reviewing/blocked 数量、repair cycles、fingerprints、CI runs/runner-minutes、evidence levels、next frontier 和最大可避免等待 |
+| 停止边界 | 用户要求“完成当前合入后停止”时，只允许完成该 PR 的 merge、attestation、Issue closure、branch cleanup 和 main sync；不得推进 label 或派发下一 node |
+| 截止时间 | 12 小时目标是 throughput target，不是 gate waiver。完整目标装不进 critical-path lower bound 时，父会话必须发布更小的代码/证据里程碑。S13-PROGRAM 与 S14-PROGRAM 保持 Temporal；没有真实 elapsed-time、target、release 与 production evidence 时不得声明完成 |
+
+每个 wave 开始前，父会话记录 lane membership、risk classes、精确 editable/read-only/forbidden paths、shared resources、merge order、evidence levels 和 stop boundary。R3 必须在生成最终 lineage、checksum、migration、recovery 或 release artifact 前完成有限 threat matrix。Standards 与 Spec review 并行执行；两者都返回后才能汇总为一个 repair packet。封印后任何字节变更都会使 seal 与 Hosted evidence 失效，并让 lane 回到 Scratch。
 
 ## Problem Statement
 
@@ -880,7 +902,7 @@ RI-01 -(RE + actual time/telemetry)-> S13-PROGRAM -(RE + actual evidence)-> S14-
 
 Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-catalog-rehearsal.integration` 语义：创建 checked-empty dedicated database、验证 schema ledger、加载 checksum-locked fixture、在候选+验证 transaction 中运行、rollback 后 canonical dump byte equality，并验证清理 marker；它不是 target readiness。
 
-实现完成前还必须按风险执行 focused tests、`npm run test:all`、`npm run build`、OpenAPI/route contract、`npm run acceptance:coverage`、`npm run acceptance:operations`、`npm run acceptance:models`、`npm run acceptance:browser`、self-host checks、historical migration inventory check、`npm run docs:check` 和 `git diff --check`。Hosted、target-host、release 与 production approval 必须在其实际环境单独记录，不能由 local green 推导。
+实现完成要求本规格中每个 applicable gate 在精确 delivery candidate 或 accepted merge result 上恰好执行一次。Focused tests 以及必需的 local、real-PG、browser、self-host、target 和 release procedure 必须在拥有相应证据的环境运行。Broad checks——`npm run test:all`、`npm run build`、OpenAPI/route contract、`npm run acceptance:coverage`、`npm run acceptance:operations`、`npm run acceptance:models`、`npm run acceptance:browser`、`npm run acceptance:evidence`、historical migration inventory check、`npm run docs:check` 和 `git diff --check`——只在拥有其 full-tree scope 的 program stage 运行一次。已验收的 #668 run profile 可以把精确命令或 proven superset 映射到 exact-candidate Hosted，从而不在本地重复执行；但它只产生 Hosted evidence，不能豁免 Issue-specific command，也不能替代 PG/browser/target/release evidence。任何证据层都不能由另一层推导。
 
 ## Out of Scope
 
@@ -918,8 +940,8 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 
 | Area | Disposition | English paths | Chinese paths | Owner / gate |
 | --- | --- | --- | --- | --- |
-| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md` | 首个模块 merge 时登记四深模块、依赖和 readiness |
-| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | 父会话维护一份计划、多 ticket evidence |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md` | G0.2 拥有 delivery lifecycle/budgets；首个模块 merge 时登记四深模块、依赖和 readiness |
+| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | G0.2 登记 run profile；父会话维护一份计划、多 ticket evidence |
 | Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 首个 model slice；只写 domain term，不把实现细节塞进 CONTEXT |
 | ADR/index and accepted decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0；引用 immutable SHA，不改历史决策语义 |
 | Product specs | Update | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/product-specs/prototype-functional-spec.md` | `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`; `docs/zh-CN/product-specs/prototype-functional-spec.md` | S9 单页/角色/state 合同 |
@@ -941,9 +963,9 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 
 ### Git & PR Workflow
 
-- 当前 Spec 分支固定为 `codex/wayfinder-668-implementation-spec-20260901`；本轮只允许 append-only commit，不 amend/rebase/force-push。
-- 未来每个 ticket agent 从当时最新 `origin/main` 创建独立 worktree，分支模板固定为 `codex/pcat-<issue-number>-<slug>`，先读本规格、AGENTS、对应 ADR/contract 与 owning-module 文档。
-- 这是一份计划、多个 ticket 分支。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
-- 父 agent/会话所有者按本 Spec 的 `CD/CF/ID/RE` 图审查 exact diff/evidence、集成 ticket branches，独占 PR creation、merge 和 main synchronization。
-- 多分支并行必须先 claim migration/ADR/acceptance ID，rebase 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
-- Phase A Publisher 已在 `codex/wayfinder-668-to-tickets-20260901` 完成；Phase B/Phase C 随后完成，S0-ID 已通过 PR #737 合入。任何 amended node reopen/enable 前，G0.1 继续遵守相同的父会话 review/PR/merge 纪律。
+- G0.2 在 `codex/wayfinder-execution-protocol-v2` 上开发，accepted base 为 `origin/main@5b7b53b316f648a7a49908b3ebd9ffb459d9e958`；它只修改文档/流程，不声称实现或 runtime evidence。
+- 未来每个 ticket agent 从当时最新 `origin/main` 创建独立 worktree，分支模板固定为 `codex/pcat-<issue-number>-<slug>`，先读本规格、AGENTS、对应 ADR/contract 与 owning-module 文档，并接收 G0.2 task packet 和 stop boundary。
+- 这是一份计划、多个 ticket Scratch branches。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
+- 父 agent/会话所有者按 G0.2 run profile 与仓库交付协议，以确定的 merge order 集成，独占 final PR creation、Hosted triage、merge、attestation 和 main synchronization。
+- 多分支并行必须先 claim migration/ADR/acceptance ID，refresh 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
+- Phase A Publisher、Phase B、Phase C 与 G0.1 已完成；修正后的 S0-ID、S0-FIX、S1-BND 已分别通过 PR #739、#743、#741 关闭。未来派发以 live GitHub frontier 为准，而不是依赖本历史句子。

@@ -11,7 +11,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - Prefer simple, testable changes over speculative abstractions.
 - Define success criteria before multi-step work, then verify them with commands or file checks.
 - Preserve user changes. Never revert unrelated edits in the worktree.
-- **Branch & PR:** Implementation subagents work on a feature branch from `main` only; they do not open or merge GitHub PRs. The parent agent reviews, opens the PR, merges, and syncs local `main`. See `docs/PLANS.md` § Git Branch & PR Workflow.
+- **Branch & PR:** Implementation subagents work on a Scratch feature branch from `main` only; they do not open or merge GitHub PRs. The parent agent reviews and seals the candidate, opens the PR only when it is integration-ready, merges, and syncs local `main`. See `docs/agents/agent-delivery-protocol.md` and `docs/PLANS.md` § Git Branch & PR Workflow.
 - For searches, prefer `rg` and `rg --files`.
 - For code edits, use `apply_patch`; do not rewrite files with ad hoc shell output.
 
@@ -160,3 +160,7 @@ Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 ### Fleet coordination
 
 Parallel sessions (multiple worktrees merging to `main`): claim main-red repairs before fixing, re-check ADR/migration/TD numbers at merge time, typecheck and run affected tests after every rebase. See `docs/agents/fleet-coordination.md`.
+
+### Delivery protocol
+
+Goal-driven multi-agent delivery uses the Scratch -> threat review -> seal -> integration -> Hosted -> attestation state machine, explicit WIP/CI budgets, and user stop boundaries in `docs/agents/agent-delivery-protocol.md`. Active programs may narrow its defaults only through an accepted run profile.

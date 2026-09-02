@@ -2,6 +2,8 @@
 
 Rules for parallel agent sessions — many worktrees merging to `main` continuously. Each rule is derived from a real collision during the 2026-08-12→13 overnight run and names its incident.
 
+This document handles cross-worktree collisions. For lane lifecycle, WIP limits, pre-seal review, CI scheduling, merge attestation, and stop boundaries, use the [Agent Delivery Execution Protocol](agent-delivery-protocol.md).
+
 ## Main-red repair: claim before you fix
 
 When `main`'s CI is red:
