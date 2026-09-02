@@ -11,6 +11,8 @@ import {
   comparisonOutcomes,
   catalogKernelOperations,
   catalogSubjectKinds,
+  driverInstanceCardinalities,
+  driverNatures,
   legacyIdentifierTypes,
   reviewResolutionTypes,
   serializeContract,
@@ -25,6 +27,8 @@ const golden = readFileSync(
 
 const contractSample = {
   comparisonOutcomes,
+  driverInstanceCardinalities,
+  driverNatures,
   ids: {
     definitionRevisionId: DefinitionRevisionId("drev_01KVIN3"),
     parameterDefinitionId: ParameterDefinitionId("pdef_01KVIN"),
@@ -55,6 +59,7 @@ const serializeUnknown = (value: unknown): string =>
 describe("parameter catalog wire serialization", () => {
   it("matches the required golden bytes", () => {
     expect(serializeContract(contractSample)).toBe(golden);
+    expect(golden).not.toContain("NodeTypeFamily");
   });
 
   it("is byte-stable across object insertion order", () => {
