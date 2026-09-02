@@ -14,7 +14,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "c9de353573610a5c7af1a81799222b97ed23a79a";
+const repairCommit = "9067a91ba5058dece8273bbc9b2e0271fa6e85bb";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
   "docs/references/parameter-catalog-rehearsal-fixture.md":
@@ -80,7 +80,7 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "1980af6de1536d0889b8554218ddca38f2f915085959f1334c531cae29845907",
+    sha256: "fc6f0ccd5e760f8eff80c68f10c71e4e24480ddece3cf60b2f1a7a5dca6d5c28",
   },
   {
     path: "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
@@ -155,7 +155,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "8c05f1730f76fac24845949702e7d744a60f43c4ca0d995e69e0d150e86ce0b3";
+  "f29b1715bd8d67d91367215028c3d4c5cd808bedde8f3afd9b92a22e2fccbc68";
 const repairChangedPaths = [
   "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
