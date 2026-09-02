@@ -13,6 +13,7 @@ import { DtsReloadPage, type DtsReloadReachableTarget } from "./DtsReloadPage";
 import { getRequiredRoleForPage } from "@/app/permissions";
 import { TopBarActionsContext } from "@/components/layout";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { DEVICE_UNAVAILABLE_MESSAGE } from "@/infrastructure/http/userErrorMessage";
 
 vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
@@ -317,6 +318,30 @@ afterEach(() => {
 describe("DtsReloadPage", () => {
   it("requires committer role for the page", () => {
     expect(getRequiredRoleForPage("dts-reload")).toBe("hardware-committer");
+  });
+
+  it("does not render the device-unavailable API copy as a page-level danger banner", async () => {
+    const listCandidates = vi.fn().mockRejectedValue(new Error(DEVICE_UNAVAILABLE_MESSAGE));
+    renderPage(
+      createRepository({
+        listCandidates
+      })
+    );
+
+    await waitFor(() => expect(listCandidates).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText("加载中…")).not.toBeInTheDocument());
+    expect(screen.queryByText(DEVICE_UNAVAILABLE_MESSAGE)).not.toBeInTheDocument();
+  });
+
+  it("keeps other page-level run-session errors visible", async () => {
+    const genericMessage = "参数候选加载失败，请稍后重试。";
+    renderPage(
+      createRepository({
+        listCandidates: vi.fn().mockRejectedValue(new Error(genericMessage))
+      })
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(genericMessage);
   });
 
   it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {

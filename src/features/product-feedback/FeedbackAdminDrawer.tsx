@@ -5,8 +5,7 @@ import { productFeedbackStatusLabels, productFeedbackTypeLabels } from "@/domain
 import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
 export type FeedbackAdminDrawerProps = {
@@ -132,32 +131,32 @@ export function FeedbackAdminDrawer({
 
   return (
     <>
-      <Sheet
+      <Dialog
         open={open}
         onOpenChange={(isOpen) => {
-          // The stacked close-confirmation renders in its own portal, so its pointer
-          // interactions register as "outside" this sheet and Radix requests a close.
-          // Honoring that request would unmount the drawer (and the confirm button)
-          // before the confirm click lands — swallow it while the confirmation is up,
-          // like FeedbackDialog's dirty-state guard does.
+          // Keep the detail dialog mounted while its irreversible close confirmation
+          // is stacked above it, so the confirmation can complete safely.
           if (!isOpen && !closeConfirmOpen) onClose();
         }}
       >
-        <SheetContent side="right" className="flex w-full gap-0 p-0 sm:max-w-[560px]" showCloseButton={false}>
-        <SheetHeader className="flex flex-row items-start gap-3 border-b border-border p-4">
-          <div className="min-w-0 flex-1 space-y-1">
-            <span className="text-xs font-medium text-primary">{productFeedbackStatusLabels[feedback.status]}</span>
-            <SheetTitle className="truncate text-base">{feedback.pageTitle}</SheetTitle>
-            <SheetDescription className="text-xs">
-              {productFeedbackTypeLabels[feedback.feedbackType]} · {feedback.pagePath} · {formatDateTime(feedback.createdAt)}
-            </SheetDescription>
+        <DialogContent
+          className="feedback-admin-dialog flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+          showCloseButton={false}
+        >
+          <div className="flex flex-row items-start gap-3 border-b border-border p-4">
+            <div className="min-w-0 flex-1 space-y-1">
+              <span className="text-xs font-medium text-primary">{productFeedbackStatusLabels[feedback.status]}</span>
+              <DialogTitle className="truncate text-base">{feedback.pageTitle}</DialogTitle>
+              <DialogDescription className="text-xs">
+                {productFeedbackTypeLabels[feedback.feedbackType]} · {feedback.pagePath} · {formatDateTime(feedback.createdAt)}
+              </DialogDescription>
+            </div>
+            <DialogClose asChild>
+              <button type="button" className="audit-dialog-close-icon" aria-label="关闭">
+                <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </DialogClose>
           </div>
-          <SheetClose asChild>
-            <button type="button" className="audit-dialog-close-icon" aria-label="关闭">
-              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </SheetClose>
-        </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <section>
@@ -231,8 +230,8 @@ export function FeedbackAdminDrawer({
             </Button>
           </div>
         ) : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={closeConfirmOpen}

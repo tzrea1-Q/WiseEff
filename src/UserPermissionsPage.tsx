@@ -665,7 +665,7 @@ export function UserPermissionsPage({
         return (
           <div className="user-permissions-action-with-reason">
             <button
-              className="button danger"
+              className="button danger user-permissions-delete-button"
               type="button"
               aria-label={`注销 ${user.name}`}
               aria-describedby={reasonId}

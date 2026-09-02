@@ -25,6 +25,23 @@ afterEach(() => {
 });
 
 describe("FeedbackAdminDrawer", () => {
+  it("renders feedback details in a centered dialog instead of a side sheet", () => {
+    render(
+      <FeedbackAdminDrawer
+        feedback={feedback()}
+        open
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        getAttachmentObjectUrl={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "日志智能分析" });
+    expect(dialog).toHaveAttribute("data-slot", "dialog-content");
+    expect(dialog).toHaveClass("feedback-admin-dialog");
+    expect(document.querySelector('[data-slot="sheet-content"]')).not.toBeInTheDocument();
+  });
+
   it("starts handling open feedback and persists the admin note", async () => {
     const onUpdate = vi.fn().mockResolvedValue(feedback({ status: "in_progress", adminNote: "已分配给日志团队" }));
 
