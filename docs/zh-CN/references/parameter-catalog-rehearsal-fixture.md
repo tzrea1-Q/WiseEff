@@ -6,7 +6,7 @@
 
 流程不会复制源数据库的任何数据行。populated 关系图由仓库内固定 SQL 生成；所有 ID 都以 `wf671-` 开头，所有值都明确标记为 synthetic placeholder。
 
-历史 source commit 为 `6c3adfc35c0e3be6d5d381013dace9408190380e`，历史 bundle SHA-256 为 `017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff`。两者只是不变 provenance，不构成 executable trust，也绝不从 repaired bytes 重算。external source-lock test 在不包含自身的前提下固定 repair commit `R`、原 18 个 path、regular-file mode、每个 repaired blob hash 与新的 length-framed bundle checksum `B`。
+历史 source commit 为 `6c3adfc35c0e3be6d5d381013dace9408190380e`，历史 bundle SHA-256 为 `017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff`。两者只是不变 provenance，不构成 executable trust，也绝不从 repaired bytes 重算。external source-lock test 在不包含自身的前提下固定当前 checkout 中原 18 个 path、regular-file mode、每个 repaired blob hash 与新的 length-framed bundle checksum `B`。在 depth-one checkout 中，测试使用内嵌且独立的 expected manifest 证明当前文件字节；当历史 Git objects 存在时，同一测试还会额外重算历史 provenance 证据。
 
 ## 产物契约
 
@@ -23,9 +23,9 @@
 - `manifest.csv`，其中必须有 `format_version=2`、显式 `fixture_mode`、`source_data_rows_exported=0`，以及与 mode 一致的 `import_populates_synthetic_rows`；
 - `SHA256SUMS`，对其他每个必需文件恰好提供一条安全条目。
 
-导入器把上述清单当作封闭集合。缺少文件、未知 entry、symlink、directory、device、socket、FIFO、其他 non-regular entry、缺少或重复 checksum 条目、不安全文件名、路径穿越、checksum 不一致，或 manifest 的 format、mode、artifact kind 与 import policy 不一致，都会在数据库访问之前被拒绝。manifest 还保留历史 source/checksum，并固定 exact `synthetic-fixture-verify.sql` checksum。
+导入器只接受 archive 及由调用方从可信通道提供的、针对该 archive 精确字节的 lowercase SHA-256。它只打开一次调用方 archive，经该 file descriptor 复制到私有不可变 snapshot，先验证外部 digest，再解包并将成员视为 closed-world 集合。archive sidecar 与产物内 `SHA256SUMS` 仅是二级完整性证据，绝不是信任锚点。缺少或未知成员、危险 root、symlink、directory、device、socket、FIFO、其他 non-regular entry、缺少或重复 checksum、不安全名称、路径穿越、checksum 不匹配、psql meta-command，以及 manifest 的 format、mode、artifact kind 与 import policy 不一致，都会在数据库访问前被拒绝。manifest 保留历史 source/checksum，并固定 exact `synthetic-fixture-verify.sql` checksum。
 
-导出器对登记的仓库 SQL 输入与生成产物集合执行同样的 closed-world regular-file 检查，并在发布 archive 前 secret-scan 每个登记 source 以及生成的 schema、profile、manifest、output、log。导入阶段再次扫描全部登记产物。发布使用私有 staging、ownership marker 与 same-inode link；失败时只清理由 identity 仍能证明归本次运行所有的 path，竞争者创建的 foreign path 不会被删除，而是使 cleanup fail closed。
+导出器对登记的仓库 SQL 输入与生成产物集合执行同样的 closed-world regular-file 检查，并在发布 archive 前 secret-scan 每个登记 source 以及生成的 schema、profile、manifest、output、log。导入阶段再次扫描全部登记产物。发布使用私有 staging、ownership marker 与 same-inode link；失败清理会通过 `O_NOFOLLOW` 打开 parent 与 owned directory，校验 inode 与 marker 后只使用这些 directory file descriptor 删除。并发替换出的 foreign path 会被保留，并令 cleanup fail closed。
 
 源端画像只记录关系结构、不可变迁移名称和 checksum、精确关系计数、封闭枚举/存在性/对齐分类、不变量计数，以及逻辑/schema/文件/归档 SHA-256。只有规范化 dump checksum 会排除 PostgreSQL 每次生成的 `\restrict` nonce；文件 checksum 仍保护原始 dump 的每个字节。
 
@@ -79,7 +79,8 @@ docker exec -i <local-postgres-container> \
 scripts/wayfinder/import-parameter-catalog-rehearsal.sh \
   --container <local-postgres-container> \
   --database wiseeff_wayfinder671_restore_<suffix> \
-  --artifact-dir /absolute/path/to/unpacked-export
+  --archive /absolute/path/to/wiseeff-wayfinder-671-export-YYYYMMDDTHHMMSSZ.tar.gz \
+  --expected-archive-sha256 '<从经过认证的 exporter 结果复制 archive_sha256>'
 ```
 
 预期终端标记包括：
@@ -121,7 +122,7 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
 
 在打开数据库 session 前，runner 会通过拒绝 symlink 的 file descriptor 对调用方每个输入只读取一次，把完全相同的 bytes 写入私有只读 snapshot，之后的验证、secret scan 与执行只使用该 snapshot；它不会重新读取调用方路径，也不会改写换行。PostgreSQL-aware lexer 只接受 fixture 所需的事务内 DDL/DML 子集。所有 procedural statement、显式纯函数列表以外的 callable expression、`FUNCTION`、`PROCEDURE`、`DO`、`CALL`、extension、FDW、foreign server/user mapping、dblink、large-object/server-file function、全部 SQL `COPY`、transaction/session control 与 psql meta-command 都会在连接 PostgreSQL 前被拒绝。无法证明安全的 capability 会 fail closed，而不会从关键词片段推断为安全。
 
-exporter 与 importer 同样只对各自的 closed input world 建立一次 snapshot。PostgreSQL credential 形态（包括 FDW user-mapping option、libpq keyword string、带凭据 URI、`PGPASSWORD`、token 与 private key）会在发布或导入前被拒绝。import 的结构/画像验证位于 commit 之前；此后任一本地验证或 cleanup 失败，都会把专用数据库补偿回 checked-empty。临时路径与发布路径的 cleanup 必须同时匹配本轮随机 owner marker 和目录/文件 identity；被替换的路径会保留并令本轮失败。
+exporter 与 importer 同样只对各自的 closed input world 建立一次 snapshot。调用方必须通过带认证的旁路传递 exporter digest；针对调用方已篡改 archive 重新计算 digest 不能建立信任。PostgreSQL credential 形态（包括 FDW user-mapping option、libpq keyword string、带凭据 URI、`PGPASSWORD`、token 与 private key）会在发布或导入前被拒绝。import 的结构/画像验证位于 commit 之前；此后任一 log、metrics 或 cleanup 失败，都会把专用数据库补偿回 checked-empty。临时路径与发布路径的 cleanup 必须同时匹配本轮随机 owner marker 和 fd-relative 目录/文件 identity；被替换的路径会保留并令本轮失败。
 
 runner 会让 snapshot 中的 locked verifier checksum 与 imported manifest 精确一致，secret-scan 两个 SQL snapshot 及全部生成 dump/log，并精确执行三次 `synthetic-fixture-verify.sql`：candidate mutation 前；candidate + validation 后且 rollback 前；rollback 后。它分别计算 rollback 前后的完整规范化数据库 dump hash，只有二者完全相同时才成功。所有 runner-owned 临时文件与 child process 消失后，才能唯一输出一次 `CLEANUP_OK`。预期输出包含：
 

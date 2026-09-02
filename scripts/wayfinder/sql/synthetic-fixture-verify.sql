@@ -1,14 +1,15 @@
-select count(*) = 1 and min(value) = 'populated' as wf671_populated_mode
-from wayfinder_rehearsal.manifest
-where key = 'fixture_mode'
-\gset
-
-\if :wf671_populated_mode
--- Fail the import unless the deterministic populated graph is complete.
-do $$
+-- Fail the import unless the selected deterministic fixture graph is complete.
+-- This is deliberately pure SQL: executable artifacts never carry psql meta-commands.
+do $wayfinder_fixture_verify$
 declare
   actual bigint;
+  fixture_mode text;
+  nonzero_relations text;
 begin
+  select value into fixture_mode
+  from wayfinder_rehearsal.manifest
+  where key = 'fixture_mode';
+  if fixture_mode = 'populated' then
   select count(*) into actual from wayfinder_rehearsal.fixture_cases;
   if actual <> 10 then
     raise exception 'Wayfinder fixture case registry: expected 10 rows, got %', actual;
@@ -363,17 +364,10 @@ begin
   if actual <> 0 then
     raise exception 'Wayfinder fixture must not create users, got %', actual;
   end if;
-end
-$$;
-\else
+  elsif fixture_mode = 'zero' then
 -- Zero mode exercises the executable fresh-install path without injecting the
 -- populated ten-case graph. The profile and migration ledger remain present,
 -- while every profiled catalog relation must stay empty.
-do $$
-declare
-  actual bigint;
-  nonzero_relations text;
-begin
   select count(*) into actual from wayfinder_rehearsal.fixture_cases;
   if actual <> 0 then
     raise exception 'Wayfinder zero fixture case registry: expected 0 rows, got %', actual;
@@ -454,6 +448,8 @@ begin
   if actual <> 0 then
     raise exception 'Wayfinder zero fixture inventory: expected 0 rows, got %', actual;
   end if;
+  else
+    raise exception 'Unsupported Wayfinder fixture mode: %', fixture_mode;
+  end if;
 end
-$$;
-\endif
+$wayfinder_fixture_verify$;

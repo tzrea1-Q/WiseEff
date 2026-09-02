@@ -7,13 +7,14 @@ export LC_ALL=C
 container_name=""
 database_name=""
 database_user="wiseeff"
-artifact_dir=""
+archive_path=""
+expected_archive_sha256=""
 validate_artifact_only="false"
 
 usage() {
   printf '%s\n' \
-    'Usage: import-parameter-catalog-rehearsal.sh --container NAME --database wiseeff_wayfinder671_restore_SUFFIX --artifact-dir ABSOLUTE_PATH [--user NAME]' \
-    '       import-parameter-catalog-rehearsal.sh --validate-artifact-only --artifact-dir ABSOLUTE_PATH'
+    'Usage: import-parameter-catalog-rehearsal.sh --container NAME --database wiseeff_wayfinder671_restore_SUFFIX --archive ABSOLUTE_PATH --expected-archive-sha256 HEX [--user NAME]' \
+    '       import-parameter-catalog-rehearsal.sh --validate-artifact-only --archive ABSOLUTE_PATH --expected-archive-sha256 HEX'
 }
 
 while (($# > 0)); do
@@ -30,8 +31,12 @@ while (($# > 0)); do
       database_user="${2:?missing value for --user}"
       shift 2
       ;;
-    --artifact-dir)
-      artifact_dir="${2:?missing value for --artifact-dir}"
+    --archive)
+      archive_path="${2:?missing value for --archive}"
+      shift 2
+      ;;
+    --expected-archive-sha256)
+      expected_archive_sha256="${2:?missing value for --expected-archive-sha256}"
       shift 2
       ;;
     --validate-artifact-only)
@@ -50,7 +55,7 @@ while (($# > 0)); do
   esac
 done
 
-if [[ -z "${artifact_dir}" \
+if [[ -z "${archive_path}" \
    || ( "${validate_artifact_only}" != "true" \
         && ( -z "${container_name}" || -z "${database_name}" ) ) ]]; then
   usage >&2
@@ -63,9 +68,19 @@ if [[ "${validate_artifact_only}" != "true" \
   exit 2
 fi
 
-if [[ ! "${database_user}" =~ ^[A-Za-z0-9_]+$ || "${artifact_dir}" != /* \
-   || ! -d "${artifact_dir}" || -L "${artifact_dir}" ]]; then
-  printf '%s\n' 'User must be a simple identifier and artifact directory must be an existing absolute path.' >&2
+if [[ -z "${expected_archive_sha256}" ]]; then
+  printf '%s\n' '--expected-archive-sha256 is required.' >&2
+  exit 2
+fi
+
+if [[ ! "${expected_archive_sha256}" =~ ^[0-9a-f]{64}$ ]]; then
+  printf '%s\n' '--expected-archive-sha256 must be a lowercase SHA-256 digest.' >&2
+  exit 2
+fi
+
+if [[ ! "${database_user}" =~ ^[A-Za-z0-9_]+$ || "${archive_path}" != /* \
+   || ! -f "${archive_path}" || -L "${archive_path}" ]]; then
+  printf '%s\n' 'User must be a simple identifier and archive must be an existing absolute regular file.' >&2
   exit 2
 fi
 
@@ -97,6 +112,14 @@ is_checksum_file() {
   return 1
 }
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 path_identity() {
   node --input-type=module - "$1" <<'NODE'
 import fs from "node:fs";
@@ -123,135 +146,107 @@ cleanup_owned_directory() {
   local expected_identity="$2"
   local owner_token="$3"
   shift 3
-  if ! node --input-type=module - \
-    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
-import fs from "node:fs";
-const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
-const allowed = new Set([".wiseeff-owner", ...allowedNames]);
-let fd;
-try {
-  fd = fs.openSync(
-    ownedPath,
-    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-  );
-  const opened = fs.fstatSync(fd, { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
-  process.chdir(ownedPath);
-  const current = fs.statSync(".", { bigint: true });
-  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
-  const marker = fs.lstatSync(".wiseeff-owner", { bigint: true });
-  if (!marker.isFile() || marker.isSymbolicLink()) throw new Error("marker-kind");
-  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
-    throw new Error("marker-token");
-  }
-  const entries = fs.readdirSync(".");
-  for (const name of entries) {
-    if (!allowed.has(name)) throw new Error("unknown-entry");
-    const entry = fs.lstatSync(name, { bigint: true });
-    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error("entry-kind");
-  }
-  fs.chmodSync(".", 0o700);
-  for (const name of entries.filter((name) => name !== ".wiseeff-owner")) {
-    fs.unlinkSync(name);
-  }
-  fs.unlinkSync(".wiseeff-owner");
-  process.chdir("/");
-  fs.closeSync(fd);
-  fd = undefined;
-  const published = fs.lstatSync(ownedPath, { bigint: true });
-  if (`${published.dev}:${published.ino}` !== expectedIdentity) throw new Error("path-replaced");
-  fs.rmdirSync(ownedPath);
-} catch {
-  if (fd !== undefined) fs.closeSync(fd);
-  process.exit(1);
-}
-NODE
+  if ! python3 - "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'PY'
+import os
+import stat
+import sys
+
+owned_path, expected_identity, owner_token, *allowed_names = sys.argv[1:]
+parent_path = os.path.dirname(owned_path)
+entry_name = os.path.basename(owned_path)
+allowed = {".wiseeff-owner", *allowed_names}
+parent_fd = directory_fd = None
+try:
+    parent_fd = os.open(parent_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory_fd = os.open(entry_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    opened = os.fstat(directory_fd)
+    if f"{opened.st_dev}:{opened.st_ino}" != expected_identity:
+        raise RuntimeError("identity")
+    entries = os.listdir(directory_fd)
+    if any(name not in allowed for name in entries):
+        raise RuntimeError("unknown-entry")
+    marker_stat = os.stat(".wiseeff-owner", dir_fd=directory_fd, follow_symlinks=False)
+    if not stat.S_ISREG(marker_stat.st_mode):
+        raise RuntimeError("marker-kind")
+    marker_fd = os.open(".wiseeff-owner", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        marker = os.read(marker_fd, 4096).decode("utf-8").strip()
+    finally:
+        os.close(marker_fd)
+    if marker != owner_token:
+        raise RuntimeError("marker-token")
+    for name in entries:
+        value = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(value.st_mode):
+            raise RuntimeError("entry-kind")
+    os.fchmod(directory_fd, 0o700)
+    for name in entries:
+        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(current.st_mode):
+            raise RuntimeError("entry-replaced")
+        os.unlink(name, dir_fd=directory_fd)
+    current_dir = os.stat(entry_name, dir_fd=parent_fd, follow_symlinks=False)
+    if f"{current_dir.st_dev}:{current_dir.st_ino}" != expected_identity:
+        raise RuntimeError("path-replaced")
+    os.rmdir(entry_name, dir_fd=parent_fd)
+except Exception:
+    sys.exit(1)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY
   then
     printf '%s\n' 'CLEANUP_FAILED' >&2
     return 1
   fi
 }
 
-snapshot_artifact_directory() {
+snapshot_archive_file() {
   local source_path="$1"
   local destination_path="$2"
-  shift 2
-  node --input-type=module - "${source_path}" "${destination_path}" "$@" <<'NODE'
+  node --input-type=module - "${source_path}" "${destination_path}" <<'NODE'
 import fs from "node:fs";
-import path from "node:path";
-
-const [sourcePath, destinationPath, ...expectedNames] = process.argv.slice(2);
-const expected = [...expectedNames].sort();
-let directoryFd;
+const [sourcePath, destinationPath] = process.argv.slice(2);
+let sourceFd;
+let destinationFd;
 try {
-  directoryFd = fs.openSync(
+  sourceFd = fs.openSync(
     sourcePath,
-    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
   );
-  const opened = fs.fstatSync(directoryFd, { bigint: true });
-  process.chdir(sourcePath);
-  const current = fs.statSync(".", { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== `${current.dev}:${current.ino}`) {
-    throw new Error("source-directory-changed");
-  }
-  const actual = fs.readdirSync(".").sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    const unexpected = actual.find((name) => !expected.includes(name));
-    const missing = expected.find((name) => !actual.includes(name));
-    if (unexpected) process.stderr.write(`Unknown artifact entry: ${unexpected}\n`);
-    if (missing) process.stderr.write(`Required artifact file is missing: ${missing}\n`);
-    throw new Error("closed-world");
-  }
-  for (const name of expected) {
-    let sourceFd;
-    let destinationFd;
-    try {
-      sourceFd = fs.openSync(name, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-      const before = fs.fstatSync(sourceFd, { bigint: true });
-      if (!before.isFile() || before.isSymbolicLink()) throw new Error("source-kind");
-      const bytes = fs.readFileSync(sourceFd);
-      const after = fs.fstatSync(sourceFd, { bigint: true });
-      if (
-        before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
-        || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
-      ) throw new Error("source-file-changed");
-      destinationFd = fs.openSync(
-        path.join(destinationPath, name),
-        fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL
-          | fs.constants.O_NOFOLLOW,
-        0o400,
-      );
-      fs.writeFileSync(destinationFd, bytes);
-      fs.fsyncSync(destinationFd);
-      fs.closeSync(destinationFd);
-      destinationFd = undefined;
-    } finally {
-      if (sourceFd !== undefined) fs.closeSync(sourceFd);
-      if (destinationFd !== undefined) fs.closeSync(destinationFd);
-    }
-  }
-  const final = fs.readdirSync(".").sort();
-  if (JSON.stringify(final) !== JSON.stringify(expected)) throw new Error("source-world-changed");
-  const closed = fs.fstatSync(directoryFd, { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== `${closed.dev}:${closed.ino}`) {
-    throw new Error("source-directory-mutated");
-  }
-  process.chdir("/");
-  fs.closeSync(directoryFd);
+  const before = fs.fstatSync(sourceFd, { bigint: true });
+  if (!before.isFile() || before.isSymbolicLink()) throw new Error("source-kind");
+  const bytes = fs.readFileSync(sourceFd);
+  const after = fs.fstatSync(sourceFd, { bigint: true });
+  if (
+    before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+    || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
+  ) throw new Error("source-changed");
+  destinationFd = fs.openSync(
+    destinationPath,
+    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL
+      | fs.constants.O_NOFOLLOW,
+    0o400,
+  );
+  fs.writeFileSync(destinationFd, bytes);
+  fs.fsyncSync(destinationFd);
 } catch {
-  try { process.chdir("/"); } catch {}
-  if (directoryFd !== undefined) fs.closeSync(directoryFd);
   process.exit(1);
+} finally {
+  if (sourceFd !== undefined) fs.closeSync(sourceFd);
+  if (destinationFd !== undefined) fs.closeSync(destinationFd);
 }
 NODE
 }
 
-artifact_input_dir="${artifact_dir}"
 artifact_snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-import-input.XXXXXX")"
 artifact_snapshot_token="$(new_owner_token)"
 initialize_owned_directory "${artifact_snapshot_dir}" "${artifact_snapshot_token}"
 artifact_snapshot_identity="$(path_identity "${artifact_snapshot_dir}")"
-artifact_snapshot_files=(SHA256SUMS "${checksum_files[@]}")
+snapshot_archive_path="${artifact_snapshot_dir}/artifact.tar.gz"
+artifact_snapshot_files=(artifact.tar.gz SHA256SUMS "${checksum_files[@]}")
 cleanup_artifact_snapshot_on_exit() {
   local exit_code=$?
   trap - EXIT
@@ -264,9 +259,46 @@ cleanup_artifact_snapshot_on_exit() {
 }
 trap cleanup_artifact_snapshot_on_exit EXIT
 
-if ! snapshot_artifact_directory \
-  "${artifact_input_dir}" "${artifact_snapshot_dir}" "${artifact_snapshot_files[@]}"; then
-  printf '%s\n' 'Artifact input changed or is not the exact regular-file closed world.' >&2
+if ! snapshot_archive_file "${archive_path}" "${snapshot_archive_path}"; then
+  printf '%s\n' 'Artifact archive changed or is not a stable regular file.' >&2
+  exit 1
+fi
+if [[ "$(sha256_file "${snapshot_archive_path}")" != "${expected_archive_sha256}" ]]; then
+  printf '%s\n' 'Artifact archive digest does not match the externally trusted digest.' >&2
+  exit 1
+fi
+
+archive_members="$(tar -tzf "${snapshot_archive_path}" --)"
+archive_root="$(printf '%s\n' "${archive_members}" | awk -F/ 'NR == 1 { print $1 }')"
+if [[ ! "${archive_root}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  printf '%s\n' 'Artifact archive root name is unsafe.' >&2
+  exit 1
+fi
+expected_members=""
+for file in SHA256SUMS "${checksum_files[@]}"; do
+  expected_members+="${archive_root}/${file}"$'\n'
+done
+if [[ "$(printf '%s\n' "${archive_members}" | LC_ALL=C sort)" \
+   != "$(printf '%s' "${expected_members}" | LC_ALL=C sort)" ]]; then
+  unexpected_member="$(comm -23 \
+    <(printf '%s\n' "${archive_members}" | LC_ALL=C sort) \
+    <(printf '%s' "${expected_members}" | LC_ALL=C sort) | head -n 1)"
+  missing_member="$(comm -13 \
+    <(printf '%s\n' "${archive_members}" | LC_ALL=C sort) \
+    <(printf '%s' "${expected_members}" | LC_ALL=C sort) | head -n 1)"
+  if [[ -n "${unexpected_member}" ]]; then
+    unexpected_name="${unexpected_member#*/}"
+    printf 'Unknown artifact entry: %s\n' "${unexpected_name%/}" >&2
+  fi
+  if [[ -n "${missing_member}" ]]; then
+    printf 'Required artifact file is missing: %s\n' "${missing_member#*/}" >&2
+  fi
+  printf '%s\n' 'Artifact archive does not contain the exact allowed member set.' >&2
+  exit 1
+fi
+if ! tar -xzf "${snapshot_archive_path}" -C "${artifact_snapshot_dir}" \
+  --strip-components=1 --no-same-owner --no-same-permissions --; then
+  printf '%s\n' 'Artifact archive extraction failed.' >&2
   exit 1
 fi
 chmod 0500 "${artifact_snapshot_dir}"
@@ -278,10 +310,16 @@ for file in SHA256SUMS "${checksum_files[@]}"; do
     exit 1
   fi
 done
+for file in schema.sql profile-schema.sql synthetic-fixture.sql synthetic-fixture-verify.sql; do
+  if LC_ALL=C grep -anE '^[[:space:]]*\\' "${artifact_dir}/${file}" >/dev/null; then
+    printf 'Unsafe psql meta-command detected in %s.\n' "${file}" >&2
+    exit 1
+  fi
+done
 
 while IFS= read -r -d '' entry; do
   file="$(basename "${entry}")"
-  if [[ "${file}" == ".wiseeff-owner" ]]; then
+  if [[ "${file}" == ".wiseeff-owner" || "${file}" == "artifact.tar.gz" ]]; then
     continue
   fi
   if [[ "${file}" != "SHA256SUMS" ]] && ! is_checksum_file "${file}"; then
@@ -293,14 +331,6 @@ while IFS= read -r -d '' entry; do
     exit 1
   fi
 done < <(find "${artifact_dir}" -mindepth 1 -maxdepth 1 -print0)
-
-sha256_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
-}
 
 seen_files=$'\n'
 while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -612,6 +642,9 @@ SQL
   printf '%s\n' 'commit;'
 } | target_psql > "${import_log}" 2>&1 || import_status=$?
 
+if [[ "${import_status}" == "0" ]]; then
+  import_committed="true"
+fi
 if LC_ALL=C grep -aEiq "${secret_pattern}" "${import_log}"; then
   printf '%s\n' 'Sensitive-token pattern detected in import.log.' >&2
   import_status=1
@@ -634,7 +667,6 @@ if [[ "${import_status}" != "0" ]]; then
   printf '%s\n' 'CLEANUP_OK' >&2
   exit "${import_status}"
 fi
-import_committed="true"
 
 if [[ "$(grep -c '__WISEEFF_IMPORT_METRICS__|' "${import_log}")" != "1" ]]; then
   printf '%s\n' 'Imported rehearsal failed structural/profile verification.' >&2

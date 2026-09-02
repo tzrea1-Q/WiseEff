@@ -125,51 +125,57 @@ cleanup_owned_directory() {
   local expected_identity="$2"
   local owner_token="$3"
   shift 3
-  if ! node --input-type=module - \
-    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
-import fs from "node:fs";
-import path from "node:path";
+  if ! python3 - "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'PY'
+import os
+import stat
+import sys
 
-const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
-const allowed = new Set([".wiseeff-owner", ...allowedNames]);
-let directoryFd;
-try {
-  directoryFd = fs.openSync(
-    ownedPath,
-    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-  );
-  const opened = fs.fstatSync(directoryFd, { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
-  process.chdir(ownedPath);
-  const current = fs.statSync(".", { bigint: true });
-  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
-  const marker = fs.lstatSync(".wiseeff-owner", { bigint: true });
-  if (!marker.isFile() || marker.isSymbolicLink()) throw new Error("marker-kind");
-  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
-    throw new Error("marker-token");
-  }
-  const entries = fs.readdirSync(".");
-  for (const name of entries) {
-    if (!allowed.has(name)) throw new Error("unknown-entry");
-    const entry = fs.lstatSync(name, { bigint: true });
-    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error("entry-kind");
-  }
-  fs.chmodSync(".", 0o700);
-  for (const name of entries.filter((name) => name !== ".wiseeff-owner")) {
-    fs.unlinkSync(name);
-  }
-  fs.unlinkSync(".wiseeff-owner");
-  process.chdir("/");
-  fs.closeSync(directoryFd);
-  directoryFd = undefined;
-  const published = fs.lstatSync(ownedPath, { bigint: true });
-  if (`${published.dev}:${published.ino}` !== expectedIdentity) throw new Error("path-replaced");
-  fs.rmdirSync(ownedPath);
-} catch {
-  if (directoryFd !== undefined) fs.closeSync(directoryFd);
-  process.exit(1);
-}
-NODE
+owned_path, expected_identity, owner_token, *allowed_names = sys.argv[1:]
+parent_path = os.path.dirname(owned_path)
+entry_name = os.path.basename(owned_path)
+allowed = {".wiseeff-owner", *allowed_names}
+parent_fd = directory_fd = None
+try:
+    parent_fd = os.open(parent_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory_fd = os.open(entry_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    opened = os.fstat(directory_fd)
+    if f"{opened.st_dev}:{opened.st_ino}" != expected_identity:
+        raise RuntimeError("identity")
+    entries = os.listdir(directory_fd)
+    if any(name not in allowed for name in entries):
+        raise RuntimeError("unknown-entry")
+    marker_stat = os.stat(".wiseeff-owner", dir_fd=directory_fd, follow_symlinks=False)
+    if not stat.S_ISREG(marker_stat.st_mode):
+        raise RuntimeError("marker-kind")
+    marker_fd = os.open(".wiseeff-owner", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        marker = os.read(marker_fd, 4096).decode("utf-8").strip()
+    finally:
+        os.close(marker_fd)
+    if marker != owner_token:
+        raise RuntimeError("marker-token")
+    for name in entries:
+        value = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(value.st_mode):
+            raise RuntimeError("entry-kind")
+    os.fchmod(directory_fd, 0o700)
+    for name in entries:
+        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(current.st_mode):
+            raise RuntimeError("entry-replaced")
+        os.unlink(name, dir_fd=directory_fd)
+    current_dir = os.stat(entry_name, dir_fd=parent_fd, follow_symlinks=False)
+    if f"{current_dir.st_dev}:{current_dir.st_ino}" != expected_identity:
+        raise RuntimeError("path-replaced")
+    os.rmdir(entry_name, dir_fd=parent_fd)
+except Exception:
+    sys.exit(1)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY
   then
     printf '%s\n' 'CLEANUP_FAILED' >&2
     return 1

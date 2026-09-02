@@ -102,6 +102,15 @@ if [[ -z "${output_dir}" || "${output_dir}" != /* ]]; then
   printf '%s\n' '--output-dir must be an absolute path.' >&2
   exit 2
 fi
+output_basename="$(basename -- "${output_dir}")"
+if [[ "${output_basename}" == -* ]]; then
+  printf '%s\n' 'Artifact basename must not begin with a dash.' >&2
+  exit 2
+fi
+if [[ ! "${output_basename}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  printf '%s\n' 'Artifact basename must use only letters, digits, dot, underscore, or dash.' >&2
+  exit 2
+fi
 
 if [[ "${fixture_mode}" != "populated" && "${fixture_mode}" != "zero" ]]; then
   printf '%s\n' '--fixture-mode must be explicitly set to populated or zero.' >&2
@@ -225,49 +234,57 @@ cleanup_owned_directory() {
   local expected_identity="$2"
   local owner_token="$3"
   shift 3
-  node --input-type=module - \
-    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
-import fs from "node:fs";
-const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
-const allowed = new Set([".wiseeff-owner", ...allowedNames]);
-let fd;
-try {
-  fd = fs.openSync(
-    ownedPath,
-    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-  );
-  const opened = fs.fstatSync(fd, { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
-  process.chdir(ownedPath);
-  const current = fs.statSync(".", { bigint: true });
-  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
-  const marker = fs.lstatSync(".wiseeff-owner", { bigint: true });
-  if (!marker.isFile() || marker.isSymbolicLink()) throw new Error("marker-kind");
-  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
-    throw new Error("marker-token");
-  }
-  const entries = fs.readdirSync(".");
-  for (const name of entries) {
-    if (!allowed.has(name)) throw new Error("unknown-entry");
-    const entry = fs.lstatSync(name, { bigint: true });
-    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error("entry-kind");
-  }
-  fs.chmodSync(".", 0o700);
-  for (const name of entries.filter((name) => name !== ".wiseeff-owner")) {
-    fs.unlinkSync(name);
-  }
-  fs.unlinkSync(".wiseeff-owner");
-  process.chdir("/");
-  fs.closeSync(fd);
-  fd = undefined;
-  const published = fs.lstatSync(ownedPath, { bigint: true });
-  if (`${published.dev}:${published.ino}` !== expectedIdentity) throw new Error("path-replaced");
-  fs.rmdirSync(ownedPath);
-} catch {
-  if (fd !== undefined) fs.closeSync(fd);
-  process.exit(1);
-}
-NODE
+  python3 - "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'PY'
+import os
+import stat
+import sys
+
+owned_path, expected_identity, owner_token, *allowed_names = sys.argv[1:]
+parent_path = os.path.dirname(owned_path)
+entry_name = os.path.basename(owned_path)
+allowed = {".wiseeff-owner", *allowed_names}
+parent_fd = directory_fd = None
+try:
+    parent_fd = os.open(parent_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory_fd = os.open(entry_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    opened = os.fstat(directory_fd)
+    if f"{opened.st_dev}:{opened.st_ino}" != expected_identity:
+        raise RuntimeError("identity")
+    entries = os.listdir(directory_fd)
+    if any(name not in allowed for name in entries):
+        raise RuntimeError("unknown-entry")
+    marker_stat = os.stat(".wiseeff-owner", dir_fd=directory_fd, follow_symlinks=False)
+    if not stat.S_ISREG(marker_stat.st_mode):
+        raise RuntimeError("marker-kind")
+    marker_fd = os.open(".wiseeff-owner", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        marker = os.read(marker_fd, 4096).decode("utf-8").strip()
+    finally:
+        os.close(marker_fd)
+    if marker != owner_token:
+        raise RuntimeError("marker-token")
+    for name in entries:
+        value = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(value.st_mode):
+            raise RuntimeError("entry-kind")
+    os.fchmod(directory_fd, 0o700)
+    for name in entries:
+        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(current.st_mode):
+            raise RuntimeError("entry-replaced")
+        os.unlink(name, dir_fd=directory_fd)
+    current_dir = os.stat(entry_name, dir_fd=parent_fd, follow_symlinks=False)
+    if f"{current_dir.st_dev}:{current_dir.st_ino}" != expected_identity:
+        raise RuntimeError("path-replaced")
+    os.rmdir(entry_name, dir_fd=parent_fd)
+except Exception:
+    sys.exit(1)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY
 }
 
 remove_owned_directory_marker() {
@@ -275,36 +292,159 @@ remove_owned_directory_marker() {
   local expected_identity="$2"
   local owner_token="$3"
   shift 3
-  node --input-type=module - \
-    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
-import fs from "node:fs";
-const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
-const allowed = new Set([".wiseeff-owner", ...allowedNames]);
-let fd;
-try {
-  fd = fs.openSync(
-    ownedPath,
-    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-  );
-  const opened = fs.fstatSync(fd, { bigint: true });
-  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
-  process.chdir(ownedPath);
-  const current = fs.statSync(".", { bigint: true });
-  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
-  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
-    throw new Error("marker-token");
-  }
-  const entries = fs.readdirSync(".");
-  if (entries.some((name) => !allowed.has(name))) throw new Error("unknown-entry");
-  fs.unlinkSync(".wiseeff-owner");
-  process.chdir("/");
-  fs.closeSync(fd);
-} catch {
-  try { process.chdir("/"); } catch {}
-  if (fd !== undefined) fs.closeSync(fd);
-  process.exit(1);
+  python3 - "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'PY'
+import os
+import stat
+import sys
+
+owned_path, expected_identity, owner_token, *allowed_names = sys.argv[1:]
+parent_path = os.path.dirname(owned_path)
+entry_name = os.path.basename(owned_path)
+allowed = {".wiseeff-owner", *allowed_names}
+parent_fd = directory_fd = None
+try:
+    parent_fd = os.open(parent_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory_fd = os.open(entry_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    opened = os.fstat(directory_fd)
+    if f"{opened.st_dev}:{opened.st_ino}" != expected_identity:
+        raise RuntimeError("identity")
+    entries = os.listdir(directory_fd)
+    if any(name not in allowed for name in entries):
+        raise RuntimeError("unknown-entry")
+    marker_stat = os.stat(".wiseeff-owner", dir_fd=directory_fd, follow_symlinks=False)
+    if not stat.S_ISREG(marker_stat.st_mode):
+        raise RuntimeError("marker-kind")
+    marker_fd = os.open(".wiseeff-owner", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        marker = os.read(marker_fd, 4096).decode("utf-8").strip()
+    finally:
+        os.close(marker_fd)
+    if marker != owner_token:
+        raise RuntimeError("marker-token")
+    current = os.stat(".wiseeff-owner", dir_fd=directory_fd, follow_symlinks=False)
+    if not stat.S_ISREG(current.st_mode):
+        raise RuntimeError("marker-replaced")
+    os.unlink(".wiseeff-owner", dir_fd=directory_fd)
+except Exception:
+    sys.exit(1)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY
 }
+
+path_identity_file() {
+  node --input-type=module - "$1" <<'NODE'
+import fs from "node:fs";
+const value = fs.lstatSync(process.argv[2], { bigint: true });
+if (!value.isFile() || value.isSymbolicLink()) process.exit(1);
+process.stdout.write(`${value.dev}:${value.ino}`);
 NODE
+}
+
+cleanup_published_outputs() {
+  local output_path="$1"
+  local output_identity="$2"
+  local stage_path="$3"
+  local stage_expected_identity="$4"
+  local token="$5"
+  local archive_name="$6"
+  local archive_identity="$7"
+  local checksum_name="$8"
+  local checksum_identity="$9"
+  shift 9
+  python3 - \
+    "${output_path}" "${output_identity}" "${stage_path}" "${stage_expected_identity}" \
+    "${token}" "${archive_name}" "${archive_identity}" \
+    "${checksum_name}" "${checksum_identity}" "$@" <<'PY'
+import os
+import stat
+import sys
+
+(
+    output_path,
+    output_identity,
+    stage_path,
+    stage_identity,
+    owner_token,
+    archive_name,
+    archive_identity,
+    checksum_name,
+    checksum_identity,
+    *file_names,
+) = sys.argv[1:]
+parent_path = os.path.dirname(output_path)
+output_name = os.path.basename(output_path)
+stage_name = os.path.basename(stage_path)
+parent_fd = output_fd = stage_fd = None
+
+def identity(value):
+    return f"{value.st_dev}:{value.st_ino}"
+
+try:
+    parent_fd = os.open(parent_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    stage_fd = os.open(stage_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    if identity(os.fstat(stage_fd)) != stage_identity:
+        raise RuntimeError("stage-identity")
+    if output_identity:
+        output_fd = os.open(output_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        if identity(os.fstat(output_fd)) != output_identity:
+            raise RuntimeError("output-identity")
+        entries = set(os.listdir(output_fd))
+        if entries != {".wiseeff-owner", *file_names}:
+            raise RuntimeError("output-world")
+        marker_fd = os.open(".wiseeff-owner", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=output_fd)
+        try:
+            marker = os.read(marker_fd, 4096).decode("utf-8").strip()
+        finally:
+            os.close(marker_fd)
+        if marker != owner_token:
+            raise RuntimeError("marker-token")
+        for name in [".wiseeff-owner", *file_names]:
+            output_stat = os.stat(name, dir_fd=output_fd, follow_symlinks=False)
+            stage_stat = os.stat(name, dir_fd=stage_fd, follow_symlinks=False)
+            if not stat.S_ISREG(output_stat.st_mode) or identity(output_stat) != identity(stage_stat):
+                raise RuntimeError("output-entry")
+    for name, expected in ((archive_name, archive_identity), (checksum_name, checksum_identity)):
+        if expected:
+            value = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(value.st_mode) or identity(value) != expected:
+                raise RuntimeError("published-file")
+
+    for name, expected in ((checksum_name, checksum_identity), (archive_name, archive_identity)):
+        if expected:
+            value = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            if identity(value) != expected:
+                raise RuntimeError("published-file-replaced")
+            os.unlink(name, dir_fd=parent_fd)
+    if output_fd is not None:
+        for name in file_names:
+            output_stat = os.stat(name, dir_fd=output_fd, follow_symlinks=False)
+            stage_stat = os.stat(name, dir_fd=stage_fd, follow_symlinks=False)
+            if identity(output_stat) != identity(stage_stat):
+                raise RuntimeError("output-entry-replaced")
+            os.unlink(name, dir_fd=output_fd)
+        marker_stat = os.stat(".wiseeff-owner", dir_fd=output_fd, follow_symlinks=False)
+        stage_marker_stat = os.stat(".wiseeff-owner", dir_fd=stage_fd, follow_symlinks=False)
+        if identity(marker_stat) != identity(stage_marker_stat):
+            raise RuntimeError("marker-replaced")
+        os.unlink(".wiseeff-owner", dir_fd=output_fd)
+        current = os.stat(output_name, dir_fd=parent_fd, follow_symlinks=False)
+        if identity(current) != output_identity:
+            raise RuntimeError("output-replaced")
+        os.rmdir(output_name, dir_fd=parent_fd)
+except Exception:
+    sys.exit(1)
+finally:
+    if stage_fd is not None:
+        os.close(stage_fd)
+    if output_fd is not None:
+        os.close(output_fd)
+    if parent_fd is not None:
+        os.close(parent_fd)
+PY
 }
 
 snapshot_source_directory() {
@@ -496,10 +636,13 @@ stage_possible_files=(
   archive.tar.gz.sha256
 )
 output_owned="false"
+output_identity=""
 archive_temp=""
 archive_published="false"
+archive_identity=""
 archive_checksum_temp=""
 archive_checksum_published="false"
+archive_checksum_identity=""
 on_exit() {
   local exit_code=$?
   if [[ "${exit_code}" == "0" ]]; then
@@ -508,43 +651,15 @@ on_exit() {
   trap - EXIT
   local cleanup_failed="false"
   set +e
-  if [[ "${archive_checksum_published}" == "true" ]]; then
-    if [[ -e "${archive_checksum_path}" && -e "${archive_checksum_temp}" \
-       && "${archive_checksum_path}" -ef "${archive_checksum_temp}" ]]; then
-      rm -f -- "${archive_checksum_path}"
-    else
+  if [[ "${output_owned}" == "true" || "${archive_published}" == "true" \
+     || "${archive_checksum_published}" == "true" ]]; then
+    if ! cleanup_published_outputs \
+      "${output_dir}" "$([[ "${output_owned}" == "true" ]] && printf '%s' "${output_identity}")" \
+      "${stage_dir}" "${stage_identity}" "${owner_token}" \
+      "$(basename -- "${archive_path}")" "${archive_identity}" \
+      "$(basename -- "${archive_checksum_path}")" "${archive_checksum_identity}" \
+      "${artifact_files[@]}" SHA256SUMS; then
       cleanup_failed="true"
-    fi
-  fi
-  if [[ "${archive_published}" == "true" ]]; then
-    if [[ -e "${archive_path}" && -e "${archive_temp}" \
-       && "${archive_path}" -ef "${archive_temp}" ]]; then
-      rm -f -- "${archive_path}"
-    else
-      cleanup_failed="true"
-    fi
-  fi
-  if [[ "${output_owned}" == "true" ]]; then
-    if [[ ! -d "${output_dir}" || -L "${output_dir}" ]]; then
-      cleanup_failed="true"
-    else
-      for file in "${artifact_files[@]}" SHA256SUMS; do
-        if [[ -e "${output_dir}/${file}" && -e "${stage_dir}/${file}" \
-           && "${output_dir}/${file}" -ef "${stage_dir}/${file}" ]]; then
-          rm -f -- "${output_dir}/${file}"
-        elif [[ -e "${output_dir}/${file}" || -L "${output_dir}/${file}" ]]; then
-          cleanup_failed="true"
-        fi
-      done
-      if [[ -e "${output_owner_marker}" && -e "${stage_owner_marker}" \
-         && "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
-        rm -f -- "${output_owner_marker}"
-      elif [[ -e "${output_owner_marker}" || -L "${output_owner_marker}" ]]; then
-        cleanup_failed="true"
-      fi
-      if ! rmdir -- "${output_dir}" 2>/dev/null && [[ -d "${output_dir}" ]]; then
-        cleanup_failed="true"
-      fi
     fi
   fi
   if ! cleanup_owned_directory \
@@ -603,7 +718,6 @@ for report in "${reports[@]}"; do
     exit 1
   fi
 done
-rm "${combined_output}"
 
 if [[ "${fixture_mode}" == "zero" ]]; then
   nonzero_relations="$(awk -F, 'NR > 1 && $1 != "organizations" && ($2 + 0) != 0 { print $1 }' "${stage_dir}/row-counts.csv")"
@@ -620,6 +734,7 @@ db_dump_schema \
   --no-privileges \
   --no-comments \
   --no-security-labels \
+  | sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' \
   > "${stage_dir}/schema.sql"
 
 db_psql < "${sql_dir}/migration-inventory.sql" > "${stage_dir}/migration-inventory-after-schema.csv"
@@ -628,7 +743,6 @@ if ! cmp -s "${stage_dir}/migration-inventory.csv" "${stage_dir}/migration-inven
   printf '%s\n' 'Migration inventory changed while the schema dump was captured; retry outside a deployment window.' >&2
   exit 1
 fi
-rm "${stage_dir}/migration-inventory-after-schema.csv"
 
 cp "${sql_dir}/profile-schema.sql" "${stage_dir}/profile-schema.sql"
 cp "${sql_dir}/synthetic-fixture.sql" "${stage_dir}/synthetic-fixture.sql"
@@ -707,6 +821,10 @@ while IFS= read -r -d '' entry; do
   if [[ "${file}" == "${owner_marker_name}" ]]; then
     continue
   fi
+  if [[ "${file}" == "combined-profile.out" \
+     || "${file}" == "migration-inventory-after-schema.csv" ]]; then
+    continue
+  fi
   if ! is_registered_name "${file}" "${artifact_files[@]}"; then
     printf 'Unknown generated artifact entry: %s\n' "${file}" >&2
     exit 1
@@ -719,11 +837,16 @@ done < <(find "${stage_dir}" -mindepth 1 -maxdepth 1 -print0)
 for file in "${artifact_files[@]}"; do
   scan_file_for_secrets "${stage_dir}/${file}" "${file}"
 done
+for file in schema.sql profile-schema.sql synthetic-fixture.sql synthetic-fixture-verify.sql; do
+  if LC_ALL=C grep -anE '^[[:space:]]*\\' "${stage_dir}/${file}" >/dev/null; then
+    printf 'Unsafe psql meta-command detected in %s.\n' "${file}" >&2
+    exit 1
+  fi
+done
 
 (
   cd "${stage_dir}"
-  for file in *.csv *.sql; do
-    [[ "${file}" == "SHA256SUMS" ]] && continue
+  for file in "${artifact_files[@]}"; do
     printf '%s  %s\n' "$(sha256_file "${file}")" "${file}"
   done | sort -k2
 ) > "${stage_dir}/SHA256SUMS"
@@ -744,12 +867,13 @@ archive_members=()
 for file in "${artifact_files[@]}" SHA256SUMS; do
   archive_members+=("$(basename "${output_dir}")/${file}")
 done
-tar -czf "${archive_temp}" -C "${output_parent}" "${archive_members[@]}"
+tar -czf "${archive_temp}" -C "${output_parent}" -- "${archive_members[@]}"
 if ! ln -- "${archive_temp}" "${archive_path}"; then
   printf '%s\n' 'Archive path appeared during export; refusing to overwrite it.' >&2
   exit 1
 fi
 archive_published="true"
+archive_identity="$(path_identity_file "${archive_path}")"
 archive_checksum="$(sha256_file "${archive_path}")"
 archive_checksum_temp="${stage_dir}/archive.tar.gz.sha256"
 printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_checksum_temp}"
@@ -758,6 +882,7 @@ if ! ln -- "${archive_checksum_temp}" "${archive_checksum_path}"; then
   exit 1
 fi
 archive_checksum_published="true"
+archive_checksum_identity="$(path_identity_file "${archive_checksum_path}")"
 
 if [[ ! -e "${output_owner_marker}" || ! "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
   printf '%s\n' 'Exporter ownership marker changed during publication.' >&2

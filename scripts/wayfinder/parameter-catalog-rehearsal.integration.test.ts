@@ -129,6 +129,52 @@ async function writeSafeArtifact(artifactDir: string) {
   await refreshArtifactChecksums(artifactDir);
 }
 
+async function refreshFixtureVerifierManifest(artifactDir: string) {
+  const verifierHash = createHash("sha256")
+    .update(await readFile(path.join(artifactDir, "synthetic-fixture-verify.sql")))
+    .digest("hex");
+  const manifestPath = path.join(artifactDir, "manifest.csv");
+  await writeFile(
+    manifestPath,
+    (await readFile(manifestPath, "utf8")).replace(
+      /synthetic_fixture_verify_sha256,[0-9a-f]{64}/,
+      `synthetic_fixture_verify_sha256,${verifierHash}`,
+    ),
+  );
+  await refreshArtifactChecksums(artifactDir);
+}
+
+let trustedArchiveSequence = 0;
+async function createTrustedArchiveArgs(
+  artifactDir: string,
+  tempRoot: string,
+  includeEveryEntry = false,
+) {
+  trustedArchiveSequence += 1;
+  const archivePath = path.join(
+    tempRoot,
+    `trusted-artifact-${trustedArchiveSequence}.tar.gz`,
+  );
+  const memberNames = includeEveryEntry
+    ? await readdir(artifactDir)
+    : ["SHA256SUMS", ...artifactFiles];
+  const archive = runResult("tar", [
+    "-czf",
+    archivePath,
+    "-C",
+    path.dirname(artifactDir),
+    "--",
+    ...memberNames.map(
+      (file) => `${path.basename(artifactDir)}/${file}`,
+    ),
+  ]);
+  expect(archive.status, archive.stderr).toBe(0);
+  const digest = createHash("sha256")
+    .update(await readFile(archivePath))
+    .digest("hex");
+  return ["--archive", archivePath, "--expected-archive-sha256", digest] as const;
+}
+
 describe("parameter catalog rehearsal SQL containment", () => {
   it("accepts only the transaction-contained fixture DDL/DML subset", async () => {
     const tempRoot = await mkdtemp(
@@ -406,6 +452,77 @@ describe("parameter catalog rehearsal SQL containment", () => {
 });
 
 describe("parameter catalog rehearsal artifact containment", () => {
+  it("requires an externally trusted digest for the immutable archive bytes", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-trusted-archive-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      const trustedArgs = await createTrustedArchiveArgs(artifactDir, tempRoot);
+      const accepted = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        ...trustedArgs,
+      ]);
+      expect(accepted.status, accepted.stderr).toBe(0);
+      expect(accepted.stdout).toBe("ARTIFACT_OK\n");
+
+      const missingTrust = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--archive",
+        trustedArgs[1],
+      ]);
+      expect(missingTrust.status).toBe(2);
+      expect(missingTrust.stderr).toContain("--expected-archive-sha256 is required");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a leading-dash artifact basename before opening a database session", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-dash-basename-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const marker = path.join(tempRoot, "database-session-opened");
+    try {
+      await mkdir(fakeBin);
+      await writeFile(fakeDocker, [
+        "#!/usr/bin/env bash",
+        'printf invoked > "${WAYFINDER_DB_SESSION_MARKER:?}"',
+        "exit 97",
+        "",
+      ].join("\n"));
+      await chmod(fakeDocker, 0o755);
+      const result = spawnSync("bash", [
+        exporter,
+        "--container",
+        "wayfinder-dash-basename-probe",
+        "--fixture-mode",
+        "populated",
+        "--output-dir",
+        path.join(tempRoot, "-artifact"),
+      ], {
+        cwd: projectRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          WAYFINDER_DB_SESSION_MARKER: marker,
+        },
+      });
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("Artifact basename must not begin with a dash");
+      await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("requires an explicit fixture mode before opening a database session", async () => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-explicit-mode-"),
@@ -467,8 +584,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
       const result = runResult("bash", [
         importer,
         "--validate-artifact-only",
-        "--artifact-dir",
-        artifactDir,
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
       ]);
       expect(result.status).toBe(0);
       expect(result.stdout).toBe("ARTIFACT_OK\n");
@@ -509,8 +625,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
       const result = runResult("bash", [
         importer,
         "--validate-artifact-only",
-        "--artifact-dir",
-        artifactDir,
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot, true)),
       ]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Unknown artifact entry: unexpected-entry");
@@ -535,8 +650,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
       const result = runResult("bash", [
         importer,
         "--validate-artifact-only",
-        "--artifact-dir",
-        artifactDir,
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
       ]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Sensitive-token pattern detected in schema.sql");
@@ -570,8 +684,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
       const result = runResult("bash", [
         importer,
         "--validate-artifact-only",
-        "--artifact-dir",
-        artifactDir,
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
       ]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Sensitive-token pattern detected in schema.sql");
@@ -603,8 +716,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
       const result = runResult("bash", [
         importer,
         "--validate-artifact-only",
-        "--artifact-dir",
-        artifactDir,
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
       ]);
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
@@ -627,6 +739,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
     try {
       await mkdir(artifactDir);
       await writeSafeArtifact(artifactDir);
+      const trustedArgs = await createTrustedArchiveArgs(artifactDir, tempRoot);
       await mkdir(fakeBin);
       await writeFile(
         fakeDocker,
@@ -635,7 +748,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
           "set -euo pipefail",
           'payload="$(command cat)"',
           'if [[ "$*" == *"from pg_database"* ]]; then',
-          '  printf "mutated caller bytes\\n" > "${WAYFINDER_CALLER_SCHEMA:?}"',
+          '  printf "mutated caller archive\\n" > "${WAYFINDER_CALLER_ARCHIVE:?}"',
           '  printf "1\\n"',
           "  exit 0",
           "fi",
@@ -656,8 +769,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
           "wayfinder-import-snapshot-probe",
           "--database",
           "wiseeff_wayfinder671_restore_import_snapshot_probe",
-          "--artifact-dir",
-          artifactDir,
+          ...trustedArgs,
         ],
         {
           cwd: projectRoot,
@@ -665,7 +777,7 @@ describe("parameter catalog rehearsal artifact containment", () => {
           env: {
             ...process.env,
             PATH: `${fakeBin}:${process.env.PATH}`,
-            WAYFINDER_CALLER_SCHEMA: path.join(artifactDir, "schema.sql"),
+            WAYFINDER_CALLER_ARCHIVE: trustedArgs[1],
             WAYFINDER_CAPTURED_IMPORT: capturedInput,
           },
         },
@@ -673,9 +785,8 @@ describe("parameter catalog rehearsal artifact containment", () => {
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       const executed = await readFile(capturedInput, "utf8");
       expect(executed).toContain("safe fixture input");
-      expect(executed).not.toContain("mutated caller bytes");
-      expect(await readFile(path.join(artifactDir, "schema.sql"), "utf8"))
-        .toBe("mutated caller bytes\n");
+      expect(executed).not.toContain("mutated caller archive");
+      expect(await readFile(trustedArgs[1], "utf8")).toBe("mutated caller archive\n");
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -695,22 +806,23 @@ describe("parameter catalog rehearsal cleanup containment", () => {
       path.join(os.tmpdir(), "wiseeff-wayfinder671-cleanup-failure-"),
     );
     const fakeBin = path.join(tempRoot, "bin");
-    const fakeNode = path.join(fakeBin, "node");
+    const fakePython = path.join(fakeBin, "python3");
+    const realPython = runResult("which", ["python3"]).stdout.trim();
     try {
       await mkdir(fakeBin);
       await writeFile(
-        fakeNode,
+        fakePython,
         [
           "#!/usr/bin/env bash",
           "set -euo pipefail",
           'probe="$(mktemp)"',
           'command cat > "${probe}"',
-          'if grep -q "fs.rmdirSync" "${probe}"; then exit 73; fi',
-          `exec ${JSON.stringify(process.execPath)} "$@" < "\${probe}"`,
+          'if grep -q "os.rmdir" "${probe}"; then exit 73; fi',
+          `exec ${JSON.stringify(realPython)} "$@" < "\${probe}"`,
           "",
         ].join("\n"),
       );
-      await chmod(fakeNode, 0o755);
+      await chmod(fakePython, 0o755);
       const result = spawnSync("bash", [rehearser, "--check-cleanup-only"], {
         cwd: projectRoot,
         encoding: "utf8",
@@ -1011,6 +1123,161 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
     );
 
     it(
+      "rejects a checksum-consistent psql shell escape before a real database session",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-psql-shell-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const marker = `/tmp/wiseeff-wayfinder671-psql-shell-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+        const restoreDatabase = `wiseeff_wayfinder671_restore_psql_shell_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_psql_shell", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          await chmod(path.join(artifactDir, "schema.sql"), 0o600);
+          await writeFile(
+            path.join(artifactDir, "schema.sql"),
+            `${await readFile(path.join(artifactDir, "schema.sql"), "utf8")}\n\\! touch ${marker}\n`,
+          );
+          await refreshArtifactChecksums(artifactDir);
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+
+          const result = runResult("bash", [
+            importer,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+          ]);
+          expect(result.status).not.toBe(0);
+          expect(result.stderr).toContain("Unsafe psql meta-command detected in schema.sql");
+          expect(
+            spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
+              .status,
+          ).toBe(0);
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const state = await client.query<{ ledger: string | null }>(
+              "select to_regclass('public.schema_migrations')::text as ledger",
+            );
+            expect(state.rows).toEqual([{ ledger: null }]);
+          } finally {
+            await client.end();
+          }
+        } finally {
+          spawnSync("docker", ["exec", containerName, "rm", "-f", marker]);
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "restores checked-empty when a post-commit log scan fails",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-log-scan-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_log_scan_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_log_scan", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          const verifierPath = path.join(artifactDir, "synthetic-fixture-verify.sql");
+          await chmod(verifierPath, 0o600);
+          await writeFile(
+            verifierPath,
+            `${await readFile(verifierPath, "utf8")}\nselect 'PGPASS' || 'WORD=wf671-sensitive' as emitted;\n`,
+          );
+          await refreshFixtureVerifierManifest(artifactDir);
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+
+          const result = runResult("bash", [
+            importer,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+          ]);
+          expect(result.status).not.toBe(0);
+          expect(result.stderr).toContain("Sensitive-token pattern detected in import.log");
+
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const state = await client.query<{ ledger: string | null; objects: string }>(`
+              select
+                to_regclass('public.schema_migrations')::text as ledger,
+                (
+                  select count(*)::text
+                  from pg_class c
+                  join pg_namespace n on n.oid = c.relnamespace
+                  where n.nspname = 'public'
+                ) as objects
+            `);
+            expect(state.rows).toEqual([{ ledger: null, objects: "0" }]);
+          } finally {
+            await client.end();
+          }
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
       "exports, imports, verifies, and rolls back an explicit zero-inventory fixture",
       async () => {
         const tempRoot = await mkdtemp(
@@ -1053,8 +1320,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
 
           const client = new pg.Client({
@@ -1169,8 +1435,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
 
           const client = new pg.Client({
@@ -1380,8 +1645,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             "wiseeff_wayfinder671_restore_unknown_file",
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot, true)),
           ]);
           expect(result.status).not.toBe(0);
           expect(result.stderr).toContain("Unknown artifact entry: unexpected.txt");
@@ -1399,15 +1663,14 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           path.join(os.tmpdir(), "wiseeff-wayfinder671-checksums-"),
         );
         const artifactDir = path.join(tempRoot, "artifact");
-        const invoke = (directory: string) =>
+        const invoke = async (directory: string) =>
           runResult("bash", [
             importer,
             "--container",
             containerName,
             "--database",
             "wiseeff_wayfinder671_restore_checksum_validation",
-            "--artifact-dir",
-            directory,
+            ...(await createTrustedArchiveArgs(directory, tempRoot, true)),
           ]);
 
         try {
@@ -1440,7 +1703,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           const missingFileDir = path.join(tempRoot, "missing-file");
           await cp(artifactDir, missingFileDir, { recursive: true });
           await rm(path.join(missingFileDir, "manifest.csv"));
-          expect(invoke(missingFileDir).stderr).toContain(
+          expect((await invoke(missingFileDir)).stderr).toContain(
             "Required artifact file is missing: manifest.csv",
           );
 
@@ -1450,7 +1713,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             path.join(missingChecksumDir, "SHA256SUMS"),
             `${checksumLines.filter((line) => !line.endsWith("  schema.sql")).join("\n")}\n`,
           );
-          expect(invoke(missingChecksumDir).stderr).toContain(
+          expect((await invoke(missingChecksumDir)).stderr).toContain(
             "Checksum entry is missing: schema.sql",
           );
 
@@ -1460,7 +1723,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             path.join(duplicateDir, "SHA256SUMS"),
             `${checksumText}${checksumLines[0]}\n`,
           );
-          expect(invoke(duplicateDir).stderr).toContain(
+          expect((await invoke(duplicateDir)).stderr).toContain(
             `Duplicate checksum entry: ${checksumLines[0]?.split("  ")[1]}`,
           );
 
@@ -1470,7 +1733,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             path.join(traversalDir, "SHA256SUMS"),
             `${checksumText}${"0".repeat(64)}  ../escape.sql\n`,
           );
-          expect(invoke(traversalDir).stderr).toContain(
+          expect((await invoke(traversalDir)).stderr).toContain(
             "Unsafe or malformed SHA256SUMS entry",
           );
         } finally {
@@ -1536,8 +1799,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
           expect(result.status).not.toBe(0);
           expect(result.stderr).toContain(
@@ -1599,8 +1861,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
           expect(result.status).not.toBe(0);
           expect(result.stderr).toContain("IMPORT_FAILED");
@@ -1652,7 +1913,8 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
         );
         const artifactDir = path.join(tempRoot, "artifact");
         const fakeBin = path.join(tempRoot, "bin");
-        const fakeNode = path.join(fakeBin, "node");
+        const fakePython = path.join(fakeBin, "python3");
+        const realPython = runResult("which", ["python3"]).stdout.trim();
         const restoreDatabase = `wiseeff_wayfinder671_restore_import_cleanup_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
 
         try {
@@ -1680,18 +1942,18 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           });
           await mkdir(fakeBin);
           await writeFile(
-            fakeNode,
+            fakePython,
             [
               "#!/usr/bin/env bash",
               "set -euo pipefail",
               'probe="$(mktemp)"',
               'command cat > "${probe}"',
-              'if grep -q "fs.rmdirSync" "${probe}"; then exit 73; fi',
-              `exec ${JSON.stringify(process.execPath)} "$@" < "\${probe}"`,
+              'if grep -q "os.rmdir" "${probe}"; then exit 73; fi',
+              `exec ${JSON.stringify(realPython)} "$@" < "\${probe}"`,
               "",
             ].join("\n"),
           );
-          await chmod(fakeNode, 0o755);
+          await chmod(fakePython, 0o755);
 
           const result = spawnSync(
             "bash",
@@ -1701,8 +1963,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               containerName,
               "--database",
               restoreDatabase,
-              "--artifact-dir",
-              artifactDir,
+              ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
             ],
             {
               cwd: projectRoot,
@@ -1793,8 +2054,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
 
           await writeFile(
@@ -1962,8 +2222,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             containerName,
             "--database",
             restoreDatabase,
-            "--artifact-dir",
-            artifactDir,
+            ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
           ]);
 
           const client = new pg.Client({
