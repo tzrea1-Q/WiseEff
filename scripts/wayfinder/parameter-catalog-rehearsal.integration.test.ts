@@ -130,7 +130,7 @@ async function writeSafeArtifact(artifactDir: string) {
 }
 
 describe("parameter catalog rehearsal SQL containment", () => {
-  it("accepts transaction-contained PostgreSQL and PL/pgSQL input", async () => {
+  it("accepts only the transaction-contained fixture DDL/DML subset", async () => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-safe-sql-"),
     );
@@ -144,7 +144,7 @@ describe("parameter catalog rehearsal SQL containment", () => {
       );
       await writeFile(
         validationFile,
-        "do $$ begin perform 1; end $$; select 'commit work is documentation';\n",
+        "select count(*) from pg_catalog.pg_namespace; select 'commit work is documentation';\n",
       );
 
       const result = runResult("bash", [
@@ -196,6 +196,23 @@ describe("parameter catalog rehearsal SQL containment", () => {
     ["copy-to-server-file", "copy (select 'escape') to '/tmp/wf671';"],
     ["copy-from-server-file", "copy wf671_candidate from '/tmp/wf671';"],
     ["copy-to-stdout", "copy (select 'escape') to stdout;"],
+    ["copy-from-stdin", "copy wf671_candidate from stdin;"],
+    ["create-extension", "create extension dblink;"],
+    ["foreign-data-wrapper", "create foreign data wrapper wf671 handler postgres_fdw_handler;"],
+    ["foreign-server", "create server wf671 foreign data wrapper postgres_fdw;"],
+    ["user-mapping", "create user mapping for current_user server wf671;"],
+    ["direct-dblink", "select dblink_exec('dbname=postgres', 'select 1');"],
+    ["large-object-export", "select lo_export(lo_create(0), '/tmp/wf671');"],
+    ["server-file-write", "select pg_write_file('/tmp/wf671', 'escape');"],
+    ["procedure-call", "call wf671_external_effect();"],
+    [
+      "single-quoted-function-body",
+      "create function wf671_external_effect() returns void language plpgsql as 'begin perform dblink_exec(''dbname=postgres'', ''select 1''); end';",
+    ],
+    [
+      "single-quoted-do-body",
+      "do 'begin perform dblink_exec(''dbname=postgres'', ''select 1''); end';",
+    ],
   ])("rejects %s before opening a database session", async (_name, sql) => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-unsafe-sql-"),
@@ -303,6 +320,89 @@ describe("parameter catalog rehearsal SQL containment", () => {
       }
     },
   );
+
+  it("executes the immutable SQL snapshots when caller paths change", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-input-snapshot-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const candidateFile = path.join(tempRoot, "candidate.sql");
+    const validationFile = path.join(tempRoot, "validation.sql");
+    const capturedInput = path.join(tempRoot, "captured-candidate.sql");
+    const verifierChecksum = createHash("sha256")
+      .update(
+        await readFile(
+          path.join(projectRoot, "scripts/wayfinder/sql/synthetic-fixture-verify.sql"),
+        ),
+      )
+      .digest("hex");
+
+    try {
+      await mkdir(fakeBin);
+      await writeFile(candidateFile, "create schema wf671_snapshot_original;\n");
+      await writeFile(validationFile, "select 1;\n");
+      await writeFile(
+        fakeDocker,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'payload="$(command cat)"',
+          'arguments="$*"',
+          'if [[ "${arguments}" == *"pg_dump"* ]]; then printf "stable dump\\n"; exit 0; fi',
+          'if [[ "${arguments}" == *"to_regclass"* ]]; then',
+          '  printf "%s\\n" "copy (select 1) to program \'touch /tmp/wf671-mutated\';" > "${WAYFINDER_CALLER_CANDIDATE:?}"',
+          '  printf "wayfinder_rehearsal.fixture_cases\\n"',
+          "  exit 0",
+          "fi",
+          'if [[ "${arguments}" == *"fixture_mode"* ]]; then printf "populated\\n"; exit 0; fi',
+          'if [[ "${arguments}" == *"synthetic_fixture_verify_sha256"* ]]; then printf "%s\\n" "${WAYFINDER_VERIFIER_CHECKSUM:?}"; exit 0; fi',
+          'if [[ "${arguments}" == *"count(*) from wayfinder_rehearsal.fixture_cases"* ]]; then printf "10\\n"; exit 0; fi',
+          'if [[ "${payload}" == *"__WISEEFF_WAYFINDER_671_VALIDATION__"* ]]; then',
+          '  printf "%s" "${payload}" > "${WAYFINDER_CAPTURED_INPUT:?}"',
+          '  printf "__WISEEFF_WAYFINDER_671_FIXTURE_VERIFY_AFTER_CANDIDATE__\\n"',
+          "fi",
+          "exit 0",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeDocker, 0o755);
+
+      const result = spawnSync(
+        "bash",
+        [
+          rehearser,
+          "--container",
+          "wayfinder-snapshot-probe",
+          "--database",
+          "wiseeff_wayfinder671_restore_snapshot_probe",
+          "--migration-file",
+          candidateFile,
+          "--validation-file",
+          validationFile,
+        ],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            WAYFINDER_CALLER_CANDIDATE: candidateFile,
+            WAYFINDER_CAPTURED_INPUT: capturedInput,
+            WAYFINDER_VERIFIER_CHECKSUM: verifierChecksum,
+          },
+        },
+      );
+
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      const executed = await readFile(capturedInput, "utf8");
+      expect(executed).toContain("create schema wf671_snapshot_original;");
+      expect(executed).not.toContain("copy (select 1) to program");
+      expect(await readFile(candidateFile, "utf8")).toContain("copy (select 1)");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parameter catalog rehearsal artifact containment", () => {
@@ -447,6 +547,41 @@ describe("parameter catalog rehearsal artifact containment", () => {
     }
   });
 
+  it.each([
+    [
+      "FDW user mapping password",
+      ["create user mapping for current_user server wf options (", "password", " 'wf671-sensitive');"].join(""),
+    ],
+    ["libpq keyword password", ["host=localhost dbname=wiseeff ", "password", "=wf671-sensitive"].join("")],
+    ["PGPASSWORD assignment", ["PGPASS", "WORD=wf671-sensitive"].join("")],
+    ["credential URI", ["postgresql://fixture:", "wf671-sensitive", "@localhost/wiseeff"].join("")],
+    ["generic access token", ["access_", "token=wf671-sensitive-value"].join("")],
+  ])("rejects PostgreSQL %s forms in the closed artifact world", async (_label, secret) => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-credential-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      await writeFile(path.join(artifactDir, "schema.sql"), `${secret}\n`);
+      await refreshArtifactChecksums(artifactDir);
+
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--artifact-dir",
+        artifactDir,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Sensitive-token pattern detected in schema.sql");
+      expect(result.stderr).not.toContain("wf671-sensitive");
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a manifest whose fixture mode and artifact kind disagree", async () => {
     const tempRoot = await mkdtemp(
       path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-mode-"),
@@ -480,6 +615,71 @@ describe("parameter catalog rehearsal artifact containment", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("imports the immutable artifact snapshot when caller files change", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-snapshot-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const capturedInput = path.join(tempRoot, "captured-import.sql");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      await mkdir(fakeBin);
+      await writeFile(
+        fakeDocker,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'payload="$(command cat)"',
+          'if [[ "$*" == *"from pg_database"* ]]; then',
+          '  printf "mutated caller bytes\\n" > "${WAYFINDER_CALLER_SCHEMA:?}"',
+          '  printf "1\\n"',
+          "  exit 0",
+          "fi",
+          'if [[ "$*" == *"user_namespaces"* ]]; then printf "0\\n"; exit 0; fi',
+          'printf "%s" "${payload}" > "${WAYFINDER_CAPTURED_IMPORT:?}"',
+          'printf "__WISEEFF_IMPORT_METRICS__|1|1|10|1\\n"',
+          "exit 0",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeDocker, 0o755);
+
+      const result = spawnSync(
+        "bash",
+        [
+          importer,
+          "--container",
+          "wayfinder-import-snapshot-probe",
+          "--database",
+          "wiseeff_wayfinder671_restore_import_snapshot_probe",
+          "--artifact-dir",
+          artifactDir,
+        ],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            WAYFINDER_CALLER_SCHEMA: path.join(artifactDir, "schema.sql"),
+            WAYFINDER_CAPTURED_IMPORT: capturedInput,
+          },
+        },
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      const executed = await readFile(capturedInput, "utf8");
+      expect(executed).toContain("safe fixture input");
+      expect(executed).not.toContain("mutated caller bytes");
+      expect(await readFile(path.join(artifactDir, "schema.sql"), "utf8"))
+        .toBe("mutated caller bytes\n");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parameter catalog rehearsal cleanup containment", () => {
@@ -495,11 +695,22 @@ describe("parameter catalog rehearsal cleanup containment", () => {
       path.join(os.tmpdir(), "wiseeff-wayfinder671-cleanup-failure-"),
     );
     const fakeBin = path.join(tempRoot, "bin");
-    const fakeRm = path.join(fakeBin, "rm");
+    const fakeNode = path.join(fakeBin, "node");
     try {
       await mkdir(fakeBin);
-      await writeFile(fakeRm, "#!/usr/bin/env bash\nexit 73\n");
-      await chmod(fakeRm, 0o755);
+      await writeFile(
+        fakeNode,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'probe="$(mktemp)"',
+          'command cat > "${probe}"',
+          'if grep -q "fs.rmdirSync" "${probe}"; then exit 73; fi',
+          `exec ${JSON.stringify(process.execPath)} "$@" < "\${probe}"`,
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeNode, 0o755);
       const result = spawnSync("bash", [rehearser, "--check-cleanup-only"], {
         cwd: projectRoot,
         encoding: "utf8",
@@ -541,7 +752,8 @@ describe("parameter catalog rehearsal cleanup containment", () => {
           'case "${current}" in',
           "  1) printf 'on\\n' ;;",
           "  2) ;;",
-          "  3)",
+          "  3) printf '0\\n' ;;",
+          "  4)",
           '    mkdir -p "${WAYFINDER_FOREIGN_OUTPUT:?}"',
           '    printf "%s\\n" foreign > "${WAYFINDER_FOREIGN_OUTPUT}/foreign-data"',
           "    exit 73",
@@ -588,13 +800,136 @@ describe("parameter catalog rehearsal cleanup containment", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("preserves a foreign replacement for the runner private directory", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-runner-race-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeDocker = path.join(fakeBin, "docker");
+    const candidateFile = path.join(tempRoot, "candidate.sql");
+    const validationFile = path.join(tempRoot, "validation.sql");
+    try {
+      await mkdir(fakeBin);
+      await writeFile(candidateFile, "select 1;\n");
+      await writeFile(validationFile, "select 1;\n");
+      await writeFile(
+        fakeDocker,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'runner="$(find "${TMPDIR:?}" -mindepth 1 -maxdepth 1 -type d -name "wiseeff-wayfinder671-runner.*" -print -quit)"',
+          'if [[ -n "${runner}" && ! -e "${runner}.displaced" ]]; then',
+          '  mv "${runner}" "${runner}.displaced"',
+          '  mkdir "${runner}"',
+          '  printf "foreign\\n" > "${runner}/foreign-data"',
+          "fi",
+          'if [[ "$*" == *"to_regclass"* ]]; then printf "wayfinder_rehearsal.fixture_cases\\n"; fi',
+          'if [[ "$*" == *"fixture_mode"* ]]; then printf "populated\\n"; fi',
+          'if [[ "$*" == *"count(*) from wayfinder_rehearsal.fixture_cases"* ]]; then printf "10\\n"; fi',
+          "exit 0",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeDocker, 0o755);
+
+      const result = spawnSync(
+        "bash",
+        [
+          rehearser,
+          "--container",
+          "wayfinder-runner-race-probe",
+          "--database",
+          "wiseeff_wayfinder671_restore_runner_race_probe",
+          "--migration-file",
+          candidateFile,
+          "--validation-file",
+          validationFile,
+        ],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, TMPDIR: tempRoot },
+        },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("CLEANUP_FAILED");
+      const replacement = (await readdir(tempRoot)).find((entry) =>
+        entry.startsWith("wiseeff-wayfinder671-runner.") && !entry.endsWith(".displaced"),
+      );
+      expect(replacement).toBeDefined();
+      expect(await readFile(path.join(tempRoot, replacement!, "foreign-data"), "utf8"))
+        .toBe("foreign\n");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe.skipIf(!(databaseAvailable && containerAvailable))(
   "parameter catalog rehearsal artifact",
   () => {
     it(
-      "rejects external COPY effects against the real PostgreSQL target before any side effect",
+      "refuses credential-bearing FDW metadata before producing an export artifact",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-fdw-secret-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_fdw_secret", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              const client = new pg.Client({ connectionString });
+              await client.connect();
+              try {
+                await client.query("create extension postgres_fdw");
+                await client.query(
+                  "create server wf671_secret foreign data wrapper postgres_fdw options (host '127.0.0.1')",
+                );
+                await client.query(
+                  [
+                    "create user mapping for current_user server wf671_secret options (user 'fixture', ",
+                    "password",
+                    " 'wf671-sensitive')",
+                  ].join(""),
+                );
+              } finally {
+                await client.end();
+              }
+
+              const result = runResult("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+              expect(result.status).not.toBe(0);
+              expect(result.stderr).toContain(
+                "Source database contains external or credential-bearing objects",
+              );
+              await expect(readFile(path.join(artifactDir, "schema.sql"), "utf8"))
+                .rejects.toMatchObject({ code: "ENOENT" });
+            },
+          );
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "rejects external SQL capabilities against the real PostgreSQL target before any side effect",
       async () => {
         const tempRoot = await mkdtemp(
           path.join(os.tmpdir(), "wiseeff-wayfinder671-copy-side-effect-"),
@@ -629,36 +964,39 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
                 .status,
             ).toBe(0);
-            await writeFile(
-              candidateFile,
-              `copy (select 'escape') to program 'touch ${marker}';\n`,
-            );
             await writeFile(validationFile, "select 1;\n");
+            const unsafeCandidates = [
+              `copy (select 'escape') to program 'touch ${marker}';\n`,
+              `create function wf671_external_effect() returns void language plpgsql as 'begin perform pg_catalog.pg_write_file(''${marker}'', ''escape''); end'; select wf671_external_effect();\n`,
+              `select lo_export(lo_create(0), '${marker}');\n`,
+            ];
+            for (const unsafeSql of unsafeCandidates) {
+              await writeFile(candidateFile, unsafeSql);
+              const result = runResult("bash", [
+                rehearser,
+                "--container",
+                containerName,
+                "--database",
+                restoreDatabase,
+                "--migration-file",
+                candidateFile,
+                "--validation-file",
+                validationFile,
+              ]);
 
-            const result = runResult("bash", [
-              rehearser,
-              "--container",
-              containerName,
-              "--database",
-              restoreDatabase,
-              "--migration-file",
-              candidateFile,
-              "--validation-file",
-              validationFile,
-            ]);
-
-            expect(result.status).toBe(2);
-            expect(result.stderr).toContain(
-              "SQL input contains a forbidden transaction, session, or psql control",
-            );
-            expect(
-              spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
-                .status,
-            ).toBe(0);
-            const after = await client.query<{ count: string }>(
-              "select count(*)::text as count from schema_migrations",
-            );
-            expect(after.rows).toEqual(before.rows);
+              expect(result.status).toBe(2);
+              expect(result.stderr).toContain(
+                "SQL input contains a forbidden transaction, session, or psql control",
+              );
+              expect(
+                spawnSync("docker", ["exec", containerName, "test", "!", "-e", marker])
+                  .status,
+              ).toBe(0);
+              const after = await client.query<{ count: string }>(
+                "select count(*)::text as count from schema_migrations",
+              );
+              expect(after.rows).toEqual(before.rows);
+            }
           } finally {
             await client.end();
           }
@@ -753,13 +1091,9 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           await writeFile(
             validationFile,
             `
-              do $$
-              begin
-                if exists (select 1 from parameter_specs) then
-                  raise exception 'zero fixture unexpectedly contains parameter specs';
-                end if;
-              end
-              $$;
+              select 1 / case when not exists (
+                select 1 from parameter_specs
+              ) then 1 else 0 end;
             `,
           );
           const rehearsal = run("bash", [
@@ -1248,8 +1582,10 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               ]);
             },
           );
+          const syntheticFixturePath = path.join(artifactDir, "synthetic-fixture.sql");
+          await chmod(syntheticFixturePath, 0o600);
           await writeFile(
-            path.join(artifactDir, "synthetic-fixture.sql"),
+            syntheticFixturePath,
             `${await readFile(path.join(artifactDir, "synthetic-fixture.sql"), "utf8")}\nselect 1 / 0;\n`,
           );
           await refreshArtifactChecksums(artifactDir);
@@ -1302,6 +1638,115 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           await withAdminClient(async (admin) => {
             await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "restores checked-empty when owned local cleanup fails after import validation",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-import-cleanup-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const fakeBin = path.join(tempRoot, "bin");
+        const fakeNode = path.join(fakeBin, "node");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_import_cleanup_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_import_cleanup", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--fixture-mode",
+                "populated",
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+          await mkdir(fakeBin);
+          await writeFile(
+            fakeNode,
+            [
+              "#!/usr/bin/env bash",
+              "set -euo pipefail",
+              'probe="$(mktemp)"',
+              'command cat > "${probe}"',
+              'if grep -q "fs.rmdirSync" "${probe}"; then exit 73; fi',
+              `exec ${JSON.stringify(process.execPath)} "$@" < "\${probe}"`,
+              "",
+            ].join("\n"),
+          );
+          await chmod(fakeNode, 0o755);
+
+          const result = spawnSync(
+            "bash",
+            [
+              importer,
+              "--container",
+              containerName,
+              "--database",
+              restoreDatabase,
+              "--artifact-dir",
+              artifactDir,
+            ],
+            {
+              cwd: projectRoot,
+              encoding: "utf8",
+              maxBuffer: 10 * 1024 * 1024,
+              env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, TMPDIR: tempRoot },
+            },
+          );
+          expect(result.status).not.toBe(0);
+          expect(result.stderr).toContain("CLEANUP_FAILED");
+
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const state = await client.query<{ objects: string }>(`
+              with user_namespaces as (
+                select oid from pg_namespace
+                where nspname not in ('pg_catalog', 'information_schema', 'pg_toast', 'public')
+                  and nspname !~ '^pg_(temp|toast_temp)_'
+              )
+              select (
+                (select count(*) from user_namespaces)
+                + (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public')
+                + (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public')
+                + (select count(*) from pg_extension where extname <> 'plpgsql')
+                + (select count(*) from pg_foreign_server)
+                + (select count(*) from pg_publication)
+              )::text as objects
+            `);
+            expect(state.rows).toEqual([{ objects: "0" }]);
+          } finally {
+            await client.end();
+          }
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          for (const entry of await readdir(tempRoot)) {
+            if (entry.startsWith("wiseeff-wayfinder671-import-")) {
+              await chmod(path.join(tempRoot, entry), 0o700).catch(() => undefined);
+            }
+          }
           await rm(tempRoot, { recursive: true, force: true });
         }
       },
@@ -1364,16 +1809,10 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           await writeFile(
             validationFile,
             `
-              do $$
-              declare mapped bigint;
-              begin
-                select count(*) into mapped
-                from wf671_candidate_replacement.definition_map;
-                if mapped <> 6 then
-                  raise exception 'expected six mapped definitions, got %', mapped;
-                end if;
-              end
-              $$;
+              select 1 / case when (
+                select count(*)
+                from wf671_candidate_replacement.definition_map
+              ) = 6 then 1 else 0 end;
             `,
           );
 
@@ -1593,21 +2032,14 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           await writeFile(
             validationFile,
             `
-              do $$
-              declare
-                source_rows bigint;
-                r6_rows bigint;
-                r8_rows bigint;
-                mapped_rows bigint;
-              begin
-                select count(*) into source_rows
+              select 1 / case when (
+                select count(*)
                 from parameter_specs
-                where property_key = 'synthetic.legacy-twin';
-                if source_rows <> 2 then
-                  raise exception 'legacy twin source must contain exactly two rows, got %', source_rows;
-                end if;
+                where property_key = 'synthetic.legacy-twin'
+              ) = 2 then 1 else 0 end;
 
-                select count(*) into r6_rows
+              select 1 / case when (
+                select count(*)
                 from parameter_specs ps
                 join dts_property_specs dps on dps.parameter_spec_id = ps.id
                 where ps.id = 'wf671-platform-subjectless-draft'
@@ -1621,12 +2053,11 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                   and not exists (
                     select 1 from project_parameter_bindings binding
                     where binding.parameter_spec_id = ps.id
-                  );
-                if r6_rows <> 1 then
-                  raise exception 'legacy twin requires one R6 staging row, got %', r6_rows;
-                end if;
+                  )
+              ) = 1 then 1 else 0 end;
 
-                select count(*) into r8_rows
+              select 1 / case when (
+                select count(*)
                 from parameter_specs ps
                 join dts_property_specs dps on dps.parameter_spec_id = ps.id
                 join attribution_subjects subject on subject.id = ps.attribution_subject_id
@@ -1645,30 +2076,25 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                     select 1 from project_parameter_bindings binding
                     where binding.parameter_spec_id = ps.id
                       and binding.module_id = 'wf671-org-node-module'
-                  );
-                if r8_rows <> 1 then
-                  raise exception 'legacy twin requires one R8 proposal row, got %', r8_rows;
-                end if;
+                  )
+              ) = 1 then 1 else 0 end;
 
-                select count(*) into mapped_rows
-                from wf671_candidate_replacement.legacy_twin_dispositions;
-                if mapped_rows <> 2 then
-                  raise exception 'R6/R8 twin migration must preserve two source identities, got %', mapped_rows;
-                end if;
+              select 1 / case when (
+                select count(*)
+                from wf671_candidate_replacement.legacy_twin_dispositions
+              ) = 2 then 1 else 0 end;
 
-                if (
+              select 1 / case when (
                   select count(distinct legacy_id)
                   from wf671_candidate_replacement.legacy_twin_dispositions
-                ) <> 2 or exists (
+                ) = 2 and not exists (
                   select legacy_id
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   group by legacy_id
                   having count(*) <> 1
-                ) then
-                  raise exception 'R6/R8 twin migration duplicated or omitted a source identity';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select 1
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   where (legacy_id = 'wf671-platform-subjectless-draft'
@@ -1679,30 +2105,24 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                           'wf671-platform-subjectless-draft',
                           'wf671-org-manual-node-draft'
                         )
-                ) then
-                  raise exception 'R6/R8 twin migration changed a source classification';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select 1
                   from wf671_candidate_replacement.legacy_twin_dispositions candidate
                   join parameter_specs source on source.id = candidate.legacy_id
                   where candidate.property_key <> 'synthetic.legacy-twin'
                      or candidate.source_attribution_subject_id
                         is distinct from source.attribution_subject_id
-                ) then
-                  raise exception 'R6/R8 twin migration changed a source identity';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select 1
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   where target_formal_subject_id is not null
-                ) then
-                  raise exception 'property key must not infer a formal subject for the R6/R8 twin';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select 1
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   where (legacy_class = 'R6' and destination_kind not in (
@@ -1712,29 +2132,21 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
                            'Proposal', 'Observation', 'Archive'
                          ))
                      or legacy_class not in ('R6', 'R8')
-                ) then
-                  raise exception 'R6/R8 twin migration selected a forbidden disposition';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select 1
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   where destination_kind = 'Definition'
                      or is_current_definition
-                ) then
-                  raise exception 'R6/R8 twin migration must not create or activate a current Definition';
-                end if;
+                ) then 1 else 0 end;
 
-                if exists (
+              select 1 / case when not exists (
                   select destination_identity
                   from wf671_candidate_replacement.legacy_twin_dispositions
                   group by destination_identity
                   having count(*) > 1
-                ) then
-                  raise exception 'R6/R8 twin migration must not merge destination identities';
-                end if;
-              end
-              $$;
+                ) then 1 else 0 end;
             `,
           );
 

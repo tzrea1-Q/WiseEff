@@ -119,9 +119,11 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
   --validation-file /absolute/path/to/candidate-validation.sql
 ```
 
-在打开数据库 session 前，PostgreSQL-aware input lexer 会拒绝 transaction、session 和 psql escape，包括 `COMMIT WORK`、top-level `END`、prepared transaction、savepoint、所有 SQL `COPY` 形式（包括 server file、`PROGRAM`、`STDIN` 与 `STDOUT`）、全部 psql meta-command（含 `\i`、`\ir`、`\gexec`、`\gset`、`\copy`、`\connect`、`\!`、`\q`）、autocommit change、role/search-path/session mutation，以及所有 procedural dynamic `EXECUTE`。它能区分 PostgreSQL comment、string、quoted identifier、nested block comment、dollar quote 与 PL/pgSQL block `BEGIN`/`END`，不使用简单文本 grep。
+在打开数据库 session 前，runner 会通过拒绝 symlink 的 file descriptor 对调用方每个输入只读取一次，把完全相同的 bytes 写入私有只读 snapshot，之后的验证、secret scan 与执行只使用该 snapshot；它不会重新读取调用方路径，也不会改写换行。PostgreSQL-aware lexer 只接受 fixture 所需的事务内 DDL/DML 子集。所有 procedural statement、显式纯函数列表以外的 callable expression、`FUNCTION`、`PROCEDURE`、`DO`、`CALL`、extension、FDW、foreign server/user mapping、dblink、large-object/server-file function、全部 SQL `COPY`、transaction/session control 与 psql meta-command 都会在连接 PostgreSQL 前被拒绝。无法证明安全的 capability 会 fail closed，而不会从关键词片段推断为安全。
 
-runner 会让 locked verifier checksum 与 imported manifest 精确一致，secret-scan 两个 SQL 输入及全部生成 dump/log，并精确执行三次 `synthetic-fixture-verify.sql`：candidate mutation 前；candidate + validation 后且 rollback 前；rollback 后。它分别计算 rollback 前后的完整规范化数据库 dump hash，只有二者完全相同时才成功。所有 runner-owned 临时文件与 child process 消失后，才能唯一输出一次 `CLEANUP_OK`。预期输出包含：
+exporter 与 importer 同样只对各自的 closed input world 建立一次 snapshot。PostgreSQL credential 形态（包括 FDW user-mapping option、libpq keyword string、带凭据 URI、`PGPASSWORD`、token 与 private key）会在发布或导入前被拒绝。import 的结构/画像验证位于 commit 之前；此后任一本地验证或 cleanup 失败，都会把专用数据库补偿回 checked-empty。临时路径与发布路径的 cleanup 必须同时匹配本轮随机 owner marker 和目录/文件 identity；被替换的路径会保留并令本轮失败。
+
+runner 会让 snapshot 中的 locked verifier checksum 与 imported manifest 精确一致，secret-scan 两个 SQL snapshot 及全部生成 dump/log，并精确执行三次 `synthetic-fixture-verify.sql`：candidate mutation 前；candidate + validation 后且 rollback 前；rollback 后。它分别计算 rollback 前后的完整规范化数据库 dump hash，只有二者完全相同时才成功。所有 runner-owned 临时文件与 child process 消失后，才能唯一输出一次 `CLEANUP_OK`。预期输出包含：
 
 ```text
 FIXTURE_VERIFY_BEFORE_OK

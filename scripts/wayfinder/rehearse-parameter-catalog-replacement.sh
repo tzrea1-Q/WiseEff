@@ -13,7 +13,7 @@ migration_file=""
 validation_file=""
 check_sql_only="false"
 check_cleanup_only="false"
-secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]+PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
+secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|password[[:space:]]*(=|=>)[[:space:]]*[^[:space:],;)]{3,}|password[[:space:]]+[^[:space:],;)]{3,}|PGPASSWORD[[:space:]]*=|(access[_-]?token|api[_-]?key|client[_-]?secret|secret|token)[[:space:]]*(=|=>)[[:space:]]*[^[:space:],;)]{8,}|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]+PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
 
 usage() {
   printf '%s\n' \
@@ -88,12 +88,131 @@ if [[ ! "${database_user}" =~ ^[A-Za-z0-9_]+$ ]]; then
   exit 2
 fi
 
-cleanup_owned_path() {
+path_identity() {
+  node --input-type=module - "$1" <<'NODE'
+import fs from "node:fs";
+const value = fs.lstatSync(process.argv[2], { bigint: true });
+if (!value.isDirectory() || value.isSymbolicLink()) process.exit(1);
+process.stdout.write(`${value.dev}:${value.ino}`);
+NODE
+}
+
+new_owner_token() {
+  node --input-type=module - <<'NODE'
+import crypto from "node:crypto";
+process.stdout.write(crypto.randomBytes(32).toString("hex"));
+NODE
+}
+
+initialize_owned_directory() {
   local owned_path="$1"
-  if ! rm -rf -- "${owned_path}" || [[ -e "${owned_path}" ]]; then
+  local owner_token="$2"
+  printf '%s\n' "${owner_token}" > "${owned_path}/.wiseeff-owner"
+  chmod 0400 "${owned_path}/.wiseeff-owner"
+}
+
+assert_owned_directory() {
+  local owned_path="$1"
+  local expected_identity="$2"
+  local owner_token="$3"
+  [[ -d "${owned_path}" && ! -L "${owned_path}" ]] \
+    && [[ "$(path_identity "${owned_path}")" == "${expected_identity}" ]] \
+    && [[ "$(<"${owned_path}/.wiseeff-owner")" == "${owner_token}" ]]
+}
+
+cleanup_owned_directory() {
+  local owned_path="$1"
+  local expected_identity="$2"
+  local owner_token="$3"
+  shift 3
+  if ! node --input-type=module - \
+    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
+import fs from "node:fs";
+import path from "node:path";
+
+const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
+const allowed = new Set([".wiseeff-owner", ...allowedNames]);
+let directoryFd;
+try {
+  directoryFd = fs.openSync(
+    ownedPath,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  const opened = fs.fstatSync(directoryFd, { bigint: true });
+  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
+  process.chdir(ownedPath);
+  const current = fs.statSync(".", { bigint: true });
+  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
+  const marker = fs.lstatSync(".wiseeff-owner", { bigint: true });
+  if (!marker.isFile() || marker.isSymbolicLink()) throw new Error("marker-kind");
+  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
+    throw new Error("marker-token");
+  }
+  const entries = fs.readdirSync(".");
+  for (const name of entries) {
+    if (!allowed.has(name)) throw new Error("unknown-entry");
+    const entry = fs.lstatSync(name, { bigint: true });
+    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error("entry-kind");
+  }
+  fs.chmodSync(".", 0o700);
+  for (const name of entries.filter((name) => name !== ".wiseeff-owner")) {
+    fs.unlinkSync(name);
+  }
+  fs.unlinkSync(".wiseeff-owner");
+  process.chdir("/");
+  fs.closeSync(directoryFd);
+  directoryFd = undefined;
+  const published = fs.lstatSync(ownedPath, { bigint: true });
+  if (`${published.dev}:${published.ino}` !== expectedIdentity) throw new Error("path-replaced");
+  fs.rmdirSync(ownedPath);
+} catch {
+  if (directoryFd !== undefined) fs.closeSync(directoryFd);
+  process.exit(1);
+}
+NODE
+  then
     printf '%s\n' 'CLEANUP_FAILED' >&2
     return 1
   fi
+}
+
+snapshot_regular_file() {
+  local source_path="$1"
+  local destination_path="$2"
+  node --input-type=module - "${source_path}" "${destination_path}" <<'NODE'
+import fs from "node:fs";
+
+const [sourcePath, destinationPath] = process.argv.slice(2);
+if (!sourcePath.startsWith("/")) process.exit(2);
+let sourceFd;
+let destinationFd;
+try {
+  sourceFd = fs.openSync(sourcePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const before = fs.fstatSync(sourceFd, { bigint: true });
+  if (!before.isFile() || before.isSymbolicLink()) throw new Error("source-kind");
+  const bytes = fs.readFileSync(sourceFd);
+  const after = fs.fstatSync(sourceFd, { bigint: true });
+  if (
+    before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+    || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
+  ) throw new Error("source-changed");
+  destinationFd = fs.openSync(
+    destinationPath,
+    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
+    0o400,
+  );
+  fs.writeFileSync(destinationFd, bytes);
+  fs.fsyncSync(destinationFd);
+  fs.closeSync(destinationFd);
+  destinationFd = undefined;
+  fs.chmodSync(destinationPath, 0o400);
+} catch {
+  if (sourceFd !== undefined) fs.closeSync(sourceFd);
+  if (destinationFd !== undefined) fs.closeSync(destinationFd);
+  process.exit(1);
+}
+if (sourceFd !== undefined) fs.closeSync(sourceFd);
+NODE
 }
 
 scan_file_for_secrets() {
@@ -107,8 +226,13 @@ scan_file_for_secrets() {
 
 if [[ "${check_cleanup_only}" == "true" ]]; then
   cleanup_probe="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-cleanup.XXXXXX")"
+  cleanup_probe_token="$(new_owner_token)"
+  initialize_owned_directory "${cleanup_probe}" "${cleanup_probe_token}"
+  cleanup_probe_identity="$(path_identity "${cleanup_probe}")"
   : > "${cleanup_probe}/owned-resource"
-  if ! cleanup_owned_path "${cleanup_probe}"; then
+  if ! cleanup_owned_directory \
+    "${cleanup_probe}" "${cleanup_probe_identity}" "${cleanup_probe_token}" \
+    owned-resource; then
     exit 1
   fi
   printf '%s\n' 'CLEANUP_OK'
@@ -259,6 +383,107 @@ function inspect(source, context = "top") {
   for (const current of statements) {
     const values = words(current);
     const first = values[0];
+    const permittedFirst = new Set([
+      "alter",
+      "comment",
+      "create",
+      "delete",
+      "drop",
+      "insert",
+      "select",
+      "set",
+      "truncate",
+      "update",
+      "with",
+    ]);
+    if (!permittedFirst.has(first)) {
+      fail(`SQL statement is outside the rehearsal allow-list: ${first ?? "empty"}`);
+    }
+    if (first === "create") {
+      let objectIndex = 1;
+      while (["temporary", "temp", "unlogged", "unique"].includes(values[objectIndex])) {
+        objectIndex += 1;
+      }
+      if (!["index", "schema", "table"].includes(values[objectIndex])) {
+        fail(`CREATE target is outside the rehearsal allow-list: ${values[objectIndex] ?? "unknown"}`);
+      }
+    }
+    if (first === "alter" && values[1] !== "table") {
+      fail(`ALTER target is outside the rehearsal allow-list: ${values[1] ?? "unknown"}`);
+    }
+    if (first === "drop" && !["index", "schema", "table"].includes(values[1])) {
+      fail(`DROP target is outside the rehearsal allow-list: ${values[1] ?? "unknown"}`);
+    }
+    if (first === "set" && values[1] !== "constraints") {
+      fail("Only SET CONSTRAINTS is accepted in candidate SQL");
+    }
+
+    const forbiddenCapabilities = new Set([
+      "call",
+      "copy",
+      "dblink",
+      "do",
+      "execute",
+      "extension",
+      "language",
+      "load",
+      "mapping",
+      "procedure",
+      "program",
+      "publication",
+      "server",
+      "subscription",
+      "tablespace",
+    ]);
+    if (values.some((value) =>
+      forbiddenCapabilities.has(value)
+      || value.startsWith("dblink_")
+      || value.startsWith("lo_")
+      || value.startsWith("pg_read_")
+      || value.startsWith("pg_write_")
+    )) {
+      fail("SQL statement requests a capability outside the rehearsal allow-list");
+    }
+
+    const permittedFunctions = new Set([
+      "coalesce",
+      "count",
+      "length",
+      "lower",
+      "max",
+      "min",
+      "nullif",
+      "substring",
+      "trim",
+      "upper",
+    ]);
+    const syntacticParentheses = new Set([
+      "check",
+      "and",
+      "exists",
+      "in",
+      "key",
+      "table",
+      "or",
+      "unique",
+      "values",
+      "when",
+      "where",
+    ]);
+    const objectIntroducers = new Set(["into", "on", "references", "table"]);
+    for (let index = 0; index + 1 < current.length; index += 1) {
+      const token = current[index];
+      if (current[index + 1].value !== "(" || token.kind === "symbol") continue;
+      if (token.kind === "word" && (
+        permittedFunctions.has(token.value)
+        || syntacticParentheses.has(token.value)
+      )) continue;
+      const previousWord = [...current.slice(0, index)]
+        .reverse()
+        .find((candidate) => candidate.kind === "word")?.value;
+      if (objectIntroducers.has(previousWord)) continue;
+      fail(`Function or callable expression is outside the rehearsal allow-list: ${token.value}`);
+    }
     const forbiddenFirst = new Set([
       "abort",
       "commit",
@@ -281,13 +506,7 @@ function inspect(source, context = "top") {
     if (hasSequence(values, ["release", "savepoint"])) fail("Forbidden RELEASE SAVEPOINT");
     if (first === "copy") fail("Forbidden SQL COPY");
     if (values.includes("set_config")) fail("Forbidden dynamic session configuration");
-    if (first === "set") {
-      const permitted = values[1] === "constraints" || values[1] === "local";
-      const forbiddenLocal = values.some((value) =>
-        ["role", "search_path", "session_authorization", "session_replication_role"].includes(value),
-      );
-      if (!permitted || forbiddenLocal) fail("Forbidden session SET");
-    }
+    if (first === "set" && values[1] !== "constraints") fail("Forbidden session SET");
     if (context === "body") {
       for (const control of ["commit", "rollback", "abort", "savepoint"]) {
         if (values.includes(control)) fail(`Forbidden procedural SQL control: ${control}`);
@@ -314,13 +533,34 @@ inspect(sql);
 NODE
 }
 
-for file in "${migration_file}" "${validation_file}"; do
-  if [[ "${file}" != /* || ! -f "${file}" || -L "${file}" ]]; then
-    printf 'SQL input must be an absolute regular non-symlink file: %s\n' "${file}" >&2
-    exit 2
+input_snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-input.XXXXXX")"
+input_snapshot_token="$(new_owner_token)"
+initialize_owned_directory "${input_snapshot_dir}" "${input_snapshot_token}"
+input_snapshot_identity="$(path_identity "${input_snapshot_dir}")"
+input_snapshot_files=(migration.sql validation.sql)
+cleanup_input_snapshot_on_exit() {
+  local exit_code=$?
+  trap - EXIT
+  if ! cleanup_owned_directory \
+    "${input_snapshot_dir}" "${input_snapshot_identity}" "${input_snapshot_token}" \
+    "${input_snapshot_files[@]}"; then
+    exit 1
   fi
+  exit "${exit_code}"
+}
+trap cleanup_input_snapshot_on_exit EXIT
+
+if ! snapshot_regular_file "${migration_file}" "${input_snapshot_dir}/migration.sql" \
+  || ! snapshot_regular_file "${validation_file}" "${input_snapshot_dir}/validation.sql"; then
+  printf '%s\n' 'SQL input must be an absolute stable regular non-symlink file.' >&2
+  exit 2
+fi
+migration_file="${input_snapshot_dir}/migration.sql"
+validation_file="${input_snapshot_dir}/validation.sql"
+
+for file in "${migration_file}" "${validation_file}"; do
   if ! validate_sql_input "${file}"; then
-    printf 'SQL input contains a forbidden transaction, session, or psql control: %s\n' "${file}" >&2
+    printf 'SQL input contains a forbidden transaction, session, or psql control: %s\n' "$(basename "${file}")" >&2
     exit 2
   fi
   if ! scan_file_for_secrets "${file}" "$(basename "${file}")"; then
@@ -329,9 +569,25 @@ for file in "${migration_file}" "${validation_file}"; do
 done
 
 if [[ "${check_sql_only}" == "true" ]]; then
+  chmod 0500 "${input_snapshot_dir}"
+  if ! cleanup_owned_directory \
+    "${input_snapshot_dir}" "${input_snapshot_identity}" "${input_snapshot_token}" \
+    "${input_snapshot_files[@]}"; then
+    exit 1
+  fi
+  trap - EXIT
   printf '%s\n' 'SQL_INPUT_OK'
   exit 0
 fi
+
+if ! snapshot_regular_file \
+  "${fixture_verify_file}" "${input_snapshot_dir}/synthetic-fixture-verify.sql"; then
+  printf '%s\n' 'Locked fixture verifier must be a stable regular non-symlink file.' >&2
+  exit 1
+fi
+fixture_verify_file="${input_snapshot_dir}/synthetic-fixture-verify.sql"
+input_snapshot_files+=(synthetic-fixture-verify.sql)
+chmod 0500 "${input_snapshot_dir}"
 
 target_psql() {
   docker exec -i "${container_name}" \
@@ -356,10 +612,25 @@ sha256_file() {
 }
 
 runner_temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-runner.XXXXXX")"
+runner_temp_token="$(new_owner_token)"
+initialize_owned_directory "${runner_temp_dir}" "${runner_temp_token}"
+runner_temp_identity="$(path_identity "${runner_temp_dir}")"
+runner_temp_files=(before.sql before.log after.sql after.log FIXTURE_VERIFY_BEFORE_OK.log FIXTURE_VERIFY_AFTER_ROLLBACK_OK.log candidate.log)
 cleanup_runner_on_exit() {
   local exit_code=$?
   trap - EXIT
-  if ! cleanup_owned_path "${runner_temp_dir}"; then
+  local cleanup_failed="false"
+  if ! cleanup_owned_directory \
+    "${runner_temp_dir}" "${runner_temp_identity}" "${runner_temp_token}" \
+    "${runner_temp_files[@]}"; then
+    cleanup_failed="true"
+  fi
+  if ! cleanup_owned_directory \
+    "${input_snapshot_dir}" "${input_snapshot_identity}" "${input_snapshot_token}" \
+    "${input_snapshot_files[@]}"; then
+    cleanup_failed="true"
+  fi
+  if [[ "${cleanup_failed}" == "true" ]]; then
     exit 1
   fi
   exit "${exit_code}"
@@ -370,6 +641,9 @@ canonical_dump_sha256() {
   local label="$1"
   local dump_file="${runner_temp_dir}/${label}.sql"
   local dump_log="${runner_temp_dir}/${label}.log"
+  assert_owned_directory \
+    "${runner_temp_dir}" "${runner_temp_identity}" "${runner_temp_token}" \
+    || return 1
   if ! docker exec -i "${container_name}" \
     pg_dump -U "${database_user}" -d "${database_name}" \
       --no-owner --no-privileges --no-comments --no-security-labels \
@@ -386,6 +660,9 @@ canonical_dump_sha256() {
 run_fixture_verification() {
   local marker="$1"
   local log_file="${runner_temp_dir}/${marker}.log"
+  assert_owned_directory \
+    "${runner_temp_dir}" "${runner_temp_identity}" "${runner_temp_token}" \
+    || return 1
   if ! target_psql < "${fixture_verify_file}" > "${log_file}" 2>&1; then
     scan_file_for_secrets "${log_file}" "${marker}.log" || true
     printf 'Fixture graph verification failed: %s\n' "${marker}" >&2
@@ -440,13 +717,15 @@ before_sha256="$(canonical_dump_sha256 before)"
 
 candidate_log="${runner_temp_dir}/candidate.log"
 candidate_status=0
+assert_owned_directory \
+  "${runner_temp_dir}" "${runner_temp_identity}" "${runner_temp_token}"
 {
-  printf '%s\n' '\set ON_ERROR_STOP on' 'begin;'
-  sed 's/\r$//' "${migration_file}"
+  printf '%s\n' '\set ON_ERROR_STOP on' 'begin;' 'set local search_path = pg_catalog, public;'
+  command cat "${migration_file}"
   printf '\n%s\n' '\echo __WISEEFF_WAYFINDER_671_VALIDATION__'
-  sed 's/\r$//' "${validation_file}"
+  command cat "${validation_file}"
   printf '\n%s\n' '\echo __WISEEFF_WAYFINDER_671_FIXTURE_VERIFY_AFTER_CANDIDATE__'
-  sed 's/\r$//' "${fixture_verify_file}"
+  command cat "${fixture_verify_file}"
   printf '\n%s\n' 'rollback;'
 } | target_psql > "${candidate_log}" 2>&1 || candidate_status=$?
 if ! scan_file_for_secrets "${candidate_log}" "candidate.log"; then
@@ -470,7 +749,14 @@ if [[ "${before_sha256}" != "${after_sha256}" ]]; then
   exit 1
 fi
 
-if ! cleanup_owned_path "${runner_temp_dir}"; then
+if ! cleanup_owned_directory \
+  "${runner_temp_dir}" "${runner_temp_identity}" "${runner_temp_token}" \
+  "${runner_temp_files[@]}"; then
+  exit 1
+fi
+if ! cleanup_owned_directory \
+  "${input_snapshot_dir}" "${input_snapshot_identity}" "${input_snapshot_token}" \
+  "${input_snapshot_files[@]}"; then
   exit 1
 fi
 trap - EXIT

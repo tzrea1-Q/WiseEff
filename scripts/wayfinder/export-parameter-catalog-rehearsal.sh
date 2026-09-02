@@ -17,7 +17,7 @@ output_dir=""
 fixture_mode=""
 historical_source_commit="6c3adfc35c0e3be6d5d381013dace9408190380e"
 historical_bundle_sha256="017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff"
-secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
+secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|password[[:space:]]*(=|=>)[[:space:]]*[^[:space:],;)]{3,}|password[[:space:]]+[^[:space:],;)]{3,}|PGPASSWORD[[:space:]]*=|(access[_-]?token|api[_-]?key|client[_-]?secret|secret|token)[[:space:]]*(=|=>)[[:space:]]*[^[:space:],;)]{8,}|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
 sql_source_files=(
   columns.sql
   constraints.sql
@@ -199,6 +199,200 @@ scan_file_for_secrets() {
   fi
 }
 
+path_identity() {
+  node --input-type=module - "$1" <<'NODE'
+import fs from "node:fs";
+const value = fs.lstatSync(process.argv[2], { bigint: true });
+if (!value.isDirectory() || value.isSymbolicLink()) process.exit(1);
+process.stdout.write(`${value.dev}:${value.ino}`);
+NODE
+}
+
+new_owner_token() {
+  node --input-type=module - <<'NODE'
+import crypto from "node:crypto";
+process.stdout.write(crypto.randomBytes(32).toString("hex"));
+NODE
+}
+
+initialize_owned_directory() {
+  printf '%s\n' "$2" > "$1/.wiseeff-owner"
+  chmod 0400 "$1/.wiseeff-owner"
+}
+
+cleanup_owned_directory() {
+  local owned_path="$1"
+  local expected_identity="$2"
+  local owner_token="$3"
+  shift 3
+  node --input-type=module - \
+    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
+import fs from "node:fs";
+const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
+const allowed = new Set([".wiseeff-owner", ...allowedNames]);
+let fd;
+try {
+  fd = fs.openSync(
+    ownedPath,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  const opened = fs.fstatSync(fd, { bigint: true });
+  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
+  process.chdir(ownedPath);
+  const current = fs.statSync(".", { bigint: true });
+  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
+  const marker = fs.lstatSync(".wiseeff-owner", { bigint: true });
+  if (!marker.isFile() || marker.isSymbolicLink()) throw new Error("marker-kind");
+  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
+    throw new Error("marker-token");
+  }
+  const entries = fs.readdirSync(".");
+  for (const name of entries) {
+    if (!allowed.has(name)) throw new Error("unknown-entry");
+    const entry = fs.lstatSync(name, { bigint: true });
+    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error("entry-kind");
+  }
+  fs.chmodSync(".", 0o700);
+  for (const name of entries.filter((name) => name !== ".wiseeff-owner")) {
+    fs.unlinkSync(name);
+  }
+  fs.unlinkSync(".wiseeff-owner");
+  process.chdir("/");
+  fs.closeSync(fd);
+  fd = undefined;
+  const published = fs.lstatSync(ownedPath, { bigint: true });
+  if (`${published.dev}:${published.ino}` !== expectedIdentity) throw new Error("path-replaced");
+  fs.rmdirSync(ownedPath);
+} catch {
+  if (fd !== undefined) fs.closeSync(fd);
+  process.exit(1);
+}
+NODE
+}
+
+remove_owned_directory_marker() {
+  local owned_path="$1"
+  local expected_identity="$2"
+  local owner_token="$3"
+  shift 3
+  node --input-type=module - \
+    "${owned_path}" "${expected_identity}" "${owner_token}" "$@" <<'NODE'
+import fs from "node:fs";
+const [ownedPath, expectedIdentity, ownerToken, ...allowedNames] = process.argv.slice(2);
+const allowed = new Set([".wiseeff-owner", ...allowedNames]);
+let fd;
+try {
+  fd = fs.openSync(
+    ownedPath,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  const opened = fs.fstatSync(fd, { bigint: true });
+  if (`${opened.dev}:${opened.ino}` !== expectedIdentity) throw new Error("identity");
+  process.chdir(ownedPath);
+  const current = fs.statSync(".", { bigint: true });
+  if (`${current.dev}:${current.ino}` !== expectedIdentity) throw new Error("cwd");
+  if (fs.readFileSync(".wiseeff-owner", "utf8").trim() !== ownerToken) {
+    throw new Error("marker-token");
+  }
+  const entries = fs.readdirSync(".");
+  if (entries.some((name) => !allowed.has(name))) throw new Error("unknown-entry");
+  fs.unlinkSync(".wiseeff-owner");
+  process.chdir("/");
+  fs.closeSync(fd);
+} catch {
+  try { process.chdir("/"); } catch {}
+  if (fd !== undefined) fs.closeSync(fd);
+  process.exit(1);
+}
+NODE
+}
+
+snapshot_source_directory() {
+  local source_path="$1"
+  local destination_path="$2"
+  shift 2
+  node --input-type=module - "${source_path}" "${destination_path}" "$@" <<'NODE'
+import fs from "node:fs";
+import path from "node:path";
+const [sourcePath, destinationPath, ...expectedNames] = process.argv.slice(2);
+const expected = [...expectedNames].sort();
+let directoryFd;
+try {
+  directoryFd = fs.openSync(
+    sourcePath,
+    fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+  );
+  const opened = fs.fstatSync(directoryFd, { bigint: true });
+  process.chdir(sourcePath);
+  const current = fs.statSync(".", { bigint: true });
+  if (`${opened.dev}:${opened.ino}` !== `${current.dev}:${current.ino}`) throw new Error("directory");
+  const actual = fs.readdirSync(".").sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("closed-world");
+  for (const name of expected) {
+    let sourceFd;
+    let destinationFd;
+    try {
+      sourceFd = fs.openSync(name, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      const before = fs.fstatSync(sourceFd, { bigint: true });
+      if (!before.isFile() || before.isSymbolicLink()) throw new Error("source-kind");
+      const bytes = fs.readFileSync(sourceFd);
+      const after = fs.fstatSync(sourceFd, { bigint: true });
+      if (
+        before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+        || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
+      ) throw new Error("source-changed");
+      destinationFd = fs.openSync(
+        path.join(destinationPath, name),
+        fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL
+          | fs.constants.O_NOFOLLOW,
+        0o400,
+      );
+      fs.writeFileSync(destinationFd, bytes);
+      fs.fsyncSync(destinationFd);
+      fs.closeSync(destinationFd);
+      destinationFd = undefined;
+    } finally {
+      if (sourceFd !== undefined) fs.closeSync(sourceFd);
+      if (destinationFd !== undefined) fs.closeSync(destinationFd);
+    }
+  }
+  if (JSON.stringify(fs.readdirSync(".").sort()) !== JSON.stringify(expected)) {
+    throw new Error("source-world-changed");
+  }
+  process.chdir("/");
+  fs.closeSync(directoryFd);
+} catch {
+  try { process.chdir("/"); } catch {}
+  if (directoryFd !== undefined) fs.closeSync(directoryFd);
+  process.exit(1);
+}
+NODE
+}
+
+source_snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-export-input.XXXXXX")"
+source_snapshot_token="$(new_owner_token)"
+initialize_owned_directory "${source_snapshot_dir}" "${source_snapshot_token}"
+source_snapshot_identity="$(path_identity "${source_snapshot_dir}")"
+cleanup_source_snapshot_on_exit() {
+  local exit_code=$?
+  trap - EXIT
+  if ! cleanup_owned_directory \
+    "${source_snapshot_dir}" "${source_snapshot_identity}" "${source_snapshot_token}" \
+    "${sql_source_files[@]}"; then
+    printf '%s\n' 'CLEANUP_FAILED' >&2
+    exit 1
+  fi
+  exit "${exit_code}"
+}
+trap cleanup_source_snapshot_on_exit EXIT
+
+if ! snapshot_source_directory "${sql_dir}" "${source_snapshot_dir}" "${sql_source_files[@]}"; then
+  printf '%s\n' 'Wayfinder SQL source changed or is not the exact regular-file closed world.' >&2
+  exit 1
+fi
+chmod 0500 "${source_snapshot_dir}"
+sql_dir="${source_snapshot_dir}"
+
 if [[ ! -d "${sql_dir}" || -L "${sql_dir}" ]]; then
   printf '%s\n' 'Wayfinder SQL source directory must be a regular, non-symlink directory.' >&2
   exit 1
@@ -211,6 +405,9 @@ for file in "${sql_source_files[@]}"; do
 done
 while IFS= read -r -d '' entry; do
   file="$(basename "${entry}")"
+  if [[ "${file}" == ".wiseeff-owner" ]]; then
+    continue
+  fi
   if ! is_registered_name "${file}" "${sql_source_files[@]}"; then
     printf 'Unknown Wayfinder SQL source entry: %s\n' "${file}" >&2
     exit 1
@@ -271,13 +468,33 @@ if [[ -n "${missing_relations}" ]]; then
   exit 1
 fi
 
+unsafe_external_objects="$(db_psql -Atc "
+  select
+    (select count(*) from pg_user_mapping)
+    + (select count(*) from pg_foreign_server)
+")"
+if [[ "${unsafe_external_objects}" != "0" ]]; then
+  printf '%s\n' 'Source database contains external or credential-bearing objects; refusing to export.' >&2
+  exit 1
+fi
+
 archive_path="${output_dir}.tar.gz"
 archive_checksum_path="${archive_path}.sha256"
 stage_dir="$(mktemp -d "${output_dir}.tmp.XXXXXX")"
-owner_marker_name=".wiseeff-wayfinder-export-owner"
+owner_marker_name=".wiseeff-owner"
 stage_owner_marker="${stage_dir}/${owner_marker_name}"
 output_owner_marker="${output_dir}/${owner_marker_name}"
-owner_token="$(basename "${stage_dir}")"
+owner_token="$(new_owner_token)"
+initialize_owned_directory "${stage_dir}" "${owner_token}"
+stage_identity="$(path_identity "${stage_dir}")"
+stage_possible_files=(
+  "${artifact_files[@]}"
+  SHA256SUMS
+  combined-profile.out
+  migration-inventory-after-schema.csv
+  archive.tar.gz
+  archive.tar.gz.sha256
+)
 output_owned="false"
 archive_temp=""
 archive_published="false"
@@ -295,7 +512,7 @@ on_exit() {
     if [[ -e "${archive_checksum_path}" && -e "${archive_checksum_temp}" \
        && "${archive_checksum_path}" -ef "${archive_checksum_temp}" ]]; then
       rm -f -- "${archive_checksum_path}"
-    elif [[ -e "${archive_checksum_path}" || -L "${archive_checksum_path}" ]]; then
+    else
       cleanup_failed="true"
     fi
   fi
@@ -303,37 +520,43 @@ on_exit() {
     if [[ -e "${archive_path}" && -e "${archive_temp}" \
        && "${archive_path}" -ef "${archive_temp}" ]]; then
       rm -f -- "${archive_path}"
-    elif [[ -e "${archive_path}" || -L "${archive_path}" ]]; then
+    else
       cleanup_failed="true"
     fi
   fi
   if [[ "${output_owned}" == "true" ]]; then
-    for file in "${artifact_files[@]}" SHA256SUMS; do
-      if [[ -e "${output_dir}/${file}" && -e "${stage_dir}/${file}" \
-         && "${output_dir}/${file}" -ef "${stage_dir}/${file}" ]]; then
-        rm -f -- "${output_dir}/${file}"
-      elif [[ -e "${output_dir}/${file}" || -L "${output_dir}/${file}" ]]; then
+    if [[ ! -d "${output_dir}" || -L "${output_dir}" ]]; then
+      cleanup_failed="true"
+    else
+      for file in "${artifact_files[@]}" SHA256SUMS; do
+        if [[ -e "${output_dir}/${file}" && -e "${stage_dir}/${file}" \
+           && "${output_dir}/${file}" -ef "${stage_dir}/${file}" ]]; then
+          rm -f -- "${output_dir}/${file}"
+        elif [[ -e "${output_dir}/${file}" || -L "${output_dir}/${file}" ]]; then
+          cleanup_failed="true"
+        fi
+      done
+      if [[ -e "${output_owner_marker}" && -e "${stage_owner_marker}" \
+         && "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
+        rm -f -- "${output_owner_marker}"
+      elif [[ -e "${output_owner_marker}" || -L "${output_owner_marker}" ]]; then
         cleanup_failed="true"
       fi
-    done
-    if [[ -e "${output_owner_marker}" && -e "${stage_owner_marker}" \
-       && "${output_owner_marker}" -ef "${stage_owner_marker}" ]]; then
-      rm -f -- "${output_owner_marker}"
-    elif [[ -e "${output_owner_marker}" || -L "${output_owner_marker}" ]]; then
-      cleanup_failed="true"
-    fi
-    if ! rmdir -- "${output_dir}" 2>/dev/null && [[ -d "${output_dir}" ]]; then
-      cleanup_failed="true"
+      if ! rmdir -- "${output_dir}" 2>/dev/null && [[ -d "${output_dir}" ]]; then
+        cleanup_failed="true"
+      fi
     fi
   fi
-  for owned_path in "${archive_checksum_temp}" "${archive_temp}" "${stage_dir}"; do
-    if [[ -n "${owned_path}" && ( -e "${owned_path}" || -L "${owned_path}" ) ]]; then
-      rm -rf -- "${owned_path}"
-    fi
-    if [[ -n "${owned_path}" && ( -e "${owned_path}" || -L "${owned_path}" ) ]]; then
-      cleanup_failed="true"
-    fi
-  done
+  if ! cleanup_owned_directory \
+    "${stage_dir}" "${stage_identity}" "${owner_token}" \
+    "${stage_possible_files[@]}"; then
+    cleanup_failed="true"
+  fi
+  if ! cleanup_owned_directory \
+    "${source_snapshot_dir}" "${source_snapshot_identity}" "${source_snapshot_token}" \
+    "${sql_source_files[@]}"; then
+    cleanup_failed="true"
+  fi
   printf '%s\n' 'EXPORT_FAILED' >&2
   if [[ "${cleanup_failed}" == "true" ]]; then
     printf '%s\n' 'CLEANUP_FAILED' >&2
@@ -481,6 +704,9 @@ for file in "${artifact_files[@]}"; do
 done
 while IFS= read -r -d '' entry; do
   file="$(basename "${entry}")"
+  if [[ "${file}" == "${owner_marker_name}" ]]; then
+    continue
+  fi
   if ! is_registered_name "${file}" "${artifact_files[@]}"; then
     printf 'Unknown generated artifact entry: %s\n' "${file}" >&2
     exit 1
@@ -502,18 +728,18 @@ done
   done | sort -k2
 ) > "${stage_dir}/SHA256SUMS"
 
-printf '%s\n' "${owner_token}" > "${stage_owner_marker}"
 if ! mkdir -- "${output_dir}"; then
   printf '%s\n' 'Output path appeared during export; refusing to publish into it.' >&2
   exit 1
 fi
 output_owned="true"
+output_identity="$(path_identity "${output_dir}")"
 ln -- "${stage_owner_marker}" "${output_owner_marker}"
 for file in "${artifact_files[@]}" SHA256SUMS; do
   ln -- "${stage_dir}/${file}" "${output_dir}/${file}"
 done
 
-archive_temp="$(mktemp "${archive_path}.tmp.XXXXXX")"
+archive_temp="${stage_dir}/archive.tar.gz"
 archive_members=()
 for file in "${artifact_files[@]}" SHA256SUMS; do
   archive_members+=("$(basename "${output_dir}")/${file}")
@@ -525,7 +751,7 @@ if ! ln -- "${archive_temp}" "${archive_path}"; then
 fi
 archive_published="true"
 archive_checksum="$(sha256_file "${archive_path}")"
-archive_checksum_temp="$(mktemp "${archive_checksum_path}.tmp.XXXXXX")"
+archive_checksum_temp="${stage_dir}/archive.tar.gz.sha256"
 printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_checksum_temp}"
 if ! ln -- "${archive_checksum_temp}" "${archive_checksum_path}"; then
   printf '%s\n' 'Archive checksum path appeared during export; refusing to overwrite it.' >&2
@@ -537,10 +763,18 @@ if [[ ! -e "${output_owner_marker}" || ! "${output_owner_marker}" -ef "${stage_o
   printf '%s\n' 'Exporter ownership marker changed during publication.' >&2
   exit 1
 fi
-rm -f -- "${output_owner_marker}" "${stage_owner_marker}"
-rm -f -- "${archive_temp}" "${archive_checksum_temp}"
-rm -rf -- "${stage_dir}"
-if [[ -e "${stage_dir}" || -e "${archive_temp}" || -e "${archive_checksum_temp}" ]]; then
+if ! remove_owned_directory_marker \
+  "${output_dir}" "${output_identity}" "${owner_token}" \
+  "${artifact_files[@]}" SHA256SUMS; then
+  printf '%s\n' 'Exporter output ownership changed before publication completed.' >&2
+  exit 1
+fi
+if ! cleanup_owned_directory \
+  "${stage_dir}" "${stage_identity}" "${owner_token}" \
+  "${stage_possible_files[@]}" \
+  || ! cleanup_owned_directory \
+    "${source_snapshot_dir}" "${source_snapshot_identity}" "${source_snapshot_token}" \
+    "${sql_source_files[@]}"; then
   printf '%s\n' 'Exporter-owned temporary path cleanup failed.' >&2
   exit 1
 fi
