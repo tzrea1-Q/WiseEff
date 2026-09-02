@@ -1,6 +1,7 @@
 import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  createInMemoryTestDatabase,
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
@@ -11,6 +12,30 @@ const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
     "S2-SCH concurrency tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
+
+const pgVectorInstalled = databaseAvailable
+  ? await (async () => {
+      const probe = await createInMemoryTestDatabase();
+      try {
+        const result = await probe.query<{ installed: boolean }>(
+          `select exists (
+             select 1
+             from pg_catalog.pg_extension
+             where extname = 'vector'
+           ) as installed`,
+        );
+        return result.rows[0]?.installed === true;
+      } finally {
+        await probe.rollback();
+      }
+    })()
+  : false;
+
+if (!pgVectorInstalled) {
+  throw new Error(
+    "S2-SCH concurrency tests require pgvector installed in the real PostgreSQL test database; skipping is forbidden",
   );
 }
 
@@ -385,6 +410,90 @@ describe("transaction-local Catalog current-release guard", () => {
       expect(release.rows).toEqual([{ release_digest: "sha256:release-a" }]);
     },
   );
+
+  it("seals a savepoint materialization to its owning top-level transaction", async () => {
+    const contender = await connect(database.url);
+    try {
+      await primary.query("begin");
+      await primary.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_sequence, release_version, release_digest,
+          compiled_model_digest, toolchain_digest, published_at
+        ) values (
+          'crel-savepoint', 10230, 'savepoint', 'sha256:savepoint',
+          'sha256:savepoint-compiled', 'sha256:savepoint-toolchain',
+          '2026-09-02T00:00:00Z'
+        );
+        insert into parameter_catalog.catalog_subjects (
+          id, introduced_release_id, kind, canonical_key
+        ) values ('csub-savepoint', 'crel-savepoint', 'driver', 'vendor,savepoint');
+        insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
+        values ('csub-savepoint', 'physical-device', 'multiple');
+        savepoint materialization_marker;
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint,
+          attempt_id, success_audit_ref
+        ) values (
+          'crel-savepoint', 'sha256:savepoint-compiled-fp',
+          'sha256:savepoint-database-fp', 'savepoint-attempt', 'savepoint-audit'
+        );
+        release savepoint materialization_marker;
+        insert into parameter_catalog.parameter_definitions (
+          id, introduced_release_id, subject_id, property_key, current_revision_id
+        ) values (
+          'pdef-savepoint', 'crel-savepoint', 'csub-savepoint',
+          'savepoint-property', 'drev-savepoint'
+        );
+        insert into parameter_catalog.definition_revisions (
+          id, definition_id, revision_number, catalog_release_id, content_digest, content
+        ) values (
+          'drev-savepoint', 'pdef-savepoint', 1, 'crel-savepoint',
+          'sha256:drev-savepoint', '{}'
+        );
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-savepoint', 'pdef-savepoint', 'drev-savepoint');
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values ('crel-savepoint', 'csub-savepoint', 'active', '{}', '{}');
+        set constraints all immediate;
+        commit;
+      `);
+
+      const committed = await primary.query<{
+        materializing_transaction_id: string;
+      }>(`
+        select materializing_transaction_id::text
+          from parameter_catalog.catalog_materializations
+         where release_id = 'crel-savepoint'
+      `);
+      expect(committed.rows).toHaveLength(1);
+      expect(committed.rows[0]?.materializing_transaction_id).toMatch(/^\d+$/);
+
+      await contender.query("begin");
+      await contender.query(`
+        insert into parameter_catalog.catalog_subjects (
+          id, introduced_release_id, kind, canonical_key
+        ) values ('csub-savepoint-contender', 'crel-savepoint', 'driver', 'vendor,contender');
+        insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
+        values ('csub-savepoint-contender', 'physical-device', 'multiple');
+      `);
+      const error = await captureDatabaseError(
+        contender.query(`
+          insert into parameter_catalog.catalog_release_subjects (
+            release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+          ) values ('crel-savepoint', 'csub-savepoint-contender', 'active', '{}', '{}')
+        `),
+      );
+      expect(error.code).toBe("55000");
+      expect(error.constraint).toBe("catalog_release_sealed_ck");
+      await contender.query("rollback");
+    } finally {
+      await primary.query("rollback").catch(() => undefined);
+      await contender.query("rollback").catch(() => undefined);
+      await contender.end();
+    }
+  });
 
   it.each([
     {

@@ -671,7 +671,7 @@ begin
     select 1
     from parameter_catalog.catalog_materializations
     where release_id = changed_release_id
-      and xmin::text <> pg_catalog.pg_current_xact_id()::text
+      and materializing_transaction_id <> pg_catalog.pg_current_xact_id()
   ) then
     raise exception using
       errcode = '55000',
@@ -1132,6 +1132,7 @@ alter table public.parameter_modules
 create table parameter_catalog.project_parameter_bindings (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   organization_id text not null references public.organizations(id) on delete restrict,
+  catalog_release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
   project_id text not null,
   logical_node_id text not null check (logical_node_id <> '' and btrim(logical_node_id) = logical_node_id),
   registration_id text not null,
@@ -1159,7 +1160,14 @@ create table parameter_catalog.project_parameter_bindings (
     on delete restrict,
   foreign key (definition_id, effective_revision_id)
     references parameter_catalog.definition_revisions(definition_id, id)
+    on delete restrict,
+  constraint project_parameter_binding_release_revision_fk
+    foreign key (catalog_release_id, definition_id, effective_revision_id)
+    references parameter_catalog.catalog_release_definition_heads(
+      release_id, definition_id, revision_id
+    )
     on delete restrict
+    deferrable initially deferred
 );
 
 create function parameter_catalog.assert_binding_effective_revision_is_verified_head()
@@ -1173,7 +1181,8 @@ begin
     from parameter_catalog.catalog_release_definition_heads release_head
     join parameter_catalog.catalog_materializations materialization
       on materialization.release_id = release_head.release_id
-    where release_head.definition_id = new.definition_id
+    where release_head.release_id = new.catalog_release_id
+      and release_head.definition_id = new.definition_id
       and release_head.revision_id = new.effective_revision_id
   ) then
     raise exception using
@@ -1187,7 +1196,7 @@ end;
 $$;
 
 create constraint trigger project_parameter_binding_effective_revision_head_fk
-after insert or update of definition_id, effective_revision_id
+after insert or update of catalog_release_id, definition_id, effective_revision_id
 on parameter_catalog.project_parameter_bindings
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_binding_effective_revision_is_verified_head();
@@ -3153,11 +3162,12 @@ begin
     from parameter_catalog.project_parameter_bindings binding
     where binding.id = new.binding_id
       and binding.definition_id = new.definition_id
+      and binding.catalog_release_id = new.catalog_release_id
       and binding.effective_revision_id = new.definition_revision_id
   ) then
     raise exception using
       errcode = '23503',
-      message = 'Observation match revision must equal the Binding effective revision at acceptance',
+      message = 'Observation match release and revision must equal the Binding capture at acceptance',
       constraint = 'parameter_observation_match_binding_revision_fk';
   end if;
 

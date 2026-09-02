@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { applyMigrations } from "../../../shared/database/migrations";
-import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+} from "../../../testing/testDatabase";
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import type { Database } from "../../../shared/database/client";
 
@@ -12,6 +15,30 @@ const catalogMigration = "0137_canonical_parameter_catalog_schema.sql";
 if (!databaseAvailable) {
   throw new Error(
     "S2-SCH privilege and migration tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
+
+const pgVectorInstalled = databaseAvailable
+  ? await (async () => {
+      const probe = await createInMemoryTestDatabase();
+      try {
+        const result = await probe.query<{ installed: boolean }>(
+          `select exists (
+             select 1
+             from pg_catalog.pg_extension
+             where extname = 'vector'
+           ) as installed`,
+        );
+        return result.rows[0]?.installed === true;
+      } finally {
+        await probe.rollback();
+      }
+    })()
+  : false;
+
+if (!pgVectorInstalled) {
+  throw new Error(
+    "S2-SCH privilege and migration tests require pgvector installed in the real PostgreSQL test database; skipping is forbidden",
   );
 }
 
@@ -292,7 +319,7 @@ describe("canonical Catalog privilege boundary and migration paths", () => {
     expect(freshFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(upgradeFingerprint).toBe(freshFingerprint);
     expect(freshFingerprint).toBe(
-      "bb1ff63d51f15f63e66f6d7161860853d2ca3fbc45ed7c476b5f9435259826e7",
+      "62f7369eea2b4632c8fc81b022bb9e04c11329f8ea92ed80c73d3f997a8a5a0a",
     );
   });
 });

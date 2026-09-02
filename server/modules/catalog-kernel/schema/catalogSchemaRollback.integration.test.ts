@@ -1,6 +1,7 @@
 import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  createInMemoryTestDatabase,
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
@@ -11,6 +12,30 @@ const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
     "S2-SCH rollback tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
+
+const pgVectorInstalled = databaseAvailable
+  ? await (async () => {
+      const probe = await createInMemoryTestDatabase();
+      try {
+        const result = await probe.query<{ installed: boolean }>(
+          `select exists (
+             select 1
+             from pg_catalog.pg_extension
+             where extname = 'vector'
+           ) as installed`,
+        );
+        return result.rows[0]?.installed === true;
+      } finally {
+        await probe.rollback();
+      }
+    })()
+  : false;
+
+if (!pgVectorInstalled) {
+  throw new Error(
+    "S2-SCH rollback tests require pgvector installed in the real PostgreSQL test database; skipping is forbidden",
   );
 }
 
@@ -148,15 +173,15 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
       'placement-binding-owners', 'reg-binding-owners', 'org-pcat', 'pmod-driver', 'curated'
     );
     insert into parameter_catalog.project_parameter_bindings (
-      id, organization_id, project_id, logical_node_id, registration_id, subject_id,
+      id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id, subject_id,
       definition_id, effective_revision_id, current_value_id
     ) values
       (
-        'binding-owner-a', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
+        'binding-owner-a', 'org-pcat', 'crel-binding-owners', 'project-pcat', 'logical-owner', 'reg-binding-owners',
         'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a'
       ),
       (
-        'binding-owner-b', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
+        'binding-owner-b', 'org-pcat', 'crel-binding-owners', 'project-pcat', 'logical-owner', 'reg-binding-owners',
         'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b'
       );
     insert into parameter_catalog.project_parameter_values (
@@ -3443,13 +3468,13 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         id, registration_id, organization_id, module_id, origin
       ) values ('placement-binding', 'reg-binding', 'org-pcat', 'pmod-driver', 'curated');
 
-      insert into parameter_catalog.project_parameter_bindings (
-        id, organization_id, project_id, logical_node_id, registration_id, subject_id,
-        definition_id, effective_revision_id, current_value_id
-      ) values (
-        'binding-one', 'org-pcat', 'project-pcat', 'logical-node-one', 'reg-binding', 'csub-driver',
-        'pdef-binding', 'drev-binding', 'pvalue-one'
-      );
+    insert into parameter_catalog.project_parameter_bindings (
+      id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id, subject_id,
+      definition_id, effective_revision_id, current_value_id
+    ) values (
+      'binding-one', 'org-pcat', 'crel-binding', 'project-pcat', 'logical-node-one', 'reg-binding', 'csub-driver',
+      'pdef-binding', 'drev-binding', 'pvalue-one'
+    );
       insert into parameter_catalog.project_parameter_values (
         id, binding_id, definition_id, definition_revision_id,
         source_ref, config_revision_id, value_digest, value_kind, value
@@ -3484,7 +3509,66 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     expect(immutable.code).toBe("55000");
   });
 
-  it("cuts a Binding over by revision CAS and rejects a stale cross-release ObservationMatch", async () => {
+  it("captures an unchanged head in a later release without changing Binding identity", async () => {
+    await seedTwoCanonicalBindings(client);
+    await client.query(`
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-binding-unchanged', 10041, 'binding-unchanged',
+        'sha256:binding-unchanged', 'crel-binding-owners',
+        'sha256:binding-unchanged-compiled', 'sha256:binding-unchanged-toolchain',
+        '2026-09-02T00:30:00Z'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-binding-unchanged', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values
+        ('crel-binding-unchanged', 'pdef-owner-a', 'drev-owner-a'),
+        ('crel-binding-unchanged', 'pdef-owner-b', 'drev-owner-b');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-binding-unchanged', 'sha256:binding-unchanged-compiled-fp',
+        'sha256:binding-unchanged-database-fp', 'binding-unchanged-attempt',
+        'binding-unchanged-audit'
+      );
+      set constraints all immediate;
+      commit;
+    `);
+
+    await client.query(`
+      begin;
+      update parameter_catalog.project_parameter_bindings
+         set catalog_release_id = 'crel-binding-unchanged', updated_at = now()
+       where id = 'binding-owner-a'
+         and catalog_release_id = 'crel-binding-owners'
+         and effective_revision_id = 'drev-owner-a';
+      set constraints all immediate;
+      commit;
+    `);
+
+    const binding = await client.query<{
+      catalog_release_id: string;
+      effective_revision_id: string;
+    }>(`
+      select catalog_release_id, effective_revision_id
+        from parameter_catalog.project_parameter_bindings
+       where id = 'binding-owner-a'
+    `);
+    expect(binding.rows).toEqual([
+      {
+        catalog_release_id: "crel-binding-unchanged",
+        effective_revision_id: "drev-owner-a",
+      },
+    ]);
+  });
+
+  it("cuts a Binding over by release-and-revision CAS and preserves historical ObservationMatch", async () => {
     await seedTwoCanonicalBindings(client);
     await client.query(`
       insert into parameter_catalog.parameter_observations (
@@ -3549,20 +3633,41 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       commit;
     `);
 
+    await client.query("begin");
+    await client.query(`
+      update parameter_catalog.project_parameter_bindings
+         set catalog_release_id = 'crel-binding-successor'
+       where id = 'binding-owner-a'
+         and catalog_release_id = 'crel-binding-owners'
+         and effective_revision_id = 'drev-owner-a'
+    `);
+    const mismatchedBinding = await captureDatabaseError(
+      client.query("commit"),
+    );
+    expect(mismatchedBinding.code).toBe("23503");
+    expect(mismatchedBinding.constraint).toBe(
+      "project_parameter_binding_release_revision_fk",
+    );
+    await client.query("rollback");
+
     const won = await client.query(`
       update parameter_catalog.project_parameter_bindings
-      set effective_revision_id = 'drev-owner-a-successor', updated_at = now()
+      set catalog_release_id = 'crel-binding-successor',
+          effective_revision_id = 'drev-owner-a-successor', updated_at = now()
       where id = 'binding-owner-a'
+        and catalog_release_id = 'crel-binding-owners'
         and effective_revision_id = 'drev-owner-a'
     `);
     expect(won.rowCount).toBe(1);
 
     const preservedMatch = await client.query<{
+      binding_catalog_release_id: string;
       binding_effective_revision_id: string;
       catalog_release_id: string;
       definition_revision_id: string;
     }>(`
       select
+        binding.catalog_release_id as binding_catalog_release_id,
         binding.effective_revision_id as binding_effective_revision_id,
         match.catalog_release_id,
         match.definition_revision_id
@@ -3573,6 +3678,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     `);
     expect(preservedMatch.rows).toEqual([
       {
+        binding_catalog_release_id: "crel-binding-successor",
         binding_effective_revision_id: "drev-owner-a-successor",
         catalog_release_id: "crel-binding-owners",
         definition_revision_id: "drev-owner-a",
@@ -3614,7 +3720,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       `),
     );
     expect(mismatch.code).toBe("23503");
-    expect(mismatch.constraint).toBe("parameter_observation_match_binding_revision_fk");
+    expect(mismatch.constraint).toBe(
+      "parameter_observation_match_binding_revision_fk",
+    );
 
     await client.query(`
       insert into parameter_catalog.parameter_observations (
@@ -3667,8 +3775,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         ('crel-binding-unverified', 'pdef-owner-a', 'drev-owner-a-unverified'),
         ('crel-binding-unverified', 'pdef-owner-b', 'drev-owner-b');
       update parameter_catalog.project_parameter_bindings
-      set effective_revision_id = 'drev-owner-a-unverified'
+      set catalog_release_id = 'crel-binding-unverified',
+          effective_revision_id = 'drev-owner-a-unverified'
       where id = 'binding-owner-a'
+        and catalog_release_id = 'crel-binding-successor'
         and effective_revision_id = 'drev-owner-a-successor';
     `);
     const unverified = await captureDatabaseError(
@@ -3681,10 +3791,12 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("rollback");
 
     const final = await client.query<{
+      catalog_release_id: string;
       effective_revision_id: string;
       match_revision_id: string;
     }>(`
       select
+        binding.catalog_release_id,
         binding.effective_revision_id,
         match.definition_revision_id as match_revision_id
       from parameter_catalog.project_parameter_bindings binding
@@ -3695,6 +3807,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     `);
     expect(final.rows).toEqual([
       {
+        catalog_release_id: "crel-binding-successor",
         effective_revision_id: "drev-owner-a-successor",
         match_revision_id: "drev-owner-a-successor",
       },

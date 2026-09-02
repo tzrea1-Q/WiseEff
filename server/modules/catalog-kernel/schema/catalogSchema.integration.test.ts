@@ -2,6 +2,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createEphemeralTestDatabase,
+  createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
@@ -16,6 +17,30 @@ const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
   throw new Error(
     "S2-SCH requires a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
+
+const pgVectorInstalled = databaseAvailable
+  ? await (async () => {
+      const probe = await createInMemoryTestDatabase();
+      try {
+        const result = await probe.query<{ installed: boolean }>(
+          `select exists (
+             select 1
+             from pg_catalog.pg_extension
+             where extname = 'vector'
+           ) as installed`,
+        );
+        return result.rows[0]?.installed === true;
+      } finally {
+        await probe.rollback();
+      }
+    })()
+  : false;
+
+if (!pgVectorInstalled) {
+  throw new Error(
+    "S2-SCH requires pgvector installed in the real PostgreSQL test database; skipping is forbidden",
   );
 }
 
@@ -275,7 +300,7 @@ describe("canonical parameter Catalog schema", () => {
     await client.query("rollback");
   });
 
-  it("stores no release pointer in stable Binding identity", async () => {
+  it("stores a captured release without adding it to stable Binding identity", async () => {
     const columns = await client.query<{ column_name: string }>(`
       select column_name
       from information_schema.columns
@@ -284,9 +309,25 @@ describe("canonical parameter Catalog schema", () => {
       order by ordinal_position
     `);
 
-    expect(columns.rows.map((row) => row.column_name)).not.toContain(
+    expect(columns.rows.map((row) => row.column_name)).toContain(
       "catalog_release_id",
     );
+
+    const identity = await client.query<{ definition: string }>(`
+      select pg_catalog.pg_get_constraintdef(constraint_record.oid, true) as definition
+      from pg_catalog.pg_constraint constraint_record
+      join pg_catalog.pg_class class on class.oid = constraint_record.conrelid
+      join pg_catalog.pg_namespace namespace on namespace.oid = class.relnamespace
+      where namespace.nspname = 'parameter_catalog'
+        and class.relname = 'project_parameter_bindings'
+        and constraint_record.conname = 'project_parameter_binding_match_identity_unique'
+    `);
+    expect(identity.rows).toEqual([
+      {
+        definition:
+          "UNIQUE (id, organization_id, project_id, logical_node_id, registration_id, subject_id, definition_id)",
+      },
+    ]);
   });
 
   it("stores NodeType identity without a family column", async () => {
@@ -1032,6 +1073,7 @@ describe("canonical parameter Catalog schema", () => {
           "parameter_definition_current_revision_fk",
           "parameter_review_item_current_resolution_fk",
           "project_parameter_binding_current_value_fk",
+          "project_parameter_binding_release_revision_fk",
           "registration_current_placement_fk",
         ],
       ],
@@ -1081,6 +1123,7 @@ describe("canonical parameter Catalog schema", () => {
         "parameter_definition_current_revision_fk",
         "parameter_review_item_current_resolution_fk",
         "project_parameter_binding_current_value_fk",
+        "project_parameter_binding_release_revision_fk",
         "registration_current_placement_fk",
       ].map((constraint_name) => ({
         constraint_name,
