@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 
 import { parseAllDocuments } from "yaml";
 
@@ -21,12 +20,15 @@ import type {
   CatalogReleaseDocument,
   CatalogReleaseNode,
 } from "./types";
+import { stableCatalogRules } from "./contractArtifacts";
 import {
-  catalogManifestSchema,
-  catalogReleaseSchema,
-  stableCatalogRules,
-} from "./contractArtifacts";
-import { validateJsonSchema } from "./jsonSchema";
+  isCatalogReleaseBundle,
+  isValidJsonSchema202012,
+} from "./schemaValidation";
+import { deriveSourceDocuments } from "./sourceAuthority";
+import type { StableCatalogRules } from "./stableRules";
+
+export { isCatalogReleaseBundle } from "./schemaValidation";
 
 export type CompilerValidationPhase = "source" | "compile" | "lineage";
 
@@ -62,27 +64,6 @@ const safeRelativePath =
 const sourceLocation = (releaseId: string, path: string): string =>
   `release:${releaseId}/source:${path}`;
 
-const schemaRegistry = new Map([
-  ["https://wiseeff.dev/schemas/dts/catalog-release/manifest.schema.json", catalogManifestSchema],
-]);
-
-interface AjvLike {
-  compile(schema: unknown): unknown;
-}
-
-type AjvConstructor = new (options: {
-  readonly allErrors: boolean;
-  readonly strict: boolean;
-}) => AjvLike;
-
-const localRequire = createRequire(import.meta.url);
-const Ajv2020 = (
-  localRequire("ajv/dist/2020") as { readonly default: AjvConstructor }
-).default;
-
-export const isCatalogReleaseBundle = (value: unknown): value is CatalogReleaseBundle =>
-  validateJsonSchema(value, catalogReleaseSchema, catalogReleaseSchema, schemaRegistry);
-
 const countBy = <Value>(
   values: readonly Value[],
   key: (value: Value) => string,
@@ -104,6 +85,7 @@ const countBy = <Value>(
 
 const validateSources = (
   releases: readonly CatalogReleaseNode[],
+  rules: StableCatalogRules["manifestRules"] = stableCatalogRules.manifestRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   for (const node of releases) {
@@ -125,9 +107,8 @@ const validateSources = (
     const parsedPublicationTime = Date.parse(node.manifest.release.publishedAt);
     if (
       Number.isNaN(parsedPublicationTime) ||
-      new Date(parsedPublicationTime)
-        .toISOString()
-        .replace(/\.000Z$/u, "Z") !== node.manifest.release.publishedAt
+      new Date(parsedPublicationTime).toISOString().replace(/\.000Z$/u, "Z") !==
+        node.manifest.release.publishedAt
     ) {
       violations.push(
         violation({
@@ -138,60 +119,63 @@ const validateSources = (
       );
     }
 
-    for (const [key, descriptorEntry] of listedDocuments) {
-      const documentEntry = bundledDocuments.get(key);
-      const descriptor = descriptorEntry.value;
-      const location = `release:${releaseId}/${descriptor.kind}:${descriptor.documentId}`;
-      if (!documentEntry) {
-        violations.push(
-          violation({
-            code: "entry-missing",
-            location,
-            detail: "manifest-document-content-missing",
-          }),
-        );
-        continue;
+    if (rules.exactDocumentSet)
+      for (const [key, descriptorEntry] of listedDocuments) {
+        const documentEntry = bundledDocuments.get(key);
+        const descriptor = descriptorEntry.value;
+        const location = `release:${releaseId}/${descriptor.kind}:${descriptor.documentId}`;
+        if (!documentEntry) {
+          violations.push(
+            violation({
+              code: "entry-missing",
+              location,
+              detail: "manifest-document-content-missing",
+            }),
+          );
+          continue;
+        }
+        if (descriptorEntry.count !== documentEntry.count) {
+          violations.push(
+            violation({
+              code: "schema-invalid",
+              location,
+              subjectId: documentSubjectId(documentEntry.value),
+              detail: "manifest-document-identity-must-be-unique",
+            }),
+          );
+          continue;
+        }
+        const document = documentEntry.value;
+        if (
+          rules.documentMatchPointers.some(
+            ({ manifestPointer, documentPointer }) =>
+              pointerValue(descriptor, manifestPointer) !==
+              pointerValue(document, documentPointer),
+          )
+        ) {
+          violations.push(
+            violation({
+              code: "schema-invalid",
+              location,
+              subjectId: documentSubjectId(document),
+              detail: "manifest-document-reference-mismatch",
+            }),
+          );
+        }
       }
-      if (descriptorEntry.count !== documentEntry.count) {
+    if (rules.exactDocumentSet)
+      for (const [key, documentEntry] of bundledDocuments) {
+        if (listedDocuments.has(key)) continue;
+        const document = documentEntry.value;
         violations.push(
           violation({
-            code: "schema-invalid",
-            location,
-            subjectId: documentSubjectId(documentEntry.value),
-            detail: "manifest-document-identity-must-be-unique",
-          }),
-        );
-        continue;
-      }
-      const document = documentEntry.value;
-      if (
-        descriptor.sourcePath !== document.source.path ||
-        descriptor.kind !== document.kind ||
-        descriptor.documentId !== document.content.id ||
-        descriptor.normalizedDigest !== document.normalizedDigest
-      ) {
-        violations.push(
-          violation({
-            code: "schema-invalid",
-            location,
+            code: "entry-unlisted",
+            location: `release:${releaseId}/${document.kind}:${document.content.id}`,
             subjectId: documentSubjectId(document),
-            detail: "manifest-document-reference-mismatch",
+            detail: "document-entry-not-listed-by-manifest",
           }),
         );
       }
-    }
-    for (const [key, documentEntry] of bundledDocuments) {
-      if (listedDocuments.has(key)) continue;
-      const document = documentEntry.value;
-      violations.push(
-        violation({
-          code: "entry-unlisted",
-          location: `release:${releaseId}/${document.kind}:${document.content.id}`,
-          subjectId: documentSubjectId(document),
-          detail: "document-entry-not-listed-by-manifest",
-        }),
-      );
-    }
 
     for (const path of new Set([
       ...files.keys(),
@@ -212,6 +196,7 @@ const validateSources = (
     for (const [path, fileEntry] of files) {
       const sourceEntry = sources.get(path);
       if (!sourceEntry) {
+        if (!rules.exactSourceSet) continue;
         violations.push(
           violation({
             code: "entry-missing",
@@ -259,7 +244,10 @@ const validateSources = (
       try {
         const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
         const parsed = parseAllDocuments(text, { prettyErrors: false });
-        if (parsed.length === 0 || parsed.some((document) => document.errors.length > 0)) {
+        if (
+          parsed.length === 0 ||
+          parsed.some((document) => document.errors.length > 0)
+        ) {
           throw new TypeError("YAML parse failed");
         }
       } catch {
@@ -286,46 +274,52 @@ const validateSources = (
       }
     }
 
-    for (const path of sources.keys()) {
-      if (!files.has(path)) {
-        violations.push(
-          violation({
-            code: "entry-unlisted",
-            location: sourceLocation(releaseId, path),
-            detail: "source-entry-not-listed-by-manifest",
-          }),
-        );
+    if (rules.exactSourceSet)
+      for (const path of sources.keys()) {
+        if (!files.has(path)) {
+          violations.push(
+            violation({
+              code: "entry-unlisted",
+              location: sourceLocation(releaseId, path),
+              detail: "source-entry-not-listed-by-manifest",
+            }),
+          );
+        }
       }
-    }
-    for (const path of files.keys()) {
-      if (!documentPaths.has(path)) {
-        violations.push(
-          violation({
-            code: "entry-unlisted",
-            location: sourceLocation(releaseId, path),
-            detail: "manifest-source-has-no-document",
-          }),
-        );
+    if (rules.exactDocumentSet)
+      for (const path of files.keys()) {
+        if (!documentPaths.has(path)) {
+          violations.push(
+            violation({
+              code: "entry-unlisted",
+              location: sourceLocation(releaseId, path),
+              detail: "manifest-source-has-no-document",
+            }),
+          );
+        }
       }
-    }
-    for (const path of documentPaths) {
-      if (!files.has(path)) {
-        violations.push(
-          violation({
-            code: "entry-unlisted",
-            location: sourceLocation(releaseId, path),
-            detail: "document-source-not-listed-by-manifest",
-          }),
-        );
+    if (rules.exactDocumentSet)
+      for (const path of documentPaths) {
+        if (!files.has(path)) {
+          violations.push(
+            violation({
+              code: "entry-unlisted",
+              location: sourceLocation(releaseId, path),
+              detail: "document-source-not-listed-by-manifest",
+            }),
+          );
+        }
       }
-    }
 
     for (const document of node.documents) {
       const file = files.get(document.source.path)?.value;
       if (
         file &&
-        (file.mediaType !== document.source.mediaType ||
-          file.digest !== document.source.digest)
+        rules.sourceMatchPointers.some(
+          (pointer) =>
+            pointerValue({ source: file }, pointer) !==
+            pointerValue(document, pointer),
+        )
       ) {
         violations.push(
           violation({
@@ -364,49 +358,43 @@ export const orderViolations = (
       left.subjectId.kind === "present" ? left.subjectId.value : "";
     const rightSubject =
       right.subjectId.kind === "present" ? right.subjectId.value : "";
-    if (leftSubject !== rightSubject) return leftSubject < rightSubject ? -1 : 1;
+    if (leftSubject !== rightSubject)
+      return leftSubject < rightSubject ? -1 : 1;
     return left.detail < right.detail ? -1 : left.detail > right.detail ? 1 : 0;
   });
-
-const identityKey = (document: CatalogReleaseDocument): string => {
-  switch (document.kind) {
-    case "subject":
-      return serializeContract([
-        document.content.kind,
-        document.content.canonicalKey,
-      ]).trimEnd();
-    case "alias":
-      return serializeContract([
-        document.content.selectorKind,
-        document.content.normalizedSelector,
-      ]).trimEnd();
-    case "definition":
-      return serializeContract([
-        document.content.subjectId,
-        document.content.propertyKey,
-      ]).trimEnd();
-  }
-};
 
 const documentSubjectId = (
   document: CatalogReleaseDocument,
 ): string | undefined =>
-  document.kind === "subject" ? document.content.id : document.content.subjectId;
+  document.kind === "subject"
+    ? document.content.id
+    : document.content.subjectId;
 
 const validateDuplicateIdentities = (
   releases: readonly CatalogReleaseNode[],
+  rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   for (const release of releases) {
-    for (const kind of ["subject", "alias", "definition"] as const) {
+    for (const rule of rules) {
+      if (!rule.uniquePerRelease) continue;
+      const kind = rule.documentKind;
       const ids = new Set<string>();
       const naturalKeys = new Set<string>();
       for (const document of release.documents.filter(
-        (candidate): candidate is Extract<CatalogReleaseDocument, { kind: typeof kind }> =>
-          candidate.kind === kind,
+        (
+          candidate,
+        ): candidate is Extract<
+          CatalogReleaseDocument,
+          { kind: typeof kind }
+        > => candidate.kind === kind,
       )) {
-        const id = document.content.id;
-        const naturalKey = identityKey(document);
+        const id = String(pointerValue(document, rule.idPointer));
+        const naturalKey = canonicalKey(
+          rule.naturalKeyPointers.map(
+            (pointer) => pointerValue(document, pointer) as ContractJsonValue,
+          ),
+        );
         const duplicateId = ids.has(id);
         const duplicateNaturalKey = naturalKeys.has(naturalKey);
         if (duplicateId || duplicateNaturalKey) {
@@ -416,8 +404,8 @@ const validateDuplicateIdentities = (
               location: `release:${release.manifest.release.id}/${kind}:${id}`,
               subjectId: documentSubjectId(document),
               detail: duplicateId
-                ? `${kind}-id-duplicate-in-release`
-                : `${kind}-natural-key-duplicate-in-release`,
+                ? `${kind}${rule.idPointer.includes("/revision/") ? "-revision" : ""}-id-duplicate-in-release`
+                : `${kind}${rule.idPointer.includes("/revision/") ? "-revision" : ""}-natural-key-duplicate-in-release`,
             }),
           );
         }
@@ -457,44 +445,49 @@ const sortContractArray = <Value>(
         );
   });
 
-const aggregateModel = (node: CatalogReleaseNode): ContractJsonValue => ({
-  "/manifest/schemaVersion": node.manifest.schemaVersion,
-  "/manifest/release/id": node.manifest.release.id,
-  "/manifest/release/version": node.manifest.release.version,
-  "/manifest/release/sequence": node.manifest.release.sequence,
-  "/manifest/release/publishedAt": node.manifest.release.publishedAt,
-  "/manifest/release/predecessor": node.manifest.release.predecessor,
-  "/manifest/toolchain": node.manifest.toolchain,
-  "/manifest/files": sortContractArray(node.manifest.files, (file) => [
-    file.path,
-  ]),
-  "/manifest/documents": sortContractArray(
-    node.manifest.documents,
-    (document) => [document.kind, document.documentId],
-  ),
-  "/sources": sortContractArray(node.sources, (source) => [source.path]),
-  "/documents": sortContractArray(node.documents, (document) => [
-    document.kind,
-    document.content.id,
-  ]),
-}) as unknown as ContractJsonValue;
+const pointerValue = (value: unknown, pointer: string): unknown => {
+  let current = value;
+  for (const encodedSegment of pointer.split("/").slice(1)) {
+    if (current === null || typeof current !== "object") return undefined;
+    const segment = encodedSegment.replace(/~1/gu, "/").replace(/~0/gu, "~");
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+};
+
+const aggregateModel = (
+  node: CatalogReleaseNode,
+  rules: StableCatalogRules["manifestRules"] = stableCatalogRules.manifestRules,
+): ContractJsonValue => {
+  const model: Record<string, ContractJsonValue> = {};
+  for (const pointer of rules.releaseAggregateDigest.modelPointers) {
+    const value = pointerValue(node, pointer);
+    const sortRule = rules.releaseAggregateDigest.sortedCollections.find(
+      (candidate) => candidate.pointer === pointer,
+    );
+    model[pointer] =
+      sortRule && Array.isArray(value)
+        ? (sortContractArray(value, (entry) =>
+            sortRule.keyPointers.map(
+              (keyPointer) =>
+                pointerValue(entry, keyPointer) as ContractJsonValue,
+            ),
+          ) as unknown as ContractJsonValue)
+        : (value as ContractJsonValue);
+  }
+  return model;
+};
 
 const revisionContentModel = (
   document: Extract<CatalogReleaseDocument, { kind: "definition" }>,
+  rules: StableCatalogRules["definitionRevisionRules"] = stableCatalogRules.definitionRevisionRules,
 ): ContractJsonValue => {
   const { revision } = document.content;
-  const content: Record<string, ContractJsonValue> = {
-    "/lifecycle": revision.lifecycle,
-    "/displayName": revision.displayName,
-    "/documentation": revision.documentation,
-    "/valueSchema": revision.valueSchema,
-    "/matching": revision.matching,
-  };
-  if (revision.successorDefinitionId !== undefined) {
-    content["/successorDefinitionId"] = revision.successorDefinitionId;
+  const content: Record<string, ContractJsonValue> = {};
+  for (const pointer of rules.contentPointers) {
+    const value = pointerValue(revision, pointer);
+    if (value !== undefined) content[pointer] = value as ContractJsonValue;
   }
-  if (revision.unit !== undefined) content["/unit"] = revision.unit;
-  if (revision.examples !== undefined) content["/examples"] = revision.examples;
   return content;
 };
 
@@ -522,7 +515,9 @@ const validateCanonicalIdentities = (
     } else if (document.kind === "alias") {
       const parsed =
         document.content.selectorKind === "driver-compatible"
-          ? parseCanonicalCompatibleSelector(document.content.normalizedSelector)
+          ? parseCanonicalCompatibleSelector(
+              document.content.normalizedSelector,
+            )
           : parseCanonicalNodeName(document.content.normalizedSelector);
       if (!parsed.ok) {
         violations.push(
@@ -553,6 +548,7 @@ const validateCanonicalIdentities = (
 
 const validateContentDigests = (
   node: CatalogReleaseNode,
+  rules: StableCatalogRules = stableCatalogRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releaseId = node.manifest.release.id;
@@ -574,7 +570,9 @@ const validateContentDigests = (
     if (
       document.kind === "definition" &&
       document.content.revision.contentDigest !==
-        digestContract(revisionContentModel(document))
+        digestContract(
+          revisionContentModel(document, rules.definitionRevisionRules),
+        )
     ) {
       violations.push(
         violation({
@@ -586,7 +584,10 @@ const validateContentDigests = (
       );
     }
   }
-  if (node.manifest.release.digest !== digestContract(aggregateModel(node))) {
+  if (
+    node.manifest.release.digest !==
+    digestContract(aggregateModel(node, rules.manifestRules))
+  ) {
     violations.push(
       violation({
         code: "aggregate-digest-mismatch",
@@ -600,8 +601,8 @@ const validateContentDigests = (
 
 const inspectValueSchema = (
   value: Readonly<Record<string, ContractJsonValue>>,
+  rules: StableCatalogRules["valueSchemaRules"] = stableCatalogRules.valueSchemaRules,
 ): "valid" | "complexity" | "reference" | "schema" => {
-  const rules = stableCatalogRules.valueSchemaRules;
   const stack: Array<{ readonly depth: number; readonly value: unknown }> = [
     { depth: rules.traversal.rootDepth, value },
   ];
@@ -610,7 +611,11 @@ const inspectValueSchema = (
 
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current || current.value === null || typeof current.value !== "object") {
+    if (
+      !current ||
+      current.value === null ||
+      typeof current.value !== "object"
+    ) {
       continue;
     }
     containerNodes += 1;
@@ -632,32 +637,30 @@ const inspectValueSchema = (
     }
   }
 
-  if (
-    value.$schema !== undefined &&
-    value.$schema !== stableCatalogRules.valueSchemaRules.dialect
-  ) {
+  if (value.$schema !== undefined && value.$schema !== rules.dialect) {
     return "schema";
   }
   if (rules.requireValidSchema) {
-    try {
-      new Ajv2020({ allErrors: true, strict: true }).compile(value);
-    } catch {
-      return "schema";
-    }
+    if (!isValidJsonSchema202012(value)) return "schema";
   }
   return "valid";
 };
 
 const validateDefinitionSemantics = (
   node: CatalogReleaseNode,
+  rules: StableCatalogRules = stableCatalogRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releaseId = node.manifest.release.id;
   const definitions = new Map(
     node.documents
       .filter(
-        (document): document is Extract<CatalogReleaseDocument, { kind: "definition" }> =>
-          document.kind === "definition",
+        (
+          document,
+        ): document is Extract<
+          CatalogReleaseDocument,
+          { kind: "definition" }
+        > => document.kind === "definition",
       )
       .map((document) => [document.content.id, document] as const),
   );
@@ -666,11 +669,12 @@ const validateDefinitionSemantics = (
     const location = `release:${releaseId}/definition:${definition.content.id}`;
     const schemaOutcome = inspectValueSchema(
       definition.content.revision.valueSchema,
+      rules.valueSchemaRules,
     );
     if (schemaOutcome !== "valid") {
       const detail =
         schemaOutcome === "complexity"
-          ? stableCatalogRules.valueSchemaRules.traversal.limitViolation
+          ? rules.valueSchemaRules.traversal.limitViolation
           : schemaOutcome === "reference"
             ? "definition-value-schema-ref-forbidden"
             : "definition-value-schema-invalid";
@@ -684,9 +688,16 @@ const validateDefinitionSemantics = (
       );
     }
 
-    if (definition.content.revision.lifecycle !== "deprecated") continue;
+    if (
+      definition.content.revision.lifecycle !==
+      rules.definitionLifecycleRules.deprecatedLifecycle
+    )
+      continue;
     const successorId = definition.content.revision.successorDefinitionId;
-    if (successorId === definition.content.id) {
+    if (
+      rules.definitionLifecycleRules.forbidSelfSuccessor &&
+      successorId === definition.content.id
+    ) {
       violations.push(
         violation({
           code: "definition-snapshot-incomplete",
@@ -695,7 +706,10 @@ const validateDefinitionSemantics = (
           detail: "definition-successor-invalid",
         }),
       );
-    } else if (successorId === undefined || !definitions.has(successorId)) {
+    } else if (
+      rules.definitionLifecycleRules.requireExistingSuccessor &&
+      (successorId === undefined || !definitions.has(successorId))
+    ) {
       violations.push(
         violation({
           code: "definition-snapshot-incomplete",
@@ -712,7 +726,11 @@ const validateDefinitionSemantics = (
     "active-terminal" | "cycle" | "missing" | "terminal-invalid"
   >();
   for (const definition of definitions.values()) {
-    if (definition.content.revision.lifecycle !== "deprecated") continue;
+    if (
+      definition.content.revision.lifecycle !==
+      rules.definitionLifecycleRules.deprecatedLifecycle
+    )
+      continue;
     if (outcomes.has(definition.content.id)) continue;
     const path: string[] = [];
     const pathIndexes = new Set<string>();
@@ -737,9 +755,13 @@ const validateDefinitionSemantics = (
         outcome = "missing";
         break;
       }
-      if (current.content.revision.lifecycle !== "deprecated") {
+      if (
+        current.content.revision.lifecycle !==
+        rules.definitionLifecycleRules.deprecatedLifecycle
+      ) {
         outcome =
-          current.content.revision.lifecycle === "active"
+          current.content.revision.lifecycle ===
+          rules.definitionLifecycleRules.successorGraph.terminalLifecycle
             ? "active-terminal"
             : "terminal-invalid";
         break;
@@ -748,7 +770,13 @@ const validateDefinitionSemantics = (
       path.push(definitionId);
       definitionId = current.content.revision.successorDefinitionId;
     }
-    for (const pathDefinitionId of path) outcomes.set(pathDefinitionId, outcome);
+    for (const pathDefinitionId of path)
+      outcomes.set(pathDefinitionId, outcome);
+    if (
+      outcome === "cycle" &&
+      !rules.definitionLifecycleRules.successorGraph.requireAcyclic
+    )
+      continue;
     if (outcome !== "cycle" && outcome !== "terminal-invalid") continue;
     violations.push(
       violation({
@@ -757,8 +785,8 @@ const validateDefinitionSemantics = (
         subjectId: definition.content.subjectId,
         detail:
           outcome === "cycle"
-            ? "definition-successor-cycle"
-            : "definition-successor-terminal-invalid",
+            ? rules.definitionLifecycleRules.successorGraph.cycleViolation
+            : rules.definitionLifecycleRules.successorGraph.terminalViolation,
       }),
     );
   }
@@ -767,13 +795,14 @@ const validateDefinitionSemantics = (
 
 const validateCompileContent = (
   releases: readonly CatalogReleaseNode[],
+  rules: StableCatalogRules = stableCatalogRules,
 ): CatalogReleaseViolation[] =>
   releases.flatMap((node) => [
-    ...validateDuplicateIdentities([node]),
+    ...validateDuplicateIdentities([node], rules.identityRules),
     ...validateCanonicalIdentities(node),
-    ...validateContentDigests(node),
-    ...validateOwnershipAndLifecycle(node),
-    ...validateDefinitionSemantics(node),
+    ...validateContentDigests(node, rules),
+    ...validateOwnershipAndLifecycle(node, rules),
+    ...validateDefinitionSemantics(node, rules),
   ]);
 
 const orderedReleaseNodes = (
@@ -787,52 +816,13 @@ const orderedReleaseNodes = (
       : contractCompare(left.manifest.release.id, right.manifest.release.id);
   });
 
-const stableBinding = (
-  document: CatalogReleaseDocument,
-): { readonly id: string; readonly naturalKey: string; readonly immutable: string } => {
-  switch (document.kind) {
-    case "subject":
-      return {
-        id: document.content.id,
-        naturalKey: canonicalKey([
-          document.content.kind,
-          document.content.canonicalKey,
-        ]),
-        immutable: canonicalKey([
-          document.content.kind,
-          document.content.canonicalKey,
-          document.content.subtype as unknown as ContractJsonValue,
-        ]),
-      };
-    case "alias":
-      return {
-        id: document.content.id,
-        naturalKey: canonicalKey([
-          document.content.selectorKind,
-          document.content.normalizedSelector,
-        ]),
-        immutable: canonicalKey([document.content.subjectId]),
-      };
-    case "definition":
-      return {
-        id: document.content.id,
-        naturalKey: canonicalKey([
-          document.content.subjectId,
-          document.content.propertyKey,
-        ]),
-        immutable: canonicalKey([
-          document.content.subjectId,
-          document.content.propertyKey,
-        ]),
-      };
-  }
-};
-
 const validateStableIdentityLineage = (
   releases: readonly CatalogReleaseNode[],
+  rules: StableCatalogRules["identityRules"] = stableCatalogRules.identityRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
-  for (const kind of ["subject", "alias", "definition"] as const) {
+  for (const rule of rules) {
+    const kind = rule.documentKind;
     const byId = new Map<
       string,
       { readonly naturalKey: string; readonly immutable: string }
@@ -840,10 +830,29 @@ const validateStableIdentityLineage = (
     const byNaturalKey = new Map<string, string>();
     for (const release of orderedReleaseNodes(releases)) {
       for (const document of release.documents.filter(
-        (candidate): candidate is Extract<CatalogReleaseDocument, { kind: typeof kind }> =>
-          candidate.kind === kind,
+        (
+          candidate,
+        ): candidate is Extract<
+          CatalogReleaseDocument,
+          { kind: typeof kind }
+        > => candidate.kind === kind,
       )) {
-        const binding = stableBinding(document);
+        const binding = {
+          id: String(pointerValue(document, rule.idPointer)),
+          naturalKey: canonicalKey(
+            rule.naturalKeyPointers.map(
+              (pointer) => pointerValue(document, pointer) as ContractJsonValue,
+            ),
+          ),
+          immutable: canonicalKey(
+            rule.immutableValuePointers.map(
+              (pointer) => pointerValue(document, pointer) as ContractJsonValue,
+            ),
+          ),
+        };
+        const detailPrefix = rule.idPointer.includes("/revision/")
+          ? "definition-revision"
+          : kind;
         const previous = byId.get(binding.id);
         if (
           previous !== undefined &&
@@ -855,7 +864,7 @@ const validateStableIdentityLineage = (
               code: "stable-key-reassigned",
               location: `release:${release.manifest.release.id}/${kind}:${binding.id}`,
               subjectId: documentSubjectId(document),
-              detail: `${kind}-id-reassigned`,
+              detail: `${detailPrefix}-id-reassigned`,
             }),
           );
         }
@@ -866,7 +875,7 @@ const validateStableIdentityLineage = (
               code: "stable-key-reassigned",
               location: `release:${release.manifest.release.id}/${kind}:${binding.id}`,
               subjectId: documentSubjectId(document),
-              detail: `${kind}-natural-key-reassigned`,
+              detail: `${detailPrefix}-natural-key-reassigned`,
             }),
           );
         }
@@ -883,13 +892,16 @@ const validateStableIdentityLineage = (
 
 function validateOwnershipAndLifecycle(
   node: CatalogReleaseNode,
+  rules: StableCatalogRules = stableCatalogRules,
 ): CatalogReleaseViolation[] {
   const violations: CatalogReleaseViolation[] = [];
   const releaseId = node.manifest.release.id;
   const subjects = new Map(
     node.documents
       .filter(
-        (document): document is Extract<CatalogReleaseDocument, { kind: "subject" }> =>
+        (
+          document,
+        ): document is Extract<CatalogReleaseDocument, { kind: "subject" }> =>
           document.kind === "subject",
       )
       .map((document) => [document.content.id, document] as const),
@@ -926,7 +938,11 @@ function validateOwnershipAndLifecycle(
   for (const document of node.documents) {
     if (document.kind === "subject") continue;
     const subject = subjects.get(document.content.subjectId);
-    if (!subject) {
+    const requireSubject =
+      document.kind === "alias"
+        ? rules.membershipRules.requireAliasSubject
+        : rules.membershipRules.requireDefinitionSubject;
+    if (!subject && requireSubject) {
       violations.push(
         violation({
           code:
@@ -940,10 +956,11 @@ function validateOwnershipAndLifecycle(
       );
       continue;
     }
+    if (!subject) continue;
     const expectedSelectorKind =
       subject.content.kind === "driver"
-        ? "driver-compatible"
-        : "node-type-name";
+        ? rules.selectorRules.selectorKindBySubjectKind.driver
+        : rules.selectorRules.selectorKindBySubjectKind["node-type"];
     const actualSelectorKind =
       document.kind === "alias"
         ? document.content.selectorKind
@@ -981,6 +998,7 @@ function validateOwnershipAndLifecycle(
         );
       }
       if (
+        rules.membershipRules.activeAliasRequiresActiveSubject &&
         document.content.lifecycle === "active" &&
         subject.content.lifecycle !== "active"
       ) {
@@ -997,7 +1015,10 @@ function validateOwnershipAndLifecycle(
         document.content.selectorKind,
         document.content.normalizedSelector,
       ]);
-      if (canonicalSelectors.has(selectorKey)) {
+      if (
+        rules.selectorRules.forbidAliasCanonicalCollision &&
+        canonicalSelectors.has(selectorKey)
+      ) {
         violations.push(
           violation({
             code: "alias-collision",
@@ -1014,7 +1035,9 @@ function validateOwnershipAndLifecycle(
 
 const validatePermanentSelectorOwnership = (
   releases: readonly CatalogReleaseNode[],
+  rules: StableCatalogRules["selectorRules"] = stableCatalogRules.selectorRules,
 ): CatalogReleaseViolation[] => {
+  if (!rules.requirePermanentCanonicalOwnership) return [];
   const violations: CatalogReleaseViolation[] = [];
   const canonicalOwners = new Map<string, string>();
   const aliasOwners = new Map<string, string>();
@@ -1062,6 +1085,7 @@ const validatePermanentSelectorOwnership = (
 
 const validateLineageContent = (
   bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules = stableCatalogRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releasesById = new Map(
@@ -1085,14 +1109,25 @@ const validateLineageContent = (
     const currentDefinitions = new Map(
       release.documents
         .filter(
-          (document): document is Extract<CatalogReleaseDocument, { kind: "definition" }> =>
-            document.kind === "definition",
+          (
+            document,
+          ): document is Extract<
+            CatalogReleaseDocument,
+            { kind: "definition" }
+          > => document.kind === "definition",
         )
         .map((document) => [document.content.id, document] as const),
     );
 
     if (predecessor) {
       for (const kind of ["subject", "alias", "definition"] as const) {
+        const requireMembership =
+          kind === "subject"
+            ? rules.membershipRules.requirePredecessorSubjects
+            : kind === "alias"
+              ? rules.membershipRules.requirePredecessorAliases
+              : rules.membershipRules.requirePredecessorDefinitions;
+        if (!requireMembership) continue;
         const currentIds = new Set(
           release.documents
             .filter((document) => document.kind === kind)
@@ -1117,8 +1152,12 @@ const validateLineageContent = (
       const predecessorDefinitions = new Map(
         predecessor.documents
           .filter(
-            (document): document is Extract<CatalogReleaseDocument, { kind: "definition" }> =>
-              document.kind === "definition",
+            (
+              document,
+            ): document is Extract<
+              CatalogReleaseDocument,
+              { kind: "definition" }
+            > => document.kind === "definition",
           )
           .map((document) => [document.content.id, document] as const),
       );
@@ -1130,8 +1169,11 @@ const validateLineageContent = (
           previous.content.revision.contentDigest;
         if (!changed) {
           if (
-            current.content.revision.id !== previous.content.revision.id ||
-            current.content.revision.number !== previous.content.revision.number
+            rules.definitionRevisionRules.transitionRules
+              .unchangedContentRequiresSameRevision &&
+            (current.content.revision.id !== previous.content.revision.id ||
+              current.content.revision.number !==
+                previous.content.revision.number)
           ) {
             violations.push(
               violation({
@@ -1144,7 +1186,11 @@ const validateLineageContent = (
           }
           continue;
         }
-        if (current.content.revision.id === previous.content.revision.id) {
+        if (
+          rules.definitionRevisionRules.transitionRules
+            .changedContentRequiresFreshRevisionId &&
+          current.content.revision.id === previous.content.revision.id
+        ) {
           violations.push(
             violation({
               code: "revision-derivation-invalid",
@@ -1156,7 +1202,9 @@ const validateLineageContent = (
         }
         if (
           current.content.revision.number !==
-          previous.content.revision.number + 1
+          previous.content.revision.number +
+            rules.definitionRevisionRules.transitionRules
+              .changedContentRevisionIncrement
         ) {
           violations.push(
             violation({
@@ -1190,7 +1238,10 @@ const validateLineageContent = (
       }
       const naturalKey = canonicalKey([definitionId, revision.number]);
       const previousRevisionId = revisionIdsByNaturalKey.get(naturalKey);
-      if (previousRevisionId !== undefined && previousRevisionId !== revision.id) {
+      if (
+        previousRevisionId !== undefined &&
+        previousRevisionId !== revision.id
+      ) {
         violations.push(
           violation({
             code: "stable-key-reassigned",
@@ -1227,6 +1278,7 @@ const retirementSemanticKind = (
 
 const validateRetirementLineage = (
   bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules["retirementRules"] = stableCatalogRules.retirementRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releasesById = new Map(
@@ -1241,7 +1293,10 @@ const validateRetirementLineage = (
     for (const document of release.documents.filter(
       (
         candidate,
-      ): candidate is Extract<CatalogReleaseDocument, { kind: "subject" | "alias" }> =>
+      ): candidate is Extract<
+        CatalogReleaseDocument,
+        { kind: "subject" | "alias" }
+      > =>
         (candidate.kind === "subject" || candidate.kind === "alias") &&
         candidate.content.lifecycle === "retired",
     )) {
@@ -1255,7 +1310,10 @@ const validateRetirementLineage = (
       ) as
         | Extract<CatalogReleaseDocument, { kind: "subject" | "alias" }>
         | undefined;
-      if (!predecessorDocument) {
+      if (
+        !predecessorDocument &&
+        rules.requirePublishedPredecessorForRetirement
+      ) {
         violations.push(
           violation({
             code: "lifecycle-tombstone-mismatch",
@@ -1266,6 +1324,7 @@ const validateRetirementLineage = (
         );
         continue;
       }
+      if (!predecessorDocument) continue;
       const predecessorTombstone = predecessorDocument.content.tombstone;
       const predecessorWasRetired =
         predecessorDocument.content.lifecycle === "retired" &&
@@ -1276,7 +1335,10 @@ const validateRetirementLineage = (
       const expectedSelector = predecessorWasRetired
         ? predecessorTombstone.previousSelector
         : retirementSelector(predecessorDocument);
-      if (tombstone.withdrawnByReleaseId !== expectedReleaseId) {
+      if (
+        rules.requireActualRetirementRelease &&
+        tombstone.withdrawnByReleaseId !== expectedReleaseId
+      ) {
         violations.push(
           violation({
             code: "lifecycle-tombstone-mismatch",
@@ -1286,7 +1348,11 @@ const validateRetirementLineage = (
           }),
         );
       }
-      if (tombstone.previousSelector !== expectedSelector) {
+      if (
+        (rules.requireExactPredecessorSelector ||
+          rules.preserveOriginalPreviousSelector) &&
+        tombstone.previousSelector !== expectedSelector
+      ) {
         violations.push(
           violation({
             code: "lifecycle-tombstone-mismatch",
@@ -1296,7 +1362,11 @@ const validateRetirementLineage = (
           }),
         );
       }
-      if (tombstone.successorId === undefined) continue;
+      if (
+        tombstone.successorId === undefined ||
+        !rules.requireActiveSameKindSuccessor
+      )
+        continue;
       const candidates = release.documents.filter(
         (candidate) => candidate.content.id === tombstone.successorId,
       );
@@ -1314,10 +1384,14 @@ const validateRetirementLineage = (
       const successor = candidates.find(
         (
           candidate,
-        ): candidate is Extract<CatalogReleaseDocument, { kind: "subject" | "alias" }> =>
+        ): candidate is Extract<
+          CatalogReleaseDocument,
+          { kind: "subject" | "alias" }
+        > =>
           (candidate.kind === "subject" || candidate.kind === "alias") &&
           candidate.kind === document.kind &&
-          retirementSemanticKind(candidate) === retirementSemanticKind(document),
+          retirementSemanticKind(candidate) ===
+            retirementSemanticKind(document),
       );
       if (!successor) {
         violations.push(
@@ -1348,6 +1422,7 @@ const validateRetirementLineage = (
 
 const validateLineage = (
   bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules["lineageRules"] = stableCatalogRules.lineageRules,
 ): CatalogReleaseViolation[] => {
   const violations: CatalogReleaseViolation[] = [];
   const releasesById = new Map<string, CatalogReleaseNode>();
@@ -1366,7 +1441,11 @@ const validateLineage = (
       );
     }
     const versionOwner = versions.get(version);
-    if (versionOwner !== undefined && versionOwner !== id) {
+    if (
+      rules.requireUniqueReleaseVersion &&
+      versionOwner !== undefined &&
+      versionOwner !== id
+    ) {
       violations.push(
         violation({
           code: "stable-key-reassigned",
@@ -1376,7 +1455,11 @@ const validateLineage = (
       );
     }
     const digestOwner = digests.get(digest);
-    if (digestOwner !== undefined && digestOwner !== id) {
+    if (
+      rules.requireUniqueReleaseDigest &&
+      digestOwner !== undefined &&
+      digestOwner !== id
+    ) {
       violations.push(
         violation({
           code: "stable-key-reassigned",
@@ -1407,7 +1490,7 @@ const validateLineage = (
   let current: CatalogReleaseNode | undefined = target;
   while (current !== undefined) {
     const releaseId = current.manifest.release.id;
-    if (active.has(releaseId)) {
+    if (rules.requireAcyclic && active.has(releaseId)) {
       violations.push(
         violation({
           code: "predecessor-mismatch",
@@ -1434,7 +1517,10 @@ const validateLineage = (
       );
       break;
     }
-    if (predecessor.manifest.release.digest !== predecessorPin.digest) {
+    if (
+      rules.requirePredecessorDigestMatch &&
+      predecessor.manifest.release.digest !== predecessorPin.digest
+    ) {
       violations.push(
         violation({
           code: "predecessor-mismatch",
@@ -1444,8 +1530,9 @@ const validateLineage = (
       );
     }
     if (
+      rules.requireGapFreeSequence &&
       predecessor.manifest.release.sequence + 1 !==
-      current.manifest.release.sequence
+        current.manifest.release.sequence
     ) {
       violations.push(
         violation({
@@ -1458,7 +1545,7 @@ const validateLineage = (
     current = predecessor;
   }
 
-  if (visited.size !== releasesById.size) {
+  if (rules.requireConnectedFromTarget && visited.size !== releasesById.size) {
     const disconnected = [...releasesById.keys()]
       .filter((id) => !visited.has(id))
       .sort();
@@ -1478,6 +1565,7 @@ const validateLineage = (
 
 export const validateForCompilation = (
   bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules = stableCatalogRules,
 ): CompilerValidation => {
   const releases = orderedReleaseNodes(bundle.releases).map((release) => ({
     ...release,
@@ -1499,19 +1587,97 @@ export const validateForCompilation = (
     ...bundle,
     releases,
   };
+  const sourceViolations = validateSources(releases, rules.manifestRules);
+  if (sourceViolations.length > 0) {
+    return {
+      source: orderViolations(sourceViolations),
+      compile: [],
+      lineage: [],
+    };
+  }
+
+  const derivedReleases = releases.map((release) => {
+    const derived = deriveSourceDocuments(release);
+    if (derived.failures.length > 0) {
+      sourceViolations.push(
+        ...derived.failures.map((failure) =>
+          violation({
+            code: "manifest-unreadable",
+            location: sourceLocation(release.manifest.release.id, failure.path),
+            detail: failure.detail,
+          }),
+        ),
+      );
+      return release;
+    }
+    const declared = sortContractArray(release.documents, (document) => [
+      document.kind,
+      document.content.id,
+    ]);
+    const authoritative = sortContractArray(derived.documents, (document) => [
+      document.kind,
+      document.content.id,
+    ]);
+    if (
+      serializeContract(declared as unknown as ContractJsonValue) !==
+      serializeContract(authoritative as unknown as ContractJsonValue)
+    ) {
+      sourceViolations.push(
+        violation({
+          code: "normalization-nondeterministic",
+          location: `release:${release.manifest.release.id}`,
+          detail: "source-document-authority-mismatch",
+        }),
+      );
+    }
+    return { ...release, documents: authoritative };
+  });
+  if (sourceViolations.length > 0) {
+    return {
+      source: orderViolations(sourceViolations),
+      compile: [],
+      lineage: [],
+    };
+  }
+
+  const authoritativeBundle: CatalogReleaseBundle = {
+    ...normalizedBundle,
+    releases: derivedReleases,
+  };
   return {
-    source: orderViolations(validateSources(releases)),
+    source: [],
     compile: orderViolations([
-      ...validateCompileContent(releases),
-      ...validateStableIdentityLineage(releases),
-      ...validatePermanentSelectorOwnership(releases),
+      ...validateCompileContent(derivedReleases, rules),
+      ...validateStableIdentityLineage(derivedReleases, rules.identityRules),
+      ...validatePermanentSelectorOwnership(
+        derivedReleases,
+        rules.selectorRules,
+      ),
     ]),
     lineage: orderViolations([
-      ...validateLineage(normalizedBundle),
-      ...validateLineageContent(normalizedBundle),
-      ...validateRetirementLineage(normalizedBundle),
+      ...validateLineage(authoritativeBundle, rules.lineageRules),
+      ...validateLineageContent(authoritativeBundle, rules),
+      ...validateRetirementLineage(authoritativeBundle, rules.retirementRules),
     ]),
   };
+};
+
+export interface PreparedCompilation {
+  readonly bundle: CatalogReleaseBundle;
+  readonly validation: CompilerValidation;
+}
+
+export const prepareForCompilation = (
+  bundle: CatalogReleaseBundle,
+  rules: StableCatalogRules = stableCatalogRules,
+): PreparedCompilation => {
+  const validation = validateForCompilation(bundle, rules);
+  if (validation.source.length > 0) return { bundle, validation };
+  const releases = bundle.releases.map((release) => ({
+    ...release,
+    documents: deriveSourceDocuments(release).documents,
+  }));
+  return { bundle: { ...bundle, releases }, validation };
 };
 
 export const firstFailedPhase = (

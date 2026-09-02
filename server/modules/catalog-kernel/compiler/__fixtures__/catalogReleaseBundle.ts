@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
+import { stringify } from "yaml";
+
 import {
   serializeContract,
   type ContractJsonValue,
@@ -28,30 +30,11 @@ const sha256 = (bytes: string | Uint8Array): string =>
 const canonicalDigest = (value: ContractJsonValue): string =>
   sha256(serializeContract(value));
 
-const sourceBytes = Buffer.from(
-  [
-    "$schema: https://devicetree.org/meta-schemas/core.yaml#",
-    "$id: https://wiseeff.dev/catalog-test/acme-power.yaml",
-    "title: ACME power driver",
-    "type: object",
-    "additionalProperties: true",
-    "",
-  ].join("\n"),
-  "utf8",
-);
-
-const source = Object.freeze({
+const source = {
   path: "schemas/dts/vendor/acme-power.yaml",
   mediaType: "application/yaml" as const,
-  digest: sha256(sourceBytes),
-});
-
-const sourceInventory = Object.freeze({
-  path: source.path,
-  mediaType: source.mediaType,
-  encoding: "base64" as const,
-  bytes: sourceBytes.toString("base64"),
-});
+  digest: `sha256:${"0".repeat(64)}`,
+};
 
 const revisionContent = {
   lifecycle: "active",
@@ -102,7 +85,7 @@ const documents = (): CatalogReleaseDocument[] => {
     selector: {
       kind: "driver-compatible",
       value: "acme,power",
-      provenance: { source: source.path, sourceDigest: source.digest },
+      provenance: { source: source.path },
     },
     subtype: {
       nature: "physical-device",
@@ -170,56 +153,100 @@ const compareBy = <Value>(
       );
 };
 
-const aggregateModel = (release: CatalogReleaseNode): ContractJsonValue => ({
-  "/manifest/schemaVersion": release.manifest.schemaVersion,
-  "/manifest/release/id": release.manifest.release.id,
-  "/manifest/release/version": release.manifest.release.version,
-  "/manifest/release/sequence": release.manifest.release.sequence,
-  "/manifest/release/publishedAt": release.manifest.release.publishedAt,
-  "/manifest/release/predecessor": release.manifest.release.predecessor,
-  "/manifest/toolchain": release.manifest.toolchain,
-  "/manifest/files": [...release.manifest.files].sort((left, right) =>
-    compareBy(left, right, (value) => value.path),
-  ),
-  "/manifest/documents": [...release.manifest.documents].sort((left, right) =>
-    compareBy(left, right, (value) => `${value.kind}\n${value.documentId}`),
-  ),
-  "/sources": [...release.sources].sort((left, right) =>
-    compareBy(left, right, (value) => value.path),
-  ),
-  "/documents": [...release.documents].sort((left, right) =>
-    compareBy(left, right, (value) => `${value.kind}\n${value.content.id}`),
-  ),
-}) as unknown as ContractJsonValue;
+const aggregateModel = (release: CatalogReleaseNode): ContractJsonValue =>
+  ({
+    "/manifest/schemaVersion": release.manifest.schemaVersion,
+    "/manifest/release/id": release.manifest.release.id,
+    "/manifest/release/version": release.manifest.release.version,
+    "/manifest/release/sequence": release.manifest.release.sequence,
+    "/manifest/release/publishedAt": release.manifest.release.publishedAt,
+    "/manifest/release/predecessor": release.manifest.release.predecessor,
+    "/manifest/toolchain": release.manifest.toolchain,
+    "/manifest/files": [...release.manifest.files].sort((left, right) =>
+      compareBy(left, right, (value) => value.path),
+    ),
+    "/manifest/documents": [...release.manifest.documents].sort((left, right) =>
+      compareBy(left, right, (value) => `${value.kind}\n${value.documentId}`),
+    ),
+    "/sources": [...release.sources].sort((left, right) =>
+      compareBy(left, right, (value) => value.path),
+    ),
+    "/documents": [...release.documents].sort((left, right) =>
+      compareBy(left, right, (value) => `${value.kind}\n${value.content.id}`),
+    ),
+  }) as unknown as ContractJsonValue;
 
 export const refreshReleaseAggregateDigest = (
-  release: CatalogReleaseNode,
+  release: DeepMutable<CatalogReleaseNode>,
 ): void => {
   release.manifest.release.digest = canonicalDigest(aggregateModel(release));
+};
+
+const encodeAuthoritativeSource = (
+  releaseDocuments: readonly CatalogReleaseDocument[],
+): Buffer =>
+  Buffer.from(
+    stringify(
+      {
+        schemaVersion: "1.0.0",
+        documents: releaseDocuments.map((document) => ({
+          kind: document.kind,
+          content: document.content,
+        })),
+      },
+      { lineWidth: 0 },
+    ),
+    "utf8",
+  );
+
+const refreshAuthoritativeSource = (
+  release: DeepMutable<CatalogReleaseNode>,
+): void => {
+  for (const document of release.documents) {
+    if (document.kind === "definition") {
+      document.content.revision.contentDigest = canonicalDigest(
+        revisionModel(document as CatalogReleaseDefinitionDocument),
+      );
+    }
+    document.normalizedDigest = canonicalDigest(
+      document.content as unknown as ContractJsonValue,
+    );
+  }
+  const bytes = encodeAuthoritativeSource(release.documents);
+  const digest = sha256(bytes);
+  release.sources = [
+    {
+      path: source.path,
+      mediaType: source.mediaType,
+      encoding: "base64",
+      bytes: bytes.toString("base64"),
+    },
+  ];
+  release.manifest.files = [
+    { path: source.path, mediaType: source.mediaType, digest },
+  ];
+  for (const document of release.documents) {
+    document.source = {
+      path: source.path,
+      mediaType: source.mediaType,
+      digest,
+    };
+  }
+  release.manifest.documents = release.documents.map((document) => ({
+    sourcePath: document.source.path,
+    kind: document.kind,
+    documentId: document.content.id,
+    normalizedDigest: document.normalizedDigest,
+  }));
+  refreshReleaseAggregateDigest(release);
 };
 
 const refreshDocumentAndReleaseDigests = (
   release: DeepMutable<CatalogReleaseNode>,
   document: DeepMutable<CatalogReleaseDocument>,
-  previousDocumentId: string = document.content.id,
+  _previousDocumentId: string = document.content.id,
 ): void => {
-  if (document.kind === "definition") {
-    document.content.revision.contentDigest = canonicalDigest(
-      revisionModel(document as CatalogReleaseDefinitionDocument),
-    );
-  }
-  document.normalizedDigest = canonicalDigest(
-    document.content as unknown as ContractJsonValue,
-  );
-  const descriptor = release.manifest.documents.find(
-    (candidate) =>
-      candidate.kind === document.kind &&
-      candidate.documentId === previousDocumentId,
-  );
-  if (!descriptor) throw new Error("fixture document descriptor missing");
-  descriptor.documentId = document.content.id;
-  descriptor.normalizedDigest = document.normalizedDigest;
-  refreshReleaseAggregateDigest(release);
+  refreshAuthoritativeSource(release);
 };
 
 const targetRelease = (
@@ -256,7 +283,13 @@ const releaseNode = (
         jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
         sourceFormat: "wiseeff-catalog-release@1",
       },
-      files: [{ path: source.path, mediaType: source.mediaType, digest: source.digest }],
+      files: [
+        {
+          path: source.path,
+          mediaType: source.mediaType,
+          digest: source.digest,
+        },
+      ],
       documents: releaseDocuments.map((document) => ({
         sourcePath: document.source.path,
         kind: document.kind,
@@ -264,10 +297,10 @@ const releaseNode = (
         normalizedDigest: document.normalizedDigest,
       })),
     },
-    sources: [sourceInventory],
+    sources: [],
     documents: releaseDocuments,
   };
-  refreshReleaseAggregateDigest(release);
+  refreshAuthoritativeSource(mutable(release));
   return release;
 };
 
@@ -297,18 +330,16 @@ export const reorderCatalogReleaseBundle = (
   bundle: CatalogReleaseBundle,
 ): CatalogReleaseBundle => ({
   ...structuredClone(bundle),
-  releases: [...structuredClone(bundle.releases)]
-    .reverse()
-    .map((release) => ({
-      ...release,
-      manifest: {
-        ...release.manifest,
-        files: [...release.manifest.files].reverse(),
-        documents: [...release.manifest.documents].reverse(),
-      },
-      sources: [...release.sources].reverse(),
-      documents: [...release.documents].reverse(),
-    })),
+  releases: [...structuredClone(bundle.releases)].reverse().map((release) => ({
+    ...release,
+    manifest: {
+      ...release.manifest,
+      files: [...release.manifest.files].reverse(),
+      documents: [...release.manifest.documents].reverse(),
+    },
+    sources: [...release.sources].reverse(),
+    documents: [...release.documents].reverse(),
+  })),
 });
 
 export const duplicateDefinitionIdentityBundle = (): CatalogReleaseBundle => {
@@ -330,32 +361,33 @@ export const duplicateDefinitionIdentityBundle = (): CatalogReleaseBundle => {
     documentId: duplicate.content.id,
     normalizedDigest: duplicate.normalizedDigest,
   });
-  refreshReleaseAggregateDigest(target);
+  refreshAuthoritativeSource(target);
   return bundle;
 };
 
-export const conflictingDuplicateDefinitionBundle = (): CatalogReleaseBundle => {
-  const bundle = duplicateDefinitionIdentityBundle();
-  const target = targetRelease(bundle);
-  const definitions = target.documents.filter(
-    (document) => document.kind === "definition",
-  );
-  const conflicting = definitions.at(-1);
-  if (!conflicting || conflicting.kind !== "definition") {
-    throw new Error("fixture duplicate Definition missing");
-  }
-  conflicting.content.subjectId = "csub_missing_owner";
-  conflicting.normalizedDigest = canonicalDigest(
-    conflicting.content as unknown as ContractJsonValue,
-  );
-  const descriptor = target.manifest.documents.at(-1);
-  if (!descriptor || descriptor.kind !== "definition") {
-    throw new Error("fixture duplicate Definition descriptor missing");
-  }
-  descriptor.normalizedDigest = conflicting.normalizedDigest;
-  refreshReleaseAggregateDigest(target);
-  return bundle;
-};
+export const conflictingDuplicateDefinitionBundle =
+  (): CatalogReleaseBundle => {
+    const bundle = duplicateDefinitionIdentityBundle();
+    const target = targetRelease(bundle);
+    const definitions = target.documents.filter(
+      (document) => document.kind === "definition",
+    );
+    const conflicting = definitions.at(-1);
+    if (!conflicting || conflicting.kind !== "definition") {
+      throw new Error("fixture duplicate Definition missing");
+    }
+    conflicting.content.subjectId = "csub_missing_owner";
+    conflicting.normalizedDigest = canonicalDigest(
+      conflicting.content as unknown as ContractJsonValue,
+    );
+    const descriptor = target.manifest.documents.at(-1);
+    if (!descriptor || descriptor.kind !== "definition") {
+      throw new Error("fixture duplicate Definition descriptor missing");
+    }
+    descriptor.normalizedDigest = conflicting.normalizedDigest;
+    refreshAuthoritativeSource(target);
+    return bundle;
+  };
 
 export const lineageGapBundle = (): CatalogReleaseBundle => {
   const bundle = validCatalogReleaseBundle();
@@ -461,15 +493,7 @@ export const invalidCanonicalPropertyBundle = (): CatalogReleaseBundle => {
     throw new Error("fixture target Definition missing");
   }
   definition.content.propertyKey = "STATUS";
-  definition.normalizedDigest = canonicalDigest(
-    definition.content as unknown as ContractJsonValue,
-  );
-  const descriptor = target.manifest.documents.find(
-    (candidate) => candidate.kind === "definition",
-  );
-  if (!descriptor) throw new Error("fixture Definition descriptor missing");
-  descriptor.normalizedDigest = definition.normalizedDigest;
-  refreshReleaseAggregateDigest(target);
+  refreshAuthoritativeSource(target);
   return bundle;
 };
 
@@ -512,8 +536,11 @@ export const malformedYamlSourceBundle = (): CatalogReleaseBundle => {
 export const reassignedSubjectIdentityBundle = (): CatalogReleaseBundle => {
   const bundle = validCatalogReleaseBundle();
   const target = targetRelease(bundle);
-  const subject = target.documents.find((document) => document.kind === "subject");
-  if (!subject || subject.kind !== "subject") throw new Error("fixture Subject missing");
+  const subject = target.documents.find(
+    (document) => document.kind === "subject",
+  );
+  if (!subject || subject.kind !== "subject")
+    throw new Error("fixture Subject missing");
   subject.content.canonicalKey = "driver:acme,power-renamed";
   refreshDocumentAndReleaseDigests(target, subject);
   return bundle;
@@ -522,11 +549,13 @@ export const reassignedSubjectIdentityBundle = (): CatalogReleaseBundle => {
 export const omittedPredecessorAliasBundle = (): CatalogReleaseBundle => {
   const bundle = validCatalogReleaseBundle();
   const target = targetRelease(bundle);
-  target.documents = target.documents.filter((document) => document.kind !== "alias");
+  target.documents = target.documents.filter(
+    (document) => document.kind !== "alias",
+  );
   target.manifest.documents = target.manifest.documents.filter(
     (document) => document.kind !== "alias",
   );
-  refreshReleaseAggregateDigest(target);
+  refreshAuthoritativeSource(target);
   return bundle;
 };
 
@@ -534,7 +563,8 @@ export const aliasCanonicalCollisionBundle = (): CatalogReleaseBundle => {
   const bundle = validCatalogReleaseBundle();
   const target = targetRelease(bundle);
   const alias = target.documents.find((document) => document.kind === "alias");
-  if (!alias || alias.kind !== "alias") throw new Error("fixture Alias missing");
+  if (!alias || alias.kind !== "alias")
+    throw new Error("fixture Alias missing");
   alias.content.normalizedSelector = "acme,power";
   refreshDocumentAndReleaseDigests(target, alias);
   return bundle;
@@ -543,8 +573,11 @@ export const aliasCanonicalCollisionBundle = (): CatalogReleaseBundle => {
 export const lifecycleTombstoneMismatchBundle = (): CatalogReleaseBundle => {
   const bundle = validCatalogReleaseBundle();
   const target = targetRelease(bundle);
-  const subject = target.documents.find((document) => document.kind === "subject");
-  if (!subject || subject.kind !== "subject") throw new Error("fixture Subject missing");
+  const subject = target.documents.find(
+    (document) => document.kind === "subject",
+  );
+  if (!subject || subject.kind !== "subject")
+    throw new Error("fixture Subject missing");
   subject.content.tombstone = {
     reason: "withdrawn",
     withdrawnByReleaseId: target.manifest.release.id,
@@ -621,7 +654,8 @@ export const forbiddenValueSchemaReferenceBundle = (): CatalogReleaseBundle =>
     definition.content.revision.id = "drev_acme_power_iin_max_2";
     definition.content.revision.number = 2;
     definition.content.revision.valueSchema = {
-      $ref: "https://example.invalid/schema.json",
+      $defs: { value: { type: "integer" } },
+      $ref: "#/$defs/value",
     };
   });
 
@@ -669,5 +703,61 @@ export const invalidRetirementProvenanceBundle = (): CatalogReleaseBundle => {
     previousSelector: alias.content.normalizedSelector,
   };
   refreshDocumentAndReleaseDigests(target, alias);
+  return bundle;
+};
+
+export const unrelatedAuthoritativeSourceBundle = (): CatalogReleaseBundle => {
+  const bundle = validCatalogReleaseBundle();
+  const target = targetRelease(bundle);
+  const bytes = Buffer.from(
+    stringify(
+      {
+        schemaVersion: "1.0.0",
+        documents: [
+          {
+            kind: "subject",
+            content: {
+              id: "csub_unrelated",
+              kind: "driver",
+              canonicalKey: "driver:unrelated,device",
+              lifecycle: "active",
+              selector: {
+                kind: "driver-compatible",
+                value: "unrelated,device",
+                provenance: { source: source.path },
+              },
+              subtype: {
+                nature: "physical-device",
+                cardinality: { kind: "multiple" },
+              },
+              tombstone: null,
+            },
+          },
+        ],
+      },
+      { lineWidth: 0 },
+    ),
+    "utf8",
+  );
+  const digest = sha256(bytes);
+  target.sources = [
+    {
+      path: source.path,
+      mediaType: source.mediaType,
+      encoding: "base64",
+      bytes: bytes.toString("base64"),
+    },
+  ];
+  target.manifest.files = [
+    { path: source.path, mediaType: source.mediaType, digest },
+  ];
+  for (const document of target.documents) {
+    document.source = {
+      path: source.path,
+      mediaType: source.mediaType,
+      digest,
+    };
+  }
+  refreshReleaseAggregateDigest(target);
   return bundle;
 };

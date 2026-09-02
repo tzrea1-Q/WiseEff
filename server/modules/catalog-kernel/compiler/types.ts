@@ -112,7 +112,7 @@ export interface CatalogReleaseNode {
       readonly version: string;
       readonly sequence: number;
       readonly publishedAt: string;
-      digest: string;
+      readonly digest: string;
       readonly predecessor: null | {
         readonly id: string;
         readonly digest: string;

@@ -21,7 +21,7 @@ import { s1BundleContractArtifactDigest } from "./contractArtifacts";
 import {
   firstFailedPhase,
   isCatalogReleaseBundle,
-  validateForCompilation,
+  prepareForCompilation,
 } from "./validation";
 
 const compare = (left: string, right: string): number =>
@@ -51,8 +51,8 @@ const sorted = <Value>(
 const normalizeRelease = (node: CatalogReleaseNode) => ({
   release: structuredClone(node.manifest.release),
   toolchain: structuredClone(node.manifest.toolchain),
-  files: sorted(node.manifest.files, (file) => [file.path]),
-  documents: sorted(node.documents, (document) => [
+  files: sorted(structuredClone(node.manifest.files), (file) => [file.path]),
+  documents: sorted(structuredClone(node.documents), (document) => [
     document.kind,
     document.content.id,
   ]),
@@ -87,12 +87,13 @@ const targetCounts = (documents: readonly CatalogReleaseDocument[]) => {
 export const compileCatalogRelease = (
   bundle: CatalogReleaseBundle,
 ): CompileCatalogReleaseResult => {
-  let validation: ReturnType<typeof validateForCompilation> | null = null;
+  let prepared: ReturnType<typeof prepareForCompilation> | null = null;
   try {
-    validation = validateForCompilation(bundle);
+    prepared = prepareForCompilation(bundle);
   } catch {
-    validation = null;
+    prepared = null;
   }
+  const validation = prepared?.validation ?? null;
   const failedPhase = validation && firstFailedPhase(validation);
   if (failedPhase && validation !== null) {
     return {
@@ -104,7 +105,11 @@ export const compileCatalogRelease = (
       },
     };
   }
-  if (validation === null || !isCatalogReleaseBundle(bundle)) {
+  if (
+    prepared === null ||
+    validation === null ||
+    !isCatalogReleaseBundle(bundle)
+  ) {
     return {
       ok: false,
       error: {
@@ -122,52 +127,49 @@ export const compileCatalogRelease = (
     };
   }
 
-  const releases = sorted(bundle.releases, (node) => [
+  const authoritativeBundle = prepared.bundle;
+  const releases = sorted(authoritativeBundle.releases, (node) => [
     node.manifest.release.sequence,
     node.manifest.release.id,
   ]).map(normalizeRelease);
   const target = releases.find(
-    (candidate) => candidate.release.id === bundle.targetReleaseId,
+    (candidate) => candidate.release.id === authoritativeBundle.targetReleaseId,
   );
 
   if (!target) throw new Error("validated target release disappeared");
 
   const toolchainDigest = hash(
-    serializeContract(
-      {
-        compilerContractFingerprint: catalogCompilerContractFingerprint,
-        s1BundleContractArtifactDigest,
-        releases: releases.map(({ release, toolchain }) => ({
-          releaseId: release.id,
-          toolchain,
-        })),
-      } as unknown as ContractJsonValue,
-    ),
+    serializeContract({
+      compilerContractFingerprint: catalogCompilerContractFingerprint,
+      s1BundleContractArtifactDigest,
+      releases: releases.map(({ release, toolchain }) => ({
+        releaseId: release.id,
+        toolchain,
+      })),
+    } as unknown as ContractJsonValue),
   );
   const model: CompiledCatalogReleaseModel = {
     schemaVersion: "1.0.0",
     compilerContractFingerprint: catalogCompilerContractFingerprint,
-    targetReleaseId: bundle.targetReleaseId,
+    targetReleaseId: authoritativeBundle.targetReleaseId,
     toolchainDigest,
     releases,
   };
   const bytes = serializeContract(model as unknown as ContractJsonValue);
   const compiledReleaseDigest = hash(bytes);
   const materializationFingerprint = hash(
-    serializeContract(
-      {
-        release: target.release,
-        subjects: target.documents
-          .filter((document) => document.kind === "subject")
-          .map((document) => document.content),
-        aliases: target.documents
-          .filter((document) => document.kind === "alias")
-          .map((document) => document.content),
-        definitions: target.documents
-          .filter((document) => document.kind === "definition")
-          .map((document) => document.content),
-      } as unknown as ContractJsonValue,
-    ),
+    serializeContract({
+      release: target.release,
+      subjects: target.documents
+        .filter((document) => document.kind === "subject")
+        .map((document) => document.content),
+      aliases: target.documents
+        .filter((document) => document.kind === "alias")
+        .map((document) => document.content),
+      definitions: target.documents
+        .filter((document) => document.kind === "definition")
+        .map((document) => document.content),
+    } as unknown as ContractJsonValue),
   );
 
   return {

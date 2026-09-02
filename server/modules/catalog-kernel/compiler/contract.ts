@@ -21,7 +21,9 @@ export const catalogCompilerContract = deepFreeze({
   input: {
     bundleSchemaVersion: "1.0.0",
     s1BundleContractArtifactDigest,
-    authority: "validated-immutable-s1-bnd-bundle",
+    authority: "exact-yaml-source-bytes",
+    declarationRole: "compiler-verified-evidence",
+    schemaValidator: "ajv-2020-12",
   },
   output: {
     modelSchemaVersion: "1.0.0",
@@ -35,8 +37,6 @@ export const catalogCompilerContract = deepFreeze({
 
 export const catalogCompilerContractFingerprint = `sha256:${createHash("sha256")
   .update(
-    serializeContract(
-      catalogCompilerContract as unknown as ContractJsonValue,
-    ),
+    serializeContract(catalogCompilerContract as unknown as ContractJsonValue),
   )
   .digest("hex")}`;

@@ -6,6 +6,15 @@ import {
   compileCatalogRelease,
 } from "./index";
 import {
+  fingerprintContractArtifacts,
+  stableCatalogRules,
+} from "./contractArtifacts";
+import {
+  parseStableCatalogRules,
+  type StableCatalogRules,
+} from "./stableRules";
+import { validateForCompilation } from "./validation";
+import {
   duplicateDefinitionIdentityBundle,
   conflictingDuplicateDefinitionBundle,
   aliasCanonicalCollisionBundle,
@@ -28,12 +37,41 @@ import {
   staleAggregateDigestBundle,
   staleNormalizedContentBundle,
   unlistedSourceEntryBundle,
+  unrelatedAuthoritativeSourceBundle,
   validCatalogReleaseBundle,
   revisionSequenceGapBundle,
 } from "./__fixtures__/catalogReleaseBundle";
 import { compiledReleaseGolden } from "./__fixtures__/compiledReleaseGolden";
 
 describe("compileCatalogRelease", () => {
+  type Mutable<Value> = Value extends readonly (infer Item)[]
+    ? Mutable<Item>[]
+    : Value extends object
+      ? { -readonly [Key in keyof Value]: Mutable<Value[Key]> }
+      : Value;
+
+  const withRules = (
+    mutate: (rules: Mutable<StableCatalogRules>) => void,
+  ): StableCatalogRules => {
+    const rules = structuredClone(
+      stableCatalogRules,
+    ) as Mutable<StableCatalogRules>;
+    mutate(rules);
+    return rules;
+  };
+
+  const validationDetails = (
+    bundle: Parameters<typeof validateForCompilation>[0],
+    rules: StableCatalogRules,
+  ): readonly string[] => {
+    const validation = validateForCompilation(bundle, rules);
+    return [
+      ...validation.source,
+      ...validation.compile,
+      ...validation.lineage,
+    ].map((entry) => entry.detail);
+  };
+
   it("emits byte-identical output when bundle enumeration order changes", () => {
     const bundle = validCatalogReleaseBundle();
     const reordered = reorderCatalogReleaseBundle(bundle);
@@ -70,6 +108,8 @@ describe("compileCatalogRelease", () => {
       /^sha256:[0-9a-f]{64}$/u,
     );
     expect(Object.isFrozen(catalogCompilerContract)).toBe(true);
+    expect(Object.isFrozen(stableCatalogRules)).toBe(true);
+    expect(Object.isFrozen(stableCatalogRules.identityRules)).toBe(true);
   });
 
   it("returns an immutable compiled projection without raw source bytes", () => {
@@ -81,17 +121,163 @@ describe("compileCatalogRelease", () => {
     expect(result.value.model.compilerContractFingerprint).toBe(
       catalogCompilerContractFingerprint,
     );
-    expect(result.value.model.releases.every((release) => !("sources" in release))).toBe(
-      true,
-    );
+    expect(
+      result.value.model.releases.every((release) => !("sources" in release)),
+    ).toBe(true);
     expect(Object.isFrozen(result.value)).toBe(true);
     expect(Object.isFrozen(result.value.model.releases[0]?.documents[0])).toBe(
       true,
     );
+    expect(Object.isFrozen(bundle.releases[0]?.documents[0])).toBe(false);
 
     const bytes = result.value.bytes;
-    Object.defineProperty(bundle, "targetReleaseId", { value: "crel_tampered" });
+    Object.defineProperty(bundle, "targetReleaseId", {
+      value: "crel_tampered",
+    });
     expect(result.value.bytes).toBe(bytes);
+  });
+
+  it("rejects normalized declarations that were not derived from exact YAML", () => {
+    const result = compileCatalogRelease(unrelatedAuthoritativeSourceBundle());
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.phase).toBe("source");
+    expect(result.error.violations).toContainEqual(
+      expect.objectContaining({
+        code: "normalization-nondeterministic",
+        detail: "source-document-authority-mismatch",
+      }),
+    );
+  });
+
+  it("frames contract artifacts so newline-boundary collisions differ", () => {
+    const splitAfterNewline = fingerprintContractArtifacts([
+      { path: "a", bytes: "left\n" },
+      { path: "b", bytes: "right" },
+    ]);
+    const splitBeforeNewline = fingerprintContractArtifacts([
+      { path: "a", bytes: "left" },
+      { path: "b", bytes: "\nright" },
+    ]);
+
+    expect(splitAfterNewline).not.toBe(splitBeforeNewline);
+  });
+
+  it("drives every semantic rule group from the typed S1-BND rules artifact", () => {
+    const cases: readonly {
+      readonly name: string;
+      readonly bundle: Parameters<typeof validateForCompilation>[0];
+      readonly detail: string;
+      readonly rules: StableCatalogRules;
+    }[] = [
+      {
+        name: "manifestRules",
+        bundle: manifestDocumentUnlistedBundle(),
+        detail: "document-entry-not-listed-by-manifest",
+        rules: withRules((rules) => {
+          rules.manifestRules.exactDocumentSet = false;
+        }),
+      },
+      {
+        name: "definitionRevisionRules",
+        bundle: revisionSequenceGapBundle(),
+        detail: "definition-revision-sequence-gap",
+        rules: withRules((rules) => {
+          rules.definitionRevisionRules.transitionRules.changedContentRevisionIncrement = 2;
+        }),
+      },
+      {
+        name: "valueSchemaRules",
+        bundle: forbiddenValueSchemaReferenceBundle(),
+        detail: "definition-value-schema-ref-forbidden",
+        rules: withRules((rules) => {
+          rules.valueSchemaRules.forbiddenReferenceKeywords = [];
+        }),
+      },
+      {
+        name: "definitionLifecycleRules",
+        bundle: danglingDefinitionSuccessorBundle(),
+        detail: "definition-successor-missing",
+        rules: withRules((rules) => {
+          rules.definitionLifecycleRules.requireExistingSuccessor = false;
+        }),
+      },
+      {
+        name: "lineageRules",
+        bundle: lineageGapBundle(),
+        detail: "release-sequence-gap",
+        rules: withRules((rules) => {
+          rules.lineageRules.requireGapFreeSequence = false;
+        }),
+      },
+      {
+        name: "identityRules",
+        bundle: duplicateDefinitionIdentityBundle(),
+        detail: "definition-id-duplicate-in-release",
+        rules: withRules((rules) => {
+          for (const rule of rules.identityRules) rule.uniquePerRelease = false;
+        }),
+      },
+      {
+        name: "selectorRules",
+        bundle: aliasCanonicalCollisionBundle(),
+        detail: "alias-canonical-selector-collision",
+        rules: withRules((rules) => {
+          rules.selectorRules.forbidAliasCanonicalCollision = false;
+        }),
+      },
+      {
+        name: "retirementRules",
+        bundle: invalidRetirementProvenanceBundle(),
+        detail: "retirement-previous-selector-mismatch",
+        rules: withRules((rules) => {
+          rules.retirementRules.requireExactPredecessorSelector = false;
+          rules.retirementRules.preserveOriginalPreviousSelector = false;
+        }),
+      },
+      {
+        name: "membershipRules",
+        bundle: omittedPredecessorAliasBundle(),
+        detail: "predecessor-alias-membership-omitted",
+        rules: withRules((rules) => {
+          rules.membershipRules.requirePredecessorAliases = false;
+        }),
+      },
+    ];
+
+    for (const entry of cases) {
+      expect(
+        validationDetails(entry.bundle, stableCatalogRules),
+        `${entry.name} baseline`,
+      ).toContain(entry.detail);
+      expect(
+        validationDetails(entry.bundle, entry.rules),
+        `${entry.name} override`,
+      ).not.toContain(entry.detail);
+    }
+  });
+
+  it("fails closed when any stable semantic rule group drifts out of the artifact", () => {
+    const groups = [
+      "manifestRules",
+      "definitionRevisionRules",
+      "valueSchemaRules",
+      "definitionLifecycleRules",
+      "lineageRules",
+      "identityRules",
+      "selectorRules",
+      "retirementRules",
+      "membershipRules",
+    ] as const;
+
+    for (const group of groups) {
+      const drifted = structuredClone(stableCatalogRules) as unknown as Record<
+        string,
+        unknown
+      >;
+      delete drifted[group];
+      expect(() => parseStableCatalogRules(drifted), group).toThrow();
+    }
   });
 
   it("matches the compiler contract golden fingerprint and output digest", () => {
@@ -108,7 +294,7 @@ describe("compileCatalogRelease", () => {
     }).toEqual(compiledReleaseGolden);
   });
 
-  it("returns one deterministic violation for a duplicate Definition identity", () => {
+  it("returns deterministic definition and revision violations for duplicate identity", () => {
     const original = compileCatalogRelease(duplicateDefinitionIdentityBundle());
     const reordered = compileCatalogRelease(
       reorderCatalogReleaseBundle(duplicateDefinitionIdentityBundle()),
@@ -120,6 +306,18 @@ describe("compileCatalogRelease", () => {
         kind: "invalid-release",
         phase: "compile",
         violations: [
+          {
+            code: "duplicate-stable-identity",
+            location: {
+              kind: "present",
+              value: "release:crel_acme_2/definition:drev_acme_power_iin_max_1",
+            },
+            subjectId: {
+              kind: "present",
+              value: "csub_acme_power",
+            },
+            detail: "definition-revision-id-duplicate-in-release",
+          },
           {
             code: "duplicate-stable-identity",
             location: {
@@ -140,9 +338,9 @@ describe("compileCatalogRelease", () => {
 
   it("orders conflicting duplicate evidence independently of enumeration order", () => {
     const bundle = conflictingDuplicateDefinitionBundle();
-    expect(
-      compileCatalogRelease(reorderCatalogReleaseBundle(bundle)),
-    ).toEqual(compileCatalogRelease(bundle));
+    expect(compileCatalogRelease(reorderCatalogReleaseBundle(bundle))).toEqual(
+      compileCatalogRelease(bundle),
+    );
   });
 
   it("returns a deterministic predecessor violation for a sequence gap", () => {
@@ -220,19 +418,13 @@ describe("compileCatalogRelease", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.phase).toBe("compile");
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toEqual([
-      {
-        code: "aggregate-digest-mismatch",
-        detail: "release-aggregate-digest-mismatch",
-      },
+    expect(result.error.phase).toBe("source");
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toEqual([
       {
         code: "normalization-nondeterministic",
-        detail: "document-normalized-digest-mismatch",
-      },
-      {
-        code: "revision-derivation-invalid",
-        detail: "definition-revision-content-digest-mismatch",
+        detail: "source-document-authority-mismatch",
       },
     ]);
   });
@@ -243,7 +435,9 @@ describe("compileCatalogRelease", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.phase).toBe("compile");
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toEqual([
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toEqual([
       {
         code: "aggregate-digest-mismatch",
         detail: "release-aggregate-digest-mismatch",
@@ -329,7 +523,9 @@ describe("compileCatalogRelease", () => {
     const result = compileCatalogRelease(reassignedSubjectIdentityBundle());
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toContainEqual({
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toContainEqual({
       code: "stable-key-reassigned",
       detail: "subject-id-reassigned",
     });
@@ -340,7 +536,9 @@ describe("compileCatalogRelease", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.phase).toBe("lineage");
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toContainEqual({
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toContainEqual({
       code: "membership-omitted",
       detail: "predecessor-alias-membership-omitted",
     });
@@ -350,7 +548,9 @@ describe("compileCatalogRelease", () => {
     const result = compileCatalogRelease(aliasCanonicalCollisionBundle());
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toContainEqual({
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toContainEqual({
       code: "alias-collision",
       detail: "alias-canonical-selector-collision",
     });
@@ -360,7 +560,9 @@ describe("compileCatalogRelease", () => {
     const result = compileCatalogRelease(lifecycleTombstoneMismatchBundle());
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toContainEqual({
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toContainEqual({
       code: "lifecycle-tombstone-mismatch",
       detail: "active-subject-has-tombstone",
     });
@@ -371,7 +573,9 @@ describe("compileCatalogRelease", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.phase).toBe("lineage");
-    expect(result.error.violations.map(({ code, detail }) => ({ code, detail }))).toContainEqual({
+    expect(
+      result.error.violations.map(({ code, detail }) => ({ code, detail })),
+    ).toContainEqual({
       code: "revision-derivation-invalid",
       detail: "definition-revision-sequence-gap",
     });
