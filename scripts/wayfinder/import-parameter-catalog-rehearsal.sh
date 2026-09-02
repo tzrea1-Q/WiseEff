@@ -8,10 +8,12 @@ container_name=""
 database_name=""
 database_user="wiseeff"
 artifact_dir=""
+validate_artifact_only="false"
 
 usage() {
   printf '%s\n' \
-    'Usage: import-parameter-catalog-rehearsal.sh --container NAME --database wiseeff_wayfinder671_restore_SUFFIX --artifact-dir ABSOLUTE_PATH [--user NAME]'
+    'Usage: import-parameter-catalog-rehearsal.sh --container NAME --database wiseeff_wayfinder671_restore_SUFFIX --artifact-dir ABSOLUTE_PATH [--user NAME]' \
+    '       import-parameter-catalog-rehearsal.sh --validate-artifact-only --artifact-dir ABSOLUTE_PATH'
 }
 
 while (($# > 0)); do
@@ -32,6 +34,10 @@ while (($# > 0)); do
       artifact_dir="${2:?missing value for --artifact-dir}"
       shift 2
       ;;
+    --validate-artifact-only)
+      validate_artifact_only="true"
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -44,17 +50,21 @@ while (($# > 0)); do
   esac
 done
 
-if [[ -z "${container_name}" || -z "${database_name}" || -z "${artifact_dir}" ]]; then
+if [[ -z "${artifact_dir}" \
+   || ( "${validate_artifact_only}" != "true" \
+        && ( -z "${container_name}" || -z "${database_name}" ) ) ]]; then
   usage >&2
   exit 2
 fi
 
-if [[ ! "${database_name}" =~ ^wiseeff_wayfinder671_restore_[a-z0-9_]+$ ]]; then
+if [[ "${validate_artifact_only}" != "true" \
+   && ! "${database_name}" =~ ^wiseeff_wayfinder671_restore_[a-z0-9_]+$ ]]; then
   printf '%s\n' 'Target database must use the dedicated wiseeff_wayfinder671_restore_ prefix.' >&2
   exit 2
 fi
 
-if [[ ! "${database_user}" =~ ^[A-Za-z0-9_]+$ || "${artifact_dir}" != /* || ! -d "${artifact_dir}" ]]; then
+if [[ ! "${database_user}" =~ ^[A-Za-z0-9_]+$ || "${artifact_dir}" != /* \
+   || ! -d "${artifact_dir}" || -L "${artifact_dir}" ]]; then
   printf '%s\n' 'User must be a simple identifier and artifact directory must be an existing absolute path.' >&2
   exit 2
 fi
@@ -145,6 +155,14 @@ for file in "${checksum_files[@]}"; do
   fi
 done
 
+secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
+for file in SHA256SUMS "${checksum_files[@]}"; do
+  if LC_ALL=C grep -aEiq "${secret_pattern}" "${artifact_dir}/${file}"; then
+    printf 'Sensitive-token pattern detected in %s.\n' "${file}" >&2
+    exit 1
+  fi
+done
+
 manifest_value() {
   local key="$1"
   awk -F, -v key="${key}" '
@@ -163,14 +181,30 @@ data_rows_exported_manifest="$(manifest_value data_rows_exported || true)"
 source_data_rows_exported="$(manifest_value source_data_rows_exported || true)"
 synthetic_fixture_version="$(manifest_value synthetic_fixture_version || true)"
 import_populates_synthetic_rows="$(manifest_value import_populates_synthetic_rows || true)"
+historical_source_commit="$(manifest_value historical_source_commit || true)"
+historical_bundle_sha256="$(manifest_value historical_bundle_sha256 || true)"
+synthetic_fixture_verify_sha256="$(manifest_value synthetic_fixture_verify_sha256 || true)"
 if [[ "${format_version}" != "2" \
    || "${artifact_kind}" != "parameter-catalog-populated-rehearsal-fixture" \
    || "${data_rows_exported_manifest}" != "0" \
    || "${source_data_rows_exported}" != "0" \
    || "${synthetic_fixture_version}" != "1" \
-   || "${import_populates_synthetic_rows}" != "true" ]]; then
+   || "${import_populates_synthetic_rows}" != "true" \
+   || "${historical_source_commit}" != "6c3adfc35c0e3be6d5d381013dace9408190380e" \
+   || "${historical_bundle_sha256}" != "017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff" \
+   || ! "${synthetic_fixture_verify_sha256}" =~ ^[0-9a-f]{64}$ ]]; then
   printf '%s\n' 'Artifact manifest does not describe the required populated synthetic fixture.' >&2
   exit 1
+fi
+if [[ "$(sha256_file "${artifact_dir}/synthetic-fixture-verify.sql")" \
+   != "${synthetic_fixture_verify_sha256}" ]]; then
+  printf '%s\n' 'Artifact manifest verifier checksum does not match synthetic-fixture-verify.sql.' >&2
+  exit 1
+fi
+
+if [[ "${validate_artifact_only}" == "true" ]]; then
+  printf '%s\n' 'ARTIFACT_OK'
+  exit 0
 fi
 
 database_exists="$(docker exec -i "${container_name}" psql -X -q --no-psqlrc -At \
@@ -181,9 +215,10 @@ if [[ "${database_exists}" != "1" ]]; then
   exit 1
 fi
 
-target_user_object_count="$(docker exec -i "${container_name}" psql -X -q --no-psqlrc -At \
-  -U "${database_user}" -d "${database_name}" \
-  -c "with user_namespaces as (
+target_user_object_count() {
+  docker exec -i "${container_name}" psql -X -q --no-psqlrc -At \
+    -U "${database_user}" -d "${database_name}" \
+    -c "with user_namespaces as (
         select oid
         from pg_namespace
         where nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
@@ -208,8 +243,10 @@ target_user_object_count="$(docker exec -i "${container_name}" psql -X -q --no-p
           ((select count(*) from pg_publication)),
           ((select count(*) from pg_foreign_server))
       )
-      select coalesce(sum(value), 0) from object_counts")"
-if [[ "${target_user_object_count}" != "0" ]]; then
+      select coalesce(sum(value), 0) from object_counts"
+}
+
+if [[ "$(target_user_object_count)" != "0" ]]; then
   printf '%s\n' 'Target database contains user-defined objects; refusing to overwrite or merge.' >&2
   exit 1
 fi
@@ -220,29 +257,58 @@ target_psql() {
     -U "${database_user}" -d "${database_name}" "$@"
 }
 
-target_psql < "${artifact_dir}/schema.sql"
-target_psql < "${artifact_dir}/profile-schema.sql"
+import_temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/wiseeff-wayfinder671-import.XXXXXX")"
+import_log="${import_temp_dir}/import.log"
+cleanup_import_temp() {
+  if ! rm -rf -- "${import_temp_dir}" || [[ -e "${import_temp_dir}" ]]; then
+    printf '%s\n' 'CLEANUP_FAILED' >&2
+    return 1
+  fi
+}
 
-target_psql -c '\copy wayfinder_rehearsal.relations from stdin with (format csv, header true)' < "${artifact_dir}/relations.csv"
-target_psql -c '\copy wayfinder_rehearsal.columns from stdin with (format csv, header true)' < "${artifact_dir}/columns.csv"
-target_psql -c '\copy wayfinder_rehearsal.constraints from stdin with (format csv, header true)' < "${artifact_dir}/constraints.csv"
-target_psql -c '\copy wayfinder_rehearsal.indexes from stdin with (format csv, header true)' < "${artifact_dir}/indexes.csv"
-target_psql -c '\copy wayfinder_rehearsal.triggers from stdin with (format csv, header true)' < "${artifact_dir}/triggers.csv"
-target_psql -c '\copy wayfinder_rehearsal.migration_inventory from stdin with (format csv, header true)' < "${artifact_dir}/migration-inventory.csv"
-target_psql -c '\copy wayfinder_rehearsal.row_counts from stdin with (format csv, header true)' < "${artifact_dir}/row-counts.csv"
-target_psql -c '\copy wayfinder_rehearsal.row_classes from stdin with (format csv, header true)' < "${artifact_dir}/row-classes.csv"
-target_psql -c '\copy wayfinder_rehearsal.invariant_counts from stdin with (format csv, header true)' < "${artifact_dir}/invariant-counts.csv"
-target_psql -c '\copy wayfinder_rehearsal.manifest from stdin with (format csv, header true)' < "${artifact_dir}/manifest.csv"
+import_status=0
 {
-  printf '%s\n' 'begin;'
+  printf '%s\n' '\set ON_ERROR_STOP on' 'begin;'
+  sed 's/\r$//' "${artifact_dir}/schema.sql"
+  printf '%s\n' 'set local search_path = public, pg_catalog;'
+  sed 's/\r$//' "${artifact_dir}/profile-schema.sql"
+  for table in relations columns constraints indexes triggers migration_inventory row_counts row_classes invariant_counts manifest; do
+    file="${table//_/-}.csv"
+    if [[ "${table}" == "migration_inventory" ]]; then file="migration-inventory.csv"; fi
+    if [[ "${table}" == "row_counts" ]]; then file="row-counts.csv"; fi
+    if [[ "${table}" == "row_classes" ]]; then file="row-classes.csv"; fi
+    if [[ "${table}" == "invariant_counts" ]]; then file="invariant-counts.csv"; fi
+    printf '%s\n' "\\copy wayfinder_rehearsal.${table} from stdin with (format csv, header true)"
+    sed 's/\r$//' "${artifact_dir}/${file}"
+    printf '%s\n' '\.'
+  done
   printf '%s\n' \
-    "insert into schema_migrations (name, applied_at, checksum)" \
+    "insert into public.schema_migrations (name, applied_at, checksum)" \
     "select name, '2026-01-01T00:00:00Z'::timestamptz, checksum" \
     "from wayfinder_rehearsal.migration_inventory order by name;"
   sed 's/\r$//' "${artifact_dir}/synthetic-fixture.sql"
   sed 's/\r$//' "${artifact_dir}/synthetic-fixture-verify.sql"
   printf '%s\n' 'commit;'
-} | target_psql
+} | target_psql > "${import_log}" 2>&1 || import_status=$?
+
+if LC_ALL=C grep -aEiq "${secret_pattern}" "${import_log}"; then
+  printf '%s\n' 'Sensitive-token pattern detected in import.log.' >&2
+  import_status=1
+fi
+if [[ "${import_status}" != "0" ]]; then
+  remaining_objects="$(target_user_object_count || true)"
+  printf '%s\n' 'IMPORT_FAILED' >&2
+  if [[ "${remaining_objects}" != "0" ]] || ! cleanup_import_temp; then
+    printf '%s\n' 'CLEANUP_FAILED' >&2
+    exit 1
+  fi
+  printf '%s\n' 'CLEANUP_OK' >&2
+  exit "${import_status}"
+fi
+
+if ! cleanup_import_temp; then
+  exit 1
+fi
 
 restored_public_relations="$(target_psql -Atc "select count(*) from pg_class c inner join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p','v','m')")"
 profile_rows="$(target_psql -Atc "select (select count(*) from wayfinder_rehearsal.row_counts) + (select count(*) from wayfinder_rehearsal.row_classes) + (select count(*) from wayfinder_rehearsal.invariant_counts)")"

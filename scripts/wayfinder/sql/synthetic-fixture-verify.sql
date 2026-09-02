@@ -8,6 +8,49 @@ begin
     raise exception 'Wayfinder fixture case registry: expected 10 rows, got %', actual;
   end if;
 
+  with expected(case_name, relation_family, expected_rows) as (
+    values
+      ('formal-platform-driver-definition', 'definition', 1::bigint),
+      ('formal-platform-node-type-definition', 'definition', 1::bigint),
+      ('platform-subjectless-dts-draft', 'definition', 1::bigint),
+      ('organization-manual-node-type-draft', 'definition', 1::bigint),
+      ('driver-schema-root', 'schema', 2::bigint),
+      ('organization-registration-placement', 'topology', 1::bigint),
+      ('binding-module-identity-mismatch', 'binding-anomaly', 1::bigint),
+      ('inactive-definition-binding', 'binding-anomaly', 1::bigint),
+      ('pinned-binding-revision', 'binding-revision', 3::bigint),
+      ('legacy-twin-r6-r8', 'migration-identity-hazard', 2::bigint)
+  ), drift as (
+    (select * from expected
+     except
+     select case_name, relation_family, expected_rows
+     from wayfinder_rehearsal.fixture_cases)
+    union all
+    (select case_name, relation_family, expected_rows
+     from wayfinder_rehearsal.fixture_cases
+     except
+     select * from expected)
+  )
+  select count(*) into actual from drift;
+  if actual <> 0 then
+    raise exception 'Wayfinder fixture case registry metadata drifted by % rows', actual;
+  end if;
+
+  select
+    (select count(*) from wayfinder_rehearsal.relations)
+    + (select count(*) from wayfinder_rehearsal.columns)
+    + (select count(*) from wayfinder_rehearsal.constraints)
+    + (select count(*) from wayfinder_rehearsal.indexes)
+    + (select count(*) from wayfinder_rehearsal.triggers)
+    + (select count(*) from wayfinder_rehearsal.migration_inventory)
+    + (select count(*) from wayfinder_rehearsal.row_counts)
+    + (select count(*) from wayfinder_rehearsal.row_classes)
+    + (select count(*) from wayfinder_rehearsal.invariant_counts)
+  into actual;
+  if actual = 0 then
+    raise exception 'Wayfinder source profile is empty';
+  end if;
+
   select count(*) into actual
   from (
     select name, checksum from schema_migrations
@@ -36,6 +79,56 @@ begin
   select count(*) into actual from parameter_spec_versions;
   if actual <> 6 then
     raise exception 'Wayfinder parameter spec versions: expected 6 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from organizations;
+  if actual <> 1 then
+    raise exception 'Wayfinder organizations: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from projects;
+  if actual <> 1 then
+    raise exception 'Wayfinder projects: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_config_set;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS config sets: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_config_revisions;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS config revisions: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from attribution_subjects;
+  if actual <> 3 then
+    raise exception 'Wayfinder attribution subjects: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_registrations;
+  if actual <> 1 then
+    raise exception 'Wayfinder driver registrations: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from node_type_definitions;
+  if actual <> 2 then
+    raise exception 'Wayfinder node type definitions: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_schemas;
+  if actual <> 2 then
+    raise exception 'Wayfinder driver schemas: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from driver_schema_versions;
+  if actual <> 2 then
+    raise exception 'Wayfinder driver schema versions: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_property_specs;
+  if actual <> 4 then
+    raise exception 'Wayfinder DTS property specs: expected 4 rows, got %', actual;
   end if;
 
   select count(*) into actual
@@ -214,6 +307,21 @@ begin
   select count(*) into actual from parameter_module_mappings;
   if actual <> 2 then
     raise exception 'Wayfinder module mappings: expected 2 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from dts_logical_nodes;
+  if actual <> 1 then
+    raise exception 'Wayfinder DTS logical nodes: expected 1 row, got %', actual;
+  end if;
+
+  select count(*) into actual from project_parameter_bindings;
+  if actual <> 3 then
+    raise exception 'Wayfinder project parameter bindings: expected 3 rows, got %', actual;
+  end if;
+
+  select count(*) into actual from project_parameter_binding_revisions;
+  if actual <> 3 then
+    raise exception 'Wayfinder binding revisions: expected 3 rows, got %', actual;
   end if;
 
   select count(*) into actual

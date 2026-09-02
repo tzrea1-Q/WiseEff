@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +36,22 @@ const containerName =
 const databaseAvailable = await isTestDatabaseAvailable();
 const containerAvailable =
   spawnSync("docker", ["inspect", containerName], { stdio: "ignore" }).status === 0;
+const artifactFiles = [
+  "schema.sql",
+  "profile-schema.sql",
+  "synthetic-fixture.sql",
+  "synthetic-fixture-verify.sql",
+  "relations.csv",
+  "columns.csv",
+  "constraints.csv",
+  "indexes.csv",
+  "triggers.csv",
+  "migration-inventory.csv",
+  "row-counts.csv",
+  "row-classes.csv",
+  "invariant-counts.csv",
+  "manifest.csv",
+] as const;
 
 function run(command: string, args: string[]) {
   const result = spawnSync(command, args, {
@@ -65,6 +82,264 @@ function runResult(command: string, args: string[]) {
 function databaseName(connectionString: string) {
   return new URL(connectionString).pathname.slice(1);
 }
+
+async function refreshArtifactChecksums(artifactDir: string) {
+  const lines = await Promise.all(
+    artifactFiles.map(async (file) => {
+      const bytes = await readFile(path.join(artifactDir, file));
+      return `${createHash("sha256").update(bytes).digest("hex")}  ${file}`;
+    }),
+  );
+  await writeFile(path.join(artifactDir, "SHA256SUMS"), `${lines.sort().join("\n")}\n`);
+}
+
+async function writeSafeArtifact(artifactDir: string) {
+  for (const file of artifactFiles) {
+    await writeFile(path.join(artifactDir, file), "safe fixture input\n");
+  }
+  const fixtureVerifyHash = createHash("sha256")
+    .update(await readFile(path.join(artifactDir, "synthetic-fixture-verify.sql")))
+    .digest("hex");
+  await writeFile(
+    path.join(artifactDir, "manifest.csv"),
+    [
+      "key,value",
+      "format_version,2",
+      "artifact_kind,parameter-catalog-populated-rehearsal-fixture",
+      "data_rows_exported,0",
+      "source_data_rows_exported,0",
+      "synthetic_fixture_version,1",
+      "import_populates_synthetic_rows,true",
+      "historical_source_commit,6c3adfc35c0e3be6d5d381013dace9408190380e",
+      "historical_bundle_sha256,017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff",
+      `synthetic_fixture_verify_sha256,${fixtureVerifyHash}`,
+      "",
+    ].join("\n"),
+  );
+  await refreshArtifactChecksums(artifactDir);
+}
+
+describe("parameter catalog rehearsal SQL containment", () => {
+  it("accepts transaction-contained PostgreSQL and PL/pgSQL input", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-safe-sql-"),
+    );
+    const candidateFile = path.join(tempRoot, "candidate.sql");
+    const validationFile = path.join(tempRoot, "validation.sql");
+
+    try {
+      await writeFile(
+        candidateFile,
+        "create schema wf671_candidate; set constraints all immediate;\n",
+      );
+      await writeFile(
+        validationFile,
+        "do $$ begin perform 1; end $$; select 'commit work is documentation';\n",
+      );
+
+      const result = runResult("bash", [
+        rehearser,
+        "--check-sql-only",
+        "--migration-file",
+        candidateFile,
+        "--validation-file",
+        validationFile,
+      ]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("SQL_INPUT_OK\n");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["commit-work", "select 1; /* conceal */ commit /* gap */ work;"],
+    ["end-transaction", "end;"],
+    ["prepared-transaction", "prepare /* gap */ transaction 'wf671';"],
+    ["savepoint", "savepoint wf671;"],
+    ["release-savepoint", "release /* gap */ savepoint wf671;"],
+    ["copy-stdin", "copy wf671_candidate from /* gap */ stdin;"],
+    ["psql-i", "\\i /tmp/escape.sql"],
+    ["psql-ir", "\\ir escape.sql"],
+    ["psql-gexec", "select 'commit'; \\gexec"],
+    ["psql-gset", "select 'commit' as x; \\gset"],
+    ["psql-copy", "\\copy wf671_candidate from '/tmp/data'"],
+    ["psql-connect", "\\connect postgres"],
+    ["psql-shell", "\\! touch /tmp/wf671-escape"],
+    ["psql-quit", "\\q"],
+    ["psql-autocommit", "\\set AUTOCOMMIT on"],
+    ["session-role", "set role postgres;"],
+    ["session-authorization", "set session authorization postgres;"],
+    ["session-search-path", "set search_path = public;"],
+    ["session-reset", "reset all;"],
+    ["session-discard", "discard all;"],
+    [
+      "dynamic-control",
+      "do $$ begin execute 'commit work'; end $$;",
+    ],
+    [
+      "dynamic-set-config",
+      "select set_config('search_path', 'public', false);",
+    ],
+  ])("rejects %s before opening a database session", async (_name, sql) => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-unsafe-sql-"),
+    );
+    const candidateFile = path.join(tempRoot, "candidate.sql");
+    const validationFile = path.join(tempRoot, "validation.sql");
+
+    try {
+      await writeFile(candidateFile, `${sql}\n`);
+      await writeFile(validationFile, "select 1;\n");
+      const result = runResult("bash", [
+        rehearser,
+        "--check-sql-only",
+        "--migration-file",
+        candidateFile,
+        "--validation-file",
+        validationFile,
+      ]);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain(
+        "SQL input contains a forbidden transaction, session, or psql control",
+      );
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parameter catalog rehearsal artifact containment", () => {
+  it("accepts only the exact regular-file artifact world", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-world-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--artifact-dir",
+        artifactDir,
+      ]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("ARTIFACT_OK\n");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["regular file", "file"],
+    ["directory", "directory"],
+    ["symbolic link", "symlink"],
+    ["FIFO", "fifo"],
+  ])("rejects an unknown %s before hashing", async (_label, kind) => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-entry-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      const unexpected = path.join(artifactDir, "unexpected-entry");
+      if (kind === "file") await writeFile(unexpected, "not registered\n");
+      if (kind === "directory") {
+        const result = spawnSync("mkdir", [unexpected]);
+        expect(result.status).toBe(0);
+      }
+      if (kind === "symlink") {
+        const result = spawnSync("ln", ["-s", "schema.sql", unexpected]);
+        expect(result.status).toBe(0);
+      }
+      if (kind === "fifo") {
+        const result = spawnSync("mkfifo", [unexpected]);
+        expect(result.status).toBe(0);
+      }
+
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--artifact-dir",
+        artifactDir,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Unknown artifact entry: unexpected-entry");
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("secret-scans every registered generated artifact", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-secret-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      const syntheticSecret = ["AKIA", "1234567890ABCDEF"].join("");
+      await writeFile(path.join(artifactDir, "schema.sql"), `${syntheticSecret}\n`);
+      await refreshArtifactChecksums(artifactDir);
+
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        "--artifact-dir",
+        artifactDir,
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Sensitive-token pattern detected in schema.sql");
+      expect(result.stderr).not.toContain(syntheticSecret);
+      expect(result.stdout).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parameter catalog rehearsal cleanup containment", () => {
+  it("emits CLEANUP_OK only after its owned resources are gone", () => {
+    const result = runResult("bash", [rehearser, "--check-cleanup-only"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("CLEANUP_OK\n");
+    expect(result.stderr).toBe("");
+  });
+
+  it("fails closed and withholds CLEANUP_OK when cleanup fails", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-cleanup-failure-"),
+    );
+    const fakeBin = path.join(tempRoot, "bin");
+    const fakeRm = path.join(fakeBin, "rm");
+    try {
+      await mkdir(fakeBin);
+      await writeFile(fakeRm, "#!/usr/bin/env bash\nexit 73\n");
+      await chmod(fakeRm, 0o755);
+      const result = spawnSync("bash", [rehearser, "--check-cleanup-only"], {
+        cwd: projectRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          TMPDIR: tempRoot,
+        },
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("CLEANUP_FAILED");
+      expect(result.stderr).not.toContain("CLEANUP_OK");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
 
 describe.skipIf(!(databaseAvailable && containerAvailable))(
   "parameter catalog rehearsal artifact",
@@ -284,9 +559,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
 
         } finally {
           await withAdminClient(async (admin) => {
-            await admin
-              .query(`drop database if exists ${restoreDatabase} with (force)`)
-              .catch(() => undefined);
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
           await rm(tempRoot, { recursive: true, force: true });
         }
@@ -488,9 +761,94 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           );
         } finally {
           await withAdminClient(async (admin) => {
-            await admin
-              .query(`drop database if exists ${restoreDatabase} with (force)`)
-              .catch(() => undefined);
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
+          });
+          await rm(tempRoot, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+
+    it(
+      "rolls back every imported object when a late fixture step fails",
+      async () => {
+        const tempRoot = await mkdtemp(
+          path.join(os.tmpdir(), "wiseeff-wayfinder671-import-rollback-"),
+        );
+        const artifactDir = path.join(tempRoot, "artifact");
+        const restoreDatabase = `wiseeff_wayfinder671_restore_import_rollback_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+
+        try {
+          await withTempDatabase(
+            { prefix: "wayfinder671_import_rollback", migrate: false },
+            async ({ db, connectionString }) => {
+              await applyMigrations(db, migrationsDir, {
+                through: "0128_repair_driver_placement_subject_cutover.sql",
+              });
+              run("bash", [
+                exporter,
+                "--container",
+                containerName,
+                "--database",
+                databaseName(connectionString),
+                "--output-dir",
+                artifactDir,
+              ]);
+            },
+          );
+          await writeFile(
+            path.join(artifactDir, "synthetic-fixture.sql"),
+            `${await readFile(path.join(artifactDir, "synthetic-fixture.sql"), "utf8")}\nselect 1 / 0;\n`,
+          );
+          await refreshArtifactChecksums(artifactDir);
+          await withAdminClient(async (admin) => {
+            await admin.query(`create database ${restoreDatabase}`);
+          });
+
+          const result = runResult("bash", [
+            importer,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--artifact-dir",
+            artifactDir,
+          ]);
+          expect(result.status).not.toBe(0);
+          expect(result.stderr).toContain("IMPORT_FAILED");
+          expect(result.stderr.match(/^CLEANUP_OK$/gm)).toHaveLength(1);
+
+          const client = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await client.connect();
+          try {
+            const state = await client.query<{ objects: string }>(`
+              with user_namespaces as (
+                select oid
+                from pg_namespace
+                where nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+                  and nspname !~ '^pg_(temp|toast_temp)_'
+              )
+              select (
+                (select count(*) from pg_namespace
+                 where oid in (select oid from user_namespaces)
+                   and nspname <> 'public')
+                +
+                (select count(*) from pg_class
+                 where relnamespace in (select oid from user_namespaces))
+                +
+                (select count(*) from pg_proc
+                 where pronamespace in (select oid from user_namespaces))
+              )::text as objects
+            `);
+            expect(state.rows).toEqual([{ objects: "0" }]);
+          } finally {
+            await client.end();
+          }
+        } finally {
+          await withAdminClient(async (admin) => {
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
           await rm(tempRoot, { recursive: true, force: true });
         }
@@ -547,9 +905,6 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
               create table wf671_candidate_replacement.definition_map as
               select id, attribution_subject_id, property_key, definition_lifecycle
               from parameter_specs;
-              update project_parameter_bindings
-              set module_id = 'wf671-business-module'
-              where id = 'wf671-mismatch-binding';
             `,
           );
           await writeFile(
@@ -580,6 +935,14 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             validationFile,
           ]);
           expect(result.stdout).toContain("REHEARSAL_ROLLBACK_OK");
+          expect(result.stdout.match(/^FIXTURE_VERIFY_BEFORE_OK$/gm)).toHaveLength(1);
+          expect(
+            result.stdout.match(/^FIXTURE_VERIFY_AFTER_CANDIDATE_OK$/gm),
+          ).toHaveLength(1);
+          expect(
+            result.stdout.match(/^FIXTURE_VERIFY_AFTER_ROLLBACK_OK$/gm),
+          ).toHaveLength(1);
+          expect(result.stdout.match(/^CLEANUP_OK$/gm)).toHaveLength(1);
           expect(result.stdout).toMatch(/before_sha256=[0-9a-f]{64}/);
           expect(result.stdout).toMatch(/after_sha256=[0-9a-f]{64}/);
 
@@ -607,6 +970,39 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
             await client.end();
           }
 
+          await writeFile(
+            candidateFile,
+            "delete from wayfinder_rehearsal.fixture_cases where case_name = 'legacy-twin-r6-r8';\n",
+          );
+          const incompleteGraphResult = runResult("bash", [
+            rehearser,
+            "--container",
+            containerName,
+            "--database",
+            restoreDatabase,
+            "--migration-file",
+            candidateFile,
+            "--validation-file",
+            validationFile,
+          ]);
+          expect(incompleteGraphResult.status).not.toBe(0);
+          expect(incompleteGraphResult.stderr).toContain(
+            "Candidate migration, validation, or fixture verification failed.",
+          );
+
+          const rollbackClient = new pg.Client({
+            connectionString: adminConnectionString(restoreDatabase),
+          });
+          await rollbackClient.connect();
+          try {
+            const casesAfterRejectedCandidate = await rollbackClient.query<{
+              count: string;
+            }>("select count(*)::text from wayfinder_rehearsal.fixture_cases");
+            expect(casesAfterRejectedCandidate.rows).toEqual([{ count: "10" }]);
+          } finally {
+            await rollbackClient.end();
+          }
+
           await writeFile(candidateFile, "select 1; commit;\n");
           const unsafeResult = runResult("bash", [
             rehearser,
@@ -621,13 +1017,11 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           ]);
           expect(unsafeResult.status).not.toBe(0);
           expect(unsafeResult.stderr).toContain(
-            "SQL input contains transaction control and cannot be rollback-contained",
+            "SQL input contains a forbidden transaction, session, or psql control",
           );
         } finally {
           await withAdminClient(async (admin) => {
-            await admin
-              .query(`drop database if exists ${restoreDatabase} with (force)`)
-              .catch(() => undefined);
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
           await rm(tempRoot, { recursive: true, force: true });
         }
@@ -920,7 +1314,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           ]);
           expect(mergedResult.status).not.toBe(0);
           expect(mergedResult.stderr).toContain(
-            "R6/R8 twin migration must preserve two source identities",
+            "Candidate migration, validation, or fixture verification failed.",
           );
 
           await writeFile(
@@ -964,9 +1358,7 @@ describe.skipIf(!(databaseAvailable && containerAvailable))(
           expect(acceptedResult.stdout).toContain("REHEARSAL_ROLLBACK_OK");
         } finally {
           await withAdminClient(async (admin) => {
-            await admin
-              .query(`drop database if exists ${restoreDatabase} with (force)`)
-              .catch(() => undefined);
+            await admin.query(`drop database if exists ${restoreDatabase} with (force)`);
           });
           await rm(tempRoot, { recursive: true, force: true });
         }

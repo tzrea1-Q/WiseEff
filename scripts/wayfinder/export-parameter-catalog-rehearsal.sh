@@ -14,6 +14,39 @@ env_file=""
 database_name="wiseeff"
 database_user="wiseeff"
 output_dir=""
+historical_source_commit="6c3adfc35c0e3be6d5d381013dace9408190380e"
+historical_bundle_sha256="017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff"
+secret_pattern='postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|bearer[[:space:]]+[A-Za-z0-9._-]{16,}|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}'
+sql_source_files=(
+  columns.sql
+  constraints.sql
+  indexes.sql
+  invariant-counts.sql
+  migration-inventory.sql
+  profile-schema.sql
+  relations.sql
+  row-classes.sql
+  row-counts.sql
+  synthetic-fixture-verify.sql
+  synthetic-fixture.sql
+  triggers.sql
+)
+artifact_files=(
+  schema.sql
+  profile-schema.sql
+  synthetic-fixture.sql
+  synthetic-fixture-verify.sql
+  relations.csv
+  columns.csv
+  constraints.csv
+  indexes.csv
+  triggers.csv
+  migration-inventory.csv
+  row-counts.csv
+  row-classes.csv
+  invariant-counts.csv
+  manifest.csv
+)
 
 usage() {
   printf '%s\n' \
@@ -135,6 +168,52 @@ sha256_stream() {
   fi
 }
 
+is_registered_name() {
+  local candidate="$1"
+  shift
+  local registered
+  for registered in "$@"; do
+    if [[ "${candidate}" == "${registered}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+scan_file_for_secrets() {
+  local file_path="$1"
+  local display_name="$2"
+  if LC_ALL=C grep -aEiq "${secret_pattern}" "${file_path}"; then
+    printf 'Sensitive-token pattern detected in %s.\n' "${display_name}" >&2
+    return 1
+  fi
+}
+
+if [[ ! -d "${sql_dir}" || -L "${sql_dir}" ]]; then
+  printf '%s\n' 'Wayfinder SQL source directory must be a regular, non-symlink directory.' >&2
+  exit 1
+fi
+for file in "${sql_source_files[@]}"; do
+  if [[ ! -f "${sql_dir}/${file}" || -L "${sql_dir}/${file}" ]]; then
+    printf 'Required Wayfinder SQL source is not a regular file: %s\n' "${file}" >&2
+    exit 1
+  fi
+done
+while IFS= read -r -d '' entry; do
+  file="$(basename "${entry}")"
+  if ! is_registered_name "${file}" "${sql_source_files[@]}"; then
+    printf 'Unknown Wayfinder SQL source entry: %s\n' "${file}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${entry}" || -L "${entry}" ]]; then
+    printf 'Wayfinder SQL source entry must be a regular non-symlink file: %s\n' "${file}" >&2
+    exit 1
+  fi
+done < <(find "${sql_dir}" -mindepth 1 -maxdepth 1 -print0)
+for file in "${sql_source_files[@]}"; do
+  scan_file_for_secrets "${sql_dir}/${file}" "scripts/wayfinder/sql/${file}"
+done
+
 required_relations=(
   schema_migrations
   organizations
@@ -182,13 +261,33 @@ if [[ -n "${missing_relations}" ]]; then
   exit 1
 fi
 
+archive_path="${output_dir}.tar.gz"
+archive_checksum_path="${archive_path}.sha256"
 stage_dir="$(mktemp -d "${output_dir}.tmp.XXXXXX")"
-on_error() {
+on_exit() {
   local exit_code=$?
-  printf 'EXPORT_FAILED\nstaging_dir_retained=%s\n' "${stage_dir}" >&2
+  if [[ "${exit_code}" == "0" ]]; then
+    return
+  fi
+  trap - EXIT
+  local cleanup_failed="false"
+  set +e
+  for owned_path in "${stage_dir}" "${output_dir}" "${archive_path}" "${archive_checksum_path}"; do
+    if [[ -e "${owned_path}" || -L "${owned_path}" ]]; then
+      rm -rf -- "${owned_path}"
+    fi
+    if [[ -e "${owned_path}" || -L "${owned_path}" ]]; then
+      cleanup_failed="true"
+    fi
+  done
+  printf '%s\n' 'EXPORT_FAILED' >&2
+  if [[ "${cleanup_failed}" == "true" ]]; then
+    printf '%s\n' 'CLEANUP_FAILED' >&2
+    exit 1
+  fi
   exit "${exit_code}"
 }
-trap on_error ERR
+trap on_exit EXIT
 
 reports=(relations columns constraints indexes triggers migration-inventory row-counts row-classes invariant-counts)
 combined_output="${stage_dir}/combined-profile.out"
@@ -202,6 +301,7 @@ combined_output="${stage_dir}/combined-profile.out"
   done
   printf '%s\n' '\qecho __WISEEFF_WAYFINDER_671_SECTION_END__' 'commit;'
 } | db_psql > "${combined_output}"
+scan_file_for_secrets "${combined_output}" "combined-profile.out"
 
 awk -v output_dir="${stage_dir}" '
   /^__WISEEFF_WAYFINDER_671_SECTION_END__$/ {
@@ -237,6 +337,7 @@ db_dump_schema \
   > "${stage_dir}/schema.sql"
 
 db_psql < "${sql_dir}/migration-inventory.sql" > "${stage_dir}/migration-inventory-after-schema.csv"
+scan_file_for_secrets "${stage_dir}/migration-inventory-after-schema.csv" "migration-inventory-after-schema.csv"
 if ! cmp -s "${stage_dir}/migration-inventory.csv" "${stage_dir}/migration-inventory-after-schema.csv"; then
   printf '%s\n' 'Migration inventory changed while the schema dump was captured; retry outside a deployment window.' >&2
   exit 1
@@ -251,13 +352,6 @@ if grep -Eq '^COPY public\.|^INSERT INTO public\.' "${stage_dir}/schema.sql"; th
   printf '%s\n' 'Schema dump unexpectedly contains public data statements.' >&2
   exit 1
 fi
-
-for safe_profile in migration-inventory.csv row-counts.csv row-classes.csv invariant-counts.csv synthetic-fixture.sql; do
-  if grep -Eiq 'postgres(ql)?://|bearer[[:space:]]+[A-Za-z0-9._-]+|BEGIN[[:space:]]+[^[:space:]]*[[:space:]]*PRIVATE[[:space:]]+KEY|AKIA[0-9A-Z]{16}|\$2[aby]\$' "${stage_dir}/${safe_profile}"; then
-    printf 'Sensitive-token pattern detected in %s.\n' "${safe_profile}" >&2
-    exit 1
-  fi
-done
 
 schema_checksum="$({
   for file in relations.csv columns.csv constraints.csv indexes.csv triggers.csv; do
@@ -274,6 +368,7 @@ source_database_checksum="$({
 } | sha256_stream)"
 
 schema_dump_file_checksum="$(sha256_file "${stage_dir}/schema.sql")"
+synthetic_fixture_verify_checksum="$(sha256_file "${stage_dir}/synthetic-fixture-verify.sql")"
 schema_dump_canonical_checksum="$(
   sed -e '/^\\restrict /d' -e '/^\\unrestrict /d' "${stage_dir}/schema.sql" | sha256_stream
 )"
@@ -291,6 +386,9 @@ exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'source_data_rows_exported,0\n'
   printf 'synthetic_fixture_version,1\n'
   printf 'import_populates_synthetic_rows,true\n'
+  printf 'historical_source_commit,%s\n' "${historical_source_commit}"
+  printf 'historical_bundle_sha256,%s\n' "${historical_bundle_sha256}"
+  printf 'synthetic_fixture_verify_sha256,%s\n' "${synthetic_fixture_verify_checksum}"
   printf 'database_identity,withheld\n'
   printf 'read_only_transaction_confirmed,true\n'
   printf 'profile_snapshot,repeatable-read-read-only\n'
@@ -306,6 +404,27 @@ exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'sanitization_contract,structure-aggregates-and-deterministic-synthetic-rows\n'
 } > "${stage_dir}/manifest.csv"
 
+for file in "${artifact_files[@]}"; do
+  if [[ ! -f "${stage_dir}/${file}" || -L "${stage_dir}/${file}" ]]; then
+    printf 'Generated artifact entry is not a regular file: %s\n' "${file}" >&2
+    exit 1
+  fi
+done
+while IFS= read -r -d '' entry; do
+  file="$(basename "${entry}")"
+  if ! is_registered_name "${file}" "${artifact_files[@]}"; then
+    printf 'Unknown generated artifact entry: %s\n' "${file}" >&2
+    exit 1
+  fi
+  if [[ ! -f "${entry}" || -L "${entry}" ]]; then
+    printf 'Generated artifact entry must be a regular non-symlink file: %s\n' "${file}" >&2
+    exit 1
+  fi
+done < <(find "${stage_dir}" -mindepth 1 -maxdepth 1 -print0)
+for file in "${artifact_files[@]}"; do
+  scan_file_for_secrets "${stage_dir}/${file}" "${file}"
+done
+
 (
   cd "${stage_dir}"
   for file in *.csv *.sql; do
@@ -315,12 +434,11 @@ exported_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ) > "${stage_dir}/SHA256SUMS"
 
 mv "${stage_dir}" "${output_dir}"
-trap - ERR
 
-archive_path="${output_dir}.tar.gz"
 tar -czf "${archive_path}" -C "${output_parent}" "$(basename "${output_dir}")"
 archive_checksum="$(sha256_file "${archive_path}")"
-printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_path}.sha256"
+printf '%s  %s\n' "${archive_checksum}" "$(basename "${archive_path}")" > "${archive_checksum_path}"
+trap - EXIT
 
 row_class_count="$(awk -F, '$1 == "parameter_specs" { print $2 }' "${output_dir}/row-counts.csv")"
 printf '%s\n' \

@@ -2,9 +2,11 @@
 
 > English: [English](../../references/parameter-catalog-rehearsal-fixture.md)
 
-这是一个仅存在于研究分支的 Wayfinder 资产，用于为未来的参数目录替换迁移生成可执行的 PostgreSQL 演练输入。它把 populated 自托管数据库的只读结构/聚合画像，与确定性、非敏感的行级关系图组合在一起。它只属于规划与迁移设计证据，不是生产备份、生产迁移或发布就绪声明。
+这是一个 checksum-locked Wayfinder 资产，用于为未来的参数目录替换迁移生成可执行的 PostgreSQL 演练输入。它把 populated 自托管数据库的只读结构/聚合画像，与确定性、非敏感的行级关系图组合在一起。它只属于规划与迁移设计证据，不是生产备份、生产迁移或发布就绪声明。
 
 流程不会复制源数据库的任何数据行。populated 关系图由仓库内固定 SQL 生成；所有 ID 都以 `wf671-` 开头，所有值都明确标记为 synthetic placeholder。
+
+历史 source commit 为 `6c3adfc35c0e3be6d5d381013dace9408190380e`，历史 bundle SHA-256 为 `017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff`。两者只是不变 provenance，不构成 executable trust，也绝不从 repaired bytes 重算。external source-lock test 在不包含自身的前提下固定 repair commit `R`、原 18 个 path、regular-file mode、每个 repaired blob hash 与新的 length-framed bundle checksum `B`。
 
 ## 产物契约
 
@@ -21,11 +23,13 @@
 - `manifest.csv`，其中必须有 `format_version=2`、`source_data_rows_exported=0` 和 `import_populates_synthetic_rows=true`；
 - `SHA256SUMS`，对其他每个必需文件恰好提供一条安全条目。
 
-导入器把上述清单当作封闭集合。缺少文件、未知文件或目录、symlink、缺少或重复 checksum 条目、不安全文件名、路径穿越、checksum 不一致，或 manifest 不是 populated fixture format 2，都会在接触数据库之前被拒绝。
+导入器把上述清单当作封闭集合。缺少文件、未知 entry、symlink、directory、device、socket、FIFO、其他 non-regular entry、缺少或重复 checksum 条目、不安全文件名、路径穿越、checksum 不一致，或 manifest 不是 populated fixture format 2，都会在 hash 或数据库访问之前被拒绝。manifest 还保留历史 source/checksum，并固定 exact `synthetic-fixture-verify.sql` checksum。
+
+导出器对登记的仓库 SQL 输入与生成产物集合执行同样的 closed-world regular-file 检查，并在发布 archive 前 secret-scan 每个登记 source 以及生成的 schema、profile、manifest、output、log。导入阶段再次扫描全部登记产物。失败时必须清除所有 exporter-owned staging/output path，不保留 partial output。
 
 源端画像只记录关系结构、不可变迁移名称和 checksum、精确关系计数、封闭枚举/存在性/对齐分类、不变量计数，以及逻辑/schema/文件/归档 SHA-256。只有规范化 dump checksum 会排除 PostgreSQL 每次生成的 `\restrict` nonce；文件 checksum 仍保护原始 dump 的每个字节。
 
-导入时，安全的迁移名称和 checksum 还会以固定 synthetic timestamp 写入 `public.schema_migrations`。这样既不导出原始部署时间，又能让恢复后的 0128 schema 被后续 append-only migration tooling 正确识别。
+导入时，schema、profile CSV、安全迁移名称/checksum、synthetic graph 与 graph verification 在一个事务中执行。迁移 ledger 使用固定 synthetic timestamp；这样既不导出原始部署时间，又能让恢复后的 0128 schema 被后续 append-only migration tooling 正确识别。任何 late failure 都把 target 整体回滚到 checked-empty，复核清理结果并移除 importer-owned 临时输出；只有随后才输出 `CLEANUP_OK`，cleanup 失败即命令失败。
 
 ## 确定性的 populated 关系图
 
@@ -96,7 +100,7 @@ docker exec -i <local-postgres-container> \
 
 ## Candidate migration、验证与回滚
 
-准备两个绝对路径、非 symlink 的文件：
+准备两个绝对路径、regular 且非 symlink 的文件：
 
 - 未来的 candidate replacement migration，文件内不得包含事务控制语句；
 - candidate 专属的 validation SQL；若目标不变量不成立，该 SQL 必须抛错。
@@ -111,14 +115,20 @@ scripts/wayfinder/rehearse-parameter-catalog-replacement.sh \
   --validation-file /absolute/path/to/candidate-validation.sql
 ```
 
-runner 会先验证全部 10 个夹具案例，对完整数据库的规范化 dump 计算 hash，然后以 `ON_ERROR_STOP` 执行 candidate 与 validation SQL，发出 `ROLLBACK`，再次计算数据库 hash；只有前后 hash 完全相同时才成功。预期输出：
+在打开数据库 session 前，PostgreSQL-aware input lexer 会拒绝 transaction、session 和 psql escape，包括 `COMMIT WORK`、top-level `END`、prepared transaction、savepoint、`COPY ... FROM STDIN`、全部 psql meta-command（含 `\i`、`\ir`、`\gexec`、`\gset`、`\copy`、`\connect`、`\!`、`\q`）、autocommit change、role/search-path/session mutation，以及动态执行的 control SQL。它能区分 PostgreSQL comment、string、quoted identifier、nested block comment、dollar quote 与 PL/pgSQL block `BEGIN`/`END`，不使用简单文本 grep。
+
+runner 会让 locked verifier checksum 与 imported manifest 精确一致，secret-scan 两个 SQL 输入及全部生成 dump/log，并精确执行三次 `synthetic-fixture-verify.sql`：candidate mutation 前；candidate + validation 后且 rollback 前；rollback 后。它分别计算 rollback 前后的完整规范化数据库 dump hash，只有二者完全相同时才成功。所有 runner-owned 临时文件与 child process 消失后，才能唯一输出一次 `CLEANUP_OK`。预期输出包含：
 
 ```text
+FIXTURE_VERIFY_BEFORE_OK
+FIXTURE_VERIFY_AFTER_CANDIDATE_OK
+FIXTURE_VERIFY_AFTER_ROLLBACK_OK
 REHEARSAL_ROLLBACK_OK
 target_database=wiseeff_wayfinder671_restore_<suffix>
 before_sha256=<64 位小写十六进制>
 after_sha256=<同一个值>
 fixture_cases=10
+CLEANUP_OK
 ```
 
 这证明 transaction-safe candidate 可以映射并验证 populated 关系图，而不留下持久变更；它不能证明尚未设计的替换迁移已经拥有正确目标语义。
@@ -130,10 +140,10 @@ fixture_cases=10
 集成测试需要可连接的真实 PostgreSQL 实例及其 Docker container：
 
 ```bash
-npm run test:scripts -- parameter-catalog-rehearsal.integration
+npm run test:scripts -- scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts
 ```
 
-测试覆盖 populated 导出/导入、全部关系形态、严格 manifest 拒绝、真正空数据库拒绝、candidate validation、同 key R6/R8 分离、property-key merge candidate 拒绝，以及规范化 dump 的回滚前后一致性。
+测试覆盖 source/artifact closed world、lexer/session/psql deny matrix、全部 generated artifact secret scanning、cleanup failure behavior、atomic populated 导出/导入、全部关系形态、严格 manifest 拒绝、真正空数据库拒绝、candidate validation、同 key R6/R8 分离、property-key merge candidate 拒绝、三次 graph verification，以及规范化 dump 的回滚前后一致性。
 
 完成后，只删除明确命名的 disposable 数据库：
 
@@ -144,4 +154,4 @@ docker exec -i <local-postgres-container> \
 
 ## 证据边界
 
-保留的源画像仍是 populated 自托管数据库的聚合证据；`wf671-` 图是由已观察 cohort 推导出的代表性 synthetic data，不是逐行脱敏的生产克隆。本地导入与回滚成功只属于本地 PostgreSQL 证据；目标迁移与发布就绪仍需后续 Wayfinder 决策和目标环境闸门。
+保留的源画像仍是 populated 自托管数据库的聚合证据；`wf671-` 图是由已观察 cohort 推导出的代表性 synthetic data，不是逐行脱敏的生产克隆。static/source-lock 结果只属于 D/L evidence；只有在真实 local PostgreSQL 上实际选中且未 skip 的执行才属于 PG evidence。本地 synthetic 或 PG 结果均不能推导 Hosted、target-host、release、production approval 或 compatibility-window evidence。
