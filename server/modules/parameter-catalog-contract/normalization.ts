@@ -1,5 +1,22 @@
-import { DriverCompatible, NormalizedNodeTypeName, PropertyKey } from "./ids";
 import type { Result } from "./results";
+
+declare const canonicalParameterIdentityBrand: unique symbol;
+
+type CanonicalParameterIdentity<Name extends string> = string & {
+  readonly [canonicalParameterIdentityBrand]: Name;
+};
+
+export type DriverCompatible = CanonicalParameterIdentity<"DriverCompatible">;
+export type NormalizedNodeTypeName = CanonicalParameterIdentity<
+  "NormalizedNodeTypeName"
+>;
+export type PropertyKey = CanonicalParameterIdentity<"PropertyKey">;
+
+const asDriverCompatible = (value: string): DriverCompatible =>
+  value as DriverCompatible;
+const asNormalizedNodeTypeName = (value: string): NormalizedNodeTypeName =>
+  value as NormalizedNodeTypeName;
+const asPropertyKey = (value: string): PropertyKey => value as PropertyKey;
 
 export const canonicalIdentityFailureReasons = Object.freeze([
   "not-string",
@@ -74,7 +91,7 @@ export const parseCanonicalCompatibleSelector = (
   ) {
     return { ok: false, error: "invalid-syntax" };
   }
-  return { ok: true, value: DriverCompatible(compatible) };
+  return { ok: true, value: asDriverCompatible(compatible) };
 };
 
 export const parseCanonicalNodeName = (
@@ -98,7 +115,7 @@ export const parseCanonicalNodeName = (
   ) {
     return { ok: false, error: "invalid-syntax" };
   }
-  return { ok: true, value: NormalizedNodeTypeName(nodeName) };
+  return { ok: true, value: asNormalizedNodeTypeName(nodeName) };
 };
 
 const structuralPropertyKeys = new Set([
@@ -138,5 +155,5 @@ export const parseCanonicalPropertyKey = (
   if (!/^[A-Za-z0-9,._+?#-]{1,31}$/u.test(propertyKey)) {
     return { ok: false, error: "invalid-syntax" };
   }
-  return { ok: true, value: PropertyKey(propertyKey) };
+  return { ok: true, value: asPropertyKey(propertyKey) };
 };

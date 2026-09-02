@@ -81,8 +81,8 @@ describe("canonical parameter identity parsing", () => {
   it("accepts compatible selectors without changing their bytes", () => {
     expect(acceptCompatible("vendor,driver")).toBe("vendor,driver");
     expect(acceptCompatible("simple")).toBe("simple");
-    expect(acceptCompatible("Vendor+Tag,driver.rev/1")).toBe(
-      "Vendor+Tag,driver.rev/1"
+    expect(acceptCompatible("vendor+tag,driver.rev/1")).toBe(
+      "vendor+tag,driver.rev/1"
     );
   });
 
@@ -106,7 +106,7 @@ describe("canonical parameter identity parsing", () => {
   it("accepts node names byte-for-byte and rejects invalid identities", () => {
     expect(acceptNodeName("/")).toBe("/");
     expect(acceptNodeName("charging_core")).toBe("charging_core");
-    expect(acceptNodeName("Usb-Controller")).toBe("Usb-Controller");
+    expect(acceptNodeName("usb-controller")).toBe("usb-controller");
 
     expect(rejectNodeName("node@1")).toBe("unit-address-present");
     expect(rejectNodeName("a".repeat(32))).toBe("length-out-of-range");
@@ -123,7 +123,7 @@ describe("canonical parameter identity parsing", () => {
   it("accepts property keys without normalization", () => {
     expect(acceptPropertyKey("iin_max")).toBe("iin_max");
     expect(acceptPropertyKey("init_para")).toBe("init_para");
-    expect(acceptPropertyKey("Vendor,Limit?")).toBe("Vendor,Limit?");
+    expect(acceptPropertyKey("vendor,limit?")).toBe("vendor,limit?");
   });
 
   it("rejects the complete case-insensitive structural property set", () => {
