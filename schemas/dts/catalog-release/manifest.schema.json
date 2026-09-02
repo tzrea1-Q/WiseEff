@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiseeff.dev/schemas/dts/catalog-release/manifest.schema.json",
+  "title": "WiseEff Catalog Release manifest",
+  "description": "Closed manifest for one immutable Catalog Release and every authoritative document shipped with it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "toolchain",
+    "files",
+    "documents"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "release": {
+      "$ref": "#/$defs/releaseIdentity"
+    },
+    "toolchain": {
+      "$ref": "#/$defs/toolchain"
+    },
+    "files": {
+      "description": "Exact manifest-listed YAML source files; each digest covers the unmodified source bytes.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "documents": {
+      "description": "Normalized compiler documents derived from the listed YAML sources; these digests never replace source-byte digests.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/document"
+      }
+    }
+  },
+  "$defs": {
+    "contractString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+    },
+    "predecessor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "digest"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/contractString"
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        }
+      ]
+    },
+    "releaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "sequence",
+        "publishedAt",
+        "digest",
+        "predecessor"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "version": {
+          "$ref": "#/$defs/contractString"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "publishedAt": {
+          "description": "Immutable compiler-reviewed publication timestamp in canonical RFC 3339 UTC second precision; never an install or synchronization clock.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "predecessor": {
+          "$ref": "#/$defs/predecessor"
+        }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compiler",
+        "jsonSchemaDialect",
+        "sourceFormat"
+      ],
+      "properties": {
+        "compiler": {
+          "$ref": "#/$defs/contractString"
+        },
+        "jsonSchemaDialect": {
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "sourceFormat": {
+          "const": "wiseeff-catalog-release@1"
+        }
+      }
+    },
+    "file": {
+      "description": "One authoritative YAML source file and the SHA-256 of its exact bytes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mediaType",
+        "digest"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "document": {
+      "description": "One normalized catalog document with explicit source lineage and a digest of canonical normalized content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "kind",
+        "documentId",
+        "normalizedDigest"
+      ],
+      "properties": {
+        "sourcePath": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "kind": {
+          "enum": [
+            "subject",
+            "alias",
+            "definition"
+          ]
+        },
+        "documentId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "normalizedDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  }
+}
