@@ -2640,6 +2640,57 @@ create table parameter_catalog.catalog_command_idempotency (
   )
 );
 
+create function parameter_catalog.protect_command_idempotency()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception using
+      errcode = '55000',
+      message = format('%I.%I rows cannot be deleted', tg_table_schema, tg_table_name);
+  end if;
+
+  if new.request_fingerprint is distinct from old.request_fingerprint then
+    raise exception using
+      errcode = '55000',
+      message = 'Idempotency request fingerprint is immutable';
+  end if;
+
+  if tg_table_name = 'catalog_command_idempotency' then
+    if new.command_scope is distinct from old.command_scope
+       or new.idempotency_key is distinct from old.idempotency_key then
+      raise exception using errcode = '55000', message = 'Catalog idempotency identity is immutable';
+    end if;
+  else
+    if new.organization_id is distinct from old.organization_id
+       or new.command_family is distinct from old.command_family
+       or new.idempotency_key is distinct from old.idempotency_key then
+      raise exception using errcode = '55000', message = 'Governance idempotency identity is immutable';
+    end if;
+  end if;
+
+  if old.state = 'committed' then
+    raise exception using
+      errcode = '55000',
+      message = 'Committed idempotency results cannot be mutated';
+  end if;
+
+  if old.state = 'pending' and new.state is distinct from 'committed' then
+    raise exception using
+      errcode = '55000',
+      message = 'Pending idempotency rows may only commit';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger catalog_command_idempotency_protect
+before update or delete on parameter_catalog.catalog_command_idempotency
+for each row execute function parameter_catalog.protect_command_idempotency();
+
 create function parameter_catalog.protect_cutover_run_identity()
 returns trigger
 language plpgsql
@@ -3141,6 +3192,10 @@ create table parameter_catalog.governance_command_idempotency (
     (state = 'committed' and result_kind is not null and result_ref is not null and committed_at is not null)
   )
 );
+
+create trigger governance_command_idempotency_protect
+before update or delete on parameter_catalog.governance_command_idempotency
+for each row execute function parameter_catalog.protect_command_idempotency();
 
 create table parameter_catalog.parameter_observation_matches (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),

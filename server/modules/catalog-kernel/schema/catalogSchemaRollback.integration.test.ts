@@ -2041,6 +2041,82 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     expect(error.constraint).toBe("legacy_mapping_target_fk");
   });
 
+  it("freezes committed Catalog and Governance idempotency rows against replay forgery", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into parameter_catalog.catalog_command_idempotency (
+        command_scope, idempotency_key, request_fingerprint, state
+      ) values (
+        'catalog-kernel', 'idem-catalog-a', 'sha256:catalog-a', 'pending'
+      );
+      insert into parameter_catalog.governance_command_idempotency (
+        organization_id, command_family, idempotency_key, request_fingerprint, state
+      ) values (
+        'org-pcat', 'register-subject', 'idem-gov-a', 'sha256:gov-a', 'pending'
+      );
+      update parameter_catalog.catalog_command_idempotency
+        set state = 'committed',
+            result_kind = 'install',
+            result_ref = 'crel-legacy',
+            committed_at = now()
+      where command_scope = 'catalog-kernel' and idempotency_key = 'idem-catalog-a';
+      update parameter_catalog.governance_command_idempotency
+        set state = 'committed',
+            result_kind = 'registration',
+            result_ref = 'reg-replay',
+            committed_at = now()
+      where organization_id = 'org-pcat'
+        and command_family = 'register-subject'
+        and idempotency_key = 'idem-gov-a';
+    `);
+
+    const forgedCatalog = await captureDatabaseError(
+      client.query(`
+        update parameter_catalog.catalog_command_idempotency
+          set request_fingerprint = 'forged', result_ref = 'forged-ref'
+        where command_scope = 'catalog-kernel' and idempotency_key = 'idem-catalog-a'
+      `),
+    );
+    expect(forgedCatalog.code).toBe("55000");
+
+    const revertCatalog = await captureDatabaseError(
+      client.query(`
+        update parameter_catalog.catalog_command_idempotency
+          set state = 'pending', result_kind = null, result_ref = null, committed_at = null
+        where command_scope = 'catalog-kernel' and idempotency_key = 'idem-catalog-a'
+      `),
+    );
+    expect(revertCatalog.code).toBe("55000");
+
+    const deleteCatalog = await captureDatabaseError(
+      client.query(`
+        delete from parameter_catalog.catalog_command_idempotency
+        where command_scope = 'catalog-kernel' and idempotency_key = 'idem-catalog-a'
+      `),
+    );
+    expect(deleteCatalog.code).toBe("55000");
+
+    const forgedGovernance = await captureDatabaseError(
+      client.query(`
+        update parameter_catalog.governance_command_idempotency
+          set request_fingerprint = 'forged', result_ref = 'forged-ref'
+        where organization_id = 'org-pcat'
+          and command_family = 'register-subject'
+          and idempotency_key = 'idem-gov-a'
+      `),
+    );
+    expect(forgedGovernance.code).toBe("55000");
+
+    const remaining = await client.query<{ catalog_count: string; gov_count: string }>(`
+      select
+        (select count(*)::text from parameter_catalog.catalog_command_idempotency
+         where idempotency_key = 'idem-catalog-a') as catalog_count,
+        (select count(*)::text from parameter_catalog.governance_command_idempotency
+         where idempotency_key = 'idem-gov-a') as gov_count
+    `);
+    expect(remaining.rows[0]).toEqual({ catalog_count: "1", gov_count: "1" });
+  });
+
   it.each([
     {
       name: "Organization Registration",
