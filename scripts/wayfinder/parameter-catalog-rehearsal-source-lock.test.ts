@@ -14,7 +14,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "163261fd5de3670a8afbe5ab6241edb4879a42c9";
+const repairCommit = "0abed8ff889cd9a5cef19d60ff12fa61f9b8f8aa";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -66,12 +66,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "940d380eda5844d22197ed9e8783c1ddfa270fa085aabc6bf93d2f869efec408",
+    sha256: "99aaecb38d0a64cbc12e94ecfae7f6237e236758c930dadb06680b9929095c19",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "8e8755bb429f38fd36de2ef55509b23aab7cb59b2f2b49f4e732803cde9e2957",
+    sha256: "da47459581575bdad60656bc25f0a5e62becaba9b303850c1eaac057fe86e1e6",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -156,7 +156,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "085b7a97031a78765f9dc85a949036b1e5e4fba2d8e570f5309fe047310b9b91";
+  "d5c6898ecfad787e37738ee36341476e63f82583702c693497ddf8965f94e5be";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
@@ -220,13 +220,35 @@ function frame(hash: ReturnType<typeof createHash>, tag: string, bytes: Buffer) 
   hash.update(bytes);
 }
 
+function parseRawCommitHeaderParents(rawCommit: string) {
+  const headerLines: string[] = [];
+  for (const line of rawCommit.split(/\r\n|\n/)) {
+    if (line === "") {
+      break;
+    }
+    headerLines.push(line);
+  }
+  return headerLines
+    .filter((line) => line.startsWith("parent "))
+    .map((line) => line.slice("parent ".length));
+}
+
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
-    const headParents = runGitText(["cat-file", "-p", "HEAD"])
-      .split("\n")
-      .filter((line) => line.startsWith("parent "))
-      .map((line) => line.slice("parent ".length));
+    const forgedRootCommit = [
+      `tree ${"0".repeat(40)}`,
+      "author Test <test@example.com> 0 +0000",
+      "committer Test <test@example.com> 0 +0000",
+      "",
+      `parent ${repairCommit}`,
+      "forged body parent line must be ignored",
+    ].join("\n");
+    expect(parseRawCommitHeaderParents(forgedRootCommit)).toEqual([]);
+
+    const headParents = parseRawCommitHeaderParents(
+      runGitText(["cat-file", "-p", "HEAD"]),
+    );
     expect(headParents).toEqual([repairCommit]);
     const repairObjectAvailable = gitObjectAvailable(repairCommit);
     expect(sourceLock).toHaveLength(18);
