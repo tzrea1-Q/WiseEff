@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 2,
+  "family": "S12-AGT",
+  "paths": [
+    "server/modules/agent/tools/actionTools.ts",
+    "server/modules/agent/toolRegistry.ts",
+    "server/modules/agent/toolMetadata.ts",
+    "server/modules/agent/parameterCatalogComparisonContribution.ts",
+    "server/modules/agent/tools/actionTools.test.ts",
+    "server/modules/agent/tools/actionTools.integration.test.ts",
+    "server/modules/agent/toolRegistry.test.ts",
+    "server/modules/agent/parameterCatalogComparisonContribution.test.ts",
+    "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
+    "server/modules/agent/tools/perceptionTools.ts",
+    "server/modules/agent/tools/perceptionTools.test.ts"
+  ],
+  "entries": [
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:0405dc0071e022c8:f57aebde98cdf753",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:21fad2a68e2f326f:2164296871ee9ea2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:27b767148ec9073c:6a8f4686a686bb13",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:34289c5b1cc2e6e7:bcdb6fba4ddd8856",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:5000509a7f8018b1:58c7c4bf13f597b1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:5000509a7f8018b1:d2e5c89defda8ec0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:5bf37116d8d0f8cc:aad792ec5f542337",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:7a57eccb59431c79:9366eccb1c3f0485",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-raw-read:edef7118d9d3da45:8e6185b49a5cd20e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/agent/tools/perceptionTools.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:078960a8a8a4a62c:780d563acc9dc85f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:0f11928438488030:f4e52d667cb3e780",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:2048f44db37b97c4:a18103b493f65be4",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:27b43f9408b8d3aa:6e300e91dbd87900",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:65e4ddaf92890904:cca118a7a10fa363",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:6c79866da3f1fba3:5ba40e67b3ad3776",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:8c2477c326fa48be:e06a706f38203651",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:9ec7b96ee2178e67:05dcb68b6e5e1e3d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:9ec7b96ee2178e67:4d089773655811c2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:e37878c2b1c582f3:361c61523ea061a4",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:e4167928d4395752:f49894c00e52664c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:f3bd5229f7e29baf:7208d9dfd271788c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:f3bd5229f7e29baf:c1aaf47f855d839a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-catalog-sql-write:fed4a2849c961892:c09c1b5f3f4e5d35",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-AGT:legacy-overlay-catalog-contract:7fb8b813134934d0:956f8bac9ff8129f",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-AGT:legacy-overlay-catalog-contract:b7ee18832173a3aa:4bee67a361e6446c",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:1c9a2f0f06c92f7c:3de2521a1fedca85",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:41333e6758b504a7:2352cd7afd8496cb",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:64279d36d0d551de:0b7113b0a96a5aa2",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:67f365f710037f79:44067cfcbfe5f13d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:7d433445a9ecb47e:8274db7f39ca0f70",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:8f5859acc3ea7bf2:318cdb428d55f2d8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:ab42286e945b5471:dc4e3a2cd83d2e76",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:d950e5959ed7a3c7:3261958fce8c1e9f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.integration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:e113d31e9e34154f:a073fd3b2dde2887",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:f98934aa45a45cf4:3545c2d3303cc20c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-AGT:legacy-parameter-spec-identifier:fb4c862be37225f6:2b1d4a4246e4f65c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/agent/tools/actionTools.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    }
+  ]
+}

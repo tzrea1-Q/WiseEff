@@ -21,7 +21,7 @@
 
 ## Agent skills
 
-Agent 编排使用 **Matt Pocock skills**（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`。不要新建/更新 `docs/superpowers/**`，也不要调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。完整说明见英文 [`AGENTS.md`](../../../AGENTS.md) § Agent skills 与 [`docs/agents/`](../../../docs/agents/)。目标型多智能体交付遵循[智能体交付执行协议](../agents/agent-delivery-protocol.md)的 Scratch -> threat review -> seal -> integration -> Hosted -> attestation 状态机、WIP/CI 预算和用户停止边界；多个 worktree 的碰撞处理另遵循[多工作区协调规则](../../agents/fleet-coordination.md)。
+Agent 编排使用 **Matt Pocock skills**（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`。不要新建/更新 `docs/superpowers/**`，也不要调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。完整说明见英文 [`AGENTS.md`](../../../AGENTS.md) § Agent skills 与 [`docs/agents/`](../../../docs/agents/)。目标型多智能体交付遵循[智能体交付执行协议](../agents/agent-delivery-protocol.md)的 Scratch -> threat review -> seal -> integration -> Hosted -> attestation 状态机、WIP/CI 预算和用户停止边界；多个 worktree 的碰撞处理另遵循[多工作区协调规则](../../agents/fleet-coordination.md)。Wayfinder #668 launch Issues 另遵守[目录 launch 操作规则](../agents/catalog-launch-operating-rules.md)：专用 lane 数据库、Hosted 前的角色忠实本地验收，以及合入串行 / 开发并行。
 
 ## 同类中文文档
 

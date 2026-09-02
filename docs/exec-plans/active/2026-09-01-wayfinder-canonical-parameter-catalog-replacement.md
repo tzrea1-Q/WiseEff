@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-Status: **Phase A, Phase B, Phase C, G0.1, and the first controlled implementation wave are complete; the owner-authorized G0.2 execution amendment is in progress**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 and G0.1 merged through PRs #682 and #738; the corrected S0-ID, S0-FIX, and S1-BND nodes are closed through PRs #739, #743, and #741. G0.2 changes execution sequencing and budgets only; it does not add a launch node or change any CD, CF, ID, or RE edge.
+Status: **Phase A, Phase B, Phase C, G0.1, and the first controlled implementation wave are complete; G0.2 is adopted; the owner-authorized G0.3 efficiency amendment is in progress**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 and G0.1 merged through PRs #682 and #738; the corrected S0-ID, S0-FIX, and S1-BND nodes are closed through PRs #739, #743, and #741. G0.2 and G0.3 change execution sequencing and budgets only; they do not add a launch node or change any CD, CF, ID, or RE edge.
 
 Accepted publication baseline: `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`. This is a target contract. It does not claim current implementation or release evidence, reserve a migration number, or authorize production activation.
 
@@ -193,6 +193,23 @@ The #668 run profile is frozen as follows:
 | Deadline | The 12-hour objective is a throughput target, not a gate waiver. The parent publishes the critical-path lower bound and a smaller code/evidence milestone when the full target cannot fit. S13-PROGRAM and S14-PROGRAM remain Temporal and cannot be declared complete without real elapsed-time, target, release, and production evidence |
 
 Before each wave, the parent records lane membership, risk classes, exact editable/read-only/forbidden paths, shared resources, merge order, evidence levels, and stop boundary. R3 tasks must complete their finite threat matrix before final lineage, checksum, migration, recovery, or release artifacts are generated. Standards and Spec reviews run in parallel; their findings are consolidated into one repair packet only after both return. A byte-changing post-seal finding invalidates the seal and Hosted evidence and returns the lane to Scratch.
+
+## G0.3 efficiency amendment (2026-09-03)
+
+The G0.2 protocol kept evidence honest but scheduled development too serially. The first post-G0.2 hours spent more wall-clock on Hosted-as-debugger, a second fingerprint of the same trusted-base inventory, a shared `5432/wiseeff` database, and idle CI waits than on remaining launch nodes. G0.3 amends execution only. All 55 accepted nodes, 53 launch Issues, seams, ownership, requirements, and `CD=90`, `CF=54`, `ID=27`, `RE=18` edges remain unchanged. Local and Hosted output still cannot be labeled T/R.
+
+G0.3 supersedes the G0.2 run-profile rows listed below. Unlisted G0.2 rows remain in force. Catalog launch Issues follow [Catalog Launch Operating Rules](../../agents/catalog-launch-operating-rules.md) without editing frozen Issue bodies.
+
+| Control | G0.3 setting |
+| --- | --- |
+| Capacity | Path-disjoint Scratch WIP 4. Lanes that share migrations, generated schema, OpenAPI, or a fingerprint stay at WIP 2. When review begins, finished implementation agents still release their slots so Standards and Spec run in parallel |
+| Merge versus develop | One feature Hosted PR. Later lanes continue through `SEALED` while the merge lane is `HOSTED`, then refresh immediately before their own Hosted |
+| Independent merge wave | Process-only PRs (protocol, operating rules, bilingual docs, `scripts/catalog-lane-env.ts`) may merge beside the current feature Hosted PR |
+| Local acceptance | Dedicated lane DB via `npm run catalog:lane:env -- provision --issue <n>`. Issue-named command via `npm run catalog:lane:accept`. Role canary as `catalog_migration_owner` for RBAC/migration nodes. Zero collected tests is a hard failure. Default compose `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` is forbidden catalog evidence |
+| Inventory lock | Complete trusted-base scan at `THREAT-READY`; one fingerprint. Same-invariant second patch is a circuit breaker. If only one option can pass Hosted, the parent records the choice and continues |
+| Hosted overlap | Parent dispatches or continues at least one other disjoint lane during Hosted, or records that none exists |
+| Unrelated flake | One `gh run rerun --failed`. Do not patch unrelated tests |
+| Models | G0.2 model slugs remain preferred. If a spawn allowlist cannot provide them, the parent records the substitute and continues; it does not idle |
 
 ## Problem Statement
 
@@ -799,7 +816,7 @@ Evidence remains classified as documentation/static, local synthetic, real local
 
 | Area | Disposition | English paths | Chinese paths | Owner/gate |
 | --- | --- | --- | --- | --- |
-| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md` | G0.2 owns delivery lifecycle/budgets; first module merge records four modules/dependencies/readiness |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/catalog-launch-operating-rules.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md`; `docs/zh-CN/agents/catalog-launch-operating-rules.md` | G0.2/G0.3 own delivery lifecycle/budgets; first module merge records four modules/dependencies/readiness |
 | Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | G0.2 records the run profile; parent keeps one plan across many tickets |
 | Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 first model slice; CONTEXT remains implementation-free |
 | ADR/index and decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0; cite immutable SHAs and never rewrite meaning |
@@ -823,8 +840,9 @@ The plan cannot complete until every Update/Review row is updated bilingually or
 ### Git & PR Workflow
 
 - G0.2 is developed on `codex/wayfinder-execution-protocol-v2` from accepted `origin/main@5b7b53b316f648a7a49908b3ebd9ffb459d9e958`; it is documentation/process-only and makes no implementation or runtime-evidence claim.
-- Every future ticket agent starts from then-current `origin/main` in an isolated worktree with branch template `codex/pcat-<issue-number>-<slug>`, reads this Spec plus the owning decisions/module docs, and receives the G0.2 task packet and stop boundary.
+- G0.3 is developed on `codex/wayfinder-g03-delivery-efficiency` from accepted `origin/main@bd9648d2e6706bd81230bfd5be73229ba44e4212`; it is documentation/process plus the catalog-lane helper, and makes no launch-node product or T/R evidence claim.
+- Every future ticket agent starts from then-current `origin/main` in an isolated worktree with branch template `codex/pcat-<issue-number>-<slug>`, reads this Spec plus the owning decisions/module docs, and receives the G0.3 task packet, [Catalog Launch Operating Rules](../../agents/catalog-launch-operating-rules.md), and stop boundary.
 - This is one plan with many ticket Scratch branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
-- The parent/session owner follows the G0.2 run profile and repository delivery protocol, integrates in deterministic merge order, and exclusively owns final PR creation, Hosted triage, merge, attestation, and main synchronization.
+- The parent/session owner follows the G0.3 run profile and repository delivery protocol, integrates in deterministic merge order, and exclusively owns final PR creation, Hosted triage, merge, attestation, and main synchronization.
 - Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after refresh. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
 - Phase A Publisher, Phase B, Phase C, and G0.1 are complete. Corrected S0-ID, S0-FIX, and S1-BND are closed through PRs #739, #743, and #741. The live GitHub frontier, not this historical sentence, controls future dispatch.

@@ -1,0 +1,1712 @@
+{
+  "schemaVersion": 2,
+  "family": "S12-MOD",
+  "paths": [
+    "server/modules/parameter-modules/**",
+    "src/application/ports/ParameterModuleRegistryRepository.ts",
+    "src/infrastructure/http/parameterModuleRegistryClient.ts",
+    "server/modules/parameter-modules/parameterCatalogComparisonContribution.ts",
+    "src/infrastructure/http/parameterModuleRegistryClient.test.ts",
+    "e2e/acceptance/hierarchical-modules.acceptance.spec.ts"
+  ],
+  "entries": [
+    {
+      "id": "S12-MOD:legacy-catalog-module-import:95c1dd30d7a30e85:360cc9e1210c8a5e",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-module-import:a9b42f6b9c334ee4:4cab741e3dbfc384",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-module-import:dffd187f3bc7addc:07130b90cb84ceb9",
+      "rule": "legacy-catalog-module-import",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Consumer code still imports the legacy parameter-specs module."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:0bc791e6325482b7",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:17c757af04cd4edf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:18e71f3a7dbf34cf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:708b37af9ea55325",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:886ea919c6d446ff",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:010329e1b7afbc4e:8b120b1f37f87986",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1486b29b83972847:38529064a557a6c5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1486b29b83972847:bdd1445593cf8a89",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:19b3fd4021ab3d83:123fcf6c620d9e77",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1a8b5daa94937964:b868445dcb790564",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1c01f45046a5bac3:b234e95dc0bee96d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1c01f45046a5bac3:ed1bfd461e483734",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:1f6109f599cce6d0:4def9ef2086c8d19",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:2a6db942c734fba6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:2d00c9aa1792e260",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:406e9b54c5754e76",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:760d373131818f90",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:e5f78770acc32a4a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:237567643572bdc2:f333a2c1b0196339",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:2a75a5d9fee3e771:36eac26f17f0330b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:2c3d19b5d21f84f3:5401f17a016a58cf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:30ade366f2d4f91d:68e5e0519faa8731",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:30ade366f2d4f91d:73472e3b691a8add",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:3441af550cff3fe3:72245a1ca25bb330",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:35e9ee8244c30de9:0ab4b3c55a97b816",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:3de7955ef3047c3d:ef16fd38e3672ceb",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4369c182a5cbb51f:04cb320d3571177a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4369c182a5cbb51f:04ebd7a23df37d54",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4369c182a5cbb51f:1ec274468907a156",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4369c182a5cbb51f:f593961217d9a968",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4ca83d3eb542ba43:21e786156f6ec02a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4ca83d3eb542ba43:69b0731231fe1d6d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4ca83d3eb542ba43:bfb2c05a079efcc6",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4ca83d3eb542ba43:cf15a4479714ee57",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:4ffc7d9ce7796588:2c0b7e326dba2f50",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:18d448c5c3952aa3",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:2ad2858d63308519",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:b3433609d33b2ea9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:53ad866a08746f75:ce84e82527b0a716",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:54ada9b6048cf5ad:9e096c0d79d87abb",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:5641dc71c109a175:ea8f22ff1d310aea",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:59a3712a25c216a5:8bd3d6a7346fe30d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:59a3712a25c216a5:aae4a42531020cae",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:59a3712a25c216a5:f38b2a83bd3d464d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:59e1ee1e4e73017f:ce5f36fcbfa711b5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:5b72079d648531ac:a3a8c9564b1f56ae",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:5c434e0bdfcbf1b5:4c468b04f91c1534",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6696f55da05c5e62:8578669fffe849fe",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6696f55da05c5e62:abf1a8448206ac7d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6696f55da05c5e62:ad6a2a7285ce5b7c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:1f794257479d0050",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6851e7727de8a43c:699566f9c3bb9e20",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:6d0abfe8c2f32aa4:5fcd58cb8c7be892",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:706e3e4ba96c4c2e:144283129f2014d8",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:706e3e4ba96c4c2e:37eb821d0682f467",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:706e3e4ba96c4c2e:4b9def59c0e2e712",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:706e3e4ba96c4c2e:e3a8cf9570fed05c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:706e3e4ba96c4c2e:f32bef66691b497e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:793383a189598e86:56d3fda64851e1d7",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:820fcaf4e8d52388:077b5facfd49e990",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:820fcaf4e8d52388:5534c7ae459784de",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:8588e3f03704af7d:fd93284989ef0c9b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:85e6066e46d67cf1:782265fa6958d4f8",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:85e6066e46d67cf1:c547b0821e95b0aa",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:8d3ce80040c6cfbc:59095e66e9f8536d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:8d3ce80040c6cfbc:c9a7bae778d0d309",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:8ef6d5a28f8f5117:7a795de981899d0d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:9871c47a37701fb8:69f7b0853104b5bc",
+      "rule": "legacy-catalog-raw-read",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:98c6a7061e0acf85:0f67e14cb562b7b2",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:98c6a7061e0acf85:7928107ca5ef6f34",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:9c04459ca70365db:4c37738d7dc9452f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:9c04459ca70365db:4ddf637d94c565b1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:9f4b96003c0d712d:9bf84b2b5a136b13",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:a67e237043888097:49d941ce7807e860",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:a67e237043888097:9e2ae84db1361fc5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:a67e237043888097:d9823dd5e1c72618",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:abd894cb86ba5d16:fc8ec155c0762add",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:ae2205ec38127916:6299d77ab32e95fe",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:b921902bf7843844:a9047c617ac9ca65",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:ba3fc9bda23b48f0:94ef4318e511ce4e",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:bbec19572a03f260:16022bcf6704ad69",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:bbec19572a03f260:e8c6d06c9fb5f1e9",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:bc11f74f479df197:ffe28e3ac7d5606d",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:c58fbf06ab403af8:100753d12e31b850",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:cacb755696aedec7:392d7a3986282f92",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:d28aac17fb67ddc6:471e852278e9dcdf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:d89300ac051ada01:80f27e462a6dac1a",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:db6a228f3c7b4203:29f0ea38177dca28",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:db6a228f3c7b4203:95961a852d500630",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e1c9d0f9c13eb97b:4560a1e7bb285be0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e1f6777b2ed8177a:510c058be44253dc",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:0f55dcc99ed7a5d0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:3d75fbac56dc5a42",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:542dab1a7ee09932",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:70274dc2eca54d1b",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:713cbba7a4538323",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:824c43b03e040dd5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e568f290277114b2:ee0b2c3459693bc1",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e9f10e127d8371a9:b7f2a27bf405ba99",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e9f10e127d8371a9:c5b02f6aa695d021",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:e9f10e127d8371a9:f3b1c0d5a5d5c99f",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:f4749ad5d1f1b7ec:4a9314cb18ff33a5",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:f4749ad5d1f1b7ec:dac65a8d4d5c3593",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:f80bab8b3e87ac32:141c2cac008c976c",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:fb35f0c686b63470:6760d7222c2e24a0",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:fb35f0c686b63470:f7276c5bc241b8cf",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:fd739a94ae9d0c4f:40dab4819d598824",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-raw-read:fd739a94ae9d0c4f:f65eb2adde692911",
+      "rule": "legacy-catalog-raw-read",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:4bc565da5e2f753f:44d7add144010726",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:4bc565da5e2f753f:67f6cb9bc99656bd",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:700b370c0a62f07f:c4434228ab5b3c19",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a00c3a0f9f5a82b3:8411d4447f19a598",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a00c3a0f9f5a82b3:b9be87587a917d77",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:45ad287d1919e1e4",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:7b695e2cdafa8c48",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:bb508bc55114c171",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:cca062744594a70d",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:f1da8b5b4820b817",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:a83eaaba0b75e2a0:fc4e40f2dcddb518",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:cdd198f9da5028a7:6deb8ad0d84291ba",
+      "rule": "legacy-catalog-route",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:e34bd173c946c3aa:21c9f84ce3f30e4f",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:e34bd173c946c3aa:665c37fffd8a5285",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-route:e34bd173c946c3aa:7311a9bed2aa6f9f",
+      "rule": "legacy-catalog-route",
+      "file": "server/modules/parameter-modules/routes.ts",
+      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:0031052547aaf3ad:c14a2bf1f6529b64",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:04bfd17fbaade639:30d7a905b2f1c1e8",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:04bfd17fbaade639:52f9b67bfb3e30bd",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:04bfd17fbaade639:56f33b098578ca5a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:04bfd17fbaade639:7489109f94ae31a1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:10e1bc622a239cca:7906c3ac2cdcac1c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:2739de5357964d98:43e9ed01387676c2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:27cd2f41ade0d6b3:f86a55dbedcf8f2a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:28f665e9bd3c1583:295958c39c289e88",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:2e30aed105d2bbf9:163c2661d5143873",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:2e30aed105d2bbf9:a5e833db0a6b05e9",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:2e30aed105d2bbf9:d5079e4b2f64dfe9",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:30f819837191fb6f:18e8df90e9540734",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:346ba0d7c77d635a:42d44190e4028f83",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:346ba0d7c77d635a:efb3a73787a4fcb0",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:43d75308f6213ed9:6e6d4ff70a3d7b6c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:46c9c94a2e9128ea:4ceaf64979f2993d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:46c9c94a2e9128ea:c3a53cbcb380d18f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:46c9c94a2e9128ea:e215deb10fcfdcf4",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:4b59f23f90c29203:050d0e998f00bb17",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:59ea259b14b67e2d:ea9b29ba5164d712",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:638aa1b458e0a36b:d52030f7cfd8cf34",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:66420fa019a03db8:d4bcb355060260b4",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:6be131d6bf4ec852:ef98d0916856b32f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:708a6b694daea34e:26af3a063613d292",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:72e0a14e81491fc6:c50f8b6da019a77e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:72e0a14e81491fc6:ea88d92d70e4d5a1",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:7ff45bbeb3e83a09:1ca37f63a111ec2f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:80aa9a52a0cca0d8:ab6c2157dee4d37e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:82456351e700962b:864a526045669fad",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:82456351e700962b:f6ad3f5c01f3fa40",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:88d145171489517b:d8f6c508d281aeac",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:8ac174375c0267e2:cb7519bd160b2de5",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/attributionSubjectRepository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:8b72d23844c8d9a4:990f757d2ccc716f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:8ebedf6646346aa4:4fed7fc31e106b46",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:8ebedf6646346aa4:ce26a7ab17fd2f5f",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:8fa6294c98461c42:10208d55c1ab4661",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/ensureAttributionModuleForBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:9dc99aeb30d748ed:a23f225eb20e87f9",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:af9c4a66b84455c7:aee366af177aa014",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:bb148081e37e5d99:0aacfa805046b8af",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:c2a8cbededd810b6:94508e099b32c773",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:c34fdf1459d25b6d:27ede51f5c8e9d25",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:d01b50761f1be564:dba300c77a104f3d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:d2801ae23e9e386e:ec71235661f7d1b3",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:d5ff2b214a2fe5d9:5de7fcf8c3c08a1d",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:dd7a4b2bdb7e28aa:d601dca93957df7a",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:ddc750d82248cfec:db81387e84d705fb",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:e02b3f08a41e4101:c180a11ec43626aa",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:e226f51e56485397:00ebb78bec7034ae",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:e226f51e56485397:5d2460c5d81e4c00",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:eb2670c2c510c7e3:53b814895aad42c2",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:eb569a76d3a62256:bf52c0d284b2fb9b",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveModuleForBinding.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:ec4cb6eda9db8e7f:35625c9a5c9e9622",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:ec4cb6eda9db8e7f:f38ed755c13bee8c",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:ecc67548b1b1f10e:6bef01688d6e4b46",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/resolveAttributionSubject.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:fc98c5832bb09ac1:de929f380c271555",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:fd3803ef6bbe3627:1b2b402bb0c4e75e",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-sql-write:fd3803ef6bbe3627:c77c53068426acf7",
+      "rule": "legacy-catalog-sql-write",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:605c0eea941cb6bd:f9ec9ef3bd4f57e8",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:7671b86b5b150ce5:7e541ff8bc9aea1d",
+      "rule": "legacy-catalog-table-name",
+      "file": "e2e/acceptance/hierarchical-modules.acceptance.spec.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:860a2404dfe5c6b4:8cd263657607ec3e",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:da50cb792878a484:67ec5768246a6101",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-catalog-table-name:f86c75ba05ded63c:07a3ec8e2bb0f38a",
+      "rule": "legacy-catalog-table-name",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:01cad428864ecef0:ebd285e60bac7c6e",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:0a820b0d6d1285e6:67cf840f8224d79b",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:10dc68e3efedc0e9:b604af4be01c6974",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:133a04a24eb0e9fa:22b0285e8e352793",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:14c849f426b16c92:8e2a4c351b707421",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:1a5383301e45803c:a9784fdaa8388c9b",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:26250f1c252d463f:317212ec404bdbe0",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:28ab4cf186ba0b27:d604a5cc7bdb3154",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2c5c6f913215c35d:c386d0af969eeb2a",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2ce44f838250d6a6:4c2d27bc4ae3a53e",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:2e686c7d6c0856a2:e88920c937337482",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:41e7fe4580f9db67:88fe5a30fc020ff8",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:43e4d795acd7c8d8:0b72b0dfb1535aac",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:442763ca1b1484f0:191cccbf0d88ed26",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:4cc4a73038362580:d1b071310a333d4e",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:5bbd48fc5234732e:7e2b9b37c6690eb3",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:605c0d51c6d32cf3:a57fa972d550a5cf",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:60ec8967a9710745:30dfdb3de6df31fa",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:667c34c4d1f8197a:55819620e183905f",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:6bddeb64576a22c0:b2d06d208f3c141f",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:6f6b6c62e7fdf6ff:ece9e4c2ad3d2c01",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:70f74576d34033a7:ca03cfe583f8093c",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:71c3e95e96f1591b:21a6053b3619d2fc",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:851a32e4a6bc2a4d:074b0ee813e17df2",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:88a0971212a6fb5c:4e2f34f0d6a7d647",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:88a259a8415b3b0d:860d53c7d0e67c9d",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:9012f3b3ed13b712:a7e73d4f57180d83",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:98b4f6909514b4aa:73146635b50133b7",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:9b768faac1ea6b3c:2d1e2216ea1787a4",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:a0735efdc6de1f1f:09f1b9c5fda443cf",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:a98d0909b6c1926c:872f8786c07f51c9",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:afb7b2761fdc0645:cef958bbdb529b2d",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:b3ec59c6c6e533fd:71d2968b2457d035",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:b7442d3551c9d48e:9504ac3cc6ab5ca0",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:baa96ee2a3c3d1f6:2b17d1d5ed1b01a1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c22df8063c6c90ab:46c74ff29acf58b7",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c4175fee9c77723e:6d3c8430810f2c6e",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:c919c16cbd87b425:92ec3adc80aea92a",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ce0ea321964966d4:27fb95ee99a7e6a1",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ce0ea321964966d4:53891efba84042f0",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ce0ea321964966d4:6651108e3a44f4f4",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:d1bd3ce25249b1f7:257b5d5dd5a7c6e8",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:d719e7708e099f3b:713ed80d73c9bdc3",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:da21de82e1810cc0:6c40a4def84989ff",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:e31366ac35e0a70e:2762272770b8b8b4",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:e7db151c9a680929:72a30bebc6bf5182",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ea86f58907a0c8de:083030590107303f",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:efd294a976893793:2cfa995c278b1701",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:efd294a976893793:a7f6eff56f74979b",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:f9d180585ebccd5c:4e07c7d353c62b07",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:fa711c7ccb603c12:80007c7033db7422",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:fd53955bb0bf36c9:b4bfa4ee55207478",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-overlay-catalog-contract:ffa1ec71949b8499:c9e0ce6c03979f58",
+      "rule": "legacy-overlay-catalog-contract",
+      "file": "src/infrastructure/http/parameterModuleRegistryClient.ts",
+      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:0609d6dfbd359db9:3c3da7357cffb3cf",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:2fb8a45d4f27a45f:3e3da5cb0e291b75",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:33c338f8094620e3:f67a0ef8e151a7c8",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:3e21583dc68cea78:01831520ddad6795",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:3e21583dc68cea78:fa16e65d4f6d081d",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:420ee39a001dbcaa:63c1d56c9af29853",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:420ee39a001dbcaa:9d870196d32f35a7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:449ce5cc511c91bf:d1acaaf43e334398",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:541da4f69fc089e8:b16dc0d02fd37b16",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:0302adf87a58e40f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:7d4a0c6f2bb42f1c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:59ee771a428f0978:95f694f205d9301b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:690de4d307392740:e4c6f26a4d39e292",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:7949966514ac7c22:f8865b1ce5373418",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:0d7583dd87aa8f20",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:1cba32e2c1acc16a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:255bd52fc6b04d76",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:28f3dd1f254bae08",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:89937479f23f9d0d:cf5aacc3dea13514",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:8edfc265a611a420:ac7c6e5c7763fdc0",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/subtreeCounts.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:9e2c123835d1b06c",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:be4de36eca41b746",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:9337aefc001c2026:fc11f688aa52ec03",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistryQuery.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:a7c30addd75f33d6:e602570fdccdecd0",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:b27d700d99133ab3:9825e6b78cf796f1",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:c702747020902391:15d017d46daa21da",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:c702747020902391:29e9c1e7342e4fd6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:c702747020902391:88048ab50cbaafab",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:c702747020902391:f109239e9b341dbd",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:d1812dfaa8995e77:c4f4b3592f8d9380",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/driverRegistration.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:d5d812941c471b02:8abf89af8da298be",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:e2934279cd6baee9:d6e2fede8e81dc7f",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.test.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:e6e90ff16b61b8d1:b5f925b134cf96e7",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:eb3c96f3303fe5da:42a630806383a78b",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:eb3c96f3303fe5da:efcd0c470d74cde4",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/service.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:ed8e2a8b20528090:b7280381d31c051a",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "server/modules/parameter-modules/repository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:legacy-parameter-spec-identifier:fc5d8a864c673d17:99ec03629c4109d6",
+      "rule": "legacy-parameter-spec-identifier",
+      "file": "src/application/ports/ParameterModuleRegistryRepository.ts",
+      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:18e4d83249c8d0fd:34a615909c5cb85d",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverRegistrationPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:1e5579472c39cd85:e654f789e0db620e",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:fab8510214a75a84:ccaecc81c315d295",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    },
+    {
+      "id": "S12-MOD:unresolved-boundary-expression:fab8510214a75a84:d4115fc90a4723a7",
+      "rule": "unresolved-boundary-expression",
+      "file": "server/modules/parameter-modules/driverPlacement.ts",
+      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
+    }
+  ]
+}

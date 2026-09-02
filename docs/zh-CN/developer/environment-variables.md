@@ -11,7 +11,8 @@
 | `NODE_ENV` | `development` | API 启动 | `production` 会启用更严格的配置检查。 |
 | `HOST` | `127.0.0.1` | API 启动 | 自托管容器通常设为 `0.0.0.0`，便于反向代理访问。 |
 | `PORT` | `8787` | API 启动 | API mode 前端默认访问 `127.0.0.1:8787`。 |
-| `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。 |
+| `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。Catalog launch lane 不得使用默认 compose URL `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`；应使用 `npm run catalog:lane:env -- provision --issue <n>`（`wiseeff_lane_<n>`，`127.0.0.1:55438`）。 |
+| `TEST_DATABASE_URL` | 未设置 | Catalog/server 集成测试 | 设置后 catalog harness 与 `catalog:lane:accept` 优先于 `DATABASE_URL`。必须仍是真实 pgvector PostgreSQL，不能是共享 compose 应用库。 |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |
