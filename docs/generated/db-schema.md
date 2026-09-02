@@ -1021,6 +1021,7 @@ Constraints:
 | --- | --- | --- | --- |
 | `id` | `text` | no | — |
 | `organization_id` | `text` | no | — |
+| `catalog_release_id` | `text` | no | — |
 | `project_id` | `text` | no | — |
 | `logical_node_id` | `text` | no | — |
 | `registration_id` | `text` | no | — |
@@ -1037,6 +1038,8 @@ Constraints:
 - `project_parameter_binding_effective_revision_head_fk`: TRIGGER DEFERRABLE INITIALLY DEFERRED
 - `project_parameter_binding_match_identity_unique`: UNIQUE (id, organization_id, project_id, logical_node_id, registration_id, subject_id, definition_id)
 - `project_parameter_binding_registration_fk`: FOREIGN KEY (registration_id, organization_id, subject_id) REFERENCES parameter_catalog.organization_subject_registrations(id, organization_id, subject_id) ON DELETE RESTRICT
+- `project_parameter_binding_release_revision_fk`: FOREIGN KEY (catalog_release_id, definition_id, effective_revision_id) REFERENCES parameter_catalog.catalog_release_definition_heads(release_id, definition_id, revision_id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+- `project_parameter_bindings_catalog_release_id_fkey`: FOREIGN KEY (catalog_release_id) REFERENCES parameter_catalog.catalog_releases(id) ON DELETE RESTRICT
 - `project_parameter_bindings_definition_id_effective_revisio_fkey`: FOREIGN KEY (definition_id, effective_revision_id) REFERENCES parameter_catalog.definition_revisions(definition_id, id) ON DELETE RESTRICT
 - `project_parameter_bindings_definition_id_subject_id_fkey`: FOREIGN KEY (definition_id, subject_id) REFERENCES parameter_catalog.parameter_definitions(id, subject_id) ON DELETE RESTRICT
 - `project_parameter_bindings_id_check`: CHECK (((id <> ''::text) AND (btrim(id) = id) AND (id !~ '[[:cntrl:]]'::text)))
