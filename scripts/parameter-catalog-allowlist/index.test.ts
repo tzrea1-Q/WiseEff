@@ -10,7 +10,7 @@ import {
 } from "./index";
 
 const sampleEntry = {
-  id: "S12-CGH:legacy-catalog-sql-write:0123456789abcdef:1",
+  id: "S12-CGH:legacy-catalog-sql-write:0123456789abcdef:fedcba9876543210",
   rule: "legacy-catalog-sql-write",
   file: "server/modules/parameter-specs/repository.ts",
   reason: "Retained only until S12-CGH removes the legacy writer.",
@@ -25,6 +25,7 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "server/modules/parameter-specs/**", required: true },
           { pattern: "src/infrastructure/http/parameterAdminClient.ts", required: true },
           { pattern: "server/modules/parameter-specs/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-cgh.json",
       },
@@ -35,6 +36,8 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/application/ports/ParameterTopologyRepository.ts", required: true },
           { pattern: "src/infrastructure/http/parameterTopologyClient.ts", required: true },
           { pattern: "server/modules/parameter-topology/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/parameterTopologyClient.test.ts", required: true },
+          { pattern: "e2e/acceptance/parameter-topology.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-top.json",
       },
@@ -47,6 +50,9 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/infrastructure/http/parameterClient.ts", required: true },
           { pattern: "src/infrastructure/http/parameterDtos.ts", required: true },
           { pattern: "server/modules/parameters/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/parameterClient.test.ts", required: true },
+          { pattern: "src/infrastructure/http/parameterDtos.test.ts", required: true },
+          { pattern: "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-prj.json",
       },
@@ -57,6 +63,8 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/application/ports/ParameterFileRepository.ts", required: true },
           { pattern: "src/infrastructure/http/parameterFileClient.ts", required: true },
           { pattern: "server/modules/parameter-files/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/parameterFileClient.test.ts", required: true },
+          { pattern: "e2e/acceptance/parameter-files.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-fil.json",
       },
@@ -67,6 +75,13 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "server/modules/agent/toolRegistry.ts", required: true },
           { pattern: "server/modules/agent/toolMetadata.ts", required: true },
           { pattern: "server/modules/agent/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "server/modules/agent/tools/actionTools.test.ts", required: true },
+          { pattern: "server/modules/agent/tools/actionTools.integration.test.ts", required: true },
+          { pattern: "server/modules/agent/toolRegistry.test.ts", required: true },
+          { pattern: "server/modules/agent/parameterCatalogComparisonContribution.test.ts", required: false },
+          { pattern: "e2e/acceptance/xiaoze-action.acceptance.spec.ts", required: true },
+          { pattern: "server/modules/agent/tools/perceptionTools.ts", required: true },
+          { pattern: "server/modules/agent/tools/perceptionTools.test.ts", required: true },
         ],
         shardFile: "s12-agt.json",
       },
@@ -78,6 +93,9 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/infrastructure/http/logClient.ts", required: true },
           { pattern: "src/infrastructure/http/logDtos.ts", required: true },
           { pattern: "server/modules/logs/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/logClient.test.ts", required: true },
+          { pattern: "src/infrastructure/http/logDtos.test.ts", required: true },
+          { pattern: "e2e/acceptance/log-analysis.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-log.json",
       },
@@ -89,6 +107,9 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/infrastructure/http/debuggingClient.ts", required: true },
           { pattern: "src/infrastructure/http/debuggingDtos.ts", required: true },
           { pattern: "server/modules/debugging/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/debuggingClient.test.ts", required: true },
+          { pattern: "src/infrastructure/http/debuggingDtos.test.ts", required: true },
+          { pattern: "e2e/acceptance/debugging-admin.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-dbg.json",
       },
@@ -99,6 +120,8 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/application/ports/DtsReloadRepository.ts", required: true },
           { pattern: "src/infrastructure/http/dtsReloadClient.ts", required: true },
           { pattern: "server/modules/dts-reload/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/dtsReloadClient.test.ts", required: false },
+          { pattern: "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-dts.json",
       },
@@ -111,6 +134,8 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/infrastructure/http/knowledgeClient.ts", required: true },
           { pattern: "src/features/knowledge/**", required: true },
           { pattern: "server/modules/knowledge/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/knowledgeClient.test.ts", required: true },
+          { pattern: "e2e/acceptance/knowledge.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-knw.json",
       },
@@ -121,6 +146,8 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "src/application/ports/ParameterModuleRegistryRepository.ts", required: true },
           { pattern: "src/infrastructure/http/parameterModuleRegistryClient.ts", required: true },
           { pattern: "server/modules/parameter-modules/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "src/infrastructure/http/parameterModuleRegistryClient.test.ts", required: false },
+          { pattern: "e2e/acceptance/hierarchical-modules.acceptance.spec.ts", required: true },
         ],
         shardFile: "s12-mod.json",
       },
@@ -130,6 +157,7 @@ describe("parameter catalog allow-list index", () => {
           { pattern: "server/modules/operations/**", required: true },
           { pattern: "scripts/reconcile-parameter-definitions.ts", required: true },
           { pattern: "server/modules/operations/parameterCatalogComparisonContribution.ts", required: false },
+          { pattern: "scripts/reconcile-parameter-definitions.test.ts", required: false },
         ],
         shardFile: "s12-ops.json",
       },
@@ -174,21 +202,26 @@ describe("parameter catalog allow-list index", () => {
     const fixturePath = join(root, "scripts/fixtures/parameter-catalog-allowlist/current-violations.json");
     await mkdir(join(root, "scripts/fixtures/parameter-catalog-allowlist"), { recursive: true });
     await writeJson(fixturePath, {
-      schemaVersion: 1,
-      baselineSha: "e84ca078ab8f7b7006fa8e635d722297a287d2a5",
+      schemaVersion: 2,
+      trustedBaseSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
       violations: [
         {
           ...sampleEntry,
           family: "S12-CGH",
           line: 10,
           column: 5,
+          trustedBaseSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          trustedBlobOid: "0123456789abcdef0123456789abcdef01234567",
+          byteStart: 120,
+          byteEnd: 148,
+          token: "write:parameter_specs",
           evidence: "insert into parameter_specs",
         },
       ],
     });
 
     expect(await loadBoundaryViolationFixture(root)).toMatchObject({
-      baselineSha: "e84ca078ab8f7b7006fa8e635d722297a287d2a5",
+      trustedBaseSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
       violations: [{ id: sampleEntry.id }],
     });
   });
@@ -208,7 +241,7 @@ async function seedShards(
   for (const definition of consumerShardDefinitions) {
     if (definition.family === options.omit) continue;
     await writeJson(join(shardRoot, definition.shardFile), {
-      schemaVersion: 1,
+      schemaVersion: 2,
       family: definition.family === options.overrideFamily ? "S12-CGH" : definition.family,
       paths: definition.paths.map(({ pattern }) => pattern),
       entries: entries[definition.family] ?? [],

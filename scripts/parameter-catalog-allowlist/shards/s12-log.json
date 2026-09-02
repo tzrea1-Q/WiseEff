@@ -1,70 +1,73 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "family": "S12-LOG",
   "paths": [
     "server/modules/logs/**",
     "src/application/ports/LogAnalysisRepository.ts",
     "src/infrastructure/http/logClient.ts",
     "src/infrastructure/http/logDtos.ts",
-    "server/modules/logs/parameterCatalogComparisonContribution.ts"
+    "server/modules/logs/parameterCatalogComparisonContribution.ts",
+    "src/infrastructure/http/logClient.test.ts",
+    "src/infrastructure/http/logDtos.test.ts",
+    "e2e/acceptance/log-analysis.acceptance.spec.ts"
   ],
   "entries": [
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:76101591397435d8:1",
+      "id": "S12-LOG:legacy-catalog-raw-read:76101591397435d8:d9fe9b8305a1ca93",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:76101591397435d8:2",
+      "id": "S12-LOG:legacy-catalog-raw-read:76101591397435d8:db2dd72571ea0eb9",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:7e305cfda90e4780:1",
+      "id": "S12-LOG:legacy-catalog-raw-read:7e305cfda90e4780:ecbc69a274ea1e01",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:b80f19b1bea3038b:1",
+      "id": "S12-LOG:legacy-catalog-raw-read:b80f19b1bea3038b:010ca0bb5a2dbe55",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:c2233dc1ffecc0ff:1",
+      "id": "S12-LOG:legacy-catalog-raw-read:c2233dc1ffecc0ff:55f7778f34dce9bf",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:c2233dc1ffecc0ff:2",
+      "id": "S12-LOG:legacy-catalog-raw-read:c2233dc1ffecc0ff:d55973253e90f02c",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:legacy-catalog-raw-read:d3a6cccff34ee0be:1",
+      "id": "S12-LOG:legacy-catalog-raw-read:d3a6cccff34ee0be:fcefb99439449f32",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/logs/analyzer/tools/dbToolBackends.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-LOG:unresolved-boundary-expression:8ee7f9a767e06ab6:1",
+      "id": "S12-LOG:unresolved-boundary-expression:8ee7f9a767e06ab6:699ac2829d79ed70",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/logs/domainsRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:1",
+      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:1a70b383ae7e6440",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/logs/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:2",
+      "id": "S12-LOG:unresolved-boundary-expression:9809fb7c167c6968:60440b5438bb4a26",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/logs/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."

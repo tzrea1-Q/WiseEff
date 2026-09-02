@@ -1,21 +1,28 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "family": "S12-AGT",
   "paths": [
     "server/modules/agent/tools/actionTools.ts",
     "server/modules/agent/toolRegistry.ts",
     "server/modules/agent/toolMetadata.ts",
-    "server/modules/agent/parameterCatalogComparisonContribution.ts"
+    "server/modules/agent/parameterCatalogComparisonContribution.ts",
+    "server/modules/agent/tools/actionTools.test.ts",
+    "server/modules/agent/tools/actionTools.integration.test.ts",
+    "server/modules/agent/toolRegistry.test.ts",
+    "server/modules/agent/parameterCatalogComparisonContribution.test.ts",
+    "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
+    "server/modules/agent/tools/perceptionTools.ts",
+    "server/modules/agent/tools/perceptionTools.test.ts"
   ],
   "entries": [
     {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:41333e6758b504a7:1",
+      "id": "S12-AGT:legacy-parameter-spec-identifier:41333e6758b504a7:2352cd7afd8496cb",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-AGT:legacy-parameter-spec-identifier:f98934aa45a45cf4:1",
+      "id": "S12-AGT:legacy-parameter-spec-identifier:f98934aa45a45cf4:3545c2d3303cc20c",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/agent/tools/actionTools.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."

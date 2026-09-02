@@ -1,10 +1,25 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript";
 
+import {
+  legacyLookupIdentifierTypes,
+  legacyMappingSourceKinds,
+} from "../server/modules/parameter-catalog-contract/index";
 import {
   allowlistShardDirectory,
   boundaryViolationFixturePath,
@@ -26,10 +41,10 @@ import {
   type ConsumerFamilyId,
 } from "./parameter-catalog-allowlist/schema";
 
-const initialBaselineSha = "e84ca078ab8f7b7006fa8e635d722297a287d2a5";
-const initialFixtureSha256 = "90f7e03e420887e52537bab62be77a3779c15f2d670de7409137508d20bc9760";
+const initialBaselineSha = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
+const initialFixtureSha256 = "f6eaa47f70c39e3e88f028be2434ad215fe926869c76bcefeebd86c1a42cd5f5";
 const initialFixtureIntegrity: BoundaryFixtureIntegrity = {
-  baselineSha: initialBaselineSha,
+  trustedBaseSha: initialBaselineSha,
   fixtureSha256: initialFixtureSha256,
 };
 
@@ -62,18 +77,48 @@ const legacyCatalogTables = [
   "project_parameter_bindings",
 ] as const;
 
-const canonicalCatalogTables = [
-  "catalog_materializations",
-  "catalog_release_definition_heads",
-  "catalog_release_subject_aliases",
-  "catalog_release_subjects",
-  "catalog_releases",
-  "catalog_state",
-  "catalog_subject_aliases",
-  "catalog_subjects",
-  "definition_revisions",
-  "organization_subject_registrations",
+export const canonicalCatalogRelations = [
+  "parameter_catalog.catalog_releases",
+  "parameter_catalog.catalog_subjects",
+  "parameter_catalog.catalog_drivers",
+  "parameter_catalog.catalog_node_types",
+  "parameter_catalog.catalog_release_subjects",
+  "parameter_catalog.catalog_subject_aliases",
+  "parameter_catalog.catalog_release_subject_aliases",
+  "parameter_catalog.parameter_definitions",
+  "parameter_catalog.definition_revisions",
+  "parameter_catalog.catalog_release_definition_heads",
+  "parameter_catalog.catalog_materializations",
+  "parameter_catalog.catalog_state",
+  "parameter_catalog.project_parameter_bindings",
+  "parameter_catalog.project_parameter_values",
+  "parameter_catalog.binding_history_events",
+  "parameter_catalog.legacy_identities",
+  "parameter_catalog.parameter_catalog_cutover_runs",
+  "parameter_catalog.parameter_catalog_cutover_events",
+  "parameter_catalog.parameter_catalog_cutover_checkpoints",
+  "parameter_catalog.parameter_catalog_archives",
+  "parameter_catalog.legacy_mapping_versions",
+  "parameter_catalog.legacy_mapping_heads",
+  "parameter_catalog.parameter_catalog_classification_ledger",
+  "parameter_catalog.parameter_catalog_comparison_cases",
+  "parameter_catalog.parameter_catalog_comparison_results",
+  "parameter_catalog.catalog_command_idempotency",
+  "parameter_catalog.organization_subject_registrations",
+  "parameter_catalog.subject_placements",
+  "parameter_catalog.parameter_observations",
+  "parameter_catalog.parameter_review_evidence",
+  "parameter_catalog.parameter_review_items",
+  "parameter_catalog.definition_proposals",
+  "parameter_catalog.definition_proposal_revisions",
+  "parameter_catalog.catalog_publication_intents",
+  "parameter_catalog.parameter_review_resolutions",
+  "parameter_catalog.governance_command_idempotency",
+  "parameter_catalog.parameter_observation_matches",
 ] as const;
+
+export const legacyCatalogLookupKinds = legacyLookupIdentifierTypes;
+export const legacyCatalogMappingSourceKinds = legacyMappingSourceKinds;
 
 const legacyRouteFragments = [
   "/api/v2/parameter-specs",
@@ -94,8 +139,8 @@ const effectiveGovernanceIdentifier =
   /(?:effective.*(?:catalog|definition|parameterSpec)|(?:catalog|definition|parameterSpec).*effective|governance.*parameterSpec|parameterSpec.*governance)/iu;
 const overlayContractIdentifier = /(?:DriverSchemaOverlay|OrganizationDriverSchema)/u;
 const legacyModuleImport = /(?:^|\/)parameter-specs(?:\/|$)/u;
-const forbiddenInternalImport =
-  /(?:^|\/)(?:catalog-kernel\/(?:install|verification|cache)|parameter-governance\/(?:registration|evidence|review|resolveReviewItem|proposals)|catalog-cutover\/(?:classifier|mapping|archive))(?:\/|$)/u;
+const protectedCatalogModuleRoot =
+  /(?:^|\/)(?:catalog-kernel|parameter-catalog-contract|parameter-governance|catalog-cutover)(?:\/|$)/u;
 
 const reasons: Record<BoundaryRuleId, string> = {
   "legacy-catalog-sql-write": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
@@ -111,7 +156,7 @@ const reasons: Record<BoundaryRuleId, string> = {
   "unresolved-boundary-expression": "A database, route, or module-loader boundary expression cannot be resolved statically.",
 };
 
-type CandidateViolation = Omit<BoundaryViolation, "id"> & {
+type CandidateViolation = Omit<BoundaryViolation, "id" | "trustedBaseSha" | "trustedBlobOid"> & {
   start: number;
   stableEvidence: string;
 };
@@ -121,8 +166,12 @@ export type InitialAllowlistArtifacts = {
   shards: AllowlistShard[];
 };
 
-export async function scanParameterCatalogBoundaries(repoRoot: string): Promise<BoundaryViolation[]> {
+export async function scanParameterCatalogBoundaries(
+  repoRoot: string,
+  trustedBaseSha = "0000000000000000000000000000000000000000",
+): Promise<BoundaryViolation[]> {
   const candidates: CandidateViolation[] = [];
+  const trustedBlobOidByFile = new Map<string, string>();
   const ownerByFile = new Map<string, ConsumerFamilyId>();
   for (const definition of consumerShardDefinitions) {
     const files = await collectConsumerSourceFiles(repoRoot, definition.paths);
@@ -134,6 +183,7 @@ export async function scanParameterCatalogBoundaries(repoRoot: string): Promise<
       }
       ownerByFile.set(file, definition.family);
       const source = await readFile(absoluteFile, "utf8");
+      trustedBlobOidByFile.set(file, gitBlobOid(source));
       candidates.push(...scanSourceFile(definition.family, file, source));
     }
   }
@@ -146,7 +196,7 @@ export async function scanParameterCatalogBoundaries(repoRoot: string): Promise<
       compareText(left.stableEvidence, right.stableEvidence),
   );
 
-  const occurrenceByBaseId = new Map<string, number>();
+  const duplicateByOccurrenceRecord = new Map<string, number>();
   return candidates
     .map(({ start: _start, stableEvidence, ...candidate }) => {
       const fingerprint = createHash("sha256")
@@ -154,26 +204,64 @@ export async function scanParameterCatalogBoundaries(repoRoot: string): Promise<
         .digest("hex")
         .slice(0, 16);
       const baseId = `${candidate.family}:${candidate.rule}:${fingerprint}`;
-      const ordinal = (occurrenceByBaseId.get(baseId) ?? 0) + 1;
-      occurrenceByBaseId.set(baseId, ordinal);
-      return { id: `${baseId}:${ordinal}`, ...candidate };
+      const trustedBlobOid = trustedBlobOidByFile.get(candidate.file);
+      if (!trustedBlobOid) throw new Error(`Missing trusted blob identity for ${candidate.file}.`);
+      const recordKey = [
+        candidate.family,
+        candidate.rule,
+        candidate.file,
+        String(candidate.byteStart),
+        String(candidate.byteEnd),
+        candidate.token,
+        candidate.evidence,
+      ].join("\0");
+      const detectorOccurrence = (duplicateByOccurrenceRecord.get(recordKey) ?? 0) + 1;
+      duplicateByOccurrenceRecord.set(recordKey, detectorOccurrence);
+      const occurrenceToken = detectorOccurrence === 1
+        ? candidate.token
+        : `${candidate.token}\0detector-duplicate:${detectorOccurrence}`;
+      const occurrenceFingerprint = createHash("sha256")
+        .update(
+          [
+            trustedBaseSha,
+            trustedBlobOid,
+            String(candidate.byteStart),
+            String(candidate.byteEnd),
+            occurrenceToken,
+            candidate.evidence,
+            candidate.file,
+            candidate.family,
+            candidate.rule,
+          ].join("\0"),
+        )
+        .digest("hex")
+        .slice(0, 16);
+      return {
+        id: `${baseId}:${occurrenceFingerprint}`,
+        ...candidate,
+        token: occurrenceToken,
+        trustedBaseSha,
+        trustedBlobOid,
+      };
     })
     .sort((left, right) => compareText(left.id, right.id));
 }
 
 export function buildInitialAllowlistArtifacts(
   violations: readonly BoundaryViolation[],
-  baselineSha: string,
+  trustedBaseSha: string,
 ): InitialAllowlistArtifacts {
-  const sortedViolations = [...violations].sort((left, right) => compareText(left.id, right.id));
+  const sortedViolations = violations
+    .map((violation) => rebindTrustedBase(violation, trustedBaseSha))
+    .sort((left, right) => compareText(left.id, right.id));
   const fixture = boundaryViolationFixtureSchema.parse({
-    schemaVersion: 1,
-    baselineSha,
+    schemaVersion: 2,
+    trustedBaseSha,
     violations: sortedViolations,
   });
   const shards = consumerShardDefinitions.map((definition) =>
     allowlistShardSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       family: definition.family,
       paths: definition.paths.map(({ pattern }) => pattern),
       entries: sortedViolations
@@ -185,16 +273,51 @@ export function buildInitialAllowlistArtifacts(
   return { fixture, shards };
 }
 
+function rebindTrustedBase(violation: BoundaryViolation, trustedBaseSha: string): BoundaryViolation {
+  const baseId = violation.id.split(":").slice(0, 3).join(":");
+  const occurrenceFingerprint = createHash("sha256")
+    .update(
+      [
+        trustedBaseSha,
+        violation.trustedBlobOid,
+        String(violation.byteStart),
+        String(violation.byteEnd),
+        violation.token,
+        violation.evidence,
+        violation.file,
+        violation.family,
+        violation.rule,
+      ].join("\0"),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  return {
+    ...violation,
+    id: `${baseId}:${occurrenceFingerprint}`,
+    trustedBaseSha,
+  };
+}
+
+function gitBlobOid(contents: string) {
+  const body = Buffer.from(contents, "utf8");
+  return createHash("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
+}
+
 export async function checkParameterCatalogBoundaries(
   repoRoot: string,
+  trustedBaseSha: string,
   integrity: BoundaryFixtureIntegrity = initialFixtureIntegrity,
 ) {
-  const [violations, allowlist, fixture] = await Promise.all([
-    scanParameterCatalogBoundaries(repoRoot),
+  if (!/^[a-f0-9]{40}$/u.test(trustedBaseSha)) {
+    throw new Error("Parameter-catalog checker requires --trusted-base-sha with a full Git commit SHA.");
+  }
+  const fixture = await loadBoundaryViolationFixture(repoRoot, integrity);
+  const [discovered, allowlist] = await Promise.all([
+    scanParameterCatalogBoundaries(repoRoot, fixture.trustedBaseSha),
     loadAllowlistIndex(repoRoot),
-    loadBoundaryViolationFixture(repoRoot, integrity),
   ]);
-  const trustedParentAllowances = loadTrustedParentAllowances(repoRoot, fixture);
+  const violations = bindTrustedOccurrences(discovered, fixture.violations);
+  const trustedParentAllowances = loadTrustedParentAllowances(repoRoot, trustedBaseSha, fixture);
   if (trustedParentAllowances) {
     const parentById = new Map(trustedParentAllowances.map((entry) => [entry.id, entry]));
     const growth = allowlist.entries.filter((entry) => {
@@ -215,8 +338,36 @@ export async function checkParameterCatalogBoundaries(
   return compareBoundaryInventory(violations, allowlist.entries, fixture.violations);
 }
 
+function bindTrustedOccurrences(
+  discovered: readonly BoundaryViolation[],
+  baseline: readonly BoundaryViolation[],
+) {
+  const baselineByPosition = new Map(
+    baseline.map((violation) => [occurrencePositionKey(violation), violation]),
+  );
+  return discovered.map((violation) => baselineByPosition.get(occurrencePositionKey(violation)) ?? violation);
+}
+
+function occurrencePositionKey(
+  violation: Pick<
+    BoundaryViolation,
+    "family" | "rule" | "file" | "byteStart" | "byteEnd" | "token" | "evidence"
+  >,
+) {
+  return [
+    violation.family,
+    violation.rule,
+    violation.file,
+    String(violation.byteStart),
+    String(violation.byteEnd),
+    violation.token,
+    violation.evidence,
+  ].join("\0");
+}
+
 function loadTrustedParentAllowances(
   repoRoot: string,
+  trustedBaseSha: string,
   fixture: BoundaryViolationFixture,
 ): AllowlistEntry[] | undefined {
   const gitRoot = gitOutput(repoRoot, ["rev-parse", "--show-toplevel"], "repository root");
@@ -224,32 +375,44 @@ function loadTrustedParentAllowances(
   if (gitPrefix !== "") {
     throw new Error(`Parameter-catalog checker root must be the Git repository root: ${gitRoot}.`);
   }
-  const originMain = gitOutput(
+  const verifiedTrustedBase = gitOutput(
     repoRoot,
-    ["rev-parse", "--verify", "refs/remotes/origin/main^{commit}"],
-    "trusted origin/main commit",
+    ["rev-parse", "--verify", `${trustedBaseSha}^{commit}`],
+    "explicit trusted base commit",
   );
+  if (verifiedTrustedBase !== trustedBaseSha) {
+    throw new Error(`Explicit trusted base ${trustedBaseSha} did not resolve byte-for-byte.`);
+  }
   const mergeBase = gitOutput(
     repoRoot,
-    ["merge-base", "HEAD", "refs/remotes/origin/main"],
+    ["merge-base", "HEAD", trustedBaseSha],
     "trusted merge-base commit",
   );
-  if (mergeBase !== originMain) {
+  if (mergeBase !== trustedBaseSha) {
     throw new Error(
-      `Untrusted parameter-catalog parent: origin/main ${originMain} is not the HEAD merge-base ${mergeBase}.`,
+      `Untrusted parameter-catalog parent: explicit base ${trustedBaseSha} is not the HEAD merge-base ${mergeBase}.`,
     );
   }
-  gitOutput(repoRoot, ["cat-file", "-e", `${mergeBase}^{commit}`], "trusted merge-base object");
+  const fixtureMergeBase = gitOutput(
+    repoRoot,
+    ["merge-base", fixture.trustedBaseSha, trustedBaseSha],
+    "fixture trusted-base ancestry",
+  );
+  if (fixtureMergeBase !== fixture.trustedBaseSha) {
+    throw new Error(
+      `Explicit trusted base ${trustedBaseSha} is not descended from fixture base ${fixture.trustedBaseSha}.`,
+    );
+  }
 
   const shardDocuments = consumerShardDefinitions.map((definition) => {
     const path = `${allowlistShardDirectory}/${definition.shardFile}`;
-    const contents = gitObjectContents(repoRoot, mergeBase, path);
+    const contents = gitObjectContents(repoRoot, trustedBaseSha, path);
     return { definition, path, contents };
   });
   const present = shardDocuments.filter(({ contents }) => contents !== undefined);
   if (present.length === 0) {
-    if (mergeBase === initialBaselineSha && fixture.baselineSha === initialBaselineSha) return undefined;
-    throw new Error(`Trusted merge-base ${mergeBase} has no parameter-catalog allow-list shards.`);
+    if (trustedBaseSha === fixture.trustedBaseSha) return undefined;
+    throw new Error(`Trusted base ${trustedBaseSha} has no parameter-catalog allow-list shards.`);
   }
   if (present.length !== shardDocuments.length) {
     const missing = shardDocuments.filter(({ contents }) => contents === undefined).map(({ path }) => path);
@@ -263,12 +426,12 @@ function loadTrustedParentAllowances(
     try {
       value = JSON.parse(contents as string) as unknown;
     } catch (error) {
-      throw new Error(`Invalid JSON in trusted merge-base allow-list shard ${path}.`, { cause: error });
+      throw new Error(`Invalid JSON in trusted-base allow-list shard ${path}.`, { cause: error });
     }
     const shard = allowlistShardSchema.parse(value);
     const expectedPaths = definition.paths.map(({ pattern }) => pattern);
     if (shard.family !== definition.family || JSON.stringify(shard.paths) !== JSON.stringify(expectedPaths)) {
-      throw new Error(`Trusted merge-base allow-list metadata mismatch for ${path}.`);
+      throw new Error(`Trusted-base allow-list metadata mismatch for ${path}.`);
     }
     for (const entry of shard.entries) {
       const initial = fixtureById.get(entry.id);
@@ -278,7 +441,7 @@ function loadTrustedParentAllowances(
         initial.file !== entry.file ||
         initial.reason !== entry.reason
       ) {
-        throw new Error(`Trusted merge-base allow-list entry is outside the immutable fixture: ${entry.id}.`);
+        throw new Error(`Trusted-base allow-list entry is outside the immutable fixture: ${entry.id}.`);
       }
       entries.push(entry);
     }
@@ -313,12 +476,15 @@ function gitObjectContents(repoRoot: string, commit: string, path: string) {
 
 function scanSourceFile(family: ConsumerFamilyId, file: string, source: string): CandidateViolation[] {
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const byteOffset = buildUtf8ByteOffset(source);
   const candidates: CandidateViolation[] = [];
   const constantBindings = collectUniqueConstantBindings(sourceFile);
   const moduleLoaderAliases = collectModuleLoaderAliases(constantBindings);
+  const boundaryAliases = collectBoundaryAliases(sourceFile, constantBindings);
 
   const add = (rule: BoundaryRuleId, node: ts.Node, evidence: string, stableEvidence = evidence) => {
     const start = node.getStart(sourceFile, false);
+    const end = node.getEnd();
     const position = sourceFile.getLineAndCharacterOfPosition(start);
     candidates.push({
       family,
@@ -326,6 +492,9 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
       file,
       line: position.line + 1,
       column: position.character + 1,
+      byteStart: byteOffset(start),
+      byteEnd: byteOffset(end),
+      token: normalizeText(stableEvidence),
       evidence: boundedEvidence(evidence),
       reason: reasons[rule],
       start,
@@ -337,7 +506,7 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
     if (legacyModuleImport.test(modulePath)) {
       add("legacy-catalog-module-import", node, modulePath, modulePath);
     }
-    if (forbiddenInternalImport.test(modulePath)) {
+    if (isForbiddenCatalogModuleImport(modulePath)) {
       add("forbidden-catalog-internal-import", node, modulePath, modulePath);
     }
   };
@@ -361,6 +530,18 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
       scanModuleSpecifier(node.arguments[0].text, node);
     }
 
+    if (ts.isCallExpression(node)) {
+      const unresolvedReceiver = unresolvedBoundaryReceiver(node);
+      if (unresolvedReceiver) {
+        add(
+          "unresolved-boundary-expression",
+          unresolvedReceiver.expression,
+          `${unresolvedReceiver.kind}-receiver: ${normalizeText(unresolvedReceiver.expression.getText(sourceFile))}`,
+          `unresolved:${unresolvedReceiver.kind}-receiver`,
+        );
+      }
+    }
+
     if (ts.isCallExpression(node) && node.arguments[0]) {
       const argument = node.arguments[0];
       if (isModuleLoaderCall(node, moduleLoaderAliases) && !ts.isStringLiteral(argument)) {
@@ -375,7 +556,7 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
             "unresolved:module-loader",
           );
         }
-      } else if (isDatabaseStringCall(node) && !isStringNode(argument)) {
+      } else if (isDatabaseStringCall(node, boundaryAliases) && !isStringNode(argument)) {
         const evaluated = evaluateStringExpression(argument, constantBindings);
         if (evaluated.complete) {
           scanStringValue(argument, evaluated.text, add);
@@ -387,7 +568,7 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
             "unresolved:database",
           );
         }
-      } else if (isRouteRegistrationCall(node) && !isStringNode(argument)) {
+      } else if (isRouteRegistrationCall(node, boundaryAliases) && !isStringNode(argument)) {
         const evaluated = evaluateStringExpression(argument, constantBindings);
         if (evaluated.complete) {
           scanStringValue(argument, evaluated.text, add);
@@ -431,6 +612,23 @@ function scanSourceFile(family: ConsumerFamilyId, file: string, source: string):
   return candidates;
 }
 
+function buildUtf8ByteOffset(source: string) {
+  if (Buffer.byteLength(source, "utf8") === source.length) return (position: number) => position;
+  const offsets = new Uint32Array(source.length + 1);
+  let characterOffset = 0;
+  let byteOffset = 0;
+  for (const character of source) {
+    offsets[characterOffset] = byteOffset;
+    const codePoint = character.codePointAt(0) as number;
+    const characterLength = character.length;
+    if (characterLength === 2) offsets[characterOffset + 1] = byteOffset;
+    characterOffset += characterLength;
+    byteOffset += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+    offsets[characterOffset] = byteOffset;
+  }
+  return (position: number) => offsets[position];
+}
+
 function scanStringValue(
   node: ts.Node,
   value: string,
@@ -456,9 +654,9 @@ function scanStringValue(
     }
   }
 
-  for (const table of canonicalCatalogTables) {
-    if (sqlWritePattern(table).test(sqlStructure) || sqlReadPattern(table).test(sqlStructure)) {
-      add("canonical-catalog-raw-access", node, `${table}: ${normalized}`, `canonical:${table}`);
+  for (const relation of canonicalCatalogRelations) {
+    if (sqlWritePattern(relation).test(sqlStructure) || sqlReadPattern(relation).test(sqlStructure)) {
+      add("canonical-catalog-raw-access", node, `${relation}: ${normalized}`, `canonical:${relation}`);
     }
   }
 
@@ -492,6 +690,7 @@ function maskSqlLiteralsAndComments(value: string) {
   let index = 0;
   let state: "code" | "single" | "double" | "line-comment" | "block-comment" | "dollar" = "code";
   let dollarDelimiter = "";
+  let blockCommentDepth = 0;
   const mask = (character: string) => (character === "\n" || character === "\r" ? character : " ");
 
   while (index < value.length) {
@@ -518,6 +717,7 @@ function maskSqlLiteralsAndComments(value: string) {
       }
       if (character === "/" && next === "*") {
         state = "block-comment";
+        blockCommentDepth = 1;
         result += "  ";
         index += 2;
         continue;
@@ -570,10 +770,17 @@ function maskSqlLiteralsAndComments(value: string) {
       continue;
     }
     if (state === "block-comment") {
+      if (character === "/" && next === "*") {
+        blockCommentDepth += 1;
+        result += "  ";
+        index += 2;
+        continue;
+      }
       if (character === "*" && next === "/") {
         result += "  ";
         index += 2;
-        state = "code";
+        blockCommentDepth -= 1;
+        if (blockCommentDepth === 0) state = "code";
       } else {
         result += mask(character);
         index += 1;
@@ -593,22 +800,27 @@ function maskSqlLiteralsAndComments(value: string) {
 }
 
 function sqlWritePattern(table: string) {
+  const relation = sqlRelationPattern(table);
   return new RegExp(
-    `\\b(?:insert\\s+into|update|delete\\s+from|merge\\s+into|truncate(?:\\s+table)?)\\s+(?:only\\s+)?${qualifiedSqlTablePattern(table)}`,
+    `\\b(?:(?:insert\\s+into|update|delete\\s+from|merge\\s+into|truncate(?:\\s+table)?)\\s+(?:only\\s+)?${relation}|copy\\s+${relation}\\s+from\\b)`,
     "giu",
   );
 }
 
 function sqlReadPattern(table: string) {
+  const relation = sqlRelationPattern(table);
   return new RegExp(
-    `\\b(?:from|join)\\s+(?:only\\s+)?${qualifiedSqlTablePattern(table)}`,
+    `(?:\\b(?:from|join)\\s+(?:only\\s+)?${relation}|(?:^|;)\\s*table\\s+(?:only\\s+)?${relation}|\\bcopy\\s+${relation}\\s+to\\b)`,
     "iu",
   );
 }
 
-function qualifiedSqlTablePattern(table: string) {
+function sqlRelationPattern(relation: string) {
   const identifier = '(?:"(?:[^"]|"")*"|[a-z_][a-z0-9_$]*)';
-  return `(?:${identifier}\\s*\\.\\s*)?(?:"${table}"|${table})(?![a-z0-9_$])`;
+  const [schema, table] = relation.includes(".") ? relation.split(".", 2) : [undefined, relation];
+  const tablePattern = `(?:"${table}"|${table})(?![a-z0-9_$])`;
+  if (schema) return `(?:"${schema}"|${schema})\\s*\\.\\s*${tablePattern}`;
+  return `(?:${identifier}\\s*\\.\\s*)?${tablePattern}`;
 }
 
 function isModuleLoaderCall(node: ts.CallExpression, aliases: ReadonlySet<string>) {
@@ -618,21 +830,32 @@ function isModuleLoaderCall(node: ts.CallExpression, aliases: ReadonlySet<string
   );
 }
 
-function isDatabaseStringCall(node: ts.CallExpression) {
+type BoundaryAliases = {
+  databaseReceivers: ReadonlySet<string>;
+  databaseMethods: ReadonlySet<string>;
+  routeReceivers: ReadonlySet<string>;
+  routeMethods: ReadonlySet<string>;
+};
+
+function isDatabaseStringCall(node: ts.CallExpression, aliases: BoundaryAliases) {
+  const expression = unwrapStringExpression(node.expression);
+  if (ts.isIdentifier(expression) && aliases.databaseMethods.has(expression.text)) return true;
   const boundary = callBoundary(node);
   return Boolean(
     boundary &&
       /^(?:query|execute|raw|unsafe)$/u.test(boundary.method) &&
-      /^(?:db|database|pool|client|tx|queryable)$/iu.test(boundary.receiver),
+      aliases.databaseReceivers.has(boundary.receiver),
   );
 }
 
-function isRouteRegistrationCall(node: ts.CallExpression) {
+function isRouteRegistrationCall(node: ts.CallExpression, aliases: BoundaryAliases) {
+  const expression = unwrapStringExpression(node.expression);
+  if (ts.isIdentifier(expression) && aliases.routeMethods.has(expression.text)) return true;
   const boundary = callBoundary(node);
   return Boolean(
     boundary &&
       /^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(boundary.method) &&
-      /^(?:app|router|routes?|server)$/iu.test(boundary.receiver),
+      aliases.routeReceivers.has(boundary.receiver),
   );
 }
 
@@ -649,6 +872,18 @@ function callBoundary(node: ts.CallExpression) {
       method: expression.argumentExpression.text,
       receiver: boundaryReceiverName(expression.expression),
     };
+  }
+  return undefined;
+}
+
+function unresolvedBoundaryReceiver(node: ts.CallExpression) {
+  const expression = unwrapStringExpression(node.expression);
+  if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) return undefined;
+  const method = callMemberName(expression);
+  const receiver = boundaryReceiverName(expression.expression);
+  if (receiver || !method) return undefined;
+  if (/^(?:query|execute|raw|unsafe)$/u.test(method)) {
+    return { kind: "database" as const, expression: expression.expression };
   }
   return undefined;
 }
@@ -699,6 +934,97 @@ function collectModuleLoaderAliases(bindings: ReadonlyMap<string, ts.Expression>
     }
   }
   return aliases;
+}
+
+function collectBoundaryAliases(
+  sourceFile: ts.SourceFile,
+  bindings: ReadonlyMap<string, ts.Expression>,
+): BoundaryAliases {
+  const databaseReceivers = new Set(["db", "database", "pool", "client", "tx", "queryable"]);
+  const routeReceivers = new Set(["app", "router", "route", "routes", "server"]);
+  const databaseMethods = new Set<string>();
+  const routeMethods = new Set<string>();
+  const aliasesByTarget = new Map<string, string[]>();
+  for (const [name, initializer] of bindings) {
+    const target = unwrapStringExpression(initializer);
+    if (ts.isIdentifier(target)) {
+      const aliases = aliasesByTarget.get(target.text) ?? [];
+      aliases.push(name);
+      aliasesByTarget.set(target.text, aliases);
+    }
+  }
+  expandAliases(databaseReceivers, aliasesByTarget);
+  expandAliases(routeReceivers, aliasesByTarget);
+
+  for (const [name, initializer] of bindings) {
+    const target = unwrapStringExpression(initializer);
+    if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+      const method = callMemberName(target);
+      const owner = boundaryReceiverName(target.expression);
+      if (method && /^(?:query|execute|raw|unsafe)$/u.test(method) && databaseReceivers.has(owner)) {
+        databaseMethods.add(name);
+      }
+      if (
+        method &&
+        /^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(method) &&
+        routeReceivers.has(owner)
+      ) {
+        routeMethods.add(name);
+      }
+    }
+  }
+  expandAliases(databaseMethods, aliasesByTarget);
+  expandAliases(routeMethods, aliasesByTarget);
+
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name) &&
+      node.initializer
+    ) {
+      const owner = boundaryReceiverName(node.initializer);
+      for (const element of node.name.elements) {
+        if (!ts.isIdentifier(element.name)) continue;
+        const property = element.propertyName ? propertyNameText(element.propertyName) : element.name.text;
+        if (/^(?:query|execute|raw|unsafe)$/u.test(property) && databaseReceivers.has(owner)) {
+          databaseMethods.add(element.name.text);
+        }
+        if (
+          /^(?:all|delete|get|head|options|patch|post|put|use)$/u.test(property) &&
+          routeReceivers.has(owner)
+        ) {
+          routeMethods.add(element.name.text);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return { databaseReceivers, databaseMethods, routeReceivers, routeMethods };
+}
+
+function expandAliases(targets: Set<string>, aliasesByTarget: ReadonlyMap<string, readonly string[]>) {
+  const queue = [...targets];
+  for (let index = 0; index < queue.length; index += 1) {
+    for (const alias of aliasesByTarget.get(queue[index]) ?? []) {
+      if (targets.has(alias)) continue;
+      targets.add(alias);
+      queue.push(alias);
+    }
+  }
+}
+
+function isForbiddenCatalogModuleImport(modulePath: string) {
+  if (!protectedCatalogModuleRoot.test(modulePath)) return false;
+  const segments = modulePath.split("/").filter(Boolean);
+  const roots = ["catalog-kernel", "parameter-catalog-contract", "parameter-governance", "catalog-cutover"];
+  const rootIndex = segments.findIndex((segment) => roots.includes(segment));
+  if (rootIndex < 0) return false;
+  const root = segments[rootIndex];
+  const suffix = segments.slice(rootIndex + 1).join("/").replace(/\.(?:[cm]?[jt]sx?)$/u, "");
+  if (root === "catalog-kernel") return suffix !== "interface";
+  if (root === "parameter-catalog-contract") return suffix !== "" && suffix !== "index";
+  return true;
 }
 
 type EvaluatedString = { text: string; complete: boolean };
@@ -933,41 +1259,214 @@ async function collectConsumerSourceFiles(
   return [...files].sort(compareText);
 }
 
-async function initializeBaseline(repoRoot: string, baselineSha: string) {
-  if (baselineSha !== initialBaselineSha) {
-    throw new Error(`Initial allow-list baseline must be the authorized SHA ${initialBaselineSha}.`);
-  }
-  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
-  if (head !== baselineSha) {
-    throw new Error(`Refusing baseline initialization: HEAD ${head} does not equal authorized baseline ${baselineSha}.`);
-  }
+export type BoundaryInventoryStatistics = {
+  violations: number;
+  duplicateBaseIdGroups: number;
+  duplicateBaseIdOccurrences: number;
+};
 
-  const targetPaths = [
-    boundaryViolationFixturePath,
-    ...consumerShardDefinitions.map(({ shardFile }) => `${allowlistShardDirectory}/${shardFile}`),
-  ];
-  for (const path of targetPaths) {
-    if (await pathExists(resolve(repoRoot, path))) {
-      throw new Error(`Refusing to grow or replace an existing parameter-catalog allow-list artifact: ${path}.`);
+export type InitializeBoundaryAllowlistOptions = {
+  trustedBaseSha: string;
+  authorizedHeadSha: string;
+  expectedStatistics?: BoundaryInventoryStatistics;
+  afterStage?: (stagingRoot: string, targetPaths: readonly string[]) => void | Promise<void>;
+  publishFaultAfter?: number;
+};
+
+const reviewedBaselineStatistics: BoundaryInventoryStatistics = {
+  violations: 3_350,
+  duplicateBaseIdGroups: 548,
+  duplicateBaseIdOccurrences: 1_888,
+};
+
+export function boundaryInventoryStatistics(
+  violations: readonly BoundaryViolation[],
+): BoundaryInventoryStatistics {
+  const countsByBaseId = new Map<string, number>();
+  for (const violation of violations) {
+    const baseId = violation.id.split(":").slice(0, 3).join(":");
+    countsByBaseId.set(baseId, (countsByBaseId.get(baseId) ?? 0) + 1);
+  }
+  const duplicateCounts = [...countsByBaseId.values()].filter((count) => count > 1);
+  return {
+    violations: violations.length,
+    duplicateBaseIdGroups: duplicateCounts.length,
+    duplicateBaseIdOccurrences: duplicateCounts.reduce((total, count) => total + count, 0),
+  };
+}
+
+export async function initializeParameterCatalogAllowlist(
+  repoRoot: string,
+  options: InitializeBoundaryAllowlistOptions,
+) {
+  const status = gitOutput(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"], "clean initializer state");
+  if (status !== "") {
+    throw new Error("Refusing parameter-catalog initialization: index and worktree must both be clean.");
+  }
+  const head = gitOutput(repoRoot, ["rev-parse", "HEAD"], "initializer HEAD");
+  if (head !== options.authorizedHeadSha) {
+    throw new Error(
+      `Refusing parameter-catalog initialization: HEAD ${head} does not equal caller-authorized ${options.authorizedHeadSha}.`,
+    );
+  }
+  const trustedBase = gitOutput(
+    repoRoot,
+    ["rev-parse", "--verify", `${options.trustedBaseSha}^{commit}`],
+    "initializer trusted base",
+  );
+  if (trustedBase !== options.trustedBaseSha) {
+    throw new Error(`Initializer trusted base ${options.trustedBaseSha} did not resolve byte-for-byte.`);
+  }
+  const mergeBase = gitOutput(repoRoot, ["merge-base", head, trustedBase], "initializer trusted-base ancestry");
+  if (mergeBase !== trustedBase) {
+    throw new Error(`Initializer trusted base ${trustedBase} is not an ancestor of authorized HEAD ${head}.`);
+  }
+  verifyConsumerTreeMatchesTrustedBase(repoRoot, trustedBase);
+
+  const violations = await scanParameterCatalogBoundaries(repoRoot, trustedBase);
+  const actualStatistics = boundaryInventoryStatistics(violations);
+  const expectedStatistics = options.expectedStatistics ?? reviewedBaselineStatistics;
+  if (JSON.stringify(actualStatistics) !== JSON.stringify(expectedStatistics)) {
+    throw new Error(
+      `Reviewed parameter-catalog baseline statistics drifted: expected ${JSON.stringify(expectedStatistics)}, received ${JSON.stringify(actualStatistics)}.`,
+    );
+  }
+  const artifacts = buildInitialAllowlistArtifacts(violations, trustedBase);
+  const targetPaths = boundaryArtifactPaths();
+  const stagingRoot = await mkdtemp(resolve(repoRoot, ".parameter-catalog-allowlist-stage-"));
+  await chmod(stagingRoot, 0o700);
+  try {
+    await writeJson(resolve(stagingRoot, boundaryViolationFixturePath), artifacts.fixture);
+    for (const definition of consumerShardDefinitions) {
+      const shard = artifacts.shards.find((candidate) => candidate.family === definition.family);
+      if (!shard) throw new Error(`Missing generated shard for ${definition.family}.`);
+      await writeJson(resolve(stagingRoot, allowlistShardDirectory, definition.shardFile), shard);
     }
-  }
-
-  const violations = await scanParameterCatalogBoundaries(repoRoot);
-  const artifacts = buildInitialAllowlistArtifacts(violations, baselineSha);
-  await writeJson(resolve(repoRoot, boundaryViolationFixturePath), artifacts.fixture);
-  for (const definition of consumerShardDefinitions) {
-    const shard = artifacts.shards.find((candidate) => candidate.family === definition.family);
-    if (!shard) throw new Error(`Missing generated shard for ${definition.family}.`);
-    await writeJson(resolve(repoRoot, allowlistShardDirectory, definition.shardFile), shard);
+    await options.afterStage?.(stagingRoot, targetPaths);
+    await validateStagedArtifacts(stagingRoot, targetPaths, expectedStatistics);
+    await publishStagedArtifacts(repoRoot, stagingRoot, targetPaths, options.publishFaultAfter);
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true });
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: "initialized" as const,
-    baselineSha,
-    violationCount: violations.length,
+    trustedBaseSha: trustedBase,
+    authorizedHeadSha: head,
+    statistics: actualStatistics,
     shards: artifacts.shards.map((shard) => ({ family: shard.family, entries: shard.entries.length })),
   };
+}
+
+function boundaryArtifactPaths() {
+  return [
+    boundaryViolationFixturePath,
+    ...consumerShardDefinitions.map(({ shardFile }) => `${allowlistShardDirectory}/${shardFile}`),
+  ].sort(compareText);
+}
+
+function verifyConsumerTreeMatchesTrustedBase(repoRoot: string, trustedBaseSha: string) {
+  const roots = [...new Set(
+    consumerShardDefinitions.flatMap((definition) =>
+      definition.paths.map(({ pattern }) => (pattern.endsWith("/**") ? pattern.slice(0, -3) : pattern)),
+    ),
+  )].sort(compareText);
+  const drift = gitOutput(
+    repoRoot,
+    ["diff", "--name-only", trustedBaseSha, "HEAD", "--", ...roots],
+    "trusted consumer-tree drift",
+  );
+  if (drift !== "") {
+    throw new Error(`Initializer consumer tree differs from trusted base ${trustedBaseSha}: ${drift.split("\n").join(", ")}.`);
+  }
+}
+
+async function validateStagedArtifacts(
+  stagingRoot: string,
+  targetPaths: readonly string[],
+  expectedStatistics: BoundaryInventoryStatistics,
+) {
+  const stagedPaths = (await collectRegularRelativeFiles(stagingRoot)).sort(compareText);
+  if (JSON.stringify(stagedPaths) !== JSON.stringify(targetPaths)) {
+    throw new Error(`Initializer staged path set is incomplete: expected ${targetPaths.join(", ")}, received ${stagedPaths.join(", ")}.`);
+  }
+  const fixture = await loadBoundaryViolationFixture(stagingRoot);
+  const allowlist = await loadAllowlistIndex(stagingRoot);
+  const actualStatistics = boundaryInventoryStatistics(fixture.violations);
+  if (JSON.stringify(actualStatistics) !== JSON.stringify(expectedStatistics)) {
+    throw new Error("Initializer staged fixture statistics do not match the reviewed baseline.");
+  }
+  const fixtureIds = fixture.violations.map(({ id }) => id);
+  const allowanceIds = allowlist.entries.map(({ id }) => id).sort(compareText);
+  if (JSON.stringify(allowanceIds) !== JSON.stringify(fixtureIds)) {
+    throw new Error("Initializer staged shards do not form the complete fixture occurrence multiset.");
+  }
+  for (const path of targetPaths) {
+    const first = await readFile(resolve(stagingRoot, path));
+    const checksum = createHash("sha256").update(first).digest("hex");
+    const second = await readFile(resolve(stagingRoot, path));
+    if (createHash("sha256").update(second).digest("hex") !== checksum) {
+      throw new Error(`Initializer staged checksum changed during validation: ${path}.`);
+    }
+  }
+}
+
+async function collectRegularRelativeFiles(root: string, current = root): Promise<string[]> {
+  const results: string[] = [];
+  for (const entry of await readdir(current, { withFileTypes: true })) {
+    const absolutePath = resolve(current, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`Initializer staging contains a symbolic link: ${absolutePath}.`);
+    if (entry.isDirectory()) {
+      results.push(...(await collectRegularRelativeFiles(root, absolutePath)));
+    } else if (entry.isFile()) {
+      results.push(toPosix(relative(root, absolutePath)));
+    } else {
+      throw new Error(`Initializer staging contains a non-regular entry: ${absolutePath}.`);
+    }
+  }
+  return results;
+}
+
+async function publishStagedArtifacts(
+  repoRoot: string,
+  stagingRoot: string,
+  targetPaths: readonly string[],
+  publishFaultAfter?: number,
+) {
+  const backupRoot = resolve(stagingRoot, ".backups");
+  const backups = new Set<string>();
+  const published = new Set<string>();
+  try {
+    for (const path of targetPaths) {
+      const target = resolve(repoRoot, path);
+      if (await pathExists(target)) {
+        const backup = resolve(backupRoot, path);
+        await mkdir(dirname(backup), { recursive: true });
+        await rename(target, backup);
+        backups.add(path);
+      }
+    }
+    for (const path of targetPaths) {
+      const target = resolve(repoRoot, path);
+      await mkdir(dirname(target), { recursive: true });
+      await rename(resolve(stagingRoot, path), target);
+      published.add(path);
+      if (publishFaultAfter !== undefined && published.size === publishFaultAfter) {
+        throw new Error("Injected initializer publication failure.");
+      }
+    }
+  } catch (error) {
+    for (const path of [...published].reverse()) {
+      await rm(resolve(repoRoot, path), { force: true });
+    }
+    for (const path of [...backups].reverse()) {
+      const target = resolve(repoRoot, path);
+      await mkdir(dirname(target), { recursive: true });
+      await rename(resolve(backupRoot, path), target);
+    }
+    throw error;
+  }
 }
 
 async function pathExists(path: string) {
@@ -985,23 +1484,31 @@ async function writeJson(path: string, value: unknown) {
 }
 
 function parseCliArgs(args: readonly string[]) {
-  const rootArgument = args.find((argument) => argument.startsWith("--root="));
-  const baselineArgument = args.find((argument) => argument.startsWith("--baseline-sha="));
+  const argumentValue = (name: string) => {
+    const equals = args.find((argument) => argument.startsWith(`${name}=`));
+    if (equals) return equals.slice(name.length + 1);
+    const index = args.indexOf(name);
+    return index >= 0 ? args[index + 1] : undefined;
+  };
   return {
-    repoRoot: resolve(rootArgument?.slice("--root=".length) || process.cwd()),
-    initialize: args.includes("--initialize-baseline"),
-    baselineSha: baselineArgument?.slice("--baseline-sha=".length) ?? "",
+    repoRoot: resolve(argumentValue("--root") || process.cwd()),
+    initialize: args.includes("--initialize"),
+    trustedBaseSha: argumentValue("--trusted-base-sha") ?? "",
+    authorizedHeadSha: argumentValue("--authorized-head-sha") ?? "",
   };
 }
 
 async function runCli() {
   const options = parseCliArgs(process.argv.slice(2));
   if (options.initialize) {
-    const result = await initializeBaseline(options.repoRoot, options.baselineSha);
+    const result = await initializeParameterCatalogAllowlist(options.repoRoot, {
+      trustedBaseSha: options.trustedBaseSha,
+      authorizedHeadSha: options.authorizedHeadSha,
+    });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
-  const report = await checkParameterCatalogBoundaries(options.repoRoot);
+  const report = await checkParameterCatalogBoundaries(options.repoRoot, options.trustedBaseSha);
   process.stdout.write(formatBoundaryReport(report));
   if (report.status !== "passed") process.exitCode = 1;
 }

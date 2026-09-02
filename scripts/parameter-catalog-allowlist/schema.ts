@@ -46,9 +46,10 @@ const repoPathPatternSchema = repoPathSchema.refine(
   "repository path patterns may only use a trailing /** directory glob",
 );
 const violationIdSchema = z.string().regex(
-  /^S12-(?:CGH|TOP|PRJ|FIL|AGT|LOG|DBG|DTS|KNW|MOD|OPS):[a-z0-9-]+:[a-f0-9]{16}:[1-9][0-9]*$/u,
-  "violation IDs must use the stable family:rule:fingerprint:ordinal form",
+  /^S12-(?:CGH|TOP|PRJ|FIL|AGT|LOG|DBG|DTS|KNW|MOD|OPS):[a-z0-9-]+:[a-f0-9]{16}:[a-f0-9]{16}$/u,
+  "violation IDs must use the replacement-resistant family:rule:base:occurrence form",
 );
+const fullGitShaSchema = z.string().regex(/^[a-f0-9]{40}$/u, "must be a full Git object ID");
 const nonBlankSchema = z
   .string()
   .min(1)
@@ -70,15 +71,24 @@ export const boundaryViolationSchema = allowlistEntrySchema
     family: consumerFamilyIdSchema,
     line: z.number().int().positive(),
     column: z.number().int().positive(),
+    trustedBaseSha: fullGitShaSchema,
+    trustedBlobOid: fullGitShaSchema,
+    byteStart: z.number().int().nonnegative(),
+    byteEnd: z.number().int().positive(),
+    token: z.string().min(1),
     evidence: nonBlankSchema,
   })
-  .strict();
+  .strict()
+  .refine((violation) => violation.byteEnd > violation.byteStart, {
+    message: "byteEnd must be greater than byteStart",
+    path: ["byteEnd"],
+  });
 
 export type BoundaryViolation = z.infer<typeof boundaryViolationSchema>;
 
 export const allowlistShardSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     family: consumerFamilyIdSchema,
     paths: z.array(repoPathPatternSchema).min(1),
     entries: z.array(allowlistEntrySchema),
@@ -118,8 +128,8 @@ export type AllowlistShard = z.infer<typeof allowlistShardSchema>;
 
 export const boundaryViolationFixtureSchema = z
   .object({
-    schemaVersion: z.literal(1),
-    baselineSha: z.string().regex(/^[a-f0-9]{40}$/u, "baselineSha must be a full Git commit SHA"),
+    schemaVersion: z.literal(2),
+    trustedBaseSha: fullGitShaSchema,
     violations: z.array(boundaryViolationSchema),
   })
   .strict()
@@ -138,6 +148,13 @@ export const boundaryViolationFixtureSchema = z
           code: "custom",
           message: "violation rule does not match its stable ID",
           path: ["violations", index, "rule"],
+        });
+      }
+      if (violation.trustedBaseSha !== fixture.trustedBaseSha) {
+        context.addIssue({
+          code: "custom",
+          message: "violation trusted base does not match the fixture trusted base",
+          path: ["violations", index, "trustedBaseSha"],
         });
       }
     }

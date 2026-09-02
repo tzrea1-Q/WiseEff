@@ -8,14 +8,14 @@ import {
 } from "./schema";
 
 const entry = {
-  id: "S12-CGH:legacy-catalog-sql-write:0123456789abcdef:1",
+  id: "S12-CGH:legacy-catalog-sql-write:0123456789abcdef:fedcba9876543210",
   rule: "legacy-catalog-sql-write" as const,
   file: "server/modules/parameter-specs/repository.ts",
   reason: "Retained only until S12-CGH removes the legacy writer.",
 };
 
 const shard = (): AllowlistShard => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   family: "S12-CGH",
   paths: [
     "server/modules/parameter-specs/**",
@@ -49,7 +49,7 @@ describe("parameter catalog allow-list schema", () => {
     const duplicate = { ...entry };
     const later = {
       ...entry,
-      id: "S12-CGH:legacy-catalog-sql-write:fedcba9876543210:1",
+      id: "S12-CGH:legacy-catalog-sql-write:fedcba9876543210:0123456789abcdef",
     };
 
     expect(() => allowlistShardSchema.parse({ ...shard(), extra: true })).toThrow();
@@ -65,14 +65,19 @@ describe("parameter catalog allow-list schema", () => {
 
   it("validates the immutable current-violations fixture independently of live shard shrinkage", () => {
     const fixture = {
-      schemaVersion: 1,
-      baselineSha: "e84ca078ab8f7b7006fa8e635d722297a287d2a5",
+      schemaVersion: 2,
+      trustedBaseSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
       violations: [
         {
           ...entry,
           family: "S12-CGH" as const,
           line: 10,
           column: 5,
+          trustedBaseSha: "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          trustedBlobOid: "0123456789abcdef0123456789abcdef01234567",
+          byteStart: 120,
+          byteEnd: 148,
+          token: "write:parameter_specs",
           evidence: "insert into parameter_specs",
         },
       ],
@@ -88,5 +93,17 @@ describe("parameter catalog allow-list schema", () => {
         violations: [{ ...fixture.violations[0], rule: "legacy-catalog-raw-read" }],
       }),
     ).toThrow(/rule/i);
+    expect(() =>
+      boundaryViolationFixtureSchema.parse({
+        ...fixture,
+        violations: fixture.violations.map(({ trustedBlobOid: _trustedBlobOid, ...violation }) => violation),
+      }),
+    ).toThrow();
+    expect(() =>
+      allowlistShardSchema.parse({
+        ...shard(),
+        entries: [{ ...entry, id: "S12-CGH:legacy-catalog-sql-write:0123456789abcdef:1" }],
+      }),
+    ).toThrow(/occurrence/i);
   });
 });

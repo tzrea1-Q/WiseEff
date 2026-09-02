@@ -190,6 +190,15 @@ jobs:
       - name: Script tests
         run: npm run test:scripts
 
+      - name: Verify parameter Catalog trusted base and boundary ratchet
+        env:
+          PARAMETER_CATALOG_TRUSTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          test "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+
       - name: Device bridge tests
         run: npm run bridge:test
 
