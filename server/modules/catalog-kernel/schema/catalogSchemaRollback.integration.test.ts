@@ -1931,13 +1931,117 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     ]);
   });
 
+  it("accepts a proved Organization parameter-spec mapped to a Platform Definition", async () => {
+    await seedLegacyOwnershipTargets(client);
+    await client.query(`
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, target_kind, target_id
+      ) values (
+        'lmap-org-to-platform-definition', 'lid-a', 'cutover-a', 1,
+        'sha256:source-org-platform-def', 'sha256:graph-org-platform-def',
+        'R9', 'parameter-definition', 'pdef-owner-a'
+      )
+    `);
+    const result = await client.query<{ target_id: string }>(
+      `select target_id from parameter_catalog.legacy_mapping_versions
+       where id = 'lmap-org-to-platform-definition'`,
+    );
+    expect(result.rows).toEqual([{ target_id: "pdef-owner-a" }]);
+  });
+
+  it("accepts a project observation source mapped to same-Organization ReviewEvidence", async () => {
+    await seedLegacyOwnershipTargets(client);
+    await client.query(`
+      insert into public.dts_config_set (
+        id, organization_id, project_id, name
+      ) values (
+        'source-config-set-org-one', 'org-pcat', 'project-pcat', 'Source config one'
+      );
+      insert into public.dts_config_revisions (
+        id, organization_id, project_id, config_set_id, revision_number, status
+      ) values (
+        'source-config-revision-org-one', 'org-pcat', 'project-pcat',
+        'source-config-set-org-one', 1, 'draft'
+      );
+      insert into parameter_catalog.legacy_identities (
+        id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+      ) values (
+        'lid-dts-project-one', 'legacy', 'dts-config-revision',
+        'project', 'project-pcat', 'source-config-revision-org-one'
+      );
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, target_kind, target_id
+      ) values (
+        'lmap-project-to-org-evidence', 'lid-dts-project-one', 'cutover-a', 1,
+        'sha256:source-project-org-evidence', 'sha256:graph-project-org-evidence',
+        'R9', 'review-evidence', 'prev-owner-target'
+      )
+    `);
+    const result = await client.query<{ target_id: string }>(
+      `select target_id from parameter_catalog.legacy_mapping_versions
+       where id = 'lmap-project-to-org-evidence'`,
+    );
+    expect(result.rows).toEqual([{ target_id: "prev-owner-target" }]);
+  });
+
+  it("accepts a typed migration-history target against canonical cutover history", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into public.parameter_identity_migration_runs (id, mode, status)
+      values ('identity-mig-run-a', 'dry-run', 'completed');
+      insert into parameter_catalog.legacy_identities (
+        id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+      ) values (
+        'lid-migration-run-a', 'legacy', 'parameter-identity-migration-run',
+        'platform', 'platform', 'identity-mig-run-a'
+      );
+      insert into parameter_catalog.legacy_mapping_versions (
+        id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+        graph_fingerprint, r_class, target_kind, target_id
+      ) values (
+        'lmap-migration-history', 'lid-migration-run-a', 'cutover-a', 1,
+        'sha256:source-migration-history', 'sha256:graph-migration-history',
+        'R9', 'migration-history', 'cutover-a'
+      )
+    `);
+    const result = await client.query<{ target_id: string }>(
+      `select target_id from parameter_catalog.legacy_mapping_versions
+       where id = 'lmap-migration-history'`,
+    );
+    expect(result.rows).toEqual([{ target_id: "cutover-a" }]);
+  });
+
+  it("rejects a missing migration-history target", async () => {
+    await seedLegacyMappingRoots(client);
+    await client.query(`
+      insert into public.parameter_identity_migration_runs (id, mode, status)
+      values ('identity-mig-run-missing', 'dry-run', 'completed');
+      insert into parameter_catalog.legacy_identities (
+        id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+      ) values (
+        'lid-migration-run-missing', 'legacy', 'parameter-identity-migration-run',
+        'platform', 'platform', 'identity-mig-run-missing'
+      )
+    `);
+    const error = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.legacy_mapping_versions (
+          id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+          graph_fingerprint, r_class, target_kind, target_id
+        ) values (
+          'lmap-migration-history-missing', 'lid-migration-run-missing', 'cutover-a', 1,
+          'sha256:source-migration-missing', 'sha256:graph-migration-missing',
+          'R9', 'migration-history', 'cutover-does-not-exist'
+        )
+      `),
+    );
+    expect(error.code).toBe("23503");
+    expect(error.constraint).toBe("legacy_mapping_target_fk");
+  });
+
   it.each([
-    {
-      name: "Platform Definition",
-      legacyIdentityId: "lid-a",
-      targetKind: "parameter-definition",
-      targetId: "pdef-owner-a",
-    },
     {
       name: "Organization Registration",
       legacyIdentityId: "lid-subject-org-two",

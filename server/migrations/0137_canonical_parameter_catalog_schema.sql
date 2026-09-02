@@ -1017,6 +1017,8 @@ create trigger catalog_state_pointer_lock
 before insert or update of current_catalog_release_id on parameter_catalog.catalog_state
 for each row execute function parameter_catalog.lock_catalog_state_pointer();
 
+revoke all on function parameter_catalog.lock_catalog_state_pointer() from public;
+
 create constraint trigger catalog_state_current_release_complete_ck
 after insert or update of current_catalog_release_id on parameter_catalog.catalog_state
 deferrable initially deferred
@@ -2454,10 +2456,30 @@ begin
       from public.audit_events where id = new.target_id;
       target_exists := found;
     when 'migration-history' then
-      select 'platform' into target_owner_scope_id
-      from public.schema_migrations where name = new.target_id;
-      target_exists := found;
+      select id
+      into target_owner_scope_id
+      from parameter_catalog.parameter_catalog_cutover_runs
+      where id = new.target_id;
+      if found then
+        target_exists := true;
+      else
+        select cutover_run_id
+        into target_owner_scope_id
+        from parameter_catalog.parameter_catalog_cutover_events
+        where id = new.target_id;
+        if found then
+          target_exists := true;
+        else
+          select cutover_run_id
+          into target_owner_scope_id
+          from parameter_catalog.parameter_catalog_cutover_checkpoints
+          where cutover_run_id = new.target_id
+          limit 1;
+          target_exists := found;
+        end if;
+      end if;
       target_owner_scope_kind := 'platform';
+      target_owner_scope_id := 'platform';
     else
       target_exists := false;
   end case;
@@ -2467,6 +2489,26 @@ begin
       errcode = '23503',
       message = 'Legacy mapping target does not exist',
       constraint = 'legacy_mapping_target_fk';
+  end if;
+
+  -- Platform Catalog and cutover-history targets may be pinned by any class-legal
+  -- source. Same-Organization/Project checks apply only to org/project aggregates.
+  if target_owner_scope_kind = 'platform' then
+    return null;
+  end if;
+
+  if mapping_owner_scope_kind = 'project' and target_owner_scope_kind = 'organization' then
+    select organization_id
+    into mapping_owner_scope_id
+    from public.projects
+    where id = mapping_owner_scope_id;
+    if not found then
+      raise exception using
+        errcode = '23503',
+        message = 'Legacy mapping target belongs to another owner scope',
+        constraint = 'legacy_mapping_target_owner_fk';
+    end if;
+    mapping_owner_scope_kind := 'organization';
   end if;
 
   if mapping_owner_scope_kind is distinct from target_owner_scope_kind
@@ -3305,3 +3347,23 @@ alter table parameter_catalog.project_parameter_bindings
   foreign key (registration_id, organization_id, subject_id)
   references parameter_catalog.organization_subject_registrations(id, organization_id, subject_id)
   on delete restrict;
+
+do $$
+declare
+  fn_signature text;
+begin
+  for fn_signature in
+    select format(
+      '%I.%I(%s)',
+      namespace.nspname,
+      proc.proname,
+      pg_catalog.pg_get_function_identity_arguments(proc.oid)
+    )
+    from pg_catalog.pg_proc proc
+    join pg_catalog.pg_namespace namespace on namespace.oid = proc.pronamespace
+    where namespace.nspname = 'parameter_catalog'
+  loop
+    execute format('revoke all on function %s from public', fn_signature);
+  end loop;
+end;
+$$;

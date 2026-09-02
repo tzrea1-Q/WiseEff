@@ -190,6 +190,26 @@ describe("canonical Catalog privilege boundary and migration paths", () => {
           and proc.proname = 'assert_catalog_subject_active'
       `);
 
+      const publicExecute = await db.query<{ proname: string }>(`
+        select proc.proname
+        from pg_catalog.pg_proc proc
+        join pg_catalog.pg_namespace namespace on namespace.oid = proc.pronamespace
+        where namespace.nspname = 'parameter_catalog'
+          and proc.prosecdef
+          and pg_catalog.has_function_privilege('public', proc.oid, 'execute')
+        order by proc.proname
+      `);
+      expect(publicExecute.rows).toEqual([]);
+
+      const pointerLock = await db.query<{ public_execute: boolean }>(`
+        select pg_catalog.has_function_privilege(
+          'public',
+          'parameter_catalog.lock_catalog_state_pointer()',
+          'execute'
+        ) as public_execute
+      `);
+      expect(pointerLock.rows).toEqual([{ public_execute: false }]);
+
       expect(result.rows).toEqual([
         {
           return_type: "void",
@@ -319,9 +339,7 @@ describe("canonical Catalog privilege boundary and migration paths", () => {
     expect(freshFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(upgradeFingerprint).toBe(freshFingerprint);
     expect(freshFingerprint).toBe(
-      "62f7369eea2b4632c8fc81b022bb9e04c11329f8ea92ed80c73d3f997a8a5a0a",
+      "641c18ade63f48163ca79649628c03e91ec483dce1ad15a3256468dff5062626",
     );
   });
 });
-
-export { canonicalSchemaFingerprint };
