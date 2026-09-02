@@ -1,0 +1,353 @@
+{
+  "schemaVersion": "1.0.0",
+  "s0IdContract": {
+    "mergedImplementationSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+    "packageEntrypoint": "server/modules/parameter-catalog-contract/index.ts",
+    "serializationGolden": {
+      "path": "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
+      "gitBlobOid": "c856ec070286a32c59ff13d8aef545139435c96c",
+      "byteLength": 1528,
+      "rawSha256": "0979a58a624cf160181425de92816fb1dd8bb285ea27896ba1f95287f6143d75"
+    },
+    "constructors": {
+      "compatible": "parseCanonicalCompatibleSelector",
+      "nodeName": "parseCanonicalNodeName",
+      "propertyKey": "parseCanonicalPropertyKey"
+    },
+    "enumRegistries": {
+      "driverNatures": "driverNatures",
+      "driverInstanceCardinalities": "driverInstanceCardinalities"
+    }
+  },
+  "idFormat": {
+    "type": "string",
+    "minLength": 1,
+    "trimmed": true,
+    "controlFree": true
+  },
+  "closedEnums": {
+    "catalogSubjectKinds": [
+      "driver",
+      "node-type"
+    ],
+    "catalogSubjectSelectorKinds": [
+      "driver-compatible",
+      "node-type-name"
+    ],
+    "driverNatures": [
+      "physical-device",
+      "logical-service"
+    ],
+    "driverInstanceCardinalities": [
+      "multiple",
+      "singleton-per-project"
+    ],
+    "definitionLifecycles": [
+      "active",
+      "deprecated",
+      "retired"
+    ],
+    "subjectLifecycles": [
+      "active",
+      "retired"
+    ]
+  },
+  "manifestRules": {
+    "exactSourceSet": true,
+    "exactDocumentSet": true,
+    "sourceMatchPointers": [
+      "/source/path",
+      "/source/mediaType",
+      "/source/digest"
+    ],
+    "documentMatchPointers": [
+      {
+        "manifestPointer": "/sourcePath",
+        "documentPointer": "/source/path"
+      },
+      {
+        "manifestPointer": "/kind",
+        "documentPointer": "/kind"
+      },
+      {
+        "manifestPointer": "/documentId",
+        "documentPointer": "/content/id"
+      },
+      {
+        "manifestPointer": "/normalizedDigest",
+        "documentPointer": "/normalizedDigest"
+      }
+    ],
+    "sourceDocumentDigest": {
+      "algorithm": "sha256",
+      "bytes": "exact-source-bytes",
+      "inventoryPointer": "/sources",
+      "sourcePathPointer": "/path",
+      "sourceMediaTypePointer": "/mediaType",
+      "sourceEncodingPointer": "/encoding",
+      "sourceBytesPointer": "/bytes",
+      "manifestPointer": "/manifest/files",
+      "manifestPathPointer": "/path",
+      "manifestMediaTypePointer": "/mediaType",
+      "manifestDigestPointer": "/digest",
+      "mediaType": "application/yaml",
+      "encoding": "base64"
+    },
+    "publicationTime": {
+      "pointer": "/manifest/release/publishedAt",
+      "format": "rfc3339-utc-seconds",
+      "source": "compiler-reviewed-release-metadata",
+      "forbidInstallationOrSynchronizationClock": true
+    },
+    "normalizedDocumentDigest": {
+      "algorithm": "sha256",
+      "canonicalization": "parameter-catalog-contract-serialize",
+      "digestPointer": "/normalizedDigest",
+      "contentPointer": "/content"
+    },
+    "releaseAggregateDigest": {
+      "algorithm": "sha256",
+      "canonicalization": "parameter-catalog-contract-serialize",
+      "digestPointer": "/manifest/release/digest",
+      "modelPointers": [
+        "/manifest/schemaVersion",
+        "/manifest/release/id",
+        "/manifest/release/version",
+        "/manifest/release/sequence",
+        "/manifest/release/publishedAt",
+        "/manifest/release/predecessor",
+        "/manifest/toolchain",
+        "/manifest/files",
+        "/manifest/documents",
+        "/sources",
+        "/documents"
+      ],
+      "sortedCollections": [
+        {
+          "pointer": "/manifest/files",
+          "keyPointers": [
+            "/path"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        },
+        {
+          "pointer": "/manifest/documents",
+          "keyPointers": [
+            "/kind",
+            "/documentId"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        },
+        {
+          "pointer": "/sources",
+          "keyPointers": [
+            "/path"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        },
+        {
+          "pointer": "/documents",
+          "keyPointers": [
+            "/kind",
+            "/content/id"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        }
+      ]
+    }
+  },
+  "definitionRevisionRules": {
+    "algorithm": "sha256",
+    "canonicalization": "parameter-catalog-contract-serialize",
+    "revisionPointer": "/content/revision",
+    "digestPointer": "/content/revision/contentDigest",
+    "contentPointers": [
+      "/lifecycle",
+      "/successorDefinitionId",
+      "/displayName",
+      "/documentation",
+      "/unit",
+      "/valueSchema",
+      "/matching",
+      "/examples"
+    ],
+    "transitionRules": {
+      "definitionIdPointer": "/content/id",
+      "revisionIdPointer": "/content/revision/id",
+      "revisionNumberPointer": "/content/revision/number",
+      "contentDigestPointer": "/content/revision/contentDigest",
+      "unchangedContentRequiresSameRevision": true,
+      "changedContentRequiresFreshRevisionId": true,
+      "changedContentRevisionIncrement": 1
+    }
+  },
+  "valueSchemaRules": {
+    "schemaPointer": "/content/revision/valueSchema",
+    "dialect": "https://json-schema.org/draft/2020-12/schema",
+    "requireValidSchema": true,
+    "referencePolicy": "forbid-all-json-schema-2020-12-reference-keywords",
+    "forbiddenReferenceKeywords": [
+      "$ref",
+      "$dynamicRef"
+    ],
+    "traversal": {
+      "strategy": "iterative-depth-first",
+      "rootDepth": 0,
+      "maxDepth": 64,
+      "maxContainerNodes": 4096,
+      "limitViolation": "definition-value-schema-complexity-limit"
+    }
+  },
+  "definitionLifecycleRules": {
+    "definitionIdPointer": "/content/id",
+    "lifecyclePointer": "/content/revision/lifecycle",
+    "successorDefinitionIdPointer": "/content/revision/successorDefinitionId",
+    "deprecatedLifecycle": "deprecated",
+    "requireExistingSuccessor": true,
+    "forbidSelfSuccessor": true,
+    "successorGraph": {
+      "strategy": "iterative-indexed",
+      "requireAcyclic": true,
+      "terminalLifecycle": "active",
+      "cycleViolation": "definition-successor-cycle",
+      "terminalViolation": "definition-successor-terminal-invalid"
+    }
+  },
+  "lineageRules": {
+    "targetReleasePointer": "/targetReleaseId",
+    "releaseCollectionPointer": "/releases",
+    "releaseIdPointer": "/manifest/release/id",
+    "releaseDigestPointer": "/manifest/release/digest",
+    "releaseVersionPointer": "/manifest/release/version",
+    "releaseSequencePointer": "/manifest/release/sequence",
+    "predecessorIdPointer": "/manifest/release/predecessor/id",
+    "predecessorDigestPointer": "/manifest/release/predecessor/digest",
+    "requireAcyclic": true,
+    "requireConnectedFromTarget": true,
+    "requireGapFreeSequence": true,
+    "requirePredecessorDigestMatch": true,
+    "requireUniqueReleaseVersion": true,
+    "requireUniqueReleaseDigest": true,
+    "traversal": {
+      "strategy": "iterative-indexed",
+      "releaseIndex": "release-id",
+      "documentIndex": "release-id/document-kind/document-id",
+      "revisionHistoryIndex": "definition-id/revision-id"
+    }
+  },
+  "identityRules": [
+    {
+      "documentKind": "subject",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/kind",
+        "/content/canonicalKey"
+      ],
+      "immutableValuePointers": [
+        "/content/kind",
+        "/content/canonicalKey",
+        "/content/subtype"
+      ],
+      "uniquePerRelease": true
+    },
+    {
+      "documentKind": "alias",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/selectorKind",
+        "/content/normalizedSelector"
+      ],
+      "immutableValuePointers": [
+        "/content/subjectId"
+      ],
+      "uniquePerRelease": true
+    },
+    {
+      "documentKind": "definition",
+      "idPointer": "/content/id",
+      "naturalKeyPointers": [
+        "/content/subjectId",
+        "/content/propertyKey"
+      ],
+      "immutableValuePointers": [
+        "/content/subjectId",
+        "/content/propertyKey"
+      ],
+      "uniquePerRelease": true
+    },
+    {
+      "documentKind": "definition",
+      "idPointer": "/content/revision/id",
+      "naturalKeyPointers": [
+        "/content/id",
+        "/content/revision/number"
+      ],
+      "immutableValuePointers": [
+        "/content/revision/contentDigest"
+      ],
+      "uniquePerRelease": true
+    }
+  ],
+  "selectorRules": {
+    "canonicalSubjectIdPointer": "/content/id",
+    "subjectKindPointer": "/content/kind",
+    "canonicalKindPointer": "/content/selector/kind",
+    "canonicalValuePointer": "/content/selector/value",
+    "aliasKindPointer": "/content/selectorKind",
+    "aliasValuePointer": "/content/normalizedSelector",
+    "ownedDocumentRules": [
+      {
+        "documentKind": "alias",
+        "ownerSubjectIdPointer": "/content/subjectId",
+        "selectorKindPointer": "/content/selectorKind"
+      },
+      {
+        "documentKind": "definition",
+        "ownerSubjectIdPointer": "/content/subjectId",
+        "selectorKindPointer": "/content/revision/matching/selectorKind"
+      }
+    ],
+    "selectorKindBySubjectKind": {
+      "driver": "driver-compatible",
+      "node-type": "node-type-name"
+    },
+    "requirePermanentCanonicalOwnership": true,
+    "forbidAliasCanonicalCollision": true
+  },
+  "retirementRules": {
+    "releaseIdPointer": "/manifest/release/id",
+    "documentRules": [
+      {
+        "documentKind": "subject",
+        "idPointer": "/content/id",
+        "lifecyclePointer": "/content/lifecycle",
+        "selectorPointer": "/content/selector/value",
+        "semanticKindPointer": "/content/kind"
+      },
+      {
+        "documentKind": "alias",
+        "idPointer": "/content/id",
+        "lifecyclePointer": "/content/lifecycle",
+        "selectorPointer": "/content/normalizedSelector",
+        "semanticKindPointer": "/content/selectorKind"
+      }
+    ],
+    "tombstonePointer": "/content/tombstone",
+    "withdrawnByReleaseIdPointer": "/content/tombstone/withdrawnByReleaseId",
+    "previousSelectorPointer": "/content/tombstone/previousSelector",
+    "successorIdPointer": "/content/tombstone/successorId",
+    "requireActualRetirementRelease": true,
+    "requireExactPredecessorSelector": true,
+    "preserveOriginalPreviousSelector": true,
+    "requirePublishedPredecessorForRetirement": true,
+    "requireActiveSameKindSuccessor": true
+  },
+  "membershipRules": {
+    "requirePredecessorSubjects": true,
+    "requirePredecessorAliases": true,
+    "requirePredecessorDefinitions": true,
+    "activeAliasRequiresActiveSubject": true,
+    "requireAliasSubject": true,
+    "requireDefinitionSubject": true
+  }
+}
