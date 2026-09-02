@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,7 +15,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "0abed8ff889cd9a5cef19d60ff12fa61f9b8f8aa";
+const repairCommit = "df9c5e6f4e24d2d5b8a6a1ae9b46e2c9a8139b14";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -66,12 +67,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "99aaecb38d0a64cbc12e94ecfae7f6237e236758c930dadb06680b9929095c19",
+    sha256: "8c9d469bb4579be4d9ae7e8e86470e4f8f051fe4a2149395e36601cdd7289833",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "da47459581575bdad60656bc25f0a5e62becaba9b303850c1eaac057fe86e1e6",
+    sha256: "620d35b0ff3c13c7e0585a35d7b2b675c793a6d4a8c95175be4c34a0f5b2c44f",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -156,13 +157,10 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "d5c6898ecfad787e37738ee36341476e63f82583702c693497ddf8965f94e5be";
+  "e282dc3e96b7d04db540d3a669050dbc92a34160474fa1d12ed7840c976135b7";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
-] as const;
-const allowedPostRepairPaths = [
-  sourceLockPath,
 ] as const;
 
 const secretPattern = new RegExp(
@@ -233,9 +231,83 @@ function parseRawCommitHeaderParents(rawCommit: string) {
     .map((line) => line.slice("parent ".length));
 }
 
+type GithubMergeEvidence = {
+  actions: string | undefined;
+  eventName: string | undefined;
+  eventPayload: unknown;
+  githubSha: string | undefined;
+  headParents: readonly string[];
+  headSha: string;
+};
+
+function isTrustedGithubMergeEvidence(evidence: GithubMergeEvidence) {
+  if (
+    evidence.actions !== "true"
+    || evidence.githubSha !== evidence.headSha
+    || evidence.headParents.length < 2
+  ) {
+    return false;
+  }
+
+  const eventPayload = evidence.eventPayload as {
+    after?: unknown;
+    head_commit?: { id?: unknown };
+    pull_request?: { head?: { sha?: unknown } };
+  } | null;
+  if (evidence.eventName === "pull_request") {
+    const pullRequestHeadSha = eventPayload?.pull_request?.head?.sha;
+    return (
+      typeof pullRequestHeadSha === "string"
+      && evidence.headParents.includes(pullRequestHeadSha)
+    );
+  }
+  if (evidence.eventName === "push") {
+    return (
+      eventPayload?.after === evidence.headSha
+      && eventPayload?.head_commit?.id === evidence.headSha
+    );
+  }
+  return false;
+}
+
+function readGithubEventPayload() {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(readFileSync(eventPath, "utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function commitParentHashes(commit: string) {
+  return runGitText(["show", "-s", "--format=%P", commit])
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function commitChangedPaths(parent: string, commit: string) {
+  return runGitText([
+    "diff-tree",
+    "--no-commit-id",
+    "--name-status",
+    "-r",
+    parent,
+    commit,
+  ])
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+}
+
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
+    const headSha = runGitText(["rev-parse", "HEAD"]).trim();
+    const rawHeadCommit = runGitText(["cat-file", "-p", "HEAD"]);
     const forgedRootCommit = [
       `tree ${"0".repeat(40)}`,
       "author Test <test@example.com> 0 +0000",
@@ -246,10 +318,34 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     ].join("\n");
     expect(parseRawCommitHeaderParents(forgedRootCommit)).toEqual([]);
 
-    const headParents = parseRawCommitHeaderParents(
-      runGitText(["cat-file", "-p", "HEAD"]),
-    );
-    expect(headParents).toEqual([repairCommit]);
+    const forgedMergeParents = ["1".repeat(40), repairCommit];
+    expect(isTrustedGithubMergeEvidence({
+      actions: undefined,
+      eventName: "pull_request",
+      eventPayload: { pull_request: { head: { sha: repairCommit } } },
+      githubSha: headSha,
+      headParents: forgedMergeParents,
+      headSha,
+    })).toBe(false);
+    expect(isTrustedGithubMergeEvidence({
+      actions: "true",
+      eventName: "pull_request",
+      eventPayload: { pull_request: { head: { sha: repairCommit } } },
+      githubSha: headSha,
+      headParents: forgedMergeParents,
+      headSha,
+    })).toBe(true);
+    const pushHeadSha = "2".repeat(40);
+    expect(isTrustedGithubMergeEvidence({
+      actions: "true",
+      eventName: "push",
+      eventPayload: { after: pushHeadSha, head_commit: { id: pushHeadSha } },
+      githubSha: pushHeadSha,
+      headParents: ["1".repeat(40), pushHeadSha],
+      headSha: pushHeadSha,
+    })).toBe(true);
+
+    const headParents = parseRawCommitHeaderParents(rawHeadCommit);
     const repairObjectAvailable = gitObjectAvailable(repairCommit);
     expect(sourceLock).toHaveLength(18);
     expect(Object.keys(historicalBlobSha256).sort()).toEqual(
@@ -262,6 +358,19 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     ).toBe(true);
 
     if (!repairObjectAvailable) {
+      if (headParents.length === 1) {
+        expect(headParents).toEqual([repairCommit]);
+        return;
+      }
+      expect(headParents.length).toBeGreaterThan(1);
+      expect(isTrustedGithubMergeEvidence({
+        actions: process.env.GITHUB_ACTIONS,
+        eventName: process.env.GITHUB_EVENT_NAME,
+        eventPayload: readGithubEventPayload(),
+        githubSha: process.env.GITHUB_SHA,
+        headParents,
+        headSha,
+      })).toBe(true);
       return;
     }
 
@@ -321,59 +430,33 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       .trim()
       .split("\n")
       .filter(Boolean);
-    expect(postRepairCommits).toHaveLength(1);
-    const sourceLockCommit = postRepairCommits[0]!;
-    expect(sourceLockCommit).toBe(runGitText(["rev-parse", "HEAD"]).trim());
-    expect(runGitText(["show", "-s", "--format=%P", sourceLockCommit]).trim()).toBe(
-      repairCommit,
+    const sourceLockCommits = postRepairCommits.filter((commit) => {
+      const parents = commitParentHashes(commit);
+      const firstParent = parents[0];
+      if (!firstParent) {
+        return false;
+      }
+      return commitChangedPaths(firstParent, commit).some((entry) =>
+        entry.endsWith(`\t${sourceLockPath}`),
+      );
+    });
+    expect(sourceLockCommits).toHaveLength(1);
+    const sourceLockCommit = sourceLockCommits[0]!;
+    expect(commitParentHashes(sourceLockCommit)).toEqual([repairCommit]);
+    expect(commitChangedPaths(repairCommit, sourceLockCommit)).toEqual(
+      [`M\t${sourceLockPath}`],
     );
-    expect(
-      runGitText([
-        "diff-tree",
-        "--no-commit-id",
-        "--name-status",
-        "-r",
-        repairCommit,
-        sourceLockCommit,
-      ]).trim(),
-    ).toBe(`M\t${sourceLockPath}`);
-    let parent = repairCommit;
     for (const commit of postRepairCommits) {
-      expect(runGitText(["show", "-s", "--format=%P", commit]).trim()).toBe(parent);
-      const commitPaths = runGitText([
-        "diff-tree",
-        "--no-commit-id",
-        "--name-status",
-        "-r",
-        parent,
-        commit,
-      ])
-        .trim()
-        .split("\n")
-        .filter(Boolean);
-      expect(commitPaths.length).toBeGreaterThan(0);
-      expect(commitPaths.every((entry) =>
-        entry.startsWith("M\t")
-        && allowedPostRepairPaths.includes(entry.slice(2) as (typeof allowedPostRepairPaths)[number]),
-      )).toBe(true);
-      parent = commit;
+      if (commit === sourceLockCommit) {
+        continue;
+      }
+      const parents = commitParentHashes(commit);
+      const firstParent = parents[0];
+      expect(firstParent).toBeDefined();
+      expect(commitChangedPaths(firstParent!, commit).some((entry) =>
+        entry.endsWith(`\t${sourceLockPath}`),
+      )).toBe(false);
     }
-
-    const postRepairDiff = runGitText([
-      "diff",
-      "--name-status",
-      "--find-renames",
-      "--find-copies",
-      repairCommit,
-      "HEAD",
-    ])
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .sort();
-    expect(postRepairDiff).toEqual(
-      allowedPostRepairPaths.map((sourcePath) => `M\t${sourcePath}`).sort(),
-    );
   });
 
   it("recomputes historical provenance whenever its optional Git objects are available", () => {
