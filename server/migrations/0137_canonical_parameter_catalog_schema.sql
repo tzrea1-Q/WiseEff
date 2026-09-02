@@ -1228,6 +1228,9 @@ create table parameter_catalog.legacy_identities (
   )),
   owner_scope_kind text not null check (owner_scope_kind in ('platform', 'organization', 'project')),
   owner_scope_id text not null check (owner_scope_id <> '' and btrim(owner_scope_id) = owner_scope_id),
+  constraint legacy_identity_platform_owner_tuple check (
+    owner_scope_kind <> 'platform' or owner_scope_id = 'platform'
+  ),
   source_id text not null check (source_id <> '' and btrim(source_id) = source_id),
   created_at timestamptz not null default now(),
   unique (source_system, source_kind, owner_scope_kind, owner_scope_id, source_id),

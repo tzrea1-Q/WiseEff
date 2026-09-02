@@ -1486,6 +1486,34 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     expect(residue.rows[0]?.count).toBe("0");
   });
 
+  it.each([
+    ["organization owner", "org-pcat"],
+    ["project owner", "project-pcat"],
+  ])(
+    "rejects a Platform LegacyIdentity carrying an %s ID without residue",
+    async (_name, ownerScopeId) => {
+      const identityId = `lid-platform-owner-${ownerScopeId}`;
+      const error = await captureDatabaseError(
+        client.query(
+          `
+          insert into parameter_catalog.legacy_identities (
+            id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+          ) values ($1, 'legacy', 'parameter-spec', 'platform', $2, 'source-invalid-owner')
+        `,
+          [identityId, ownerScopeId],
+        ),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe("legacy_identity_platform_owner_tuple");
+
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.legacy_identities where id = $1",
+        [identityId],
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
+
   it("rejects a MappingVersion that consumes another identity and run's Archive", async () => {
     await seedLegacyMappingRoots(client);
     await client.query(`
