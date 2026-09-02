@@ -1,0 +1,86 @@
+export const CATALOG_MIGRATION_OWNER = "catalog_migration_owner";
+export const CATALOG_SYNCHRONIZER_ROLE = "catalog_synchronizer_role";
+export const PARAMETER_GOVERNANCE_WRITER_ROLE = "parameter_governance_writer_role";
+
+export const CATALOG_ROLES = [
+  CATALOG_MIGRATION_OWNER,
+  CATALOG_SYNCHRONIZER_ROLE,
+  PARAMETER_GOVERNANCE_WRITER_ROLE,
+] as const;
+
+export const GUARD_FUNCTION_IDENTITY =
+  "parameter_catalog.assert_catalog_subject_active(text,text,text,text)";
+
+export const CATALOG_RELATIONS = [
+  "catalog_command_idempotency",
+  "catalog_drivers",
+  "catalog_materializations",
+  "catalog_node_types",
+  "catalog_release_definition_heads",
+  "catalog_release_subject_aliases",
+  "catalog_release_subjects",
+  "catalog_releases",
+  "catalog_state",
+  "catalog_subject_aliases",
+  "catalog_subjects",
+  "definition_revisions",
+  "parameter_definitions",
+] as const;
+
+export const GOVERNANCE_RELATIONS = [
+  "catalog_publication_intents",
+  "definition_proposal_revisions",
+  "definition_proposals",
+  "governance_command_idempotency",
+  "organization_subject_registrations",
+  "parameter_observation_matches",
+  "parameter_observations",
+  "parameter_review_evidence",
+  "parameter_review_items",
+  "parameter_review_resolutions",
+  "subject_placements",
+] as const;
+
+export const BINDING_CUTOVER_RELATIONS = [
+  "binding_history_events",
+  "legacy_identities",
+  "legacy_mapping_heads",
+  "legacy_mapping_versions",
+  "parameter_catalog_archives",
+  "parameter_catalog_classification_ledger",
+  "parameter_catalog_comparison_cases",
+  "parameter_catalog_comparison_results",
+  "parameter_catalog_cutover_checkpoints",
+  "parameter_catalog_cutover_events",
+  "parameter_catalog_cutover_runs",
+  "project_parameter_bindings",
+  "project_parameter_values",
+] as const;
+
+export const LEGACY_STRUCTURAL_TABLES = [
+  "parameter_definitions",
+  "parameter_specs",
+  "parameter_spec_versions",
+  "project_parameter_bindings",
+] as const;
+
+export const P01_FAILURE_CODE = "PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS";
+export const P02_FAILURE_CODE = "PCAT-PRIV-LEGACY-WRITER-BYPASS";
+export const P01_GATE_ID = "PCAT-DB-P01";
+export const P02_GATE_ID = "PCAT-DB-P02";
+
+export const ROLES_MIGRATION = "0138_canonical_parameter_catalog_roles.sql";
+export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
+export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
+
+export const SYNCHRONIZER_HEAD_UPDATES = {
+  catalog_state: "current_catalog_release_id",
+  parameter_definitions: "current_revision_id",
+} as const;
+
+export function quoteIdent(name: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
+    throw new Error(`Refusing to interpolate non-identifier ${name}`);
+  }
+  return name;
+}

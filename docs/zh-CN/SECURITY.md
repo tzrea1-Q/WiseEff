@@ -49,6 +49,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
 
+**规范参数目录数据库角色（S2-RBAC）：** Catalog 关系位于 `parameter_catalog`，由 NOLOGIN 角色 `catalog_migration_owner` 拥有。`catalog_synchronizer_role`（NOLOGIN）只能插入不可变 Catalog 行，以及对当前 release / Definition head 做列级更新（`catalog_state.current_catalog_release_id`、`parameter_definitions.current_revision_id`）。`parameter_governance_writer_role`（NOLOGIN）仅有必要的组织治理 DML、对 `public.audit_events` 的追加 `INSERT`，以及只对 `parameter_catalog.assert_catalog_subject_active(text,text,text,text)` 的 `EXECUTE`。它没有 Catalog 表的 `SELECT` 或 DML，也没有 Binding、Cutover 或 Verification 授权。`PUBLIC` 在 Catalog schema、表、序列和函数上保持撤销。Application、Agent、普通 API/worker 与 verifier 登录角色不是这些角色的成员，也不能 `SET ROLE` 切换到它们。生产角色直接对 Catalog 做 `SELECT`/DML 会以 SQLSTATE `42501` 失败，归类为 `PCAT-DB-P01` / `PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS`。这些角色对 public 参数表的遗留结构写入会以 SQLSTATE `42501` 失败，归类为 `PCAT-DB-P02` / `PCAT-PRIV-LEGACY-WRITER-BYPASS`。只有 Parameter Governance composition root 持有可 assume governance writer 的连接池。
+
 **普通调试节点写入安全：** 运行时节点仅允许 RW 写入，因为 WiseEff 必须在触碰设备前取得旧值并创建回滚快照；真正 WO 节点一律拒绝，不能绕过恢复证据直接写。对于已接受写入，写命令执行与写后回读是两个独立事实；不同表示既不是授权/成功证据，也不判失败。回读技术失败产生 warning 并把当前值标记为陈旧。快照回滚仍是独立、严格的恢复校验操作。
 
 **节点级敏感规则（P3）：** `dts_sensitive_node_rules` 按组织/可选项目匹配 `path` 或 `compatible` 模式，映射到 `high`/`critical` 与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力的提交/合入/回写返回 `403`。Agent（`actorType=agent`，含小择 `action.submitParameterChange`）对 `critical` 一律拒绝，写审计 `parameter-sensitive-node-denied`（`requireHuman: true`），须由人工完成变更。
