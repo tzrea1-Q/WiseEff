@@ -19,6 +19,16 @@ describe("ProjectAdminTable layout CSS", () => {
     expect(minWidth).toBeLessThan(1300);
   });
 
+  it("lets the project list fill shells wider than its scroll minimum", () => {
+    const table = declarationsFor(
+      css,
+      ".param-admin-shell .project-admin-library-table .data-table-scroll > table",
+      desktop
+    );
+
+    expect(table.width).toBe("100%");
+  });
+
   it("uses a dedicated always-visible horizontal rail with a painted thumb", () => {
     const scrollbar = declarationsFor(
       css,

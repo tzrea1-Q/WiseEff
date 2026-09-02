@@ -1891,6 +1891,16 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 
+  it("does not show project initialization on the parameter review page", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    renderAppForCurrentPath();
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(topbar).toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
+  });
+
   it("hides project initialization from Guest parameter routes", () => {
     window.history.replaceState(null, "", "/parameters");
 

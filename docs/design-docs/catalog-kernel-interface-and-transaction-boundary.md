@@ -977,4 +977,8 @@ That decision still owns upgrade ordering around migrations/synchronization, rea
 | Fake source, opaque-ID/global reads, aliases, revisions, paging, timeline, failure injection, concurrency, verifier, permissions, PostgreSQL | Test seams and acceptance matrix |
 | Minimal handoff to API, migration, verification decisions | Three bounded handoff sections |
 
+## G0.1 identity-construction boundary
+
+The owner-authorized G0.1 amendment makes identity validation another deep Kernel dependency rather than another Kernel responsibility. S0-ID alone exports the validation-only compatible, node-name, and property-key constructors, their closed reasons, and byte-stable values. Kernel compilation, install, matching, current/pinned reads, aliases, and verifier consume those values; they cannot trim, fold case, normalize Unicode, remove quotes or `@`, or reimplement a more permissive parser. Driver subtype values are exactly `physical-device | logical-service` and `multiple | singleton-per-project`; NodeType has no family. Any canonical/alias same-key/different-owner claim is a typed conflict before materialization, including under concurrent install.
+
 The joint-acceptance gap in the original handed-forward read facet is closed: every accepted canonical Catalog read resource has a typed current/pinned path without handler-side Catalog joins or caller-selected revisions. No unresolved Catalog Kernel interface or transaction-boundary question remains. Physical schema names, route/DTO behavior, migration/archive phases, traffic ledger implementation, readiness policy, and deletion gates remain deliberately with their named later decisions.
