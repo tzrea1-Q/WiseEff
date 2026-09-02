@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-Status: **Phase A Publisher complete; Phase B and Phase C not run**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 merged through PR #682, and the 53 launch Issues were published without enabling an implementation frontier.
+Status: **Phase A, Phase B, Phase C, and the initial S0-ID implementation are complete; the owner-authorized G0.1 contract amendment is in progress**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 merged through PR #682, the 53 launch Issues were published, and S0-ID merged through PR #737 at `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`. G0.1 corrects underspecified contracts discovered during Wave 2 review; it does not add a launch node or change any CD, CF, ID, or RE edge.
 
 Accepted publication baseline: `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`. This is a target contract. It does not claim current implementation or release evidence, reserve a migration number, or authorize production activation.
 
@@ -10,7 +10,7 @@ Accepted publication baseline: `origin/main@0e3b3536da700ccb4ef3ba116d771a6f3723
 
 Phase A completed on 2026-09-01 from publisher branch `codex/wayfinder-668-to-tickets-20260901`. G0 had already merged through PR #682 at the accepted baseline above. The launch map contains 53 Issues, #683-#735. The exact child sets are 11 historical, 53 launch, and 64 global. The exact native dependency sets are 18 historical, 136 launch-to-launch, zero historical/launch cross-boundary, and 154 global; both GitHub `blocking` and `blocked_by` views normalize to that same set, with no dependency cycle. All 27 ID and 18 RE records remain body-only and create no additional native relationship.
 
-`ACTUAL_LAUNCH_READY_SET` is empty. S0-ID is the future frontier, but it must remain disabled until Phase B reviews this real Issue map, opens and merges the docs-only PR, synchronizes the exact `origin/main` merge SHA, and Phase C repeats the full set-level audit. Phase A did not create a PR and did not execute Phase B or Phase C.
+At the Phase A stopping point, `ACTUAL_LAUNCH_READY_SET` was empty and S0-ID was the future frontier. Phase A itself created no PR and ran neither Phase B nor Phase C. Those later phases subsequently completed before S0-ID was enabled; this paragraph remains the immutable Phase A snapshot rather than current execution status.
 
 | Node | Issue | Database ID | GraphQL node ID |
 | --- | --- | --- | --- |
@@ -69,6 +69,104 @@ Phase A completed on 2026-09-01 from publisher branch `codex/wayfinder-668-to-ti
 | `RI-01` | #735 | `5311648867` | `I_kwDOSVLD3c8AAAABPJlUYw` |
 
 `S13-PROGRAM` is deferred because its real two-release, 90-day, per-class 30-day zero-use, telemetry, purpose-report, and accountable approval window does not yet exist. `S14-PROGRAM` is deferred because it requires completed S13 evidence plus a separately approved cleanup release with real retention, recovery-point, restore, and zero-dependency proof. Neither deferred program has a launch Issue or a ready label.
+
+## G0.1 contract amendment (2026-09-02)
+
+The owner authorized this correction after independent Wave 2 Standards and Spec reviews. It is append-only contract clarification for S0-ID, S0-RAT, S0-FIX, S1-BND, S2-SCH, and S12-AGT. The launch set remains 53 nodes; native relationships remain `CD=90`, `CF=54`, `ID=27`, and `RE=18`. Existing CF slots carry the amended fingerprints: S1-BND continues to require the exact merged S0-ID SHA and contract fingerprint through its existing CD text, and S2-SCH continues to consume S0-ID through its existing CF slot. No new slot or edge is created.
+
+### Closed subject subtype and canonical identity contract
+
+- `DriverNature` is exactly `physical-device | logical-service`.
+- `DriverInstanceCardinality` is exactly `multiple | singleton-per-project`.
+- There is no `NodeTypeFamily`. S1-BND and S2-SCH must delete every `family` field, enum, column, fixture, and validation rule rather than inventing a replacement classification.
+- S0-ID is the sole owner of `parseCanonicalCompatibleSelector`, `parseCanonicalNodeName`, and `parseCanonicalPropertyKey` in `normalization.ts`, plus golden tests. Successful construction returns the input byte-for-byte. It performs no trim, lower/upper case conversion, NFC/NFKC or any other Unicode normalization, quote removal, or `@`/unit-address removal.
+- All three constructors reject the empty string, non-ASCII bytes, any ASCII whitespace, ASCII control/DEL, and a raw token wrapped in matching single or double quotes. Their closed failure reasons are `empty`, `non-ascii`, `ascii-whitespace`, `control-character`, and `quoted-raw-token`, plus the kind-specific reasons below.
+- A compatible selector must match `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$`. `*` is always rejected as `wildcard-forbidden`; every other shape failure is `invalid-compatible`.
+- A node name accepts the exact root token `/`; every other value must match `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`. Any `@` is rejected as `unit-address-present`; every other shape failure is `invalid-node-name`.
+- A property key must match `^[A-Za-z0-9,._+?#-]{1,31}$`. The ASCII-case-insensitive structural deny-list is `compatible`, `device_type`, `gpio-controller`, `interrupt-controller`, `linux,phandle`, `phandle`, `ranges`, `reg`, `status`, `#address-cells`, `#gpio-cells`, `#interrupt-cells`, and `#size-cells`; every value beginning with `#` is also denied. Denial returns `structural-property-forbidden`, while other shape failures return `invalid-property-key`. Case-insensitive denial never changes the accepted/original bytes.
+- Failure classification is deterministic in this exact order: `empty`; `non-ascii`; `ascii-whitespace`; remaining `control-character`; `quoted-raw-token`; then the kind-specific checks above in their stated order (`wildcard-forbidden` before `invalid-compatible`, `unit-address-present` before `invalid-node-name`, and `structural-property-forbidden` before `invalid-property-key`).
+- Canonical and alias collisions compare the accepted bytes and selector kind exactly. ASCII case differences remain distinct unless the explicit property structural deny-list applies. The constructors never silently select a winner; one repeated identical claim is an idempotent same-identity claim, and any same-key/different-owner or canonical/alias claim is a typed conflict.
+
+The minimum golden vectors are normative:
+
+| Constructor | Accept, preserving exact bytes | Reject with exact reason |
+| --- | --- | --- |
+| compatible | `vendor,driver`; `simple`; `vendor+tag,driver.rev/1` | `` -> `empty`; ` vendor,driver` -> `ascii-whitespace`; `vendor,*` -> `wildcard-forbidden`; `"vendor,driver"` -> `quoted-raw-token`; `vendor,driver,extra` -> `invalid-compatible`; `v\u00e9ndor,driver` -> `non-ascii` |
+| node name | `/`; `charging_core`; `usb-controller` | `node@1` -> `unit-address-present`; `charging core` -> `ascii-whitespace`; `'node'` -> `quoted-raw-token`; `1node` -> `invalid-node-name` |
+| property key | `iin_max`; `init_para`; `vendor,limit?` | `STATUS` -> `structural-property-forbidden`; `#custom` -> `structural-property-forbidden`; `bad/property` -> `invalid-property-key`; `bad\tkey` -> `ascii-whitespace` |
+
+### Public lookup kinds and internal migration source kinds
+
+`LegacyLookupIdentifierType` remains the public seven-item HTTP compatibility union, exactly:
+
+`parameter-spec`; `parameter-spec-version`; `project-parameter-binding`; `project-parameter-binding-revision`; `parameter-subject`; `parameter-placement`; `parameter-module`.
+
+It must never be reused as the cutover ledger discriminator. The internal-only `LegacyMappingSourceKind`, owned by S0-ID in `legacyIdentifiers.ts`, contains exactly these 49 inventory kinds, with no aliases or implicit catch-all:
+
+`parameter-spec`; `parameter-spec-version`; `driver-schema`; `driver-schema-version`; `dts-property-spec`; `parameter-subject`; `parameter-module`; `parameter-placement`; `parameter-module-mapping`; `parameter-module-dismissed-compatible`; `driver-schema-overlay`; `driver-schema-overlay-property`; `driver-schema-overlay-promotion`; `dts-config-revision`; `dts-logical-node`; `dts-logical-node-revision`; `dts-node-occurrence`; `dts-property-occurrence`; `dts-occurrence-effect`; `dts-property-occurrence-spec-decision`; `project-parameter-binding`; `project-parameter-binding-revision`; `legacy-flat-parameter-definition`; `legacy-flat-project-parameter-value`; `parameter-draft`; `parameter-submission-round`; `parameter-submission-item`; `parameter-change-request`; `parameter-review-decision`; `parameter-spec-review-task`; `parameter-spec-matcher-override`; `parameter-file-sync-conflict`; `parameter-import-batch`; `project-parameter-initialization-draft`; `project-parameter-initialization-review`; `parameter-definition-reconciliation-run`; `parameter-definition-reconciliation-item`; `parameter-spec-version-cutover-run`; `parameter-spec-version-cutover-item`; `parameter-spec-property-key-cutover-run`; `parameter-spec-property-key-cutover-item`; `parameter-identity-migration-run`; `parameter-identity-migration-phase`; `parameter-identity-cutover`; `parameter-history-entry`; `legacy-parameter-migration-evidence`; `parameter-policy-target`; `audit-subject-link`; `unresolved-protected-reference`.
+
+The cutover classifier groups those kinds into eleven mapping classes, each with an explicit owner extractor and typed target-or-Archive outcome:
+
+| Mapping class | Source kinds | Owner extractor | Permitted target or disposition |
+| --- | --- | --- | --- |
+| Formal definition root/content | `parameter-spec`, `parameter-spec-version`, `driver-schema`, `driver-schema-version`, `dts-property-spec` | complete spec/schema/subject owner graph; Platform only for structural truth | CatalogSubject, ParameterDefinition, DefinitionRevision, Observation/ReviewEvidence, Proposal, or Archive |
+| Formal subject | `parameter-subject` | subject owner plus subtype graph | CatalogSubject or Organization SubjectRegistration; otherwise Archive |
+| Module and placement | `parameter-module`, `parameter-placement`, `parameter-module-mapping`, `parameter-module-dismissed-compatible` | module/placement organization plus subject graph | SubjectPlacement, ReviewEvidence, or Archive |
+| Overlay publication evidence | `driver-schema-overlay`, `driver-schema-overlay-property`, `driver-schema-overlay-promotion` | overlay owner scope plus promoted Platform subject proof | DefinitionProposal/PublicationIntent or Archive; never an Organization definition |
+| Observation and match evidence | `dts-config-revision`, `dts-logical-node`, `dts-logical-node-revision`, `dts-node-occurrence`, `dts-property-occurrence`, `dts-occurrence-effect`, `dts-property-occurrence-spec-decision` | project/config/logical-node lineage and organization | ParameterObservation, ObservationMatch, ReviewEvidence, or Archive |
+| Binding and value lineage | `project-parameter-binding`, `project-parameter-binding-revision` | project/organization/logical-node plus exact definition pin | Binding, ProjectValue, BindingHistoryEvent, or Archive |
+| Legacy semantic store | `legacy-flat-parameter-definition`, `legacy-flat-project-parameter-value` | project/organization and exact mapped definition | ParameterDefinition/ProjectValue only when identity is proved; otherwise Archive |
+| Draft and review workflow | `parameter-draft`, `parameter-submission-round`, `parameter-submission-item`, `parameter-change-request`, `parameter-review-decision`, `parameter-spec-review-task`, `parameter-spec-matcher-override` | workflow project/organization plus principal/audit lineage | DefinitionProposal/Revision, ReviewItem/Resolution/Evidence, or Archive |
+| File, import, and initialization workflow | `parameter-file-sync-conflict`, `parameter-import-batch`, `project-parameter-initialization-draft`, `project-parameter-initialization-review` | project/organization plus source file/import identity | ProjectValue provenance, ReviewEvidence/Proposal, or Archive |
+| Reconciliation, cutover, review, observation, and history row | `parameter-definition-reconciliation-run`, `parameter-definition-reconciliation-item`, `parameter-spec-version-cutover-run`, `parameter-spec-version-cutover-item`, `parameter-spec-property-key-cutover-run`, `parameter-spec-property-key-cutover-item`, `parameter-identity-migration-run`, `parameter-identity-migration-phase`, `parameter-identity-cutover`, `parameter-history-entry`, `legacy-parameter-migration-evidence` | owning run/organization/project plus immutable epoch/sequence | MigrationHistory, Review/Observation evidence, Audit reference, or Archive |
+| Policy, audit, and unresolved protected reference | `parameter-policy-target`, `audit-subject-link`, `unresolved-protected-reference` | policy/audit principal and target owner; unresolved keeps source owner evidence | existing Policy/Audit target or Archive; unresolved remains a release blocker |
+
+S2-SCH must support internal typed targets for at least Observation, ObservationMatch, ReviewItem/ReviewResolution/ReviewEvidence, PublicationIntent, Policy, Audit, and MigrationHistory in addition to the core Catalog/Registration/Binding/Value targets. A public lookup response never exposes this internal source-kind registry or Archive candidates.
+
+### S0-RAT boundary registry correction
+
+S0-RAT must scan all production seams plus the following exact 28 owner paths. A future path is registered as `required: false` until its owning node creates it; it is never silently removed. Ownership remains with the listed S12 node; S0-RAT owns only the checker/registry and the initial decreasing shards.
+
+| Owner | Additional exact paths |
+| --- | --- |
+| S12-CGH / #724 | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
+| S12-TOP / #725 | `src/infrastructure/http/parameterTopologyClient.test.ts`; `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| S12-PRJ / #726 | `src/infrastructure/http/parameterClient.test.ts`; `src/infrastructure/http/parameterDtos.test.ts`; `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| S12-FIL / #727 | `src/infrastructure/http/parameterFileClient.test.ts`; `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| S12-AGT / #728 | `server/modules/agent/tools/actionTools.test.ts`; `server/modules/agent/tools/actionTools.integration.test.ts`; `server/modules/agent/toolRegistry.test.ts`; `server/modules/agent/parameterCatalogComparisonContribution.test.ts`; `e2e/acceptance/xiaoze-action.acceptance.spec.ts`; `server/modules/agent/tools/perceptionTools.ts`; `server/modules/agent/tools/perceptionTools.test.ts` |
+| S12-LOG / #729 | `src/infrastructure/http/logClient.test.ts`; `src/infrastructure/http/logDtos.test.ts`; `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| S12-DBG / #730 | `src/infrastructure/http/debuggingClient.test.ts`; `src/infrastructure/http/debuggingDtos.test.ts`; `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
+| S12-DTS / #731 | `src/infrastructure/http/dtsReloadClient.test.ts`; `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
+| S12-KNW / #732 | `src/infrastructure/http/knowledgeClient.test.ts`; `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| S12-MOD / #733 | `src/infrastructure/http/parameterModuleRegistryClient.test.ts`; `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| S12-OPS / #734 | `scripts/reconcile-parameter-definitions.test.ts` |
+
+The relation vocabulary is the complete schema-qualified 37-relation set: `parameter_catalog.catalog_releases`, `parameter_catalog.catalog_subjects`, `parameter_catalog.catalog_drivers`, `parameter_catalog.catalog_node_types`, `parameter_catalog.catalog_release_subjects`, `parameter_catalog.catalog_subject_aliases`, `parameter_catalog.catalog_release_subject_aliases`, `parameter_catalog.parameter_definitions`, `parameter_catalog.definition_revisions`, `parameter_catalog.catalog_release_definition_heads`, `parameter_catalog.catalog_materializations`, `parameter_catalog.catalog_state`, `parameter_catalog.project_parameter_bindings`, `parameter_catalog.project_parameter_values`, `parameter_catalog.binding_history_events`, `parameter_catalog.legacy_identities`, `parameter_catalog.parameter_catalog_cutover_runs`, `parameter_catalog.parameter_catalog_cutover_events`, `parameter_catalog.parameter_catalog_cutover_checkpoints`, `parameter_catalog.parameter_catalog_archives`, `parameter_catalog.legacy_mapping_versions`, `parameter_catalog.legacy_mapping_heads`, `parameter_catalog.parameter_catalog_classification_ledger`, `parameter_catalog.parameter_catalog_comparison_cases`, `parameter_catalog.parameter_catalog_comparison_results`, `parameter_catalog.catalog_command_idempotency`, `parameter_catalog.organization_subject_registrations`, `parameter_catalog.subject_placements`, `parameter_catalog.parameter_observations`, `parameter_catalog.parameter_review_evidence`, `parameter_catalog.parameter_review_items`, `parameter_catalog.definition_proposals`, `parameter_catalog.definition_proposal_revisions`, `parameter_catalog.catalog_publication_intents`, `parameter_catalog.parameter_review_resolutions`, `parameter_catalog.governance_command_idempotency`, and `parameter_catalog.parameter_observation_matches`.
+
+The checker also inventories all legacy relations, legacy identifier spellings, and retired route fragments, and applies default-deny to private module imports with an explicit public-seam allow-list. Each violation occurrence is replacement-resistant: its record binds the mandatory `--trusted-base-sha` commit, trusted baseline blob OID, byte span, token/evidence, file, owner family, and rule. The checker compares the complete occurrence multiset, so deleting one identical occurrence and adding another cannot preserve the baseline set. Initialization requires a clean index and worktree and stages the fixture plus all eleven shards atomically or writes none. CI/Hosted must fetch and verify the named trusted base; `.github/workflows/ci.yml` and `package.json` are allowed production paths for S0-RAT solely for that wiring. Local mutable `origin/main` is not trusted evidence, and Hosted execution is required before S0-RAT completes.
+
+### S0-FIX append-only repair and execution safety
+
+The historical source `6c3adfc35c0e3be6d5d381013dace9408190380e` and its old bundle checksum remain immutable audit evidence; they are not promoted to safe executable input. S0-FIX produces an append-only two-commit repair:
+
+1. repair commit `R` changes only the same 18 fixture files and closes the reviewed safety defects;
+2. a nineteenth external source-lock test pins `R`, the exact 18 paths, file modes, per-file hashes, and a new length-framed bundle checksum `B`, avoiding checksum self-reference.
+
+The PostgreSQL-aware lexer rejects psql meta-commands and transaction/session escapes, including alternate transaction spelling, comments used to conceal control statements, include/execute commands, autocommit changes, role/search-path/session mutation, and dynamically executed control SQL. Fixture verification runs before mutation, after the forward rehearsal, and after rollback. Cleanup is fail closed: every created database/object/process must be removed, cleanup failure fails the run, and success emits exactly `CLEANUP_OK`. A closed-world secret scan covers every source and generated artifact, including schema/output/log files. Required gates include focused safety tests, `npm run test:scripts`, and real PostgreSQL execution; synthetic rehearsal remains synthetic and never becomes target, release, or production evidence.
+
+### S1/S2 consumption and completion gates
+
+S1-BND and S2-SCH consume the merged G0.1 S0-ID fingerprint, use the two closed Driver enums above, call the three canonical constructors, and remove `NodeTypeFamily`. S2-SCH keeps the 37 schema-qualified relations and internal 49-kind mapping ledger distinct from the public seven-item lookup union. S2-SCH's focused PostgreSQL completion command is exactly:
+
+```bash
+npm run test:server -- \
+  server/modules/catalog-kernel/schema/catalogSchema.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaConcurrency.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaRollback.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts
+```
+
+The command must select and execute all four named files against real PostgreSQL with pgvector. Missing PostgreSQL, missing pgvector, a skipped suite, or zero selected tests is a hard failure. The Documentation Impact Matrix continues to assign `docs/design-docs/domain-model.md` and its Chinese companion to S10-DCP; G0.1 records that later update gate but does not edit those files.
 
 ## Problem Statement
 
@@ -446,7 +544,7 @@ Current main ends at `0136`; this draft reserves no number. Every implementation
 
 ### Ticket-ready work packages and published launch Issues
 
-S0-S14 are workstream numbers, not Issue numbers. Each launch row below now maps one-to-one to the Phase A Issue in the publisher snapshot, with one agent/branch/merge decision. Parent acceptance still freezes the module seams, row granularity, and dependency edges. Evidence codes are D=document/static, L=local pure/fake, PG=real local PostgreSQL, B=browser-real, H=Hosted/CI, T=real target-host, and R=release/production report. “None” means another level cannot be inferred. Publication does not make a node ready: the ready set remains empty until the later Phase C gate.
+S0-S14 are workstream numbers, not Issue numbers. Each launch row below maps one-to-one to the Phase A Issue in the publisher snapshot, with one agent/branch/merge decision. Parent acceptance still freezes the module seams, row granularity, and dependency edges. Evidence codes are D=document/static, L=local pure/fake, PG=real local PostgreSQL, B=browser-real, H=Hosted/CI, T=real target-host, and R=release/production report. “None” means another level cannot be inferred. Publication alone never makes a node ready; after completed Phase C, every later frontier transition still requires the frozen graph and evidence gates.
 
 Number/ID ownership defaults apply to every row: unless a row explicitly names a migration, ADR, PCAT-API, PCAT-UI, operation, V/M/P/D, or generated artifact, that node owns **none** of that class. Only S2-SCH/S2-RBAC/S10-PER may allocate their explicitly scoped migrations; G0/parent owns ADR numbers; S8-CON owns the API registry while route nodes own only their named assertion ranges. This Spec/G0 owns the initial non-blocking `PCAT-UI-01..15` and fifteen `future` operation registry entries; S9-BRW alone later changes their status to blocking/automated and regenerates the English operation matrix, while S9-CAT/S9-GOV/S9-BRW own only their named acceptance markers/files. This default is a normative explicit “none,” not omitted ticket metadata.
 
@@ -614,7 +712,7 @@ Recommended merge waves use only ticket rows: (0) `G0`; (1) `S0-ID`; (2) paralle
 | #671 shared fixture | S0-FIX | checksum freeze; downstream consumes only |
 | acceptance files | S9-CAT owns `e2e/acceptance/parameter-catalog.acceptance.spec.ts`; S9-GOV owns `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`; S9-BRW owns `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` | one file, one ticket owner |
 
-Two tickets in one wave may not own the same generated artifact, migration, registry source, or acceptance file. The parent must change ownership/wave before implementation; resolving the conflict later does not preserve ticket independence. Parent acceptance has frozen the four seams, every row's granularity, dependency types, critical path, and merge order. Phase A published the exact one-node/one-Issue map and relationships without changing those decisions; implementation remains disabled pending Phase B and Phase C.
+Two tickets in one wave may not own the same generated artifact, migration, registry source, or acceptance file. The parent must change ownership/wave before implementation; resolving the conflict later does not preserve ticket independence. Parent acceptance has frozen the four seams, every row's granularity, dependency types, critical path, and merge order. Phase A published the exact one-node/one-Issue map and relationships without changing those decisions; Phase B and Phase C later completed, and subsequent implementation remains gated node by node.
 
 ## Testing Decisions
 
@@ -703,4 +801,4 @@ The plan cannot complete until every Update/Review row is updated bilingually or
 - This is one plan with many ticket branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
 - The parent/session owner integrates branches under the CD/CF/ID/RE graph and exclusively owns PR creation, merge, and main synchronization.
 - Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after rebase. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
-- Phase A Publisher completed on `codex/wayfinder-668-to-tickets-20260901`; this documentation commit is the Phase A stopping point. Phase B must review/open/merge the docs-only PR, and Phase C must re-audit the exact GitHub and `origin/main` state before S0-ID can receive `ready-for-agent`.
+- Phase A Publisher completed on `codex/wayfinder-668-to-tickets-20260901`; Phase B and Phase C subsequently completed, and S0-ID merged through PR #737. G0.1 follows the same parent-owned review/PR/merge discipline before any amended node is reopened or enabled.

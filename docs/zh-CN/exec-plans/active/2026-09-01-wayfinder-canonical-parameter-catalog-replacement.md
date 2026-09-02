@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-状态：**Phase A Publisher 已完成；Phase B 与 Phase C 未执行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 已通过 PR #682 合入，53 个 launch Issues 已发布，但尚未启用实现 frontier。
+状态：**Phase A、Phase B、Phase C 和最初的 S0-ID 实现均已完成；所有者授权的 G0.1 合同修订正在进行**。已验收的模块 seams、实现切片/后续 ticket 粒度和依赖边保持冻结。G0 已通过 PR #682 合入，53 个 launch Issues 已发布，S0-ID 已通过 PR #737 合入 `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`。G0.1 只修正 Wave 2 独立审查发现的合同欠定义，不增加 launch node，也不改变任何 CD、CF、ID 或 RE 边。
 
 验收发布基线：`origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`。本规格描述目标合同，不宣称主线已经实现，不预留 migration 编号，也不构成发布批准。
 
@@ -10,7 +10,7 @@
 
 Phase A 于 2026-09-01 从 publisher branch `codex/wayfinder-668-to-tickets-20260901` 完成。G0 此前已经通过 PR #682 合入上述验收基线。launch map 包含 53 个 Issues，即 #683–#735。精确 child sets 为 11 historical、53 launch、64 global。精确 native dependency sets 为 18 historical、136 launch-to-launch、0 historical/launch cross-boundary、154 global；GitHub `blocking` 和 `blocked_by` 双视图规范化后完全相同，dependency cycle 为 0。全部 27 条 ID 与 18 条 RE record 保持 body-only，没有产生额外 native relationship。
 
-`ACTUAL_LAUNCH_READY_SET` 为空。S0-ID 是未来 frontier，但必须保持 disabled，直到 Phase B 复审真实 Issue map、创建并合入 docs-only PR、同步 exact `origin/main` merge SHA，且 Phase C 再次完成完整集合审计。Phase A 没有创建 PR，也没有执行 Phase B 或 Phase C。
+在 Phase A 停止点，`ACTUAL_LAUNCH_READY_SET` 为空，S0-ID 是未来 frontier。Phase A 本身没有创建 PR，也没有执行 Phase B/Phase C；这些后续阶段之后已经完成，S0-ID 才获得 enable。本段保留 immutable Phase A snapshot，不表示当前执行状态。
 
 | Node | Issue | Database ID | GraphQL node ID |
 | --- | --- | --- | --- |
@@ -69,6 +69,104 @@ Phase A 于 2026-09-01 从 publisher branch `codex/wayfinder-668-to-tickets-2026
 | `RI-01` | #735 | `5311648867` | `I_kwDOSVLD3c8AAAABPJlUYw` |
 
 `S13-PROGRAM` 延后，因为真实的 two-release、90-day、按类别 30-day zero-use、telemetry、purpose report 与 accountable approval 窗口尚不存在。`S14-PROGRAM` 延后，因为它要求 S13 的完整证据，以及一个单独批准且具有真实 retention、recovery point、restore 和 zero-dependency proof 的 cleanup release。两个 program 都没有 launch Issue 或 ready label。
+
+## G0.1 合同修订（2026-09-02）
+
+所有者在 Wave 2 的 Standards 与 Spec 独立审查后授权本次修正。它是对 S0-ID、S0-RAT、S0-FIX、S1-BND、S2-SCH 与 S12-AGT 的 append-only 合同澄清。launch set 仍为 53 nodes；native relationships 仍为 `CD=90`、`CF=54`、`ID=27`、`RE=18`。原有 CF slots 承载修订后的 fingerprint：S1-BND 继续通过既有 CD 文字要求精确 S0-ID merge SHA 与合同 fingerprint，S2-SCH 继续通过既有 S0-ID CF slot 消费合同；不得新增 slot 或 edge。
+
+### 封闭的主体 subtype 与 canonical identity 合同
+
+- `DriverNature` 精确为 `physical-device | logical-service`。
+- `DriverInstanceCardinality` 精确为 `multiple | singleton-per-project`。
+- 不存在 `NodeTypeFamily`。S1-BND 与 S2-SCH 必须删除所有 `family` 字段、枚举、列、fixture 与验证规则，不能另造替代分类。
+- S0-ID 是 `normalization.ts` 中 `parseCanonicalCompatibleSelector`、`parseCanonicalNodeName`、`parseCanonicalPropertyKey` 及其 golden tests 的唯一 owner。成功 construction 原样返回输入 bytes；禁止 trim、大小写转换、NFC/NFKC 或任何其他 Unicode normalization、去引号或去 `@`/unit-address。
+- 三个 constructor 都拒绝空串、non-ASCII、任意 ASCII whitespace、ASCII control/DEL，以及由匹配单/双引号包裹的 raw token。共同的封闭 failure reasons 为 `empty`、`non-ascii`、`ascii-whitespace`、`control-character`、`quoted-raw-token`，再加下列 kind-specific reason。
+- compatible 必须匹配 `^[A-Za-z0-9][A-Za-z0-9+._/-]*(?:,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$`。`*` 总是返回 `wildcard-forbidden`；其他 shape failure 返回 `invalid-compatible`。
+- node name 允许精确 root token `/`；其他值必须匹配 `^[A-Za-z][A-Za-z0-9,._+-]{0,30}$`。任何 `@` 返回 `unit-address-present`；其他 shape failure 返回 `invalid-node-name`。
+- property key 必须匹配 `^[A-Za-z0-9,._+?#-]{1,31}$`。ASCII case-insensitive structural deny-list 精确为 `compatible`、`device_type`、`gpio-controller`、`interrupt-controller`、`linux,phandle`、`phandle`、`ranges`、`reg`、`status`、`#address-cells`、`#gpio-cells`、`#interrupt-cells`、`#size-cells`，且任意 `#` 开头值都拒绝。deny 返回 `structural-property-forbidden`，其他 shape failure 返回 `invalid-property-key`。case-insensitive deny 绝不能改变接受值的原始 bytes。
+- Failure classification 的精确顺序是：`empty`；`non-ascii`；`ascii-whitespace`；其余 `control-character`；`quoted-raw-token`；然后按已列顺序执行 kind-specific checks（`wildcard-forbidden` 先于 `invalid-compatible`，`unit-address-present` 先于 `invalid-node-name`，`structural-property-forbidden` 先于 `invalid-property-key`）。
+- Canonical/alias collision 使用 selector kind 加接受后的 exact bytes。ASCII case difference 保持不同，只有明确的 property structural deny-list 例外。Constructor 不静默选 winner；同一 owner 的 identical claim 是 idempotent，同 key/different owner 或 canonical/alias claim 是 typed conflict。
+
+最小 golden vectors 属于规范合同：
+
+| Constructor | 接受且保持 exact bytes | 拒绝与 exact reason |
+| --- | --- | --- |
+| compatible | `vendor,driver`；`simple`；`vendor+tag,driver.rev/1` | `` -> `empty`；` vendor,driver` -> `ascii-whitespace`；`vendor,*` -> `wildcard-forbidden`；`"vendor,driver"` -> `quoted-raw-token`；`vendor,driver,extra` -> `invalid-compatible`；`v\u00e9ndor,driver` -> `non-ascii` |
+| node name | `/`；`charging_core`；`usb-controller` | `node@1` -> `unit-address-present`；`charging core` -> `ascii-whitespace`；`'node'` -> `quoted-raw-token`；`1node` -> `invalid-node-name` |
+| property key | `iin_max`；`init_para`；`vendor,limit?` | `STATUS` -> `structural-property-forbidden`；`#custom` -> `structural-property-forbidden`；`bad/property` -> `invalid-property-key`；`bad\tkey` -> `ascii-whitespace` |
+
+### 公开 lookup kind 与内部 migration source kind
+
+`LegacyLookupIdentifierType` 是公开 HTTP compatibility 的七项 union，精确为：
+
+`parameter-spec`；`parameter-spec-version`；`project-parameter-binding`；`project-parameter-binding-revision`；`parameter-subject`；`parameter-placement`；`parameter-module`。
+
+它不得复用作 cutover ledger discriminator。由 S0-ID 在 `legacyIdentifiers.ts` 唯一拥有的内部 `LegacyMappingSourceKind` 精确包含下列 49 个 inventory kind，不允许 alias 或隐式 catch-all：
+
+`parameter-spec`；`parameter-spec-version`；`driver-schema`；`driver-schema-version`；`dts-property-spec`；`parameter-subject`；`parameter-module`；`parameter-placement`；`parameter-module-mapping`；`parameter-module-dismissed-compatible`；`driver-schema-overlay`；`driver-schema-overlay-property`；`driver-schema-overlay-promotion`；`dts-config-revision`；`dts-logical-node`；`dts-logical-node-revision`；`dts-node-occurrence`；`dts-property-occurrence`；`dts-occurrence-effect`；`dts-property-occurrence-spec-decision`；`project-parameter-binding`；`project-parameter-binding-revision`；`legacy-flat-parameter-definition`；`legacy-flat-project-parameter-value`；`parameter-draft`；`parameter-submission-round`；`parameter-submission-item`；`parameter-change-request`；`parameter-review-decision`；`parameter-spec-review-task`；`parameter-spec-matcher-override`；`parameter-file-sync-conflict`；`parameter-import-batch`；`project-parameter-initialization-draft`；`project-parameter-initialization-review`；`parameter-definition-reconciliation-run`；`parameter-definition-reconciliation-item`；`parameter-spec-version-cutover-run`；`parameter-spec-version-cutover-item`；`parameter-spec-property-key-cutover-run`；`parameter-spec-property-key-cutover-item`；`parameter-identity-migration-run`；`parameter-identity-migration-phase`；`parameter-identity-cutover`；`parameter-history-entry`；`legacy-parameter-migration-evidence`；`parameter-policy-target`；`audit-subject-link`；`unresolved-protected-reference`。
+
+Cutover classifier 把它们分为 11 个 mapping classes；每类都固定 owner extractor 和 typed target-or-Archive outcome：
+
+| Mapping class | Source kinds | Owner extractor | 允许的 target/disposition |
+| --- | --- | --- | --- |
+| Formal definition root/content | `parameter-spec`、`parameter-spec-version`、`driver-schema`、`driver-schema-version`、`dts-property-spec` | 完整 spec/schema/subject owner graph；structural truth 只能是 Platform | CatalogSubject、ParameterDefinition、DefinitionRevision、Observation/ReviewEvidence、Proposal 或 Archive |
+| Formal subject | `parameter-subject` | subject owner + subtype graph | CatalogSubject 或 Organization SubjectRegistration；否则 Archive |
+| Module and placement | `parameter-module`、`parameter-placement`、`parameter-module-mapping`、`parameter-module-dismissed-compatible` | module/placement organization + subject graph | SubjectPlacement、ReviewEvidence 或 Archive |
+| Overlay publication evidence | `driver-schema-overlay`、`driver-schema-overlay-property`、`driver-schema-overlay-promotion` | overlay owner scope + 已证明的 Platform subject | DefinitionProposal/PublicationIntent 或 Archive；绝不生成 Organization definition |
+| Observation and match evidence | `dts-config-revision`、`dts-logical-node`、`dts-logical-node-revision`、`dts-node-occurrence`、`dts-property-occurrence`、`dts-occurrence-effect`、`dts-property-occurrence-spec-decision` | project/config/logical-node lineage + organization | ParameterObservation、ObservationMatch、ReviewEvidence 或 Archive |
+| Binding and value lineage | `project-parameter-binding`、`project-parameter-binding-revision` | project/organization/logical-node + exact definition pin | Binding、ProjectValue、BindingHistoryEvent 或 Archive |
+| Legacy semantic store | `legacy-flat-parameter-definition`、`legacy-flat-project-parameter-value` | project/organization + exact mapped definition | 只有身份被证明时可到 ParameterDefinition/ProjectValue；否则 Archive |
+| Draft and review workflow | `parameter-draft`、`parameter-submission-round`、`parameter-submission-item`、`parameter-change-request`、`parameter-review-decision`、`parameter-spec-review-task`、`parameter-spec-matcher-override` | workflow project/organization + principal/audit lineage | DefinitionProposal/Revision、ReviewItem/Resolution/Evidence 或 Archive |
+| File, import, and initialization workflow | `parameter-file-sync-conflict`、`parameter-import-batch`、`project-parameter-initialization-draft`、`project-parameter-initialization-review` | project/organization + source file/import identity | ProjectValue provenance、ReviewEvidence/Proposal 或 Archive |
+| Reconciliation, cutover, review, observation, and history row | `parameter-definition-reconciliation-run`、`parameter-definition-reconciliation-item`、`parameter-spec-version-cutover-run`、`parameter-spec-version-cutover-item`、`parameter-spec-property-key-cutover-run`、`parameter-spec-property-key-cutover-item`、`parameter-identity-migration-run`、`parameter-identity-migration-phase`、`parameter-identity-cutover`、`parameter-history-entry`、`legacy-parameter-migration-evidence` | owning run/organization/project + immutable epoch/sequence | MigrationHistory、Review/Observation evidence、Audit reference 或 Archive |
+| Policy, audit, and unresolved protected reference | `parameter-policy-target`、`audit-subject-link`、`unresolved-protected-reference` | policy/audit principal + target owner；unresolved 保留 source owner evidence | existing Policy/Audit target 或 Archive；unresolved 继续阻止 release |
+
+S2-SCH 的内部 typed target 至少还必须覆盖 Observation、ObservationMatch、ReviewItem/ReviewResolution/ReviewEvidence、PublicationIntent、Policy、Audit 与 MigrationHistory，不能只包含核心 Catalog/Registration/Binding/Value target。公开 lookup response 不暴露内部 source-kind registry 或 Archive candidate。
+
+### S0-RAT boundary registry 修正
+
+S0-RAT 在全部生产 seams 之外，还必须扫描下列精确 28 个 owner paths。未来文件在 owner 创建前登记为 `required: false`，不得静默删除。文件 owner 仍是对应 S12 node；S0-RAT 只拥有 checker/registry 和最初的 decreasing shards。
+
+| Owner | Additional exact paths |
+| --- | --- |
+| S12-CGH / #724 | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
+| S12-TOP / #725 | `src/infrastructure/http/parameterTopologyClient.test.ts`；`e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| S12-PRJ / #726 | `src/infrastructure/http/parameterClient.test.ts`；`src/infrastructure/http/parameterDtos.test.ts`；`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| S12-FIL / #727 | `src/infrastructure/http/parameterFileClient.test.ts`；`e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| S12-AGT / #728 | `server/modules/agent/tools/actionTools.test.ts`；`server/modules/agent/tools/actionTools.integration.test.ts`；`server/modules/agent/toolRegistry.test.ts`；`server/modules/agent/parameterCatalogComparisonContribution.test.ts`；`e2e/acceptance/xiaoze-action.acceptance.spec.ts`；`server/modules/agent/tools/perceptionTools.ts`；`server/modules/agent/tools/perceptionTools.test.ts` |
+| S12-LOG / #729 | `src/infrastructure/http/logClient.test.ts`；`src/infrastructure/http/logDtos.test.ts`；`e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| S12-DBG / #730 | `src/infrastructure/http/debuggingClient.test.ts`；`src/infrastructure/http/debuggingDtos.test.ts`；`e2e/acceptance/debugging-admin.acceptance.spec.ts` |
+| S12-DTS / #731 | `src/infrastructure/http/dtsReloadClient.test.ts`；`e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
+| S12-KNW / #732 | `src/infrastructure/http/knowledgeClient.test.ts`；`e2e/acceptance/knowledge.acceptance.spec.ts` |
+| S12-MOD / #733 | `src/infrastructure/http/parameterModuleRegistryClient.test.ts`；`e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| S12-OPS / #734 | `scripts/reconcile-parameter-definitions.test.ts` |
+
+Relation vocabulary 是完整且 schema-qualified 的 37 项：`parameter_catalog.catalog_releases`、`parameter_catalog.catalog_subjects`、`parameter_catalog.catalog_drivers`、`parameter_catalog.catalog_node_types`、`parameter_catalog.catalog_release_subjects`、`parameter_catalog.catalog_subject_aliases`、`parameter_catalog.catalog_release_subject_aliases`、`parameter_catalog.parameter_definitions`、`parameter_catalog.definition_revisions`、`parameter_catalog.catalog_release_definition_heads`、`parameter_catalog.catalog_materializations`、`parameter_catalog.catalog_state`、`parameter_catalog.project_parameter_bindings`、`parameter_catalog.project_parameter_values`、`parameter_catalog.binding_history_events`、`parameter_catalog.legacy_identities`、`parameter_catalog.parameter_catalog_cutover_runs`、`parameter_catalog.parameter_catalog_cutover_events`、`parameter_catalog.parameter_catalog_cutover_checkpoints`、`parameter_catalog.parameter_catalog_archives`、`parameter_catalog.legacy_mapping_versions`、`parameter_catalog.legacy_mapping_heads`、`parameter_catalog.parameter_catalog_classification_ledger`、`parameter_catalog.parameter_catalog_comparison_cases`、`parameter_catalog.parameter_catalog_comparison_results`、`parameter_catalog.catalog_command_idempotency`、`parameter_catalog.organization_subject_registrations`、`parameter_catalog.subject_placements`、`parameter_catalog.parameter_observations`、`parameter_catalog.parameter_review_evidence`、`parameter_catalog.parameter_review_items`、`parameter_catalog.definition_proposals`、`parameter_catalog.definition_proposal_revisions`、`parameter_catalog.catalog_publication_intents`、`parameter_catalog.parameter_review_resolutions`、`parameter_catalog.governance_command_idempotency`、`parameter_catalog.parameter_observation_matches`。
+
+Checker 同时登记全部 legacy relation、legacy identifier spelling 与 retired route fragment；private module import 使用 default-deny，仅显式 public seam allow-list 可通过。每个 violation occurrence 的 replacement-resistant record 绑定 mandatory `--trusted-base-sha`、trusted baseline blob OID、byte span、token/evidence、file、owner family 与 rule。Checker 比较完整 occurrence multiset，删除一个 identical occurrence 再新增另一个不能保持 baseline set。Initializer 要求 clean index/worktree，并将 fixture 与 11 个 shards 原子 staged，或一个都不写。CI/Hosted 必须 fetch 并验证 named trusted base；`.github/workflows/ci.yml` 与 `package.json` 只为该 wiring 加入 S0-RAT allowed production paths。Local mutable `origin/main` 不是可信 evidence，S0-RAT 完成前必须得到 Hosted execution evidence。
+
+### S0-FIX append-only repair 与执行安全
+
+历史 source `6c3adfc35c0e3be6d5d381013dace9408190380e` 和旧 bundle checksum 继续作为 immutable audit evidence，不能当作 safe executable input。S0-FIX 产生 two-commit append-only repair：
+
+1. repair commit `R` 只修改原有 18 个 fixture files，并关闭已审查的安全缺陷；
+2. 第 19 个 external source-lock test 固定 `R`、exact 18 paths、file modes、per-file hashes 和新的 length-framed bundle checksum `B`，避免 checksum self-reference。
+
+PostgreSQL-aware lexer 拒绝 psql meta-command 与 transaction/session escape，包括 alternate transaction spelling、用 comment 隐藏控制语句、include/execute command、autocommit 修改、role/search-path/session mutation 和 dynamically executed control SQL。Fixture verification 在 mutation 前、forward rehearsal 后、rollback 后各执行一次。Cleanup fail closed：每个创建的 database/object/process 都必须清理，cleanup failure 令执行失败，成功时精确输出 `CLEANUP_OK`。Closed-world secret scan 覆盖所有 source 与 generated artifact，包括 schema/output/log。Required gates 包含 focused safety tests、`npm run test:scripts` 与 real PostgreSQL；synthetic rehearsal 仍只是 synthetic，不升级为 target、release 或 production evidence。
+
+### S1/S2 消费与完成门禁
+
+S1-BND 与 S2-SCH 消费合并后的 G0.1 S0-ID fingerprint，使用上述两个 closed Driver enum，调用三个 canonical constructor，并删除 `NodeTypeFamily`。S2-SCH 将 37 个 schema-qualified relations、内部 49-kind mapping ledger 和公开七项 lookup union 严格分开。S2-SCH focused PostgreSQL completion command 精确为：
+
+```bash
+npm run test:server -- \
+  server/modules/catalog-kernel/schema/catalogSchema.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaConcurrency.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaRollback.integration.test.ts \
+  server/modules/catalog-kernel/schema/catalogSchemaPrivileges.integration.test.ts
+```
+
+命令必须在 real PostgreSQL + pgvector 上选中并执行全部四个文件。PostgreSQL 缺失、pgvector 缺失、suite skipped 或 selected tests 为 0 都是 hard failure。Documentation Impact Matrix 继续把 `docs/design-docs/domain-model.md` 与中文 companion 分配给 S10-DCP；G0.1 只记录后续 update gate，不修改它们。
 
 ## Problem Statement
 
@@ -567,7 +665,7 @@ P16 永不因“非 current”删除 Audit、Archive、mapping versions/heads、
 
 ### 16. Ticket-ready work packages 与已发布 launch Issues
 
-`S0`–`S14` 只是 workstream 编号，**不等于 Issue number**。下表每个 launch row 现在与 Phase A Publisher 快照中的一个 Issue 一一对应，仍保持单一开发智能体、独立分支和独立 merge decision。父会话验收冻结的模块 seams、行粒度与依赖边不变。发布不等于 ready；在后续 Phase C gate 之前，ready set 继续为空。
+`S0`–`S14` 只是 workstream 编号，**不等于 Issue number**。下表每个 launch row 与 Phase A Publisher 快照中的一个 Issue 一一对应，仍保持单一开发智能体、独立分支和独立 merge decision。父会话验收冻结的模块 seams、行粒度与依赖边不变。发布本身不等于 ready；Phase C 已完成，但此后每次 frontier transition 仍必须满足冻结的 graph/evidence gates。
 
 证据缩写：`D`=文档/静态；`L`=local pure/fake；`PG`=真实 local PostgreSQL；`B`=browser-real；`H`=Hosted/CI；`T`=真实 target-host；`R`=release/production purpose report。某行写“无”即不得由别的证据层推导。
 
@@ -739,7 +837,7 @@ RI-01 -(RE + actual time/telemetry)-> S13-PROGRAM -(RE + actual evidence)-> S14-
 
 任何同一 merge wave 出现两个 ticket 同时拥有同一 generated artifact、migration file、registry source 或 acceptance file，父会话必须先调整 ownership/merge wave；不能靠冲突解决后继续称为独立 ticket。
 
-父会话验收已经冻结四个深模块 seams、上述每行 ticket 粒度、`CD/CF/ID/RE` 边、critical path 与 merge order。Phase A 已按精确 one-node/one-Issue map 和关系集合发布，且没有改变任何冻结决策；在 Phase B 与 Phase C 完成前仍禁止实现。
+父会话验收已经冻结四个深模块 seams、上述每行 ticket 粒度、`CD/CF/ID/RE` 边、critical path 与 merge order。Phase A 已按精确 one-node/one-Issue map 和关系集合发布且没有改变冻结决策；Phase B/Phase C 之后已完成，后续实现继续逐 node 受门禁约束。
 
 ## Testing Decisions
 
@@ -844,4 +942,4 @@ Locked populated command 保留 #671 的 `npm run test:scripts -- parameter-cata
 - 这是一份计划、多个 ticket 分支。实现 agent 仅在自己的 branch 实现、测试、commit；不得开/合 PR、push/fast-forward/merge `main`，也不得把一个 workstream 的所有 nodes 塞进单一 branch。
 - 父 agent/会话所有者按本 Spec 的 `CD/CF/ID/RE` 图审查 exact diff/evidence、集成 ticket branches，独占 PR creation、merge 和 main synchronization。
 - 多分支并行必须先 claim migration/ADR/acceptance ID，rebase 后重新检查编号和依赖；任何 inherited dirty worktree 保持只读，不 reset/stash/clean/checkout。
-- Phase A Publisher 已在 `codex/wayfinder-668-to-tickets-20260901` 完成；本次 documentation commit 是 Phase A 停止点。Phase B 必须复审、创建并合入 docs-only PR；Phase C 必须重新审计 GitHub 与 exact `origin/main` 状态，之后才可给 S0-ID 添加 `ready-for-agent`。
+- Phase A Publisher 已在 `codex/wayfinder-668-to-tickets-20260901` 完成；Phase B/Phase C 随后完成，S0-ID 已通过 PR #737 合入。任何 amended node reopen/enable 前，G0.1 继续遵守相同的父会话 review/PR/merge 纪律。

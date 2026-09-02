@@ -505,7 +505,93 @@ only through a gated cutover, rather than preserved as a second product model.
 ([ADR-0029](../adr/0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md),
 [identity-mode seam](../../server/modules/parameter-kernel/parameterIdentityMode.ts))
 
-## 9. Replacement compatibility checklist
+## 9. G0.1 closed replacement registries
+
+The 2026-09-02 owner-authorized G0.1 amendment turns the following inventory facts into closed implementation inputs. It does not claim that current production code already enforces them.
+
+### Legacy identity registries
+
+The public API union `LegacyLookupIdentifierType` contains only `parameter-spec`, `parameter-spec-version`, `project-parameter-binding`, `project-parameter-binding-revision`, `parameter-subject`, `parameter-placement`, and `parameter-module`.
+
+The internal cutover union `LegacyMappingSourceKind` contains exactly 49 entries:
+
+1. `parameter-spec`
+2. `parameter-spec-version`
+3. `driver-schema`
+4. `driver-schema-version`
+5. `dts-property-spec`
+6. `parameter-subject`
+7. `parameter-module`
+8. `parameter-placement`
+9. `parameter-module-mapping`
+10. `parameter-module-dismissed-compatible`
+11. `driver-schema-overlay`
+12. `driver-schema-overlay-property`
+13. `driver-schema-overlay-promotion`
+14. `dts-config-revision`
+15. `dts-logical-node`
+16. `dts-logical-node-revision`
+17. `dts-node-occurrence`
+18. `dts-property-occurrence`
+19. `dts-occurrence-effect`
+20. `dts-property-occurrence-spec-decision`
+21. `project-parameter-binding`
+22. `project-parameter-binding-revision`
+23. `legacy-flat-parameter-definition`
+24. `legacy-flat-project-parameter-value`
+25. `parameter-draft`
+26. `parameter-submission-round`
+27. `parameter-submission-item`
+28. `parameter-change-request`
+29. `parameter-review-decision`
+30. `parameter-spec-review-task`
+31. `parameter-spec-matcher-override`
+32. `parameter-file-sync-conflict`
+33. `parameter-import-batch`
+34. `project-parameter-initialization-draft`
+35. `project-parameter-initialization-review`
+36. `parameter-definition-reconciliation-run`
+37. `parameter-definition-reconciliation-item`
+38. `parameter-spec-version-cutover-run`
+39. `parameter-spec-version-cutover-item`
+40. `parameter-spec-property-key-cutover-run`
+41. `parameter-spec-property-key-cutover-item`
+42. `parameter-identity-migration-run`
+43. `parameter-identity-migration-phase`
+44. `parameter-identity-cutover`
+45. `parameter-history-entry`
+46. `legacy-parameter-migration-evidence`
+47. `parameter-policy-target`
+48. `audit-subject-link`
+49. `unresolved-protected-reference`
+
+The active #668 specification groups these into eleven exhaustive mapping classes and fixes each owner extractor and target-or-Archive disposition. Public lookup and internal migration kind are deliberately different types. An internal mapping target must represent Observation/Match, Review, Publication, Policy, Audit, and MigrationHistory rather than erasing those rows into a public seven-kind lookup.
+
+### Exact ratchet additions
+
+The S0-RAT registry must add these exact 28 paths to its production census. Existing/future status is recorded per path; a future provider test remains `required: false` until its owner creates it.
+
+| Owner | Paths |
+| --- | --- |
+| S12-CGH | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
+| S12-TOP | `src/infrastructure/http/parameterTopologyClient.test.ts`; `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| S12-PRJ | `src/infrastructure/http/parameterClient.test.ts`; `src/infrastructure/http/parameterDtos.test.ts`; `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| S12-FIL | `src/infrastructure/http/parameterFileClient.test.ts`; `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| S12-AGT | `server/modules/agent/tools/actionTools.test.ts`; `server/modules/agent/tools/actionTools.integration.test.ts`; `server/modules/agent/toolRegistry.test.ts`; `server/modules/agent/parameterCatalogComparisonContribution.test.ts`; `e2e/acceptance/xiaoze-action.acceptance.spec.ts`; `server/modules/agent/tools/perceptionTools.ts`; `server/modules/agent/tools/perceptionTools.test.ts` |
+| S12-LOG | `src/infrastructure/http/logClient.test.ts`; `src/infrastructure/http/logDtos.test.ts`; `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| S12-DBG | `src/infrastructure/http/debuggingClient.test.ts`; `src/infrastructure/http/debuggingDtos.test.ts`; `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
+| S12-DTS | `src/infrastructure/http/dtsReloadClient.test.ts`; `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
+| S12-KNW | `src/infrastructure/http/knowledgeClient.test.ts`; `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| S12-MOD | `src/infrastructure/http/parameterModuleRegistryClient.test.ts`; `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| S12-OPS | `scripts/reconcile-parameter-definitions.test.ts` |
+
+The checker recognizes the complete 37-relation canonical schema only by schema-qualified name:
+
+`parameter_catalog.catalog_releases`, `parameter_catalog.catalog_subjects`, `parameter_catalog.catalog_drivers`, `parameter_catalog.catalog_node_types`, `parameter_catalog.catalog_release_subjects`, `parameter_catalog.catalog_subject_aliases`, `parameter_catalog.catalog_release_subject_aliases`, `parameter_catalog.parameter_definitions`, `parameter_catalog.definition_revisions`, `parameter_catalog.catalog_release_definition_heads`, `parameter_catalog.catalog_materializations`, `parameter_catalog.catalog_state`, `parameter_catalog.project_parameter_bindings`, `parameter_catalog.project_parameter_values`, `parameter_catalog.binding_history_events`, `parameter_catalog.legacy_identities`, `parameter_catalog.parameter_catalog_cutover_runs`, `parameter_catalog.parameter_catalog_cutover_events`, `parameter_catalog.parameter_catalog_cutover_checkpoints`, `parameter_catalog.parameter_catalog_archives`, `parameter_catalog.legacy_mapping_versions`, `parameter_catalog.legacy_mapping_heads`, `parameter_catalog.parameter_catalog_classification_ledger`, `parameter_catalog.parameter_catalog_comparison_cases`, `parameter_catalog.parameter_catalog_comparison_results`, `parameter_catalog.catalog_command_idempotency`, `parameter_catalog.organization_subject_registrations`, `parameter_catalog.subject_placements`, `parameter_catalog.parameter_observations`, `parameter_catalog.parameter_review_evidence`, `parameter_catalog.parameter_review_items`, `parameter_catalog.definition_proposals`, `parameter_catalog.definition_proposal_revisions`, `parameter_catalog.catalog_publication_intents`, `parameter_catalog.parameter_review_resolutions`, `parameter_catalog.governance_command_idempotency`, and `parameter_catalog.parameter_observation_matches`.
+
+Raw relation access, legacy identifiers/routes, and private module imports are default-deny. Violation identity binds a mandatory trusted base SHA, baseline blob OID, byte span, token/evidence, path, owner family, and rule, and is compared as a complete multiset. This prevents same-looking delete/add replacement. CI must fetch and verify the named trusted base; local mutable `origin/main` is not a trust anchor.
+
+## 10. Replacement compatibility checklist
 
 Before implementation tickets may call a replacement compatible, the named
 owners need to demonstrate:
