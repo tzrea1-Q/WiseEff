@@ -405,11 +405,13 @@ function inspect(source, context = "top") {
     if (!permittedFirst.has(first)) {
       fail(`SQL statement is outside the rehearsal allow-list: ${first ?? "empty"}`);
     }
+    let createTarget;
     if (first === "create") {
       let objectIndex = 1;
       while (["temporary", "temp", "unlogged", "unique"].includes(values[objectIndex])) {
         objectIndex += 1;
       }
+      createTarget = values[objectIndex];
       if (!["index", "schema", "table"].includes(values[objectIndex])) {
         fail(`CREATE target is outside the rehearsal allow-list: ${values[objectIndex] ?? "unknown"}`);
       }
@@ -530,8 +532,8 @@ function inspect(source, context = "top") {
       }
     }
     const proceduralBody = first === "do"
-      || (values.includes("as")
-        && ["function", "procedure", "trigger"].some((value) => values.includes(value)));
+      || (first === "create"
+        && ["function", "procedure", "trigger"].includes(createTarget));
     if (proceduralBody) {
       for (const token of current) {
         if (token.kind === "dollar-string") inspect(token.value, "body");

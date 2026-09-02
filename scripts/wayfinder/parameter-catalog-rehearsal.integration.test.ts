@@ -196,6 +196,7 @@ describe("parameter catalog rehearsal SQL containment", () => {
           String.raw`select E'ordinary\\path', 'ordinary\path';`,
           String.raw`select $$documented \gexec$$;`,
           String.raw`select $fixture$documented \connect and \! are inert$fixture$;`,
+          String.raw`select $fixture$documented \gexec$fixture$ as trigger;`,
           String.raw`-- a documented \gexec is not executable here`,
           String.raw`/* nor is a documented \connect inside a block comment */`,
           "select 'commit work is documentation';",
