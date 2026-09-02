@@ -323,9 +323,13 @@ describe("canonical Catalog privilege boundary and migration paths", () => {
     let freshFingerprint = "";
     let upgradeFingerprint = "";
 
-    await withTempDatabase({ prefix: "pcat_fresh" }, async ({ db }) => {
-      freshFingerprint = await canonicalSchemaFingerprint(db);
-    });
+    await withTempDatabase(
+      { prefix: "pcat_fresh", migrate: false },
+      async ({ db }) => {
+        await applyMigrations(db, migrationsDir, { through: catalogMigration });
+        freshFingerprint = await canonicalSchemaFingerprint(db);
+      },
+    );
 
     await withTempDatabase(
       { prefix: "pcat_upgrade", migrate: false },
