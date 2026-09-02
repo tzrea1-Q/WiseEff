@@ -47,7 +47,6 @@ import {
 } from "@/features/parameter-review/submissionHistoryDiff";
 import { shouldSummarizeReviewChange } from "@/parameterValueKind";
 import { EmptyState, PanelHeader, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
-import { formatPrimaryShortcut } from "@/app/keyboardShortcuts";
 import { useReviewQueueKeyboard } from "@/features/parameter-review/useReviewQueueKeyboard";
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -680,9 +679,6 @@ export function ParameterReviewPage({
             }
             meta={reviewMeta}
           />
-          <p className="review-shortcut-hint" role="note">
-            快捷键：↑↓ 或 J/K 选择 · Enter 打开详情 · Alt+1 队列 · Alt+2 详情（不占用 {formatPrimaryShortcut("F")} 等系统键）
-          </p>
         </div>
         {reviewMode === "pending" && batchableRequests.length > 0 ? (
           <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">

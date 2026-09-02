@@ -748,6 +748,18 @@ describe("UserPermissionsPage", () => {
     expect(primaryButtonStyles["border-color"]).toBe("var(--accent)");
   });
 
+  it("keeps the member deletion button compact inside its table cell", () => {
+    renderPage();
+    const row = screen.getByText("Wang Jie").closest("tr")!;
+    const deleteButton = within(row).getByRole("button", { name: "注销 Wang Jie" });
+    const css = readStylesheet("src/styles.css");
+    const styles = declarationsFor(css, ".user-permissions-delete-button");
+
+    expect(deleteButton).toHaveClass("user-permissions-delete-button");
+    expect(styles["justify-self"]).toBe("start");
+    expect(styles["min-width"]).toBe("0");
+  });
+
   it("renders and filters legacy role ids under their migrated platform role", async () => {
     const base = createPrototypeState();
     const state = {
