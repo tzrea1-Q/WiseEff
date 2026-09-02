@@ -977,4 +977,8 @@ Compiler、matcher、normalized model、lookup behavior 与 error classification
 | Fake source、opaque-ID/global read、alias、revision、paging、timeline、failure injection、concurrency、verifier、permission、PostgreSQL | Test seam 与 acceptance matrix |
 | 向 API、migration、verification 决策的最小交付 | 三个有边界的 handoff section |
 
+## G0.1 identity-construction 边界
+
+所有者授权的 G0.1 修订把 identity validation 固定为 Kernel 的 deep dependency，而不是 Kernel 的另一项责任。S0-ID 独占 validation-only compatible、node-name、property-key constructors、closed reasons 与 byte-stable values。Kernel compile/install/match/current-pinned read/alias/verifier 只能消费；不得 trim、case-fold、Unicode normalize、去引号/`@`，也不能重做更宽松 parser。Driver subtype 精确为 `physical-device | logical-service` 与 `multiple | singleton-per-project`；NodeType 没有 family。任何 canonical/alias same-key/different-owner claim 都必须在 materialization 前返回 typed conflict，包括 concurrent install。
+
 原 handed-forward read facet 的联合验收缺口已闭合：每个已接受 canonical Catalog read resource 都有 typed current/pinned path，不需要 handler-side Catalog join，也不允许 caller 选择 revision。Catalog Kernel 的 interface 与 transaction-boundary 已无未决问题。Physical schema name、route/DTO behavior、migration/archive phase、traffic ledger implementation、readiness policy 和 deletion gate 仍有意留给各自已命名的后续决策。
