@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   rm,
+  link,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -193,6 +194,8 @@ describe("parameter catalog rehearsal SQL containment", () => {
         [
           "select count(*) from pg_catalog.pg_namespace;",
           String.raw`select E'ordinary\\path', 'ordinary\path';`,
+          String.raw`select $$documented \gexec$$;`,
+          String.raw`select $fixture$documented \connect and \! are inert$fixture$;`,
           String.raw`-- a documented \gexec is not executable here`,
           String.raw`/* nor is a documented \connect inside a block comment */`,
           "select 'commit work is documentation';",
@@ -596,6 +599,34 @@ describe("parameter catalog rehearsal artifact containment", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toBe("ARTIFACT_OK\n");
       expect(result.stderr).toBe("");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a checksum-consistent tar hard-link member before extraction", async () => {
+    const tempRoot = await mkdtemp(
+      path.join(os.tmpdir(), "wiseeff-wayfinder671-artifact-hard-link-"),
+    );
+    const artifactDir = path.join(tempRoot, "artifact");
+    try {
+      await mkdir(artifactDir);
+      await writeSafeArtifact(artifactDir);
+      await rm(path.join(artifactDir, "profile-schema.sql"));
+      await link(
+        path.join(artifactDir, "schema.sql"),
+        path.join(artifactDir, "profile-schema.sql"),
+      );
+      await refreshArtifactChecksums(artifactDir);
+
+      const result = runResult("bash", [
+        importer,
+        "--validate-artifact-only",
+        ...(await createTrustedArchiveArgs(artifactDir, tempRoot)),
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Artifact archive contains a non-regular member");
+      expect(result.stdout).toBe("");
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

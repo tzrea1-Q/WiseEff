@@ -529,8 +529,13 @@ function inspect(source, context = "top") {
         }
       }
     }
-    for (const token of current) {
-      if (token.kind === "dollar-string") inspect(token.value, "body");
+    const proceduralBody = first === "do"
+      || (values.includes("as")
+        && ["function", "procedure", "trigger"].some((value) => values.includes(value)));
+    if (proceduralBody) {
+      for (const token of current) {
+        if (token.kind === "dollar-string") inspect(token.value, "body");
+      }
     }
   }
 }

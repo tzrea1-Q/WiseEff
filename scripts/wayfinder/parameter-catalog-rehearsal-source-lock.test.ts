@@ -159,6 +159,12 @@ const repairedBundleSha256 =
 const repairChangedPaths = [
   "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
 ] as const;
+const allowedPostRepairPaths = [
+  "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts",
+  "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
+  "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
+  "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
+] as const;
 
 const secretPattern = new RegExp(
   [
@@ -218,6 +224,7 @@ function frame(hash: ReturnType<typeof createHash>, tag: string, bytes: Buffer) 
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
+    runGitText(["cat-file", "-e", `${repairCommit}^{commit}`]);
     expect(sourceLock).toHaveLength(18);
     expect(Object.keys(historicalBlobSha256).sort()).toEqual(
       sourceLock.map((entry) => entry.path).sort(),
@@ -227,6 +234,20 @@ describe("parameter catalog rehearsal repaired source lock", () => {
         sourceLock.some((entry) => entry.path === sourcePath),
       ),
     ).toBe(true);
+
+    const changedPaths = runGitText([
+      "diff-tree",
+      "--no-commit-id",
+      "--name-only",
+      "-r",
+      `${repairCommit}^`,
+      repairCommit,
+    ])
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .sort();
+    expect(changedPaths).toEqual([...repairChangedPaths].sort());
 
     const lineageObjects = [
       historicalSourceCommit,
@@ -259,20 +280,55 @@ describe("parameter catalog rehearsal repaired source lock", () => {
         expect.arrayContaining([previousRepairCommit, historicalSourceCommit]),
       );
 
-      const changedPaths = runGitText([
+    }
+
+    runGitText(["merge-base", "--is-ancestor", repairCommit, "HEAD"]);
+    const postRepairCommits = runGitText([
+      "rev-list",
+      "--first-parent",
+      "--reverse",
+      `${repairCommit}..HEAD`,
+    ])
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    let parent = repairCommit;
+    for (const commit of postRepairCommits) {
+      expect(runGitText(["show", "-s", "--format=%P", commit]).trim()).toBe(parent);
+      const commitPaths = runGitText([
         "diff-tree",
         "--no-commit-id",
-        "--name-only",
+        "--name-status",
         "-r",
-        `${repairCommit}^`,
-        repairCommit,
+        parent,
+        commit,
       ])
         .trim()
         .split("\n")
-        .filter(Boolean)
-        .sort();
-      expect(changedPaths).toEqual([...repairChangedPaths].sort());
+        .filter(Boolean);
+      expect(commitPaths.length).toBeGreaterThan(0);
+      expect(commitPaths.every((entry) =>
+        entry.startsWith("M\t")
+        && allowedPostRepairPaths.includes(entry.slice(2) as (typeof allowedPostRepairPaths)[number]),
+      )).toBe(true);
+      parent = commit;
     }
+
+    const postRepairDiff = runGitText([
+      "diff",
+      "--name-status",
+      "--find-renames",
+      "--find-copies",
+      repairCommit,
+      "HEAD",
+    ])
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .sort();
+    expect(postRepairDiff).toEqual(
+      allowedPostRepairPaths.map((sourcePath) => `M\t${sourcePath}`).sort(),
+    );
   });
 
   it("recomputes historical provenance whenever its optional Git objects are available", () => {
@@ -328,7 +384,7 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     }
   });
 
-  it("pins checked-out regular-file modes, bytes, hashes, and length-framed B", async () => {
+  it("pins R regular-file modes, bytes, hashes, and length-framed B", async () => {
     expect(sourceLock).toHaveLength(18);
     expect(sourceLock.map((entry) => entry.path)).toEqual(
       [...sourceLock.map((entry) => entry.path)].sort(),
@@ -338,25 +394,24 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     frame(bundle, "count", Buffer.from(String(sourceLock.length), "utf8"));
 
     for (const entry of sourceLock) {
-      const treeLine = runGitText(["ls-tree", "HEAD", "--", entry.path]).trim();
+      const treeLine = runGitText(["ls-tree", repairCommit, "--", entry.path]).trim();
       const match = /^(\d{6}) blob [0-9a-f]{40}\t(.+)$/.exec(treeLine);
       expect(match).not.toBeNull();
       expect(match?.[1]).toBe(entry.mode);
       expect(match?.[2]).toBe(entry.path);
 
-      const checkedOutBytes = await readFile(path.join(projectRoot, entry.path));
-      expect(createHash("sha256").update(checkedOutBytes).digest("hex")).toBe(entry.sha256);
+      const repairedBytes = readGitBlob(repairCommit, entry.path);
+      expect(createHash("sha256").update(repairedBytes).digest("hex")).toBe(entry.sha256);
 
       const workingStat = await lstat(path.join(projectRoot, entry.path));
       expect(workingStat.isFile()).toBe(true);
       expect(workingStat.isSymbolicLink()).toBe(false);
       expect(workingStat.mode & 0o111 ? "100755" : "100644").toBe(entry.mode);
-      expect(readGitBlob("HEAD", entry.path)).toEqual(checkedOutBytes);
-      expect(secretPattern.test(checkedOutBytes.toString("utf8")), entry.path).toBe(false);
+      expect(secretPattern.test(repairedBytes.toString("utf8")), entry.path).toBe(false);
 
       frame(bundle, "path", Buffer.from(entry.path, "utf8"));
       frame(bundle, "mode", Buffer.from(entry.mode, "utf8"));
-      frame(bundle, "blob", checkedOutBytes);
+      frame(bundle, "blob", repairedBytes);
     }
 
     expect(bundle.digest("hex")).toBe(repairedBundleSha256);

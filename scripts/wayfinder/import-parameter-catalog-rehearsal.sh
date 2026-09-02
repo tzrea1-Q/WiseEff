@@ -401,6 +401,17 @@ if [[ "$(printf '%s\n' "${archive_members}" | LC_ALL=C sort)" \
   printf '%s\n' 'Artifact archive does not contain the exact allowed member set.' >&2
   exit 1
 fi
+for file in SHA256SUMS "${checksum_files[@]}"; do
+  archive_member="${archive_root}/${file}"
+  if ! archive_listing="$(tar -tvzf "${snapshot_archive_path}" -- "${archive_member}")"; then
+    printf 'Artifact archive member could not be inspected: %s\n' "${file}" >&2
+    exit 1
+  fi
+  if [[ "${archive_listing:0:1}" != "-" ]]; then
+    printf 'Artifact archive contains a non-regular member: %s\n' "${file}" >&2
+    exit 1
+  fi
+done
 if ! tar -xzf "${snapshot_archive_path}" -C "${artifact_snapshot_dir}" \
   --strip-components=1 --no-same-owner --no-same-permissions --; then
   printf '%s\n' 'Artifact archive extraction failed.' >&2
