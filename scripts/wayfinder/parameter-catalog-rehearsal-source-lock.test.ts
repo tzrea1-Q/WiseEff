@@ -157,9 +157,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 const repairedBundleSha256 =
   "f29b1715bd8d67d91367215028c3d4c5cd808bedde8f3afd9b92a22e2fccbc68";
 const repairChangedPaths = [
-  "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
-  "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
 ] as const;
 
 const secretPattern = new RegExp(
