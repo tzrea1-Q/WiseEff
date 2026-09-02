@@ -49,7 +49,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 已经通过 PR #682 合入精确基线 `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`。Phase A Publisher 于 2026-09-01 完成：53 个 launch Issues 已发布为 #683–#735，S13-PROGRAM 与 S14-PROGRAM 继续延后。冻结的 GitHub 状态为 children 11 historical / 53 launch / 64 global，native relationships 18 historical / 136 launch / 0 cross-boundary / 154 global；27 条 ID 与 18 条 RE gate 只存在于 body。`ACTUAL_LAUNCH_READY_SET` 为空。S0-ID 是未来 frontier，但 Phase B 与 Phase C 尚未执行，因此当前没有 Issue 可交给 agent。不声称已有生产实现或发布证据。
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 已通过 PR #682 合入；Phase A 已发布 #683–#735，Phase B/Phase C 已完成，S0-ID 已通过 PR #737 合入 `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`。所有者授权的 G0.1 修正正在 Wave 2 集成前冻结 canonical identity constructors、closed Driver subtype enums、相互独立的公开七项与内部 49 项 legacy registry、完整 S0-RAT 扫描合同、修复后的 S0-FIX provenance，以及 fail-closed S2-SCH PostgreSQL gate。launch graph 保持 53 nodes 与 `CD=90`、`CF=54`、`ID=27`、`RE=18`；S13-PROGRAM/S14-PROGRAM 继续延后。G0.1 只是合同工作，不声称 target、release 或 production evidence。
 
 #### Wayfinder #668 Phase A launch 映射
 

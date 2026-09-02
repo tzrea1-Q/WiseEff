@@ -176,6 +176,10 @@ The implementation specification must automate at least these scenarios against 
 
 ## Consequences
 
+### G0.1 compiler identity addendum
+
+Bundle publication, compilation, and synchronization consume the three S0-ID canonical constructors defined by ADR-0040 and the active #668 specification. A manifest cannot provide a second normalization algorithm. The compiled bytes contain the original accepted ASCII values, and invalid whitespace, quoting, Unicode, wildcard, unit-address, property shape, or structural property is rejected before a database write. `DriverNature` and `DriverInstanceCardinality` use only their two closed values; NodeType carries no family. Canonical and alias selector collisions are checked against exact accepted bytes and selector kind for the complete release and lineage, including concurrent publication attempts.
+
 - The destination supersedes ADR-0008 and ADR-0009's organization-overlay publication model. Those ADRs continue to describe legacy runtime behavior until the bounded cutover removes it; this decision is not permission to delete or bypass migration evidence early.
 - ADR-0011's soft-deprecation safety remains, while explicit retirement becomes a separate forward-matching withdrawal with retained history.
 - ADR-0040 supersedes any reading of ADR-0032 that permits in-place documentation mutation: documentation changes create a DefinitionRevision and advance the Definition head, but they do not manufacture a Binding or ProjectValue cutover.
