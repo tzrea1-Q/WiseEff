@@ -838,10 +838,9 @@ if ! cleanup_owned_directory \
   || ! cleanup_owned_directory \
     "${artifact_snapshot_dir}" "${artifact_snapshot_identity}" "${artifact_snapshot_token}" \
     "${artifact_snapshot_files[@]}"; then
-  if ! reset_target_to_checked_empty \
-    || [[ "$(target_user_object_count || true)" != "0" ]]; then
-    printf '%s\n' 'CLEANUP_FAILED' >&2
-  fi
+  reset_target_to_checked_empty \
+    && [[ "$(target_user_object_count || true)" == "0" ]] || true
+  printf '%s\n' 'CLEANUP_FAILED' >&2
   exit 1
 fi
 trap - EXIT
