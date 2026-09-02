@@ -14,7 +14,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "8dd2d176342595119cd7a353f1008ca35fb49b11";
+const repairCommit = "c9de353573610a5c7af1a81799222b97ed23a79a";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
   "docs/references/parameter-catalog-rehearsal-fixture.md":
@@ -75,17 +75,17 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "ed41ef27d20d0156987133bbe8a01b6dc1ff54dd543ab3761ff543b154bc87ff",
+    sha256: "5f14207c31504820010f7628572f52d065797b14ebb9d9760e2cdb7d6124b3c8",
   },
   {
     path: "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
     mode: "100755",
-    sha256: "a048745d0f0908a02589b14462e82883527540246729a2e4b4eee7eed4ae125a",
+    sha256: "1980af6de1536d0889b8554218ddca38f2f915085959f1334c531cae29845907",
   },
   {
     path: "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
     mode: "100644",
-    sha256: "f092145dfa2ba20aa12a83e3e1e674dac95ef9e84ee8c74ed5af342cd61574ba",
+    sha256: "8c4f2fb040290c4d6d58a143a061c5340d656e1e28dfb549715b2dbef7d97abf",
   },
   {
     path: "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
@@ -155,15 +155,11 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "a773557fc9abd9b1031a323eee8e1261c5fe0cb2322aa9bccb6458cccae3fb57";
+  "8c05f1730f76fac24845949702e7d744a60f43c4ca0d995e69e0d150e86ce0b3";
 const repairChangedPaths = [
-  "docs/references/parameter-catalog-rehearsal-fixture.md",
-  "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
   "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/import-parameter-catalog-rehearsal.sh",
   "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts",
-  "scripts/wayfinder/rehearse-parameter-catalog-replacement.sh",
-  "scripts/wayfinder/sql/synthetic-fixture-verify.sql",
 ] as const;
 
 const secretPattern = new RegExp(
