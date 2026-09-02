@@ -42,35 +42,55 @@
 
 do $$
 begin
-  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_migration_owner') then
-    create role catalog_migration_owner;
-  end if;
-  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_synchronizer_role') then
-    create role catalog_synchronizer_role;
-  end if;
-  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'parameter_governance_writer_role') then
-    create role parameter_governance_writer_role;
-  end if;
+  perform pg_catalog.pg_advisory_lock(689013800138);
+  begin
+    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_migration_owner') then
+      create role catalog_migration_owner;
+    end if;
+    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'catalog_synchronizer_role') then
+      create role catalog_synchronizer_role;
+    end if;
+    if not exists (select 1 from pg_catalog.pg_roles where rolname = 'parameter_governance_writer_role') then
+      create role parameter_governance_writer_role;
+    end if;
+
+    execute $sql$
+      alter role catalog_migration_owner with
+        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
+    $sql$;
+    execute $sql$
+      alter role catalog_synchronizer_role with
+        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
+    $sql$;
+    execute $sql$
+      alter role parameter_governance_writer_role with
+        nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls
+    $sql$;
+
+    execute $sql$revoke catalog_migration_owner from current_user$sql$;
+    execute $sql$revoke catalog_synchronizer_role from current_user$sql$;
+    execute $sql$revoke parameter_governance_writer_role from current_user$sql$;
+
+    execute $sql$
+      comment on role catalog_migration_owner is
+        'NOLOGIN owner of parameter_catalog relations. Production logins cannot SET ROLE to this role.'
+    $sql$;
+    execute $sql$
+      comment on role catalog_synchronizer_role is
+        'NOLOGIN Catalog synchronizer: insert immutable Catalog rows and column-limited head updates only.'
+    $sql$;
+    execute $sql$
+      comment on role parameter_governance_writer_role is
+        'NOLOGIN Parameter Governance writer: governance DML, success-audit append, and execute-only current-release guard.'
+    $sql$;
+  exception
+    when others then
+      perform pg_catalog.pg_advisory_unlock(689013800138);
+      raise;
+  end;
+  perform pg_catalog.pg_advisory_unlock(689013800138);
 end;
 $$;
-
-alter role catalog_migration_owner with
-  nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
-alter role catalog_synchronizer_role with
-  nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
-alter role parameter_governance_writer_role with
-  nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
-
-revoke catalog_migration_owner from current_user;
-revoke catalog_synchronizer_role from current_user;
-revoke parameter_governance_writer_role from current_user;
-
-comment on role catalog_migration_owner is
-  'NOLOGIN owner of parameter_catalog relations. Production logins cannot SET ROLE to this role.';
-comment on role catalog_synchronizer_role is
-  'NOLOGIN Catalog synchronizer: insert immutable Catalog rows and column-limited head updates only.';
-comment on role parameter_governance_writer_role is
-  'NOLOGIN Parameter Governance writer: governance DML, success-audit append, and execute-only current-release guard.';
 
 alter schema parameter_catalog owner to catalog_migration_owner;
 

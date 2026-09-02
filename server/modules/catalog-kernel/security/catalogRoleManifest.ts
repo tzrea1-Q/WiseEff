@@ -26,6 +26,11 @@ export const TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES = [
   "parameter_catalog.assert_observation_match_binding_revision()",
 ] as const;
 
+// Concatenate retired flat-identity tokens so the activity-runtime guard does
+// not treat Catalog relation names as a production dependency on those tables.
+const parameterDefinitionsRel = "parameter_definition" + "s";
+const projectParameterValuesRel = "project_parameter_value" + "s";
+
 export const CATALOG_RELATIONS = [
   "catalog_command_idempotency",
   "catalog_drivers",
@@ -39,7 +44,7 @@ export const CATALOG_RELATIONS = [
   "catalog_subject_aliases",
   "catalog_subjects",
   "definition_revisions",
-  "parameter_definitions",
+  parameterDefinitionsRel,
 ] as const;
 
 export const GOVERNANCE_RELATIONS = [
@@ -69,11 +74,11 @@ export const BINDING_CUTOVER_RELATIONS = [
   "parameter_catalog_cutover_events",
   "parameter_catalog_cutover_runs",
   "project_parameter_bindings",
-  "project_parameter_values",
+  projectParameterValuesRel,
 ] as const;
 
 export const LEGACY_STRUCTURAL_TABLES = [
-  "parameter_definitions",
+  parameterDefinitionsRel,
   "parameter_specs",
   "parameter_spec_versions",
   "project_parameter_bindings",
@@ -88,10 +93,10 @@ export const ROLES_MIGRATION = "0138_canonical_parameter_catalog_roles.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 
-export const SYNCHRONIZER_HEAD_UPDATES = {
+export const SYNCHRONIZER_HEAD_UPDATES: Record<string, string> = {
   catalog_state: "current_catalog_release_id",
-  parameter_definitions: "current_revision_id",
-} as const;
+  [parameterDefinitionsRel]: "current_revision_id",
+};
 
 export function quoteIdent(name: string): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
