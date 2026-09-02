@@ -6,7 +6,7 @@
 
 流程不会复制源数据库的任何数据行。populated 关系图由仓库内固定 SQL 生成；所有 ID 都以 `wf671-` 开头，所有值都明确标记为 synthetic placeholder。
 
-历史 source commit 为 `6c3adfc35c0e3be6d5d381013dace9408190380e`，历史 bundle SHA-256 为 `017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff`。两者只是不变 provenance，不构成 executable trust，也绝不从 repaired bytes 重算。external source-lock test 在不包含自身的前提下固定当前 checkout 中原 18 个 path、regular-file mode、每个 repaired blob hash 与新的 length-framed bundle checksum `B`。在完整 clone 中，测试会读取并校验 repair commit `R`、其精确的 18-path tree、parent/ancestry 以及唯一的 lock-only child。在 depth-one checkout 中，`R` 可能不可用，测试绝不声称已读取它：测试先要求 `HEAD` 的 parent hash 等于锁定的 `R`，再依据内嵌 manifest 校验全部 18 个 path 的 `HEAD` tree、working-tree 字节与 mode，并重算 `B`。shallow pass 只属于当前 checkout 的 source-lock evidence，不属于已读取 `R` object 或历史 provenance 的证据。
+历史 source commit 为 `6c3adfc35c0e3be6d5d381013dace9408190380e`，历史 bundle SHA-256 为 `017b3e614f1f4eba5a70f0c6b0cd3316b7e5ebd1aa9ccec4cf8e514c56dba7ff`。两者只是不变 provenance，不构成 executable trust，也绝不从 repaired bytes 重算。external source-lock test 在不包含自身的前提下固定当前 checkout 中原 18 个 path、regular-file mode、每个 repaired blob hash 与新的 length-framed bundle checksum `B`。在完整 clone 中，测试会读取并校验 repair commit `R`、其精确的 18-path tree、parent/ancestry 以及唯一的 lock-only child。在 depth-one checkout 中，`R` 可能不可用，测试绝不声称已读取它：测试解析 raw `HEAD` commit object，只接受恰好一条 `parent` 行且其 hash 精确等于锁定的 `R`，再依据内嵌 manifest 校验全部 18 个 path 的 `HEAD` tree、working-tree 字节与 mode，并重算 `B`。shallow pass 只属于当前 checkout 的 source-lock evidence，不属于已读取 `R` object 或历史 provenance 的证据。
 
 ## 产物契约
 
@@ -162,4 +162,4 @@ docker exec -i <local-postgres-container> \
 
 ## 证据边界
 
-保留的源画像仍是 populated 自托管数据库的聚合证据；`wf671-` 图是由已观察 cohort 推导出的代表性 synthetic data，不是逐行脱敏的生产克隆。static/source-lock 结果只属于 D/L evidence；完整 clone 的 source-lock pass 包含 R object 的 tree 与 ancestry 证据；当 depth-one 中缺少 R 时，pass 仅限于已 checkout 的 HEAD/working-tree manifest，不声称不可用 object 的证据。只有在真实 local PostgreSQL 上实际选中且未 skip 的执行才属于 PG evidence。本地 synthetic 或 PG 结果均不能推导 Hosted、target-host、release、production approval 或 compatibility-window evidence。
+保留的源画像仍是 populated 自托管数据库的聚合证据；`wf671-` 图是由已观察 cohort 推导出的代表性 synthetic data，不是逐行脱敏的生产克隆。static/source-lock 结果只属于 D/L evidence；完整 clone 的 source-lock pass 包含 R object 的 tree 与 ancestry 证据；depth-one pass 只从 raw HEAD commit object 解析精确 parent hash，并且当其中缺少 R 时，仅限于已 checkout 的 HEAD/working-tree manifest，不声称不可用 object 的证据。只有在真实 local PostgreSQL 上实际选中且未 skip 的执行才属于 PG evidence。本地 synthetic 或 PG 结果均不能推导 Hosted、target-host、release、production approval 或 compatibility-window evidence。
