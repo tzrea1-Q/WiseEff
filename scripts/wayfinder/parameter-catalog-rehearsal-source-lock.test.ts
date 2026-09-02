@@ -15,7 +15,7 @@ const oldCandidateCommit = "72abe1be813fbbe5f8c83437bf9a94cc36846229";
 const previousSourceLockCommit = "5e32adbdd9b6909796046f2fa54f97c97f289875";
 const previousRepairCommit = "2cb64226e9550c8874926d0af67150bd3e2d1dc3";
 const provenanceMergeCommit = "9a108c2ae5289332d7f0398b20e7180578fb7342";
-const repairCommit = "df9c5e6f4e24d2d5b8a6a1ae9b46e2c9a8139b14";
+const repairCommit = "1138a369cbc1bedc060987a373aec16dad39f2f5";
 const sourceLockPath = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
 
 const historicalBlobSha256: Readonly<Record<string, string>> = {
@@ -67,12 +67,12 @@ const sourceLock: readonly SourceLockEntry[] = [
   {
     path: "docs/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "8c9d469bb4579be4d9ae7e8e86470e4f8f051fe4a2149395e36601cdd7289833",
+    sha256: "06a7ab5b7af0beccd1169f30ce42fecc30209af733dd1f43da1fa01c6f26a882",
   },
   {
     path: "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
     mode: "100644",
-    sha256: "620d35b0ff3c13c7e0585a35d7b2b675c793a6d4a8c95175be4c34a0f5b2c44f",
+    sha256: "473e1427163cdc7053d9bda2316f5c978f5134ab361d94eb47593bf51199be6a",
   },
   {
     path: "scripts/wayfinder/export-parameter-catalog-rehearsal.sh",
@@ -157,7 +157,7 @@ const sourceLock: readonly SourceLockEntry[] = [
 ] as const;
 
 const repairedBundleSha256 =
-  "e282dc3e96b7d04db540d3a669050dbc92a34160474fa1d12ed7840c976135b7";
+  "7f63f00b95a7e4df6cdc4a8435c5fa7c76103fd2b7e29d9607757e6958147f4a";
 const repairChangedPaths = [
   "docs/references/parameter-catalog-rehearsal-fixture.md",
   "docs/zh-CN/references/parameter-catalog-rehearsal-fixture.md",
@@ -303,6 +303,20 @@ function commitChangedPaths(parent: string, commit: string) {
     .filter(Boolean);
 }
 
+function commitTouchedPaths(commit: string) {
+  return runGitText([
+    "diff-tree",
+    "--no-commit-id",
+    "--name-status",
+    "-m",
+    "-r",
+    commit,
+  ])
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+}
+
 describe("parameter catalog rehearsal repaired source lock", () => {
   it("pins append-only lineage and confines R to the original path set", () => {
     runGitText(["cat-file", "-e", "HEAD^{commit}"]);
@@ -423,8 +437,8 @@ describe("parameter catalog rehearsal repaired source lock", () => {
     runGitText(["merge-base", "--is-ancestor", repairCommit, "HEAD"]);
     const postRepairCommits = runGitText([
       "rev-list",
-      "--first-parent",
       "--reverse",
+      "--ancestry-path",
       `${repairCommit}..HEAD`,
     ])
       .trim()
@@ -432,13 +446,9 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       .filter(Boolean);
     const sourceLockCommits = postRepairCommits.filter((commit) => {
       const parents = commitParentHashes(commit);
-      const firstParent = parents[0];
-      if (!firstParent) {
-        return false;
-      }
-      return commitChangedPaths(firstParent, commit).some((entry) =>
-        entry.endsWith(`\t${sourceLockPath}`),
-      );
+      return parents.length === 1
+        && parents[0] === repairCommit
+        && commitChangedPaths(repairCommit, commit).join("\n") === `M\t${sourceLockPath}`;
     });
     expect(sourceLockCommits).toHaveLength(1);
     const sourceLockCommit = sourceLockCommits[0]!;
@@ -450,10 +460,7 @@ describe("parameter catalog rehearsal repaired source lock", () => {
       if (commit === sourceLockCommit) {
         continue;
       }
-      const parents = commitParentHashes(commit);
-      const firstParent = parents[0];
-      expect(firstParent).toBeDefined();
-      expect(commitChangedPaths(firstParent!, commit).some((entry) =>
+      expect(commitTouchedPaths(commit).some((entry) =>
         entry.endsWith(`\t${sourceLockPath}`),
       )).toBe(false);
     }
