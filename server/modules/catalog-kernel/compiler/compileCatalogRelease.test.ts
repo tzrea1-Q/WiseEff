@@ -7,6 +7,7 @@ import {
 } from "./index";
 import {
   duplicateDefinitionIdentityBundle,
+  conflictingDuplicateDefinitionBundle,
   aliasCanonicalCollisionBundle,
   invalidCanonicalPropertyBundle,
   danglingDefinitionSuccessorBundle,
@@ -135,6 +136,13 @@ describe("compileCatalogRelease", () => {
       },
     });
     expect(reordered).toEqual(original);
+  });
+
+  it("orders conflicting duplicate evidence independently of enumeration order", () => {
+    const bundle = conflictingDuplicateDefinitionBundle();
+    expect(
+      compileCatalogRelease(reorderCatalogReleaseBundle(bundle)),
+    ).toEqual(compileCatalogRelease(bundle));
   });
 
   it("returns a deterministic predecessor violation for a sequence gap", () => {

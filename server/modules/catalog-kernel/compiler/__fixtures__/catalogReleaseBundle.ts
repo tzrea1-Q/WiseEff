@@ -156,6 +156,20 @@ const documents = (): CatalogReleaseDocument[] => {
 const compare = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
+const compareBy = <Value>(
+  left: Value,
+  right: Value,
+  key: (value: Value) => string,
+): number => {
+  const keyOrder = compare(key(left), key(right));
+  return keyOrder !== 0
+    ? keyOrder
+    : compare(
+        serializeContract(left as unknown as ContractJsonValue),
+        serializeContract(right as unknown as ContractJsonValue),
+      );
+};
+
 const aggregateModel = (release: CatalogReleaseNode): ContractJsonValue => ({
   "/manifest/schemaVersion": release.manifest.schemaVersion,
   "/manifest/release/id": release.manifest.release.id,
@@ -165,19 +179,16 @@ const aggregateModel = (release: CatalogReleaseNode): ContractJsonValue => ({
   "/manifest/release/predecessor": release.manifest.release.predecessor,
   "/manifest/toolchain": release.manifest.toolchain,
   "/manifest/files": [...release.manifest.files].sort((left, right) =>
-    compare(left.path, right.path),
+    compareBy(left, right, (value) => value.path),
   ),
   "/manifest/documents": [...release.manifest.documents].sort((left, right) =>
-    compare(`${left.kind}\n${left.documentId}`, `${right.kind}\n${right.documentId}`),
+    compareBy(left, right, (value) => `${value.kind}\n${value.documentId}`),
   ),
   "/sources": [...release.sources].sort((left, right) =>
-    compare(left.path, right.path),
+    compareBy(left, right, (value) => value.path),
   ),
   "/documents": [...release.documents].sort((left, right) =>
-    compare(
-      `${left.kind}\n${left.content.id}`,
-      `${right.kind}\n${right.content.id}`,
-    ),
+    compareBy(left, right, (value) => `${value.kind}\n${value.content.id}`),
   ),
 }) as unknown as ContractJsonValue;
 
@@ -319,6 +330,29 @@ export const duplicateDefinitionIdentityBundle = (): CatalogReleaseBundle => {
     documentId: duplicate.content.id,
     normalizedDigest: duplicate.normalizedDigest,
   });
+  refreshReleaseAggregateDigest(target);
+  return bundle;
+};
+
+export const conflictingDuplicateDefinitionBundle = (): CatalogReleaseBundle => {
+  const bundle = duplicateDefinitionIdentityBundle();
+  const target = targetRelease(bundle);
+  const definitions = target.documents.filter(
+    (document) => document.kind === "definition",
+  );
+  const conflicting = definitions.at(-1);
+  if (!conflicting || conflicting.kind !== "definition") {
+    throw new Error("fixture duplicate Definition missing");
+  }
+  conflicting.content.subjectId = "csub_missing_owner";
+  conflicting.normalizedDigest = canonicalDigest(
+    conflicting.content as unknown as ContractJsonValue,
+  );
+  const descriptor = target.manifest.documents.at(-1);
+  if (!descriptor || descriptor.kind !== "definition") {
+    throw new Error("fixture duplicate Definition descriptor missing");
+  }
+  descriptor.normalizedDigest = conflicting.normalizedDigest;
   refreshReleaseAggregateDigest(target);
   return bundle;
 };

@@ -444,12 +444,18 @@ const sortContractArray = <Value>(
   values: readonly Value[],
   key: (value: Value) => ContractJsonValue,
 ): Value[] =>
-  [...values].sort((left, right) =>
-    contractCompare(
+  [...values].sort((left, right) => {
+    const keyOrder = contractCompare(
       serializeContract(key(left)).trimEnd(),
       serializeContract(key(right)).trimEnd(),
-    ),
-  );
+    );
+    return keyOrder !== 0
+      ? keyOrder
+      : contractCompare(
+          serializeContract(left as unknown as ContractJsonValue).trimEnd(),
+          serializeContract(right as unknown as ContractJsonValue).trimEnd(),
+        );
+  });
 
 const aggregateModel = (node: CatalogReleaseNode): ContractJsonValue => ({
   "/manifest/schemaVersion": node.manifest.schemaVersion,
@@ -1472,19 +1478,41 @@ const validateLineage = (
 
 export const validateForCompilation = (
   bundle: CatalogReleaseBundle,
-): CompilerValidation => ({
-  source: orderViolations(validateSources(bundle.releases)),
-  compile: orderViolations([
-    ...validateCompileContent(bundle.releases),
-    ...validateStableIdentityLineage(bundle.releases),
-    ...validatePermanentSelectorOwnership(bundle.releases),
-  ]),
-  lineage: orderViolations([
-    ...validateLineage(bundle),
-    ...validateLineageContent(bundle),
-    ...validateRetirementLineage(bundle),
-  ]),
-});
+): CompilerValidation => {
+  const releases = orderedReleaseNodes(bundle.releases).map((release) => ({
+    ...release,
+    manifest: {
+      ...release.manifest,
+      files: sortContractArray(release.manifest.files, (file) => [file.path]),
+      documents: sortContractArray(release.manifest.documents, (document) => [
+        document.kind,
+        document.documentId,
+      ]),
+    },
+    sources: sortContractArray(release.sources, (source) => [source.path]),
+    documents: sortContractArray(release.documents, (document) => [
+      document.kind,
+      document.content.id,
+    ]),
+  }));
+  const normalizedBundle: CatalogReleaseBundle = {
+    ...bundle,
+    releases,
+  };
+  return {
+    source: orderViolations(validateSources(releases)),
+    compile: orderViolations([
+      ...validateCompileContent(releases),
+      ...validateStableIdentityLineage(releases),
+      ...validatePermanentSelectorOwnership(releases),
+    ]),
+    lineage: orderViolations([
+      ...validateLineage(normalizedBundle),
+      ...validateLineageContent(normalizedBundle),
+      ...validateRetirementLineage(normalizedBundle),
+    ]),
+  };
+};
 
 export const firstFailedPhase = (
   validation: CompilerValidation,
