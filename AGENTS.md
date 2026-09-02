@@ -163,4 +163,4 @@ Parallel sessions (multiple worktrees merging to `main`): claim main-red repairs
 
 ### Delivery protocol
 
-Goal-driven multi-agent delivery uses the Scratch -> threat review -> seal -> integration -> Hosted -> attestation state machine, explicit WIP/CI budgets, and user stop boundaries in `docs/agents/agent-delivery-protocol.md`. Active programs may narrow its defaults only through an accepted run profile.
+Goal-driven multi-agent delivery uses the Scratch -> threat review -> seal -> integration -> Hosted -> attestation state machine, explicit WIP/CI budgets, and user stop boundaries in `docs/agents/agent-delivery-protocol.md`. Active programs may narrow its defaults only through an accepted run profile. Wayfinder #668 launch Issues also follow `docs/agents/catalog-launch-operating-rules.md`: dedicated lane databases, role-faithful local acceptance before Hosted, and merge-serial / develop-parallel concurrency.

@@ -100,6 +100,21 @@ Create a local PostgreSQL database/user matching `.env.example`:
 postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
 ```
 
+That compose URL is the API-mode application database. It is **not** catalog-launch evidence: the image is `postgres:16-alpine`, the database is shared across checkouts, and it often lacks pgvector.
+
+### Catalog launch lanes (Wayfinder #668)
+
+Remaining catalog launch Issues provision an isolated pgvector database per Issue and must pass a local gate before Hosted:
+
+```bash
+npm run catalog:lane:env -- provision --issue 687
+npm run catalog:lane:env -- doctor --issue 687
+npm run catalog:lane:accept -- --issue 687 -- npm run test:server -- server/modules/catalog-kernel/compiler
+npm run catalog:lane:env -- cleanup --abandoned
+```
+
+The helper uses `pgvector/pgvector:pg16` on `127.0.0.1:55438` and database `wiseeff_lane_<issue>`. It rejects `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`. After Catalog role migrations exist, `doctor` / `accept` run a `catalog_migration_owner` SELECT canary against `public.parameter_specs` so Hosted is confirmation, not discovery. Full rules: [Catalog Launch Operating Rules](../agents/catalog-launch-operating-rules.md).
+
 Then run migrations and seed data:
 
 ```bash

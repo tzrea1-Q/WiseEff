@@ -49,6 +49,19 @@ npm run parameter-identities:check
 
 操作流程见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
 
+### Catalog launch lane（Wayfinder #668）
+
+默认 compose 应用库 `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` 不能作为 catalog 证据。剩余 catalog launch Issues 必须为每个 Issue 准备隔离的 pgvector 库，并在 Hosted 前通过本地门禁：
+
+```bash
+npm run catalog:lane:env -- provision --issue 687
+npm run catalog:lane:env -- doctor --issue 687
+npm run catalog:lane:accept -- --issue 687 -- npm run test:server -- server/modules/catalog-kernel/compiler
+npm run catalog:lane:env -- cleanup --abandoned
+```
+
+完整规则见[目录 launch 操作规则](../agents/catalog-launch-operating-rules.md)。
+
 `db:seed:m1` **默认**为语义种子（项目主 DTS baseline、bindings/specs、vendor docs、demo binding 历史）并做幂等的**本地 post-cutover finalize**，以便类型化 binding 草稿可提交审核。默认不种 flat `parameter_definitions` / `project_parameter_values`。若本地库仍是旧双轨脏数据，finalize 会失败关闭并要求清空 Docker volume（如 `docker compose down -v`）后重跑 `npm run dev:all`——禁止对脏共享开发库就地 cutover。生产 cutover 仍走维护窗口 runbook。
 
 `npm run dev:api`（以及 `dev:all` 拉起的 API）在 `NODE_ENV=development`（默认）下，listen 前还会跑同一套**幂等本地 post-cutover**，避免「代码已更新、Docker volume 仍是 cutovers=0」的常见坑。脏双轨库会**直接导致 API 启动失败**并给出 wipe 指引，而不是起来后在提交审核时才 409。可用 `WISEEFF_LOCAL_POST_CUTOVER=0` 关闭；`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 双轨排练时启动 finalize 亦关闭（typed 提交仍拦截）。`NODE_ENV=production` 下永不启用。

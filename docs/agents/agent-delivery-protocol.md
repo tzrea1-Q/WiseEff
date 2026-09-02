@@ -101,9 +101,9 @@ The parent selects a bounded wave and freezes:
 5. which lane is allowed to open the next PR and run Hosted;
 6. the post-merge refresh required by every later lane.
 
-Reserve capacity for integration and review. Foundation and R3 work defaults to development WIP 2. When an R2/R3 lane enters pre-seal review, completed implementation agents release their slots so Standards and Spec review can run in parallel. Independent R1/R2 leaf work may use more lanes only when path ownership is disjoint, review capacity remains available, and the program run profile permits it.
+Reserve capacity for integration and review. Foundation and R3 work that shares migrations, generated schema, OpenAPI, or a fingerprint defaults to development WIP 2. Path-disjoint R1/R2 work, and R3 work that does not share those files, may use development WIP 4 when review capacity remains available. When an R2/R3 lane enters pre-seal review, completed implementation agents release their slots so Standards and Spec review can run in parallel. The parent must dispatch or continue at least one other disjoint Scratch/review lane while Hosted is running, or record that no disjoint work exists.
 
-The next merge lane may reach `HOSTED`; later lanes stop at `PRESEAL-REVIEW` or `SEALED`. This prevents a green CI run from becoming stale immediately after an earlier lane merges.
+The next merge lane may reach `HOSTED`. Later lanes continue through `SCRATCH`, `PRESEAL-REVIEW`, and `SEALED` while that Hosted run is in flight. They refresh immediately before their own Hosted; they do not idle until the predecessor merges. This prevents a green CI run from becoming stale without freezing development.
 
 ## Step 3 — Develop in Scratch
 
@@ -221,12 +221,24 @@ Do not invent missing token or timing telemetry. A round ends with the next fron
 
 These budgets trigger redesign; they are not permission to lower quality:
 
-- development WIP: 2 for foundation/R3;
-- open final PRs: 1 program-wide unless the accepted run profile identifies independent merge waves;
+- development WIP: 2 when lanes share migrations, generated schema, OpenAPI, or a fingerprint; 4 when owned paths are disjoint;
+- open final feature PRs: 1 program-wide unless the accepted run profile identifies independent merge waves;
+- process-only PRs (protocol, operating rules, docs, helper scripts that do not edit launch-node product paths): one independent merge wave, allowed beside the current feature Hosted PR;
 - final Hosted runs: 1, exceptionally 2 for Hosted-only failure or mandatory refresh;
 - P0/P1 repair cycles on one invariant: 2 before threat-matrix redesign;
 - final fingerprint generations: 1, exceptionally 2;
 - unrelated full-suite reruns: 0;
+- idle Hosted waits with no other dispatched lane and no recorded "no disjoint work": 0;
 - downstream dispatch after a user stop boundary: 0.
 
 Programs may override a budget only in their accepted run profile, with the cost and reason recorded before dispatch.
+
+## Efficiency invariants
+
+These rules exist so correctness gates stay intact while wall-clock wait drops. They do not waive evidence layers.
+
+1. **Merge is serial; development is not.** Only the next feature merge lane opens a PR and runs Hosted. Other ready lanes keep implementing, reviewing, and sealing in Scratch.
+2. **Hosted confirms; it does not discover.** For PostgreSQL or RBAC nodes, preflight uses a dedicated lane database and the Issue-named command must pass locally as the same Catalog roles Hosted will use. The default compose app database `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff` is forbidden as catalog-lane evidence. Zero collected test files is a hard failure.
+3. **Inventories lock once.** Occurrence counts, allow-lists, schema fingerprints, and lock files are taken from a complete trusted-base scan at `THREAT-READY`. A second patch of the same invariant is a circuit breaker. If only one option can pass Hosted, the parent records the choice and continues.
+4. **Unrelated flake: one isolated rerun.** Use `gh run rerun --failed` once. Do not patch unrelated tests inside the lane.
+5. **Catalog launch nodes** also follow [Catalog Launch Operating Rules](catalog-launch-operating-rules.md).

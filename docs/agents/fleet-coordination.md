@@ -33,6 +33,12 @@ A textually clean rebase still breaks when a parallel stream moved or renamed th
 
 Incidents: the 08-12→13 split program recorded eight semantic-drift catches after clean rebases; drift that reached `main` needed repair commits (`853e1cec` adopt parameterIdentityMode single seam after rebase; `d9c3e523` repair xiaoze-action retired-identity drift).
 
+## Catalog launch lanes: dedicated PostgreSQL, never the compose app database
+
+Wayfinder catalog nodes (#668 launch Issues) must not point `DATABASE_URL` / `TEST_DATABASE_URL` at the default compose app database `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`. That instance is `postgres:16-alpine`, is shared across worktrees, lacks pgvector, and previously turned `globalSetup` crashes into “No test files found.” Provision `wiseeff_lane_<issue>` on the dedicated pgvector server with `npm run catalog:lane:env -- provision --issue <n>`, and pass the Issue-named command through `npm run catalog:lane:accept` before opening the Hosted PR. RBAC/migration evidence must run as `catalog_migration_owner`, not only as the bootstrap superuser.
+
+Incident: Goal 6753b193 spent Hosted cycles on `42501` DEFINER grants and dirty shared databases that local superuser runs did not reproduce. See [Catalog Launch Operating Rules](catalog-launch-operating-rules.md).
+
 ## Stacked branches: record the base tip
 
 When building on another session's unmerged branch:
