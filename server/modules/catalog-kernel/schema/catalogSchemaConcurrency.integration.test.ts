@@ -66,8 +66,8 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
   try {
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-a', '1.0.0', 'sha256:release-a', 'sha256:compiled-a', 'sha256:toolchain-a', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-a', 10000, '1.0.0', 'sha256:release-a', 'sha256:compiled-a', 'sha256:toolchain-a', '2026-09-01T00:00:00.000Z');
 
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
@@ -175,10 +175,10 @@ describe("transaction-local Catalog current-release guard", () => {
     await primary.query("begin");
     await primary.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-head-future', 'head-future', 'sha256:head-future', 'crel-a',
+        'crel-head-future', 10001, 'head-future', 'sha256:head-future', 'crel-a',
         'sha256:head-future-compiled', 'sha256:head-future-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.definition_revisions (
@@ -224,9 +224,9 @@ describe("transaction-local Catalog current-release guard", () => {
       setupSql: `
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-late-subject', 'late-subject', 'sha256:release-late-subject',
+          'crel-late-subject', 10220, 'late-subject', 'sha256:release-late-subject',
           'sha256:compiled-late-subject', 'sha256:toolchain-late-subject', '2026-09-01T00:00:00.000Z'
         );
         insert into parameter_catalog.catalog_subjects (
@@ -253,9 +253,9 @@ describe("transaction-local Catalog current-release guard", () => {
       setupSql: `
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-late-alias', 'late-alias', 'sha256:release-late-alias',
+          'crel-late-alias', 10210, 'late-alias', 'sha256:release-late-alias',
           'sha256:compiled-late-alias', 'sha256:toolchain-late-alias', '2026-09-01T00:00:00.000Z'
         );
         insert into parameter_catalog.catalog_release_subjects (
@@ -285,8 +285,8 @@ describe("transaction-local Catalog current-release guard", () => {
       setupSql: `
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-        ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late', '2026-09-01T00:00:00.000Z');
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        ) values ('crel-late', 10200, 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late', '2026-09-01T00:00:00.000Z');
         insert into parameter_catalog.parameter_definitions (
           id, introduced_release_id, subject_id, property_key, current_revision_id
         ) values ('pdef-late', 'crel-late', 'csub-active', 'late-property', 'drev-late');
@@ -312,8 +312,8 @@ describe("transaction-local Catalog current-release guard", () => {
       setupSql: `
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-        ) values ('crel-late', 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late', '2026-09-01T00:00:00.000Z');
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        ) values ('crel-late', 10200, 'late', 'sha256:release-late', 'sha256:compiled-late', 'sha256:toolchain-late', '2026-09-01T00:00:00.000Z');
         insert into parameter_catalog.parameter_definitions (
           id, introduced_release_id, subject_id, property_key, current_revision_id
         ) values ('pdef-late', 'crel-late', 'csub-active', 'late-property', 'drev-late');
@@ -501,10 +501,10 @@ describe("transaction-local Catalog current-release guard", () => {
       );
       await primary.query(`
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, predecessor_release_id,
+          id, release_sequence, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-b', '2.0.0', 'sha256:release-b', 'crel-a',
+          'crel-b', 10001, '2.0.0', 'sha256:release-b', 'crel-a',
           'sha256:compiled-b', 'sha256:toolchain-b', '2026-09-01T00:00:00.000Z'
         );
 
@@ -571,10 +571,10 @@ describe("transaction-local Catalog current-release guard", () => {
       );
       await primary.query(`
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, predecessor_release_id,
+          id, release_sequence, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-retirement', '2.0.0-retirement', 'sha256:release-retirement', 'crel-a',
+          'crel-retirement', 10001, '2.0.0-retirement', 'sha256:release-retirement', 'crel-a',
           'sha256:compiled-retirement', 'sha256:toolchain-retirement', '2026-09-01T00:00:00.000Z'
         );
 

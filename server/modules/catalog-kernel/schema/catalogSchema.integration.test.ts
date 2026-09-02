@@ -207,6 +207,88 @@ describe("canonical parameter Catalog schema", () => {
     expect(result.rows.map((row) => row.table_name)).toEqual(expected);
   });
 
+  it("persists the authoritative safe-integer Catalog release sequence", async () => {
+    await client.query(`
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-sequence-bootstrap', 4096, 'sequence-bootstrap',
+        'sha256:sequence-bootstrap', 'sha256:sequence-bootstrap-model',
+        'sha256:sequence-bootstrap-toolchain', '2026-09-02T00:00:00Z'
+      )
+    `);
+
+    const persisted = await client.query<{ release_sequence: string }>(`
+      select release_sequence::text
+      from parameter_catalog.catalog_releases
+      where id = 'crel-sequence-bootstrap'
+    `);
+    expect(persisted.rows).toEqual([{ release_sequence: "4096" }]);
+
+    const unsafe = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_sequence, release_version, release_digest,
+          compiled_model_digest, toolchain_digest, published_at
+        ) values (
+          'crel-sequence-unsafe', 9007199254740992, 'sequence-unsafe',
+          'sha256:sequence-unsafe', 'sha256:sequence-unsafe-model',
+          'sha256:sequence-unsafe-toolchain', '2026-09-02T00:00:00Z'
+        )
+      `),
+    );
+    expect(unsafe.code).toBe("23514");
+    expect(unsafe.constraint).toBe("catalog_release_sequence_ck");
+
+    const negative = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.catalog_releases (
+          id, release_sequence, release_version, release_digest,
+          compiled_model_digest, toolchain_digest, published_at
+        ) values (
+          'crel-sequence-negative', -1, 'sequence-negative',
+          'sha256:sequence-negative', 'sha256:sequence-negative-model',
+          'sha256:sequence-negative-toolchain', '2026-09-02T00:00:00Z'
+        )
+      `),
+    );
+    expect(negative.code).toBe("23514");
+    expect(negative.constraint).toBe("catalog_release_sequence_ck");
+
+    await client.query("begin");
+    await client.query(`
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-sequence-duplicate', 4096, 'sequence-duplicate',
+        'sha256:sequence-duplicate', 'sha256:sequence-duplicate-model',
+        'sha256:sequence-duplicate-toolchain', '2026-09-02T00:00:00Z'
+      )
+    `);
+    const duplicate = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
+    expect(duplicate.code).toBe("23505");
+    expect(duplicate.constraint).toBe("catalog_release_sequence_unique");
+    await client.query("rollback");
+  });
+
+  it("stores no release pointer in stable Binding identity", async () => {
+    const columns = await client.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'parameter_catalog'
+        and table_name = 'project_parameter_bindings'
+      order by ordinal_position
+    `);
+
+    expect(columns.rows.map((row) => row.column_name)).not.toContain(
+      "catalog_release_id",
+    );
+  });
+
   it("stores NodeType identity without a family column", async () => {
     const result = await client.query<{ column_name: string }>(`
       select column_name
@@ -587,10 +669,10 @@ describe("canonical parameter Catalog schema", () => {
 
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest,
+        id, release_sequence, release_version, release_digest, compiled_model_digest,
         toolchain_digest, published_at
       ) values (
-        'crel-legacy-class', 'legacy-class', 'sha256:legacy-class',
+        'crel-legacy-class', 10240, 'legacy-class', 'sha256:legacy-class',
         'sha256:legacy-class-model', 'sha256:legacy-class-toolchain',
         '2026-09-02T00:00:00Z'
       );
@@ -977,6 +1059,7 @@ describe("canonical parameter Catalog schema", () => {
           "catalog_current_definition_head_ck",
           "catalog_materialization_projection_complete_ck",
           "catalog_release_predecessor_acyclic_ck",
+          "catalog_release_predecessor_sequence_ck",
           "catalog_state_current_release_complete_ck",
           "catalog_subject_exact_subtype_from_driver_ck",
           "catalog_subject_exact_subtype_from_node_type_ck",
@@ -984,6 +1067,8 @@ describe("canonical parameter Catalog schema", () => {
           "comparison_result_mapping_run_fk",
           "legacy_mapping_target_fk",
           "parameter_module_placement_kind_ck",
+          "parameter_observation_match_binding_revision_fk",
+          "project_parameter_binding_effective_revision_head_fk",
           "review_resolution_target_owner_fk",
           "subject_placement_kind_ck",
         ],
@@ -1009,6 +1094,7 @@ describe("canonical parameter Catalog schema", () => {
         "catalog_current_definition_head_ck",
         "catalog_materialization_projection_complete_ck",
         "catalog_release_predecessor_acyclic_ck",
+        "catalog_release_predecessor_sequence_ck",
         "catalog_state_current_release_complete_ck",
         "catalog_subject_exact_subtype_from_driver_ck",
         "catalog_subject_exact_subtype_from_node_type_ck",
@@ -1016,6 +1102,8 @@ describe("canonical parameter Catalog schema", () => {
         "comparison_result_mapping_run_fk",
         "legacy_mapping_target_fk",
         "parameter_module_placement_kind_ck",
+        "parameter_observation_match_binding_revision_fk",
+        "project_parameter_binding_effective_revision_head_fk",
         "review_resolution_target_owner_fk",
         "subject_placement_kind_ck",
       ].map((trigger_name) => ({

@@ -91,13 +91,19 @@ return value ~ '^[A-Za-z0-9,._+?#-]{1,31}$'
 
 create table parameter_catalog.catalog_releases (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
+  release_sequence bigint not null
+    constraint catalog_release_sequence_ck
+    check (release_sequence between 0 and 9007199254740991),
   release_version text not null unique check (release_version <> '' and btrim(release_version) = release_version),
   release_digest text not null unique check (release_digest <> '' and btrim(release_digest) = release_digest),
-  predecessor_release_id text references parameter_catalog.catalog_releases(id) on delete restrict,
+  predecessor_release_id text references parameter_catalog.catalog_releases(id)
+    on delete restrict deferrable initially deferred,
   compiled_model_digest text not null check (compiled_model_digest <> '' and btrim(compiled_model_digest) = compiled_model_digest),
   toolchain_digest text not null check (toolchain_digest <> '' and btrim(toolchain_digest) = toolchain_digest),
   published_at timestamptz not null,
   created_at timestamptz not null default now(),
+  constraint catalog_release_sequence_unique
+    unique (release_sequence) deferrable initially deferred,
   check (predecessor_release_id is null or predecessor_release_id <> id)
 );
 
@@ -140,21 +146,53 @@ after insert or update of predecessor_release_id on parameter_catalog.catalog_re
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_catalog_release_predecessor_acyclic();
 
+create function parameter_catalog.assert_catalog_release_predecessor_sequence()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  predecessor_sequence bigint;
+begin
+  if new.predecessor_release_id is null then
+    return null;
+  end if;
+
+  select release_sequence into predecessor_sequence
+  from parameter_catalog.catalog_releases
+  where id = new.predecessor_release_id;
+
+  if not found or new.release_sequence <> predecessor_sequence + 1 then
+    raise exception using
+      errcode = '23514',
+      message = 'Catalog release sequence must be exactly one greater than its predecessor',
+      constraint = 'catalog_release_predecessor_sequence_ck';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger catalog_release_predecessor_sequence_ck
+after insert or update of predecessor_release_id, release_sequence
+on parameter_catalog.catalog_releases
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_catalog_release_predecessor_sequence();
+
 create function parameter_catalog.assert_catalog_release_predecessor_materialized()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
 as $$
 begin
-  -- MVCC exposes another transaction's materialization row only after commit.
-  -- Excluding the trigger-recorded top-level writer ID therefore proves this
-  -- is neither the current transaction nor one of its released savepoints.
+  -- This commit-time guard intentionally accepts a complete predecessor that
+  -- was staged earlier in the same transaction.  The predecessor's own
+  -- deferred projection-completeness trigger validates its final state.
   if new.predecessor_release_id is not null
      and not exists (
        select 1
        from parameter_catalog.catalog_materializations materialization
        where materialization.release_id = new.predecessor_release_id
-         and materialization.materializing_transaction_id <> pg_catalog.pg_current_xact_id()
      ) then
     raise exception using
       errcode = '23514',
@@ -1024,7 +1062,6 @@ create table parameter_catalog.project_parameter_bindings (
   definition_id text not null,
   effective_revision_id text not null,
   current_value_id text not null,
-  catalog_release_id text not null references parameter_catalog.catalog_releases(id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (project_id, logical_node_id, definition_id),
@@ -1032,6 +1069,11 @@ create table parameter_catalog.project_parameter_bindings (
   unique (id, definition_id),
   unique (id, organization_id, definition_id),
   unique (id, organization_id, project_id, logical_node_id, definition_id),
+  constraint project_parameter_binding_match_identity_unique
+    unique (
+      id, organization_id, project_id, logical_node_id,
+      registration_id, subject_id, definition_id
+    ),
   foreign key (project_id, organization_id)
     references public.projects(id, organization_id)
     on delete restrict,
@@ -1040,14 +1082,38 @@ create table parameter_catalog.project_parameter_bindings (
     on delete restrict,
   foreign key (definition_id, effective_revision_id)
     references parameter_catalog.definition_revisions(definition_id, id)
-    on delete restrict,
-  constraint project_parameter_binding_release_revision_fk
-    foreign key (catalog_release_id, definition_id, effective_revision_id)
-    references parameter_catalog.catalog_release_definition_heads(
-      release_id, definition_id, revision_id
-    )
     on delete restrict
 );
+
+create function parameter_catalog.assert_binding_effective_revision_is_verified_head()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if not exists (
+    select 1
+    from parameter_catalog.catalog_release_definition_heads release_head
+    join parameter_catalog.catalog_materializations materialization
+      on materialization.release_id = release_head.release_id
+    where release_head.definition_id = new.definition_id
+      and release_head.revision_id = new.effective_revision_id
+  ) then
+    raise exception using
+      errcode = '23503',
+      message = 'Binding effective revision must be a head of a verified Catalog release',
+      constraint = 'project_parameter_binding_effective_revision_head_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+create constraint trigger project_parameter_binding_effective_revision_head_fk
+after insert or update of definition_id, effective_revision_id
+on parameter_catalog.project_parameter_bindings
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_binding_effective_revision_is_verified_head();
 
 create table parameter_catalog.project_parameter_values (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
@@ -1158,8 +1224,7 @@ begin
      or new.logical_node_id is distinct from old.logical_node_id
      or new.registration_id is distinct from old.registration_id
      or new.subject_id is distinct from old.subject_id
-     or new.definition_id is distinct from old.definition_id
-     or new.catalog_release_id is distinct from old.catalog_release_id then
+     or new.definition_id is distinct from old.definition_id then
     raise exception using errcode = '55000', message = 'Project parameter binding identity is immutable';
   end if;
   return new;
@@ -2987,8 +3052,49 @@ create table parameter_catalog.parameter_observation_matches (
     references parameter_catalog.catalog_release_definition_heads(
       release_id, definition_id, revision_id
     )
+    on delete restrict,
+  constraint parameter_observation_match_binding_fk
+    foreign key (
+      binding_id, organization_id, project_id, logical_node_id,
+      registration_id, subject_id, definition_id
+    )
+    references parameter_catalog.project_parameter_bindings(
+      id, organization_id, project_id, logical_node_id,
+      registration_id, subject_id, definition_id
+    )
     on delete restrict
 );
+
+create function parameter_catalog.assert_observation_match_binding_revision()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, parameter_catalog
+as $$
+begin
+  if not exists (
+    select 1
+    from parameter_catalog.project_parameter_bindings binding
+    where binding.id = new.binding_id
+      and binding.definition_id = new.definition_id
+      and binding.effective_revision_id = new.definition_revision_id
+  ) then
+    raise exception using
+      errcode = '23503',
+      message = 'Observation match revision must equal the Binding effective revision at acceptance',
+      constraint = 'parameter_observation_match_binding_revision_fk';
+  end if;
+
+  return null;
+end;
+$$;
+
+-- Agreement is checked at acceptance time only.  The match is immutable
+-- historical evidence, so a later governed Binding cutover must not rewrite
+-- it or be blocked by a permanent FK to the Binding's mutable revision head.
+create constraint trigger parameter_observation_match_binding_revision_fk
+after insert on parameter_catalog.parameter_observation_matches
+deferrable initially deferred
+for each row execute function parameter_catalog.assert_observation_match_binding_revision();
 
 create function parameter_catalog.protect_registration_identity()
 returns trigger
@@ -3111,12 +3217,4 @@ alter table parameter_catalog.project_parameter_bindings
   add constraint project_parameter_binding_registration_fk
   foreign key (registration_id, organization_id, subject_id)
   references parameter_catalog.organization_subject_registrations(id, organization_id, subject_id)
-  on delete restrict;
-
-alter table parameter_catalog.parameter_observation_matches
-  add constraint parameter_observation_match_binding_fk
-  foreign key (binding_id, organization_id, project_id, logical_node_id, definition_id)
-  references parameter_catalog.project_parameter_bindings(
-    id, organization_id, project_id, logical_node_id, definition_id
-  )
   on delete restrict;

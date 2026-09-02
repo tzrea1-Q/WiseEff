@@ -75,9 +75,9 @@ async function seedLegacyMappingRoots(client: pg.Client): Promise<void> {
       ('source-version-a', 'source-a', 1, 'Source A', 'Source A', '{}', 'draft', 'draft'),
       ('source-version-b', 'source-b', 1, 'Source B', 'Source B', '{}', 'draft', 'draft');
     insert into parameter_catalog.catalog_releases (
-      id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
     ) values (
-      'crel-legacy', 'legacy', 'sha256:legacy-release', 'sha256:legacy-compiled',
+      'crel-legacy', 10230, 'legacy', 'sha256:legacy-release', 'sha256:legacy-compiled',
       'sha256:legacy-toolchain', '2026-09-02T00:00:00Z'
     );
     insert into parameter_catalog.legacy_identities (
@@ -104,9 +104,9 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
   await client.query(`
     begin;
     insert into parameter_catalog.catalog_releases (
-      id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
     ) values (
-      'crel-binding-owners', 'binding-owners', 'sha256:binding-owners',
+      'crel-binding-owners', 10040, 'binding-owners', 'sha256:binding-owners',
       'sha256:binding-owners-compiled', 'sha256:binding-owners-toolchain',
       '2026-09-02T00:00:00Z'
     );
@@ -125,6 +125,18 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
     ) values
       ('crel-binding-owners', 'pdef-owner-a', 'drev-owner-a'),
       ('crel-binding-owners', 'pdef-owner-b', 'drev-owner-b');
+    insert into parameter_catalog.catalog_release_subjects (
+      release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+    ) values (
+      'crel-binding-owners', 'csub-driver', 'active', '{}', '{}'
+    );
+    insert into parameter_catalog.catalog_materializations (
+      release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+    ) values (
+      'crel-binding-owners', 'sha256:binding-owners-compiled-fp',
+      'sha256:binding-owners-database-fp', 'binding-owners-attempt',
+      'binding-owners-audit'
+    );
     insert into parameter_catalog.organization_subject_registrations (
       id, organization_id, subject_id, status, registration_method, proof, current_placement_id
     ) values (
@@ -137,15 +149,15 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
     );
     insert into parameter_catalog.project_parameter_bindings (
       id, organization_id, project_id, logical_node_id, registration_id, subject_id,
-      definition_id, effective_revision_id, current_value_id, catalog_release_id
+      definition_id, effective_revision_id, current_value_id
     ) values
       (
         'binding-owner-a', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
-        'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a', 'crel-binding-owners'
+        'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a'
       ),
       (
         'binding-owner-b', 'org-pcat', 'project-pcat', 'logical-owner', 'reg-binding-owners',
-        'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b', 'crel-binding-owners'
+        'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b'
       );
     insert into parameter_catalog.project_parameter_values (
       id, binding_id, definition_id, definition_revision_id,
@@ -283,9 +295,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       );
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-subject-roots', 'subject-roots', 'sha256:subject-roots',
+        'crel-subject-roots', 10430, 'subject-roots', 'sha256:subject-roots',
         'sha256:subject-roots-compiled', 'sha256:subject-roots-toolchain',
         '2026-09-02T00:00:00Z'
       );
@@ -425,9 +437,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-orphan-subject', 'orphan-subject', 'sha256:orphan-subject',
+        'crel-orphan-subject', 10280, 'orphan-subject', 'sha256:orphan-subject',
         'sha256:orphan-subject-compiled', 'sha256:orphan-subject-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_subjects (
@@ -456,9 +468,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-orphan-alias', 'orphan-alias', 'sha256:orphan-alias',
+        'crel-orphan-alias', 10260, 'orphan-alias', 'sha256:orphan-alias',
         'sha256:orphan-alias-compiled', 'sha256:orphan-alias-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_subject_aliases (
@@ -488,9 +500,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-orphan-definition', 'orphan-definition', 'sha256:orphan-definition',
+        'crel-orphan-definition', 10270, 'orphan-definition', 'sha256:orphan-definition',
         'sha256:orphan-definition-compiled', 'sha256:orphan-definition-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.parameter_definitions (
@@ -525,9 +537,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-introduced-mutation', 'introduced-mutation', 'sha256:introduced-mutation',
+        'crel-introduced-mutation', 10190, 'introduced-mutation', 'sha256:introduced-mutation',
         'sha256:introduced-mutation-compiled', 'sha256:introduced-mutation-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_definition_heads (
@@ -559,9 +571,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-root-closure', 'root-closure', 'sha256:root-closure',
+        'crel-root-closure', 10340, 'root-closure', 'sha256:root-closure',
         'sha256:root-closure-compiled', 'sha256:root-closure-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_subjects (
@@ -621,9 +633,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-root-closure-inverse', 'root-closure-inverse', 'sha256:root-closure-inverse',
+        'crel-root-closure-inverse', 10350, 'root-closure-inverse', 'sha256:root-closure-inverse',
         'sha256:root-closure-inverse-compiled', 'sha256:root-closure-inverse-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -693,9 +705,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         await client.query(`
           begin;
           insert into parameter_catalog.catalog_releases (
-            id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+            id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
           ) values (
-            'crel-cross-root-alias-first', 'cross-root-alias-first',
+            'crel-cross-root-alias-first', 10090, 'cross-root-alias-first',
             'sha256:cross-root-alias-first', 'sha256:cross-root-alias-first-compiled',
             'sha256:cross-root-alias-first-toolchain', '2026-09-01T00:00:00.000Z'
           );
@@ -721,9 +733,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         await client.query(`
           begin;
           insert into parameter_catalog.catalog_releases (
-            id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+            id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
           ) values (
-            'crel-cross-root-subject-second', 'cross-root-subject-second',
+            'crel-cross-root-subject-second', 10120, 'cross-root-subject-second',
             'sha256:cross-root-subject-second', 'sha256:cross-root-subject-second-compiled',
             'sha256:cross-root-subject-second-toolchain',
             '2026-09-01T00:00:00.000Z'
@@ -746,9 +758,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         await client.query(`
           begin;
           insert into parameter_catalog.catalog_releases (
-            id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+            id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
           ) values (
-            'crel-cross-root-subject-first', 'cross-root-subject-first',
+            'crel-cross-root-subject-first', 10110, 'cross-root-subject-first',
             'sha256:cross-root-subject-first', 'sha256:cross-root-subject-first-compiled',
             'sha256:cross-root-subject-first-toolchain', '2026-09-01T00:00:00.000Z'
           );
@@ -770,9 +782,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         await client.query(`
           begin;
           insert into parameter_catalog.catalog_releases (
-            id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+            id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
           ) values (
-            'crel-cross-root-alias-second', 'cross-root-alias-second',
+            'crel-cross-root-alias-second', 10100, 'cross-root-alias-second',
             'sha256:cross-root-alias-second', 'sha256:cross-root-alias-second-compiled',
             'sha256:cross-root-alias-second-toolchain',
             '2026-09-01T00:00:00.000Z'
@@ -811,9 +823,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await client.query(`
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-selector-race-subject', 'selector-race-subject',
+          'crel-selector-race-subject', 10400, 'selector-race-subject',
           'sha256:selector-race-subject', 'sha256:selector-race-subject-compiled',
           'sha256:selector-race-subject-toolchain', '2026-09-01T00:00:00.000Z'
         );
@@ -828,9 +840,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await contender.query(`
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-selector-race-alias', 'selector-race-alias',
+          'crel-selector-race-alias', 10390, 'selector-race-alias',
           'sha256:selector-race-alias', 'sha256:selector-race-alias-compiled',
           'sha256:selector-race-alias-toolchain', '2026-09-01T00:00:00.000Z'
         );
@@ -953,8 +965,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-def', 'definitions', 'sha256:def-release', 'sha256:def-compiled', 'sha256:def-toolchain', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-def', 10130, 'definitions', 'sha256:def-release', 'sha256:def-compiled', 'sha256:def-toolchain', '2026-09-01T00:00:00.000Z');
 
       insert into parameter_catalog.parameter_definitions (
         id, introduced_release_id, subject_id, property_key, current_revision_id
@@ -996,9 +1008,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-revision-cardinality', 'revision-cardinality', 'sha256:revision-cardinality',
+        'crel-revision-cardinality', 10330, 'revision-cardinality', 'sha256:revision-cardinality',
         'sha256:revision-cardinality-compiled', 'sha256:revision-cardinality-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.parameter_definitions (
@@ -1048,9 +1060,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-revision-base', 'revision-base', 'sha256:revision-base',
+        'crel-revision-base', 10320, 'revision-base', 'sha256:revision-base',
         'sha256:revision-base-compiled', 'sha256:revision-base-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -1082,10 +1094,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-revision-unchanged', 'revision-unchanged', 'sha256:revision-unchanged',
+        'crel-revision-unchanged', 10321, 'revision-unchanged', 'sha256:revision-unchanged',
         'crel-revision-base', 'sha256:revision-unchanged-compiled',
         'sha256:revision-unchanged-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -1107,10 +1119,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-revision-changed', 'revision-changed', 'sha256:revision-changed',
+        'crel-revision-changed', 10322, 'revision-changed', 'sha256:revision-changed',
         'crel-revision-unchanged', 'sha256:revision-changed-compiled',
         'sha256:revision-changed-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -1181,8 +1193,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
   it("rejects ReviewEvidence attributed to a different Organization than its Observation", async () => {
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-evidence', 'evidence', 'sha256:evidence', 'sha256:evidence-compiled', 'sha256:evidence-toolchain', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-evidence', 10160, 'evidence', 'sha256:evidence', 'sha256:evidence-compiled', 'sha256:evidence-toolchain', '2026-09-01T00:00:00.000Z');
       insert into parameter_catalog.parameter_observations (
         id, organization_id, project_id, logical_node_id, config_revision_id,
         source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
@@ -1226,9 +1238,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await seedTwoCanonicalBindings(client);
       await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-observation-b', 'observation-b', 'sha256:observation-b',
+        'crel-observation-b', 10250, 'observation-b', 'sha256:observation-b',
         'sha256:observation-b-compiled', 'sha256:observation-b-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.parameter_observations (
@@ -1443,9 +1455,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-publication-other', 'publication-other', 'sha256:publication-other',
+        'crel-publication-other', 10300, 'publication-other', 'sha256:publication-other',
         'sha256:publication-other-compiled', 'sha256:publication-other-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.definition_proposals (
@@ -1999,8 +2011,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-a', '1.0.0', 'sha256:release-a', 'sha256:compiled-a', 'sha256:toolchain-a', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-a', 10000, '1.0.0', 'sha256:release-a', 'sha256:compiled-a', 'sha256:toolchain-a', '2026-09-01T00:00:00.000Z');
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-a', 'csub-driver', 'active', '{}', '{}');
@@ -2016,10 +2028,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-b', '2.0.0', 'sha256:release-b', 'crel-a',
+        'crel-b', 10001, '2.0.0', 'sha256:release-b', 'crel-a',
         'sha256:compiled-b', 'sha256:toolchain-b', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_materializations (
@@ -2051,17 +2063,17 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     {
       name: "two-node",
       valuesSql: `
-        ('crel-cycle-two-a', 'cycle-two-a', 'sha256:cycle-two-a', 'crel-cycle-two-b', 'sha256:cycle-two-a-compiled', 'sha256:cycle-two-a-toolchain', '2026-09-01T00:00:00.000Z'),
-        ('crel-cycle-two-b', 'cycle-two-b', 'sha256:cycle-two-b', 'crel-cycle-two-a', 'sha256:cycle-two-b-compiled', 'sha256:cycle-two-b-toolchain', '2026-09-01T00:00:00.000Z')
+        ('crel-cycle-two-a', 20000, 'cycle-two-a', 'sha256:cycle-two-a', 'crel-cycle-two-b', 'sha256:cycle-two-a-compiled', 'sha256:cycle-two-a-toolchain', '2026-09-01T00:00:00.000Z'),
+        ('crel-cycle-two-b', 20001, 'cycle-two-b', 'sha256:cycle-two-b', 'crel-cycle-two-a', 'sha256:cycle-two-b-compiled', 'sha256:cycle-two-b-toolchain', '2026-09-01T00:00:00.000Z')
       `,
       ids: ["crel-cycle-two-a", "crel-cycle-two-b"],
     },
     {
       name: "long",
       valuesSql: `
-        ('crel-cycle-long-a', 'cycle-long-a', 'sha256:cycle-long-a', 'crel-cycle-long-b', 'sha256:cycle-long-a-compiled', 'sha256:cycle-long-a-toolchain', '2026-09-01T00:00:00.000Z'),
-        ('crel-cycle-long-b', 'cycle-long-b', 'sha256:cycle-long-b', 'crel-cycle-long-c', 'sha256:cycle-long-b-compiled', 'sha256:cycle-long-b-toolchain', '2026-09-01T00:00:00.000Z'),
-        ('crel-cycle-long-c', 'cycle-long-c', 'sha256:cycle-long-c', 'crel-cycle-long-a', 'sha256:cycle-long-c-compiled', 'sha256:cycle-long-c-toolchain', '2026-09-01T00:00:00.000Z')
+        ('crel-cycle-long-a', 20100, 'cycle-long-a', 'sha256:cycle-long-a', 'crel-cycle-long-b', 'sha256:cycle-long-a-compiled', 'sha256:cycle-long-a-toolchain', '2026-09-01T00:00:00.000Z'),
+        ('crel-cycle-long-b', 20101, 'cycle-long-b', 'sha256:cycle-long-b', 'crel-cycle-long-c', 'sha256:cycle-long-b-compiled', 'sha256:cycle-long-b-toolchain', '2026-09-01T00:00:00.000Z'),
+        ('crel-cycle-long-c', 20102, 'cycle-long-c', 'sha256:cycle-long-c', 'crel-cycle-long-a', 'sha256:cycle-long-c-compiled', 'sha256:cycle-long-c-toolchain', '2026-09-01T00:00:00.000Z')
       `,
       ids: ["crel-cycle-long-a", "crel-cycle-long-b", "crel-cycle-long-c"],
     },
@@ -2071,7 +2083,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await client.query("begin");
       await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values ${valuesSql}
     `);
@@ -2091,14 +2103,15 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     },
   );
 
-  it("rejects a successor when its predecessor materialization came from a released savepoint", async () => {
+  it("rolls back an otherwise complete same-transaction lineage on a late sequence failure", async () => {
     await client.query(`
       begin;
       savepoint materialize_predecessor;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest,
+        compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-savepoint-predecessor', 'savepoint-predecessor',
+        'crel-savepoint-predecessor', 10370, 'savepoint-predecessor',
         'sha256:savepoint-predecessor', 'sha256:savepoint-predecessor-compiled',
         'sha256:savepoint-predecessor-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -2114,12 +2127,40 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       );
       release savepoint materialize_predecessor;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-savepoint-successor', 'savepoint-successor', 'sha256:savepoint-successor',
+        'crel-savepoint-successor', 10371, 'savepoint-successor', 'sha256:savepoint-successor',
         'crel-savepoint-predecessor', 'sha256:savepoint-successor-compiled',
         'sha256:savepoint-successor-toolchain', '2026-09-01T00:00:00.000Z'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-savepoint-successor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-savepoint-successor', 'sha256:savepoint-successor-compiled-fp',
+        'sha256:savepoint-successor-database-fp', 'savepoint-successor-attempt',
+        'savepoint-successor-audit'
+      );
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-savepoint-invalid', 10373, 'savepoint-invalid', 'sha256:savepoint-invalid',
+        'crel-savepoint-successor', 'sha256:savepoint-invalid-compiled',
+        'sha256:savepoint-invalid-toolchain', '2026-09-01T00:00:00.000Z'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-savepoint-invalid', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-savepoint-invalid', 'sha256:savepoint-invalid-compiled-fp',
+        'sha256:savepoint-invalid-database-fp', 'savepoint-invalid-attempt',
+        'savepoint-invalid-audit'
       );
     `);
 
@@ -2128,7 +2169,7 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     );
     expect(error.code).toBe("23514");
     expect(error.constraint).toBe(
-      "catalog_release_predecessor_materialized_ck",
+      "catalog_release_predecessor_sequence_ck",
     );
     await client.query("rollback");
 
@@ -2138,22 +2179,22 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       subjects: string;
     }>(`
       select
-        (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-savepoint-predecessor', 'crel-savepoint-successor')) as releases,
-        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-savepoint-predecessor') as subjects,
-        (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-savepoint-predecessor') as materializations
+        (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as releases,
+        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as subjects,
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as materializations
     `);
     expect(residue.rows).toEqual([
       { materializations: "0", releases: "0", subjects: "0" },
     ]);
   });
 
-  it("rejects a successor materialized directly in the same top-level transaction", async () => {
+  it("materializes a complete skipped-release lineage in one transaction", async () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-same-xact-predecessor', 'same-xact-predecessor',
+        'crel-same-xact-predecessor', 10360, 'same-xact-predecessor',
         'sha256:same-xact-predecessor', 'sha256:same-xact-predecessor-compiled',
         'sha256:same-xact-predecessor-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -2161,31 +2202,33 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-same-xact-predecessor', 'csub-driver', 'active', '{}', '{}');
       insert into parameter_catalog.catalog_materializations (
-        release_id, materializing_transaction_id, compiled_fingerprint,
-        database_fingerprint, attempt_id, success_audit_ref
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values (
-        'crel-same-xact-predecessor', '1'::xid8, 'sha256:same-xact-predecessor-compiled-fp',
+        'crel-same-xact-predecessor', 'sha256:same-xact-predecessor-compiled-fp',
         'sha256:same-xact-predecessor-database-fp', 'same-xact-predecessor-attempt',
         'same-xact-predecessor-audit'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-same-xact-successor', 'same-xact-successor', 'sha256:same-xact-successor',
+        'crel-same-xact-successor', 10361, 'same-xact-successor', 'sha256:same-xact-successor',
         'crel-same-xact-predecessor', 'sha256:same-xact-successor-compiled',
         'sha256:same-xact-successor-toolchain', '2026-09-01T00:00:00.000Z'
       );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-same-xact-successor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-same-xact-successor', 'sha256:same-xact-successor-compiled-fp',
+        'sha256:same-xact-successor-database-fp', 'same-xact-successor-attempt',
+        'same-xact-successor-audit'
+      );
+      set constraints all immediate;
+      commit;
     `);
-
-    const error = await captureDatabaseError(
-      client.query("set constraints all immediate"),
-    );
-    expect(error.code).toBe("23514");
-    expect(error.constraint).toBe(
-      "catalog_release_predecessor_materialized_ck",
-    );
-    await client.query("rollback");
 
     const residue = await client.query<{
       materializations: string;
@@ -2194,11 +2237,11 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as releases,
-        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-same-xact-predecessor') as subjects,
-        (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-same-xact-predecessor') as materializations
+        (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as subjects,
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as materializations
     `);
     expect(residue.rows).toEqual([
-      { materializations: "0", releases: "0", subjects: "0" },
+      { materializations: "2", releases: "2", subjects: "2" },
     ]);
   });
 
@@ -2206,9 +2249,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-prior-xact-predecessor', 'prior-xact-predecessor',
+        'crel-prior-xact-predecessor', 10290, 'prior-xact-predecessor',
         'sha256:prior-xact-predecessor', 'sha256:prior-xact-predecessor-compiled',
         'sha256:prior-xact-predecessor-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -2227,10 +2270,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-prior-xact-successor', 'prior-xact-successor', 'sha256:prior-xact-successor',
+        'crel-prior-xact-successor', 10291, 'prior-xact-successor', 'sha256:prior-xact-successor',
         'crel-prior-xact-predecessor', 'sha256:prior-xact-successor-compiled',
         'sha256:prior-xact-successor-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -2262,9 +2305,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await client.query(`
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-concurrent-rollback-predecessor', 'concurrent-rollback-predecessor',
+          'crel-concurrent-rollback-predecessor', 10080, 'concurrent-rollback-predecessor',
           'sha256:concurrent-rollback-predecessor',
           'sha256:concurrent-rollback-predecessor-compiled',
           'sha256:concurrent-rollback-predecessor-toolchain', '2026-09-01T00:00:00.000Z'
@@ -2293,10 +2336,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         .query(
           `
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, predecessor_release_id,
+          id, release_sequence, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-concurrent-rollback-successor', 'concurrent-rollback-successor',
+          'crel-concurrent-rollback-successor', 10081, 'concurrent-rollback-successor',
           'sha256:concurrent-rollback-successor', 'crel-concurrent-rollback-predecessor',
           'sha256:concurrent-rollback-successor-compiled',
           'sha256:concurrent-rollback-successor-toolchain',
@@ -2308,19 +2351,24 @@ describe("canonical Catalog deferred constraints and rollback", () => {
           (result) => ({ result, error: null }),
           (error: pg.DatabaseError) => ({ result: null, error }),
         );
-      await waitForDatabaseLock(client, successor.processID);
-      await client.query("rollback");
-
       await expect(successorAttempt).resolves.toMatchObject({
         result: { rowCount: 1 },
         error: null,
       });
+      const constraintAttempt = successor
+        .query("set constraints all immediate")
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error }),
+        );
+      await waitForDatabaseLock(client, successor.processID);
+      await client.query("rollback");
 
-      const error = await captureDatabaseError(
-        successor.query("set constraints all immediate"),
-      );
-      expect(error.code).toBe("23514");
-      expect(error.constraint).toBe(
+      const outcome = await constraintAttempt;
+      expect(outcome.result).toBeNull();
+      expect(outcome.error).toBeInstanceOf(pg.DatabaseError);
+      expect(outcome.error?.code).toBe("23514");
+      expect(outcome.error?.constraint).toBe(
         "catalog_release_predecessor_materialized_ck",
       );
       await successor.query("rollback");
@@ -2351,9 +2399,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await client.query(`
         begin;
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+          id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-concurrent-commit-predecessor', 'concurrent-commit-predecessor',
+          'crel-concurrent-commit-predecessor', 10070, 'concurrent-commit-predecessor',
           'sha256:concurrent-commit-predecessor',
           'sha256:concurrent-commit-predecessor-compiled',
           'sha256:concurrent-commit-predecessor-toolchain', '2026-09-01T00:00:00.000Z'
@@ -2382,10 +2430,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         .query(
           `
         insert into parameter_catalog.catalog_releases (
-          id, release_version, release_digest, predecessor_release_id,
+          id, release_sequence, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest, published_at
         ) values (
-          'crel-concurrent-commit-successor', 'concurrent-commit-successor',
+          'crel-concurrent-commit-successor', 10071, 'concurrent-commit-successor',
           'sha256:concurrent-commit-successor', 'crel-concurrent-commit-predecessor',
           'sha256:concurrent-commit-successor-compiled',
           'sha256:concurrent-commit-successor-toolchain',
@@ -2397,16 +2445,17 @@ describe("canonical Catalog deferred constraints and rollback", () => {
           (result) => ({ result, error: null }),
           (error: pg.DatabaseError) => ({ result: null, error }),
         );
+      await expect(successorAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null,
+      });
+      const constraintAttempt = successor.query("set constraints all immediate");
       await waitForDatabaseLock(client, successor.processID);
 
       await client.query("set constraints all immediate");
       await client.query("commit");
 
-      await expect(successorAttempt).resolves.toMatchObject({
-        result: { rowCount: 1 },
-        error: null,
-      });
-      await successor.query("set constraints all immediate");
+      await expect(constraintAttempt).resolves.toMatchObject({ rowCount: null });
       await successor.query("commit");
 
       const state = await client.query<{
@@ -2429,9 +2478,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-sealed-r1', 'sealed-r1', 'sha256:sealed-r1',
+        'crel-sealed-r1', 10380, 'sealed-r1', 'sha256:sealed-r1',
         'sha256:sealed-r1-compiled', 'sha256:sealed-r1-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2448,10 +2497,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-incomplete-r2', 'incomplete-r2', 'sha256:incomplete-r2', 'crel-sealed-r1',
+        'crel-incomplete-r2', 10381, 'incomplete-r2', 'sha256:incomplete-r2', 'crel-sealed-r1',
         'sha256:incomplete-r2-compiled', 'sha256:incomplete-r2-toolchain', '2026-09-01T00:00:00.000Z'
       );
       set constraints all immediate;
@@ -2461,10 +2510,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-rejected-r3', 'rejected-r3', 'sha256:rejected-r3', 'crel-incomplete-r2',
+        'crel-rejected-r3', 10382, 'rejected-r3', 'sha256:rejected-r3', 'crel-incomplete-r2',
         'sha256:rejected-r3-compiled', 'sha256:rejected-r3-toolchain',
         '2026-09-01T00:00:00.000Z'
       )
@@ -2494,8 +2543,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'calias-driver', 'crel-alias-a', 'csub-driver', 'driver-compatible', 'test,driver'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-alias-a', 'alias-1', 'sha256:alias-a', 'sha256:alias-compiled-a', 'sha256:alias-toolchain-a', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-alias-a', 10010, 'alias-1', 'sha256:alias-a', 'sha256:alias-compiled-a', 'sha256:alias-toolchain-a', '2026-09-01T00:00:00.000Z');
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-alias-a', 'csub-driver', 'active', '{}', '{}');
@@ -2514,10 +2563,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-alias-b', 'alias-2', 'sha256:alias-b', 'crel-alias-a',
+        'crel-alias-b', 10011, 'alias-2', 'sha256:alias-b', 'crel-alias-a',
         'sha256:alias-compiled-b', 'sha256:alias-toolchain-b', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2558,8 +2607,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'driver-compatible', 'test,retired'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-retired-alias', 'retired-alias', 'sha256:retired-alias', 'sha256:retired-compiled', 'sha256:retired-toolchain', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-retired-alias', 10310, 'retired-alias', 'sha256:retired-alias', 'sha256:retired-compiled', 'sha256:retired-toolchain', '2026-09-01T00:00:00.000Z');
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
       ) values ('crel-retired-alias', 'csub-driver', 'retired', '{}', '{}', '{}');
@@ -2600,9 +2649,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'node-type-name', 'node-type-kind-mismatch'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-alias-kind-mismatch', 'alias-kind-mismatch', 'sha256:alias-kind-mismatch',
+        'crel-alias-kind-mismatch', 10020, 'alias-kind-mismatch', 'sha256:alias-kind-mismatch',
         'sha256:alias-kind-mismatch-compiled', 'sha256:alias-kind-mismatch-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2660,9 +2709,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'vendor,canonical-collision'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-canonical-collision', 'canonical-collision', 'sha256:canonical-collision',
+        'crel-canonical-collision', 10050, 'canonical-collision', 'sha256:canonical-collision',
         'sha256:canonical-collision-compiled', 'sha256:canonical-collision-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2710,9 +2759,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'driver-compatible', 'vendor,test'
       );
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-canonical-duplicate', 'canonical-duplicate', 'sha256:canonical-duplicate',
+        'crel-canonical-duplicate', 10060, 'canonical-duplicate', 'sha256:canonical-duplicate',
         'sha256:canonical-duplicate-compiled', 'sha256:canonical-duplicate-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2768,9 +2817,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-head-parent', 'head-parent', 'sha256:head-parent',
+        'crel-head-parent', 10170, 'head-parent', 'sha256:head-parent',
         'sha256:head-parent-compiled', 'sha256:head-parent-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2800,10 +2849,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-head', 'head', 'sha256:head', 'crel-head-parent',
+        'crel-head', 10171, 'head', 'sha256:head', 'crel-head-parent',
         'sha256:head-compiled', 'sha256:head-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2845,9 +2894,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-empty-materialization', 'empty-materialization', 'sha256:empty-materialization',
+        'crel-empty-materialization', 10150, 'empty-materialization', 'sha256:empty-materialization',
         'sha256:empty-materialization-compiled', 'sha256:empty-materialization-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_materializations (
@@ -2883,9 +2932,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-headless-base', 'headless-base', 'sha256:headless-base',
+        'crel-headless-base', 10180, 'headless-base', 'sha256:headless-base',
         'sha256:headless-base-compiled', 'sha256:headless-base-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -2919,10 +2968,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-headless-materialization', 'headless-materialization', 'sha256:headless-materialization',
+        'crel-headless-materialization', 10181, 'headless-materialization', 'sha256:headless-materialization',
         'crel-headless-base', 'sha256:headless-materialization-compiled',
         'sha256:headless-materialization-toolchain', '2026-09-01T00:00:00.000Z'
       );
@@ -2962,9 +3011,9 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-deferred-materialization', 'deferred-materialization', 'sha256:deferred-materialization',
+        'crel-deferred-materialization', 10140, 'deferred-materialization', 'sha256:deferred-materialization',
         'sha256:deferred-materialization-compiled', 'sha256:deferred-materialization-toolchain', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_materializations (
@@ -3022,8 +3071,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-switch-a', 'switch-a', 'sha256:switch-a', 'sha256:switch-compiled-a', 'sha256:switch-toolchain-a', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-switch-a', 10440, 'switch-a', 'sha256:switch-a', 'sha256:switch-compiled-a', 'sha256:switch-toolchain-a', '2026-09-01T00:00:00.000Z');
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-switch-a', 'csub-driver', 'active', '{}', '{}');
@@ -3048,10 +3097,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       begin;
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, predecessor_release_id,
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest, published_at
       ) values (
-        'crel-switch-b', 'switch-b', 'sha256:switch-b', 'crel-switch-a',
+        'crel-switch-b', 10441, 'switch-b', 'sha256:switch-b', 'crel-switch-a',
         'sha256:switch-compiled-b', 'sha256:switch-toolchain-b', '2026-09-01T00:00:00.000Z'
       );
       insert into parameter_catalog.catalog_release_subjects (
@@ -3273,8 +3322,8 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     await client.query("begin");
     await client.query(`
       insert into parameter_catalog.catalog_releases (
-        id, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
-      ) values ('crel-binding', 'binding', 'sha256:binding-release', 'sha256:binding-compiled', 'sha256:binding-toolchain', '2026-09-01T00:00:00.000Z');
+        id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
+      ) values ('crel-binding', 10030, 'binding', 'sha256:binding-release', 'sha256:binding-compiled', 'sha256:binding-toolchain', '2026-09-01T00:00:00.000Z');
 
       insert into parameter_catalog.parameter_definitions (
         id, introduced_release_id, subject_id, property_key, current_revision_id
@@ -3287,6 +3336,15 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_release_definition_heads (
         release_id, definition_id, revision_id
       ) values ('crel-binding', 'pdef-binding', 'drev-binding');
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values ('crel-binding', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-binding', 'sha256:binding-compiled-fp', 'sha256:binding-database-fp',
+        'binding-attempt', 'binding-audit'
+      );
 
       insert into parameter_catalog.organization_subject_registrations (
         id, organization_id, subject_id, status, registration_method, proof, current_placement_id
@@ -3297,10 +3355,10 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
       insert into parameter_catalog.project_parameter_bindings (
         id, organization_id, project_id, logical_node_id, registration_id, subject_id,
-        definition_id, effective_revision_id, current_value_id, catalog_release_id
+        definition_id, effective_revision_id, current_value_id
       ) values (
         'binding-one', 'org-pcat', 'project-pcat', 'logical-node-one', 'reg-binding', 'csub-driver',
-        'pdef-binding', 'drev-binding', 'pvalue-one', 'crel-binding'
+        'pdef-binding', 'drev-binding', 'pvalue-one'
       );
       insert into parameter_catalog.project_parameter_values (
         id, binding_id, definition_id, definition_revision_id,
@@ -3334,5 +3392,178 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       ),
     );
     expect(immutable.code).toBe("55000");
+  });
+
+  it("cuts a Binding over by revision CAS and rejects a stale cross-release ObservationMatch", async () => {
+    await seedTwoCanonicalBindings(client);
+    await client.query(`
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-binding-successor', 10041, 'binding-successor',
+        'sha256:binding-successor', 'crel-binding-owners',
+        'sha256:binding-successor-compiled', 'sha256:binding-successor-toolchain',
+        '2026-09-02T01:00:00Z'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values (
+        'crel-binding-successor', 'csub-driver', 'active', '{}', '{}'
+      );
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values (
+        'drev-owner-a-successor', 'pdef-owner-a', 2, 'crel-binding-successor',
+        'sha256:drev-owner-a-successor', '{}'
+      );
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values
+        ('crel-binding-successor', 'pdef-owner-a', 'drev-owner-a-successor'),
+        ('crel-binding-successor', 'pdef-owner-b', 'drev-owner-b');
+      update parameter_catalog.parameter_definitions
+      set current_revision_id = 'drev-owner-a-successor'
+      where id = 'pdef-owner-a';
+      insert into parameter_catalog.catalog_materializations (
+        release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+      ) values (
+        'crel-binding-successor', 'sha256:binding-successor-compiled-fp',
+        'sha256:binding-successor-database-fp', 'binding-successor-attempt',
+        'binding-successor-audit'
+      );
+      set constraints all immediate;
+      commit;
+    `);
+
+    const won = await client.query(`
+      update parameter_catalog.project_parameter_bindings
+      set effective_revision_id = 'drev-owner-a-successor', updated_at = now()
+      where id = 'binding-owner-a'
+        and effective_revision_id = 'drev-owner-a'
+    `);
+    expect(won.rowCount).toBe(1);
+
+    const stale = await client.query(`
+      update parameter_catalog.project_parameter_bindings
+      set effective_revision_id = 'drev-owner-a'
+      where id = 'binding-owner-a'
+        and effective_revision_id = 'drev-owner-a'
+    `);
+    expect(stale.rowCount).toBe(0);
+
+    await client.query(`
+      insert into parameter_catalog.parameter_observations (
+        id, organization_id, project_id, logical_node_id, config_revision_id,
+        source_identity, source_locator, catalog_release_id, matcher_revision,
+        evidence_fingerprint
+      ) values (
+        'pobs-cross-release', 'org-pcat', 'project-pcat', 'logical-owner',
+        'config-cross-release', 'source-cross-release', '{}',
+        'crel-binding-owners', 'matcher-cross-release',
+        'sha256:cross-release-observation'
+      )
+    `);
+    const mismatch = await captureDatabaseError(
+      client.query(`
+        insert into parameter_catalog.parameter_observation_matches (
+          id, observation_id, organization_id, project_id, logical_node_id,
+          registration_id, subject_id, definition_id, definition_revision_id,
+          binding_id, catalog_release_id, matcher_revision
+        ) values (
+          'pmatch-cross-release', 'pobs-cross-release', 'org-pcat',
+          'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
+          'pdef-owner-a', 'drev-owner-a', 'binding-owner-a',
+          'crel-binding-owners', 'matcher-cross-release'
+        )
+      `),
+    );
+    expect(mismatch.code).toBe("23503");
+    expect(mismatch.constraint).toBe("parameter_observation_match_binding_revision_fk");
+
+    await client.query(`
+      insert into parameter_catalog.parameter_observations (
+        id, organization_id, project_id, logical_node_id, config_revision_id,
+        source_identity, source_locator, catalog_release_id, matcher_revision,
+        evidence_fingerprint
+      ) values (
+        'pobs-successor', 'org-pcat', 'project-pcat', 'logical-owner',
+        'config-successor', 'source-successor', '{}',
+        'crel-binding-successor', 'matcher-successor',
+        'sha256:successor-observation'
+      );
+      insert into parameter_catalog.parameter_observation_matches (
+        id, observation_id, organization_id, project_id, logical_node_id,
+        registration_id, subject_id, definition_id, definition_revision_id,
+        binding_id, catalog_release_id, matcher_revision
+      ) values (
+        'pmatch-successor', 'pobs-successor', 'org-pcat',
+        'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
+        'pdef-owner-a', 'drev-owner-a-successor', 'binding-owner-a',
+        'crel-binding-successor', 'matcher-successor'
+      )
+    `);
+
+    await client.query(`
+      begin;
+      insert into parameter_catalog.catalog_releases (
+        id, release_sequence, release_version, release_digest, predecessor_release_id,
+        compiled_model_digest, toolchain_digest, published_at
+      ) values (
+        'crel-binding-unverified', 10042, 'binding-unverified',
+        'sha256:binding-unverified', 'crel-binding-successor',
+        'sha256:binding-unverified-compiled', 'sha256:binding-unverified-toolchain',
+        '2026-09-02T02:00:00Z'
+      );
+      insert into parameter_catalog.catalog_release_subjects (
+        release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+      ) values (
+        'crel-binding-unverified', 'csub-driver', 'active', '{}', '{}'
+      );
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values (
+        'drev-owner-a-unverified', 'pdef-owner-a', 3, 'crel-binding-unverified',
+        'sha256:drev-owner-a-unverified', '{}'
+      );
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values
+        ('crel-binding-unverified', 'pdef-owner-a', 'drev-owner-a-unverified'),
+        ('crel-binding-unverified', 'pdef-owner-b', 'drev-owner-b');
+      update parameter_catalog.project_parameter_bindings
+      set effective_revision_id = 'drev-owner-a-unverified'
+      where id = 'binding-owner-a'
+        and effective_revision_id = 'drev-owner-a-successor';
+    `);
+    const unverified = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
+    expect(unverified.code).toBe("23503");
+    expect(unverified.constraint).toBe(
+      "project_parameter_binding_effective_revision_head_fk",
+    );
+    await client.query("rollback");
+
+    const final = await client.query<{
+      effective_revision_id: string;
+      match_revision_id: string;
+    }>(`
+      select
+        binding.effective_revision_id,
+        match.definition_revision_id as match_revision_id
+      from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.parameter_observation_matches match
+        on match.binding_id = binding.id
+      where binding.id = 'binding-owner-a'
+        and match.id = 'pmatch-successor'
+    `);
+    expect(final.rows).toEqual([
+      {
+        effective_revision_id: "drev-owner-a-successor",
+        match_revision_id: "drev-owner-a-successor",
+      },
+    ]);
   });
 });
