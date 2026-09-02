@@ -3,10 +3,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
-  type EphemeralTestDatabase
+  type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+if (!databaseAvailable) {
+  throw new Error(
+    "S2-SCH rollback tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
 
 async function connect(url: string): Promise<pg.Client> {
   const client = new pg.Client({ connectionString: url });
@@ -14,7 +20,9 @@ async function connect(url: string): Promise<pg.Client> {
   return client;
 }
 
-async function captureDatabaseError(action: Promise<unknown>): Promise<pg.DatabaseError> {
+async function captureDatabaseError(
+  action: Promise<unknown>,
+): Promise<pg.DatabaseError> {
   try {
     await action;
   } catch (error) {
@@ -24,10 +32,14 @@ async function captureDatabaseError(action: Promise<unknown>): Promise<pg.Databa
   throw new Error("Expected PostgreSQL to reject the operation");
 }
 
-async function waitForDatabaseLock(observer: pg.Client, processId: number): Promise<void> {
+async function waitForDatabaseLock(
+  observer: pg.Client,
+  processId: number,
+): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
-    const result = await observer.query<{ waiting: boolean }>(`
+    const result = await observer.query<{ waiting: boolean }>(
+      `
       select coalesce(
         (
           select wait_event_type = 'Lock'
@@ -36,13 +48,17 @@ async function waitForDatabaseLock(observer: pg.Client, processId: number): Prom
         ),
         false
       ) as waiting
-    `, [processId]);
+    `,
+      [processId],
+    );
     if (result.rows[0]?.waiting) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`Session ${processId} did not wait for the expected database lock`);
+  throw new Error(
+    `Session ${processId} did not wait for the expected database lock`,
+  );
 }
 
 async function seedLegacyMappingRoots(client: pg.Client): Promise<void> {
@@ -188,7 +204,7 @@ async function seedLegacyOwnershipTargets(client: pg.Client): Promise<void> {
   `);
 }
 
-describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", () => {
+describe("canonical Catalog deferred constraints and rollback", () => {
   let database: EphemeralTestDatabase;
   let client: pg.Client;
 
@@ -233,14 +249,14 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
-      ) values ('csub-driver', 'crel-subject-roots', 'driver', 'driver:test');
+      ) values ('csub-driver', 'crel-subject-roots', 'driver', 'vendor,test');
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-driver', 'physical-device', 'multiple');
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
-      ) values ('csub-node-type', 'crel-subject-roots', 'node-type', 'node-type:test');
-      insert into parameter_catalog.catalog_node_types (subject_id, family)
-      values ('csub-node-type', 'device');
+      ) values ('csub-node-type', 'crel-subject-roots', 'node-type', 'test');
+      insert into parameter_catalog.catalog_node_types (subject_id)
+      values ('csub-node-type');
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values
@@ -290,7 +306,10 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       commit;
     `);
 
-    const result = await client.query<{ registrations: string; placements: string }>(`
+    const result = await client.query<{
+      registrations: string;
+      placements: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.organization_subject_registrations) as registrations,
         (select count(*)::text from parameter_catalog.subject_placements) as placements
@@ -303,18 +322,18 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       name: "missing subtype",
       subjectSql: `
         insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key)
-        values ('csub-bad', 'crel-subject-roots', 'driver', 'driver:bad');
+        values ('csub-bad', 'crel-subject-roots', 'driver', 'vendor,bad');
         insert into parameter_catalog.catalog_release_subjects (
           release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
         ) values ('crel-subject-roots', 'csub-bad', 'active', '{}', '{}')
       `,
-      subtypeSql: "select 1"
+      subtypeSql: "select 1",
     },
     {
       name: "both subtypes",
       subjectSql: `
         insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key)
-        values ('csub-bad', 'crel-subject-roots', 'driver', 'driver:bad');
+        values ('csub-bad', 'crel-subject-roots', 'driver', 'vendor,bad');
         insert into parameter_catalog.catalog_release_subjects (
           release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
         ) values ('crel-subject-roots', 'csub-bad', 'active', '{}', '{}')
@@ -322,15 +341,15 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       subtypeSql: `
         insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
         values ('csub-bad', 'physical-device', 'multiple');
-        insert into parameter_catalog.catalog_node_types (subject_id, family)
-        values ('csub-bad', 'device')
-      `
+        insert into parameter_catalog.catalog_node_types (subject_id)
+        values ('csub-bad')
+      `,
     },
     {
       name: "mismatched subtype",
       subjectSql: `
         insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key)
-        values ('csub-bad', 'crel-subject-roots', 'node-type', 'node-type:bad');
+        values ('csub-bad', 'crel-subject-roots', 'node-type', 'bad');
         insert into parameter_catalog.catalog_release_subjects (
           release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
         ) values ('crel-subject-roots', 'csub-bad', 'active', '{}', '{}')
@@ -338,22 +357,27 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       subtypeSql: `
         insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
         values ('csub-bad', 'physical-device', 'multiple')
-      `
-    }
-  ])("rejects a Catalog Subject with $name at deferred constraint evaluation", async ({ subjectSql, subtypeSql }) => {
-    await client.query("begin");
-    await client.query(subjectSql);
-    await client.query(subtypeSql);
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
-    expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_subject_exact_subtype_ck");
-    await client.query("rollback");
+      `,
+    },
+  ])(
+    "rejects a Catalog Subject with $name at deferred constraint evaluation",
+    async ({ subjectSql, subtypeSql }) => {
+      await client.query("begin");
+      await client.query(subjectSql);
+      await client.query(subtypeSql);
+      const error = await captureDatabaseError(
+        client.query("set constraints all immediate"),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe("catalog_subject_exact_subtype_ck");
+      await client.query("rollback");
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_subjects where id = 'csub-bad'"
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.catalog_subjects where id = 'csub-bad'",
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it("rejects a Catalog Subject root without its first-release membership at COMMIT", async () => {
     await client.query("begin");
@@ -367,19 +391,21 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
       ) values (
-        'csub-orphan-release', 'crel-orphan-subject', 'driver', 'driver:orphan-release'
+        'csub-orphan-release', 'crel-orphan-subject', 'driver', 'vendor,orphan-release'
       );
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-orphan-release', 'physical-device', 'multiple');
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("catalog_subject_introduced_release_fk");
     await client.query("rollback");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_subjects where id = 'csub-orphan-release'"
+      "select count(*)::text as count from parameter_catalog.catalog_subjects where id = 'csub-orphan-release'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -401,13 +427,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23503");
-    expect(error.constraint).toBe("catalog_subject_alias_introduced_release_fk");
+    expect(error.constraint).toBe(
+      "catalog_subject_alias_introduced_release_fk",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_subject_aliases where id = 'calias-orphan-release'"
+      "select count(*)::text as count from parameter_catalog.catalog_subject_aliases where id = 'calias-orphan-release'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -435,13 +465,15 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("parameter_definition_introduced_release_fk");
     await client.query("rollback");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_definitions where id = 'pdef-orphan-release'"
+      "select count(*)::text as count from parameter_catalog.parameter_definitions where id = 'pdef-orphan-release'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -461,11 +493,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       ) values ('crel-introduced-mutation', 'pdef-owner-a', 'drev-owner-a');
     `);
 
-    const error = await captureDatabaseError(client.query(`
+    const error = await captureDatabaseError(
+      client.query(`
       update parameter_catalog.parameter_definitions
       set introduced_release_id = 'crel-introduced-mutation'
       where id = 'pdef-owner-a'
-    `));
+    `),
+    );
     expect(error.code).toBe("55000");
     await client.query("rollback");
 
@@ -474,7 +508,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       from parameter_catalog.parameter_definitions
       where id = 'pdef-owner-a'
     `);
-    expect(definition.rows).toEqual([{ introduced_release_id: "crel-binding-owners" }]);
+    expect(definition.rows).toEqual([
+      { introduced_release_id: "crel-binding-owners" },
+    ]);
   });
 
   it("commits first-release Subject, alias, and Definition projection rows staged after their roots", async () => {
@@ -488,7 +524,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
-      ) values ('csub-root-closure', 'crel-root-closure', 'driver', 'driver:root-closure');
+      ) values ('csub-root-closure', 'crel-root-closure', 'driver', 'vendor,root-closure');
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-root-closure', 'logical-service', 'singleton-per-project');
       insert into parameter_catalog.catalog_subject_aliases (
@@ -524,13 +560,19 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       commit;
     `);
 
-    const projection = await client.query<{ aliases: string; definitions: string; subjects: string }>(`
+    const projection = await client.query<{
+      aliases: string;
+      definitions: string;
+      subjects: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-root-closure') as subjects,
         (select count(*)::text from parameter_catalog.catalog_release_subject_aliases where release_id = 'crel-root-closure') as aliases,
         (select count(*)::text from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-root-closure') as definitions
     `);
-    expect(projection.rows).toEqual([{ aliases: "1", definitions: "1", subjects: "1" }]);
+    expect(projection.rows).toEqual([
+      { aliases: "1", definitions: "1", subjects: "1" },
+    ]);
   });
 
   it("commits first-release projection rows staged before their Subject, alias, and Definition roots", async () => {
@@ -581,19 +623,25 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         id, introduced_release_id, kind, canonical_key
       ) values (
         'csub-root-closure-inverse', 'crel-root-closure-inverse',
-        'driver', 'driver:root-closure-inverse'
+        'driver', 'vendor,root-closure-inverse'
       );
       set constraints all immediate;
       commit;
     `);
 
-    const projection = await client.query<{ aliases: string; definitions: string; subjects: string }>(`
+    const projection = await client.query<{
+      aliases: string;
+      definitions: string;
+      subjects: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-root-closure-inverse') as subjects,
         (select count(*)::text from parameter_catalog.catalog_release_subject_aliases where release_id = 'crel-root-closure-inverse') as aliases,
         (select count(*)::text from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-root-closure-inverse') as definitions
     `);
-    expect(projection.rows).toEqual([{ aliases: "1", definitions: "1", subjects: "1" }]);
+    expect(projection.rows).toEqual([
+      { aliases: "1", definitions: "1", subjects: "1" },
+    ]);
   });
 
   it.each(["alias-first", "subject-first"] as const)(
@@ -616,7 +664,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
             id, introduced_release_id, subject_id, selector_kind, normalized_selector
           ) values (
             'calias-cross-root-first', 'crel-cross-root-alias-first', 'csub-driver',
-            'driver-compatible', 'driver:cross-root-alias-first'
+            'driver-compatible', 'vendor,cross-root-alias-first'
           );
           insert into parameter_catalog.catalog_release_subject_aliases (
             release_id, subject_id, alias_id, lifecycle, selector_provenance
@@ -644,9 +692,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
               id, introduced_release_id, kind, canonical_key
             ) values (
               'csub-cross-root-second', 'crel-cross-root-subject-second', 'driver',
-              'driver:cross-root-alias-first'
+              'vendor,cross-root-alias-first'
             )
-          `)
+          `),
         );
         expect(error.code).toBe("23505");
         expect(error.constraint).toBe("catalog_selector_cross_root_unique_ck");
@@ -665,7 +713,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
             id, introduced_release_id, kind, canonical_key
           ) values (
             'csub-cross-root-first', 'crel-cross-root-subject-first', 'driver',
-            'driver:cross-root-subject-first'
+            'vendor,cross-root-subject-first'
           );
           insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
           values ('csub-cross-root-first', 'logical-service', 'singleton-per-project');
@@ -692,22 +740,25 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
               id, introduced_release_id, subject_id, selector_kind, normalized_selector
             ) values (
               'calias-cross-root-second', 'crel-cross-root-alias-second', 'csub-driver',
-              'driver-compatible', 'driver:cross-root-subject-first'
+              'driver-compatible', 'vendor,cross-root-subject-first'
             )
-          `)
+          `),
         );
         expect(error.code).toBe("23505");
         expect(error.constraint).toBe("catalog_selector_cross_root_unique_ck");
         await client.query("rollback");
       }
 
-      const residue = await client.query<{ aliases: string; subjects: string }>(`
+      const residue = await client.query<{
+        aliases: string;
+        subjects: string;
+      }>(`
         select
           (select count(*)::text from parameter_catalog.catalog_subject_aliases where id = 'calias-cross-root-second') as aliases,
           (select count(*)::text from parameter_catalog.catalog_subjects where id = 'csub-cross-root-second') as subjects
       `);
       expect(residue.rows).toEqual([{ aliases: "0", subjects: "0" }]);
-    }
+    },
   );
 
   it("serializes concurrent canonical-selector and alias roots so exactly one commits", async () => {
@@ -726,7 +777,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           id, introduced_release_id, kind, canonical_key
         ) values (
           'csub-selector-race', 'crel-selector-race-subject', 'driver',
-          'driver:selector-race'
+          'vendor,selector-race'
         )
       `);
 
@@ -744,17 +795,21 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ) values ('crel-selector-race-alias', 'csub-driver', 'active', '{}', '{}')
       `);
 
-      const contenderAttempt = contender.query(`
+      const contenderAttempt = contender
+        .query(
+          `
         insert into parameter_catalog.catalog_subject_aliases (
           id, introduced_release_id, subject_id, selector_kind, normalized_selector
         ) values (
           'calias-selector-race', 'crel-selector-race-alias', 'csub-driver',
-          'driver-compatible', 'driver:selector-race'
+          'driver-compatible', 'vendor,selector-race'
         )
-      `).then(
-        (result) => ({ result, error: null }),
-        (error: pg.DatabaseError) => ({ result: null, error })
-      );
+      `,
+        )
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error }),
+        );
       await waitForDatabaseLock(client, contender.processID);
 
       await client.query(`
@@ -770,7 +825,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       const contenderResult = await contenderAttempt;
       expect(contenderResult.result).toBeNull();
       expect(contenderResult.error?.code).toBe("23505");
-      expect(contenderResult.error?.constraint).toBe("catalog_selector_cross_root_unique_ck");
+      expect(contenderResult.error?.constraint).toBe(
+        "catalog_selector_cross_root_unique_ck",
+      );
       await contender.query("rollback");
 
       const roots = await client.query<{ aliases: string; subjects: string }>(`
@@ -788,43 +845,46 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
   it.each([
     {
-      name: "nature outside the frozen S1-BND enum",
+      name: "nature outside the frozen S0-ID enum",
       subjectId: "csub-invalid-driver-nature",
-      canonicalKey: "driver:invalid-nature",
+      canonicalKey: "vendor,invalid-nature",
       nature: "platform",
       cardinality: "multiple",
-      constraint: "catalog_driver_nature_ck"
+      constraint: "catalog_driver_nature_ck",
     },
     {
-      name: "cardinality outside the frozen S1-BND enum",
+      name: "cardinality outside the frozen S0-ID enum",
       subjectId: "csub-invalid-driver-cardinality",
-      canonicalKey: "driver:invalid-cardinality",
+      canonicalKey: "vendor,invalid-cardinality",
       nature: "physical-device",
       cardinality: "{}",
-      constraint: "catalog_driver_cardinality_ck"
-    }
-  ])("rejects a Driver $name", async ({ subjectId, canonicalKey, nature, cardinality, constraint }) => {
-    await client.query("begin");
-    await client.query(
-      "insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key) values ($1, 'crel-subject-roots', 'driver', $2)",
-      [subjectId, canonicalKey]
-    );
-    const error = await captureDatabaseError(
-      client.query(
-        "insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality) values ($1, $2, $3)",
-        [subjectId, nature, cardinality]
-      )
-    );
-    expect(error.code).toBe("23514");
-    expect(error.constraint).toBe(constraint);
-    await client.query("rollback");
+      constraint: "catalog_driver_cardinality_ck",
+    },
+  ])(
+    "rejects a Driver $name",
+    async ({ subjectId, canonicalKey, nature, cardinality, constraint }) => {
+      await client.query("begin");
+      await client.query(
+        "insert into parameter_catalog.catalog_subjects (id, introduced_release_id, kind, canonical_key) values ($1, 'crel-subject-roots', 'driver', $2)",
+        [subjectId, canonicalKey],
+      );
+      const error = await captureDatabaseError(
+        client.query(
+          "insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality) values ($1, $2, $3)",
+          [subjectId, nature, cardinality],
+        ),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe(constraint);
+      await client.query("rollback");
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_subjects where id = $1",
-      [subjectId]
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.catalog_subjects where id = $1",
+        [subjectId],
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it("rejects a Subject alias selector kind outside the frozen S0-ID registry", async () => {
     const error = await captureDatabaseError(
@@ -835,12 +895,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'calias-invalid-kind', 'crel-subject-roots', 'csub-driver',
           'vendor-identifier', 'vendor,device'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23514");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_subject_aliases where id = 'calias-invalid-kind'"
+      "select count(*)::text as count from parameter_catalog.catalog_subject_aliases where id = 'calias-invalid-kind'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -870,12 +930,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ('crel-def', 'pdef-b', 'drev-b');
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("parameter_definition_current_revision_fk");
     await client.query("rollback");
 
-    const residue = await client.query<{ definitions: string; revisions: string }>(`
+    const residue = await client.query<{
+      definitions: string;
+      revisions: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.parameter_definitions where id in ('pdef-a', 'pdef-b')) as definitions,
         (select count(*)::text from parameter_catalog.definition_revisions where id in ('drev-a', 'drev-b')) as revisions
@@ -917,12 +982,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23505");
     expect(error.constraint).toBe("definition_revision_release_unique");
     await client.query("rollback");
 
-    const residue = await client.query<{ definitions: string; revisions: string }>(`
+    const residue = await client.query<{
+      definitions: string;
+      revisions: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.parameter_definitions where id = 'pdef-revision-cardinality') as definitions,
         (select count(*)::text from parameter_catalog.definition_revisions where definition_id = 'pdef-revision-cardinality') as revisions
@@ -1036,7 +1106,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       from parameter_catalog.definition_revisions
       where definition_id = 'pdef-revision-exact'
     `);
-    expect(cardinality.rows).toEqual([{ changed_revisions: "1", unchanged_revisions: "0" }]);
+    expect(cardinality.rows).toEqual([
+      { changed_revisions: "1", unchanged_revisions: "0" },
+    ]);
   });
 
   it("rejects a Registration without its retained Placement at deferred constraint evaluation", async () => {
@@ -1049,13 +1121,15 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       )
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("registration_current_placement_fk");
     await client.query("rollback");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.organization_subject_registrations where id = 'reg-orphan'"
+      "select count(*)::text as count from parameter_catalog.organization_subject_registrations where id = 'reg-orphan'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1081,12 +1155,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ) values (
           'prev-cross-org', 'org-pcat-2', 'pobs-one', 'unknown', 'sha256:candidate-safe', '{}'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-cross-org'"
+      "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-cross-org'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1095,19 +1169,18 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
     {
       name: "Catalog Release",
       catalogReleaseId: "crel-observation-b",
-      matcherRevision: "matcher-a"
+      matcherRevision: "matcher-a",
     },
     {
       name: "matcher revision",
       catalogReleaseId: "crel-binding-owners",
-      matcherRevision: "matcher-b"
-    }
-  ])("rejects an ObservationMatch that borrows another Observation's $name pin", async ({
-    catalogReleaseId,
-    matcherRevision
-  }) => {
-    await seedTwoCanonicalBindings(client);
-    await client.query(`
+      matcherRevision: "matcher-b",
+    },
+  ])(
+    "rejects an ObservationMatch that borrows another Observation's $name pin",
+    async ({ catalogReleaseId, matcherRevision }) => {
+      await seedTwoCanonicalBindings(client);
+      await client.query(`
       insert into parameter_catalog.catalog_releases (
         id, release_version, release_digest, compiled_model_digest, toolchain_digest
       ) values (
@@ -1128,9 +1201,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         )
     `);
 
-    const error = await captureDatabaseError(
-      client.query(
-        `
+      const error = await captureDatabaseError(
+        client.query(
+          `
           insert into parameter_catalog.parameter_observation_matches (
             id, observation_id, organization_id, project_id, logical_node_id,
             registration_id, subject_id,
@@ -1142,39 +1215,42 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
             'binding-owner-a', $1, $2
           )
         `,
-        [catalogReleaseId, matcherRevision]
-      )
-    );
-    expect(error.code).toBe("23503");
-    expect(error.constraint).toBe("parameter_observation_match_observation_fk");
+          [catalogReleaseId, matcherRevision],
+        ),
+      );
+      expect(error.code).toBe("23503");
+      expect(error.constraint).toBe(
+        "parameter_observation_match_observation_fk",
+      );
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_observation_matches where id = 'pmatch-cross-observation'"
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.parameter_observation_matches where id = 'pmatch-cross-observation'",
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it.each([
     {
       name: "Project",
       projectId: "project-pcat-other",
-      logicalNodeId: "logical-owner"
+      logicalNodeId: "logical-owner",
     },
     {
       name: "logical node",
       projectId: "project-pcat",
-      logicalNodeId: "logical-other"
-    }
-  ])("rejects an ObservationMatch whose Binding belongs to another $name", async ({
-    projectId,
-    logicalNodeId
-  }) => {
-    await seedTwoCanonicalBindings(client);
-    await client.query(`
+      logicalNodeId: "logical-other",
+    },
+  ])(
+    "rejects an ObservationMatch whose Binding belongs to another $name",
+    async ({ projectId, logicalNodeId }) => {
+      await seedTwoCanonicalBindings(client);
+      await client.query(`
       insert into public.projects (id, organization_id, name, code)
       values ('project-pcat-other', 'org-pcat', 'Catalog project other', 'PCATO')
     `);
-    await client.query(`
+      await client.query(
+        `
       insert into parameter_catalog.parameter_observations (
         id, organization_id, project_id, logical_node_id, config_revision_id,
         source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
@@ -1183,10 +1259,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         'source-binding-owner', '{}', 'crel-binding-owners', 'matcher-binding-owner',
         'sha256:binding-owner-observation'
       )
-    `, [projectId, logicalNodeId]);
+    `,
+        [projectId, logicalNodeId],
+      );
 
-    const error = await captureDatabaseError(
-      client.query(`
+      const error = await captureDatabaseError(
+        client.query(
+          `
         insert into parameter_catalog.parameter_observation_matches (
           id, observation_id, organization_id, project_id, logical_node_id,
           registration_id, subject_id,
@@ -1197,16 +1276,19 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'reg-binding-owners', 'csub-driver', 'pdef-owner-a', 'drev-owner-a',
           'binding-owner-a', 'crel-binding-owners', 'matcher-binding-owner'
         )
-      `, [projectId, logicalNodeId])
-    );
-    expect(error.code).toBe("23503");
-    expect(error.constraint).toBe("parameter_observation_match_binding_fk");
+      `,
+          [projectId, logicalNodeId],
+        ),
+      );
+      expect(error.code).toBe("23503");
+      expect(error.constraint).toBe("parameter_observation_match_binding_fk");
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_observation_matches where id = 'pmatch-binding-owner'"
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.parameter_observation_matches where id = 'pmatch-binding-owner'",
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it("rejects a ReviewEvidence reason outside the frozen S0-ID registry", async () => {
     const error = await captureDatabaseError(
@@ -1216,12 +1298,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ) values (
           'prev-invalid-reason', 'org-pcat', 'legacy-review', 'sha256:candidate-safe', '{}'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23514");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-invalid-reason'"
+      "select count(*)::text as count from parameter_catalog.parameter_review_evidence where id = 'prev-invalid-reason'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1250,13 +1332,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'crel-binding-owners', 'sha256:request-registration-owner',
           'reg-binding-owners', 'audit-registration-owner'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("review_resolution_target_owner_fk");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_review_resolutions where id = 'review-resolution-registration-owner'"
+      "select count(*)::text as count from parameter_catalog.parameter_review_resolutions where id = 'review-resolution-registration-owner'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1301,13 +1383,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'crel-legacy', 'sha256:request-proposal-owner',
           'proposal-review-owner', 'audit-proposal-owner'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("review_resolution_target_owner_fk");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_review_resolutions where id = 'review-resolution-proposal-owner'"
+      "select count(*)::text as count from parameter_catalog.parameter_review_resolutions where id = 'review-resolution-proposal-owner'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1349,13 +1431,15 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'proposal-revision-publication-base', 'crel-publication-other',
           'repo://publication-cross-base', 'principal-reviewer', 'audit-publication-cross-base'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
-    expect(error.constraint).toBe("catalog_publication_intent_proposal_base_fk");
+    expect(error.constraint).toBe(
+      "catalog_publication_intent_proposal_base_fk",
+    );
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_publication_intents where id = 'publication-intent-cross-base'"
+      "select count(*)::text as count from parameter_catalog.catalog_publication_intents where id = 'publication-intent-cross-base'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1374,12 +1458,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'sha256:source-a', 'sha256:graph-a', 'object://archive-a', '[]',
           'cutover-a', 'crel-legacy', 'audit-archive-a', now() + interval '90 days'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.parameter_catalog_archives where id = 'archive-owner-mismatch'"
+      "select count(*)::text as count from parameter_catalog.parameter_catalog_archives where id = 'archive-owner-mismatch'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1392,12 +1476,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ) values (
           'lid-invalid-source-kind', 'legacy', 'legacy-free-form', 'platform', 'platform', 'source-invalid'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23514");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_identities where id = 'lid-invalid-source-kind'"
+      "select count(*)::text as count from parameter_catalog.legacy_identities where id = 'lid-invalid-source-kind'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1425,12 +1509,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'lmap-cross-archive', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
           'sha256:graph-a', 'R6', 'archive-b'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-archive'"
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-archive'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1471,12 +1555,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'lmap-a-cross-run', 'lid-a', 'cutover-b', 2, 'sha256:source-a2',
           'sha256:graph-a2', 'R6', 'archive-a-run-b', 'lmap-a-run-a'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-a-cross-run'"
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-a-cross-run'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1511,7 +1595,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'cutover-b', 'lid-b', 'R6', 'classifier-v1',
           'sha256:graph-class-b', 'archived', 'lmap-class-a'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
@@ -1557,7 +1641,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'comparison-case-b', 'declared-expected-difference',
           'lmap-comparison-a', 'rule-cross-run', '{}'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("comparison_result_mapping_run_fk");
@@ -1598,12 +1682,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'lmap-cross-evidence', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
           'sha256:graph-a', 'R6', 'review-evidence', 'prev-evidence-a', 'archive-evidence-b'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-evidence'"
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-evidence'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1620,13 +1704,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'lmap-missing-target', 'lid-a', 'cutover-a', 1, 'sha256:source-a',
           'sha256:graph-a', 'R8', 'definition-proposal', 'dprop-does-not-exist'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("legacy_mapping_target_fk");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-missing-target'"
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-missing-target'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1653,16 +1737,65 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'lmap-incompatible-source', 'lid-a', 'cutover-a', 1, 'sha256:source-incompatible',
           'sha256:graph-incompatible', 'R9', 'binding-history-event', 'bhist-incompatible-source'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23514");
     expect(error.constraint).toBe("legacy_mapping_source_target_ck");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-incompatible-source'"
+      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-incompatible-source'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
+
+  it.each([
+    ["formal definition", "driver-schema", "subject-placement"],
+    ["formal subject", "parameter-subject", "project-value"],
+    ["module/placement", "parameter-module-mapping", "parameter-definition"],
+    ["overlay publication", "driver-schema-overlay", "catalog-subject"],
+    ["observation/match", "dts-property-occurrence", "definition-proposal"],
+    ["binding/value", "project-parameter-binding", "review-item"],
+    ["legacy semantic", "legacy-flat-parameter-definition", "audit-event"],
+    ["draft/review", "parameter-draft", "parameter-binding"],
+    ["file/import", "parameter-import-batch", "catalog-subject"],
+    [
+      "reconciliation/cutover",
+      "parameter-identity-migration-run",
+      "subject-registration",
+    ],
+    ["policy", "parameter-policy-target", "parameter-definition"],
+    ["audit", "audit-subject-link", "parameter-definition"],
+    [
+      "unresolved protected reference",
+      "unresolved-protected-reference",
+      "audit-event",
+    ],
+  ])(
+    "rejects an incompatible typed target for the %s mapping class",
+    async (name, sourceKind, targetKind) => {
+      await seedLegacyMappingRoots(client);
+      const identityId = `lid-class-${String(name).replace(/[^a-z]+/g, "-")}`;
+      await client.query(
+        `insert into parameter_catalog.legacy_identities (
+         id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+       ) values ($1, 'legacy', $2, 'platform', 'platform', $3)`,
+        [identityId, sourceKind, `source-${name}`],
+      );
+
+      const error = await captureDatabaseError(
+        client.query(
+          `insert into parameter_catalog.legacy_mapping_versions (
+         id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
+         graph_fingerprint, r_class, target_kind, target_id
+       ) values ($1, $2, 'cutover-a', 1, 'sha256:source-class',
+         'sha256:graph-class', 'R0', $3, 'missing-target')`,
+          [`lmap-class-${name}`, identityId, targetKind],
+        ),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe("legacy_mapping_source_target_ck");
+    },
+  );
 
   it("accepts existing BindingHistory and ProposalRevision typed mapping targets", async () => {
     await seedLegacyMappingRoots(client);
@@ -1715,7 +1848,10 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         );
     `);
 
-    const result = await client.query<{ target_kind: string; target_id: string }>(`
+    const result = await client.query<{
+      target_kind: string;
+      target_id: string;
+    }>(`
       select target_kind, target_id
       from parameter_catalog.legacy_mapping_versions
       where id in ('lmap-bhist-target', 'lmap-dprev-target')
@@ -1723,7 +1859,10 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
     `);
     expect(result.rows).toEqual([
       { target_kind: "binding-history-event", target_id: "bhist-map-target" },
-      { target_kind: "definition-proposal-revision", target_id: "dprev-map-target" }
+      {
+        target_kind: "definition-proposal-revision",
+        target_id: "dprev-map-target",
+      },
     ]);
   });
 
@@ -1732,59 +1871,57 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       name: "Platform Definition",
       legacyIdentityId: "lid-a",
       targetKind: "parameter-definition",
-      targetId: "pdef-owner-a"
+      targetId: "pdef-owner-a",
     },
     {
       name: "Organization Registration",
       legacyIdentityId: "lid-subject-org-two",
       targetKind: "subject-registration",
-      targetId: "reg-binding-owners"
+      targetId: "reg-binding-owners",
     },
     {
       name: "Organization Placement",
       legacyIdentityId: "lid-placement-org-two",
       targetKind: "subject-placement",
-      targetId: "placement-binding-owners"
+      targetId: "placement-binding-owners",
     },
     {
       name: "Project Binding",
       legacyIdentityId: "lid-binding-project-two",
       targetKind: "parameter-binding",
-      targetId: "binding-owner-a"
+      targetId: "binding-owner-a",
     },
     {
       name: "ProjectValue",
       legacyIdentityId: "lid-binding-revision-project-two",
       targetKind: "project-value",
-      targetId: "pvalue-owner-a"
+      targetId: "pvalue-owner-a",
     },
     {
       name: "BindingHistory",
       legacyIdentityId: "lid-binding-revision-project-two",
       targetKind: "binding-history-event",
-      targetId: "bhist-owner-target"
+      targetId: "bhist-owner-target",
     },
     {
       name: "ReviewEvidence",
       legacyIdentityId: "lid-b",
       targetKind: "review-evidence",
-      targetId: "prev-owner-target"
+      targetId: "prev-owner-target",
     },
     {
       name: "DefinitionProposal",
       legacyIdentityId: "lid-b",
       targetKind: "definition-proposal",
-      targetId: "dprop-owner-target"
-    }
-  ])("rejects $name mapped from another owner scope", async ({
-    legacyIdentityId,
-    targetKind,
-    targetId
-  }) => {
-    await seedLegacyOwnershipTargets(client);
-    const error = await captureDatabaseError(
-      client.query(
-        `
+      targetId: "dprop-owner-target",
+    },
+  ])(
+    "rejects $name mapped from another owner scope",
+    async ({ legacyIdentityId, targetKind, targetId }) => {
+      await seedLegacyOwnershipTargets(client);
+      const error = await captureDatabaseError(
+        client.query(
+          `
         insert into parameter_catalog.legacy_mapping_versions (
           id, legacy_identity_id, cutover_run_id, version_number, source_checksum,
           graph_fingerprint, r_class, target_kind, target_id
@@ -1794,17 +1931,18 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'R9', $2, $3
         )
       `,
-        [legacyIdentityId, targetKind, targetId]
-      )
-    );
-    expect(error.code).toBe("23503");
-    expect(error.constraint).toBe("legacy_mapping_target_owner_fk");
+          [legacyIdentityId, targetKind, targetId],
+        ),
+      );
+      expect(error.code).toBe("23503");
+      expect(error.constraint).toBe("legacy_mapping_target_owner_fk");
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-owner'"
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.legacy_mapping_versions where id = 'lmap-cross-owner'",
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it("rejects BindingHistory revision and value pointers owned by another Binding", async () => {
     await seedTwoCanonicalBindings(client);
@@ -1818,13 +1956,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'bhist-cross-owner', 'binding-owner-a', 'drev-owner-a', 'drev-owner-b',
           'pvalue-owner-a', 'pvalue-owner-b', 'semantic cutover', 'audit-bhist', 'crel-binding-owners'
         )
-      `)
+      `),
     );
     expect(error.code).toBe("23503");
     expect(error.constraint).toBe("binding_history_event_owner_fk");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.binding_history_events where id = 'bhist-cross-owner'"
+      "select count(*)::text as count from parameter_catalog.binding_history_events where id = 'bhist-cross-owner'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -1862,16 +2000,20 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       update parameter_catalog.catalog_state set current_catalog_release_id = 'crel-b';
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
     const state = await client.query<{ current_catalog_release_id: string }>(
-      "select current_catalog_release_id from parameter_catalog.catalog_state"
+      "select current_catalog_release_id from parameter_catalog.catalog_state",
     );
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-b'"
+      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-b'",
     );
     expect(state.rows[0]?.current_catalog_release_id).toBe("crel-a");
     expect(residue.rows[0]?.count).toBe("0");
@@ -1884,7 +2026,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ('crel-cycle-two-a', 'cycle-two-a', 'sha256:cycle-two-a', 'crel-cycle-two-b', 'sha256:cycle-two-a-compiled', 'sha256:cycle-two-a-toolchain'),
         ('crel-cycle-two-b', 'cycle-two-b', 'sha256:cycle-two-b', 'crel-cycle-two-a', 'sha256:cycle-two-b-compiled', 'sha256:cycle-two-b-toolchain')
       `,
-      ids: ["crel-cycle-two-a", "crel-cycle-two-b"]
+      ids: ["crel-cycle-two-a", "crel-cycle-two-b"],
     },
     {
       name: "long",
@@ -1893,28 +2035,33 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         ('crel-cycle-long-b', 'cycle-long-b', 'sha256:cycle-long-b', 'crel-cycle-long-c', 'sha256:cycle-long-b-compiled', 'sha256:cycle-long-b-toolchain'),
         ('crel-cycle-long-c', 'cycle-long-c', 'sha256:cycle-long-c', 'crel-cycle-long-a', 'sha256:cycle-long-c-compiled', 'sha256:cycle-long-c-toolchain')
       `,
-      ids: ["crel-cycle-long-a", "crel-cycle-long-b", "crel-cycle-long-c"]
-    }
-  ])("rejects a $name Catalog release predecessor cycle", async ({ valuesSql, ids }) => {
-    await client.query("begin");
-    await client.query(`
+      ids: ["crel-cycle-long-a", "crel-cycle-long-b", "crel-cycle-long-c"],
+    },
+  ])(
+    "rejects a $name Catalog release predecessor cycle",
+    async ({ valuesSql, ids }) => {
+      await client.query("begin");
+      await client.query(`
       insert into parameter_catalog.catalog_releases (
         id, release_version, release_digest, predecessor_release_id,
         compiled_model_digest, toolchain_digest
       ) values ${valuesSql}
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
-    expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_release_predecessor_acyclic_ck");
-    await client.query("rollback");
+      const error = await captureDatabaseError(
+        client.query("set constraints all immediate"),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe("catalog_release_predecessor_acyclic_ck");
+      await client.query("rollback");
 
-    const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_releases where id = any($1::text[])",
-      [ids]
-    );
-    expect(residue.rows[0]?.count).toBe("0");
-  });
+      const residue = await client.query<{ count: string }>(
+        "select count(*)::text as count from parameter_catalog.catalog_releases where id = any($1::text[])",
+        [ids],
+      );
+      expect(residue.rows[0]?.count).toBe("0");
+    },
+  );
 
   it("rejects a successor when its predecessor materialization came from a released savepoint", async () => {
     await client.query(`
@@ -1948,9 +2095,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+    expect(error.constraint).toBe(
+      "catalog_release_predecessor_materialized_ck",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{
@@ -1963,7 +2114,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-savepoint-predecessor') as subjects,
         (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-savepoint-predecessor') as materializations
     `);
-    expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+    expect(residue.rows).toEqual([
+      { materializations: "0", releases: "0", subjects: "0" },
+    ]);
   });
 
   it("rejects a successor materialized directly in the same top-level transaction", async () => {
@@ -1997,9 +2150,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+    expect(error.constraint).toBe(
+      "catalog_release_predecessor_materialized_ck",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{
@@ -2012,7 +2169,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-same-xact-predecessor') as subjects,
         (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-same-xact-predecessor') as materializations
     `);
-    expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+    expect(residue.rows).toEqual([
+      { materializations: "0", releases: "0", subjects: "0" },
+    ]);
   });
 
   it("accepts a complete predecessor materialized by a previously committed transaction", async () => {
@@ -2102,7 +2261,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       `);
 
       await successor.query("begin");
-      const successorAttempt = successor.query(`
+      const successorAttempt = successor
+        .query(
+          `
         insert into parameter_catalog.catalog_releases (
           id, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest
@@ -2112,21 +2273,27 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'sha256:concurrent-rollback-successor-compiled',
           'sha256:concurrent-rollback-successor-toolchain'
         )
-      `).then(
-        (result) => ({ result, error: null }),
-        (error: pg.DatabaseError) => ({ result: null, error })
-      );
+      `,
+        )
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error }),
+        );
       await waitForDatabaseLock(client, successor.processID);
       await client.query("rollback");
 
       await expect(successorAttempt).resolves.toMatchObject({
         result: { rowCount: 1 },
-        error: null
+        error: null,
       });
 
-      const error = await captureDatabaseError(successor.query("set constraints all immediate"));
+      const error = await captureDatabaseError(
+        successor.query("set constraints all immediate"),
+      );
       expect(error.code).toBe("23514");
-      expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+      expect(error.constraint).toBe(
+        "catalog_release_predecessor_materialized_ck",
+      );
       await successor.query("rollback");
 
       const residue = await client.query<{
@@ -2139,7 +2306,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id = 'crel-concurrent-rollback-successor') as subjects,
           (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-concurrent-rollback-predecessor') as materializations
       `);
-      expect(residue.rows).toEqual([{ materializations: "0", releases: "0", subjects: "0" }]);
+      expect(residue.rows).toEqual([
+        { materializations: "0", releases: "0", subjects: "0" },
+      ]);
     } finally {
       await client.query("rollback").catch(() => undefined);
       await successor.query("rollback").catch(() => undefined);
@@ -2180,7 +2349,9 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       `);
 
       await successor.query("begin");
-      const successorAttempt = successor.query(`
+      const successorAttempt = successor
+        .query(
+          `
         insert into parameter_catalog.catalog_releases (
           id, release_version, release_digest, predecessor_release_id,
           compiled_model_digest, toolchain_digest
@@ -2190,10 +2361,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
           'sha256:concurrent-commit-successor-compiled',
           'sha256:concurrent-commit-successor-toolchain'
         )
-      `).then(
-        (result) => ({ result, error: null }),
-        (error: pg.DatabaseError) => ({ result: null, error })
-      );
+      `,
+        )
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error }),
+        );
       await waitForDatabaseLock(client, successor.processID);
 
       await client.query("set constraints all immediate");
@@ -2201,12 +2374,15 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
       await expect(successorAttempt).resolves.toMatchObject({
         result: { rowCount: 1 },
-        error: null
+        error: null,
       });
       await successor.query("set constraints all immediate");
       await successor.query("commit");
 
-      const state = await client.query<{ materializations: string; releases: string }>(`
+      const state = await client.query<{
+        materializations: string;
+        releases: string;
+      }>(`
         select
           (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-concurrent-commit-predecessor', 'crel-concurrent-commit-successor')) as releases,
           (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-concurrent-commit-predecessor') as materializations
@@ -2263,13 +2439,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       )
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_release_predecessor_materialized_ck");
+    expect(error.constraint).toBe(
+      "catalog_release_predecessor_materialized_ck",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-rejected-r3'"
+      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-rejected-r3'",
     );
     expect(residue.rows[0]?.count).toBe("0");
   });
@@ -2318,16 +2498,20 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       update parameter_catalog.catalog_state set current_catalog_release_id = 'crel-alias-b';
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
     const state = await client.query<{ current_catalog_release_id: string }>(
-      "select current_catalog_release_id from parameter_catalog.catalog_state"
+      "select current_catalog_release_id from parameter_catalog.catalog_state",
     );
     const residue = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-alias-b'"
+      "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-alias-b'",
     );
     expect(state.rows[0]?.current_catalog_release_id).toBe("crel-alias-a");
     expect(residue.rows[0]?.count).toBe("0");
@@ -2358,9 +2542,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       values (true, 'crel-retired-alias');
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{ state: string; release: string }>(`
@@ -2405,9 +2593,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       values (true, 'crel-alias-kind-mismatch')
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
     const residue = await client.query<{ state: string; release: string }>(`
@@ -2420,12 +2612,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
   it("rejects an alias root that collides with another Subject's canonical selector", async () => {
     await client.query("begin");
-    const error = await captureDatabaseError(client.query(`
+    const error = await captureDatabaseError(
+      client.query(`
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
       ) values (
         'csub-canonical-owner', 'crel-canonical-collision', 'driver',
-        'driver:canonical-collision'
+        'vendor,canonical-collision'
       );
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-canonical-owner', 'logical-service', 'singleton-per-project');
@@ -2433,7 +2626,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         id, introduced_release_id, subject_id, selector_kind, normalized_selector
       ) values (
         'calias-canonical-collision', 'crel-canonical-collision', 'csub-driver', 'driver-compatible',
-        'driver:canonical-collision'
+        'vendor,canonical-collision'
       );
       insert into parameter_catalog.catalog_releases (
         id, release_version, release_digest, compiled_model_digest, toolchain_digest
@@ -2460,7 +2653,8 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
       insert into parameter_catalog.catalog_state (singleton, current_catalog_release_id)
       values (true, 'crel-canonical-collision')
-    `));
+    `),
+    );
 
     expect(error.code).toBe("23505");
     expect(error.constraint).toBe("catalog_selector_cross_root_unique_ck");
@@ -2476,12 +2670,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
   it("rejects an alias root that duplicates its own Subject canonical selector", async () => {
     await client.query("begin");
-    const error = await captureDatabaseError(client.query(`
+    const error = await captureDatabaseError(
+      client.query(`
       insert into parameter_catalog.catalog_subject_aliases (
         id, introduced_release_id, subject_id, selector_kind, normalized_selector
       ) values (
         'calias-canonical-duplicate', 'crel-canonical-duplicate', 'csub-driver',
-        'driver-compatible', 'driver:test'
+        'driver-compatible', 'vendor,test'
       );
       insert into parameter_catalog.catalog_releases (
         id, release_version, release_digest, compiled_model_digest, toolchain_digest
@@ -2506,7 +2701,8 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
       insert into parameter_catalog.catalog_state (singleton, current_catalog_release_id)
       values (true, 'crel-canonical-duplicate')
-    `));
+    `),
+    );
 
     expect(error.code).toBe("23505");
     expect(error.constraint).toBe("catalog_selector_cross_root_unique_ck");
@@ -2524,7 +2720,7 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
     {
       name: "missing",
       headSql: "select 1",
-      expectedConstraint: "catalog_materialization_projection_complete_ck"
+      expectedConstraint: "catalog_materialization_projection_complete_ck",
     },
     {
       name: "split",
@@ -2533,10 +2729,12 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         insert into parameter_catalog.catalog_release_definition_heads (
           release_id, definition_id, revision_id
         ) values ('crel-head', 'pdef-head', 'drev-head-other')
-      `
-    }
-  ])("rejects a current release with $name Definition heads", async ({ headSql, expectedConstraint }) => {
-    await client.query(`
+      `,
+    },
+  ])(
+    "rejects a current release with $name Definition heads",
+    async ({ headSql, expectedConstraint }) => {
+      await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
         id, release_version, release_digest, compiled_model_digest, toolchain_digest
@@ -2587,8 +2785,8 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       set current_revision_id = 'drev-head-current'
       where id = 'pdef-head';
     `);
-    await client.query(headSql);
-    await client.query(`
+      await client.query(headSql);
+      await client.query(`
       insert into parameter_catalog.catalog_materializations (
         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values ('crel-head', 'sha256:head-compiled-fp', 'sha256:head-database-fp', 'head-attempt', 'head-audit');
@@ -2596,18 +2794,21 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       values (true, 'crel-head')
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
-    expect(error.code).toBe("23514");
-    expect(error.constraint).toBe(expectedConstraint);
-    await client.query("rollback");
+      const error = await captureDatabaseError(
+        client.query("set constraints all immediate"),
+      );
+      expect(error.code).toBe("23514");
+      expect(error.constraint).toBe(expectedConstraint);
+      await client.query("rollback");
 
-    const residue = await client.query<{ releases: string; state: string }>(`
+      const residue = await client.query<{ releases: string; state: string }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_releases where id = 'crel-head') as releases,
         (select count(*)::text from parameter_catalog.catalog_state) as state
     `);
-    expect(residue.rows).toEqual([{ releases: "0", state: "0" }]);
-  });
+      expect(residue.rows).toEqual([{ releases: "0", state: "0" }]);
+    },
+  );
 
   it("rejects materialization evidence for an empty Catalog release projection", async () => {
     await client.query("begin");
@@ -2627,12 +2828,19 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       )
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
-    const residue = await client.query<{ releases: string; materializations: string }>(`
+    const residue = await client.query<{
+      releases: string;
+      materializations: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_releases where id = 'crel-empty-materialization') as releases,
         (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-empty-materialization') as materializations
@@ -2699,12 +2907,19 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       )
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
-    expect(error.constraint).toBe("catalog_materialization_projection_complete_ck");
+    expect(error.constraint).toBe(
+      "catalog_materialization_projection_complete_ck",
+    );
     await client.query("rollback");
 
-    const residue = await client.query<{ definitions: string; materializations: string }>(`
+    const residue = await client.query<{
+      definitions: string;
+      materializations: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.parameter_definitions where id = 'pdef-headless-materialization') as definitions,
         (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-headless-materialization') as materializations
@@ -2763,11 +2978,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         (select count(*)::text from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-deferred-materialization') as heads,
         (select count(*)::text from parameter_catalog.catalog_materializations where release_id = 'crel-deferred-materialization') as materializations
     `);
-    expect(projection.rows).toEqual([{
-      memberships: "1",
-      heads: "1",
-      materializations: "1"
-    }]);
+    expect(projection.rows).toEqual([
+      {
+        memberships: "1",
+        heads: "1",
+        materializations: "1",
+      },
+    ]);
   });
 
   it("permits a pre-traffic switch-back after a successor introduced a new Definition", async () => {
@@ -2856,11 +3073,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         (select current_revision_id from parameter_catalog.parameter_definitions where id = 'pdef-switch-old') as old_head,
         (select count(*)::text from parameter_catalog.parameter_definitions where id = 'pdef-switch-new') as future_definition_count
     `);
-    expect(state.rows).toEqual([{
-      current_catalog_release_id: "crel-switch-a",
-      old_head: "drev-switch-a",
-      future_definition_count: "1"
-    }]);
+    expect(state.rows).toEqual([
+      {
+        current_catalog_release_id: "crel-switch-a",
+        old_head: "drev-switch-a",
+        future_definition_count: "1",
+      },
+    ]);
   });
 
   it("rejects cross-kind Placement and leaves no Registration or Placement residue", async () => {
@@ -2878,12 +3097,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       );
     `);
 
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
     expect(error.constraint).toBe("subject_placement_kind_ck");
     await client.query("rollback");
 
-    const residue = await client.query<{ registrations: string; placements: string }>(`
+    const residue = await client.query<{
+      registrations: string;
+      placements: string;
+    }>(`
       select
         (select count(*)::text from parameter_catalog.organization_subject_registrations where id = 'reg-wrong-kind') as registrations,
         (select count(*)::text from parameter_catalog.subject_placements where id = 'placement-wrong-kind') as placements
@@ -2910,15 +3134,17 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
     await client.query("begin");
     await client.query(
-      "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'"
+      "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'",
     );
-    const error = await captureDatabaseError(client.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      client.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
     expect(error.constraint).toBe("subject_placement_kind_ck");
     await client.query("rollback");
 
     const module = await client.query<{ kind: string }>(
-      "select kind from public.parameter_modules where id = 'pmod-driver'"
+      "select kind from public.parameter_modules where id = 'pmod-driver'",
     );
     expect(module.rows[0]?.kind).toBe("driver-group");
   });
@@ -2942,28 +3168,40 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
 
       await updater.query("begin");
       const updateAttempt = updater
-        .query("update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'")
+        .query(
+          "update public.parameter_modules set kind = 'node-type' where id = 'pmod-driver'",
+        )
         .then(
           (result) => ({ result, error: null }),
-          (error: pg.DatabaseError) => ({ result: null, error })
+          (error: pg.DatabaseError) => ({ result: null, error }),
         );
       await waitForDatabaseLock(client, updater.processID);
 
       await client.query("set constraints all immediate");
       await client.query("commit");
 
-      await expect(updateAttempt).resolves.toMatchObject({ result: { rowCount: 1 }, error: null });
-      const error = await captureDatabaseError(updater.query("set constraints all immediate"));
+      await expect(updateAttempt).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null,
+      });
+      const error = await captureDatabaseError(
+        updater.query("set constraints all immediate"),
+      );
       expect(error.code).toBe("23514");
       expect(error.constraint).toBe("subject_placement_kind_ck");
       await updater.query("rollback");
 
-      const state = await client.query<{ placements: string; module_kind: string }>(`
+      const state = await client.query<{
+        placements: string;
+        module_kind: string;
+      }>(`
         select
           (select count(*)::text from parameter_catalog.subject_placements where id = 'placement-module-race') as placements,
           (select kind from public.parameter_modules where id = 'pmod-driver') as module_kind
       `);
-      expect(state.rows).toEqual([{ placements: "1", module_kind: "driver-group" }]);
+      expect(state.rows).toEqual([
+        { placements: "1", module_kind: "driver-group" },
+      ]);
     } finally {
       await client.query("rollback").catch(() => undefined);
       await updater.query("rollback").catch(() => undefined);
@@ -2989,13 +3227,13 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
         insert into parameter_catalog.subject_placements (
           id, registration_id, organization_id, module_id, origin
         ) values ('placement-second', 'reg-single', 'org-pcat', 'pmod-node-type', 'curated')
-      `)
+      `),
     );
     expect(error.code).toBe("23505");
     expect(error.constraint).toBe("subject_placements_registration_id_key");
 
     const placements = await client.query<{ count: string }>(
-      "select count(*)::text as count from parameter_catalog.subject_placements where registration_id = 'reg-single'"
+      "select count(*)::text as count from parameter_catalog.subject_placements where registration_id = 'reg-single'",
     );
     expect(placements.rows[0]?.count).toBe("1");
   });
@@ -3044,7 +3282,10 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
       commit;
     `);
 
-    const result = await client.query<{ binding: string; current_value: string }>(`
+    const result = await client.query<{
+      binding: string;
+      current_value: string;
+    }>(`
       select binding.id as binding, value.id as current_value
       from parameter_catalog.project_parameter_bindings binding
       join parameter_catalog.project_parameter_values value
@@ -3052,12 +3293,14 @@ describe.skipIf(!databaseAvailable)("canonical Catalog deferred constraints", ()
        and value.id = binding.current_value_id
       where binding.id = 'binding-one'
     `);
-    expect(result.rows).toEqual([{ binding: "binding-one", current_value: "pvalue-one" }]);
+    expect(result.rows).toEqual([
+      { binding: "binding-one", current_value: "pvalue-one" },
+    ]);
 
     const immutable = await captureDatabaseError(
       client.query(
-        "update parameter_catalog.project_parameter_values set value = '2000000'::jsonb where id = 'pvalue-one'"
-      )
+        "update parameter_catalog.project_parameter_values set value = '2000000'::jsonb where id = 'pvalue-one'",
+      ),
     );
     expect(immutable.code).toBe("55000");
   });

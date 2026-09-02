@@ -46,6 +46,49 @@ $$;
 
 revoke all on function parameter_catalog.acquire_current_pointer_lock_exclusive() from public;
 
+-- These predicates mirror the byte-preserving S0-ID parsers. They validate
+-- stored identity bytes; they never trim, fold case, normalize Unicode, strip
+-- quotes, remove unit addresses, or otherwise rewrite caller input.
+create function parameter_catalog.is_canonical_compatible_selector(value text)
+returns boolean
+language sql
+immutable
+strict
+set search_path = pg_catalog, parameter_catalog
+return value ~ '^[A-Za-z0-9][A-Za-z0-9+._/-]*(,[A-Za-z0-9][A-Za-z0-9+._/-]*)?$';
+
+create function parameter_catalog.is_canonical_node_type_name(value text)
+returns boolean
+language sql
+immutable
+strict
+set search_path = pg_catalog, parameter_catalog
+return value = '/' or value ~ '^[A-Za-z][A-Za-z0-9,._+-]{0,30}$';
+
+create function parameter_catalog.is_canonical_property_key(value text)
+returns boolean
+language sql
+immutable
+strict
+set search_path = pg_catalog, parameter_catalog
+return value ~ '^[A-Za-z0-9,._+?#-]{1,31}$'
+  and left(value, 1) <> '#'
+  and lower(value) not in (
+    'compatible',
+    'device_type',
+    'gpio-controller',
+    'interrupt-controller',
+    'linux,phandle',
+    'phandle',
+    'ranges',
+    'reg',
+    'status',
+    '#address-cells',
+    '#gpio-cells',
+    '#interrupt-cells',
+    '#size-cells'
+  );
+
 create table parameter_catalog.catalog_releases (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   release_version text not null unique check (release_version <> '' and btrim(release_version) = release_version),
@@ -131,9 +174,13 @@ create table parameter_catalog.catalog_subjects (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   introduced_release_id text not null,
   kind text not null check (kind in ('driver', 'node-type')),
-  canonical_key text not null check (canonical_key <> '' and btrim(canonical_key) = canonical_key),
+  canonical_key text not null,
   unique (kind, canonical_key),
-  unique (id, kind)
+  unique (id, kind),
+  constraint catalog_subject_canonical_key_ck check (
+    (kind = 'driver' and parameter_catalog.is_canonical_compatible_selector(canonical_key)) or
+    (kind = 'node-type' and parameter_catalog.is_canonical_node_type_name(canonical_key))
+  )
 );
 
 create table parameter_catalog.catalog_drivers (
@@ -148,7 +195,6 @@ create table parameter_catalog.catalog_drivers (
 
 create table parameter_catalog.catalog_node_types (
   subject_id text primary key,
-  family text not null check (family <> '' and btrim(family) = family),
   foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
     on delete restrict deferrable initially deferred
 );
@@ -182,11 +228,15 @@ create table parameter_catalog.catalog_subject_aliases (
   introduced_release_id text not null,
   subject_id text not null,
   selector_kind text not null check (selector_kind in ('driver-compatible', 'node-type-name')),
-  normalized_selector text not null check (normalized_selector <> '' and btrim(normalized_selector) = normalized_selector),
+  normalized_selector text not null,
   unique (selector_kind, normalized_selector),
   unique (id, subject_id),
   foreign key (subject_id) references parameter_catalog.catalog_subjects(id)
-    on delete restrict deferrable initially deferred
+    on delete restrict deferrable initially deferred,
+  constraint catalog_subject_alias_selector_ck check (
+    (selector_kind = 'driver-compatible' and parameter_catalog.is_canonical_compatible_selector(normalized_selector)) or
+    (selector_kind = 'node-type-name' and parameter_catalog.is_canonical_node_type_name(normalized_selector))
+  )
 );
 
 create function parameter_catalog.reject_cross_root_selector_collision()
@@ -288,7 +338,8 @@ create table parameter_catalog.parameter_definitions (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   introduced_release_id text not null,
   subject_id text not null,
-  property_key text not null check (property_key <> '' and btrim(property_key) = property_key),
+  property_key text not null constraint parameter_definition_property_key_ck
+    check (parameter_catalog.is_canonical_property_key(property_key)),
   current_revision_id text not null,
   unique (subject_id, property_key),
   unique (id, subject_id),
@@ -1127,11 +1178,53 @@ create table parameter_catalog.legacy_identities (
   source_kind text not null check (source_kind in (
     'parameter-spec',
     'parameter-spec-version',
+    'driver-schema',
+    'driver-schema-version',
+    'dts-property-spec',
+    'parameter-subject',
+    'parameter-module',
+    'parameter-placement',
+    'parameter-module-mapping',
+    'parameter-module-dismissed-compatible',
+    'driver-schema-overlay',
+    'driver-schema-overlay-property',
+    'driver-schema-overlay-promotion',
+    'dts-config-revision',
+    'dts-logical-node',
+    'dts-logical-node-revision',
+    'dts-node-occurrence',
+    'dts-property-occurrence',
+    'dts-occurrence-effect',
+    'dts-property-occurrence-spec-decision',
     'project-parameter-binding',
     'project-parameter-binding-revision',
-    'parameter-subject',
-    'parameter-placement',
-    'parameter-module'
+    'legacy-flat-parameter-definition',
+    'legacy-flat-project-parameter-value',
+    'parameter-draft',
+    'parameter-submission-round',
+    'parameter-submission-item',
+    'parameter-change-request',
+    'parameter-review-decision',
+    'parameter-spec-review-task',
+    'parameter-spec-matcher-override',
+    'parameter-file-sync-conflict',
+    'parameter-import-batch',
+    'project-parameter-initialization-draft',
+    'project-parameter-initialization-review',
+    'parameter-definition-reconciliation-run',
+    'parameter-definition-reconciliation-item',
+    'parameter-spec-version-cutover-run',
+    'parameter-spec-version-cutover-item',
+    'parameter-spec-property-key-cutover-run',
+    'parameter-spec-property-key-cutover-item',
+    'parameter-identity-migration-run',
+    'parameter-identity-migration-phase',
+    'parameter-identity-cutover',
+    'parameter-history-entry',
+    'legacy-parameter-migration-evidence',
+    'parameter-policy-target',
+    'audit-subject-link',
+    'unresolved-protected-reference'
   )),
   owner_scope_kind text not null check (owner_scope_kind in ('platform', 'organization', 'project')),
   owner_scope_id text not null check (owner_scope_id <> '' and btrim(owner_scope_id) = owner_scope_id),
@@ -1212,7 +1305,27 @@ create table parameter_catalog.legacy_mapping_versions (
   source_checksum text not null check (source_checksum <> '' and btrim(source_checksum) = source_checksum),
   graph_fingerprint text not null check (graph_fingerprint <> '' and btrim(graph_fingerprint) = graph_fingerprint),
   r_class text not null check (r_class ~ '^R(?:[0-9]|10)$'),
-  target_kind text check (target_kind in ('catalog-subject', 'parameter-definition', 'definition-revision', 'subject-registration', 'subject-placement', 'parameter-binding', 'project-value', 'binding-history-event', 'review-evidence', 'definition-proposal', 'definition-proposal-revision')),
+  target_kind text check (target_kind in (
+    'catalog-subject',
+    'parameter-definition',
+    'definition-revision',
+    'subject-registration',
+    'subject-placement',
+    'parameter-binding',
+    'project-value',
+    'binding-history-event',
+    'parameter-observation',
+    'observation-match',
+    'review-evidence',
+    'review-item',
+    'review-resolution',
+    'definition-proposal',
+    'definition-proposal-revision',
+    'publication-intent',
+    'policy',
+    'audit-event',
+    'migration-history'
+  )),
   target_id text,
   archive_id text,
   evidence_archive_id text,
@@ -1261,22 +1374,104 @@ begin
   from parameter_catalog.legacy_identities
   where id = new.legacy_identity_id;
 
-  target_compatible := case mapping_source_kind
-    when 'parameter-spec' then new.target_kind in (
-      'parameter-definition', 'review-evidence', 'definition-proposal'
+  target_compatible := case
+    when mapping_source_kind in (
+      'parameter-spec',
+      'parameter-spec-version',
+      'driver-schema',
+      'driver-schema-version',
+      'dts-property-spec'
+    ) then new.target_kind in (
+      'catalog-subject',
+      'parameter-definition',
+      'definition-revision',
+      'parameter-observation',
+      'review-evidence',
+      'definition-proposal',
+      'definition-proposal-revision'
     )
-    when 'parameter-spec-version' then new.target_kind in (
-      'definition-revision', 'definition-proposal-revision'
-    )
-    when 'project-parameter-binding' then new.target_kind = 'parameter-binding'
-    when 'project-parameter-binding-revision' then new.target_kind in (
-      'project-value', 'binding-history-event'
-    )
-    when 'parameter-subject' then new.target_kind in (
+    when mapping_source_kind = 'parameter-subject' then new.target_kind in (
       'catalog-subject', 'subject-registration'
     )
-    when 'parameter-placement' then new.target_kind = 'subject-placement'
-    when 'parameter-module' then new.target_kind = 'subject-placement'
+    when mapping_source_kind in (
+      'parameter-module',
+      'parameter-placement',
+      'parameter-module-mapping',
+      'parameter-module-dismissed-compatible'
+    ) then new.target_kind in ('subject-placement', 'review-evidence')
+    when mapping_source_kind in (
+      'driver-schema-overlay',
+      'driver-schema-overlay-property',
+      'driver-schema-overlay-promotion'
+    ) then new.target_kind in (
+      'definition-proposal', 'definition-proposal-revision', 'publication-intent'
+    )
+    when mapping_source_kind in (
+      'dts-config-revision',
+      'dts-logical-node',
+      'dts-logical-node-revision',
+      'dts-node-occurrence',
+      'dts-property-occurrence',
+      'dts-occurrence-effect',
+      'dts-property-occurrence-spec-decision'
+    ) then new.target_kind in (
+      'parameter-observation', 'observation-match', 'review-evidence'
+    )
+    when mapping_source_kind in (
+      'project-parameter-binding', 'project-parameter-binding-revision'
+    ) then new.target_kind in (
+      'parameter-binding', 'project-value', 'binding-history-event'
+    )
+    when mapping_source_kind in (
+      'legacy-flat-parameter-definition', 'legacy-flat-project-parameter-value'
+    ) then new.target_kind in ('parameter-definition', 'project-value')
+    when mapping_source_kind in (
+      'parameter-draft',
+      'parameter-submission-round',
+      'parameter-submission-item',
+      'parameter-change-request',
+      'parameter-review-decision',
+      'parameter-spec-review-task',
+      'parameter-spec-matcher-override'
+    ) then new.target_kind in (
+      'definition-proposal',
+      'definition-proposal-revision',
+      'review-item',
+      'review-resolution',
+      'review-evidence'
+    )
+    when mapping_source_kind in (
+      'parameter-file-sync-conflict',
+      'parameter-import-batch',
+      'project-parameter-initialization-draft',
+      'project-parameter-initialization-review'
+    ) then new.target_kind in (
+      'project-value', 'review-evidence', 'definition-proposal'
+    )
+    when mapping_source_kind in (
+      'parameter-definition-reconciliation-run',
+      'parameter-definition-reconciliation-item',
+      'parameter-spec-version-cutover-run',
+      'parameter-spec-version-cutover-item',
+      'parameter-spec-property-key-cutover-run',
+      'parameter-spec-property-key-cutover-item',
+      'parameter-identity-migration-run',
+      'parameter-identity-migration-phase',
+      'parameter-identity-cutover',
+      'parameter-history-entry',
+      'legacy-parameter-migration-evidence'
+    ) then new.target_kind in (
+      'migration-history',
+      'review-evidence',
+      'parameter-observation',
+      'observation-match',
+      'audit-event'
+    )
+    when mapping_source_kind = 'parameter-policy-target' then new.target_kind = 'policy'
+    when mapping_source_kind = 'audit-subject-link' then new.target_kind = 'audit-event'
+    -- An unresolved protected reference is evidence for an Archive blocker;
+    -- it can never be converted into a typed operational target.
+    when mapping_source_kind = 'unresolved-protected-reference' then false
     else false
   end;
 
@@ -1329,9 +1524,43 @@ begin
       where history.id = new.target_id;
       target_exists := found;
       target_owner_scope_kind := 'project';
+    when 'parameter-observation' then
+      select
+        case when mapping_owner_scope_kind = 'project' then project_id else organization_id end
+      into target_owner_scope_id
+      from parameter_catalog.parameter_observations
+      where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := case
+        when mapping_owner_scope_kind = 'project' then 'project'
+        else 'organization'
+      end;
+    when 'observation-match' then
+      select
+        case when mapping_owner_scope_kind = 'project' then project_id else organization_id end
+      into target_owner_scope_id
+      from parameter_catalog.parameter_observation_matches
+      where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := case
+        when mapping_owner_scope_kind = 'project' then 'project'
+        else 'organization'
+      end;
     when 'review-evidence' then
       select organization_id into target_owner_scope_id
       from parameter_catalog.parameter_review_evidence where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
+    when 'review-item' then
+      select organization_id into target_owner_scope_id
+      from parameter_catalog.parameter_review_items where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
+    when 'review-resolution' then
+      select item.organization_id into target_owner_scope_id
+      from parameter_catalog.parameter_review_resolutions resolution
+      join parameter_catalog.parameter_review_items item on item.id = resolution.review_item_id
+      where resolution.id = new.target_id;
       target_exists := found;
       target_owner_scope_kind := 'organization';
     when 'definition-proposal' then
@@ -1346,6 +1575,30 @@ begin
       where revision.id = new.target_id;
       target_exists := found;
       target_owner_scope_kind := 'organization';
+    when 'publication-intent' then
+      select proposal.organization_id into target_owner_scope_id
+      from parameter_catalog.catalog_publication_intents intent
+      join parameter_catalog.definition_proposals proposal on proposal.id = intent.proposal_id
+      where intent.id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
+    when 'policy' then
+      select organization_id into target_owner_scope_id
+      from public.parameter_policy_targets where id = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'organization';
+    when 'audit-event' then
+      select
+        case when project_id is not null then project_id else organization_id end,
+        case when project_id is not null then 'project' else 'organization' end
+      into target_owner_scope_id, target_owner_scope_kind
+      from public.audit_events where id = new.target_id;
+      target_exists := found;
+    when 'migration-history' then
+      select 'platform' into target_owner_scope_id
+      from public.schema_migrations where name = new.target_id;
+      target_exists := found;
+      target_owner_scope_kind := 'platform';
     else
       target_exists := false;
   end case;

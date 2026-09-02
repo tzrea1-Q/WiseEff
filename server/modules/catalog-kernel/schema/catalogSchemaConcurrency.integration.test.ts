@@ -3,10 +3,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
-  type EphemeralTestDatabase
+  type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+if (!databaseAvailable) {
+  throw new Error(
+    "S2-SCH concurrency tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
+  );
+}
 
 async function connect(url: string): Promise<pg.Client> {
   const client = new pg.Client({ connectionString: url });
@@ -14,7 +20,9 @@ async function connect(url: string): Promise<pg.Client> {
   return client;
 }
 
-async function captureDatabaseError(action: Promise<unknown>): Promise<pg.DatabaseError> {
+async function captureDatabaseError(
+  action: Promise<unknown>,
+): Promise<pg.DatabaseError> {
   try {
     await action;
   } catch (error) {
@@ -24,10 +32,14 @@ async function captureDatabaseError(action: Promise<unknown>): Promise<pg.Databa
   throw new Error("Expected PostgreSQL to reject the operation");
 }
 
-async function waitForAdvisoryLockWait(observer: pg.Client, processId: number): Promise<void> {
+async function waitForAdvisoryLockWait(
+  observer: pg.Client,
+  processId: number,
+): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
-    const result = await observer.query<{ waiting: boolean }>(`
+    const result = await observer.query<{ waiting: boolean }>(
+      `
       select coalesce(
         (
           select wait_event_type = 'Lock' and wait_event = 'advisory'
@@ -36,13 +48,17 @@ async function waitForAdvisoryLockWait(observer: pg.Client, processId: number): 
         ),
         false
       ) as waiting
-    `, [processId]);
+    `,
+      [processId],
+    );
     if (result.rows[0]?.waiting) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`Session ${processId} did not wait for the Catalog advisory lock`);
+  throw new Error(
+    `Session ${processId} did not wait for the Catalog advisory lock`,
+  );
 }
 
 async function seedCurrentRelease(client: pg.Client): Promise<void> {
@@ -56,14 +72,14 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
       insert into parameter_catalog.catalog_subjects (
         id, introduced_release_id, kind, canonical_key
       ) values
-        ('csub-active', 'crel-a', 'driver', 'driver:active'),
-        ('csub-retired', 'crel-a', 'node-type', 'node-type:retired');
+        ('csub-active', 'crel-a', 'driver', 'vendor,active'),
+        ('csub-retired', 'crel-a', 'node-type', 'retired');
 
       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
       values ('csub-active', 'physical-device', 'multiple');
 
-      insert into parameter_catalog.catalog_node_types (subject_id, family)
-      values ('csub-retired', 'device');
+      insert into parameter_catalog.catalog_node_types (subject_id)
+      values ('csub-retired');
 
       insert into parameter_catalog.parameter_definitions (
         id, introduced_release_id, subject_id, property_key, current_revision_id
@@ -99,7 +115,7 @@ async function seedCurrentRelease(client: pg.Client): Promise<void> {
   }
 }
 
-describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release guard", () => {
+describe("transaction-local Catalog current-release guard", () => {
   let database: EphemeralTestDatabase;
   let primary: pg.Client;
 
@@ -141,8 +157,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         return_type: "void",
         security_definer: true,
         config: ["search_path=pg_catalog, parameter_catalog"],
-        public_execute: false
-      }
+        public_execute: false,
+      },
     ]);
   });
 
@@ -150,8 +166,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
     await expect(
       primary.query(
         "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-        ["crel-a", "sha256:release-a", "csub-active", "active"]
-      )
+        ["crel-a", "sha256:release-a", "csub-active", "active"],
+      ),
     ).resolves.toMatchObject({ rowCount: 1 });
   });
 
@@ -176,7 +192,9 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       where id = 'pdef-active'
     `);
 
-    const error = await captureDatabaseError(primary.query("set constraints all immediate"));
+    const error = await captureDatabaseError(
+      primary.query("set constraints all immediate"),
+    );
     expect(error.code).toBe("23514");
     expect(error.constraint).toBe("catalog_current_definition_head_ck");
     await primary.query("rollback");
@@ -191,11 +209,13 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         (select current_revision_id from parameter_catalog.parameter_definitions where id = 'pdef-active') as current_revision_id,
         (select revision_id from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-a' and definition_id = 'pdef-active') as release_head
     `);
-    expect(state.rows).toEqual([{
-      current_catalog_release_id: "crel-a",
-      current_revision_id: "drev-active-a",
-      release_head: "drev-active-a"
-    }]);
+    expect(state.rows).toEqual([
+      {
+        current_catalog_release_id: "crel-a",
+        current_revision_id: "drev-active-a",
+        release_head: "drev-active-a",
+      },
+    ]);
   });
 
   it.each([
@@ -211,9 +231,9 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         );
         insert into parameter_catalog.catalog_subjects (
           id, introduced_release_id, kind, canonical_key
-        ) values ('csub-late', 'crel-late-subject', 'node-type', 'node-type:late');
-        insert into parameter_catalog.catalog_node_types (subject_id, family)
-        values ('csub-late', 'device');
+        ) values ('csub-late', 'crel-late-subject', 'node-type', 'late');
+        insert into parameter_catalog.catalog_node_types (subject_id)
+        values ('csub-late');
         insert into parameter_catalog.catalog_release_subjects (
           release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
         ) values ('crel-late-subject', 'csub-late', 'active', '{}', '{}');
@@ -225,7 +245,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           release_id, subject_id, lifecycle, selector_snapshot, selector_provenance, tombstone_provenance
         ) values ('crel-a', 'csub-late', 'active', '{}', '{}', null)
       `,
-      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_subjects where release_id = 'crel-a' and subject_id = 'csub-late'"
+      residueSql:
+        "select count(*)::text as count from parameter_catalog.catalog_release_subjects where release_id = 'crel-a' and subject_id = 'csub-late'",
     },
     {
       name: "Subject alias membership",
@@ -256,7 +277,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           release_id, subject_id, alias_id, lifecycle, selector_provenance, tombstone_provenance
         ) values ('crel-a', 'csub-active', 'calias-late', 'active', '{}', null)
       `,
-      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_subject_aliases where release_id = 'crel-a' and alias_id = 'calias-late'"
+      residueSql:
+        "select count(*)::text as count from parameter_catalog.catalog_release_subject_aliases where release_id = 'crel-a' and alias_id = 'calias-late'",
     },
     {
       name: "Definition revision",
@@ -282,7 +304,8 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           id, definition_id, revision_number, catalog_release_id, content_digest, content
         ) values ('drev-late-sealed', 'pdef-late', 2, 'crel-a', 'sha256:drev-late-sealed', '{}')
       `,
-      residueSql: "select count(*)::text as count from parameter_catalog.definition_revisions where id = 'drev-late-sealed'"
+      residueSql:
+        "select count(*)::text as count from parameter_catalog.definition_revisions where id = 'drev-late-sealed'",
     },
     {
       name: "Definition head",
@@ -308,88 +331,91 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
           release_id, definition_id, revision_id
         ) values ('crel-a', 'pdef-late', 'drev-late')
       `,
-      residueSql: "select count(*)::text as count from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-a' and definition_id = 'pdef-late'"
-    }
-  ])("rejects a post-materialization $name append without changing the exact guard", async ({
-    setupSql,
-    mutationSql,
-    residueSql
-  }) => {
-    await primary.query(setupSql);
-    await primary.query("begin");
-    const error = await captureDatabaseError(primary.query(mutationSql));
-    expect(error.code).toBe("55000");
-    expect(error.constraint).toBe("catalog_release_sealed_ck");
-    await primary.query("rollback");
+      residueSql:
+        "select count(*)::text as count from parameter_catalog.catalog_release_definition_heads where release_id = 'crel-a' and definition_id = 'pdef-late'",
+    },
+  ])(
+    "rejects a post-materialization $name append without changing the exact guard",
+    async ({ setupSql, mutationSql, residueSql }) => {
+      await primary.query(setupSql);
+      await primary.query("begin");
+      const error = await captureDatabaseError(primary.query(mutationSql));
+      expect(error.code).toBe("55000");
+      expect(error.constraint).toBe("catalog_release_sealed_ck");
+      await primary.query("rollback");
 
-    const residue = await primary.query<{ count: string }>(residueSql);
-    expect(residue.rows[0]?.count).toBe("0");
-    await expect(
-      primary.query(
-        "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-        ["crel-a", "sha256:release-a", "csub-active", "active"]
-      )
-    ).resolves.toMatchObject({ rowCount: 1 });
-    const release = await primary.query<{ release_digest: string }>(
-      "select release_digest from parameter_catalog.catalog_releases where id = 'crel-a'"
-    );
-    expect(release.rows).toEqual([{ release_digest: "sha256:release-a" }]);
-  });
+      const residue = await primary.query<{ count: string }>(residueSql);
+      expect(residue.rows[0]?.count).toBe("0");
+      await expect(
+        primary.query(
+          "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
+          ["crel-a", "sha256:release-a", "csub-active", "active"],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+      const release = await primary.query<{ release_digest: string }>(
+        "select release_digest from parameter_catalog.catalog_releases where id = 'crel-a'",
+      );
+      expect(release.rows).toEqual([{ release_digest: "sha256:release-a" }]);
+    },
+  );
 
   it.each([
     {
       name: "stale release pin",
       input: ["crel-stale", "sha256:release-a", "csub-active", "active"],
       sqlState: "PCA01",
-      detail: "PCAT-GUARD-RELEASE-MISMATCH"
+      detail: "PCAT-GUARD-RELEASE-MISMATCH",
     },
     {
       name: "stale release digest",
       input: ["crel-a", "sha256:release-stale", "csub-active", "active"],
       sqlState: "PCA01",
-      detail: "PCAT-GUARD-RELEASE-MISMATCH"
+      detail: "PCAT-GUARD-RELEASE-MISMATCH",
     },
     {
       name: "unknown Subject",
       input: ["crel-a", "sha256:release-a", "csub-unknown", "active"],
       sqlState: "PCA02",
-      detail: "PCAT-GUARD-SUBJECT-NOT-PUBLISHED"
+      detail: "PCAT-GUARD-SUBJECT-NOT-PUBLISHED",
     },
     {
       name: "retired Subject",
       input: ["crel-a", "sha256:release-a", "csub-retired", "active"],
       sqlState: "PCA03",
-      detail: "PCAT-GUARD-SUBJECT-RETIRED"
+      detail: "PCAT-GUARD-SUBJECT-RETIRED",
     },
     {
       name: "malformed scalar",
       input: [" crel-a", "sha256:release-a", "csub-active", "active"],
       sqlState: "PCA04",
-      detail: "PCAT-GUARD-DRIFT"
+      detail: "PCAT-GUARD-DRIFT",
     },
     {
       name: "unsupported expected lifecycle",
       input: ["crel-a", "sha256:release-a", "csub-active", "retired"],
       sqlState: "PCA04",
-      detail: "PCAT-GUARD-DRIFT"
+      detail: "PCAT-GUARD-DRIFT",
     },
     {
       name: "null scalar",
       input: ["crel-a", "sha256:release-a", null, "active"],
       sqlState: "PCA04",
-      detail: "PCAT-GUARD-DRIFT"
-    }
-  ])("serializes $name as a stable SQLSTATE/detail pair", async ({ input, sqlState, detail }) => {
-    const error = await captureDatabaseError(
-      primary.query(
-        "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-        input
-      )
-    );
+      detail: "PCAT-GUARD-DRIFT",
+    },
+  ])(
+    "serializes $name as a stable SQLSTATE/detail pair",
+    async ({ input, sqlState, detail }) => {
+      const error = await captureDatabaseError(
+        primary.query(
+          "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
+          input,
+        ),
+      );
 
-    expect(error.code).toBe(sqlState);
-    expect(error.detail).toBe(detail);
-  });
+      expect(error.code).toBe(sqlState);
+      expect(error.detail).toBe(detail);
+    },
+  );
 
   it("makes shared guard and exclusive pointer locks mutually exclusive until transaction end", async () => {
     const contender = await connect(database.url);
@@ -397,7 +423,7 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       await primary.query("begin");
       await primary.query(
         "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-        ["crel-a", "sha256:release-a", "csub-active", "active"]
+        ["crel-a", "sha256:release-a", "csub-active", "active"],
       );
 
       await contender.query("begin");
@@ -406,7 +432,7 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
         contender.query(`
           update parameter_catalog.catalog_state
           set current_catalog_release_id = current_catalog_release_id
-        `)
+        `),
       );
       expect(error.code).toBe("PCA05");
       expect(error.detail).toBe("PCAT-GUARD-SYNCHRONIZATION-BUSY");
@@ -417,7 +443,9 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       await primary.query("rollback");
       await contender.query("begin");
       await expect(
-        contender.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()")
+        contender.query(
+          "select parameter_catalog.acquire_current_pointer_lock_exclusive()",
+        ),
       ).resolves.toMatchObject({ rowCount: 1 });
       await contender.query("rollback");
     } finally {
@@ -433,18 +461,20 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       await primary.query("begin");
       await primary.query(
         "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-        ["crel-a", "sha256:release-a", "csub-active", "active"]
+        ["crel-a", "sha256:release-a", "csub-active", "active"],
       );
 
       await contender.query("begin");
       const pointerAttempt = contender
-        .query(`
+        .query(
+          `
           update parameter_catalog.catalog_state
           set current_catalog_release_id = current_catalog_release_id
-        `)
+        `,
+        )
         .then(
           (result) => ({ result, error: null }),
-          (error: pg.DatabaseError) => ({ result: null, error })
+          (error: pg.DatabaseError) => ({ result: null, error }),
         );
       await waitForAdvisoryLockWait(primary, contender.processID);
 
@@ -452,7 +482,7 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
 
       await expect(pointerAttempt).resolves.toMatchObject({
         result: { rowCount: 1 },
-        error: null
+        error: null,
       });
       await contender.query("rollback");
     } finally {
@@ -466,7 +496,9 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
     const guardSession = await connect(database.url);
     try {
       await primary.query("begin");
-      await primary.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()");
+      await primary.query(
+        "select parameter_catalog.acquire_current_pointer_lock_exclusive()",
+      );
       await primary.query(`
         insert into parameter_catalog.catalog_releases (
           id, release_version, release_digest, predecessor_release_id,
@@ -499,11 +531,11 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       const guardAttempt = guardSession
         .query(
           "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-          ["crel-a", "sha256:release-a", "csub-active", "active"]
+          ["crel-a", "sha256:release-a", "csub-active", "active"],
         )
         .then(
           (result) => ({ result, error: null }),
-          (error: pg.DatabaseError) => ({ result: null, error })
+          (error: pg.DatabaseError) => ({ result: null, error }),
         );
       await waitForAdvisoryLockWait(primary, guardSession.processID);
 
@@ -511,14 +543,16 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
 
       await expect(guardAttempt).resolves.toMatchObject({
         result: { rowCount: 1 },
-        error: null
+        error: null,
       });
 
-      const state = await guardSession.query<{ current_catalog_release_id: string }>(
-        "select current_catalog_release_id from parameter_catalog.catalog_state"
+      const state = await guardSession.query<{
+        current_catalog_release_id: string;
+      }>(
+        "select current_catalog_release_id from parameter_catalog.catalog_state",
       );
       const residue = await guardSession.query<{ count: string }>(
-        "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-b'"
+        "select count(*)::text as count from parameter_catalog.catalog_releases where id = 'crel-b'",
       );
       expect(state.rows[0]?.current_catalog_release_id).toBe("crel-a");
       expect(residue.rows[0]?.count).toBe("0");
@@ -532,7 +566,9 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
     const guardSession = await connect(database.url);
     try {
       await primary.query("begin");
-      await primary.query("select parameter_catalog.acquire_current_pointer_lock_exclusive()");
+      await primary.query(
+        "select parameter_catalog.acquire_current_pointer_lock_exclusive()",
+      );
       await primary.query(`
         insert into parameter_catalog.catalog_releases (
           id, release_version, release_digest, predecessor_release_id,
@@ -568,11 +604,16 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       const guardAttempt = guardSession
         .query(
           "select parameter_catalog.assert_catalog_subject_active($1, $2, $3, $4)",
-          ["crel-retirement", "sha256:release-retirement", "csub-active", "active"]
+          [
+            "crel-retirement",
+            "sha256:release-retirement",
+            "csub-active",
+            "active",
+          ],
         )
         .then(
           (result) => ({ result, error: null }),
-          (error: pg.DatabaseError) => ({ result: null, error })
+          (error: pg.DatabaseError) => ({ result: null, error }),
         );
       await waitForAdvisoryLockWait(primary, guardSession.processID);
 
@@ -583,8 +624,10 @@ describe.skipIf(!databaseAvailable)("transaction-local Catalog current-release g
       expect(outcome.error?.code).toBe("PCA03");
       expect(outcome.error?.detail).toBe("PCAT-GUARD-SUBJECT-RETIRED");
 
-      const state = await guardSession.query<{ current_catalog_release_id: string }>(
-        "select current_catalog_release_id from parameter_catalog.catalog_state"
+      const state = await guardSession.query<{
+        current_catalog_release_id: string;
+      }>(
+        "select current_catalog_release_id from parameter_catalog.catalog_state",
       );
       expect(state.rows[0]?.current_catalog_release_id).toBe("crel-retirement");
     } finally {
