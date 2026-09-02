@@ -253,79 +253,87 @@ export function ModuleEditDialog({
         <div className="param-admin-module-edit-body">
           {module.kind === "driver-group" &&
           (driverNature != null || instanceCardinality != null) ? (
-            <div className="organization-driver-schema-dialog__field-grid">
-              <label>
-                驱动性质
-                {canAdmin ? (
-                  <select
-                    aria-label="驱动性质"
-                    value={natureDraft ?? ""}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setNatureDraft(event.target.value as DriverNature)
-                    }
-                  >
-                    <option value="physical-device">
-                      {formatDriverNatureLabel("physical-device")}
-                    </option>
-                    <option value="logical-service">
-                      {formatDriverNatureLabel("logical-service")}
-                    </option>
-                  </select>
-                ) : (
-                  <input
-                    aria-label="驱动性质"
-                    value={formatDriverNatureLabel(driverNature)}
-                    readOnly
-                    aria-readonly="true"
-                  />
-                )}
-              </label>
-              <label>
-                实例基数
-                {canAdmin ? (
-                  <select
-                    aria-label="实例基数"
-                    value={cardinalityDraft ?? ""}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setCardinalityDraft(event.target.value as InstanceCardinality)
-                    }
-                  >
-                    <option value="multiple">
-                      {formatInstanceCardinalityLabel("multiple")}
-                    </option>
-                    <option value="singleton-per-project">
-                      {formatInstanceCardinalityLabel("singleton-per-project")}
-                    </option>
-                  </select>
-                ) : (
-                  <input
-                    aria-label="实例基数"
-                    value={formatInstanceCardinalityLabel(instanceCardinality)}
-                    readOnly
-                    aria-readonly="true"
-                  />
-                )}
-              </label>
-              <p className="muted" style={{ gridColumn: "1 / -1" }}>
-                驱动性质描述设备/服务本体，与分类树中的节点类型（node-type）不是同一概念。
-              </p>
-            </div>
+            <section
+              className="module-edit-section module-edit-driver-properties"
+              aria-label="驱动属性"
+            >
+              <div className="module-edit-section__head">
+                <h3>驱动属性</h3>
+                <p className="muted">
+                  描述设备或服务本体，与分类树中的节点类型（node-type）不是同一概念。
+                </p>
+              </div>
+              <div className="organization-driver-schema-dialog__field-grid">
+                <label>
+                  驱动性质
+                  {canAdmin ? (
+                    <select
+                      aria-label="驱动性质"
+                      value={natureDraft ?? ""}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setNatureDraft(event.target.value as DriverNature)
+                      }
+                    >
+                      <option value="physical-device">
+                        {formatDriverNatureLabel("physical-device")}
+                      </option>
+                      <option value="logical-service">
+                        {formatDriverNatureLabel("logical-service")}
+                      </option>
+                    </select>
+                  ) : (
+                    <input
+                      aria-label="驱动性质"
+                      value={formatDriverNatureLabel(driverNature)}
+                      readOnly
+                      aria-readonly="true"
+                    />
+                  )}
+                </label>
+                <label>
+                  实例基数
+                  {canAdmin ? (
+                    <select
+                      aria-label="实例基数"
+                      value={cardinalityDraft ?? ""}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setCardinalityDraft(event.target.value as InstanceCardinality)
+                      }
+                    >
+                      <option value="multiple">
+                        {formatInstanceCardinalityLabel("multiple")}
+                      </option>
+                      <option value="singleton-per-project">
+                        {formatInstanceCardinalityLabel("singleton-per-project")}
+                      </option>
+                    </select>
+                  ) : (
+                    <input
+                      aria-label="实例基数"
+                      value={formatInstanceCardinalityLabel(instanceCardinality)}
+                      readOnly
+                      aria-readonly="true"
+                    />
+                  )}
+                </label>
+              </div>
+            </section>
           ) : null}
 
           {showPlacementControls ? (
             <section
-              className="module-edit-placement-controls"
-              aria-label={PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}
+              className="module-edit-section module-edit-placement-controls"
+              aria-label="业务归属"
             >
-              <div className="module-edit-compatible-rules__head">
-                <h3>{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}</h3>
+              <div className="module-edit-section__head">
+                <h3>业务归属</h3>
                 <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
               </div>
               {onUpdateDefaultBusinessCategory ? (
-                <div className="form-stack">
-                  <span id={defaultCategoryLabelId}>
+                <div className="module-edit-placement-controls__field">
+                  <span className="module-edit-field-label" id={defaultCategoryLabelId}>
                     {PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}
                   </span>
                   <ModuleTreeSelect
@@ -347,7 +355,7 @@ export function ModuleEditDialog({
                 </div>
               ) : null}
               {onReplayPlacement ? (
-                <div className="dialog-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                <div className="module-edit-placement-controls__replay">
                   <button
                     type="button"
                     className="button subtle"
@@ -366,29 +374,38 @@ export function ModuleEditDialog({
                   >
                     {PARAMETER_ADMIN_UI.driverRegistryReplayPlacement}
                   </button>
+                  <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryReplayPlacementHint}</p>
                 </div>
               ) : null}
-              <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryReplayPlacementHint}</p>
               {replayMessage ? <p role="status">{replayMessage}</p> : null}
             </section>
           ) : null}
 
-          <ModuleDefinitionForm
-            currentName={module.name}
-            existingNames={existingNames}
-            module={draft}
-            showImportance={importanceVisible}
-            importance={importance}
-            onImportanceChange={setImportance}
-            showKind={showKind}
-            kind={kind}
-            onKindChange={setKind}
-            onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-          />
+          <section className="module-edit-section module-edit-basic-info" aria-label="基础信息">
+            <div className="module-edit-section__head">
+              <h3>基础信息</h3>
+              <p className="muted">维护模块在管理端展示的名称、描述和适用范围。</p>
+            </div>
+            <ModuleDefinitionForm
+              currentName={module.name}
+              existingNames={existingNames}
+              module={draft}
+              showImportance={importanceVisible}
+              importance={importance}
+              onImportanceChange={setImportance}
+              showKind={showKind}
+              kind={kind}
+              onKindChange={setKind}
+              onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            />
+          </section>
 
           {showCompatibleRules ? (
-            <section className="module-edit-compatible-rules" aria-label="compatible 匹配规则">
-              <div className="module-edit-compatible-rules__head">
+            <section
+              className="module-edit-section module-edit-compatible-rules"
+              aria-label="compatible 匹配规则"
+            >
+              <div className="module-edit-section__head module-edit-compatible-rules__head">
                 <h3>compatible 匹配规则</h3>
                 <p className="muted">
                   节点的 compatible 命中下列任一值时，会归属到本驱动组。新增规则会立即生效；移除后相关参数需重新解析归属。
@@ -505,7 +522,10 @@ export function ModuleEditDialog({
           ) : null}
 
           {module.kind === "driver-group" && (overlaySchemas?.length ?? 0) > 0 ? (
-            <section className="module-edit-overlay-schemas" aria-label={PARAMETER_ADMIN_UI.organizationDriverSchemaOverlays}>
+            <section
+              className="module-edit-section module-edit-overlay-schemas"
+              aria-label={PARAMETER_ADMIN_UI.organizationDriverSchemaOverlays}
+            >
               <div className="module-edit-overlay-schemas__head">
                 <h3>{PARAMETER_ADMIN_UI.organizationDriverSchemaOverlays}</h3>
                 <p className="muted">与本驱动组 compatible 匹配的组织级解析配置。</p>
