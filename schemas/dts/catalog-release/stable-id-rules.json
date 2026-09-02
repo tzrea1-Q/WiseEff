@@ -53,14 +53,43 @@
     ]
   },
   "manifestRules": {
+    "exactSourceSet": true,
     "exactDocumentSet": true,
-    "matchPointers": [
-      "/kind",
-      "/digest"
+    "sourceMatchPointers": [
+      "/source/path",
+      "/source/mediaType",
+      "/source/digest"
     ],
-    "documentDigest": {
+    "documentMatchPointers": [
+      {
+        "manifestPointer": "/sourcePath",
+        "documentPointer": "/source/path"
+      },
+      {
+        "manifestPointer": "/kind",
+        "documentPointer": "/kind"
+      },
+      {
+        "manifestPointer": "/documentId",
+        "documentPointer": "/content/id"
+      },
+      {
+        "manifestPointer": "/normalizedDigest",
+        "documentPointer": "/normalizedDigest"
+      }
+    ],
+    "sourceDocumentDigest": {
+      "algorithm": "sha256",
+      "bytes": "exact-source-bytes",
+      "pathPointer": "/source/path",
+      "mediaTypePointer": "/source/mediaType",
+      "digestPointer": "/source/digest",
+      "mediaType": "application/yaml"
+    },
+    "normalizedDocumentDigest": {
       "algorithm": "sha256",
       "canonicalization": "parameter-catalog-contract-serialize",
+      "digestPointer": "/normalizedDigest",
       "contentPointer": "/content"
     },
     "releaseAggregateDigest": {
@@ -75,17 +104,31 @@
         "/manifest/release/predecessor",
         "/manifest/toolchain",
         "/manifest/files",
+        "/manifest/documents",
         "/documents"
       ],
       "sortedCollections": [
         {
           "pointer": "/manifest/files",
-          "keyPointer": "/path",
+          "keyPointers": [
+            "/path"
+          ],
+          "comparator": "ecmascript-utf16-code-unit"
+        },
+        {
+          "pointer": "/manifest/documents",
+          "keyPointers": [
+            "/kind",
+            "/documentId"
+          ],
           "comparator": "ecmascript-utf16-code-unit"
         },
         {
           "pointer": "/documents",
-          "keyPointer": "/path",
+          "keyPointers": [
+            "/kind",
+            "/content/id"
+          ],
           "comparator": "ecmascript-utf16-code-unit"
         }
       ]

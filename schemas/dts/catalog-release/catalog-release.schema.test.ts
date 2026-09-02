@@ -75,11 +75,25 @@ interface StableIdRules {
     subjectLifecycles: string[];
   };
   manifestRules: {
+    exactSourceSet: boolean;
     exactDocumentSet: boolean;
-    matchPointers: string[];
-    documentDigest: {
+    sourceMatchPointers: string[];
+    documentMatchPointers: Array<{
+      manifestPointer: string;
+      documentPointer: string;
+    }>;
+    sourceDocumentDigest: {
+      algorithm: "sha256";
+      bytes: "exact-source-bytes";
+      pathPointer: string;
+      mediaTypePointer: string;
+      digestPointer: string;
+      mediaType: "application/yaml";
+    };
+    normalizedDocumentDigest: {
       algorithm: "sha256";
       canonicalization: "parameter-catalog-contract-serialize";
+      digestPointer: string;
       contentPointer: string;
     };
     releaseAggregateDigest: {
@@ -89,7 +103,7 @@ interface StableIdRules {
       modelPointers: string[];
       sortedCollections: Array<{
         pointer: string;
-        keyPointer: string;
+        keyPointers: string[];
         comparator: "ecmascript-utf16-code-unit";
       }>;
     };
@@ -211,9 +225,13 @@ interface StableIdRules {
 }
 
 interface BundleDocument {
-  path: string;
+  source: {
+    path: string;
+    mediaType: "application/yaml";
+    digest: string;
+  };
   kind: "subject" | "alias" | "definition";
-  digest: string;
+  normalizedDigest: string;
   content: JsonObject;
 }
 
@@ -234,9 +252,14 @@ interface ReleaseNode {
     };
     files: Array<{
       path: string;
-      kind: BundleDocument["kind"];
+      mediaType: "application/yaml";
       digest: string;
-      mediaType: "application/json";
+    }>;
+    documents: Array<{
+      sourcePath: string;
+      kind: BundleDocument["kind"];
+      documentId: string;
+      normalizedDigest: string;
     }>;
   };
   documents: BundleDocument[];
@@ -339,8 +362,12 @@ const normalizedReleaseModel = (node: ReleaseNode): JsonObject => {
         pointer,
         value.toSorted((left, right) =>
           compareContractKeys(
-            String(pointerValue(left, sorting.keyPointer)),
-            String(pointerValue(right, sorting.keyPointer)),
+            stableKey(
+              sorting.keyPointers.map((pointer) => pointerValue(left, pointer)),
+            ),
+            stableKey(
+              sorting.keyPointers.map((pointer) => pointerValue(right, pointer)),
+            ),
           ),
         ),
       ];
@@ -426,24 +453,28 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
     }
     documentsByReleaseId.set(releaseId, documentsByKind);
 
-    if (stableIdRules.manifestRules.exactDocumentSet) {
+    if (stableIdRules.manifestRules.exactSourceSet) {
       const listed = new Map(
         node.manifest.files.map((file) => [file.path, file] as const),
       );
-      const bundled = new Map(node.documents.map((document) => [document.path, document] as const));
+      const bundledSourcePaths = new Set(
+        node.documents.map((document) => document.source.path),
+      );
       if (
         listed.size !== node.manifest.files.length ||
-        bundled.size !== node.documents.length ||
-        listed.size !== bundled.size
+        listed.size !== bundledSourcePaths.size
       ) {
         violations.push("manifest-content-exact");
       } else {
-        for (const [path, file] of listed) {
-          const document = bundled.get(path);
+        for (const document of node.documents) {
+          const file = listed.get(document.source.path);
           if (
-            document === undefined ||
-            stableIdRules.manifestRules.matchPointers.some(
-              (pointer) => pointerValue(file, pointer) !== pointerValue(document, pointer),
+            file === undefined ||
+            stableIdRules.manifestRules.sourceMatchPointers.some(
+              (pointer) => {
+                const filePointer = pointer.replace(/^\/source/, "");
+                return pointerValue(file, filePointer) !== pointerValue(document, pointer);
+              },
             )
           ) {
             violations.push("manifest-content-exact");
@@ -453,7 +484,44 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       }
     }
 
-    const digestRule = stableIdRules.manifestRules.documentDigest;
+    if (stableIdRules.manifestRules.exactDocumentSet) {
+      const listed = new Map(
+        node.manifest.documents.map(
+          (document) => [`${document.kind}:${document.documentId}`, document] as const,
+        ),
+      );
+      const bundled = new Map(
+        node.documents.map(
+          (document) => [
+            `${document.kind}:${String(pointerValue(document, "/content/id"))}`,
+            document,
+          ] as const),
+      );
+      if (
+        listed.size !== node.manifest.documents.length ||
+        bundled.size !== node.documents.length ||
+        listed.size !== bundled.size
+      ) {
+        violations.push("manifest-content-exact");
+      } else {
+        for (const [key, document] of bundled) {
+          const descriptor = listed.get(key);
+          if (
+            descriptor === undefined ||
+            stableIdRules.manifestRules.documentMatchPointers.some(
+              ({ documentPointer, manifestPointer }) =>
+                pointerValue(document, documentPointer) !==
+                pointerValue(descriptor, manifestPointer),
+            )
+          ) {
+            violations.push("manifest-content-exact");
+            break;
+          }
+        }
+      }
+    }
+
+    const digestRule = stableIdRules.manifestRules.normalizedDocumentDigest;
     for (const document of node.documents) {
       const canonicalContent = serializeContract(
         pointerValue(document, digestRule.contentPointer) as ContractJsonValue,
@@ -461,7 +529,9 @@ const validateStableRules = (bundle: CatalogReleaseBundle): string[] => {
       const actualDigest = `sha256:${createHash("sha256")
         .update(canonicalContent)
         .digest("hex")}`;
-      if (document.digest !== actualDigest) {
+      if (
+        pointerValue(document, digestRule.digestPointer) !== actualDigest
+      ) {
         violations.push("document-digest-mismatch");
       }
       if (
@@ -1171,12 +1241,23 @@ const validateBundle = (bundle: CatalogReleaseBundle): string[] => {
 
 const sha256 = (marker: string): string => `sha256:${marker.repeat(64)}`;
 
+const sourceDigest = (path: string): string =>
+  `sha256:${createHash("sha256")
+    .update(`# exact YAML source: ${path}\n`)
+    .digest("hex")}`;
+
+const yamlSource = (path: string): BundleDocument["source"] => ({
+  path,
+  mediaType: "application/yaml",
+  digest: sourceDigest(path),
+});
+
 const releaseDocuments = (): BundleDocument[] => {
   const documents: BundleDocument[] = [
     {
-      path: "subjects/sc8562.json",
+      source: yamlSource("schemas/dts/vendor/wiseeff/sc8562.yaml"),
       kind: "subject",
-      digest: sha256("1"),
+      normalizedDigest: sha256("1"),
       content: {
         id: "csub_01KSC8562",
         kind: "driver",
@@ -1195,9 +1276,9 @@ const releaseDocuments = (): BundleDocument[] => {
       },
     },
     {
-      path: "aliases/sc8551.json",
+      source: yamlSource("schemas/dts/vendor/wiseeff/sc8562.yaml"),
       kind: "alias",
-      digest: sha256("2"),
+      normalizedDigest: sha256("2"),
       content: {
         id: "cali_01KSC8551",
         subjectId: "csub_01KSC8562",
@@ -1209,9 +1290,9 @@ const releaseDocuments = (): BundleDocument[] => {
       },
     },
     {
-      path: "definitions/sc8562/input-voltage-limit.json",
+      source: yamlSource("schemas/dts/vendor/wiseeff/sc8562.yaml"),
       kind: "definition",
-      digest: sha256("3"),
+      normalizedDigest: sha256("3"),
       content: {
         id: "pdef_01KVIN",
         subjectId: "csub_01KSC8562",
@@ -1244,7 +1325,7 @@ const releaseDocuments = (): BundleDocument[] => {
 
   return documents.map((document) => ({
     ...document,
-    digest: `sha256:${createHash("sha256")
+    normalizedDigest: `sha256:${createHash("sha256")
       .update(serializeContract(document.content as ContractJsonValue))
       .digest("hex")}`,
   }));
@@ -1272,11 +1353,18 @@ const releaseNode = (
         jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
         sourceFormat: "wiseeff-catalog-release@1",
       },
-      files: documents.map(({ path, kind, digest }) => ({
-        path,
-        kind,
-        digest,
-        mediaType: "application/json",
+      files: [
+        {
+          path: documents[0].source.path,
+          mediaType: documents[0].source.mediaType,
+          digest: documents[0].source.digest,
+        },
+      ],
+      documents: documents.map((document) => ({
+        sourcePath: document.source.path,
+        kind: document.kind,
+        documentId: String(pointerValue(document, "/content/id")),
+        normalizedDigest: document.normalizedDigest,
       })),
     },
     documents,
@@ -1302,14 +1390,29 @@ const refreshDocumentAndReleaseDigests = (
   release: ReleaseNode,
   document: BundleDocument,
 ): void => {
-  document.digest = `sha256:${createHash("sha256")
+  const previousNormalizedDigest = document.normalizedDigest;
+  document.normalizedDigest = `sha256:${createHash("sha256")
     .update(serializeContract(document.content as ContractJsonValue))
     .digest("hex")}`;
   const manifestFile = release.manifest.files.find(
-    (file) => file.path === document.path,
+    (file) => file.path === document.source.path,
   );
-  if (!manifestFile) throw new Error(`missing manifest file ${document.path}`);
-  manifestFile.digest = document.digest;
+  if (!manifestFile) {
+    throw new Error(`missing manifest file ${document.source.path}:${document.kind}`);
+  }
+  const manifestDocument = release.manifest.documents.find(
+    (candidate) =>
+      candidate.kind === document.kind &&
+      candidate.sourcePath === document.source.path &&
+      candidate.normalizedDigest === previousNormalizedDigest,
+  );
+  if (!manifestDocument) {
+    throw new Error(
+      `missing manifest document ${document.kind}:${String(pointerValue(document, "/content/id"))}`,
+    );
+  }
+  manifestDocument.documentId = String(pointerValue(document, "/content/id"));
+  manifestDocument.normalizedDigest = document.normalizedDigest;
   release.manifest.release.digest = releaseAggregateDigest(release);
 };
 
@@ -1317,15 +1420,24 @@ const addDocumentToRelease = (
   release: ReleaseNode,
   document: BundleDocument,
 ): void => {
-  document.digest = `sha256:${createHash("sha256")
+  document.normalizedDigest = `sha256:${createHash("sha256")
     .update(serializeContract(document.content as ContractJsonValue))
     .digest("hex")}`;
   release.documents.push(document);
-  release.manifest.files.push({
-    path: document.path,
+  if (
+    !release.manifest.files.some((file) => file.path === document.source.path)
+  ) {
+    release.manifest.files.push({
+      path: document.source.path,
+      mediaType: document.source.mediaType,
+      digest: document.source.digest,
+    });
+  }
+  release.manifest.documents.push({
+    sourcePath: document.source.path,
     kind: document.kind,
-    digest: document.digest,
-    mediaType: "application/json",
+    documentId: String(pointerValue(document, "/content/id")),
+    normalizedDigest: document.normalizedDigest,
   });
   release.manifest.release.digest = releaseAggregateDigest(release);
 };
@@ -1404,6 +1516,36 @@ const bundledConsumerSchema = (): JsonObject => {
 };
 
 describe("immutable Catalog Release bundle contract", () => {
+  it("separates exact YAML source provenance from normalized document digests", () => {
+    const bundle = validBundle();
+    expect(validateBundle(bundle)).toEqual([]);
+
+    for (const release of bundle.releases) {
+      expect(release.manifest.files).toEqual([
+        {
+          path: "schemas/dts/vendor/wiseeff/sc8562.yaml",
+          mediaType: "application/yaml",
+          digest: sourceDigest("schemas/dts/vendor/wiseeff/sc8562.yaml"),
+        },
+      ]);
+      for (const document of release.documents) {
+        expect(document.source).toEqual(release.manifest.files[0]);
+        expect(document.normalizedDigest).not.toBe(document.source.digest);
+      }
+    }
+
+    const mismatchedSource = validBundle();
+    mismatchedSource.releases[1].documents[0].source.digest = sha256("f");
+    expect(validateBundle(mismatchedSource)).toContain("manifest-content-exact");
+
+    const mismatchedNormalizedDocument = validBundle();
+    mismatchedNormalizedDocument.releases[1].documents[0].content.canonicalKey =
+      "driver:tampered";
+    expect(validateBundle(mismatchedNormalizedDocument)).toContain(
+      "document-digest-mismatch",
+    );
+  });
+
   it("accepts a closed, complete bundle through the public schema and stable-rule seam", () => {
     const bundle = validBundle();
 
@@ -1470,16 +1612,17 @@ describe("immutable Catalog Release bundle contract", () => {
 
   it("rejects non-canonical relative paths before compile", () => {
     for (const path of [
-      "subjects//sc8562.json",
-      "subjects/sc8562.json/",
-      "subjects/./sc8562.json",
-      "./subjects/sc8562.json",
-      "subjects/../sc8562.json",
+      "schemas/dts/vendor/wiseeff//sc8562.yaml",
+      "schemas/dts/vendor/wiseeff/sc8562.yaml/",
+      "schemas/dts/vendor/wiseeff/./sc8562.yaml",
+      "./schemas/dts/vendor/wiseeff/sc8562.yaml",
+      "schemas/dts/vendor/wiseeff/../sc8562.yaml",
     ]) {
       const malformed = validBundle();
       const release = malformed.releases[1];
-      release.documents[0].path = path;
+      release.documents[0].source.path = path;
       release.manifest.files[0].path = path;
+      release.manifest.documents[0].sourcePath = path;
       release.manifest.release.digest = releaseAggregateDigest(release);
 
       expect(validateBundle(malformed), path).toEqual(["schema-invalid"]);
@@ -1494,7 +1637,7 @@ describe("immutable Catalog Release bundle contract", () => {
     const unlisted = validBundle();
     unlisted.releases[1].documents.push({
       ...structuredClone(unlisted.releases[1].documents[0]),
-      path: "subjects/unlisted.json",
+      source: yamlSource("schemas/dts/vendor/wiseeff/unlisted.yaml"),
     });
     expect(validateBundle(unlisted)).toContain("manifest-content-exact");
   });
@@ -1697,7 +1840,9 @@ describe("immutable Catalog Release bundle contract", () => {
       throw new Error("missing predecessor Definition fixture");
     }
     const successor = structuredClone(definition);
-    successor.path = "definitions/sc8562/input-voltage-limit-v2.json";
+    successor.source = yamlSource(
+      "schemas/dts/vendor/wiseeff/sc8562-input-voltage-limit-v2.yaml",
+    );
     successor.content.id = "pdef_01KVIN_SUCCESSOR";
     successor.content.propertyKey = "input_voltage_limit_v2";
     const successorRevision = successor.content.revision as JsonObject;
@@ -1797,7 +1942,9 @@ describe("immutable Catalog Release bundle contract", () => {
         const definition =
           index === 0 ? baseDefinition : structuredClone(template);
         if (index > 0) {
-          definition.path = `definitions/sc8562/graph-${index}.json`;
+          definition.source = yamlSource(
+            `schemas/dts/vendor/wiseeff/sc8562-graph-${index}.yaml`,
+          );
           definition.content.id = definitionIds[index];
           definition.content.propertyKey = `graph_property_${index}`;
         }
@@ -1877,10 +2024,10 @@ describe("immutable Catalog Release bundle contract", () => {
       ...(subject.content.selector as JsonObject),
       provenance: { source: "tampered-provenance" },
     };
-    subject.digest = `sha256:${createHash("sha256")
+    subject.normalizedDigest = `sha256:${createHash("sha256")
       .update(serializeContract(subject.content as ContractJsonValue))
       .digest("hex")}`;
-    release.manifest.files[0].digest = subject.digest;
+    release.manifest.documents[0].normalizedDigest = subject.normalizedDigest;
     expect(validateBundle(changedProvenance)).toContain(
       "release-aggregate-digest-mismatch",
     );
@@ -1888,14 +2035,23 @@ describe("immutable Catalog Release bundle contract", () => {
 
   it("orders release collections by the S0 code-unit comparator across locale and input order", () => {
     const release = structuredClone(validBundle().releases[1]);
-    const paths = ["subjects/Z.json", "subjects/a.json", "subjects/z.json"];
+    const paths = [
+      "schemas/dts/Z.yaml",
+      "schemas/dts/a.yaml",
+      "schemas/dts/z.yaml",
+    ];
     for (const [index, document] of release.documents.entries()) {
-      document.path = paths[index];
-      release.manifest.files[index].path = paths[index];
+      document.source = yamlSource(paths[index]);
+      release.manifest.documents[index].sourcePath = paths[index];
     }
+    release.manifest.files = paths.map((path) => ({
+      path,
+      mediaType: "application/yaml",
+      digest: sourceDigest(path),
+    }));
     const expected = releaseAggregateDigest(release);
     expect(expected).toBe(
-      "sha256:6f36a42a4bbf9219d3ac3f730d646330744026162fabd0830bf72f6ca51da222",
+      "sha256:997cdf083f04074bf6e56ed39ed3fd6b0587a0a02ed9248e6801cca972a71171",
     );
     expect(
       stableIdRules.manifestRules.releaseAggregateDigest.sortedCollections.map(
@@ -1904,10 +2060,12 @@ describe("immutable Catalog Release bundle contract", () => {
     ).toEqual([
       "ecmascript-utf16-code-unit",
       "ecmascript-utf16-code-unit",
+      "ecmascript-utf16-code-unit",
     ]);
 
     release.documents.reverse();
     release.manifest.files.reverse();
+    release.manifest.documents.reverse();
     expect(releaseAggregateDigest(release)).toBe(expected);
 
     const localeCompare = vi
@@ -1941,15 +2099,10 @@ describe("immutable Catalog Release bundle contract", () => {
       );
       if (!original) throw new Error(`missing ${kind} fixture`);
       const duplicate = structuredClone(original);
-      duplicate.path = `duplicates/${kind}.json`;
-      release.documents.push(duplicate);
-      release.manifest.files.push({
-        path: duplicate.path,
-        kind: duplicate.kind,
-        digest: duplicate.digest,
-        mediaType: "application/json",
-      });
-      release.manifest.release.digest = releaseAggregateDigest(release);
+      duplicate.source = yamlSource(
+        `schemas/dts/vendor/wiseeff/duplicate-${kind}.yaml`,
+      );
+      addDocumentToRelease(release, duplicate);
 
       expect(validateBundle(duplicated)).toContain(
         `${kind}-id-duplicate-in-release`,
@@ -2000,8 +2153,9 @@ describe("immutable Catalog Release bundle contract", () => {
     const predecessorOnlySubject = structuredClone(
       omittedSubject.releases[0].documents[0],
     );
-    predecessorOnlySubject.path = "subjects/predecessor-only.json";
-    predecessorOnlySubject.digest = sha256("5");
+    predecessorOnlySubject.source = yamlSource(
+      "schemas/dts/vendor/wiseeff/predecessor-only.yaml",
+    );
     predecessorOnlySubject.content.id = "csub_predecessor_only";
     predecessorOnlySubject.content.canonicalKey = "driver:predecessor-only";
     predecessorOnlySubject.content.selector = {
@@ -2009,13 +2163,7 @@ describe("immutable Catalog Release bundle contract", () => {
       value: "wiseeff,predecessor-only",
       provenance: { source: "catalog-review" },
     };
-    omittedSubject.releases[0].documents.push(predecessorOnlySubject);
-    omittedSubject.releases[0].manifest.files.push({
-      path: predecessorOnlySubject.path,
-      kind: predecessorOnlySubject.kind,
-      digest: predecessorOnlySubject.digest,
-      mediaType: "application/json",
-    });
+    addDocumentToRelease(omittedSubject.releases[0], predecessorOnlySubject);
     expect(validateBundle(omittedSubject)).toContain(
       "predecessor-subject-membership-complete",
     );
@@ -2215,7 +2363,9 @@ describe("immutable Catalog Release bundle contract", () => {
     );
     if (!retiredSubject) throw new Error("missing subject fixture");
     const successor = structuredClone(retiredSubject);
-    successor.path = "subjects/sc8562-successor.json";
+    successor.source = yamlSource(
+      "schemas/dts/vendor/wiseeff/sc8562-successor.yaml",
+    );
     successor.content.id = "csub_01KSC8562_SUCCESSOR";
     successor.content.canonicalKey = "driver:sc8562-successor";
     successor.content.lifecycle = "active";
@@ -2225,16 +2375,7 @@ describe("immutable Catalog Release bundle contract", () => {
       provenance: { source: "catalog-review" },
     };
     successor.content.tombstone = null;
-    successor.digest = `sha256:${createHash("sha256")
-      .update(serializeContract(successor.content as ContractJsonValue))
-      .digest("hex")}`;
-    successorRelease.documents.push(successor);
-    successorRelease.manifest.files.push({
-      path: successor.path,
-      kind: successor.kind,
-      digest: successor.digest,
-      mediaType: "application/json",
-    });
+    addDocumentToRelease(successorRelease, successor);
     (retiredSubject.content.tombstone as JsonObject).successorId =
       successor.content.id;
     refreshDocumentAndReleaseDigests(successorRelease, retiredSubject);
@@ -2271,9 +2412,11 @@ describe("immutable Catalog Release bundle contract", () => {
     );
     if (!retiredAlias) throw new Error("missing retired Alias fixture");
     addDocumentToRelease(semanticAliasRelease, {
-      path: "subjects/sc8562-node-successor.json",
+      source: yamlSource(
+        "schemas/dts/vendor/wiseeff/sc8562-node-successor.yaml",
+      ),
       kind: "subject",
-      digest: sha256("0"),
+      normalizedDigest: sha256("0"),
       content: {
         id: "csub_01KSC8562_NODE_SUCCESSOR",
         kind: "node-type",
@@ -2289,9 +2432,11 @@ describe("immutable Catalog Release bundle contract", () => {
       },
     });
     addDocumentToRelease(semanticAliasRelease, {
-      path: "aliases/sc8551-node-successor.json",
+      source: yamlSource(
+        "schemas/dts/vendor/wiseeff/sc8551-node-successor.yaml",
+      ),
       kind: "alias",
-      digest: sha256("0"),
+      normalizedDigest: sha256("0"),
       content: {
         id: "cali_01KSC8551_NODE_SUCCESSOR",
         subjectId: "csub_01KSC8562_NODE_SUCCESSOR",
@@ -2314,9 +2459,11 @@ describe("immutable Catalog Release bundle contract", () => {
     const newRetiredSubject = validBundle();
     const subjectRelease = newRetiredSubject.releases[1];
     addDocumentToRelease(subjectRelease, {
-      path: "subjects/never-published-subject.json",
+      source: yamlSource(
+        "schemas/dts/vendor/wiseeff/never-published-subject.yaml",
+      ),
       kind: "subject",
-      digest: sha256("0"),
+      normalizedDigest: sha256("0"),
       content: {
         id: "csub_01K_NEVER_PUBLISHED",
         kind: "driver",
@@ -2345,9 +2492,11 @@ describe("immutable Catalog Release bundle contract", () => {
     const newRetiredAlias = validBundle();
     const aliasRelease = newRetiredAlias.releases[1];
     addDocumentToRelease(aliasRelease, {
-      path: "aliases/never-published-alias.json",
+      source: yamlSource(
+        "schemas/dts/vendor/wiseeff/never-published-alias.yaml",
+      ),
       kind: "alias",
-      digest: sha256("0"),
+      normalizedDigest: sha256("0"),
       content: {
         id: "cali_01K_NEVER_PUBLISHED",
         subjectId: "csub_01KSC8562",
@@ -2375,20 +2524,12 @@ describe("immutable Catalog Release bundle contract", () => {
     );
     if (!originalSubject) throw new Error("missing subject fixture");
     const conflictingSubject = structuredClone(originalSubject);
-    conflictingSubject.path = "subjects/conflicting-selector.json";
+    conflictingSubject.source = yamlSource(
+      "schemas/dts/vendor/wiseeff/conflicting-selector.yaml",
+    );
     conflictingSubject.content.id = "csub_conflicting_selector";
     conflictingSubject.content.canonicalKey = "driver:conflicting-selector";
-    conflictingSubject.digest = `sha256:${createHash("sha256")
-      .update(serializeContract(conflictingSubject.content as ContractJsonValue))
-      .digest("hex")}`;
-    selectorRelease.documents.push(conflictingSubject);
-    selectorRelease.manifest.files.push({
-      path: conflictingSubject.path,
-      kind: conflictingSubject.kind,
-      digest: conflictingSubject.digest,
-      mediaType: "application/json",
-    });
-    selectorRelease.manifest.release.digest = releaseAggregateDigest(selectorRelease);
+    addDocumentToRelease(selectorRelease, conflictingSubject);
     expect(validateBundle(reassignedCanonicalSelector)).toContain(
       "canonical-selector-owner-conflict",
     );
@@ -2446,7 +2587,9 @@ describe("immutable Catalog Release bundle contract", () => {
       throw new Error("missing alias ownership fixtures");
     }
     const conflictingOwner = structuredClone(originalSubject);
-    conflictingOwner.path = "subjects/conflicting-alias-owner.json";
+    conflictingOwner.source = yamlSource(
+      "schemas/dts/vendor/wiseeff/conflicting-alias-owner.yaml",
+    );
     conflictingOwner.content.id = "csub_conflicting_alias_owner";
     conflictingOwner.content.canonicalKey = "driver:conflicting-alias-owner";
     const selector = conflictingOwner.content.selector as JsonObject;
@@ -2703,6 +2846,39 @@ describe("immutable Catalog Release bundle contract", () => {
     expect(validateBundle(reassignedSubtype)).toContain("subject-id-reassigned");
   });
 
+  it("accepts a complete logical-service singleton Driver lineage", () => {
+    const bundle = validBundle();
+    for (const release of bundle.releases) {
+      const subject = release.documents.find(
+        (document) => document.kind === "subject",
+      );
+      if (!subject) throw new Error("missing Driver fixture");
+      subject.content.subtype = {
+        nature: "logical-service",
+        cardinality: { kind: "singleton-per-project" },
+      };
+      refreshDocumentAndReleaseDigests(release, subject);
+    }
+
+    const predecessor = bundle.releases[1].manifest.release.predecessor;
+    if (!predecessor) throw new Error("missing Driver predecessor");
+    predecessor.digest = bundle.releases[0].manifest.release.digest;
+    bundle.releases[1].manifest.release.digest = releaseAggregateDigest(
+      bundle.releases[1],
+    );
+
+    expect(validateBundle(bundle)).toEqual([]);
+    for (const release of bundle.releases) {
+      const subject = release.documents.find(
+        (document) => document.kind === "subject",
+      );
+      expect(pointerValue(subject, "/content/subtype")).toEqual({
+        nature: "logical-service",
+        cardinality: { kind: "singleton-per-project" },
+      });
+    }
+  });
+
   it("defines NodeType without a family field or replacement classification", () => {
     const nodeTypeBundle = validBundle();
     for (const release of nodeTypeBundle.releases) {
@@ -2797,6 +2973,8 @@ describe("immutable Catalog Release bundle contract", () => {
       ['"vendor,driver"', "quoted-source-token"],
       ["vendor,*", "wildcard-forbidden"],
       ["vendor,driver,extra", "invalid-syntax"],
+      [" vendor,*", "surrounding-whitespace"],
+      ['"vendor,*"', "quoted-source-token"],
     ] as const) {
       const rejected = validBundle();
       const release = rejected.releases[1];
@@ -2842,6 +3020,8 @@ describe("immutable Catalog Release bundle contract", () => {
       ["charging core", "whitespace-forbidden"],
       ["'node'", "quoted-source-token"],
       ["1node", "invalid-syntax"],
+      [" node@1", "surrounding-whitespace"],
+      ["'node@1'", "quoted-source-token"],
     ] as const) {
       const rejected = asNodeTypeBundle(input);
       expect(parseCanonicalNodeName(input)).toEqual({
@@ -2943,10 +3123,25 @@ describe("immutable Catalog Release bundle contract", () => {
 
     for (const [input, reason] of [
       ["a".repeat(32), "length-out-of-range"],
+      ["#" + "a".repeat(31), "length-out-of-range"],
+      ["compatible", "structural-property"],
+      ["DEVICE_TYPE", "structural-property"],
+      ["gpio-controller", "structural-property"],
+      ["INTERRUPT-CONTROLLER", "structural-property"],
+      ["linux,phandle", "structural-property"],
+      ["PHANDLE", "structural-property"],
+      ["ranges", "structural-property"],
+      ["REG", "structural-property"],
       ["STATUS", "structural-property"],
+      ["#address-cells", "structural-property"],
+      ["#GPIO-CELLS", "structural-property"],
+      ["#interrupt-cells", "structural-property"],
+      ["#size-cells", "structural-property"],
       ["#custom", "structural-property"],
+      ["#bad/property", "structural-property"],
       ["bad/property", "invalid-syntax"],
       ["bad\tkey", "control-character"],
+      ["'STATUS'", "quoted-source-token"],
     ] as const) {
       const rejected = validBundle();
       const release = rejected.releases[1];
@@ -2990,7 +3185,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "e21b677c4a54cb127677aee36acbf95fe4a0e922194378b240db3713fe99066f",
+      "722f406ec08f094af5980cca51fb2fa5982b89fa64eb2ec56cbda044a7a43c3d",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;

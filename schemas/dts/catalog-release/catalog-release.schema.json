@@ -454,23 +454,45 @@
         }
       }
     },
-    "subjectDocument": {
+    "source": {
+      "description": "Exact authoritative YAML source provenance; digest covers source bytes before parsing or normalization.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "path",
-        "kind",
-        "digest",
-        "content"
+        "mediaType",
+        "digest"
       ],
       "properties": {
         "path": {
           "$ref": "#/$defs/relativePath"
         },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "subjectDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "kind",
+        "normalizedDigest",
+        "content"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
         "kind": {
           "const": "subject"
         },
-        "digest": {
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Subject content, distinct from the YAML source digest.",
           "$ref": "#/$defs/digest"
         },
         "content": {
@@ -482,19 +504,20 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "path",
+        "source",
         "kind",
-        "digest",
+        "normalizedDigest",
         "content"
       ],
       "properties": {
-        "path": {
-          "$ref": "#/$defs/relativePath"
+        "source": {
+          "$ref": "#/$defs/source"
         },
         "kind": {
           "const": "alias"
         },
-        "digest": {
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Alias content, distinct from the YAML source digest.",
           "$ref": "#/$defs/digest"
         },
         "content": {
@@ -506,19 +529,20 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "path",
+        "source",
         "kind",
-        "digest",
+        "normalizedDigest",
         "content"
       ],
       "properties": {
-        "path": {
-          "$ref": "#/$defs/relativePath"
+        "source": {
+          "$ref": "#/$defs/source"
         },
         "kind": {
           "const": "definition"
         },
-        "digest": {
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Definition content, distinct from the YAML source digest.",
           "$ref": "#/$defs/digest"
         },
         "content": {

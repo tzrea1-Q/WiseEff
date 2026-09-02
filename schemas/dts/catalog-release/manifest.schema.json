@@ -9,7 +9,8 @@
     "schemaVersion",
     "release",
     "toolchain",
-    "files"
+    "files",
+    "documents"
   ],
   "properties": {
     "schemaVersion": {
@@ -22,11 +23,21 @@
       "$ref": "#/$defs/toolchain"
     },
     "files": {
+      "description": "Exact manifest-listed YAML source files; each digest covers the unmodified source bytes.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/file"
+      }
+    },
+    "documents": {
+      "description": "Normalized compiler documents derived from the listed YAML sources; these digests never replace source-byte digests.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/document"
       }
     }
   },
@@ -118,16 +129,38 @@
       }
     },
     "file": {
+      "description": "One authoritative YAML source file and the SHA-256 of its exact bytes.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "path",
-        "kind",
-        "digest",
-        "mediaType"
+        "mediaType",
+        "digest"
       ],
       "properties": {
         "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "document": {
+      "description": "One normalized catalog document with explicit source lineage and a digest of canonical normalized content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "kind",
+        "documentId",
+        "normalizedDigest"
+      ],
+      "properties": {
+        "sourcePath": {
           "$ref": "#/$defs/relativePath"
         },
         "kind": {
@@ -137,11 +170,11 @@
             "definition"
           ]
         },
-        "digest": {
-          "$ref": "#/$defs/digest"
+        "documentId": {
+          "$ref": "#/$defs/contractString"
         },
-        "mediaType": {
-          "const": "application/json"
+        "normalizedDigest": {
+          "$ref": "#/$defs/digest"
         }
       }
     }

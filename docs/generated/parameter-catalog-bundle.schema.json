@@ -74,20 +74,21 @@
         "content": {
           "$ref": "#/$defs/aliasContent"
         },
-        "digest": {
-          "$ref": "#/$defs/digest"
-        },
         "kind": {
           "const": "alias"
         },
-        "path": {
-          "$ref": "#/$defs/relativePath"
+        "normalizedDigest": {
+          "$ref": "#/$defs/digest",
+          "description": "SHA-256 of canonical normalized Alias content, distinct from the YAML source digest."
+        },
+        "source": {
+          "$ref": "#/$defs/source"
         }
       },
       "required": [
-        "path",
+        "source",
         "kind",
-        "digest",
+        "normalizedDigest",
         "content"
       ],
       "type": "object"
@@ -127,20 +128,21 @@
         "content": {
           "$ref": "#/$defs/definitionContent"
         },
-        "digest": {
-          "$ref": "#/$defs/digest"
-        },
         "kind": {
           "const": "definition"
         },
-        "path": {
-          "$ref": "#/$defs/relativePath"
+        "normalizedDigest": {
+          "$ref": "#/$defs/digest",
+          "description": "SHA-256 of canonical normalized Definition content, distinct from the YAML source digest."
+        },
+        "source": {
+          "$ref": "#/$defs/source"
         }
       },
       "required": [
-        "path",
+        "source",
         "kind",
-        "digest",
+        "normalizedDigest",
         "content"
       ],
       "type": "object"
@@ -290,11 +292,12 @@
           "pattern": "^sha256:[0-9a-f]{64}$",
           "type": "string"
         },
-        "file": {
+        "document": {
           "additionalProperties": false,
+          "description": "One normalized catalog document with explicit source lineage and a digest of canonical normalized content.",
           "properties": {
-            "digest": {
-              "$ref": "#/$defs/digest"
+            "documentId": {
+              "$ref": "#/$defs/contractString"
             },
             "kind": {
               "enum": [
@@ -303,8 +306,30 @@
                 "definition"
               ]
             },
+            "normalizedDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "sourcePath": {
+              "$ref": "#/$defs/relativePath"
+            }
+          },
+          "required": [
+            "sourcePath",
+            "kind",
+            "documentId",
+            "normalizedDigest"
+          ],
+          "type": "object"
+        },
+        "file": {
+          "additionalProperties": false,
+          "description": "One authoritative YAML source file and the SHA-256 of its exact bytes.",
+          "properties": {
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
             "mediaType": {
-              "const": "application/json"
+              "const": "application/yaml"
             },
             "path": {
               "$ref": "#/$defs/relativePath"
@@ -312,9 +337,8 @@
           },
           "required": [
             "path",
-            "kind",
-            "digest",
-            "mediaType"
+            "mediaType",
+            "digest"
           ],
           "type": "object"
         },
@@ -400,7 +424,17 @@
       "additionalProperties": false,
       "description": "Closed manifest for one immutable Catalog Release and every authoritative document shipped with it.",
       "properties": {
+        "documents": {
+          "description": "Normalized compiler documents derived from the listed YAML sources; these digests never replace source-byte digests.",
+          "items": {
+            "$ref": "#/$defs/document"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
         "files": {
+          "description": "Exact manifest-listed YAML source files; each digest covers the unmodified source bytes.",
           "items": {
             "$ref": "#/$defs/file"
           },
@@ -422,7 +456,8 @@
         "schemaVersion",
         "release",
         "toolchain",
-        "files"
+        "files",
+        "documents"
       ],
       "title": "WiseEff Catalog Release manifest",
       "type": "object"
@@ -519,6 +554,27 @@
         "kind",
         "value",
         "provenance"
+      ],
+      "type": "object"
+    },
+    "source": {
+      "additionalProperties": false,
+      "description": "Exact authoritative YAML source provenance; digest covers source bytes before parsing or normalization.",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      },
+      "required": [
+        "path",
+        "mediaType",
+        "digest"
       ],
       "type": "object"
     },
@@ -673,16 +729,32 @@
           }
         },
         "manifestRules": {
-          "documentDigest": {
+          "documentMatchPointers": [
+            {
+              "documentPointer": "/source/path",
+              "manifestPointer": "/sourcePath"
+            },
+            {
+              "documentPointer": "/kind",
+              "manifestPointer": "/kind"
+            },
+            {
+              "documentPointer": "/content/id",
+              "manifestPointer": "/documentId"
+            },
+            {
+              "documentPointer": "/normalizedDigest",
+              "manifestPointer": "/normalizedDigest"
+            }
+          ],
+          "exactDocumentSet": true,
+          "exactSourceSet": true,
+          "normalizedDocumentDigest": {
             "algorithm": "sha256",
             "canonicalization": "parameter-catalog-contract-serialize",
-            "contentPointer": "/content"
+            "contentPointer": "/content",
+            "digestPointer": "/normalizedDigest"
           },
-          "exactDocumentSet": true,
-          "matchPointers": [
-            "/kind",
-            "/digest"
-          ],
           "releaseAggregateDigest": {
             "algorithm": "sha256",
             "canonicalization": "parameter-catalog-contract-serialize",
@@ -695,21 +767,48 @@
               "/manifest/release/predecessor",
               "/manifest/toolchain",
               "/manifest/files",
+              "/manifest/documents",
               "/documents"
             ],
             "sortedCollections": [
               {
                 "comparator": "ecmascript-utf16-code-unit",
-                "keyPointer": "/path",
+                "keyPointers": [
+                  "/path"
+                ],
                 "pointer": "/manifest/files"
               },
               {
                 "comparator": "ecmascript-utf16-code-unit",
-                "keyPointer": "/path",
+                "keyPointers": [
+                  "/kind",
+                  "/documentId"
+                ],
+                "pointer": "/manifest/documents"
+              },
+              {
+                "comparator": "ecmascript-utf16-code-unit",
+                "keyPointers": [
+                  "/kind",
+                  "/content/id"
+                ],
                 "pointer": "/documents"
               }
             ]
-          }
+          },
+          "sourceDocumentDigest": {
+            "algorithm": "sha256",
+            "bytes": "exact-source-bytes",
+            "digestPointer": "/source/digest",
+            "mediaType": "application/yaml",
+            "mediaTypePointer": "/source/mediaType",
+            "pathPointer": "/source/path"
+          },
+          "sourceMatchPointers": [
+            "/source/path",
+            "/source/mediaType",
+            "/source/digest"
+          ]
         },
         "membershipRules": {
           "activeAliasRequiresActiveSubject": true,
@@ -935,20 +1034,21 @@
         "content": {
           "$ref": "#/$defs/subjectContent"
         },
-        "digest": {
-          "$ref": "#/$defs/digest"
-        },
         "kind": {
           "const": "subject"
         },
-        "path": {
-          "$ref": "#/$defs/relativePath"
+        "normalizedDigest": {
+          "$ref": "#/$defs/digest",
+          "description": "SHA-256 of canonical normalized Subject content, distinct from the YAML source digest."
+        },
+        "source": {
+          "$ref": "#/$defs/source"
         }
       },
       "required": [
-        "path",
+        "source",
         "kind",
-        "digest",
+        "normalizedDigest",
         "content"
       ],
       "type": "object"
