@@ -1,0 +1,628 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiseeff.dev/schemas/dts/catalog-release/catalog-release.schema.json",
+  "title": "WiseEff immutable Catalog Release bundle",
+  "description": "Closed, versioned publication bundle containing one target release and its complete supported predecessor lineage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "targetReleaseId",
+    "releases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "targetReleaseId": {
+      "$ref": "#/$defs/contractString"
+    },
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/releaseNode"
+      }
+    }
+  },
+  "$defs": {
+    "contractString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/contractString"
+        },
+        "sourceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reviewReference": {
+          "$ref": "#/$defs/contractString"
+        }
+      }
+    },
+    "tombstone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "withdrawnByReleaseId",
+        "previousSelector"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/contractString"
+        },
+        "withdrawnByReleaseId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "previousSelector": {
+          "$ref": "#/$defs/contractString"
+        },
+        "successorId": {
+          "$ref": "#/$defs/contractString"
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value",
+        "provenance"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/contractString"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "driverSubtype": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nature",
+        "cardinality"
+      ],
+      "properties": {
+        "nature": {
+          "enum": [
+            "physical-device",
+            "logical-service"
+          ]
+        },
+        "cardinality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "multiple",
+                "singleton-per-project"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nodeTypeSubtype": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "subjectContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "canonicalKey",
+        "lifecycle",
+        "selector",
+        "subtype",
+        "tombstone"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "kind": {
+          "enum": [
+            "driver",
+            "node-type"
+          ]
+        },
+        "canonicalKey": {
+          "$ref": "#/$defs/contractString"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "retired"
+          ]
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "subtype": {
+          "type": "object"
+        },
+        "tombstone": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "retired"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tombstone": {
+                "$ref": "#/$defs/tombstone"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "tombstone": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "driver"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "driver-compatible"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "subtype": {
+                "$ref": "#/$defs/driverSubtype"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "node-type-name"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "subtype": {
+                "$ref": "#/$defs/nodeTypeSubtype"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "aliasContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "subjectId",
+        "selectorKind",
+        "normalizedSelector",
+        "lifecycle",
+        "selectorProvenance",
+        "tombstone"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "selectorKind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "normalizedSelector": {
+          "$ref": "#/$defs/contractString"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "retired"
+          ]
+        },
+        "selectorProvenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "tombstone": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "retired"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tombstone": {
+                "$ref": "#/$defs/tombstone"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "tombstone": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "matching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceProperty",
+        "selectorKind"
+      ],
+      "properties": {
+        "sourceProperty": {
+          "$ref": "#/$defs/contractString"
+        },
+        "selectorKind": {
+          "enum": [
+            "driver-compatible",
+            "node-type-name"
+          ]
+        },
+        "notes": {
+          "$ref": "#/$defs/contractString"
+        }
+      }
+    },
+    "definitionRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "number",
+        "contentDigest",
+        "lifecycle",
+        "displayName",
+        "documentation",
+        "valueSchema",
+        "matching"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "contentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "deprecated",
+            "retired"
+          ]
+        },
+        "successorDefinitionId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "displayName": {
+          "$ref": "#/$defs/contractString"
+        },
+        "documentation": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/contractString"
+        },
+        "valueSchema": {
+          "type": "object"
+        },
+        "matching": {
+          "$ref": "#/$defs/matching"
+        },
+        "examples": {
+          "type": "array"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lifecycle": {
+                "const": "deprecated"
+              }
+            },
+            "required": [
+              "lifecycle"
+            ]
+          },
+          "then": {
+            "properties": {
+              "successorDefinitionId": {
+                "$ref": "#/$defs/contractString"
+              }
+            },
+            "required": [
+              "successorDefinitionId"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "successorDefinitionId"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "definitionContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "subjectId",
+        "propertyKey",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/contractString"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/contractString"
+        },
+        "propertyKey": {
+          "$ref": "#/$defs/contractString"
+        },
+        "revision": {
+          "$ref": "#/$defs/definitionRevision"
+        }
+      }
+    },
+    "source": {
+      "description": "Exact authoritative YAML source provenance; digest covers source bytes before parsing or normalization.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mediaType",
+        "digest"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "subjectDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "kind",
+        "normalizedDigest",
+        "content"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "kind": {
+          "const": "subject"
+        },
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Subject content, distinct from the YAML source digest.",
+          "$ref": "#/$defs/digest"
+        },
+        "content": {
+          "$ref": "#/$defs/subjectContent"
+        }
+      }
+    },
+    "aliasDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "kind",
+        "normalizedDigest",
+        "content"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "kind": {
+          "const": "alias"
+        },
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Alias content, distinct from the YAML source digest.",
+          "$ref": "#/$defs/digest"
+        },
+        "content": {
+          "$ref": "#/$defs/aliasContent"
+        }
+      }
+    },
+    "definitionDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "kind",
+        "normalizedDigest",
+        "content"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "kind": {
+          "const": "definition"
+        },
+        "normalizedDigest": {
+          "description": "SHA-256 of canonical normalized Definition content, distinct from the YAML source digest.",
+          "$ref": "#/$defs/digest"
+        },
+        "content": {
+          "$ref": "#/$defs/definitionContent"
+        }
+      }
+    },
+    "document": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/subjectDocument"
+        },
+        {
+          "$ref": "#/$defs/aliasDocument"
+        },
+        {
+          "$ref": "#/$defs/definitionDocument"
+        }
+      ]
+    },
+    "sourceInventoryEntry": {
+      "description": "The exact bytes of one manifest-listed authoritative YAML source, encoded losslessly for transport.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mediaType",
+        "encoding",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "mediaType": {
+          "const": "application/yaml"
+        },
+        "encoding": {
+          "const": "base64"
+        },
+        "bytes": {
+          "description": "Canonical padded base64 encoding of the exact, non-empty YAML source bytes.",
+          "type": "string",
+          "minLength": 4,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        }
+      }
+    },
+    "releaseNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest",
+        "sources",
+        "documents"
+      ],
+      "properties": {
+        "manifest": {
+          "$ref": "https://wiseeff.dev/schemas/dts/catalog-release/manifest.schema.json"
+        },
+        "sources": {
+          "description": "Exact raw-byte inventory for the manifest-listed YAML source set.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceInventoryEntry"
+          }
+        },
+        "documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/document"
+          },
+          "contains": {
+            "$ref": "#/$defs/subjectDocument"
+          },
+          "minContains": 1
+        }
+      }
+    }
+  }
+}
