@@ -292,7 +292,7 @@ describe("canonical Catalog privilege boundary and migration paths", () => {
     expect(freshFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(upgradeFingerprint).toBe(freshFingerprint);
     expect(freshFingerprint).toBe(
-      "f104588388f30947e57fdd4bd3d8f7ec5e1b650211892d25daf7118ff4326202",
+      "30649c2e35f476b5e083e3eeacbdff89a735a3ebc808a2d3d195b0e57f9c186f",
     );
   });
 });

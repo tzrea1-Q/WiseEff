@@ -96,6 +96,7 @@ create table parameter_catalog.catalog_releases (
   predecessor_release_id text references parameter_catalog.catalog_releases(id) on delete restrict,
   compiled_model_digest text not null check (compiled_model_digest <> '' and btrim(compiled_model_digest) = compiled_model_digest),
   toolchain_digest text not null check (toolchain_digest <> '' and btrim(toolchain_digest) = toolchain_digest),
+  published_at timestamptz not null,
   created_at timestamptz not null default now(),
   check (predecessor_release_id is null or predecessor_release_id <> id)
 );
@@ -376,6 +377,8 @@ create table parameter_catalog.catalog_release_definition_heads (
   definition_id text not null,
   revision_id text not null,
   primary key (release_id, definition_id),
+  constraint catalog_release_definition_head_revision_unique
+    unique (release_id, definition_id, revision_id),
   foreign key (definition_id)
     references parameter_catalog.parameter_definitions(id)
     on delete restrict
@@ -1037,6 +1040,12 @@ create table parameter_catalog.project_parameter_bindings (
     on delete restrict,
   foreign key (definition_id, effective_revision_id)
     references parameter_catalog.definition_revisions(definition_id, id)
+    on delete restrict,
+  constraint project_parameter_binding_release_revision_fk
+    foreign key (catalog_release_id, definition_id, effective_revision_id)
+    references parameter_catalog.catalog_release_definition_heads(
+      release_id, definition_id, revision_id
+    )
     on delete restrict
 );
 
@@ -1172,6 +1181,655 @@ for each row execute function parameter_catalog.reject_immutable_catalog_change(
 -- Typed legacy identity, Archive, and cutover persistence.  These relations are
 -- storage contracts only; phase orchestration belongs to S7 and is intentionally
 -- absent from this migration.
+create function parameter_catalog.legacy_identity_source_registry()
+returns table (
+  source_kind text,
+  mapping_class text,
+  source_relation text,
+  primary_key_fields text[],
+  owner_extractor text,
+  archive_only boolean
+)
+language sql
+immutable
+set search_path = pg_catalog, parameter_catalog
+as $registry$
+select registry.*
+from (values
+  ('parameter-spec', 'formal-definition', 'public.parameter_specs', array['id']::text[], 'parameter-spec-owner', false),
+  ('parameter-spec-version', 'formal-definition', 'public.parameter_spec_versions', array['id']::text[], 'parameter-spec-parent-owner', false),
+  ('driver-schema', 'formal-definition', 'public.driver_schemas', array['id']::text[], 'driver-schema-owner', false),
+  ('driver-schema-version', 'formal-definition', 'public.driver_schema_versions', array['id']::text[], 'driver-schema-parent-owner', false),
+  ('dts-property-spec', 'formal-definition', 'public.dts_property_specs', array['id']::text[], 'property-spec-schema-owner', false),
+  ('parameter-subject', 'formal-subject', 'public.attribution_subjects', array['id']::text[], 'subject-owner', false),
+  ('parameter-module', 'module-placement', 'public.parameter_modules', array['id']::text[], 'module-organization-owner', false),
+  ('parameter-placement', 'module-placement', 'public.driver_registration_placements', array['id']::text[], 'placement-organization-owner', false),
+  ('parameter-module-mapping', 'module-placement', 'public.parameter_module_mappings', array['id']::text[], 'module-mapping-parent-owner', false),
+  ('parameter-module-dismissed-compatible', 'module-placement', 'public.parameter_module_dismissed_compatibles', array['id']::text[], 'dismissed-compatible-organization-owner', false),
+  ('driver-schema-overlay', 'overlay-publication', 'public.driver_schema_overlays', array['id']::text[], 'overlay-organization-owner', false),
+  ('driver-schema-overlay-property', 'overlay-publication', 'public.driver_schema_overlay_properties', array['id']::text[], 'overlay-property-parent-owner', false),
+  ('driver-schema-overlay-promotion', 'overlay-publication', 'public.driver_schema_overlay_promotions', array['id']::text[], 'overlay-promotion-source-owner', false),
+  ('dts-config-revision', 'observation-match', 'public.dts_config_revisions', array['id']::text[], 'config-project-owner', false),
+  ('dts-logical-node', 'observation-match', 'public.dts_logical_nodes', array['id']::text[], 'logical-node-project-owner', false),
+  ('dts-logical-node-revision', 'observation-match', 'public.dts_logical_node_revisions', array['id']::text[], 'logical-node-revision-lineage-owner', false),
+  ('dts-node-occurrence', 'observation-match', 'public.dts_node_occurrences', array['id']::text[], 'occurrence-config-owner', false),
+  ('dts-property-occurrence', 'observation-match', 'public.dts_property_occurrences', array['id']::text[], 'occurrence-config-owner', false),
+  ('dts-occurrence-effect', 'observation-match', 'public.dts_occurrence_effects', array['id']::text[], 'effect-lineage-owner', false),
+  ('dts-property-occurrence-spec-decision', 'observation-match', 'public.dts_property_occurrence_spec_decisions', array['id']::text[], 'decision-project-owner', false),
+  ('project-parameter-binding', 'binding-value', 'public.project_parameter_bindings', array['id']::text[], 'binding-project-owner', false),
+  ('project-parameter-binding-revision', 'binding-value', 'public.project_parameter_binding_revisions', array['id']::text[], 'binding-revision-parent-owner', false),
+  ('legacy-flat-parameter-definition', 'legacy-semantic-store', 'public.parameter_definitions', array['id']::text[], 'flat-definition-organization-owner', false),
+  ('legacy-flat-project-parameter-value', 'legacy-semantic-store', 'public.project_parameter_values', array['id']::text[], 'flat-value-project-owner', false),
+  ('parameter-draft', 'draft-review', 'public.parameter_drafts', array['id']::text[], 'workflow-project-owner', false),
+  ('parameter-submission-round', 'draft-review', 'public.parameter_submission_rounds', array['id']::text[], 'workflow-project-owner', false),
+  ('parameter-submission-item', 'draft-review', 'public.parameter_submission_items', array['id']::text[], 'submission-item-parent-owner', false),
+  ('parameter-change-request', 'draft-review', 'public.parameter_change_requests', array['id']::text[], 'workflow-project-owner', false),
+  ('parameter-review-decision', 'draft-review', 'public.parameter_review_decisions', array['id']::text[], 'review-decision-request-owner', false),
+  ('parameter-spec-review-task', 'draft-review', 'public.parameter_spec_review_tasks', array['id']::text[], 'review-task-project-or-organization-owner', false),
+  ('parameter-spec-matcher-override', 'draft-review', 'public.parameter_spec_matcher_overrides', array['id']::text[], 'workflow-project-owner', false),
+  ('parameter-file-sync-conflict', 'file-import-initialization', 'public.parameter_file_sync_conflicts', array['id']::text[], 'workflow-project-owner', false),
+  ('parameter-import-batch', 'file-import-initialization', 'public.parameter_import_batches', array['id']::text[], 'workflow-project-owner', false),
+  ('project-parameter-initialization-draft', 'file-import-initialization', 'public.project_parameter_initialization_drafts', array['id']::text[], 'workflow-project-owner', false),
+  ('project-parameter-initialization-review', 'file-import-initialization', 'public.project_parameter_initialization_reviews', array['id']::text[], 'initialization-review-project-owner', false),
+  ('parameter-definition-reconciliation-run', 'migration-history', 'public.parameter_definition_reconciliation_runs', array['id']::text[], 'reconciliation-organization-owner', false),
+  ('parameter-definition-reconciliation-item', 'migration-history', 'public.parameter_definition_reconciliation_items', array['id']::text[], 'reconciliation-item-parent-owner', false),
+  ('parameter-spec-version-cutover-run', 'migration-history', 'public.parameter_spec_version_cutover_runs', array['id']::text[], 'cutover-run-organization-owner', false),
+  ('parameter-spec-version-cutover-item', 'migration-history', 'public.parameter_spec_version_cutover_items', array['id']::text[], 'cutover-item-project-owner', false),
+  ('parameter-spec-property-key-cutover-run', 'migration-history', 'public.parameter_spec_property_key_cutover_runs', array['id']::text[], 'cutover-run-organization-owner', false),
+  ('parameter-spec-property-key-cutover-item', 'migration-history', 'public.parameter_spec_property_key_cutover_items', array['id']::text[], 'cutover-item-project-owner', false),
+  ('parameter-identity-migration-run', 'migration-history', 'public.parameter_identity_migration_runs', array['id']::text[], 'platform-migration-owner', false),
+  ('parameter-identity-migration-phase', 'migration-history', 'public.parameter_identity_migration_phases', array['id']::text[], 'migration-phase-parent-owner', false),
+  ('parameter-identity-cutover', 'migration-history', 'public.parameter_identity_cutovers', array['id']::text[], 'migration-cutover-parent-owner', false),
+  ('parameter-history-entry', 'migration-history', 'public.parameter_history_entries', array['id']::text[], 'history-project-or-organization-owner', false),
+  ('legacy-parameter-migration-evidence', 'migration-history', 'public.legacy_parameter_migration_evidence', array['id']::text[], 'migration-evidence-organization-owner', false),
+  ('parameter-policy-target', 'policy-audit-protected', 'public.parameter_policy_targets', array['id']::text[], 'policy-organization-owner', false),
+  ('audit-subject-link', 'policy-audit-protected', 'public.audit_subject_links', array['auditEventId', 'subjectKind', 'semanticId']::text[], 'audit-event-project-or-organization', false),
+  ('unresolved-protected-reference', 'policy-audit-protected', null::text, array['consumerTable', 'consumerPrimaryKey', 'column', 'rawReferencedId']::text[], 'embedded-protected-reference-owner', true)
+) as registry(source_kind, mapping_class, source_relation, primary_key_fields, owner_extractor, archive_only)
+$registry$;
+
+revoke all on function parameter_catalog.legacy_identity_source_registry() from public;
+
+create function parameter_catalog.serialize_legacy_source_key(
+  ordered_field_names text[],
+  ordered_field_values text[]
+)
+returns text
+language plpgsql
+immutable
+strict
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  field_index integer;
+  serialized text := E'{\n';
+begin
+  if cardinality(ordered_field_names) = 0
+     or cardinality(ordered_field_names) is distinct from cardinality(ordered_field_values)
+     or exists (
+       select 1
+       from generate_subscripts(ordered_field_names, 1) field_position
+       where ordered_field_names[field_position] is null
+          or ordered_field_values[field_position] is null
+          or ordered_field_names[field_position] = ''
+          or ordered_field_values[field_position] = ''
+          or (
+            field_position > 1
+            and ordered_field_names[field_position - 1] >= ordered_field_names[field_position]
+          )
+     ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Composite legacy source fields must be non-empty and byte-sorted',
+      constraint = 'legacy_identity_composite_source_ck';
+  end if;
+
+  for field_index in 1 .. cardinality(ordered_field_names) loop
+    if field_index > 1 then
+      serialized := serialized || E',\n';
+    end if;
+    serialized := serialized
+      || '  '
+      || pg_catalog.to_json(ordered_field_names[field_index])::text
+      || ': '
+      || pg_catalog.to_json(ordered_field_values[field_index])::text;
+  end loop;
+
+  return serialized || E'\n}\n';
+end;
+$$;
+
+revoke all on function parameter_catalog.serialize_legacy_source_key(text[], text[]) from public;
+
+create function parameter_catalog.resolve_legacy_identity_owner(
+  requested_source_kind text,
+  requested_source_id text
+)
+returns table (owner_scope_kind text, owner_scope_id text)
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  source_payload jsonb;
+  expected_source_id text;
+  consumer_source_kind text;
+begin
+  case requested_source_kind
+    when 'parameter-spec' then
+      return query
+      select
+        case when spec.organization_id is null then 'platform' else 'organization' end,
+        coalesce(spec.organization_id, 'platform')
+      from public.parameter_specs spec
+      where spec.id = requested_source_id;
+    when 'parameter-spec-version' then
+      return query
+      select
+        case when spec.organization_id is null then 'platform' else 'organization' end,
+        coalesce(spec.organization_id, 'platform')
+      from public.parameter_spec_versions version
+      join public.parameter_specs spec on spec.id = version.parameter_spec_id
+      where version.id = requested_source_id;
+    when 'driver-schema' then
+      return query
+      select
+        case when schema_record.organization_id is null then 'platform' else 'organization' end,
+        coalesce(schema_record.organization_id, 'platform')
+      from public.driver_schemas schema_record
+      join public.parameter_specs root on root.id = schema_record.parameter_spec_id
+      left join public.attribution_subjects subject
+        on subject.id = schema_record.attribution_subject_id
+      where schema_record.id = requested_source_id
+        and root.organization_id is not distinct from schema_record.organization_id
+        and (
+          schema_record.attribution_subject_id is null
+          or subject.organization_id is not distinct from schema_record.organization_id
+        );
+    when 'driver-schema-version' then
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from public.driver_schema_versions version
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'driver-schema', version.driver_schema_id
+      ) owner
+      where version.id = requested_source_id;
+    when 'dts-property-spec' then
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from public.dts_property_specs property
+      join public.driver_schemas schema_record on schema_record.id = property.driver_schema_id
+      join public.parameter_specs spec on spec.id = property.parameter_spec_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'driver-schema', schema_record.id
+      ) owner
+      where property.id = requested_source_id
+        and spec.organization_id is not distinct from schema_record.organization_id
+        and spec.attribution_subject_id is not distinct from schema_record.attribution_subject_id;
+    when 'parameter-subject' then
+      return query
+      select
+        case when subject.organization_id is null then 'platform' else 'organization' end,
+        coalesce(subject.organization_id, 'platform')
+      from public.attribution_subjects subject
+      where subject.id = requested_source_id;
+    when 'parameter-module' then
+      return query
+      select 'organization', module.organization_id
+      from public.parameter_modules module
+      where module.id = requested_source_id;
+    when 'parameter-placement' then
+      return query
+      select 'organization', placement.organization_id
+      from public.driver_registration_placements placement
+      join public.parameter_modules module
+        on module.id = placement.driver_group_module_id
+       and module.organization_id = placement.organization_id
+      join public.attribution_subjects subject
+        on subject.id = placement.attribution_subject_id
+       and subject.organization_id = placement.organization_id
+      where placement.id = requested_source_id;
+    when 'parameter-module-mapping' then
+      return query
+      select 'organization', mapping.organization_id
+      from public.parameter_module_mappings mapping
+      join public.parameter_modules module
+        on module.id = mapping.parameter_module_id
+       and module.organization_id = mapping.organization_id
+      where mapping.id = requested_source_id;
+    when 'parameter-module-dismissed-compatible' then
+      return query
+      select 'organization', dismissed.organization_id
+      from public.parameter_module_dismissed_compatibles dismissed
+      where dismissed.id = requested_source_id;
+    when 'driver-schema-overlay' then
+      return query
+      select
+        case when overlay.organization_id is null then 'platform' else 'organization' end,
+        coalesce(overlay.organization_id, 'platform')
+      from public.driver_schema_overlays overlay
+      where overlay.id = requested_source_id;
+    when 'driver-schema-overlay-property' then
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from public.driver_schema_overlay_properties property
+      join public.driver_schema_overlays overlay on overlay.id = property.driver_schema_overlay_id
+      join public.parameter_specs spec on spec.id = property.parameter_spec_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'driver-schema-overlay', overlay.id
+      ) owner
+      where property.id = requested_source_id
+        and spec.organization_id is not distinct from overlay.organization_id;
+    when 'driver-schema-overlay-promotion' then
+      return query
+      select 'organization', promotion.source_organization_id
+      from public.driver_schema_overlay_promotions promotion
+      join public.driver_schema_overlays source_overlay
+        on source_overlay.id = promotion.source_schema_id
+       and source_overlay.organization_id = promotion.source_organization_id
+      join public.driver_schema_overlays platform_overlay
+        on platform_overlay.id = promotion.platform_schema_id
+       and platform_overlay.organization_id is null
+      where promotion.id = requested_source_id;
+    when 'dts-config-revision' then
+      return query
+      select 'project', revision.project_id
+      from public.dts_config_revisions revision
+      join public.projects project
+        on project.id = revision.project_id
+       and project.organization_id = revision.organization_id
+      join public.dts_config_set config_set
+        on config_set.id = revision.config_set_id
+       and config_set.project_id = revision.project_id
+       and config_set.organization_id = revision.organization_id
+      where revision.id = requested_source_id;
+    when 'dts-logical-node' then
+      return query
+      select 'project', node.project_id
+      from public.dts_logical_nodes node
+      join public.projects project
+        on project.id = node.project_id
+       and project.organization_id = node.organization_id
+      join public.dts_config_set config_set
+        on config_set.id = node.config_set_id
+       and config_set.project_id = node.project_id
+       and config_set.organization_id = node.organization_id
+      where node.id = requested_source_id;
+    when 'dts-logical-node-revision' then
+      return query
+      select 'project', node.project_id
+      from public.dts_logical_node_revisions revision
+      join public.dts_logical_nodes node on node.id = revision.logical_node_id
+      join public.dts_config_revisions config_revision
+        on config_revision.id = revision.config_revision_id
+       and config_revision.project_id = node.project_id
+       and config_revision.organization_id = node.organization_id
+       and config_revision.config_set_id = node.config_set_id
+      where revision.id = requested_source_id;
+    when 'dts-node-occurrence' then
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from public.dts_node_occurrences occurrence
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-config-revision', occurrence.config_revision_id
+      ) owner
+      where occurrence.id = requested_source_id;
+    when 'dts-property-occurrence' then
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from public.dts_property_occurrences occurrence
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-config-revision', occurrence.config_revision_id
+      ) owner
+      where occurrence.id = requested_source_id;
+    when 'dts-occurrence-effect' then
+      return query
+      select config_owner.owner_scope_kind, config_owner.owner_scope_id
+      from public.dts_occurrence_effects effect
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-config-revision', effect.config_revision_id
+      ) config_owner
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-logical-node-revision', effect.logical_node_revision_id
+      ) logical_owner
+      where effect.id = requested_source_id
+        and config_owner.owner_scope_kind = logical_owner.owner_scope_kind
+        and config_owner.owner_scope_id = logical_owner.owner_scope_id;
+    when 'dts-property-occurrence-spec-decision' then
+      return query
+      select 'project', decision.project_id
+      from public.dts_property_occurrence_spec_decisions decision
+      join public.projects project
+        on project.id = decision.project_id
+       and project.organization_id = decision.organization_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-config-revision', decision.config_revision_id
+      ) config_owner
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-logical-node', decision.logical_node_id
+      ) logical_owner
+      where decision.id = requested_source_id
+        and config_owner.owner_scope_kind = 'project'
+        and config_owner.owner_scope_id = decision.project_id
+        and logical_owner.owner_scope_kind = 'project'
+        and logical_owner.owner_scope_id = decision.project_id;
+    when 'project-parameter-binding' then
+      return query
+      select 'project', binding.project_id
+      from public.project_parameter_bindings binding
+      join public.projects project
+        on project.id = binding.project_id
+       and project.organization_id = binding.organization_id
+      where binding.id = requested_source_id;
+    when 'project-parameter-binding-revision' then
+      return query
+      select binding_owner.owner_scope_kind, binding_owner.owner_scope_id
+      from public.project_parameter_binding_revisions revision
+      join public.project_parameter_bindings binding on binding.id = revision.binding_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'project-parameter-binding', binding.id
+      ) binding_owner
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'dts-config-revision', revision.config_revision_id
+      ) config_owner
+      where revision.id = requested_source_id
+        and binding_owner.owner_scope_kind = config_owner.owner_scope_kind
+        and binding_owner.owner_scope_id = config_owner.owner_scope_id;
+    when 'legacy-flat-parameter-definition' then
+      return query
+      select 'organization', definition.organization_id
+      from public.parameter_definitions definition
+      where definition.id = requested_source_id;
+    when 'legacy-flat-project-parameter-value' then
+      return query
+      select 'project', value.project_id
+      from public.project_parameter_values value
+      join public.projects project
+        on project.id = value.project_id
+       and project.organization_id = value.organization_id
+      where value.id = requested_source_id;
+    when 'parameter-draft' then
+      return query
+      select 'project', draft.project_id
+      from public.parameter_drafts draft
+      join public.projects project
+        on project.id = draft.project_id
+       and project.organization_id = draft.organization_id
+      where draft.id = requested_source_id;
+    when 'parameter-submission-round' then
+      return query
+      select 'project', round_record.project_id
+      from public.parameter_submission_rounds round_record
+      join public.projects project
+        on project.id = round_record.project_id
+       and project.organization_id = round_record.organization_id
+      where round_record.id = requested_source_id;
+    when 'parameter-submission-item' then
+      return query
+      select round_owner.owner_scope_kind, round_owner.owner_scope_id
+      from public.parameter_submission_items item
+      join public.parameter_submission_rounds round_record
+        on round_record.id = item.submission_round_id
+       and round_record.organization_id = item.organization_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'parameter-submission-round', round_record.id
+      ) round_owner
+      where item.id = requested_source_id;
+    when 'parameter-change-request' then
+      return query
+      select 'project', request.project_id
+      from public.parameter_change_requests request
+      join public.projects project
+        on project.id = request.project_id
+       and project.organization_id = request.organization_id
+      where request.id = requested_source_id;
+    when 'parameter-review-decision' then
+      return query
+      select request_owner.owner_scope_kind, request_owner.owner_scope_id
+      from public.parameter_review_decisions decision
+      join public.parameter_change_requests request
+        on request.id = decision.request_id
+       and request.organization_id = decision.organization_id
+      cross join lateral parameter_catalog.resolve_legacy_identity_owner(
+        'parameter-change-request', request.id
+      ) request_owner
+      where decision.id = requested_source_id;
+    when 'parameter-spec-review-task' then
+      return query
+      select
+        case when task.project_id is null then 'organization' else 'project' end,
+        coalesce(task.project_id, task.organization_id)
+      from public.parameter_spec_review_tasks task
+      left join public.projects project on project.id = task.project_id
+      where task.id = requested_source_id
+        and (
+          task.project_id is null
+          or project.organization_id = task.organization_id
+        );
+    when 'parameter-spec-matcher-override' then
+      return query
+      select 'project', override_record.project_id
+      from public.parameter_spec_matcher_overrides override_record
+      join public.projects project
+        on project.id = override_record.project_id
+       and project.organization_id = override_record.organization_id
+      where override_record.id = requested_source_id;
+    when 'parameter-file-sync-conflict' then
+      return query
+      select 'project', conflict.project_id
+      from public.parameter_file_sync_conflicts conflict
+      join public.projects project
+        on project.id = conflict.project_id
+       and project.organization_id = conflict.organization_id
+      where conflict.id = requested_source_id;
+    when 'parameter-import-batch' then
+      return query
+      select 'project', batch.project_id
+      from public.parameter_import_batches batch
+      join public.projects project
+        on project.id = batch.project_id
+       and project.organization_id = batch.organization_id
+      where batch.id = requested_source_id;
+    when 'project-parameter-initialization-draft' then
+      return query
+      select 'project', draft.project_id
+      from public.project_parameter_initialization_drafts draft
+      join public.projects project
+        on project.id = draft.project_id
+       and project.organization_id = draft.organization_id
+      where draft.id = requested_source_id;
+    when 'project-parameter-initialization-review' then
+      return query
+      select 'project', review.project_id
+      from public.project_parameter_initialization_reviews review
+      join public.project_parameter_initialization_drafts draft
+        on draft.id = review.draft_id
+       and draft.project_id = review.project_id
+       and draft.organization_id = review.organization_id
+      where review.id = requested_source_id;
+    when 'parameter-definition-reconciliation-run' then
+      return query
+      select 'organization', run.organization_id
+      from public.parameter_definition_reconciliation_runs run
+      where run.id = requested_source_id;
+    when 'parameter-definition-reconciliation-item' then
+      return query
+      select 'organization', item.organization_id
+      from public.parameter_definition_reconciliation_items item
+      join public.parameter_definition_reconciliation_runs run
+        on run.id = item.run_id
+       and run.organization_id = item.organization_id
+      where item.id = requested_source_id;
+    when 'parameter-spec-version-cutover-run' then
+      return query
+      select 'organization', run.organization_id
+      from public.parameter_spec_version_cutover_runs run
+      where run.id = requested_source_id;
+    when 'parameter-spec-version-cutover-item' then
+      return query
+      select 'project', item.project_id
+      from public.parameter_spec_version_cutover_items item
+      join public.parameter_spec_version_cutover_runs run on run.id = item.run_id
+      join public.projects project
+        on project.id = item.project_id
+       and project.organization_id = run.organization_id
+      where item.id = requested_source_id;
+    when 'parameter-spec-property-key-cutover-run' then
+      return query
+      select 'organization', run.organization_id
+      from public.parameter_spec_property_key_cutover_runs run
+      where run.id = requested_source_id;
+    when 'parameter-spec-property-key-cutover-item' then
+      return query
+      select 'project', item.project_id
+      from public.parameter_spec_property_key_cutover_items item
+      join public.parameter_spec_property_key_cutover_runs run on run.id = item.run_id
+      join public.projects project
+        on project.id = item.project_id
+       and project.organization_id = run.organization_id
+      where item.id = requested_source_id;
+    when 'parameter-identity-migration-run' then
+      return query
+      select 'platform', 'platform'
+      from public.parameter_identity_migration_runs run
+      where run.id = requested_source_id;
+    when 'parameter-identity-migration-phase' then
+      return query
+      select 'platform', 'platform'
+      from public.parameter_identity_migration_phases phase
+      join public.parameter_identity_migration_runs run on run.id = phase.migration_run_id
+      where phase.id = requested_source_id;
+    when 'parameter-identity-cutover' then
+      return query
+      select 'platform', 'platform'
+      from public.parameter_identity_cutovers cutover
+      join public.parameter_identity_migration_runs run on run.id = cutover.migration_run_id
+      where cutover.id = requested_source_id;
+    when 'parameter-history-entry' then
+      return query
+      select
+        case when history.project_id is null then 'organization' else 'project' end,
+        coalesce(history.project_id, history.organization_id)
+      from public.parameter_history_entries history
+      left join public.projects project on project.id = history.project_id
+      where history.id = requested_source_id
+        and (
+          history.project_id is null
+          or project.organization_id = history.organization_id
+        );
+    when 'legacy-parameter-migration-evidence' then
+      return query
+      select 'organization', evidence.organization_id
+      from public.legacy_parameter_migration_evidence evidence
+      where evidence.id = requested_source_id;
+    when 'parameter-policy-target' then
+      return query
+      select 'organization', policy.organization_id
+      from public.parameter_policy_targets policy
+      where policy.id = requested_source_id;
+    when 'audit-subject-link' then
+      begin
+        source_payload := requested_source_id::jsonb;
+      exception when others then
+        raise exception using
+          errcode = '23514',
+          message = 'Composite legacy source ID is not valid contract JSON',
+          constraint = 'legacy_identity_composite_source_ck';
+      end;
+      if jsonb_typeof(source_payload) <> 'object'
+         or (select count(*) from jsonb_object_keys(source_payload)) <> 3
+         or not source_payload ?& array['auditEventId', 'semanticId', 'subjectKind'] then
+        raise exception using
+          errcode = '23514',
+          message = 'Audit subject link source ID must contain its complete composite primary key',
+          constraint = 'legacy_identity_composite_source_ck';
+      end if;
+      expected_source_id := parameter_catalog.serialize_legacy_source_key(
+        array['auditEventId', 'semanticId', 'subjectKind'],
+        array[
+          source_payload ->> 'auditEventId',
+          source_payload ->> 'semanticId',
+          source_payload ->> 'subjectKind'
+        ]
+      );
+      if requested_source_id <> expected_source_id then
+        raise exception using
+          errcode = '23514',
+          message = 'Composite legacy source ID must use serializeContract bytes',
+          constraint = 'legacy_identity_composite_source_ck';
+      end if;
+      return query
+      select
+        case when event.project_id is null then 'organization' else 'project' end,
+        coalesce(event.project_id, event.organization_id)
+      from public.audit_subject_links link
+      join public.audit_events event on event.id = link.audit_event_id
+      where link.audit_event_id = source_payload ->> 'auditEventId'
+        and link.semantic_id = source_payload ->> 'semanticId'
+        and link.subject_kind = source_payload ->> 'subjectKind';
+    when 'unresolved-protected-reference' then
+      begin
+        source_payload := requested_source_id::jsonb;
+      exception when others then
+        raise exception using
+          errcode = '23514',
+          message = 'Protected reference source ID is not valid contract JSON',
+          constraint = 'legacy_identity_composite_source_ck';
+      end;
+      if jsonb_typeof(source_payload) <> 'object'
+         or (select count(*) from jsonb_object_keys(source_payload)) <> 4
+         or not source_payload ?& array[
+           'column', 'consumerPrimaryKey', 'consumerTable', 'rawReferencedId'
+         ] then
+        raise exception using
+          errcode = '23514',
+          message = 'Protected reference source ID must contain the complete consumer locator',
+          constraint = 'legacy_identity_composite_source_ck';
+      end if;
+      expected_source_id := parameter_catalog.serialize_legacy_source_key(
+        array['column', 'consumerPrimaryKey', 'consumerTable', 'rawReferencedId'],
+        array[
+          source_payload ->> 'column',
+          source_payload ->> 'consumerPrimaryKey',
+          source_payload ->> 'consumerTable',
+          source_payload ->> 'rawReferencedId'
+        ]
+      );
+      if requested_source_id <> expected_source_id then
+        raise exception using
+          errcode = '23514',
+          message = 'Protected reference source ID must use serializeContract bytes',
+          constraint = 'legacy_identity_composite_source_ck';
+      end if;
+      select registry.source_kind into consumer_source_kind
+      from parameter_catalog.legacy_identity_source_registry() registry
+      where registry.source_relation = source_payload ->> 'consumerTable'
+        and cardinality(registry.primary_key_fields) = 1
+      order by registry.source_kind
+      limit 1;
+      if consumer_source_kind is null then
+        raise exception using
+          errcode = '23514',
+          message = 'Protected reference consumer relation is outside the fixed source registry',
+          constraint = 'legacy_identity_protected_consumer_ck';
+      end if;
+      return query
+      select owner.owner_scope_kind, owner.owner_scope_id
+      from parameter_catalog.resolve_legacy_identity_owner(
+        consumer_source_kind,
+        source_payload ->> 'consumerPrimaryKey'
+      ) owner;
+    else
+      raise exception using
+        errcode = '23514',
+        message = 'Legacy identity source owner extractor is not registered',
+        constraint = 'legacy_identity_source_extractor_ck';
+  end case;
+end;
+$$;
+
+revoke all on function parameter_catalog.resolve_legacy_identity_owner(text, text) from public;
+
 create table parameter_catalog.legacy_identities (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   source_system text not null check (source_system <> '' and btrim(source_system) = source_system),
@@ -1236,6 +1894,53 @@ create table parameter_catalog.legacy_identities (
   unique (source_system, source_kind, owner_scope_kind, owner_scope_id, source_id),
   unique (id, owner_scope_kind, owner_scope_id)
 );
+
+create function parameter_catalog.assert_legacy_identity_source_owner()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, parameter_catalog
+as $$
+declare
+  derived_owner_scope_kind text;
+  derived_owner_scope_id text;
+begin
+  if new.owner_scope_kind = 'platform' and new.owner_scope_id <> 'platform' then
+    raise exception using
+      errcode = '23514',
+      message = 'Platform legacy identity owner tuple must use the reserved Platform ID',
+      constraint = 'legacy_identity_platform_owner_tuple';
+  end if;
+
+  select owner.owner_scope_kind, owner.owner_scope_id
+  into derived_owner_scope_kind, derived_owner_scope_id
+  from parameter_catalog.resolve_legacy_identity_owner(new.source_kind, new.source_id) owner;
+
+  if not found then
+    raise exception using
+      errcode = '23503',
+      message = 'Legacy identity source row does not exist or its ownership graph is incomplete',
+      constraint = 'legacy_identity_source_fk';
+  end if;
+
+  if new.owner_scope_kind is distinct from derived_owner_scope_kind
+     or new.owner_scope_id is distinct from derived_owner_scope_id then
+    raise exception using
+      errcode = '23503',
+      message = 'Legacy identity owner differs from the fixed source owner extractor',
+      constraint = 'legacy_identity_source_owner_fk';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function parameter_catalog.assert_legacy_identity_source_owner() from public;
+
+create trigger legacy_identity_source_owner_fk
+before insert or update of source_kind, source_id, owner_scope_kind, owner_scope_id
+on parameter_catalog.legacy_identities
+for each row execute function parameter_catalog.assert_legacy_identity_source_owner();
 
 create table parameter_catalog.parameter_catalog_cutover_runs (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
@@ -2276,6 +2981,12 @@ create table parameter_catalog.parameter_observation_matches (
     on delete restrict,
   foreign key (definition_id, definition_revision_id)
     references parameter_catalog.definition_revisions(definition_id, id)
+    on delete restrict,
+  constraint parameter_observation_match_release_revision_fk
+    foreign key (catalog_release_id, definition_id, definition_revision_id)
+    references parameter_catalog.catalog_release_definition_heads(
+      release_id, definition_id, revision_id
+    )
     on delete restrict
 );
 
