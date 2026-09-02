@@ -454,6 +454,16 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
           and member.rolcanlogin
         order by granted.rolname, member.rolname
       `);
+  const publicOwnerGrants = await query<{
+    table_name: string;
+    privilege_type: string;
+  }>(`
+        select table_name, privilege_type
+        from information_schema.role_table_grants
+        where table_schema = 'public'
+          and grantee = 'catalog_migration_owner'
+        order by table_name, privilege_type
+      `);
 
   return createHash("sha256")
     .update(
@@ -465,6 +475,7 @@ async function aclFingerprint(db: Database | pg.Client): Promise<string> {
         functionExecute,
         schemaUsage,
         members,
+        publicOwnerGrants,
       }),
     )
     .digest("hex");
@@ -1047,6 +1058,74 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         and member.rolcanlogin
     `, [[...CATALOG_ROLES]]);
     expect(members.rows).toEqual([]);
+  });
+
+  it("DEFINER owner extractor retains SELECT on public source tables after ownership transfer", async () => {
+    const missing = await client.query<{
+      function_name: string;
+      table_name: string;
+    }>(`
+      with refs as (
+        select
+          procedure.proname as function_name,
+          match[1] as table_name
+        from pg_catalog.pg_proc procedure
+        join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+        cross join lateral pg_catalog.regexp_matches(
+          pg_catalog.pg_get_functiondef(procedure.oid),
+          'public\\.([a-z_][a-z0-9_]*)',
+          'g'
+        ) as match
+        where namespace.nspname = 'parameter_catalog'
+          and procedure.prosecdef
+      )
+      select distinct function_name, table_name
+      from refs
+      where not pg_catalog.has_table_privilege(
+        'catalog_migration_owner',
+        format('public.%I', table_name),
+        'select'
+      )
+      order by function_name, table_name
+    `);
+    expect(missing.rows).toEqual([]);
+
+    await client.query(`
+      insert into public.organizations (id, name)
+      values ('org-s2r-legacy-owner', 'S2-RBAC legacy owner')
+    `);
+    await client.query(`
+      insert into public.parameter_specs (
+        id, organization_id, source_kind, specification_key, definition_lifecycle
+      ) values (
+        'source-s2r-legacy-owner', 'org-s2r-legacy-owner', 'manual',
+        'source-s2r-legacy-owner', 'draft'
+      )
+    `);
+
+    const inserted = await client.query(`
+      insert into parameter_catalog.legacy_identities (
+        id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+      ) values (
+        'lid-s2r-legacy-owner', 'legacy', 'parameter-spec', 'organization',
+        'org-s2r-legacy-owner', 'source-s2r-legacy-owner'
+      )
+    `);
+    expect(inserted.rowCount).toBe(1);
+
+    const resolved = await client.query<{
+      owner_scope_kind: string;
+      owner_scope_id: string;
+    }>(`
+      select owner_scope_kind, owner_scope_id
+      from parameter_catalog.resolve_legacy_identity_owner(
+        'parameter-spec',
+        'source-s2r-legacy-owner'
+      )
+    `);
+    expect(resolved.rows).toEqual([
+      { owner_scope_kind: "organization", owner_scope_id: "org-s2r-legacy-owner" },
+    ]);
   });
 });
 

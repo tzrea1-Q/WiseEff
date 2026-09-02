@@ -4,6 +4,9 @@
 --   catalog_migration_owner (NOLOGIN)
 --     owns parameter_catalog and every relation/function in it
 --     SELECT on public FK targets needed for internal referential-integrity checks
+--     SELECT on every public relation read by SECURITY DEFINER Catalog functions,
+--       including resolve_legacy_identity_owner, so ownership transfer does not
+--       42501 on public.parameter_specs and the rest of the source graph
 --     UPDATE on public.parameter_modules so the SECURITY DEFINER placement
 --       lock can SELECT ... FOR SHARE without writer table grants
 --   catalog_synchronizer_role (NOLOGIN)
@@ -107,9 +110,58 @@ $$;
 
 grant usage on schema public to catalog_migration_owner;
 grant select on table
+  public.attribution_subjects,
+  public.audit_events,
+  public.audit_subject_links,
+  public.driver_registration_placements,
+  public.driver_schema_overlay_promotions,
+  public.driver_schema_overlay_properties,
+  public.driver_schema_overlays,
+  public.driver_schema_versions,
+  public.driver_schemas,
+  public.dts_config_revisions,
+  public.dts_config_set,
+  public.dts_logical_node_revisions,
+  public.dts_logical_nodes,
+  public.dts_node_occurrences,
+  public.dts_occurrence_effects,
+  public.dts_property_occurrence_spec_decisions,
+  public.dts_property_occurrences,
+  public.dts_property_specs,
+  public.legacy_parameter_migration_evidence,
   public.organizations,
-  public.projects,
-  public.parameter_modules
+  public.parameter_change_requests,
+  public.parameter_definition_reconciliation_items,
+  public.parameter_definition_reconciliation_runs,
+  public.parameter_definitions,
+  public.parameter_drafts,
+  public.parameter_file_sync_conflicts,
+  public.parameter_history_entries,
+  public.parameter_identity_cutovers,
+  public.parameter_identity_migration_phases,
+  public.parameter_identity_migration_runs,
+  public.parameter_import_batches,
+  public.parameter_module_dismissed_compatibles,
+  public.parameter_module_mappings,
+  public.parameter_modules,
+  public.parameter_policy_targets,
+  public.parameter_review_decisions,
+  public.parameter_spec_matcher_overrides,
+  public.parameter_spec_property_key_cutover_items,
+  public.parameter_spec_property_key_cutover_runs,
+  public.parameter_spec_review_tasks,
+  public.parameter_spec_version_cutover_items,
+  public.parameter_spec_version_cutover_runs,
+  public.parameter_spec_versions,
+  public.parameter_specs,
+  public.parameter_submission_items,
+  public.parameter_submission_rounds,
+  public.project_parameter_binding_revisions,
+  public.project_parameter_bindings,
+  public.project_parameter_initialization_drafts,
+  public.project_parameter_initialization_reviews,
+  public.project_parameter_values,
+  public.projects
 to catalog_migration_owner;
 grant update on table public.parameter_modules to catalog_migration_owner;
 
