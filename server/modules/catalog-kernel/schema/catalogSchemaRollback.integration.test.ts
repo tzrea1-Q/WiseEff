@@ -2118,6 +2118,24 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-savepoint-predecessor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.parameter_definitions (
+        id, introduced_release_id, subject_id, property_key, current_revision_id
+      ) values (
+        'pdef-savepoint-lineage', 'crel-savepoint-predecessor', 'csub-driver',
+        'savepoint-property', 'drev-savepoint-predecessor'
+      );
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values (
+        'drev-savepoint-predecessor', 'pdef-savepoint-lineage', 1,
+        'crel-savepoint-predecessor', 'sha256:drev-savepoint-predecessor', '{}'
+      );
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values (
+        'crel-savepoint-predecessor', 'pdef-savepoint-lineage',
+        'drev-savepoint-predecessor'
+      );
       insert into parameter_catalog.catalog_materializations (
         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values (
@@ -2137,6 +2155,21 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-savepoint-successor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values (
+        'drev-savepoint-successor', 'pdef-savepoint-lineage', 2,
+        'crel-savepoint-successor', 'sha256:drev-savepoint-successor', '{}'
+      );
+      update parameter_catalog.parameter_definitions
+      set current_revision_id = 'drev-savepoint-successor'
+      where id = 'pdef-savepoint-lineage';
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values (
+        'crel-savepoint-successor', 'pdef-savepoint-lineage',
+        'drev-savepoint-successor'
+      );
       insert into parameter_catalog.catalog_materializations (
         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values (
@@ -2155,6 +2188,12 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-savepoint-invalid', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values (
+        'crel-savepoint-invalid', 'pdef-savepoint-lineage',
+        'drev-savepoint-successor'
+      );
       insert into parameter_catalog.catalog_materializations (
         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values (
@@ -2175,16 +2214,29 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
     const residue = await client.query<{
       materializations: string;
+      definitions: string;
+      revisions: string;
+      heads: string;
       releases: string;
       subjects: string;
     }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as releases,
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as subjects,
-        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as materializations
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-savepoint-predecessor', 'crel-savepoint-successor', 'crel-savepoint-invalid')) as materializations,
+        (select count(*)::text from parameter_catalog.parameter_definitions where id = 'pdef-savepoint-lineage') as definitions,
+        (select count(*)::text from parameter_catalog.definition_revisions where definition_id = 'pdef-savepoint-lineage') as revisions,
+        (select count(*)::text from parameter_catalog.catalog_release_definition_heads where definition_id = 'pdef-savepoint-lineage') as heads
     `);
     expect(residue.rows).toEqual([
-      { materializations: "0", releases: "0", subjects: "0" },
+      {
+        definitions: "0",
+        heads: "0",
+        materializations: "0",
+        releases: "0",
+        revisions: "0",
+        subjects: "0",
+      },
     ]);
   });
 
@@ -2219,6 +2271,34 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_release_subjects (
         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
       ) values ('crel-same-xact-successor', 'csub-driver', 'active', '{}', '{}');
+      insert into parameter_catalog.parameter_definitions (
+        id, introduced_release_id, subject_id, property_key, current_revision_id
+      ) values (
+        'pdef-same-xact-lineage', 'crel-same-xact-predecessor', 'csub-driver',
+        'same-xact-property', 'drev-same-xact-successor'
+      );
+      insert into parameter_catalog.definition_revisions (
+        id, definition_id, revision_number, catalog_release_id, content_digest, content
+      ) values
+        (
+          'drev-same-xact-predecessor', 'pdef-same-xact-lineage', 1,
+          'crel-same-xact-predecessor', 'sha256:drev-same-xact-predecessor', '{}'
+        ),
+        (
+          'drev-same-xact-successor', 'pdef-same-xact-lineage', 2,
+          'crel-same-xact-successor', 'sha256:drev-same-xact-successor', '{}'
+        );
+      insert into parameter_catalog.catalog_release_definition_heads (
+        release_id, definition_id, revision_id
+      ) values
+        (
+          'crel-same-xact-predecessor', 'pdef-same-xact-lineage',
+          'drev-same-xact-predecessor'
+        ),
+        (
+          'crel-same-xact-successor', 'pdef-same-xact-lineage',
+          'drev-same-xact-successor'
+        );
       insert into parameter_catalog.catalog_materializations (
         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
       ) values (
@@ -2232,16 +2312,26 @@ describe("canonical Catalog deferred constraints and rollback", () => {
 
     const residue = await client.query<{
       materializations: string;
+      current_revision_id: string;
+      heads: string;
       releases: string;
       subjects: string;
     }>(`
       select
         (select count(*)::text from parameter_catalog.catalog_releases where id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as releases,
         (select count(*)::text from parameter_catalog.catalog_release_subjects where release_id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as subjects,
-        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as materializations
+        (select count(*)::text from parameter_catalog.catalog_materializations where release_id in ('crel-same-xact-predecessor', 'crel-same-xact-successor')) as materializations,
+        (select count(*)::text from parameter_catalog.catalog_release_definition_heads where definition_id = 'pdef-same-xact-lineage') as heads,
+        (select current_revision_id from parameter_catalog.parameter_definitions where id = 'pdef-same-xact-lineage') as current_revision_id
     `);
     expect(residue.rows).toEqual([
-      { materializations: "2", releases: "2", subjects: "2" },
+      {
+        current_revision_id: "drev-same-xact-successor",
+        heads: "2",
+        materializations: "2",
+        releases: "2",
+        subjects: "2",
+      },
     ]);
   });
 
@@ -3397,6 +3487,28 @@ describe("canonical Catalog deferred constraints and rollback", () => {
   it("cuts a Binding over by revision CAS and rejects a stale cross-release ObservationMatch", async () => {
     await seedTwoCanonicalBindings(client);
     await client.query(`
+      insert into parameter_catalog.parameter_observations (
+        id, organization_id, project_id, logical_node_id, config_revision_id,
+        source_identity, source_locator, catalog_release_id, matcher_revision,
+        evidence_fingerprint
+      ) values (
+        'pobs-before-cutover', 'org-pcat', 'project-pcat', 'logical-owner',
+        'config-before-cutover', 'source-before-cutover', '{}',
+        'crel-binding-owners', 'matcher-before-cutover',
+        'sha256:before-cutover-observation'
+      );
+      insert into parameter_catalog.parameter_observation_matches (
+        id, observation_id, organization_id, project_id, logical_node_id,
+        registration_id, subject_id, definition_id, definition_revision_id,
+        binding_id, catalog_release_id, matcher_revision
+      ) values (
+        'pmatch-before-cutover', 'pobs-before-cutover', 'org-pcat',
+        'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
+        'pdef-owner-a', 'drev-owner-a', 'binding-owner-a',
+        'crel-binding-owners', 'matcher-before-cutover'
+      )
+    `);
+    await client.query(`
       begin;
       insert into parameter_catalog.catalog_releases (
         id, release_sequence, release_version, release_digest, predecessor_release_id,
@@ -3444,6 +3556,28 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         and effective_revision_id = 'drev-owner-a'
     `);
     expect(won.rowCount).toBe(1);
+
+    const preservedMatch = await client.query<{
+      binding_effective_revision_id: string;
+      catalog_release_id: string;
+      definition_revision_id: string;
+    }>(`
+      select
+        binding.effective_revision_id as binding_effective_revision_id,
+        match.catalog_release_id,
+        match.definition_revision_id
+      from parameter_catalog.parameter_observation_matches match
+      join parameter_catalog.project_parameter_bindings binding
+        on binding.id = match.binding_id
+      where match.id = 'pmatch-before-cutover'
+    `);
+    expect(preservedMatch.rows).toEqual([
+      {
+        binding_effective_revision_id: "drev-owner-a-successor",
+        catalog_release_id: "crel-binding-owners",
+        definition_revision_id: "drev-owner-a",
+      },
+    ]);
 
     const stale = await client.query(`
       update parameter_catalog.project_parameter_bindings

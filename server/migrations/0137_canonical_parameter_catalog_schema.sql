@@ -599,11 +599,24 @@ begin
       left join parameter_catalog.catalog_release_definition_heads release_head
         on release_head.release_id = new.release_id
        and release_head.definition_id = expected.definition_id
+      left join parameter_catalog.definition_revisions head_revision
+        on head_revision.definition_id = release_head.definition_id
+       and head_revision.id = release_head.revision_id
+      left join target_lineage head_lineage
+        on head_lineage.id = head_revision.catalog_release_id
       left join parameter_catalog.catalog_release_subjects release_subject
         on release_subject.release_id = new.release_id
        and release_subject.subject_id = definition.subject_id
       where release_head.definition_id is null
-         or release_head.revision_id <> definition.current_revision_id
+         or head_lineage.id is null
+         or exists (
+           select 1
+           from parameter_catalog.definition_revisions newer_revision
+           join target_lineage newer_lineage
+             on newer_lineage.id = newer_revision.catalog_release_id
+           where newer_revision.definition_id = expected.definition_id
+             and newer_revision.revision_number > head_revision.revision_number
+         )
          or release_subject.subject_id is null
     ),
     invalid_release_head as (
@@ -770,6 +783,70 @@ begin
       errcode = '23514',
       message = 'Current Catalog release does not exist',
       constraint = 'catalog_state_current_release_complete_ck';
+  end if;
+
+  -- Bootstrap may install a complete root.  Every later pointer change must
+  -- remain on the installed release's lineage: normal installation advances
+  -- to a descendant, while the separately governed pre-traffic switch-back
+  -- may select an ancestor.  A complete but independent root is neither.
+  if tg_op = 'UPDATE'
+     and old.current_catalog_release_id is distinct from new.current_catalog_release_id
+     and not exists (
+       with recursive target_lineage(id) as (
+         select new.current_catalog_release_id
+         union
+         select release.predecessor_release_id
+         from parameter_catalog.catalog_releases release
+         join target_lineage lineage on lineage.id = release.id
+         where release.predecessor_release_id is not null
+       )
+       select 1
+       from target_lineage
+       where id = old.current_catalog_release_id
+     )
+     and not exists (
+       with recursive installed_lineage(id) as (
+         select old.current_catalog_release_id
+         union
+         select release.predecessor_release_id
+         from parameter_catalog.catalog_releases release
+         join installed_lineage lineage on lineage.id = release.id
+         where release.predecessor_release_id is not null
+       )
+       select 1
+       from installed_lineage
+       where id = new.current_catalog_release_id
+     ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Current Catalog release must share the installed release lineage',
+      constraint = 'catalog_state_current_release_lineage_ck';
+  end if;
+
+  if exists (
+    with recursive target_lineage(id) as (
+      select new.current_catalog_release_id
+      union
+      select release.predecessor_release_id
+      from parameter_catalog.catalog_releases release
+      join target_lineage lineage on lineage.id = release.id
+      where release.predecessor_release_id is not null
+    )
+    select 1
+    from target_lineage lineage
+    join parameter_catalog.catalog_releases release on release.id = lineage.id
+    left join parameter_catalog.catalog_releases predecessor
+      on predecessor.id = release.predecessor_release_id
+    where release.predecessor_release_id is not null
+      and (
+        predecessor.id is null
+        or release.release_sequence <> predecessor.release_sequence + 1
+      )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'Current Catalog release lineage must have gap-free sequences',
+      constraint = 'catalog_state_current_release_lineage_ck';
   end if;
 
   if predecessor_id is not null and exists (

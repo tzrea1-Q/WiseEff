@@ -61,6 +61,33 @@ async function waitForAdvisoryLockWait(
   );
 }
 
+async function waitForAnyDatabaseLock(
+  observer: pg.Client,
+  processId: number,
+): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{ waiting: boolean }>(
+      `
+      select coalesce(
+        (
+          select wait_event_type = 'Lock'
+          from pg_catalog.pg_stat_activity
+          where pid = $1
+        ),
+        false
+      ) as waiting
+    `,
+      [processId],
+    );
+    if (result.rows[0]?.waiting) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Session ${processId} did not wait for a database lock`);
+}
+
 async function seedCurrentRelease(client: pg.Client): Promise<void> {
   await client.query("begin");
   try {
@@ -485,6 +512,136 @@ describe("transaction-local Catalog current-release guard", () => {
         error: null,
       });
       await contender.query("rollback");
+    } finally {
+      await primary.query("rollback").catch(() => undefined);
+      await contender.query("rollback").catch(() => undefined);
+      await contender.end();
+    }
+  });
+
+  it("serializes parallel pointer updates and rejects an unrelated release lineage", async () => {
+    const contender = await connect(database.url);
+    try {
+      await primary.query(`
+        begin;
+        insert into parameter_catalog.catalog_releases (
+          id, release_sequence, release_version, release_digest, predecessor_release_id,
+          compiled_model_digest, toolchain_digest, published_at
+        ) values (
+          'crel-pointer-successor', 10001, 'pointer-successor',
+          'sha256:pointer-successor', 'crel-a',
+          'sha256:pointer-successor-compiled', 'sha256:pointer-successor-toolchain',
+          '2026-09-02T00:00:00.000Z'
+        );
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance,
+          tombstone_provenance
+        ) values
+          ('crel-pointer-successor', 'csub-active', 'active', '{}', '{}', null),
+          (
+            'crel-pointer-successor', 'csub-retired', 'retired', '{}', '{}',
+            '{"reason":"still-retired"}'
+          );
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values ('crel-pointer-successor', 'pdef-active', 'drev-active-a');
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+        ) values (
+          'crel-pointer-successor', 'sha256:pointer-successor-compiled-fp',
+          'sha256:pointer-successor-database-fp', 'pointer-successor-attempt',
+          'pointer-successor-audit'
+        );
+
+        insert into parameter_catalog.catalog_releases (
+          id, release_sequence, release_version, release_digest,
+          compiled_model_digest, toolchain_digest, published_at
+        ) values (
+          'crel-pointer-independent', 20000, 'pointer-independent',
+          'sha256:pointer-independent', 'sha256:pointer-independent-compiled',
+          'sha256:pointer-independent-toolchain', '2026-09-02T00:00:00.000Z'
+        );
+        insert into parameter_catalog.catalog_subjects (
+          id, introduced_release_id, kind, canonical_key
+        ) values (
+          'csub-pointer-independent', 'crel-pointer-independent',
+          'driver', 'vendor,pointer-independent'
+        );
+        insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
+        values ('csub-pointer-independent', 'physical-device', 'multiple');
+        insert into parameter_catalog.catalog_release_subjects (
+          release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+        ) values (
+          'crel-pointer-independent', 'csub-pointer-independent', 'active', '{}', '{}'
+        );
+        insert into parameter_catalog.parameter_definitions (
+          id, introduced_release_id, subject_id, property_key, current_revision_id
+        ) values (
+          'pdef-pointer-independent', 'crel-pointer-independent',
+          'csub-pointer-independent', 'pointer-property', 'drev-pointer-independent'
+        );
+        insert into parameter_catalog.definition_revisions (
+          id, definition_id, revision_number, catalog_release_id, content_digest, content
+        ) values (
+          'drev-pointer-independent', 'pdef-pointer-independent', 1,
+          'crel-pointer-independent', 'sha256:drev-pointer-independent', '{}'
+        );
+        insert into parameter_catalog.catalog_release_definition_heads (
+          release_id, definition_id, revision_id
+        ) values (
+          'crel-pointer-independent', 'pdef-pointer-independent',
+          'drev-pointer-independent'
+        );
+        insert into parameter_catalog.catalog_materializations (
+          release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+        ) values (
+          'crel-pointer-independent', 'sha256:pointer-independent-compiled-fp',
+          'sha256:pointer-independent-database-fp', 'pointer-independent-attempt',
+          'pointer-independent-audit'
+        );
+        set constraints all immediate;
+        commit;
+      `);
+
+      await primary.query("begin");
+      await primary.query(`
+        update parameter_catalog.catalog_state
+        set current_catalog_release_id = 'crel-pointer-successor'
+      `);
+      await primary.query("set constraints all immediate");
+
+      await contender.query("begin");
+      const competingUpdate = contender
+        .query(`
+          update parameter_catalog.catalog_state
+          set current_catalog_release_id = 'crel-pointer-independent'
+        `)
+        .then(
+          (result) => ({ result, error: null }),
+          (error: pg.DatabaseError) => ({ result: null, error }),
+        );
+      await waitForAnyDatabaseLock(primary, contender.processID);
+      await primary.query("commit");
+
+      await expect(competingUpdate).resolves.toMatchObject({
+        result: { rowCount: 1 },
+        error: null,
+      });
+      const lineageError = await captureDatabaseError(
+        contender.query("set constraints all immediate"),
+      );
+      expect(lineageError.code).toBe("23514");
+      expect(lineageError.constraint).toBe(
+        "catalog_state_current_release_lineage_ck",
+      );
+      await contender.query("rollback");
+
+      const state = await primary.query<{ current_catalog_release_id: string }>(
+        "select current_catalog_release_id from parameter_catalog.catalog_state",
+      );
+      expect(state.rows).toEqual([
+        { current_catalog_release_id: "crel-pointer-successor" },
+      ]);
     } finally {
       await primary.query("rollback").catch(() => undefined);
       await contender.query("rollback").catch(() => undefined);
