@@ -49,7 +49,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 已通过 PR #682 合入；Phase A 已发布 #683–#735，Phase B/Phase C 已完成，S0-ID 已通过 PR #737 合入 `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`。所有者授权的 G0.1 修正正在 Wave 2 集成前冻结 canonical identity constructors、closed Driver subtype enums、相互独立的公开七项与内部 49 项 legacy registry、完整 S0-RAT 扫描合同、修复后的 S0-FIX provenance，以及 fail-closed S2-SCH PostgreSQL gate。launch graph 保持 53 nodes 与 `CD=90`、`CF=54`、`ID=27`、`RE=18`；S13-PROGRAM/S14-PROGRAM 继续延后。G0.1 只是合同工作，不声称 target、release 或 production evidence。
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 与 G0.1 已合入；Phase A 已发布 #683–#735，Phase B/Phase C 已完成；S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。第一轮受控开发暴露出可避免的审查、fingerprint 和 CI 返工后，G0.2 执行修订引入仓库交付协议及本 program 专属 run profile，不改变任何冻结 node 或 dependency edge。launch graph 保持 53 nodes 与 `CD=90`、`CF=54`、`ID=27`、`RE=18`；S13-PROGRAM/S14-PROGRAM 继续作为 Temporal 工作延后。G0.2 不声称新的实现、Hosted、target、release 或 production evidence。
 
 #### Wayfinder #668 Phase A launch 映射
 
@@ -117,7 +117,7 @@ numeric database ID 与 GraphQL node ID 使映射不依赖 Issue 标题展示。
 - `exec-plans/active/2026-08-28-node-write-observation-outcomes.md`：在服务、Bridge、API、mock 与 UI 中把普通节点写命令执行和写后观测拆开；保留快照/回滚，同时停止对新写入做基于相等性的 mismatch 判定。真实 HDC/ADB readiness 继续属于条件目标环境证据。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-075 / TD-097 仍为**部分**开放，TD-014 后续已在第四波经 #600 关闭。第一批确定性收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059，reload workflow sheet 不属于 TD-059；第二批经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114，TD-003/012 与 TD-075/076 仍 Open。第三批随后经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031，以及限定为 `/parameter-admin/projects` Admin list 的 TD-112。
 - **TD-068 交付图：** ADR-0038 与父规格 #609 已定义安全模型。#610 建立共享可信上下文、策略和审计 seam；#611–#615 依次重建 Xiaoze 持久溯源、迁移 DTS 重载、贯通参数提交/治理/回写溯源，并收紧 legacy actor label 与验收证据。上述迁移票据落地前，TD-068 继续 Open。相邻的 debugging device-write 审计缺陷仍由 TD-123 单列，避免本工作膨胀为平台级审计重构。
-- **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
+- **分支与 PR：** 实现型子智能体只在从最新 `main` 切出的 Scratch feature branch 上开发、运行 focused tests 并 commit；Scratch 阶段不打开 PR。父智能体依据[智能体交付执行协议](agents/agent-delivery-protocol.md)汇总封印前审查、按确定的合并顺序刷新，只在候选达到 `INTEGRATION-READY` 后打开最终 PR，完成 Hosted、merge、attestation 与本地 `main` 同步。子智能体不得 push `main`、开/合 GitHub PR 或快进本地 `main`。
 - **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 

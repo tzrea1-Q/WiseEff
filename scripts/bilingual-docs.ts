@@ -25,6 +25,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/developer/user-operation-coverage-matrix.md", zh: "docs/zh-CN/developer/user-operation-coverage-matrix.md", tier: "developer", status: "required" },
   { en: "docs/developer/browser-acceptance-coverage-map.md", zh: "docs/zh-CN/developer/browser-acceptance-coverage-map.md", tier: "developer", status: "required" },
   { en: "docs/developer/ui-quality-checklist.md", zh: "docs/zh-CN/developer/ui-quality-checklist.md", tier: "developer", status: "required" },
+  { en: "docs/agents/agent-delivery-protocol.md", zh: "docs/zh-CN/agents/agent-delivery-protocol.md", tier: "developer", status: "required" },
   { en: "docs/product-specs/index.md", zh: "docs/zh-CN/product-specs/index.md", tier: "product", status: "required" },
   { en: "docs/product-specs/product-spec.md", zh: "docs/zh-CN/product-specs/product-spec.md", tier: "product", status: "required" },
   { en: "docs/product-specs/prototype-functional-spec.md", zh: "docs/zh-CN/product-specs/prototype-functional-spec.md", tier: "product", status: "required" },

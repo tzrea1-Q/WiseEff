@@ -38,7 +38,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`: complete implementation specification for Wayfinder #668. G0 merged through PR #682; Phase A published #683-#735, Phase B/Phase C completed, and S0-ID merged through PR #737 at `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`. The owner-authorized G0.1 correction now freezes the canonical identity constructors, closed Driver subtype enums, distinct public seven-kind and internal 49-kind legacy registries, complete S0-RAT scan contract, repaired S0-FIX provenance, and fail-closed S2-SCH PostgreSQL gate before Wave 2 integration. The launch graph remains 53 nodes with `CD=90`, `CF=54`, `ID=27`, `RE=18`; S13-PROGRAM and S14-PROGRAM remain deferred. G0.1 is contract work only and claims no target, release, or production evidence.
+- `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`: complete implementation specification for Wayfinder #668. G0 and G0.1 are merged; Phase A published #683-#735; Phase B/Phase C completed; S0-ID, S0-FIX, and S1-BND are closed through PRs #739, #743, and #741. The G0.2 execution amendment adopts the repository delivery protocol and a program-specific run profile after the first controlled wave exposed avoidable review, fingerprint, and CI rework. It changes no frozen node or dependency edge. The launch graph remains 53 nodes with `CD=90`, `CF=54`, `ID=27`, `RE=18`; S13-PROGRAM and S14-PROGRAM remain deferred Temporal work. G0.2 claims no new implementation, Hosted, target, release, or production evidence.
 
 #### Wayfinder #668 Phase A launch map
 
@@ -131,13 +131,13 @@ Completed historical plans are preserved under `exec-plans/completed/`. The boun
 
 ## Git Branch & PR Workflow
 
-Every active implementation plan must name a **feature branch** checked out from the latest `main`. Future plans must include a `## Git & PR Workflow` section like `2026-06-25-wiseeff-device-bridge-phase-a-fixes.md`.
+Every active implementation plan must name a **Scratch feature branch** checked out from the latest `main`, a stop boundary, and the evidence required before sealing. Scratch work has no open PR. The parent opens the final PR only after the candidate reaches `INTEGRATION-READY`. Multi-agent programs also record risk class, merge order, WIP/CI budgets, and any accepted run-profile override from the [Agent Delivery Execution Protocol](agents/agent-delivery-protocol.md). Future plans must include a `## Git & PR Workflow` section like `2026-06-25-wiseeff-device-bridge-phase-a-fixes.md`.
 
 | Role | Allowed |
 | --- | --- |
-| **Implementation agent (subagent)** | `git fetch` / checkout branch from `main`, implement, test, **commit on the feature branch** |
+| **Implementation agent (subagent)** | `git fetch` / checkout a Scratch branch from `main`, implement, run focused tests, **commit on the feature branch** |
 | **Implementation agent (subagent)** | **Must not** push to `main`, open GitHub PRs, merge PRs, or fast-forward local `main` |
-| **Parent agent (architect / session owner)** | Review subagent output, run or spot-check verification, **create GitHub PR**, merge when approved, then **`git pull origin main`** to sync local `main` |
+| **Parent agent (architect / session owner)** | Consolidate pre-seal reviews, seal and refresh in deterministic merge order, **create the final GitHub PR**, inspect Hosted results, merge when approved, attest, then **`git pull origin main`** to sync local `main` |
 
 Branch naming: `fix/<topic>`, `feat/<topic>`, or as specified in the plan. One plan → one branch unless the plan says otherwise.
 
