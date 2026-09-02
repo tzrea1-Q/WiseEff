@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md)
 
-Status: **Phase A, Phase B, Phase C, and the initial S0-ID implementation are complete; the owner-authorized G0.1 contract amendment is in progress**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 merged through PR #682, the 53 launch Issues were published, and S0-ID merged through PR #737 at `origin/main@e84ca078ab8f7b7006fa8e635d722297a287d2a5`. G0.1 corrects underspecified contracts discovered during Wave 2 review; it does not add a launch node or change any CD, CF, ID, or RE edge.
+Status: **Phase A, Phase B, Phase C, G0.1, and the first controlled implementation wave are complete; the owner-authorized G0.2 execution amendment is in progress**. The accepted module seams, implementation/ticket granularity, and dependency edges remain frozen. G0 and G0.1 merged through PRs #682 and #738; the corrected S0-ID, S0-FIX, and S1-BND nodes are closed through PRs #739, #743, and #741. G0.2 changes execution sequencing and budgets only; it does not add a launch node or change any CD, CF, ID, or RE edge.
 
 Accepted publication baseline: `origin/main@0e3b3536da700ccb4ef3ba116d771a6f37236dec`. This is a target contract. It does not claim current implementation or release evidence, reserve a migration number, or authorize production activation.
 
@@ -171,6 +171,28 @@ npm run test:server -- \
 ```
 
 The command must select and execute all four named files against real PostgreSQL with pgvector. Missing PostgreSQL, missing pgvector, a skipped suite, or zero selected tests is a hard failure. The Documentation Impact Matrix continues to assign `docs/design-docs/domain-model.md` and its Chinese companion to S10-DCP; G0.1 records that later update gate but does not edit those files.
+
+## G0.2 delivery-protocol amendment (2026-09-02)
+
+The first controlled implementation wave proved that correctness gates were necessary but scheduled inefficiently: S0-FIX generated and invalidated multiple lineage locks, independent P1 findings arrived serially, PR/Hosted execution started before the candidate was genuinely sealed, and later-lane evidence could become stale behind an earlier merge. This amendment adopts the repository [Agent Delivery Execution Protocol](../../agents/agent-delivery-protocol.md) as the operational authority for the remaining launch nodes. It changes process only; all 55 accepted nodes, 53 launch Issues, seams, ownership, requirements, and `CD=90`, `CF=54`, `ID=27`, `RE=18` edges remain unchanged.
+
+The #668 run profile is frozen as follows:
+
+| Control | Program setting |
+| --- | --- |
+| Implementation model | `gpt-5.6-luna`, reasoning `xhigh`; use `fork_turns: "none"` or a minimal bounded fork plus an explicit task packet so model override is effective |
+| Review model | Independent Standards and Spec reviewers use `gpt-5.6-sol`, reasoning `xhigh`, against the same exact Scratch SHA |
+| Capacity | At most two foundation/R3 implementation lanes; when review begins, finished implementation agents release their slots so the two reviewers can run in parallel |
+| PR boundary | Scratch branches may be pushed for backup but have no PR; the parent opens a PR only after both pre-seal reviews pass and the merge-position refresh is green |
+| Seal budget | One intended final fingerprint/lock; a second P1/P0 cycle on the same invariant returns to the threat matrix instead of adding another patch |
+| Merge and Hosted order | Freeze merge order before dispatch; only the next merge lane may run final Hosted; later lanes stop no later than `SEALED` and refresh after every predecessor merge |
+| Test scheduling | Inner loops use focused Red/Green tests. Each explicit node command and required local/PG/browser evidence level runs once on the exact candidate. A broad command may run only in the named Hosted job when that job executes the identical command or a proven superset; it remains Hosted evidence and does not impersonate local/PG/browser/target evidence |
+| CI budget | Target one PR creation, zero synchronize events, and one Hosted run; exceptionally allow one synchronize/second run only for Hosted-only failure or mandatory main refresh; cancel superseded runs, isolate a flaky failure once, and never repeat an unrelated full suite |
+| Reporting | Every round reports lane states, merged/sealed/reviewing/blocked counts, repair cycles, fingerprints, CI runs/runner-minutes, evidence levels, next frontier, and largest avoidable delay |
+| Stop boundary | A user request to stop after the current merge permits only that PR's merge, attestation, Issue closure, branch cleanup, and main synchronization; it cannot advance labels or dispatch another node |
+| Deadline | The 12-hour objective is a throughput target, not a gate waiver. The parent publishes the critical-path lower bound and a smaller code/evidence milestone when the full target cannot fit. S13-PROGRAM and S14-PROGRAM remain Temporal and cannot be declared complete without real elapsed-time, target, release, and production evidence |
+
+Before each wave, the parent records lane membership, risk classes, exact editable/read-only/forbidden paths, shared resources, merge order, evidence levels, and stop boundary. R3 tasks must complete their finite threat matrix before final lineage, checksum, migration, recovery, or release artifacts are generated. Standards and Spec reviews run in parallel; their findings are consolidated into one repair packet only after both return. A byte-changing post-seal finding invalidates the seal and Hosted evidence and returns the lane to Scratch.
 
 ## Problem Statement
 
@@ -753,7 +775,7 @@ Tests use a production public interface or controlled adapters at the same produ
 
 The locked rehearsal retains `npm run test:scripts -- parameter-catalog-rehearsal.integration` semantics: checked-empty dedicated DB, exact schema ledger, checksum-locked fixture, candidate and verifier transactions, failure after every phase, same-run idempotency, R6/R8 separation, byte-identical dump after rollback, and cleanup marker. It is populated-shape evidence, never target readiness.
 
-Implementation completion requires risk-appropriate focused tests, `npm run test:all`, `npm run build`, OpenAPI/route checks, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:models`, `npm run acceptance:browser`, `npm run acceptance:evidence`, self-host checks, historical-migration inventory, `npm run docs:check`, and `git diff --check`. Local, real-PG, browser, Hosted, target, release, and production approval remain separate observations; none is inferred from another.
+Implementation completion requires every applicable gate in this specification exactly once on the exact delivery candidate or accepted merge result. Focused tests and required local, real-PG, browser, self-host, target, and release procedures run in the environment that owns their evidence. Broad checks — `npm run test:all`, `npm run build`, OpenAPI/route checks, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:models`, `npm run acceptance:browser`, `npm run acceptance:evidence`, historical-migration inventory, `npm run docs:check`, and `git diff --check` — run once at the program stage that owns their full-tree scope. The accepted #668 run profile may map an exact command or proven superset to exact-candidate Hosted instead of duplicating it locally, but that produces Hosted evidence only and waives neither an Issue-specific command nor PG/browser/target/release evidence. None of these evidence levels is inferred from another.
 
 ## Out of Scope
 
@@ -777,8 +799,8 @@ Evidence remains classified as documentation/static, local synthetic, real local
 
 | Area | Disposition | English paths | Chinese paths | Owner/gate |
 | --- | --- | --- | --- | --- |
-| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md` | first module merge records four modules/dependencies/readiness |
-| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | parent keeps one plan across many tickets |
+| Repository maps | Update | `AGENTS.md`; `ARCHITECTURE.md`; `docs/agents/agent-delivery-protocol.md`; `docs/agents/fleet-coordination.md`; `scripts/bilingual-docs.ts` | `docs/zh-CN/root/AGENTS.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/zh-CN/agents/agent-delivery-protocol.md` | G0.2 owns delivery lifecycle/budgets; first module merge records four modules/dependencies/readiness |
+| Planning | Update | `docs/PLANS.md`; `docs/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | `docs/zh-CN/PLANS.md`; `docs/zh-CN/exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`; later `docs/zh-CN/exec-plans/completed/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md` | G0.2 records the run profile; parent keeps one plan across many tickets |
 | Domain/glossary | Update | `CONTEXT.md`; `docs/design-docs/domain-model.md` | `docs/zh-CN/design-docs/domain-model.md` | S0/S2 first model slice; CONTEXT remains implementation-free |
 | ADR/index and decisions | Update | `docs/adr/README.md`; `docs/adr/0040-canonical-parameter-catalog-relational-model.md`; `docs/adr/0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/adr/0042-organizations-register-canonical-subjects-once.md`; `docs/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/design-docs/parameter-catalog-api-transition.md`; `docs/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | `docs/zh-CN/design-docs/index.md`; `docs/zh-CN/design-docs/adr-0040-canonical-parameter-catalog-relational-model.md`; `docs/zh-CN/design-docs/adr-0041-platform-schema-catalog-releases-materialize-before-runtime.md`; `docs/zh-CN/design-docs/adr-0042-organizations-register-canonical-subjects-once.md`; `docs/zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md`; `docs/zh-CN/design-docs/parameter-catalog-api-transition.md`; `docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md`; `docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md` | G0; cite immutable SHAs and never rewrite meaning |
 | Product specs | Update | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/product-specs/prototype-functional-spec.md` | `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`; `docs/zh-CN/product-specs/prototype-functional-spec.md` | S9 one page, roles, states |
@@ -800,9 +822,9 @@ The plan cannot complete until every Update/Review row is updated bilingually or
 
 ### Git & PR Workflow
 
-- The current specification branch is exactly `codex/wayfinder-668-implementation-spec-20260901`; repairs are append-only commits, never amend/rebase/force-push.
-- Every future ticket agent starts from then-current `origin/main` in an isolated worktree with branch template `codex/pcat-<issue-number>-<slug>` and reads this Spec plus the owning decisions/module docs.
-- This is one plan with many ticket branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
-- The parent/session owner integrates branches under the CD/CF/ID/RE graph and exclusively owns PR creation, merge, and main synchronization.
-- Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after rebase. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
-- Phase A Publisher completed on `codex/wayfinder-668-to-tickets-20260901`; Phase B and Phase C subsequently completed, and S0-ID merged through PR #737. G0.1 follows the same parent-owned review/PR/merge discipline before any amended node is reopened or enabled.
+- G0.2 is developed on `codex/wayfinder-execution-protocol-v2` from accepted `origin/main@5b7b53b316f648a7a49908b3ebd9ffb459d9e958`; it is documentation/process-only and makes no implementation or runtime-evidence claim.
+- Every future ticket agent starts from then-current `origin/main` in an isolated worktree with branch template `codex/pcat-<issue-number>-<slug>`, reads this Spec plus the owning decisions/module docs, and receives the G0.2 task packet and stop boundary.
+- This is one plan with many ticket Scratch branches. An implementation agent implements/tests/commits only its node, does not open or merge a PR, does not update/push/fast-forward/merge `main`, and does not collapse an entire workstream into one branch.
+- The parent/session owner follows the G0.2 run profile and repository delivery protocol, integrates in deterministic merge order, and exclusively owns final PR creation, Hosted triage, merge, attestation, and main synchronization.
+- Migration/ADR/acceptance IDs are claimed before parallel work and rechecked after refresh. Inherited dirty worktrees are never reset, stashed, cleaned, or checked out.
+- Phase A Publisher, Phase B, Phase C, and G0.1 are complete. Corrected S0-ID, S0-FIX, and S1-BND are closed through PRs #739, #743, and #741. The live GitHub frontier, not this historical sentence, controls future dispatch.
