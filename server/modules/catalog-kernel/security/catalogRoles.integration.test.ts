@@ -22,6 +22,7 @@ import {
   CATALOG_RELATIONS,
   CATALOG_ROLES,
   CATALOG_SYNCHRONIZER_ROLE,
+  EXCLUSIVE_LOCK_FUNCTION_IDENTITY,
   FLOOR_MIGRATION,
   GOVERNANCE_RELATIONS,
   GUARD_FUNCTION_IDENTITY,
@@ -33,7 +34,9 @@ import {
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
+  SYNCHRONIZER_EXECUTE_FUNCTION_NAMES,
   SYNCHRONIZER_HEAD_UPDATES,
+  TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES,
   quoteIdent,
 } from "./catalogRoleManifest";
 
@@ -88,6 +91,7 @@ async function captureRoleStatementError(
     return await captureDatabaseError(client.query(sql));
   } finally {
     await client.query("rollback").catch(() => undefined);
+    await client.query("reset role").catch(() => undefined);
   }
 }
 
@@ -102,6 +106,7 @@ async function withLocalRole<T>(
     return await fn();
   } finally {
     await client.query("rollback").catch(() => undefined);
+    await client.query("reset role").catch(() => undefined);
   }
 }
 
@@ -158,6 +163,185 @@ async function withProductionLogin(
       .query(`revoke connect on database ${quoteIdent(databaseName)} from ${quoteIdent(roleName)}`)
       .catch(() => undefined);
     await admin.query(`drop role if exists ${quoteIdent(roleName)}`);
+  }
+}
+
+type CanonicalDriverFixture = {
+  orgId: string;
+  projectId: string;
+  projectCode: string;
+  attributionId: string;
+  moduleId: string;
+  releaseId: string;
+  releaseSequence: number;
+  releaseVersion: string;
+  subjectId: string;
+  canonicalKey: string;
+  registrationId: string;
+  placementId: string;
+  definitionId: string;
+  revisionId: string;
+  bindingId: string;
+  valueId: string;
+};
+
+function assertSafeFixtureId(value: string): string {
+  if (!/^[A-Za-z0-9-]+$/.test(value)) {
+    throw new Error(`Refusing to interpolate non-identifier ${value}`);
+  }
+  return value;
+}
+
+function sqlText(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function canonicalDriverFixture(suffix: string, releaseSequence: number): CanonicalDriverFixture {
+  const fixture = {
+    orgId: `org-s2r-${suffix}`,
+    projectId: `prj-s2r-${suffix}`,
+    projectCode: `S2R${suffix.toUpperCase()}`.slice(0, 16),
+    attributionId: `asub-s2r-${suffix}`,
+    moduleId: `pmod-s2r-${suffix}`,
+    releaseId: `crel-s2r-${suffix}`,
+    releaseSequence,
+    releaseVersion: `s2r-${suffix}`,
+    subjectId: `csub-s2r-${suffix}`,
+    canonicalKey: `s2r${suffix},driver`,
+    registrationId: `reg-s2r-${suffix}`,
+    placementId: `place-s2r-${suffix}`,
+    definitionId: `pdef-s2r-${suffix}`,
+    revisionId: `drev-s2r-${suffix}`,
+    bindingId: `bind-s2r-${suffix}`,
+    valueId: `pval-s2r-${suffix}`,
+  };
+  for (const value of Object.values(fixture)) {
+    if (typeof value === "string") {
+      assertSafeFixtureId(value.replaceAll(",", ""));
+    }
+  }
+  return fixture;
+}
+
+async function commitCanonicalDriverCatalog(
+  client: pg.Client,
+  fixture: CanonicalDriverFixture,
+  options: { includePlacement: boolean; includeBinding: boolean },
+): Promise<void> {
+  const name = sqlText(`S2-RBAC ${fixture.releaseVersion}`);
+  const statements = [
+    `insert into public.organizations (id, name) values (${sqlText(fixture.orgId)}, ${name})`,
+    `insert into public.projects (id, organization_id, name, code)
+     values (${sqlText(fixture.projectId)}, ${sqlText(fixture.orgId)}, ${name}, ${sqlText(fixture.projectCode)})`,
+    `insert into public.attribution_subjects (
+       id, organization_id, subject_kind, display_name, source_key
+     ) values (
+       ${sqlText(fixture.attributionId)}, ${sqlText(fixture.orgId)}, 'driver-registration',
+       ${name}, ${sqlText(`compatible:${fixture.canonicalKey}`)}
+     )`,
+    `insert into public.driver_registrations (
+       attribution_subject_id, driver_nature, instance_cardinality
+     ) values (${sqlText(fixture.attributionId)}, 'physical-device', 'multiple')`,
+    `insert into public.parameter_modules (
+       id, organization_id, name, path, depth, kind, origin, attribution_subject_id
+     ) values (
+       ${sqlText(fixture.moduleId)}, ${sqlText(fixture.orgId)}, ${name},
+       ${sqlText(fixture.moduleId)}, 1, 'driver-group', 'curated', ${sqlText(fixture.attributionId)}
+     )`,
+    `insert into parameter_catalog.catalog_releases (
+       id, release_sequence, release_version, release_digest,
+       compiled_model_digest, toolchain_digest, published_at
+     ) values (
+       ${sqlText(fixture.releaseId)}, ${fixture.releaseSequence}, ${sqlText(fixture.releaseVersion)},
+       ${sqlText(`sha256:${fixture.releaseVersion}`)},
+       ${sqlText(`sha256:${fixture.releaseVersion}-model`)},
+       ${sqlText(`sha256:${fixture.releaseVersion}-toolchain`)},
+       '2026-09-03T00:00:00Z'
+     )`,
+    `insert into parameter_catalog.catalog_subjects (
+       id, introduced_release_id, kind, canonical_key
+     ) values (
+       ${sqlText(fixture.subjectId)}, ${sqlText(fixture.releaseId)}, 'driver',
+       ${sqlText(fixture.canonicalKey)}
+     )`,
+    `insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
+     values (${sqlText(fixture.subjectId)}, 'physical-device', 'multiple')`,
+    `insert into parameter_catalog.catalog_release_subjects (
+       release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+     ) values (${sqlText(fixture.releaseId)}, ${sqlText(fixture.subjectId)}, 'active', '{}', '{}')`,
+  ];
+
+  if (options.includePlacement) {
+    statements.push(
+      `insert into parameter_catalog.organization_subject_registrations (
+         id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+       ) values (
+         ${sqlText(fixture.registrationId)}, ${sqlText(fixture.orgId)}, ${sqlText(fixture.subjectId)},
+         'active', 'explicit', '{}', ${sqlText(fixture.placementId)}
+       )`,
+      `insert into parameter_catalog.subject_placements (
+         id, registration_id, organization_id, module_id, origin
+       ) values (
+         ${sqlText(fixture.placementId)}, ${sqlText(fixture.registrationId)},
+         ${sqlText(fixture.orgId)}, ${sqlText(fixture.moduleId)}, 'curated'
+       )`,
+    );
+  }
+
+  if (options.includeBinding) {
+    statements.push(
+      `insert into parameter_catalog.parameter_definitions (
+         id, introduced_release_id, subject_id, property_key, current_revision_id
+       ) values (
+         ${sqlText(fixture.definitionId)}, ${sqlText(fixture.releaseId)},
+         ${sqlText(fixture.subjectId)}, 'iin_max', ${sqlText(fixture.revisionId)}
+       )`,
+      `insert into parameter_catalog.definition_revisions (
+         id, definition_id, revision_number, catalog_release_id, content_digest, content
+       ) values (
+         ${sqlText(fixture.revisionId)}, ${sqlText(fixture.definitionId)}, 1,
+         ${sqlText(fixture.releaseId)}, ${sqlText(`sha256:${fixture.releaseVersion}-rev`)}, '{}'
+       )`,
+      `insert into parameter_catalog.catalog_release_definition_heads (
+         release_id, definition_id, revision_id
+       ) values (
+         ${sqlText(fixture.releaseId)}, ${sqlText(fixture.definitionId)}, ${sqlText(fixture.revisionId)}
+       )`,
+      `insert into parameter_catalog.catalog_materializations (
+         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+       ) values (
+         ${sqlText(fixture.releaseId)},
+         ${sqlText(`sha256:${fixture.releaseVersion}-compiled-fp`)},
+         ${sqlText(`sha256:${fixture.releaseVersion}-database-fp`)},
+         ${sqlText(`${fixture.releaseVersion}-attempt`)},
+         ${sqlText(`${fixture.releaseVersion}-audit`)}
+       )`,
+      `insert into parameter_catalog.project_parameter_bindings (
+         id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id,
+         subject_id, definition_id, effective_revision_id, current_value_id
+       ) values (
+         ${sqlText(fixture.bindingId)}, ${sqlText(fixture.orgId)}, ${sqlText(fixture.releaseId)},
+         ${sqlText(fixture.projectId)}, 'logical-s2r', ${sqlText(fixture.registrationId)},
+         ${sqlText(fixture.subjectId)}, ${sqlText(fixture.definitionId)},
+         ${sqlText(fixture.revisionId)}, ${sqlText(fixture.valueId)}
+       )`,
+      `insert into parameter_catalog.project_parameter_values (
+         id, binding_id, definition_id, definition_revision_id,
+         source_ref, config_revision_id, value_digest, value_kind, value
+       ) values (
+         ${sqlText(fixture.valueId)}, ${sqlText(fixture.bindingId)}, ${sqlText(fixture.definitionId)},
+         ${sqlText(fixture.revisionId)}, 'source-s2r', 'config-s2r', 'sha256:s2r-value', 'number', '1'
+       )`,
+    );
+  }
+
+  await client.query("begin");
+  try {
+    await client.query(`${statements.join(";\n")};\nset constraints all immediate`);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
   }
 }
 
@@ -520,6 +704,219 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       ) as allowed
     `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
     expect(lockExecute.rows).toEqual([{ allowed: false }]);
+  });
+
+  it("grants the synchronizer only CHECK predicates and the exclusive lock", async () => {
+    const granted = await client.query<{
+      proname: string;
+      public_execute: boolean;
+      writer_execute: boolean;
+    }>(`
+      select
+        procedure.proname,
+        pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'parameter_catalog'
+        and pg_catalog.has_function_privilege($1, procedure.oid, 'execute')
+      order by procedure.proname
+    `, [CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(granted.rows).toEqual(
+      [...SYNCHRONIZER_EXECUTE_FUNCTION_NAMES].map((proname) => ({
+        proname,
+        public_execute: false,
+        writer_execute: false,
+      })),
+    );
+  });
+
+  it("keeps placement and observation-match guards SECURITY DEFINER without writer execute", async () => {
+    const rows = await client.query<{
+      identity: string;
+      security_definer: boolean;
+      public_execute: boolean;
+      synchronizer_execute: boolean;
+      writer_execute: boolean;
+    }>(`
+      select
+        format(
+          '%I.%I(%s)',
+          namespace.nspname,
+          procedure.proname,
+          pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+        ) as identity,
+        procedure.prosecdef as security_definer,
+        pg_catalog.has_function_privilege('public', procedure.oid, 'execute') as public_execute,
+        pg_catalog.has_function_privilege($1, procedure.oid, 'execute') as synchronizer_execute,
+        pg_catalog.has_function_privilege($2, procedure.oid, 'execute') as writer_execute
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'parameter_catalog'
+        and format(
+          '%I.%I(%s)',
+          namespace.nspname,
+          procedure.proname,
+          pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+        ) = any($3::text[])
+      order by 1
+    `, [
+      CATALOG_SYNCHRONIZER_ROLE,
+      PARAMETER_GOVERNANCE_WRITER_ROLE,
+      [...TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES],
+    ]);
+    expect(rows.rows).toEqual(
+      [...TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES].sort().map((identity) => ({
+        identity,
+        security_definer: true,
+        public_execute: false,
+        synchronizer_execute: false,
+        writer_execute: false,
+      })),
+    );
+  });
+
+  it("synchronizer INSERT catalog_subjects succeeds through CHECK function execute", async () => {
+    await withLocalRole(client, CATALOG_SYNCHRONIZER_ROLE, async () => {
+      const inserted = await client.query(`
+        insert into parameter_catalog.catalog_subjects (
+          id, introduced_release_id, kind, canonical_key
+        ) values (
+          'csub-sync-check', 'crel-sync-check', 'driver', 'vendor,driver'
+        )
+      `);
+      expect(inserted.rowCount).toBe(1);
+    });
+  });
+
+  it("synchronizer SELECT acquire_current_pointer_lock_exclusive succeeds", async () => {
+    await withLocalRole(client, CATALOG_SYNCHRONIZER_ROLE, async () => {
+      await client.query(`select ${EXCLUSIVE_LOCK_FUNCTION_IDENTITY}`);
+    });
+  });
+
+  it("writer EXECUTE exclusive lock fails 42501 P01", async () => {
+    const error = await captureRoleStatementError(
+      client,
+      PARAMETER_GOVERNANCE_WRITER_ROLE,
+      `select ${EXCLUSIVE_LOCK_FUNCTION_IDENTITY}`,
+    );
+    assertSqlstate42501(error, p01Gate());
+  });
+
+  it("writer INSERT subject_placements then SET CONSTRAINTS ALL IMMEDIATE succeeds without Catalog grants", async () => {
+    const fixture = canonicalDriverFixture("place", 88910);
+    await commitCanonicalDriverCatalog(client, fixture, {
+      includePlacement: false,
+      includeBinding: false,
+    });
+
+    await withLocalRole(client, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+      const registration = await client.query(
+        `
+        insert into parameter_catalog.organization_subject_registrations (
+          id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+        ) values ($1, $2, $3, 'active', 'explicit', '{}', $4)
+        `,
+        [fixture.registrationId, fixture.orgId, fixture.subjectId, fixture.placementId],
+      );
+      expect(registration.rowCount).toBe(1);
+
+      const placement = await client.query(
+        `
+        insert into parameter_catalog.subject_placements (
+          id, registration_id, organization_id, module_id, origin
+        ) values ($1, $2, $3, $4, 'curated')
+        `,
+        [fixture.placementId, fixture.registrationId, fixture.orgId, fixture.moduleId],
+      );
+      expect(placement.rowCount).toBe(1);
+
+      await client.query("set constraints all immediate");
+
+      const stored = await client.query<{ id: string }>(
+        "select id from parameter_catalog.subject_placements where id = $1",
+        [fixture.placementId],
+      );
+      expect(stored.rows).toEqual([{ id: fixture.placementId }]);
+    });
+
+    const catalogSelect = await captureRoleStatementError(
+      client,
+      PARAMETER_GOVERNANCE_WRITER_ROLE,
+      "select * from parameter_catalog.catalog_subjects",
+    );
+    assertSqlstate42501(catalogSelect, p01Gate());
+
+    const privileges = await client.query<{ catalog_select: boolean; binding_select: boolean }>(`
+      select
+        pg_catalog.has_table_privilege($1, 'parameter_catalog.catalog_subjects', 'select') as catalog_select,
+        pg_catalog.has_table_privilege($1, 'parameter_catalog.project_parameter_bindings', 'select') as binding_select
+    `, [PARAMETER_GOVERNANCE_WRITER_ROLE]);
+    expect(privileges.rows).toEqual([{ catalog_select: false, binding_select: false }]);
+  });
+
+  it("writer INSERT observation-match then SET CONSTRAINTS ALL IMMEDIATE succeeds without Binding grants", async () => {
+    const fixture = canonicalDriverFixture("match", 88920);
+    await commitCanonicalDriverCatalog(client, fixture, {
+      includePlacement: true,
+      includeBinding: true,
+    });
+
+    await withLocalRole(client, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+      const observation = await client.query(
+        `
+        insert into parameter_catalog.parameter_observations (
+          id, organization_id, project_id, logical_node_id, config_revision_id,
+          source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
+        ) values (
+          $1, $2, $3, 'logical-s2r', 'config-s2r-match',
+          'source-s2r-match', '{}', $4, 'matcher-s2r', 'sha256:s2r-match-obs'
+        )
+        `,
+        ["pobs-s2r-match", fixture.orgId, fixture.projectId, fixture.releaseId],
+      );
+      expect(observation.rowCount).toBe(1);
+
+      const match = await client.query(
+        `
+        insert into parameter_catalog.parameter_observation_matches (
+          id, observation_id, organization_id, project_id, logical_node_id,
+          registration_id, subject_id, definition_id, definition_revision_id, binding_id,
+          catalog_release_id, matcher_revision
+        ) values (
+          'pmatch-s2r-match', 'pobs-s2r-match', $1, $2, 'logical-s2r',
+          $3, $4, $5, $6, $7,
+          $8, 'matcher-s2r'
+        )
+        `,
+        [
+          fixture.orgId,
+          fixture.projectId,
+          fixture.registrationId,
+          fixture.subjectId,
+          fixture.definitionId,
+          fixture.revisionId,
+          fixture.bindingId,
+          fixture.releaseId,
+        ],
+      );
+      expect(match.rowCount).toBe(1);
+
+      await client.query("set constraints all immediate");
+
+      const stored = await client.query<{ id: string }>(
+        "select id from parameter_catalog.parameter_observation_matches where id = 'pmatch-s2r-match'",
+      );
+      expect(stored.rows).toEqual([{ id: "pmatch-s2r-match" }]);
+    });
+
+    const bindingSelect = await captureRoleStatementError(
+      client,
+      PARAMETER_GOVERNANCE_WRITER_ROLE,
+      "select * from parameter_catalog.project_parameter_bindings",
+    );
+    assertSqlstate42501(bindingSelect, p01Gate());
   });
 
   it("T10: production roles fail legacy structural writes with 42501 P02", async () => {

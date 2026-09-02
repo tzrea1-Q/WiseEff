@@ -11,6 +11,21 @@ export const CATALOG_ROLES = [
 export const GUARD_FUNCTION_IDENTITY =
   "parameter_catalog.assert_catalog_subject_active(text,text,text,text)";
 
+export const EXCLUSIVE_LOCK_FUNCTION_IDENTITY =
+  "parameter_catalog.acquire_current_pointer_lock_exclusive()";
+
+export const SYNCHRONIZER_EXECUTE_FUNCTION_NAMES = [
+  "acquire_current_pointer_lock_exclusive",
+  "is_canonical_compatible_selector",
+  "is_canonical_node_type_name",
+  "is_canonical_property_key",
+] as const;
+
+export const TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES = [
+  "parameter_catalog.assert_subject_placement_kind()",
+  "parameter_catalog.assert_observation_match_binding_revision()",
+] as const;
+
 export const CATALOG_RELATIONS = [
   "catalog_command_idempotency",
   "catalog_drivers",

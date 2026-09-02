@@ -4,14 +4,18 @@
 --   catalog_migration_owner (NOLOGIN)
 --     owns parameter_catalog and every relation/function in it
 --     SELECT on public FK targets needed for internal referential-integrity checks
+--     UPDATE on public.parameter_modules so the SECURITY DEFINER placement
+--       lock can SELECT ... FOR SHARE without writer table grants
 --   catalog_synchronizer_role (NOLOGIN)
 --     USAGE on parameter_catalog
 --     SELECT, INSERT on immutable Catalog relations
 --     SELECT, INSERT, UPDATE on catalog_command_idempotency
 --     UPDATE (current_catalog_release_id) on catalog_state
 --     UPDATE (current_revision_id) on parameter_definitions
+--     EXECUTE only on CHECK identity predicates and
+--       acquire_current_pointer_lock_exclusive()
 --     no Binding / Cutover / Verification / Governance DML
---     no EXECUTE on assert_catalog_subject_active
+--     no EXECUTE on assert_catalog_subject_active or trigger-only functions
 --   parameter_governance_writer_role (NOLOGIN)
 --     USAGE on parameter_catalog
 --     necessary Organization-governance DML
@@ -19,7 +23,11 @@
 --     EXECUTE only on parameter_catalog.assert_catalog_subject_active(text,text,text,text)
 --     no Catalog table SELECT or DML
 --     no Binding / Cutover / Verification capability
+--     no EXECUTE on CHECK predicates, exclusive lock, or trigger-only functions
 --   PUBLIC remains revoked on the schema, tables, sequences, and functions
+--   assert_subject_placement_kind and assert_observation_match_binding_revision
+--     are SECURITY DEFINER so writer INSERTs can fire deferred guards without
+--     Catalog / Binding table grants; writer roles are not granted EXECUTE
 --
 -- Privilege negatives (executed SQLSTATE 42501):
 --   PCAT-DB-P01 / PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS
@@ -103,6 +111,7 @@ grant select on table
   public.projects,
   public.parameter_modules
 to catalog_migration_owner;
+grant update on table public.parameter_modules to catalog_migration_owner;
 
 revoke all on schema parameter_catalog from public;
 revoke all on all tables in schema parameter_catalog from public;
@@ -186,6 +195,28 @@ grant insert on table public.audit_events to parameter_governance_writer_role;
 grant execute on function
   parameter_catalog.assert_catalog_subject_active(text, text, text, text)
 to parameter_governance_writer_role;
+
+grant execute on function
+  parameter_catalog.is_canonical_compatible_selector(text),
+  parameter_catalog.is_canonical_node_type_name(text),
+  parameter_catalog.is_canonical_property_key(text),
+  parameter_catalog.acquire_current_pointer_lock_exclusive()
+to catalog_synchronizer_role;
+
+revoke all on function
+  parameter_catalog.is_canonical_compatible_selector(text),
+  parameter_catalog.is_canonical_node_type_name(text),
+  parameter_catalog.is_canonical_property_key(text),
+  parameter_catalog.acquire_current_pointer_lock_exclusive()
+from public, parameter_governance_writer_role;
+
+alter function parameter_catalog.assert_subject_placement_kind() security definer;
+alter function parameter_catalog.assert_observation_match_binding_revision() security definer;
+
+revoke all on function parameter_catalog.assert_subject_placement_kind()
+  from public, catalog_synchronizer_role, parameter_governance_writer_role;
+revoke all on function parameter_catalog.assert_observation_match_binding_revision()
+  from public, catalog_synchronizer_role, parameter_governance_writer_role;
 
 revoke all on table
   parameter_catalog.project_parameter_bindings,
