@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/design-docs/parameter-catalog-api-transition.md)
 
-Status: locked product and compatibility decision for [GitHub issue #677](https://github.com/tzrea1-Q/WiseEff/issues/677). This document describes the target contract; none of these routes or DTOs are claimed to be implemented by this decision-only change.
+Status: locked product and compatibility decision for [GitHub issue #677](https://github.com/tzrea1-Q/WiseEff/issues/677). S8-CON freezes the generated OpenAPI, route manifest, DTO schemas, stable `details.reason` values, and typed frontend client for this contract. HTTP handlers are still owned by S8-READ, S8-GOV, and S8-LEG and are not claimed here.
 
 ## Decision
 
@@ -44,9 +44,9 @@ The repaired issue #673 read facet closes every canonical Catalog read in this d
 
 ## Scope and non-goals
 
-This decision fixes routes, resource ownership, DTO state, authorization, error reasons, ID lookup behavior, consumer disposition, and deprecation rules. It does not:
+This decision fixes routes, resource ownership, DTO state, authorization, error reasons, ID lookup behavior, consumer disposition, and deprecation rules. S8-CON now owns the generated OpenAPI, DTO, route, error, and client freeze. It does not:
 
-- implement an HTTP handler, database migration, OpenAPI schema, frontend client, mock adapter, or UI;
+- implement an HTTP handler, database migration, mock adapter, or UI;
 - choose the catalog kernel's internal method names or transaction implementation owned by [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673);
 - redesign project value editing, DTS text drafting, device debugging, or reload behavior beyond changing the catalog identities they consume;
 - create implementation tickets or authorize a production rollout;

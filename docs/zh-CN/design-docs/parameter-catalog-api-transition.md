@@ -2,7 +2,7 @@
 
 > English: [English](../../design-docs/parameter-catalog-api-transition.md)
 
-状态：这是 [GitHub issue #677](https://github.com/tzrea1-Q/WiseEff/issues/677) 已锁定的产品与兼容性决策。本页描述目标合同；本次仅决策文档变更，不能据此声称任何路由或 DTO 已经实现。
+状态：这是 [GitHub issue #677](https://github.com/tzrea1-Q/WiseEff/issues/677) 已锁定的产品与兼容性决策。S8-CON 冻结本页对应的 generated OpenAPI、route manifest、DTO schema、稳定 `details.reason` 与 typed frontend client。HTTP handler 仍由 S8-READ、S8-GOV、S8-LEG 拥有，本页不声称运行时已实现。
 
 ## 决策
 
@@ -44,9 +44,9 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 
 ## 范围与非目标
 
-本决策固定路由、资源所有权、DTO 状态、授权、错误原因、ID 查询结果、消费者处置和退役规则。它不负责：
+本决策固定路由、资源所有权、DTO 状态、授权、错误原因、ID 查询结果、消费者处置和退役规则。S8-CON 现拥有 generated OpenAPI、DTO、路由、错误与 client 冻结。它不负责：
 
-- 实现 HTTP handler、数据库迁移、OpenAPI schema、前端 client、mock adapter 或 UI；
+- 实现 HTTP handler、数据库迁移、mock adapter 或 UI；
 - 决定 [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 所属的目录内核方法名或事务实现；
 - 重写 project value 编辑、DTS 文本 draft、设备调试或 reload 行为，除非只是改用新的目录身份；
 - 创建实现 tickets 或授权生产发布；

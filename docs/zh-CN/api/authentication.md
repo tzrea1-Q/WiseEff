@@ -18,7 +18,7 @@ AUTH_MODE=development
 x-wiseeff-user: <seed-user-id>
 ```
 
-该模式只用于本地开发和测试，不是生产身份边界。
+该模式只用于本地开发和测试，不是生产身份边界。Catalog 路由仍然从服务端可信上下文推导 Organization、角色、Agent 与 System 身份；请求不得自报 `X-WiseEff-Role`、`X-WiseEff-Organization`、`X-WiseEff-Actor-Kind` 或 `X-WiseEff-Agent`。依赖发布状态的写入发送 `X-WiseEff-Catalog-Release`；治理写入还发送 `If-Match` 与 `Idempotency-Key`。
 
 ## OIDC 生产模式
 

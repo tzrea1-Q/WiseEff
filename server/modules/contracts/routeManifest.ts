@@ -1,4 +1,5 @@
 import type { HttpMethod } from "../../shared/http/router";
+import { parameterCatalogCanonicalRoutes } from "./dtoSchemas/parameterCatalog";
 
 export type RouteModule =
   | "auth"
@@ -16,7 +17,8 @@ export type RouteModule =
   | "jobs"
   | "debugging"
   | "operations"
-  | "agent";
+  | "agent"
+  | "catalog";
 export type RouteStability = "mvp" | "commercial-readiness" | "deprecated";
 
 export type RouteManifestEntry = {
@@ -572,6 +574,8 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+
+  ...parameterCatalogCanonicalRoutes,
 
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
