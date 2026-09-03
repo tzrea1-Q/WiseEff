@@ -184,6 +184,27 @@ const extraDefinitionSuccessorBundle = (): CatalogReleaseBundle => {
   return bundle;
 };
 
+const changedDefinitionSuccessorBundle = (): CatalogReleaseBundle => {
+  const bundle = validCatalogReleaseBundle();
+  const target = bundle.releases.find(
+    (release) => release.manifest.release.id === bundle.targetReleaseId,
+  );
+  if (!target) throw new Error("successor target missing");
+  const definition = target.documents.find(
+    (document): document is CatalogReleaseDefinitionDocument =>
+      document.kind === "definition",
+  );
+  if (!definition) throw new Error("successor definition missing");
+  definition.content.revision = {
+    ...definition.content.revision,
+    id: "drev_acme_power_iin_max_2",
+    number: 2,
+    documentation: "Changed maximum accepted input current.",
+  };
+  refreshReleaseSource(target);
+  return bundle;
+};
+
 async function insertOpenCutoverRun(
   client: pg.Client,
   input: { id: string; digest: string; closed?: boolean },
@@ -677,6 +698,60 @@ describe("atomic Catalog install and pointer switch", () => {
       [first.release.id],
     );
     expect(firstHead.rows[0]?.count).toBe("0");
+  });
+
+  it("advances a successor that changes existing definition content and current head", async () => {
+    const first = compileOrThrow(firstReleaseBundle());
+    const changedBundle = changedDefinitionSuccessorBundle();
+    const successor = compileOrThrow(changedBundle);
+    await installPublishedRelease(pool, {
+      mode: "bootstrap",
+      source: jsonCatalogReleaseSource(firstReleaseBundle()),
+      expectedTargetDigest: first.aggregateDigest,
+    });
+    const advanced = await installPublishedRelease(pool, {
+      mode: "advance",
+      source: jsonCatalogReleaseSource(changedBundle),
+      expectedCurrent: { id: first.release.id, digest: first.release.digest },
+      expectedTargetDigest: successor.aggregateDigest,
+    });
+    expect(advanced.ok).toBe(true);
+    if (!advanced.ok) return;
+    expect(advanced.value).toMatchObject({
+      status: "installed",
+      mode: "advance",
+      current: { id: successor.release.id },
+    });
+    const head = await observer.query<{
+      current_revision_id: string;
+      pointer: string;
+      successor_head: string;
+      predecessor_head: string;
+    }>(
+      `select
+         definition.current_revision_id,
+         state.current_catalog_release_id as pointer,
+         successor_head.revision_id as successor_head,
+         predecessor_head.revision_id as predecessor_head
+       from parameter_catalog.parameter_definitions definition
+       join parameter_catalog.catalog_state state on state.singleton
+       join parameter_catalog.catalog_release_definition_heads successor_head
+         on successor_head.definition_id = definition.id
+        and successor_head.release_id = $1
+       join parameter_catalog.catalog_release_definition_heads predecessor_head
+         on predecessor_head.definition_id = definition.id
+        and predecessor_head.release_id = $2
+       where definition.id = 'pdef_acme_power_iin_max'`,
+      [successor.release.id, first.release.id],
+    );
+    expect(head.rows).toEqual([
+      {
+        current_revision_id: "drev_acme_power_iin_max_2",
+        pointer: successor.release.id,
+        successor_head: "drev_acme_power_iin_max_2",
+        predecessor_head: "drev_acme_power_iin_max_1",
+      },
+    ]);
   });
 
   it("re-reads the installed fingerprint on replay and reports drift after tamper", async () => {

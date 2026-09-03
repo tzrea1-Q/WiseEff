@@ -625,10 +625,10 @@ export const installPublishedRelease = async (
       const pointer = await readCurrentCatalogPointer(client);
       const previous = recastPointer(pointer);
       await materializeCompiledRelease(client, compiled.value, options);
-      await client.query("set constraints all immediate");
       await restoreCurrentDefinitionHeads(client, compiled.value.release.id);
       maybeFailPointer(options);
       await advanceCurrentPointer(client, compiled.value.release.id);
+      await client.query("set constraints all immediate");
       return {
         status: "installed",
         mode: command.mode,
