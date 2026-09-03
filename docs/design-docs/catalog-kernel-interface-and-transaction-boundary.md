@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese companion](../zh-CN/design-docs/catalog-kernel-interface-and-transaction-boundary.md)
 
-Status: accepted target contract, completed after joint acceptance, for [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673). It is an implementation-specification input for the catalog replacement in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668), not a claim that the current runtime implements this module.
+Status: accepted target contract, completed after joint acceptance, for [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673). It is an implementation-specification input for the catalog replacement in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668). S3-RUN (#691) implements the TypeScript public types and `loadCurrentCatalog` / `loadPinnedCatalog` at `server/modules/catalog-kernel/interface.ts`. `installPublishedRelease`, `switchBackBeforeTraffic`, and `verifyCurrentMaterialization` remain tagged `permission-denied` until S3-INS / S3-VFY own those adapters.
 
 This decision consumes the accepted ADR-0040/0041/0042 superset at [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b). Those decisions remain authoritative for domain and relational semantics. This document decides the deep module seam, types, transaction ownership, permissions, cache behavior, and test surface. It creates no production code, migration, HTTP route, UI, or implementation ticket and reserves no ADR number.
 
