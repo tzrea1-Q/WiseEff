@@ -128,6 +128,17 @@ describe("verification-core migration", () => {
             client.query("insert into parameter_catalog.verification_plans default values"),
           ).rejects.toMatchObject({ code: "42501" });
           await client.query("rollback");
+
+          await client.query("begin");
+          await client.query("set local role catalog_verifier_role");
+          const verifierSelect = await client.query<{ n: string }>(
+            "select count(*)::text as n from parameter_catalog.verification_plans",
+          );
+          expect(verifierSelect.rows[0]?.n).toBe("0");
+          await expect(
+            client.query("insert into parameter_catalog.verification_plans default values"),
+          ).rejects.toMatchObject({ code: "42501" });
+          await client.query("rollback");
         } finally {
           await client.end().catch(() => undefined);
         }

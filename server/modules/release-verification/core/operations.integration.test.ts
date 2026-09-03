@@ -8,12 +8,14 @@ import {
   type EphemeralTestDatabase,
   type InMemoryTestDatabase,
 } from "../../../testing/testDatabase";
+import { digestOf } from "./digest";
 import { RELEASE_VERIFICATION_GATES, MISSING_APPLICABLE_GATE_FAILURE } from "./gateRegistry";
 import { prepareLockMaterial, verificationLockKeys } from "./lock";
 import { createReleaseVerificationService } from "./service";
 import type {
   GateAdapter,
   PrepareVerificationInput,
+  TypedEvidenceRef,
   VerificationPlan,
 } from "./types";
 
@@ -123,6 +125,22 @@ const validPrepare = (
   ...overrides,
 });
 
+const evidenceDigestFor = (gateId: string): string =>
+  digestOf({ gateId, producer: "test-adapter" });
+
+const planBoundEvidence = (plan: VerificationPlan): TypedEvidenceRef[] =>
+  plan.applicabilityProfile
+    .filter((entry) => entry.applicability.status === "required-now")
+    .map((entry) => ({
+      gateId: entry.gateId,
+      digest: evidenceDigestFor(entry.gateId),
+      producer: "test-adapter",
+      purpose: plan.purpose,
+      subject: plan.subject,
+      phaseSnapshot: plan.lineage.phaseSnapshot,
+      pins: plan.pins,
+    }));
+
 const passingAdapters = (): Map<string, GateAdapter> => {
   const adapters = new Map<string, GateAdapter>();
   for (const gate of RELEASE_VERIFICATION_GATES) {
@@ -130,7 +148,7 @@ const passingAdapters = (): Map<string, GateAdapter> => {
       gateId,
       status: "passed",
       failureCode: null,
-      evidenceDigest: `sha256:${gateId.toLowerCase()}`,
+      evidenceDigest: evidenceDigestFor(gateId),
       successorPurpose: null,
       notApplicableProof: null,
     }));
@@ -280,14 +298,60 @@ describe("Release Verification five operations", () => {
     expect(reports.rows[0]?.count).toBe("0");
   });
 
+  it("refuses empty or unpinned evidence for a passed required-now profile", async () => {
+    const service = createReleaseVerificationService({ db, adapters: passingAdapters() });
+    const plan = expectOk(
+      await service.prepareVerification(
+        validPrepare({
+          subject: {
+            targetId: "target-empty-evidence",
+            deploymentClass: "self-hosted",
+            environmentId: "env-isolated",
+          },
+        }),
+      ),
+    );
+    expectOk(await service.runVerification(plan.digest));
+    const empty = await service.assembleReport(plan.digest, []);
+    expect(empty).toEqual({
+      ok: false,
+      error: {
+        kind: "evidence-pin-mismatch",
+        detail: "a passed report requires evidence digest for every required-now gate",
+      },
+    });
+    const mismatched = await service.assembleReport(plan.digest, [
+      {
+        ...planBoundEvidence(plan)[0]!,
+        purpose: "public-release",
+      },
+    ]);
+    expect(mismatched).toEqual({
+      ok: false,
+      error: {
+        kind: "evidence-pin-mismatch",
+        detail: "evidence purpose, subject, phase snapshot, and pins must equal the plan",
+      },
+    });
+    const reports = await db.query<{ count: string }>(
+      "select count(*)::text as count from parameter_catalog.verification_reports where plan_digest = $1",
+      [plan.digest],
+    );
+    expect(reports.rows[0]?.count).toBe("0");
+  });
+
   async function passingReport(
     service: ReturnType<typeof createReleaseVerificationService>,
     input: PrepareVerificationInput,
   ): Promise<{ plan: VerificationPlan; reportDigest: string; canonicalBytes: string }> {
     const plan = expectOk(await service.prepareVerification(input));
     expectOk(await service.runVerification(plan.digest));
-    const report = expectOk(await service.assembleReport(plan.digest, []));
+    const report = expectOk(await service.assembleReport(plan.digest, planBoundEvidence(plan)));
     expect(report.decision).toBe("passed");
+    expect(report.aggregateDigest).toBe(report.digest);
+    expect(report.phaseSnapshot).toBe(plan.lineage.phaseSnapshot);
+    expect(report.applicabilityProfile).toHaveLength(plan.applicabilityProfile.length);
+    expect(report.writerReachability.status).toBe("passed");
     return { plan, reportDigest: report.digest, canonicalBytes: report.canonicalBytes };
   }
 

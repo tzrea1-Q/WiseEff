@@ -4,6 +4,69 @@
 
 select pg_catalog.pg_advisory_lock(714013900139);
 
+do $$
+declare
+  attempt integer;
+  role_name text;
+  role_comment text;
+begin
+  for attempt in 1..20 loop
+    begin
+      foreach role_name in array array[
+        'catalog_verification_writer_role',
+        'catalog_verifier_role'
+      ] loop
+        if not exists (select 1 from pg_catalog.pg_roles where rolname = role_name) then
+          execute format(
+            'create role %I nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls',
+            role_name
+          );
+        elsif exists (
+          select 1
+          from pg_catalog.pg_roles
+          where rolname = role_name
+            and (
+              rolcanlogin or rolsuper or rolcreatedb or rolcreaterole
+              or rolinherit or rolreplication or rolbypassrls
+            )
+        ) then
+          execute format(
+            'alter role %I with nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls',
+            role_name
+          );
+        end if;
+
+        if pg_catalog.pg_has_role(current_user, role_name, 'member') then
+          execute format('revoke %I from current_user', role_name);
+        end if;
+      end loop;
+
+      foreach role_comment in array array[
+        'catalog_verification_writer_role|NOLOGIN Release Verification writer: append-only INSERT on verification plans, attempts, results, reports, and approvals.',
+        'catalog_verifier_role|NOLOGIN Release Verification verifier: SELECT-only on verification relations. Cannot INSERT, UPDATE, DELETE, or approve.'
+      ] loop
+        role_name := split_part(role_comment, '|', 1);
+        if coalesce(shobj_description(to_regrole(role_name), 'pg_authid'), '')
+             is distinct from split_part(role_comment, '|', 2) then
+          execute format('comment on role %I is %L', role_name, split_part(role_comment, '|', 2));
+        end if;
+      end loop;
+
+      exit;
+    exception
+      when duplicate_object then
+        null;
+      when others then
+        if sqlerrm like '%tuple concurrently updated%' and attempt < 20 then
+          perform pg_catalog.pg_sleep(0.05 * attempt);
+        else
+          raise;
+        end if;
+    end;
+  end loop;
+end;
+$$;
+
 create table parameter_catalog.verification_gate_registry (
   gate_id text primary key
     check (gate_id <> '' and btrim(gate_id) = gate_id and gate_id !~ '[[:cntrl:]]'),
@@ -154,6 +217,7 @@ create table parameter_catalog.verification_gate_results (
 create table parameter_catalog.verification_reports (
   id text primary key check (id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   digest text not null unique check (digest ~ '^sha256:[0-9a-f]{64}$'),
+  aggregate_digest text not null check (aggregate_digest ~ '^sha256:[0-9a-f]{64}$'),
   canonical_bytes text not null check (canonical_bytes <> ''),
   plan_id text not null references parameter_catalog.verification_plans(id) on delete restrict,
   plan_digest text not null check (plan_digest ~ '^sha256:[0-9a-f]{64}$'),
@@ -168,11 +232,24 @@ create table parameter_catalog.verification_reports (
     'p16-cleanup'
   )),
   mode text not null check (mode in ('fresh', 'populated', 'restored', 'cleanup')),
+  phase_snapshot text not null check (phase_snapshot <> '' and btrim(phase_snapshot) = phase_snapshot),
+  predecessor_report_digests jsonb not null check (jsonb_typeof(predecessor_report_digests) = 'array'),
+  pins jsonb not null check (jsonb_typeof(pins) = 'object'),
+  applicability_profile jsonb not null check (jsonb_typeof(applicability_profile) = 'array'),
   decision text not null check (decision in ('passed', 'blocked')),
   results jsonb not null check (jsonb_typeof(results) = 'array'),
   evidence_refs jsonb not null check (jsonb_typeof(evidence_refs) = 'array'),
+  evidence_digests jsonb not null check (jsonb_typeof(evidence_digests) = 'array'),
+  consumer_family_coverage_checksum text not null check (consumer_family_coverage_checksum ~ '^sha256:[0-9a-f]{64}$'),
+  protected_reference_coverage_checksum text not null check (protected_reference_coverage_checksum ~ '^sha256:[0-9a-f]{64}$'),
+  writer_reachability jsonb not null check (jsonb_typeof(writer_reachability) = 'object'),
+  pointer_rollback_status text not null check (pointer_rollback_status in ('open', 'closed')),
+  redaction_policy text not null check (redaction_policy <> '' and btrim(redaction_policy) = redaction_policy),
+  redaction_version text not null check (redaction_version <> '' and btrim(redaction_version) = redaction_version),
+  retention_inputs jsonb not null check (jsonb_typeof(retention_inputs) = 'object'),
   registry_digest text not null check (registry_digest ~ '^sha256:[0-9a-f]{64}$'),
-  assembled_at timestamptz not null default now()
+  assembled_at timestamptz not null default now(),
+  check (digest = aggregate_digest)
 );
 
 create table parameter_catalog.verification_approvals (
@@ -270,6 +347,8 @@ begin
     execute format('revoke all on function %s from public', obj.object_id);
     execute format('revoke all on function %s from catalog_synchronizer_role', obj.object_id);
     execute format('revoke all on function %s from parameter_governance_writer_role', obj.object_id);
+    execute format('revoke all on function %s from catalog_verification_writer_role', obj.object_id);
+    execute format('revoke all on function %s from catalog_verifier_role', obj.object_id);
   end loop;
 end;
 $$;
@@ -281,6 +360,31 @@ revoke all on table
   parameter_catalog.verification_gate_results,
   parameter_catalog.verification_reports,
   parameter_catalog.verification_approvals
-from public, catalog_synchronizer_role, parameter_governance_writer_role;
+from public, catalog_synchronizer_role, parameter_governance_writer_role,
+  catalog_verification_writer_role, catalog_verifier_role;
+
+grant usage on schema parameter_catalog to catalog_verification_writer_role;
+grant usage on schema parameter_catalog to catalog_verifier_role;
+
+grant select on table
+  parameter_catalog.verification_gate_registry,
+  parameter_catalog.verification_plans,
+  parameter_catalog.verification_attempts,
+  parameter_catalog.verification_gate_results,
+  parameter_catalog.verification_reports,
+  parameter_catalog.verification_approvals
+to catalog_verifier_role;
+
+grant select on table
+  parameter_catalog.verification_gate_registry
+to catalog_verification_writer_role;
+
+grant insert, select on table
+  parameter_catalog.verification_plans,
+  parameter_catalog.verification_attempts,
+  parameter_catalog.verification_gate_results,
+  parameter_catalog.verification_reports,
+  parameter_catalog.verification_approvals
+to catalog_verification_writer_role;
 
 select pg_catalog.pg_advisory_unlock(714013900139);

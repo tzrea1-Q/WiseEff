@@ -31,9 +31,11 @@ import type {
   ReadReportResult,
   ReleaseApprovalRecord,
   ReleaseVerificationReport,
+  RetentionDeadlineInputs,
   TypedEvidenceRef,
   VerificationAttemptSnapshot,
   VerificationPlan,
+  WriterReachability,
 } from "./types";
 import {
   VerificationApprovalId,
@@ -168,17 +170,99 @@ const resultCanonical = (result: GateResult) => ({
   successorPurpose: result.successorPurpose,
 });
 
+const REDACTION_POLICY = "catalog-verification-redaction";
+const REDACTION_VERSION = "1";
+
 const reportCanonicalPayload = (
-  report: Omit<ReleaseVerificationReport, "id" | "digest" | "canonicalBytes" | "assembledAt">,
+  report: Omit<
+    ReleaseVerificationReport,
+    "id" | "digest" | "aggregateDigest" | "canonicalBytes" | "assembledAt"
+  >,
 ) => ({
+  applicabilityProfile: report.applicabilityProfile,
   attemptDigest: report.attemptDigest,
+  consumerFamilyCoverageChecksum: report.consumerFamilyCoverageChecksum,
   decision: report.decision,
+  evidenceDigests: report.evidenceDigests,
   evidenceRefs: report.evidenceRefs,
   mode: report.mode,
+  phaseSnapshot: report.phaseSnapshot,
+  pins: report.pins,
   planDigest: report.planDigest,
+  pointerRollbackStatus: report.pointerRollbackStatus,
+  predecessorReportDigests: report.predecessorReportDigests,
+  protectedReferenceCoverageChecksum: report.protectedReferenceCoverageChecksum,
   purpose: report.purpose,
+  redactionPolicy: report.redactionPolicy,
+  redactionVersion: report.redactionVersion,
   registryDigest: report.registryDigest,
   results: report.results.map(resultCanonical),
+  retentionDeadlineInputs: report.retentionDeadlineInputs,
+  writerReachability: report.writerReachability,
+});
+
+const sameDigest = (left: unknown, right: unknown): boolean => digestOf(left) === digestOf(right);
+
+const inspectEvidenceRefs = (
+  plan: VerificationPlan,
+  typedEvidenceRefs: readonly TypedEvidenceRef[],
+): VerificationRefusal | null => {
+  for (const ref of typedEvidenceRefs) {
+    const forbidden: string[] = [];
+    collectForbiddenKeys(ref, forbidden);
+    if (forbidden.length > 0) {
+      if (forbidden.some((key) => key.startsWith("waiv") || key.startsWith("skip"))) {
+        return refusal("waiver-forbidden", `evidence supplied ${forbidden.join(",")}`);
+      }
+      return refusal("caller-gate-selection-forbidden", `evidence supplied ${forbidden.join(",")}`);
+    }
+    if (!ref.digest || ref.digest.length === 0) {
+      return refusal("evidence-pin-mismatch", "evidence refs must be typed digests");
+    }
+    if (
+      ref.purpose !== plan.purpose ||
+      ref.phaseSnapshot !== plan.lineage.phaseSnapshot ||
+      !sameDigest(ref.subject, plan.subject) ||
+      !sameDigest(ref.pins, plan.pins)
+    ) {
+      return refusal(
+        "evidence-pin-mismatch",
+        "evidence purpose, subject, phase snapshot, and pins must equal the plan",
+      );
+    }
+  }
+  return null;
+};
+
+const coverageChecksum = (results: readonly GateResult[], gateIds: readonly string[]): string =>
+  digestOf(
+    results
+      .filter((result) => gateIds.includes(result.gateId))
+      .map((result) => ({
+        evidenceDigest: result.evidenceDigest,
+        gateId: result.gateId,
+        status: result.status,
+      })),
+  );
+
+const writerReachabilityOf = (results: readonly GateResult[]): WriterReachability => {
+  const v13 = results.find((result) => result.gateId === "PCAT-DB-V13");
+  return {
+    status: v13?.status ?? "failed",
+    evidenceDigest: v13?.evidenceDigest ?? null,
+    failureCode: v13?.failureCode ?? MISSING_APPLICABLE_GATE_FAILURE,
+  };
+};
+
+const retentionInputsOf = (plan: VerificationPlan): RetentionDeadlineInputs => ({
+  repositoryAuditHoldPolicyId: plan.pins.verification.contractVersion,
+  longestProtectedRetentionClass: plan.pins.mappingArchive.archiveManifestDigest,
+  cleanupReleaseAcceptanceBound: plan.purpose === "p16-cleanup" ? plan.lineage.phaseSnapshot : null,
+  lastSupportedRestoreOrCompatibilityBound: plan.pins.recovery.recoveryPointDigest,
+  publicLegacyReadWindowBound:
+    plan.purpose === "legacy-read-sunset" || plan.purpose === "p16-cleanup"
+      ? plan.lineage.phaseSnapshot
+      : null,
 });
 
 const defaultAdapter = async (input: {
@@ -259,7 +343,7 @@ const hasForbiddenResultStatus = (results: readonly GateResult[]): boolean =>
     return status === "waived" || status === "skipped" || status === "skipped-as-waived";
   });
 
-const requiredNowPassed = (
+const requiredNowResultsPassed = (
   profile: readonly PurposeGateProfileEntry[],
   results: readonly GateResult[],
 ): boolean => {
@@ -268,7 +352,29 @@ const requiredNowPassed = (
     if (entry.applicability.status !== "required-now") {
       return true;
     }
-    return byId.get(entry.gateId)?.status === "passed";
+    const result = byId.get(entry.gateId);
+    return result?.status === "passed" && Boolean(result.evidenceDigest);
+  });
+};
+
+const requiredNowEvidenceBound = (
+  profile: readonly PurposeGateProfileEntry[],
+  results: readonly GateResult[],
+  typedEvidenceRefs: readonly TypedEvidenceRef[],
+): boolean => {
+  const byId = new Map(results.map((result) => [result.gateId, result]));
+  const refs = new Map(typedEvidenceRefs.map((ref) => [ref.gateId, ref]));
+  return profile.every((entry) => {
+    if (entry.applicability.status !== "required-now") {
+      return true;
+    }
+    const result = byId.get(entry.gateId);
+    const ref = refs.get(entry.gateId);
+    return (
+      result?.status === "passed" &&
+      Boolean(result.evidenceDigest) &&
+      ref?.digest === result.evidenceDigest
+    );
   });
 };
 
@@ -381,16 +487,14 @@ export const createReleaseVerificationService = (options: {
     planDigest: string,
     typedEvidenceRefs: readonly TypedEvidenceRef[],
   ): Promise<Result<ReleaseVerificationReport, VerificationRefusal>> => {
-    const forbiddenEvidence = typedEvidenceRefs.some(
-      (ref) => !ref.digest || ref.digest.length === 0 || FORBIDDEN_CONTROL_KEYS.has(ref.gateId),
-    );
-    if (forbiddenEvidence) {
-      return { ok: false, error: refusal("evidence-pin-mismatch", "evidence refs must be typed digests") };
-    }
     return options.db.transaction(async (tx) => {
       const plan = await findPlanByDigest(tx, planDigest);
       if (!plan) {
         return { ok: false as const, error: refusal("plan-not-found", planDigest) };
+      }
+      const evidenceRefusal = inspectEvidenceRefs(plan, typedEvidenceRefs);
+      if (evidenceRefusal) {
+        return { ok: false as const, error: evidenceRefusal };
       }
       const attempt = await findLatestAttempt(tx, plan.digest);
       if (!attempt || !profileCovered(plan.applicabilityProfile, attempt.results)) {
@@ -405,9 +509,24 @@ export const createReleaseVerificationService = (options: {
           error: refusal("append-only-conflict", "attempt already assembled"),
         };
       }
-      const decision = requiredNowPassed(plan.applicabilityProfile, attempt.results)
-        ? "passed"
-        : "blocked";
+      const requiredPassed = requiredNowResultsPassed(
+        plan.applicabilityProfile,
+        attempt.results,
+      );
+      if (
+        requiredPassed &&
+        !requiredNowEvidenceBound(plan.applicabilityProfile, attempt.results, typedEvidenceRefs)
+      ) {
+        return {
+          ok: false as const,
+          error: refusal(
+            "evidence-pin-mismatch",
+            "a passed report requires evidence digest for every required-now gate",
+          ),
+        };
+      }
+      const decision = requiredPassed ? "passed" : "blocked";
+      const v13 = writerReachabilityOf(attempt.results);
       const draft = {
         planId: plan.id,
         planDigest: plan.digest,
@@ -415,16 +534,42 @@ export const createReleaseVerificationService = (options: {
         attemptDigest: attempt.digest,
         purpose: plan.purpose,
         mode: plan.mode,
+        phaseSnapshot: plan.lineage.phaseSnapshot,
+        predecessorReportDigests: plan.lineage.predecessorReportDigests,
+        pins: plan.pins,
+        applicabilityProfile: plan.applicabilityProfile,
         decision: decision as ReleaseVerificationReport["decision"],
         results: attempt.results,
         evidenceRefs: typedEvidenceRefs,
+        evidenceDigests: attempt.results.map((result) => ({
+          gateId: result.gateId,
+          digest: result.evidenceDigest,
+        })),
+        consumerFamilyCoverageChecksum: coverageChecksum(
+          attempt.results,
+          plan.applicabilityProfile
+            .filter((entry) => entry.family === "comparison")
+            .map((entry) => entry.gateId),
+        ),
+        protectedReferenceCoverageChecksum: coverageChecksum(attempt.results, [
+          "PCAT-DB-V08",
+          "PCAT-CMP-D07",
+        ]),
+        writerReachability: v13,
+        pointerRollbackStatus: plan.lineage.pointerRollbackStatus,
+        redactionPolicy: REDACTION_POLICY,
+        redactionVersion: REDACTION_VERSION,
+        retentionDeadlineInputs: retentionInputsOf(plan),
         registryDigest: plan.registryDigest,
       };
+      const payload = reportCanonicalPayload(draft);
+      const reportDigest = VerificationReportDigest(digestOf(payload));
       const report: ReleaseVerificationReport = {
         ...draft,
         id: VerificationReportId(opaqueId("vreport_")),
-        digest: VerificationReportDigest(digestOf(reportCanonicalPayload(draft))),
-        canonicalBytes: canonicalBytes(reportCanonicalPayload(draft)),
+        digest: reportDigest,
+        aggregateDigest: reportDigest,
+        canonicalBytes: canonicalBytes(payload),
         assembledAt: new Date().toISOString(),
       };
       const inserted = await insertReport(tx, report);
@@ -541,5 +686,3 @@ export const createReleaseVerificationService = (options: {
     readReport,
   };
 };
-
-

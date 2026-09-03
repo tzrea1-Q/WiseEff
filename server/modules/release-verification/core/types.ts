@@ -187,11 +187,35 @@ export type TypedEvidenceRef = {
   readonly gateId: VerificationGateId;
   readonly digest: string;
   readonly producer: string;
+  readonly purpose: VerificationPurpose;
+  readonly subject: VerificationSubject;
+  readonly phaseSnapshot: string;
+  readonly pins: VerificationPins;
+};
+
+export type WriterReachability = {
+  readonly status: VerificationGateStatus;
+  readonly evidenceDigest: string | null;
+  readonly failureCode: string | null;
+};
+
+export type RetentionDeadlineInputs = {
+  readonly repositoryAuditHoldPolicyId: string;
+  readonly longestProtectedRetentionClass: string;
+  readonly cleanupReleaseAcceptanceBound: string | null;
+  readonly lastSupportedRestoreOrCompatibilityBound: string | null;
+  readonly publicLegacyReadWindowBound: string | null;
+};
+
+export type GateEvidenceDigest = {
+  readonly gateId: VerificationGateId;
+  readonly digest: string | null;
 };
 
 export type ReleaseVerificationReport = {
   readonly id: VerificationReportId;
   readonly digest: VerificationReportDigest;
+  readonly aggregateDigest: VerificationReportDigest;
   readonly canonicalBytes: string;
   readonly planId: VerificationPlanId;
   readonly planDigest: VerificationPlanDigest;
@@ -199,9 +223,21 @@ export type ReleaseVerificationReport = {
   readonly attemptDigest: VerificationAttemptDigest;
   readonly purpose: VerificationPurpose;
   readonly mode: VerificationMode;
+  readonly phaseSnapshot: string;
+  readonly predecessorReportDigests: readonly string[];
+  readonly pins: VerificationPins;
+  readonly applicabilityProfile: readonly PurposeGateProfileEntry[];
   readonly decision: VerificationDecision;
   readonly results: readonly GateResult[];
   readonly evidenceRefs: readonly TypedEvidenceRef[];
+  readonly evidenceDigests: readonly GateEvidenceDigest[];
+  readonly consumerFamilyCoverageChecksum: string;
+  readonly protectedReferenceCoverageChecksum: string;
+  readonly writerReachability: WriterReachability;
+  readonly pointerRollbackStatus: PointerRollbackStatus;
+  readonly redactionPolicy: string;
+  readonly redactionVersion: string;
+  readonly retentionDeadlineInputs: RetentionDeadlineInputs;
   readonly registryDigest: GateRegistryDigest;
   readonly assembledAt: string;
 };

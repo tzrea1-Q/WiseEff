@@ -70,6 +70,7 @@ type GateResultRow = {
 type ReportRow = {
   id: string;
   digest: string;
+  aggregate_digest: string;
   canonical_bytes: string;
   plan_id: string;
   plan_digest: string;
@@ -77,9 +78,21 @@ type ReportRow = {
   attempt_digest: string;
   purpose: VerificationPurpose;
   mode: VerificationPlan["mode"];
+  phase_snapshot: string;
+  predecessor_report_digests: readonly string[];
+  pins: ReleaseVerificationReport["pins"];
+  applicability_profile: ReleaseVerificationReport["applicabilityProfile"];
   decision: ReleaseVerificationReport["decision"];
   results: readonly GateResult[];
   evidence_refs: readonly TypedEvidenceRef[];
+  evidence_digests: ReleaseVerificationReport["evidenceDigests"];
+  consumer_family_coverage_checksum: string;
+  protected_reference_coverage_checksum: string;
+  writer_reachability: ReleaseVerificationReport["writerReachability"];
+  pointer_rollback_status: ReleaseVerificationReport["pointerRollbackStatus"];
+  redaction_policy: string;
+  redaction_version: string;
+  retention_inputs: ReleaseVerificationReport["retentionDeadlineInputs"];
   registry_digest: string;
   assembled_at: Date | string;
 };
@@ -129,6 +142,7 @@ const mapAttempt = (
 const mapReport = (row: ReportRow): ReleaseVerificationReport => ({
   id: VerificationReportId(row.id),
   digest: VerificationReportDigest(row.digest),
+  aggregateDigest: VerificationReportDigest(row.aggregate_digest),
   canonicalBytes: row.canonical_bytes,
   planId: VerificationPlanId(row.plan_id),
   planDigest: VerificationPlanDigest(row.plan_digest),
@@ -136,9 +150,21 @@ const mapReport = (row: ReportRow): ReleaseVerificationReport => ({
   attemptDigest: VerificationAttemptDigest(row.attempt_digest),
   purpose: row.purpose,
   mode: row.mode,
+  phaseSnapshot: row.phase_snapshot,
+  predecessorReportDigests: row.predecessor_report_digests,
+  pins: row.pins,
+  applicabilityProfile: row.applicability_profile,
   decision: row.decision,
   results: row.results,
   evidenceRefs: row.evidence_refs,
+  evidenceDigests: row.evidence_digests,
+  consumerFamilyCoverageChecksum: row.consumer_family_coverage_checksum,
+  protectedReferenceCoverageChecksum: row.protected_reference_coverage_checksum,
+  writerReachability: row.writer_reachability,
+  pointerRollbackStatus: row.pointer_rollback_status,
+  redactionPolicy: row.redaction_policy,
+  redactionVersion: row.redaction_version,
+  retentionDeadlineInputs: row.retention_inputs,
   registryDigest: row.registry_digest as ReleaseVerificationReport["registryDigest"],
   assembledAt: asIso(row.assembled_at),
 });
@@ -320,14 +346,19 @@ export async function insertReport(
   try {
     await db.query(
       `insert into parameter_catalog.verification_reports (
-         id, digest, canonical_bytes, plan_id, plan_digest, attempt_id, attempt_digest,
-         purpose, mode, decision, results, evidence_refs, registry_digest
+         id, digest, aggregate_digest, canonical_bytes, plan_id, plan_digest, attempt_id, attempt_digest,
+         purpose, mode, phase_snapshot, predecessor_report_digests, pins, applicability_profile,
+         decision, results, evidence_refs, evidence_digests, consumer_family_coverage_checksum,
+         protected_reference_coverage_checksum, writer_reachability, pointer_rollback_status,
+         redaction_policy, redaction_version, retention_inputs, registry_digest
        ) values (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb,
+         $15, $16::jsonb, $17::jsonb, $18::jsonb, $19, $20, $21::jsonb, $22, $23, $24, $25::jsonb, $26
        )`,
       [
         report.id,
         report.digest,
+        report.aggregateDigest,
         report.canonicalBytes,
         report.planId,
         report.planDigest,
@@ -335,9 +366,21 @@ export async function insertReport(
         report.attemptDigest,
         report.purpose,
         report.mode,
+        report.phaseSnapshot,
+        JSON.stringify(report.predecessorReportDigests),
+        JSON.stringify(report.pins),
+        JSON.stringify(report.applicabilityProfile),
         report.decision,
         JSON.stringify(report.results),
         JSON.stringify(report.evidenceRefs),
+        JSON.stringify(report.evidenceDigests),
+        report.consumerFamilyCoverageChecksum,
+        report.protectedReferenceCoverageChecksum,
+        JSON.stringify(report.writerReachability),
+        report.pointerRollbackStatus,
+        report.redactionPolicy,
+        report.redactionVersion,
+        JSON.stringify(report.retentionDeadlineInputs),
         report.registryDigest,
       ],
     );
@@ -363,8 +406,11 @@ export async function findReport(
   reportIdOrDigest: string,
 ): Promise<StoredReport> {
   const result = await db.query<ReportRow>(
-    `select id, digest, canonical_bytes, plan_id, plan_digest, attempt_id, attempt_digest,
-            purpose, mode, decision, results, evidence_refs, registry_digest, assembled_at
+    `select id, digest, aggregate_digest, canonical_bytes, plan_id, plan_digest, attempt_id, attempt_digest,
+            purpose, mode, phase_snapshot, predecessor_report_digests, pins, applicability_profile,
+            decision, results, evidence_refs, evidence_digests, consumer_family_coverage_checksum,
+            protected_reference_coverage_checksum, writer_reachability, pointer_rollback_status,
+            redaction_policy, redaction_version, retention_inputs, registry_digest, assembled_at
      from parameter_catalog.verification_reports
      where id = $1 or digest = $1`,
     [reportIdOrDigest],

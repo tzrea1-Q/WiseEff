@@ -108,6 +108,7 @@ const DATABASE_EXECUTIONS: readonly VerificationPurpose[] = [
   "post-retirement-runtime",
   "p16-cleanup",
 ];
+const MIGRATION_EXECUTIONS: readonly VerificationPurpose[] = ["pre-activation", "p16-cleanup"];
 const ISOLATED_EXECUTIONS: readonly VerificationPurpose[] = [
   "isolated-candidate-acceptance",
   "p16-cleanup",
@@ -131,7 +132,7 @@ export const RELEASE_VERIFICATION_GATES: readonly RegistryGate[] = freezeRegistr
     migrationVerificationGateIds,
     migrationVerificationFailureCodes,
     "migration",
-    DATABASE_EXECUTIONS,
+    MIGRATION_EXECUTIONS,
   ),
   ...zipFailure(
     privilegeVerificationGateIds,
@@ -225,15 +226,6 @@ export const RELEASE_VERIFICATION_GATES: readonly RegistryGate[] = freezeRegistr
   },
 ]);
 
-const PURPOSE_ORDER: Record<VerificationPurpose, number> = {
-  "pre-activation": 0,
-  "post-retirement-runtime": 1,
-  "isolated-candidate-acceptance": 2,
-  "public-release": 3,
-  "legacy-read-sunset": 4,
-  "p16-cleanup": 5,
-};
-
 const isPurpose = (value: string): value is VerificationPurpose =>
   (verificationPurposes as readonly string[]).includes(value);
 
@@ -246,15 +238,147 @@ export const parseVerificationPurpose = (value: string): VerificationPurpose | n
 export const parseVerificationMode = (value: string): VerificationMode | null =>
   isMode(value) ? value : null;
 
-const firstLaterPurpose = (
-  executions: readonly VerificationPurpose[],
-  purpose: VerificationPurpose,
-): VerificationPurpose | null => {
-  const current = PURPOSE_ORDER[purpose];
-  const later = executions
-    .filter((candidate) => PURPOSE_ORDER[candidate] > current)
-    .sort((left, right) => PURPOSE_ORDER[left] - PURPOSE_ORDER[right]);
-  return later[0] ?? null;
+const REQUIRED_NOW: GateApplicability = { status: "required-now" };
+
+const notYetExecutable = (successorPurpose: VerificationPurpose): GateApplicability => ({
+  status: "not-yet-executable",
+  successorPurpose,
+});
+
+const notApplicable = (proof: string): GateApplicability => ({
+  status: "not-applicable",
+  proof,
+});
+
+const BELONGS_LAUNCH = "belongs-to-purpose:pre-activation,post-retirement-runtime";
+const BELONGS_PRE_ACTIVATION = "belongs-to-purpose:pre-activation";
+const BELONGS_POST_RETIREMENT = "belongs-to-purpose:post-retirement-runtime";
+const BELONGS_ISOLATED = "belongs-to-purpose:isolated-candidate-acceptance";
+const BELONGS_SUNSET = "belongs-to-purpose:legacy-read-sunset";
+const BELONGS_CLEANUP = "belongs-to-purpose:p16-cleanup";
+
+const launchDatabaseApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "post-retirement-runtime":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "isolated-candidate-acceptance":
+    case "public-release":
+    case "legacy-read-sunset":
+      return notApplicable(BELONGS_LAUNCH);
+  }
+};
+
+const migrationApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "post-retirement-runtime":
+    case "isolated-candidate-acceptance":
+    case "public-release":
+    case "legacy-read-sunset":
+      return notApplicable(BELONGS_PRE_ACTIVATION);
+  }
+};
+
+const apiBrowserApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "post-retirement-runtime":
+      return notYetExecutable("isolated-candidate-acceptance");
+    case "isolated-candidate-acceptance":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "public-release":
+    case "legacy-read-sunset":
+      return notApplicable(BELONGS_ISOLATED);
+  }
+};
+
+const recoveryApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "post-retirement-runtime":
+    case "public-release":
+    case "legacy-read-sunset":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "isolated-candidate-acceptance":
+      return notApplicable(BELONGS_LAUNCH);
+  }
+};
+
+const observabilityApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "post-retirement-runtime":
+      return notYetExecutable("isolated-candidate-acceptance");
+    case "isolated-candidate-acceptance":
+    case "public-release":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "legacy-read-sunset":
+      return notApplicable(BELONGS_ISOLATED);
+  }
+};
+
+const rollbackApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "pre-activation":
+    case "post-retirement-runtime":
+      return notYetExecutable("isolated-candidate-acceptance");
+    case "isolated-candidate-acceptance":
+    case "public-release":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "legacy-read-sunset":
+      return notApplicable(BELONGS_ISOLATED);
+  }
+};
+
+const lineageApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "isolated-candidate-acceptance":
+      return notYetExecutable("public-release");
+    case "public-release":
+    case "legacy-read-sunset":
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "pre-activation":
+    case "post-retirement-runtime":
+      return notApplicable("belongs-to-purpose:public-release");
+  }
+};
+
+const sunsetWindowApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "public-release":
+      return notYetExecutable("legacy-read-sunset");
+    case "legacy-read-sunset":
+      return REQUIRED_NOW;
+    case "p16-cleanup":
+      return notApplicable(BELONGS_SUNSET);
+    case "pre-activation":
+    case "post-retirement-runtime":
+    case "isolated-candidate-acceptance":
+      return notApplicable(BELONGS_SUNSET);
+  }
+};
+
+const cleanupFamilyApplicability = (purpose: VerificationPurpose): GateApplicability => {
+  switch (purpose) {
+    case "public-release":
+    case "legacy-read-sunset":
+      return notYetExecutable("p16-cleanup");
+    case "p16-cleanup":
+      return REQUIRED_NOW;
+    case "pre-activation":
+    case "post-retirement-runtime":
+    case "isolated-candidate-acceptance":
+      return notApplicable(BELONGS_CLEANUP);
+  }
 };
 
 export const gateApplicability = (
@@ -263,16 +387,46 @@ export const gateApplicability = (
   mode: VerificationMode,
 ): GateApplicability => {
   if (gate.id === "PCAT-WRITER-PRE-SWITCH-FENCE" && mode === "cleanup") {
-    return { status: "not-applicable", proof: "mode=cleanup/no-pre-switch-fence" };
+    return notApplicable("mode=cleanup/no-pre-switch-fence");
   }
-  if (gate.executionPurposes.includes(purpose)) {
-    return { status: "required-now" };
+  switch (gate.family) {
+    case "database":
+    case "privilege":
+    case "comparison":
+      return launchDatabaseApplicability(purpose);
+    case "migration":
+      return migrationApplicability(purpose);
+    case "api":
+    case "browser":
+      return apiBrowserApplicability(purpose);
+    case "recovery":
+      return recoveryApplicability(purpose);
+    case "writer":
+      return purpose === "pre-activation"
+        ? REQUIRED_NOW
+        : notApplicable(BELONGS_PRE_ACTIVATION);
+    case "observability":
+      return observabilityApplicability(purpose);
+    case "rollback":
+      return rollbackApplicability(purpose);
+    case "runtime-pin":
+      if (purpose === "pre-activation") {
+        return notYetExecutable("post-retirement-runtime");
+      }
+      if (purpose === "post-retirement-runtime") {
+        return REQUIRED_NOW;
+      }
+      return notApplicable(BELONGS_POST_RETIREMENT);
+    case "lineage":
+      return lineageApplicability(purpose);
+    case "restore":
+      return cleanupFamilyApplicability(purpose);
+    case "retirement":
+      if (gate.id === "PCAT-RET-COMPAT-WINDOW" || gate.id === "PCAT-RET-CONSUMER-DISPOSITION") {
+        return sunsetWindowApplicability(purpose);
+      }
+      return cleanupFamilyApplicability(purpose);
   }
-  const successor = firstLaterPurpose(gate.executionPurposes, purpose);
-  if (successor) {
-    return { status: "not-yet-executable", successorPurpose: successor };
-  }
-  return { status: "not-applicable", proof: `not-executed-in-purpose:${purpose}` };
 };
 
 export const purposeProfile = (
