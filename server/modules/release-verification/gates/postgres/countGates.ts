@@ -650,12 +650,7 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     order by procedure.proname
     `,
   );
-  const grantRows = grants.rows.filter(
-    (row) =>
-      row.grantee === "PUBLIC" ||
-      row.grantee === "catalog_synchronizer_role" ||
-      row.grantee === "parameter_governance_writer_role",
-  );
+  const grantRows = grants.rows;
   const violationCount = grantRows.length + definers.rows.length;
   return countedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", violationCount, {
     definerCount: definers.rows.length,

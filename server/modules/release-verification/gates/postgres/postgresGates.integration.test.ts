@@ -209,6 +209,73 @@ describe("canonical PostgreSQL verification gates", () => {
     }
   });
 
+  it("drives populated-mode V17 against the exact empty source snapshot fingerprint", async () => {
+    const service = createReleaseVerificationService({
+      db,
+      adapters: createPostgresGateAdapters({ db }),
+    });
+    const matching = expectOk(
+      await service.prepareVerification(
+        validPrepare(inventoryDigest, schemaVersion, {
+          subject: {
+            targetId: "target-s10-vmp-populated-match",
+            deploymentClass: "self-hosted",
+            environmentId: "env-isolated",
+          },
+          mode: "populated",
+          pins: {
+            ...validPrepare(inventoryDigest, schemaVersion).pins,
+            database: {
+              targetIdentity: "pg-s10-vmp",
+              schemaVersion,
+              migrationInventoryDigest: inventoryDigest,
+            },
+            cutover: {
+              planDigest: "sha256:cutover",
+              contractVersion: "v1",
+              sourceSnapshotFingerprint: emptySourceSnapshot,
+            },
+          },
+        }),
+      ),
+    );
+    const matchingAttempt = expectOk(await service.runVerification(matching.digest));
+    const matchingV17 = matchingAttempt.results.find((result) => result.gateId === "PCAT-DB-V17");
+    expect(matchingV17?.status).toBe("passed");
+    expect(matchingV17?.failureCode).toBeNull();
+
+    const driftedBase = validPrepare(inventoryDigest, schemaVersion);
+    const drifted = expectOk(
+      await service.prepareVerification(
+        validPrepare(inventoryDigest, schemaVersion, {
+          subject: {
+            targetId: "target-s10-vmp-populated-drift",
+            deploymentClass: "self-hosted",
+            environmentId: "env-isolated",
+          },
+          mode: "populated",
+          pins: {
+            ...driftedBase.pins,
+            database: {
+              targetIdentity: "pg-s10-vmp",
+              schemaVersion,
+              migrationInventoryDigest: inventoryDigest,
+            },
+            cutover: {
+              planDigest: "sha256:cutover",
+              contractVersion: "v1",
+              sourceSnapshotFingerprint: "sha256:not-the-source-snapshot",
+            },
+          },
+        }),
+      ),
+    );
+    const driftedAttempt = expectOk(await service.runVerification(drifted.digest));
+    const driftedV17 = driftedAttempt.results.find((result) => result.gateId === "PCAT-DB-V17");
+    expect(driftedV17?.status).toBe("failed");
+    expect(driftedV17?.failureCode).toBe("PCAT-VRF-V17-MODE-RESULT-MISMATCH");
+  });
+
   it("records exact zeros for mapping/Archive/ledger gates instead of skipping when S7-ORC is absent", async () => {
     const service = createReleaseVerificationService({
       db,

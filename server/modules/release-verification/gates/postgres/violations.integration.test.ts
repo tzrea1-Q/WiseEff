@@ -368,4 +368,55 @@ describe("false-zero and no-repair PostgreSQL gates", () => {
     );
     expect(inserted.rows[0]?.count).toBe("0");
   });
+
+  it("fails V13 when a non-writer role holds legacy DML grants", async () => {
+    await db.query("grant insert on table public.parameter_specs to catalog_verifier_role");
+    const service = createReleaseVerificationService({
+      db,
+      adapters: createPostgresGateAdapters({ db }),
+    });
+    const plan = expectOk(
+      await service.prepareVerification(validPrepare(inventoryDigest, schemaVersion, "target-v13")),
+    );
+    const attempt = expectOk(await service.runVerification(plan.digest));
+    const v13 = attempt.results.find((result) => result.gateId === "PCAT-DB-V13");
+    expect(v13?.status).toBe("failed");
+    expect(v13?.failureCode).toBe("PCAT-VRF-V13-LEGACY-WRITER-REACHABLE");
+    const leftover = await db.query<{ count: string }>(
+      `select count(*)::text as count
+         from information_schema.role_table_grants
+        where table_schema = 'public'
+          and table_name = 'parameter_specs'
+          and privilege_type = 'INSERT'
+          and grantee = 'catalog_verifier_role'`,
+    );
+    expect(leftover.rows[0]?.count).toBe("1");
+  });
+
+  it("fails M02 when an applied packaged file has a NULL checksum", async () => {
+    const applied = await db.query<{ name: string }>(
+      "select name from schema_migrations where checksum is not null order by name limit 1",
+    );
+    const name = applied.rows[0]?.name;
+    expect(name).toBeTruthy();
+    await db.query("update schema_migrations set checksum = null where name = $1", [name]);
+    const service = createReleaseVerificationService({
+      db,
+      adapters: createPostgresGateAdapters({ db }),
+    });
+    const plan = expectOk(
+      await service.prepareVerification(
+        validPrepare(inventoryDigest, schemaVersion, "target-m02-null"),
+      ),
+    );
+    const attempt = expectOk(await service.runVerification(plan.digest));
+    const m02 = attempt.results.find((result) => result.gateId === "PCAT-DB-M02");
+    expect(m02?.status).toBe("failed");
+    expect(m02?.failureCode).toBe("PCAT-MIG-APPLIED-FILE-MISSING");
+    const leftover = await db.query<{ checksum: string | null }>(
+      "select checksum from schema_migrations where name = $1",
+      [name],
+    );
+    expect(leftover.rows[0]?.checksum).toBeNull();
+  });
 });

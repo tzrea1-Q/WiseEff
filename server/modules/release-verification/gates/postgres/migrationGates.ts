@@ -53,7 +53,7 @@ export const runM02 = async (
     if (!packaged) {
       return false;
     }
-    return row.checksum != null && row.checksum !== packaged.checksum;
+    return row.checksum == null || row.checksum !== packaged.checksum;
   });
   const offending = [...missing, ...checksumMismatches.map((row) => row.name)];
   return countedResult("PCAT-DB-M02", "PCAT-MIG-APPLIED-FILE-MISSING", offending.length, {
