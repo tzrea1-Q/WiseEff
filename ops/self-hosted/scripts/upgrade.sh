@@ -30,10 +30,14 @@ Catalog options:
   --catalog-archive-root PATH
   --catalog-archive-key-hex HEX
   --catalog-operator-audit-ref REF
-  --catalog-action ACTION               apply (default) or a legal controller action.
 
-Catalog apply invokes only frozen controller actions through P0-P10 then P11a.
-It refuses API/startup migration, gate selection, unknown-commit guesses, and P11-P16.
+Catalog apply is one-shot plan → execute → P11a only. inspect/recover/resume
+belong to S11-REC. P11-P16, gate selection, API/startup migration, and
+unknown-commit guesses are refused.
+
+WISEEFF_CATALOG_QUIESCED=true is a required operator attestation that writers,
+queue, and proxy are quiesced. It is not P2 proof. Catalog apply fails closed
+without it.
 EOF
 }
 
@@ -64,11 +68,7 @@ const targetReleaseDigestArg = process.env.WISEEFF_CATALOG_TARGET_RELEASE_DIGEST
 const archiveRoot = process.env.WISEEFF_CATALOG_ARCHIVE_ROOT ?? "";
 const archiveKeyHex = process.env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX ?? "11".repeat(32);
 const operatorAuditRef = process.env.WISEEFF_CATALOG_OPERATOR_AUDIT_REF ?? "audit-s11-apl-operator";
-const quiesced = process.env.WISEEFF_CATALOG_QUIESCED === "true";
-const catalogAction = process.env.WISEEFF_CATALOG_ACTION ?? "apply";
-const objectStoreIdentity =
-  process.env.WISEEFF_CATALOG_OBJECT_STORE_IDENTITY ?? "s3://wiseeff-lane-722/";
-const redisIdentity = process.env.WISEEFF_CATALOG_REDIS_IDENTITY ?? "redis://s11-apl-lane-722/0";
+const quiescedAttestation = process.env.WISEEFF_CATALOG_QUIESCED === "true";
 const deploymentId = process.env.WISEEFF_CATALOG_DEPLOYMENT_ID ?? "s11-apl";
 const hostFingerprint = process.env.WISEEFF_CATALOG_HOST_FINGERPRINT ?? "sha256:s11-apl-host";
 
@@ -80,10 +80,40 @@ const fail = (code: string, detail: string, exitCode = 2): never => {
   process.exit(exitCode);
 };
 
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+};
+
 const main = async () => {
   if (!root) {
     fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_REPO_ROOT is required");
   }
+  const parsedMode = modeArg === "fresh" || modeArg === "populated" ? modeArg : null;
+  if (!parsedMode) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "apply mode must be exactly fresh XOR populated");
+  }
+  if (!quiescedAttestation) {
+    fail(
+      "PCAT-UPG-ILLEGAL-ACTION",
+      "catalog apply requires operator attestation WISEEFF_CATALOG_QUIESCED=true; this is not P2 quiesce proof",
+    );
+  }
+  if (!journalPath || !runId) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-journal and --catalog-run-id");
+  }
+  if (!databaseUrl) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires DATABASE_URL");
+  }
+  if (!graphPath || !releasePath) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-graph and --catalog-release-json");
+  }
+  if (!/^[0-9a-f]{40}$/.test(targetArtifactSha)) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires a 40-character lowercase git SHA");
+  }
+
   const pg = createRequire(path.join(root, "package.json"))("pg") as typeof import("pg");
   const [
     controllerMod,
@@ -127,59 +157,14 @@ const main = async () => {
   const { createReleaseVerificationService } = verificationMod;
   const { createPostgresGateAdapters, loadPackagedMigrationInventory } = postgresGatesMod;
   const { createDatabase } = databaseMod;
-  const {
-    asEvidenceRequirementRecoveryDigest,
-    asPrepareVerificationRecovery,
-    captureRecoveryPoint,
-    createMemoryStorePort,
-    createPostgresStorePort,
-    isForbiddenComposeAppPostgres,
-    postgresIdentityFromUrl,
-  } = recoveryMod;
+  const { createPostgresStorePort, isForbiddenComposeAppPostgres, postgresIdentityFromUrl } =
+    recoveryMod;
 
-  const parsedMode = modeArg === "fresh" || modeArg === "populated" ? modeArg : null;
-  if (!parsedMode) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "apply mode must be exactly fresh XOR populated");
-  }
-  if ((UNAVAILABLE_PHASES as readonly string[]).includes(catalogAction) || catalogAction === "P11") {
-    fail(
-      "PCAT-UPG-ILLEGAL-ACTION",
-      `activation phase ${catalogAction} is UNAVAILABLE_PHASES and is not a controller action`,
-    );
-  }
-  if (
-    catalogAction === "activate-p12" ||
-    catalogAction === "retire-p13" ||
-    catalogAction === "public-release"
-  ) {
-    fail(
-      "PCAT-UPG-ILLEGAL-ACTION",
-      `activation phase ${catalogAction} is UNAVAILABLE_PHASES and is not a controller action`,
-    );
-  }
-  if (!journalPath || !runId) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-journal and --catalog-run-id");
-  }
-  if (!databaseUrl) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires DATABASE_URL");
-  }
   if (isForbiddenComposeAppPostgres(databaseUrl)) {
     fail(
       "PCAT-UPG-API-MIGRATE-FORBIDDEN",
       "default compose 5432/wiseeff database is forbidden as a catalog apply target",
     );
-  }
-  if (!quiesced) {
-    fail(
-      "PCAT-UPG-ILLEGAL-ACTION",
-      "catalog apply requires quiesced writers, queue, and proxy",
-    );
-  }
-  if (!graphPath || !releasePath) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-graph and --catalog-release-json");
-  }
-  if (!/^[0-9a-f]{40}$/.test(targetArtifactSha)) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires a 40-character lowercase git SHA");
   }
 
   mkdirSync(path.dirname(journalPath), { recursive: true, mode: 0o700 });
@@ -204,27 +189,31 @@ const main = async () => {
       return { rows: result.rows, rowCount: result.rowCount };
     },
   });
-  let lastPlan: {
+
+  type CutoverPlanLike = {
     planDigest: string;
     sourceSnapshotFingerprint: string;
     targetArtifactSha: string;
     targetCatalogReleaseDigest: string;
     migrationContractVersion: string;
     phases: readonly string[];
-  } | null = null;
+  };
+  let lastPlan: CutoverPlanLike | null = null;
   let lastExecute: Record<string, unknown> | null = null;
+  let lastAttempt: { results?: unknown } | null = null;
 
-  const freshZeroPlan = () => {
+  const zeroInventoryPlan = (): CutoverPlanLike => {
     const sourceSnapshotFingerprint = fingerprintP0Graph(graph);
     return {
       planDigest: sha256Prefixed(
         canonicalJson({
           mode: "fresh",
+          kind: "zero-inventory",
           sourceSnapshotFingerprint,
           targetArtifactSha,
           targetCatalogReleaseDigest,
           migrationContractVersion: MIGRATION_CONTRACT_VERSION,
-          phases: PRE_ACTIVATION_PHASES,
+          contractPhases: PRE_ACTIVATION_PHASES,
         }),
       ),
       sourceSnapshotFingerprint,
@@ -235,25 +224,75 @@ const main = async () => {
     };
   };
 
-  const freshZeroSnapshot = (plan: { planDigest: string }) => {
+  const zeroInventorySnapshot = (plan: { planDigest: string }) => {
     const committedAt = new Date().toISOString();
+    const payload = {
+      kind: "zero-inventory",
+      mode: "fresh",
+      identityCount: 0,
+      specCount: 0,
+      liveRun: false,
+      executedPhases: [] as const,
+    };
     return {
-      runId: `cutover_fresh_${runId}`,
+      runId: `cutover_zero_${runId}`,
       planDigest: plan.planDigest,
-      currentPhase: "P10",
+      currentPhase: "P0",
       state: "completed",
       resumed: false,
       liveRun: false,
-      checkpoints: PRE_ACTIVATION_PHASES.map((phase: string) => ({
-        phase,
-        checkpointDigest: sha256Prefixed(
-          canonicalJson({ mode: "fresh", phase, identityCount: 0, specCount: 0 }),
-        ),
-        payload: { mode: "fresh", identityCount: 0, specCount: 0 },
-        committedAt,
-      })),
+      checkpoints: [
+        {
+          phase: "P0",
+          checkpointDigest: sha256Prefixed(canonicalJson(payload)),
+          payload,
+          committedAt,
+        },
+      ],
       runBoundToken: null,
       recoveryPointDump: null,
+    };
+  };
+
+  const checkpointDigestOf = (snapshot: Record<string, unknown> | null, phase: string): string => {
+    const checkpoints = snapshot?.checkpoints;
+    if (!Array.isArray(checkpoints)) {
+      return "";
+    }
+    for (const row of checkpoints) {
+      const record = asRecord(row);
+      if (record?.phase === phase && typeof record.checkpointDigest === "string") {
+        return record.checkpointDigest;
+      }
+    }
+    return "";
+  };
+
+  const summarizeGates = (results: unknown) => {
+    const gates = Array.isArray(results)
+      ? results.map((row) => {
+          const record = asRecord(row) ?? {};
+          return {
+            gateId: String(record.gateId ?? ""),
+            status: String(record.status ?? ""),
+            failureCode: record.failureCode ?? null,
+            successorPurpose: record.successorPurpose ?? null,
+          };
+        })
+      : [];
+    const ids = (status: string) =>
+      gates.filter((gate) => gate.status === status).map((gate) => gate.gateId);
+    const requiredNow = gates.filter(
+      (gate) => gate.status !== "not-yet-executable" && gate.status !== "not-applicable",
+    );
+    return {
+      gates,
+      passedGateIds: ids("passed"),
+      failedGateIds: ids("failed"),
+      notYetExecutableGateIds: ids("not-yet-executable"),
+      notApplicableGateIds: ids("not-applicable"),
+      allRequiredNowPassed: requiredNow.length > 0 && requiredNow.every((gate) => gate.status === "passed"),
+      claimedFullV01V17: false,
     };
   };
 
@@ -277,32 +316,13 @@ const main = async () => {
     );
     const archiveEncryptionKey = Buffer.from(archiveKeyHex, "hex");
     const postgresIdentity = postgresIdentityFromUrl(databaseUrl);
-    const capture = await captureRecoveryPoint({
-      runId,
-      target: {
-        deploymentId,
-        hostFingerprint,
-        postgresIdentity,
-        objectStoreIdentity,
-        redisIdentity,
-      },
-      quiescence: {
-        status: "quiesced",
-        writersFenced: true,
-        queueDrained: true,
-        proxyStopped: true,
-        observedAt: new Date().toISOString(),
-      },
-      stores: [
-        createPostgresStorePort(databaseUrl, { allowComposeApp: false }),
-        createMemoryStorePort("object-store", objectStoreIdentity, {}),
-        createMemoryStorePort("redis", redisIdentity, {}),
-      ],
-      maximumAgeMs: 60 * 60 * 1000,
-    });
-    if (!capture.ok) {
-      fail("PCAT-UPG-ILLEGAL-ACTION", `${capture.error.kind}: ${capture.error.detail}`);
+    const postgresPort = createPostgresStorePort(databaseUrl, { allowComposeApp: false });
+    const postgresSnapshot = await postgresPort.snapshot(new Date());
+    if (!postgresSnapshot) {
+      fail("PCAT-UPG-ILLEGAL-ACTION", "postgres recovery snapshot was not captured");
     }
+    const postgresRecoveryDigest = postgresSnapshot.checksum;
+    const postgresRecoveryId = `pg-only-${runId}`;
 
     const cutover = {
       plan: async (input: never) => {
@@ -323,10 +343,10 @@ const main = async () => {
         if (planned.error.code !== "PCAT-ORC-NOT-POPULATED") {
           return planned;
         }
-        lastPlan = freshZeroPlan();
+        lastPlan = zeroInventoryPlan();
         return { ok: true, value: lastPlan };
       },
-      execute: async (input: { plan: { planDigest: string; phases?: readonly string[] } }) => {
+      execute: async (input: { plan: CutoverPlanLike }) => {
         const executed = await executeCutover({
           pool,
           plan: input.plan,
@@ -352,7 +372,7 @@ const main = async () => {
         if (executed.error.code !== "PCAT-ORC-NOT-POPULATED") {
           return executed;
         }
-        lastExecute = freshZeroSnapshot(input.plan) as Record<string, unknown>;
+        lastExecute = zeroInventorySnapshot(input.plan) as Record<string, unknown>;
         return { ok: true, value: lastExecute };
       },
       inspect: async (input: never) => inspectCutover({ ...(input as object), pool }),
@@ -365,7 +385,13 @@ const main = async () => {
     });
     const verification = {
       prepareVerification: service.prepareVerification.bind(service),
-      runVerification: service.runVerification.bind(service),
+      runVerification: async (planDigest: string) => {
+        const ran = await service.runVerification(planDigest);
+        if (ran.ok) {
+          lastAttempt = ran.value as { results?: unknown };
+        }
+        return ran;
+      },
     };
 
     const opened = openCatalogUpgradeController({
@@ -378,12 +404,10 @@ const main = async () => {
       fail(opened.error.code, opened.error.detail);
     }
     const controller = opened.value;
-    const planInput = {
-      graph,
-      targetArtifactSha,
-      targetCatalogReleaseDigest,
-    };
-    const planned = await controller.dispatch({ action: "plan", input: planInput });
+    const planned = await controller.dispatch({
+      action: "plan",
+      input: { graph, targetArtifactSha, targetCatalogReleaseDigest },
+    });
     if (!planned.ok) {
       fail(planned.error.code, planned.error.detail);
     }
@@ -406,6 +430,14 @@ const main = async () => {
     }
 
     const inventoryDigest = await loadPackagedMigrationInventory();
+    const populatedPins = parsedMode === "populated";
+    const mappingHeadDigest = populatedPins ? checkpointDigestOf(lastExecute, "P7") : "";
+    const archiveManifestDigest = populatedPins ? checkpointDigestOf(lastExecute, "P10") : "";
+    const mappingEpoch = populatedPins
+      ? String(lastExecute?.runId ?? planForExecute.planDigest)
+      : "";
+    const phaseSnapshot = populatedPins ? "P10" : "zero-inventory";
+
     const prepareInput = {
       subject: {
         targetId: deploymentId,
@@ -415,7 +447,7 @@ const main = async () => {
       purpose: "pre-activation",
       mode: parsedMode,
       lineage: {
-        phaseSnapshot: "P10",
+        phaseSnapshot,
         predecessorReportDigests: [],
         p12State: "not-started",
         p13State: "not-started",
@@ -428,10 +460,10 @@ const main = async () => {
         artifact: {
           gitSha: targetArtifactSha,
           releaseTag: "v-s11-apl",
-          packageManifestDigest: "sha256:pkg",
-          apiImageDigest: "sha256:api",
-          workerImageDigest: "sha256:worker",
-          webImageDigest: "sha256:web",
+          packageManifestDigest: "",
+          apiImageDigest: "",
+          workerImageDigest: "",
+          webImageDigest: "",
         },
         catalog: {
           releaseId: compiled.value.release.id,
@@ -446,14 +478,17 @@ const main = async () => {
         },
         cutover: asPrepareVerificationCutover(planForExecute),
         mappingArchive: {
-          mappingEpoch: "epoch-1",
-          mappingHeadDigest: "sha256:map",
-          archiveManifestDigest: "sha256:archive",
+          mappingEpoch,
+          mappingHeadDigest,
+          archiveManifestDigest,
         },
-        recovery: asPrepareVerificationRecovery(capture.value),
+        recovery: {
+          recoveryPointId: postgresRecoveryId,
+          recoveryPointDigest: postgresRecoveryDigest,
+        },
         acceptance: {
-          openApiDigest: "sha256:openapi",
-          browserBundleSha: "sha256:browser",
+          openApiDigest: "",
+          browserBundleSha: "",
         },
         target: {
           deploymentId,
@@ -465,10 +500,10 @@ const main = async () => {
         },
       },
       evidenceRequirements: {
-        recoveryPointDigest: asEvidenceRequirementRecoveryDigest(capture.value),
-        mappingEpoch: "epoch-1",
+        recoveryPointDigest: postgresRecoveryDigest,
+        mappingEpoch: mappingEpoch,
         cutoverPlanDigest: planForExecute.planDigest,
-        acceptanceContractDigest: "sha256:accept",
+        acceptanceContractDigest: "",
       },
     };
 
@@ -493,31 +528,58 @@ const main = async () => {
         prepared.value.replayed &&
         ran.value.replayed,
     );
+    const gateSummary = summarizeGates(lastAttempt?.results);
+    const zeroMode = parsedMode === "fresh";
     const cutoverOut = lastExecute ?? {
       planDigest: ran.value.planDigest,
       runId: ran.value.cutoverRunId,
-      currentPhase: "P10",
+      currentPhase: zeroMode ? "P0" : "P10",
       state: "completed",
+      liveRun: false,
+      identityCount: zeroMode ? 0 : undefined,
     };
     process.stdout.write(
       `${JSON.stringify({
         ok: true,
+        applyCompleted: true,
         mode: parsedMode,
         replayed,
         state: ran.value.state,
-        phases: [...PRE_ACTIVATION_PHASES, "P11a"],
+        zeroMode,
+        contractPhases: PRE_ACTIVATION_PHASES,
+        executedPhases: zeroMode ? [] : PRE_ACTIVATION_PHASES,
+        verificationPhase: "P11a",
         isolation: "isolated",
         p12State: "not-started",
         p13State: "not-started",
+        quiesceAttestation: "WISEEFF_CATALOG_QUIESCED",
         journal: ran.value,
         verification: {
           mode: parsedMode,
           purpose: "pre-activation",
           planDigest: ran.value.verificationPlanDigest,
           attemptDigest: ran.value.verificationAttemptDigest,
+          isolation: "isolated",
+          ...gateSummary,
         },
-        recoveryPoint: asPrepareVerificationRecovery(capture.value),
-        cutover: cutoverOut,
+        recoveryPoint: {
+          threeStoreRecoveryPoint: false,
+          capturedStores: ["postgres"],
+          notCapturedStores: ["object-store", "redis"],
+          postgres: {
+            identity: postgresSnapshot.identity,
+            checksum: postgresSnapshot.checksum,
+          },
+          recoveryPointId: postgresRecoveryId,
+          recoveryPointDigest: postgresRecoveryDigest,
+        },
+        cutover: {
+          ...cutoverOut,
+          zeroMode,
+          identityCount: zeroMode ? 0 : cutoverOut.identityCount,
+          liveRun: cutoverOut.liveRun === true,
+        },
+        unavailablePhases: UNAVAILABLE_PHASES,
       })}\n`,
     );
   } finally {
@@ -548,7 +610,6 @@ wiseeff_catalog_upgrade_apply() {
   local archive_root="$8"
   local archive_key="$9"
   local operator_ref="${10}"
-  local catalog_action="${11}"
   local compose_dir repo_root tsx runner status
   compose_dir="$(cd "${script_dir}/.." && pwd)"
   repo_root="$(cd "${compose_dir}/../.." && pwd)"
@@ -578,7 +639,6 @@ wiseeff_catalog_upgrade_apply() {
       WISEEFF_CATALOG_ARCHIVE_ROOT="$archive_root" \
       WISEEFF_CATALOG_ARCHIVE_KEY_HEX="$archive_key" \
       WISEEFF_CATALOG_OPERATOR_AUDIT_REF="$operator_ref" \
-      WISEEFF_CATALOG_ACTION="$catalog_action" \
       "$tsx" "$runner"
   ) && status=0 || status=$?
   rm -f "$runner"
@@ -596,7 +656,7 @@ wiseeff_upgrade_main() {
   local catalog_archive_root=""
   local catalog_archive_key=""
   local catalog_operator_ref=""
-  local catalog_action="apply"
+  local catalog_illegal_action=""
   local -a catalog_modes=()
   local protocol_file="${script_dir}/../upgrade-protocol.env"
   local proto_mode=""
@@ -692,9 +752,8 @@ wiseeff_upgrade_main() {
         ;;
       --catalog-action)
         catalog_intent="true"
+        catalog_illegal_action="--catalog-action"
         i=$((i + 1))
-        [ "$i" -lt "${#args[@]}" ] || { wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "--catalog-action requires a value" || return $?; }
-        catalog_action="${args[$i]}"
         ;;
       --run-id)
         i=$((i + 1))
@@ -716,15 +775,24 @@ wiseeff_upgrade_main() {
         gate_control="true"
         i=$((i + 1))
         ;;
-      P11|P12|P13|P14|P15|P16|activate-p12|retire-p13|public-release)
-        if [ "$catalog_intent" = "true" ] || [ "$i" -eq 0 ]; then
-          catalog_intent="true"
-          catalog_action="$arg"
-        fi
+      inspect|recover|resume)
+        catalog_illegal_action="$arg"
         ;;
-      selectGates|migrateViaApi|guessUnknownCommit)
+      P11|P12|P13|P14|P15|P16|activate-p12|retire-p13|public-release)
         catalog_intent="true"
-        catalog_action="$arg"
+        catalog_illegal_action="$arg"
+        ;;
+      selectGates)
+        catalog_intent="true"
+        gate_control="true"
+        ;;
+      migrateViaApi)
+        catalog_intent="true"
+        forbidden="api-migrate"
+        ;;
+      guessUnknownCommit)
+        catalog_intent="true"
+        guess="true"
         ;;
     esac
     i=$((i + 1))
@@ -744,21 +812,6 @@ wiseeff_upgrade_main() {
     wiseeff_catalog_upgrade_refuse "PCAT-UPG-UNKNOWN-OUTCOME" "Unknown commit outcome cannot be guessed" || return $?
   fi
 
-  case "$catalog_action" in
-    selectGates)
-      wiseeff_catalog_upgrade_refuse "PCAT-UPG-GATE-SELECTION-FORBIDDEN" "caller supplied gate selection" || return $?
-      ;;
-    migrateViaApi)
-      wiseeff_catalog_upgrade_refuse "PCAT-UPG-API-MIGRATE-FORBIDDEN" "API startup migration is not a controller action" || return $?
-      ;;
-    guessUnknownCommit)
-      wiseeff_catalog_upgrade_refuse "PCAT-UPG-UNKNOWN-OUTCOME" "Unknown commit outcome cannot be guessed" || return $?
-      ;;
-    P11|P12|P13|P14|P15|P16|activate-p12|retire-p13|public-release)
-      wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "activation phase ${catalog_action} is UNAVAILABLE_PHASES and is not a controller action" || return $?
-      ;;
-  esac
-
   case "${DATABASE_URL:-}" in
     *127.0.0.1:5432/wiseeff*|*localhost:5432/wiseeff*|*@127.0.0.1/wiseeff*|*@localhost/wiseeff*)
       if [ "$catalog_intent" = "true" ]; then
@@ -768,8 +821,16 @@ wiseeff_upgrade_main() {
   esac
 
   if [ "$catalog_intent" != "true" ]; then
+    if [ -n "$catalog_illegal_action" ]; then
+      wiseeff_upgrade_stack_main "$@"
+      return $?
+    fi
     wiseeff_upgrade_stack_main "$@"
     return $?
+  fi
+
+  if [ -n "$catalog_illegal_action" ]; then
+    wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "catalog apply is one-shot apply only; ${catalog_illegal_action} is not a catalog apply action (UNAVAILABLE_PHASES / S11-REC)" || return $?
   fi
 
   local resolved=""
@@ -791,6 +852,10 @@ wiseeff_upgrade_main() {
     wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "apply mode must be exactly fresh XOR populated" || return $?
   fi
 
+  if [ "${WISEEFF_CATALOG_QUIESCED:-}" != "true" ]; then
+    wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "catalog apply requires operator attestation WISEEFF_CATALOG_QUIESCED=true; this is not P2 quiesce proof" || return $?
+  fi
+
   if [ -z "$catalog_run_id" ]; then
     catalog_run_id="capply-$(date -u +%Y%m%dT%H%M%SZ)"
   fi
@@ -805,8 +870,7 @@ wiseeff_upgrade_main() {
     "$catalog_release_digest" \
     "$catalog_archive_root" \
     "$catalog_archive_key" \
-    "$catalog_operator_ref" \
-    "$catalog_action"
+    "$catalog_operator_ref"
 }
 
 wiseeff_upgrade_main "$@"

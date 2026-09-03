@@ -15,10 +15,11 @@
 
 | 模式 | 结果 | 证据 |
 | --- | --- | --- |
-| fresh zero-mode（P0-P10 + P11a） |  |  |
+| fresh zero-mode（空库存 + P11a；不是 populated P0-P10） |  |  |
 | populated full-mode（P0-P10 + P11a） |  |  |
 
-P11a 之后保持隔离；不执行 P12-P16。
+P11a 报告门禁状态；保持隔离；不执行 P12-P16。
+WISEEFF_CATALOG_QUIESCED=true 是操作者 attestation，不是 P2 证明。
 
 ## 关键阅读点
 

@@ -3264,7 +3264,7 @@ const S11_APL_THREAT_MATRIX = Object.freeze([
     name: "duplicate-apply-idempotent",
     attack: "duplicate apply of the same mode/input against the same journal",
     expected: "replayed success or explicit no-op; never a second live P0-P10 mutation",
-    evidenceOwner: "L",
+    evidenceOwner: "PG",
   },
   {
     id: 3,
@@ -3278,15 +3278,15 @@ const S11_APL_THREAT_MATRIX = Object.freeze([
     name: "fresh-zero-mode",
     attack: "empty inventory / VerificationMode fresh as catalog apply",
     expected:
-      "exact zero-mode apply through the frozen controller through P0-P10 then P11a; empty graph is not populated evidence",
-    evidenceOwner: "L",
+      "exact zero-mode apply through the frozen controller then P11a; empty graph is not populated evidence; P0-P10 are not claimed as executed",
+    evidenceOwner: "PG",
   },
   {
     id: 5,
     name: "populated-full-mode",
     attack: "populated P0 graph / VerificationMode populated as catalog apply",
     expected: "exact full-mode apply through the frozen controller through P0-P10 then P11a",
-    evidenceOwner: "L",
+    evidenceOwner: "PG",
   },
   {
     id: 6,
@@ -3438,8 +3438,18 @@ describe("S11-APL catalog apply threat matrix", () => {
     for (const row of S11_APL_THREAT_MATRIX) {
       expect(row.attack.length).toBeGreaterThan(0);
       expect(row.expected.length).toBeGreaterThan(0);
-      expect(row.evidenceOwner).toBe("L");
+      expect(["L", "PG"]).toContain(row.evidenceOwner);
     }
+    expect(
+      S11_APL_THREAT_MATRIX.filter((row) => row.id === 2 || row.id === 4 || row.id === 5).map(
+        (row) => row.evidenceOwner,
+      ),
+    ).toEqual(["PG", "PG", "PG"]);
+    expect(
+      S11_APL_THREAT_MATRIX.filter((row) => row.id !== 2 && row.id !== 4 && row.id !== 5).map(
+        (row) => row.evidenceOwner,
+      ),
+    ).toEqual(["L", "L", "L", "L", "L"]);
   });
 
   it("T1 refuses startup/API migration and compose-app migrate as apply without touching the journal", () => {
@@ -3568,8 +3578,7 @@ describe("S11-APL catalog apply threat matrix", () => {
       "apply",
       "--catalog-apply-mode",
       "fresh",
-      "--catalog-action",
-      "guessUnknownCommit",
+      "--guessed-commit",
       "--catalog-journal",
       journalPath,
     ]);
@@ -3592,9 +3601,9 @@ describe("S11-APL catalog apply threat matrix", () => {
     expect(source).toContain("recoverCutover");
     expect(source).toContain("prepareVerification");
     expect(source).toContain("runVerification");
-    expect(source).toContain("captureRecoveryPoint");
+    expect(source).toContain("createPostgresStorePort");
     expect(source).toContain("asPrepareVerificationCutover");
-    expect(source).toContain("asPrepareVerificationRecovery");
+    expect(source).not.toContain("createMemoryStorePort");
     expect(source).not.toMatch(/function\s+planCutover\b/);
     expect(source).not.toMatch(/function\s+executeCutover\b/);
     expect(source).not.toMatch(/function\s+inspectCutover\b/);
@@ -3611,6 +3620,44 @@ describe("S11-APL catalog apply threat matrix", () => {
     expect(protocol).toContain("WISEEFF_CATALOG_UPGRADE_JOURNAL=");
     expect(protocol).toContain("WISEEFF_UPGRADE_PROTOCOL_VERSION=1");
     expect(protocol).not.toMatch(/WISEEFF_CATALOG_APPLY_MODE=(fresh|populated)/);
+    expect(protocol).toContain("WISEEFF_CATALOG_QUIESCED=");
+    expect(protocol).not.toMatch(/WISEEFF_CATALOG_QUIESCED=true/);
+  });
+
+  it("refuses catalog apply without operator quiesce attestation", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-quiesce-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-quiesce\n");
+    const before = readFileSync(journalPath);
+    const result = runUpgrade(
+      ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
+      { WISEEFF_CATALOG_QUIESCED: "" },
+    );
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/WISEEFF_CATALOG_QUIESCED|not P2/);
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
+  });
+
+  it("refuses inspect/recover/resume and --catalog-action as out of catalog-apply scope", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-rec-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-rec\n");
+    const before = readFileSync(journalPath);
+    for (const extra of [
+      ["--catalog-action", "inspect"],
+      ["inspect"],
+      ["recover"],
+      ["resume"],
+    ]) {
+      const result = runUpgrade(
+        ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath, ...extra],
+        { WISEEFF_CATALOG_QUIESCED: "true" },
+      );
+      expect(result.status, extra.join(" ")).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`, extra.join(" ")).toContain("PCAT-UPG-ILLEGAL-ACTION");
+      expect(`${result.stdout}\n${result.stderr}`, extra.join(" ")).not.toContain("verification-ran");
+    }
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
   });
 
   it("keeps planCutover empty identities as not-populated evidence", async () => {
@@ -3804,7 +3851,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     await populatedDb?.close().catch(() => undefined);
   });
 
-  it("T4 fresh empty inventory yields exact zero-mode apply through P0-P10 then P11a", async () => {
+  it("T4 fresh empty inventory yields exact zero-mode apply then P11a", async () => {
     const emptyPlan = await planCutover({
       graph: EMPTY_P0_GRAPH,
       targetArtifactSha: ARTIFACT_SHA,
@@ -3820,15 +3867,37 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     const payload = parseApplyJson(result.stdout);
     expect(payload.ok).toBe(true);
     expect(payload.mode).toBe("fresh");
+    expect(payload.zeroMode).toBe(true);
     expect(payload.state).toBe("verification-ran");
     expect(payload.replayed).toBe(false);
-    expect(payload.phases).toEqual([...PRE_ACTIVATION_PHASES, "P11a"]);
+    expect(payload.executedPhases).toEqual([]);
+    expect(payload.verificationPhase).toBe("P11a");
     expect(payload.isolation).toBe("isolated");
     expect(payload.p12State).toBe("not-started");
     expect(payload.p13State).toBe("not-started");
+    const cutover = payload.cutover as Record<string, unknown>;
+    expect(cutover.currentPhase).toBe("P0");
+    expect(cutover.liveRun).toBe(false);
+    expect(cutover.identityCount).toBe(0);
+    expect(cutover.zeroMode).toBe(true);
+    const checkpoints = cutover.checkpoints as unknown[];
+    expect(Array.isArray(checkpoints)).toBe(true);
+    expect(checkpoints).toHaveLength(1);
+    expect(payload.executedPhases).not.toEqual(PRE_ACTIVATION_PHASES);
     const verification = payload.verification as Record<string, unknown>;
     expect(verification.mode).toBe("fresh");
     expect(verification.purpose).toBe("pre-activation");
+    expect(verification.claimedFullV01V17).toBe(false);
+    expect(verification.isolation).toBe("isolated");
+    const notYet = verification.notYetExecutableGateIds as string[];
+    expect(notYet.some((id) => id.startsWith("PCAT-API-"))).toBe(true);
+    expect(notYet.some((id) => id.startsWith("PCAT-UI-"))).toBe(true);
+    expect(Array.isArray(verification.gates)).toBe(true);
+    expect((verification.gates as unknown[]).length).toBeGreaterThan(0);
+    const recovery = payload.recoveryPoint as Record<string, unknown>;
+    expect(recovery.threeStoreRecoveryPoint).toBe(false);
+    expect(recovery.capturedStores).toEqual(["postgres"]);
+    expect(recovery.notCapturedStores).toEqual(["object-store", "redis"]);
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
       state: string;
       entries: { action: string }[];
@@ -3900,16 +3969,31 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     const payload = parseApplyJson(result.stdout);
     expect(payload.ok).toBe(true);
     expect(payload.mode).toBe("populated");
+    expect(payload.zeroMode).toBe(false);
     expect(payload.state).toBe("verification-ran");
     expect(payload.replayed).toBe(false);
-    expect(payload.phases).toEqual([...PRE_ACTIVATION_PHASES, "P11a"]);
+    expect(payload.executedPhases).toEqual([...PRE_ACTIVATION_PHASES]);
+    expect(payload.verificationPhase).toBe("P11a");
     expect(payload.isolation).toBe("isolated");
     const cutover = payload.cutover as Record<string, unknown>;
     expect(cutover.currentPhase).toBe("P10");
     expect(cutover.state).toBe("completed");
+    expect(cutover.liveRun).toBe(false);
+    const checkpoints = cutover.checkpoints as { phase: string }[];
+    expect(checkpoints.map((row) => row.phase)).toEqual([...PRE_ACTIVATION_PHASES]);
     const verification = payload.verification as Record<string, unknown>;
     expect(verification.mode).toBe("populated");
     expect(verification.purpose).toBe("pre-activation");
+    expect(verification.claimedFullV01V17).toBe(false);
+    expect(verification.isolation).toBe("isolated");
+    const notYet = verification.notYetExecutableGateIds as string[];
+    expect(notYet.some((id) => id.startsWith("PCAT-API-"))).toBe(true);
+    expect(notYet.some((id) => id.startsWith("PCAT-UI-"))).toBe(true);
+    expect(Array.isArray(verification.gates)).toBe(true);
+    const recovery = payload.recoveryPoint as Record<string, unknown>;
+    expect(recovery.threeStoreRecoveryPoint).toBe(false);
+    expect(recovery.capturedStores).toEqual(["postgres"]);
+    expect(recovery.notCapturedStores).toEqual(["object-store", "redis"]);
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
       state: string;
       planDigest: string;
