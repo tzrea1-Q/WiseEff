@@ -17,6 +17,7 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 新增错误码 `RATE_LIMITED` 对应 HTTP 429，用于本地账号登录/注册滑动窗口限流。完整码表见英文版。
+- 规范参数目录冻结 `SERVICE_UNAVAILABLE` / 503（`details.reason = catalog-not-ready`）以及 PCAT 稳定 `details.reason` 集合。客户端必须按 reason 分支，不得解析 `message`。完整码表与 reason 列表见英文版。
 
 ## 同类中文文档
 

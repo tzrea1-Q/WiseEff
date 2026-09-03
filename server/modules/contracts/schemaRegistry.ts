@@ -1,4 +1,19 @@
 import type { RouteManifestEntry } from "./routeManifest";
+import { parameterCatalogSchemaRegistry } from "./dtoSchemas/parameterCatalog";
+
+export type ContractParameterRef = {
+  name: string;
+  in: "header" | "query";
+  required?: boolean;
+  description?: string;
+  schema?: { type: "string" | "integer"; enum?: string[] };
+};
+
+export type ContractHeaderRef = {
+  name: string;
+  description?: string;
+  required?: boolean;
+};
 
 export type ContractSchemaRef = {
   summary: string;
@@ -9,7 +24,21 @@ export type ContractSchemaRef = {
   successStatus?: 200 | 201 | 204 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
+  requestParameters?: readonly ContractParameterRef[];
+  successHeaders?: readonly ContractHeaderRef[];
 };
+
+function retireLegacySurface(entry: ContractSchemaRef): ContractSchemaRef {
+  return {
+    ...entry,
+    successStatus: 410,
+    responseBody: "CatalogLegacyGoneResponse",
+    additionalResponses: {
+      ...entry.additionalResponses,
+      "410": "ErrorResponse"
+    }
+  };
+}
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "auth.localConfig": {
@@ -309,155 +338,155 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Get parameter module registry with mappings",
     tags: ["parameter-modules"],
     responseBody: "ParameterModuleRegistryResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
   "parameterModules.discoveryHints": {
     summary: "List unclassified compatible discovery hints",
     tags: ["parameter-modules"],
     responseBody: "ParameterModuleDiscoveryHintsResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterModules.dismissCompatible": {
+  "parameterModules.dismissCompatible": retireLegacySurface({
     summary: "Dismiss a compatible from the unclassified queue",
     tags: ["parameter-modules"],
     requestBody: "DismissCompatibleRequest",
     responseBody: "ParameterModuleDiscoveryHintsResponse",
     additionalResponses: { "403": "ErrorResponse" }
-  },
-  "parameterModules.restoreCompatible": {
+  }),
+  "parameterModules.restoreCompatible": retireLegacySurface({
     summary: "Restore a dismissed compatible to the unclassified queue",
     tags: ["parameter-modules"],
     responseBody: "ParameterModuleDiscoveryHintsResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterModules.previewMapping": {
+  }),
+  "parameterModules.previewMapping": retireLegacySurface({
     summary: "Preview scoped impact of creating a module mapping",
     tags: ["parameter-modules"],
     requestBody: "CreateModuleMappingRequest",
     responseBody: "ModuleMappingPreviewResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterModules.createMapping": {
+  }),
+  "parameterModules.createMapping": retireLegacySurface({
     summary: "Create a module mapping and apply scoped recompute",
     tags: ["parameter-modules"],
     requestBody: "CreateModuleMappingRequest",
     responseBody: "ModuleMappingMutationResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterModules.deleteMapping": {
+  }),
+  "parameterModules.deleteMapping": retireLegacySurface({
     summary: "Delete a module mapping and apply scoped recompute",
     tags: ["parameter-modules"],
     responseBody: "ModuleMappingMutationResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterModules.recomputeBindings": {
+  }),
+  "parameterModules.recomputeBindings": retireLegacySurface({
     summary: "Recompute binding module assignments (operations tool)",
     tags: ["parameter-modules"],
     requestBody: "RecomputeBindingModulesRequest",
     responseBody: "RecomputeBindingModulesResponse",
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
   "parameterModules.listDriverRegistry": {
     summary: "List curated driver-group registry entries with parse coverage",
     tags: ["parameter-modules"],
     responseBody: "DriverRegistryListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterModules.registerDriver": {
+  "parameterModules.registerDriver": retireLegacySurface({
     summary: "Register or claim a driver group with exact compatible mappings",
     tags: ["parameter-modules"],
     requestBody: "RegisterOrClaimDriverRequest",
     responseBody: "RegisterOrClaimDriverResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterModules.updateDriverRegistration": {
+  }),
+  "parameterModules.updateDriverRegistration": retireLegacySurface({
     summary: "Update driver registration nature and/or instance cardinality",
     tags: ["parameter-modules"],
     requestBody: "UpdateDriverRegistrationRequest",
     responseBody: "UpdateDriverRegistrationResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterModules.updateDriverRegistrationDefault": {
+  }),
+  "parameterModules.updateDriverRegistrationDefault": retireLegacySurface({
     summary: "Update driver registration default business category and replay auto placements",
     tags: ["parameter-modules"],
     requestBody: "UpdateDriverRegistrationDefaultRequest",
     responseBody: "UpdateDriverRegistrationDefaultResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterModules.replayDriverPlacement": {
+  }),
+  "parameterModules.replayDriverPlacement": retireLegacySurface({
     summary: "Replay auto driver-group placement from registration default business category",
     tags: ["parameter-modules"],
     responseBody: "ReplayDriverPlacementResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterSpecs.listOrganizationDriverSchemas": {
+  }),
+  "parameterSpecs.listOrganizationDriverSchemas": retireLegacySurface({
     summary: "List organization-owned manual driver schema overlays",
     tags: ["parameters"],
     responseBody: "OrganizationDriverSchemaListResponse",
     additionalResponses: { "403": "ErrorResponse" }
-  },
-  "parameterSpecs.getOrganizationDriverSchema": {
+  }),
+  "parameterSpecs.getOrganizationDriverSchema": retireLegacySurface({
     summary: "Get one organization driver schema overlay",
     tags: ["parameters"],
     responseBody: "OrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterSpecs.createOrganizationDriverSchema": {
+  }),
+  "parameterSpecs.createOrganizationDriverSchema": retireLegacySurface({
     summary: "Create a draft organization driver schema overlay",
     tags: ["parameters"],
     requestBody: "CreateOrganizationDriverSchemaRequest",
     responseBody: "OrganizationDriverSchemaResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.updateOrganizationDriverSchema": {
+  }),
+  "parameterSpecs.updateOrganizationDriverSchema": retireLegacySurface({
     summary: "Update a draft organization driver schema overlay",
     tags: ["parameters"],
     requestBody: "UpdateOrganizationDriverSchemaRequest",
     responseBody: "OrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterSpecs.activateOrganizationDriverSchema": {
+  }),
+  "parameterSpecs.activateOrganizationDriverSchema": retireLegacySurface({
     summary: "Activate an organization driver schema overlay and upgrade provisional specs",
     tags: ["parameters"],
     responseBody: "ActivateOrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.previewOrganizationDriverSchemaDeprecation": {
+  }),
+  "parameterSpecs.previewOrganizationDriverSchemaDeprecation": retireLegacySurface({
     summary: "Preview coverage and usage impact before overlay retirement",
     tags: ["parameters"],
     responseBody: "OrganizationDriverSchemaDeprecationImpactResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterSpecs.deprecateOrganizationDriverSchema": {
+  }),
+  "parameterSpecs.deprecateOrganizationDriverSchema": retireLegacySurface({
     summary: "Deprecate an organization driver schema overlay",
     tags: ["parameters"],
     requestBody: "DeprecateOrganizationDriverSchemaRequest",
     responseBody: "OrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.listPromotionCandidates": {
+  }),
+  "parameterSpecs.listPromotionCandidates": retireLegacySurface({
     summary: "List platform driver-schema promotion candidates by compatible",
     tags: ["parameters"],
     responseBody: "DriverSchemaPromotionCandidateListResponse",
     additionalResponses: { "403": "ErrorResponse" }
-  },
-  "parameterSpecs.promoteDriverSchemaOverlay": {
+  }),
+  "parameterSpecs.promoteDriverSchemaOverlay": retireLegacySurface({
     summary: "Promote organization driver schema overlays into a platform-tier schema",
     tags: ["parameters"],
     requestBody: "PromoteDriverSchemaOverlayRequest",
     responseBody: "PromoteDriverSchemaOverlayResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.revertDriverSchemaPromotion": {
+  }),
+  "parameterSpecs.revertDriverSchemaPromotion": retireLegacySurface({
     summary: "Revert a platform driver-schema promotion and restore contributor overlays",
     tags: ["parameters"],
     responseBody: "RevertDriverSchemaPromotionResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
 
   "parameters.admin.listProjects": {
     summary: "List projects for parameter admin",
@@ -603,70 +632,70 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List versioned parameter specifications",
     tags: ["parameters"],
     responseBody: "ParameterSpecListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterSpecs.create": {
+  "parameterSpecs.create": retireLegacySurface({
     summary: "Create a draft parameter definition bound to an attribution subject",
     tags: ["parameters"],
     requestBody: "CreateParameterSpecRequest",
     responseBody: "ParameterSpecDetailResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
   "parameterSpecs.get": {
     summary: "Get a parameter specification detail",
     tags: ["parameters"],
     responseBody: "ParameterSpecDetailResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterSpecs.getCutover": {
+  "parameterSpecs.getCutover": retireLegacySurface({
     summary: "Get open parameter spec version cutover impact",
     tags: ["parameters"],
     responseBody: "ParameterSpecCutoverImpactResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "parameterSpecs.prepareCutover": {
+  }),
+  "parameterSpecs.prepareCutover": retireLegacySurface({
     summary: "Prepare binding items for parameter spec version cutover",
     tags: ["parameters"],
     requestBody: "PrepareParameterSpecCutoverRequest",
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.finalizeCutover": {
+  }),
+  "parameterSpecs.finalizeCutover": retireLegacySurface({
     summary: "Finalize parameter spec version cutover after prepare",
     tags: ["parameters"],
     requestBody: "FinalizeParameterSpecCutoverRequest",
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
   "parameterSpecs.listReviewTasks": {
     summary: "List organization-scoped parameter specification review tasks",
     tags: ["parameters"],
     responseBody: "ParameterSpecReviewTaskListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterSpecs.resolveReviewTask": {
+  "parameterSpecs.resolveReviewTask": retireLegacySurface({
     summary: "Resolve a parameter specification review task",
     tags: ["parameters"],
     requestBody: "ResolveParameterSpecReviewTaskRequest",
     responseBody: "ParameterSpecReviewTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.deprecate": {
+  }),
+  "parameterSpecs.deprecate": retireLegacySurface({
     summary: "Soft-deprecate a parameter definition (definition lifecycle)",
     tags: ["parameters"],
     requestBody: "DeprecateParameterSpecRequest",
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.restore": {
+  }),
+  "parameterSpecs.restore": retireLegacySurface({
     summary: "Restore a soft-deprecated parameter definition",
     tags: ["parameters"],
     requestBody: "RestoreParameterSpecRequest",
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.reattribute": {
+  }),
+  "parameterSpecs.reattribute": retireLegacySurface({
     summary: "Correct a parameter definition attribution subject in place",
     tags: ["parameters"],
     requestBody: "ReattributeParameterSpecRequest",
@@ -676,8 +705,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse",
       "409": "ErrorResponse"
     }
-  },
-  "parameterSpecs.renamePropertyKey": {
+  }),
+  "parameterSpecs.renamePropertyKey": retireLegacySurface({
     summary: "Rename a zero-reference parameter definition property key in place",
     tags: ["parameters"],
     requestBody: "RenameParameterSpecPropertyKeyRequest",
@@ -687,8 +716,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse",
       "409": "ErrorResponse"
     }
-  },
-  "parameterSpecs.getPropertyKeyCutover": {
+  }),
+  "parameterSpecs.getPropertyKeyCutover": retireLegacySurface({
     summary: "Read the open property-key source cutover run for a spec",
     tags: ["parameters"],
     responseBody: "PropertyKeyCutoverRunResponse",
@@ -696,8 +725,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "403": "ErrorResponse",
       "404": "ErrorResponse"
     }
-  },
-  "parameterSpecs.previewPropertyKeyCutover": {
+  }),
+  "parameterSpecs.previewPropertyKeyCutover": retireLegacySurface({
     summary: "Preview a referenced property-key source cutover without writing catalog or source",
     tags: ["parameters"],
     requestBody: "PreviewPropertyKeyCutoverRequest",
@@ -707,8 +736,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "403": "ErrorResponse",
       "404": "ErrorResponse"
     }
-  },
-  "parameterSpecs.startPropertyKeyCutover": {
+  }),
+  "parameterSpecs.startPropertyKeyCutover": retireLegacySurface({
     summary: "Start a referenced property-key source cutover run from the preview locations",
     tags: ["parameters"],
     requestBody: "StartPropertyKeyCutoverRequest",
@@ -719,8 +748,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse",
       "409": "ErrorResponse"
     }
-  },
-  "parameterSpecs.preparePropertyKeyCutover": {
+  }),
+  "parameterSpecs.preparePropertyKeyCutover": retireLegacySurface({
     summary: "Stage property-key source rewrites as file-candidate drafts without writing live source or catalog",
     tags: ["parameters"],
     requestBody: "PreparePropertyKeyCutoverRequest",
@@ -730,8 +759,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse",
       "409": "ErrorResponse"
     }
-  },
-  "parameterSpecs.finalizePropertyKeyCutover": {
+  }),
+  "parameterSpecs.finalizePropertyKeyCutover": retireLegacySurface({
     summary: "Finalize a property-key source cutover by rewriting the catalog triple after sources moved",
     tags: ["parameters"],
     requestBody: "FinalizePropertyKeyCutoverRequest",
@@ -742,7 +771,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse",
       "409": "ErrorResponse"
     }
-  },
+  }),
   "parameterTopology.listConfigRevisions": {
     summary: "List config revisions for a project config set",
     tags: ["parameters"],
@@ -759,40 +788,40 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List semantic project parameter bindings",
     tags: ["parameters"],
     responseBody: "ProjectParameterBindingListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterTopology.getBindingHistory": {
     summary: "List binding-revision change history for a project parameter binding",
     tags: ["parameters"],
     responseBody: "BindingHistoryListResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterTopology.getBindingCompare": {
     summary: "Compare a project parameter binding across other projects in the same organization",
     tags: ["parameters"],
     responseBody: "BindingCompareListResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterTopology.listIdentityMappingTasks": {
     summary: "List identity mapping tasks",
     tags: ["parameters"],
     responseBody: "IdentityMappingTaskListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
   },
-  "parameterTopology.resolveIdentityMappingTask": {
+  "parameterTopology.resolveIdentityMappingTask": retireLegacySurface({
     summary: "Resolve or protected re-resolve an identity mapping task",
     tags: ["parameters"],
     requestBody: "ResolveIdentityMappingTaskRequest",
     responseBody: "IdentityMappingTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterTopology.reopenIdentityMappingTask": {
+  }),
+  "parameterTopology.reopenIdentityMappingTask": retireLegacySurface({
     summary: "Reopen a non-destructive identity mapping outcome",
     tags: ["parameters"],
     requestBody: "ReopenIdentityMappingTaskRequest",
     responseBody: "IdentityMappingTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
   "parameterTopology.validateConfigRevision": {
     summary: "Validate a config revision with the DTS toolchain gate",
     tags: ["parameters"],
@@ -1546,19 +1575,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterWorkflowAssigneeListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
-  "parameterSpecs.update": {
+  "parameterSpecs.update": retireLegacySurface({
     summary: "Update documentation-class fields on an active definition",
     tags: ["parameters"],
     requestBody: "UpdateParameterSpecRequest",
     responseBody: "ParameterSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "parameterSpecs.activate": {
+  }),
+  "parameterSpecs.activate": retireLegacySurface({
     summary: "Activate a draft, or mint a successor on an active definition",
     tags: ["parameters"],
     responseBody: "ParameterSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
+  }),
 
   "deviceBridges.createPairingCode": {
     summary: "Create a short-lived pairing code for a local device bridge",
@@ -1605,5 +1634,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["device-bridge"],
     responseBody: "DeviceBridgeToolReleaseManifestResponse",
     additionalResponses: { "404": "ErrorResponse" }
-  }
+  },
+
+  ...(parameterCatalogSchemaRegistry as unknown as Record<string, ContractSchemaRef>)
 };

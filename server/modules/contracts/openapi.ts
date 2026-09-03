@@ -1,5 +1,5 @@
 import type { HttpMethod } from "../../shared/http/router";
-import { dtoSchemaCatalog } from "./dtoSchemas/catalog";
+import { dtoSchemaCatalog } from "./dtoSchemas";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
 import { zodToOpenApiSchema } from "./zodToOpenApiSchema";
@@ -7,13 +7,23 @@ import { zodToOpenApiSchema } from "./zodToOpenApiSchema";
 type SchemaRef = { $ref: string };
 type BinarySchema = { type: "string"; format: "binary" };
 type MediaTypeObject = { schema: SchemaRef | BinarySchema };
-type ResponseObject = { description: string; content?: Record<string, MediaTypeObject> };
+type HeaderObject = {
+  description?: string;
+  required?: boolean;
+  schema: { type: "string" };
+};
+type ResponseObject = {
+  description: string;
+  content?: Record<string, MediaTypeObject>;
+  headers?: Record<string, HeaderObject>;
+};
 type ResponseRef = { $ref: string };
 type ParameterObject = {
   name: string;
-  in: "path";
-  required: true;
-  schema: { type: "string" };
+  in: "path" | "header" | "query";
+  required: boolean;
+  description?: string;
+  schema: { type: "string" | "integer"; enum?: string[] };
 };
 
 export type OpenApiOperation = {
@@ -47,15 +57,13 @@ function toOpenApiPath(path: string) {
   return path.replace(/:([^/]+)/g, "{$1}");
 }
 
-function pathParameters(path: string): ParameterObject[] | undefined {
-  const parameters = Array.from(path.matchAll(/:([^/]+)/g), ([, name]) => ({
+function pathParameters(path: string): ParameterObject[] {
+  return Array.from(path.matchAll(/:([^/]+)/g), ([, name]) => ({
     name,
     in: "path" as const,
-    required: true as const,
+    required: true,
     schema: { type: "string" as const }
   }));
-
-  return parameters.length > 0 ? parameters : undefined;
 }
 
 function schemaRef(name: string): SchemaRef {
@@ -136,12 +144,35 @@ export function buildOpenApiDocument(): OpenApiDocument {
 
     const path = toOpenApiPath(route.path);
     const method = route.method.toLowerCase() as Lowercase<HttpMethod>;
+    const parameters: ParameterObject[] = [
+      ...pathParameters(route.path),
+      ...(schema.requestParameters ?? []).map((parameter) => ({
+        name: parameter.name,
+        in: parameter.in,
+        required: parameter.required ?? false,
+        ...(parameter.description ? { description: parameter.description } : {}),
+        schema: parameter.schema ?? { type: "string" as const }
+      }))
+    ];
+    const successHeaders =
+      schema.successHeaders && schema.successHeaders.length > 0
+        ? Object.fromEntries(
+            schema.successHeaders.map((header) => [
+              header.name,
+              {
+                ...(header.description ? { description: header.description } : {}),
+                required: header.required ?? false,
+                schema: { type: "string" as const }
+              }
+            ])
+          )
+        : undefined;
     paths[path] ??= {};
     paths[path][method] = {
       operationId: route.id,
       summary: schema.summary,
       tags: schema.tags,
-      ...(pathParameters(route.path) ? { parameters: pathParameters(route.path) } : {}),
+      ...(parameters.length > 0 ? { parameters } : {}),
       ...(schema.requestBody
         ? {
             requestBody: {
@@ -153,11 +184,12 @@ export function buildOpenApiDocument(): OpenApiDocument {
       responses: {
         [schema.successStatus ?? 200]:
           schema.successStatus === 204
-            ? { description: "Successful response." }
+            ? { description: "Successful response.", ...(successHeaders ? { headers: successHeaders } : {}) }
             : {
                 description:
                   schema.successStatus === 410 ? "Gone — retired endpoint." : "Successful response.",
-                content: responseContent(schema)
+                content: responseContent(schema),
+                ...(successHeaders ? { headers: successHeaders } : {})
               },
         ...(schema.additionalSuccessResponses
           ? Object.fromEntries(

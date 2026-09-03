@@ -49,7 +49,10 @@ The HTTP status is derived from the code (`API_ERROR_STATUS` in `server/shared/h
 | `NOT_FOUND` | 404 | Target object does not exist or is outside scope. |
 | `GONE` | 410 | The surface is retired and permanently unavailable. |
 | `RATE_LIMITED` | 429 | Too many authentication attempts in the local sliding window (`AUTH_LOCAL_AUTH_MAX_ATTEMPTS` / `AUTH_LOCAL_AUTH_WINDOW_MS`). |
+| `SERVICE_UNAVAILABLE` | 503 | Catalog materialization or readiness is incomplete. Catalog reads and publication-dependent writes return `details.reason = catalog-not-ready` and honor `Retry-After`. |
 | `INTERNAL_ERROR` | 500 | Unexpected server failure. |
+
+Catalog and bounded-legacy clients must branch on `error.details.reason`, never on `message`. Frozen reasons are `catalog-not-ready`, `release-drift`, `subject-not-published`, `subject-retired`, `definition-not-found`, `definition-retired`, `registration-required`, `placement-conflict`, `invalid-placement-parent`, `observation-ambiguous`, `proposal-stale`, `proposal-self-approval-forbidden`, `revision-conflict`, `legacy-id-archived`, `legacy-surface-retired`, `legacy-id-ambiguous`, `forbidden`, and `migration-diagnostics-not-public`. Public callers must treat `/api/v2/operator/parameter-catalog/*` as nonexistent (`migration-diagnostics-not-public`). Headers or bodies cannot self-assert a role, Organization, Agent identity, or System identity.
 
 ## Operator Rule
 

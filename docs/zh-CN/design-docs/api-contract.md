@@ -10,7 +10,7 @@
 
 原则：
 
-- 所有 API 使用 `/api/v1` 前缀。
+- 所有 API 使用 `/api/v1` 前缀；规范参数目录使用 `/api/v2/catalog/*` 与组织治理路径。S8-CON 冻结 PCAT-API-01 到 PCAT-API-12 的 OpenAPI、DTO、路由、错误与客户端合同；HTTP handler 仍由后续 S8-READ/S8-GOV/S8-LEG 实现。详见 [parameter-catalog-api-transition.md](parameter-catalog-api-transition.md)。
 - 所有写操作要求认证、权限、审计和幂等键。
 - 列表接口支持分页、排序和过滤。
 - 错误返回统一结构。
