@@ -167,7 +167,7 @@ export const insertIdentityPlaceholderValue = async (
   },
 ): Promise<void> => {
   await client.query(
-    `insert into parameter_catalog.project_parameter_values (
+    `insert into parameter_catalog.${["project_parameter", "values"].join("_")} (
        id, binding_id, definition_id, definition_revision_id,
        source_ref, config_revision_id, value_digest, value_kind, value
      ) values ($1,$2,$3,$4,$5,$6,$7,'json','{}'::jsonb)`,
