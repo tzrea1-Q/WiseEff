@@ -10,8 +10,7 @@ import type {
 
 export type { Result };
 
-export const observationIngestCommandFamily = "observation-ingest";
-export const reviewEvidenceIngestCommandFamily = "review-evidence-ingest";
+export const evidenceIngestCommandFamily = "evidence-ingest";
 
 export type MatcherOutput =
   | { readonly status: "matched" }

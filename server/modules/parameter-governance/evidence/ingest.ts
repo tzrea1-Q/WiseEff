@@ -13,8 +13,7 @@ import {
 
 import { planEvidenceIngest, type PlannedIngest } from "./plan";
 import {
-  observationIngestCommandFamily,
-  reviewEvidenceIngestCommandFamily,
+  evidenceIngestCommandFamily,
   type EvidenceIngest,
   type IngestEvidenceCommand,
   type IngestEvidenceFailure,
@@ -43,6 +42,11 @@ type ReviewEvidenceRow = {
   r_class: LegacyRowClass | null;
   evidence: unknown;
 };
+
+type ReviewEvidenceLookup =
+  | { readonly status: "absent" }
+  | { readonly status: "found"; readonly row: ReviewEvidenceRow }
+  | { readonly status: "ambiguous"; readonly row: ReviewEvidenceRow };
 
 const asJson = (value: unknown): string => JSON.stringify(value);
 
@@ -121,7 +125,8 @@ const loadObservation = async (
   const result = await client.query<ObservationRow>(
     `select id, evidence_fingerprint, catalog_release_id, source_locator
      from parameter_catalog.parameter_observations
-     where organization_id = $1 and source_identity = $2`,
+     where organization_id = $1 and source_identity = $2
+     for update`,
     [organizationId, sourceIdentity],
   );
   return result.rows[0] ?? null;
@@ -134,7 +139,8 @@ const loadReviewEvidence = async (
   const result = await client.query<ReviewEvidenceRow>(
     `select id, candidate_safe_digest, reason, r_class, evidence
      from parameter_catalog.parameter_review_evidence
-     where id = $1`,
+     where id = $1
+     for update`,
     [id],
   );
   return result.rows[0] ?? null;
@@ -144,47 +150,77 @@ const loadReviewEvidenceByIdentity = async (
   client: pg.PoolClient,
   organizationId: string,
   sourceIdentity: string,
-): Promise<ReviewEvidenceRow | null> => {
+): Promise<ReviewEvidenceLookup> => {
   const result = await client.query<ReviewEvidenceRow>(
     `select id, candidate_safe_digest, reason, r_class, evidence
      from parameter_catalog.parameter_review_evidence
-     where organization_id = $1 and source_graph_ref = $2
-     order by created_at asc
-     limit 1`,
+     where organization_id = $1
+       and evidence->>'sourceIdentity' = $2
+     for update`,
     [organizationId, sourceIdentity],
   );
-  return result.rows[0] ?? null;
+  if (result.rows.length === 0) return { status: "absent" };
+  if (result.rows.length === 1) return { status: "found", row: result.rows[0]! };
+  return { status: "ambiguous", row: result.rows[0]! };
 };
+
+const fingerprintConflict = (
+  command: IngestEvidenceCommand,
+  storedId: string,
+  storedFingerprint: string,
+  attemptedFingerprint: string,
+): Result<never, IngestEvidenceFailure> => ({
+  ok: false,
+  error: {
+    kind: "fingerprint-conflict",
+    sourceIdentity: command.sourceIdentity,
+    storedId,
+    storedFingerprint,
+    attemptedFingerprint,
+  },
+});
+
+const overwriteRefused = (
+  command: IngestEvidenceCommand,
+  storedId: string,
+): Result<never, IngestEvidenceFailure> => ({
+  ok: false,
+  error: {
+    kind: "evidence-overwrite-refused",
+    sourceIdentity: command.sourceIdentity,
+    storedId,
+  },
+});
 
 const replayOrConflictObservation = (
   stored: ObservationRow,
-  planned: PlannedIngest & { kind: "observation" },
+  planned: PlannedIngest,
   command: IngestEvidenceCommand,
 ): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
-  if (stored.evidence_fingerprint === planned.fingerprint) {
+  if (
+    planned.kind === "observation" &&
+    stored.evidence_fingerprint === planned.fingerprint
+  ) {
     return {
       ok: true,
       value: observationResult(stored, "replayed", planned.fingerprint),
     };
   }
-  return {
-    ok: false,
-    error: {
-      kind: "fingerprint-conflict",
-      sourceIdentity: command.sourceIdentity,
-      storedId: stored.id,
-      storedFingerprint: stored.evidence_fingerprint,
-      attemptedFingerprint: planned.fingerprint,
-    },
-  };
+  return fingerprintConflict(
+    command,
+    stored.id,
+    stored.evidence_fingerprint,
+    planned.fingerprint,
+  );
 };
 
 const replayOrRefuseReviewEvidence = (
   stored: ReviewEvidenceRow,
-  planned: PlannedIngest & { kind: "review-evidence" },
+  planned: PlannedIngest,
   command: IngestEvidenceCommand,
 ): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
   if (
+    planned.kind === "review-evidence" &&
     stored.candidate_safe_digest === planned.fingerprint &&
     sameCanonicalJson(stored.evidence, planned.evidence)
   ) {
@@ -193,14 +229,7 @@ const replayOrRefuseReviewEvidence = (
       value: reviewResult(stored, "replayed", planned.fingerprint),
     };
   }
-  return {
-    ok: false,
-    error: {
-      kind: "evidence-overwrite-refused",
-      sourceIdentity: command.sourceIdentity,
-      storedId: stored.id,
-    },
-  };
+  return overwriteRefused(command, stored.id);
 };
 
 const insertObservation = async (
@@ -257,18 +286,12 @@ const insertReviewEvidence = async (
   return inserted.rows[0]!;
 };
 
-const commandFamilyFor = (planned: PlannedIngest): string =>
-  planned.kind === "observation"
-    ? observationIngestCommandFamily
-    : reviewEvidenceIngestCommandFamily;
-
 const resultKindFor = (planned: PlannedIngest): string =>
   planned.kind === "observation" ? "observation" : "review-evidence";
 
 const loadIdempotency = async (
   client: pg.PoolClient,
   organizationId: string,
-  commandFamily: string,
   sourceIdentity: string,
 ): Promise<IdempotencyRow | null> => {
   const result = await client.query<IdempotencyRow>(
@@ -278,7 +301,7 @@ const loadIdempotency = async (
        and command_family = $2
        and idempotency_key = $3
      for update`,
-    [organizationId, commandFamily, sourceIdentity],
+    [organizationId, evidenceIngestCommandFamily, sourceIdentity],
   );
   return result.rows[0] ?? null;
 };
@@ -288,18 +311,21 @@ const reserveIdempotency = async (
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
 ): Promise<IdempotencyRow> => {
-  const family = commandFamilyFor(planned);
   await client.query(
     `insert into parameter_catalog.governance_command_idempotency (
        organization_id, command_family, idempotency_key, request_fingerprint, state
      ) values ($1,$2,$3,$4,'pending')
      on conflict (organization_id, command_family, idempotency_key) do nothing`,
-    [command.organizationId, family, command.sourceIdentity, planned.fingerprint],
+    [
+      command.organizationId,
+      evidenceIngestCommandFamily,
+      command.sourceIdentity,
+      planned.fingerprint,
+    ],
   );
   const row = await loadIdempotency(
     client,
     command.organizationId,
-    family,
     command.sourceIdentity,
   );
   if (row) return row;
@@ -324,11 +350,50 @@ const commitIdempotency = async (
        and state = 'pending'`,
     [
       command.organizationId,
-      commandFamilyFor(planned),
+      evidenceIngestCommandFamily,
       command.sourceIdentity,
       resultKindFor(planned),
       resultRef,
     ],
+  );
+};
+
+const finishReplay = async (
+  client: pg.PoolClient,
+  command: IngestEvidenceCommand,
+  planned: PlannedIngest,
+  replayed: Result<IngestEvidenceResult, IngestEvidenceFailure>,
+): Promise<Result<IngestEvidenceResult, IngestEvidenceFailure>> => {
+  if (replayed.ok) {
+    await commitIdempotency(client, command, planned, replayed.value.id);
+  }
+  return replayed;
+};
+
+const conflictAgainstStored = (
+  command: IngestEvidenceCommand,
+  planned: PlannedIngest,
+  observation: ObservationRow | null,
+  review: ReviewEvidenceLookup,
+  reserved: IdempotencyRow,
+): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
+  if (observation) {
+    return replayOrConflictObservation(observation, planned, command);
+  }
+  if (review.status !== "absent") {
+    return replayOrRefuseReviewEvidence(review.row, planned, command);
+  }
+  if (planned.kind === "observation") {
+    return fingerprintConflict(
+      command,
+      reserved.result_ref ?? command.sourceIdentity,
+      reserved.request_fingerprint,
+      planned.fingerprint,
+    );
+  }
+  return overwriteRefused(
+    command,
+    reserved.result_ref ?? command.sourceIdentity,
   );
 };
 
@@ -338,58 +403,68 @@ const executePlannedIngest = async (
   planned: PlannedIngest,
 ): Promise<Result<IngestEvidenceResult, IngestEvidenceFailure>> => {
   const reserved = await reserveIdempotency(client, command, planned);
+  const observation = await loadObservation(
+    client,
+    command.organizationId,
+    command.sourceIdentity,
+  );
+  const review = await loadReviewEvidenceByIdentity(
+    client,
+    command.organizationId,
+    command.sourceIdentity,
+  );
+
+  if (review.status === "ambiguous") {
+    return overwriteRefused(command, review.row.id);
+  }
+
+  if (observation && review.status === "found") {
+    return planned.kind === "observation"
+      ? fingerprintConflict(
+          command,
+          observation.id,
+          observation.evidence_fingerprint,
+          planned.fingerprint,
+        )
+      : overwriteRefused(command, review.row.id);
+  }
+
   if (reserved.request_fingerprint !== planned.fingerprint) {
-    if (planned.kind === "observation") {
-      const stored = await loadObservation(
-        client,
-        command.organizationId,
-        command.sourceIdentity,
-      );
-      return {
-        ok: false,
-        error: {
-          kind: "fingerprint-conflict",
-          sourceIdentity: command.sourceIdentity,
-          storedId: stored?.id ?? reserved.result_ref ?? command.sourceIdentity,
-          storedFingerprint: reserved.request_fingerprint,
-          attemptedFingerprint: planned.fingerprint,
-        },
-      };
-    }
-    const stored = reserved.result_ref
-      ? await loadReviewEvidence(client, reserved.result_ref)
-      : await loadReviewEvidenceByIdentity(
-          client,
-          command.organizationId,
-          planned.sourceGraphRef,
-        );
-    return {
-      ok: false,
-      error: {
-        kind: "evidence-overwrite-refused",
-        sourceIdentity: command.sourceIdentity,
-        storedId: stored?.id ?? reserved.result_ref ?? command.sourceIdentity,
-      },
-    };
+    return conflictAgainstStored(command, planned, observation, review, reserved);
   }
 
   if (reserved.state === "committed" && reserved.result_ref) {
-    if (planned.kind === "observation") {
-      const stored = await loadObservation(
-        client,
-        command.organizationId,
-        command.sourceIdentity,
-      );
-      if (!stored) {
-        throw new Error("committed observation idempotency is missing its row");
-      }
-      return replayOrConflictObservation(stored, planned, command);
+    if (observation) {
+      return replayOrConflictObservation(observation, planned, command);
     }
-    const stored = await loadReviewEvidence(client, reserved.result_ref);
-    if (!stored) {
-      throw new Error("committed review-evidence idempotency is missing its row");
+    if (review.status === "found") {
+      return replayOrRefuseReviewEvidence(review.row, planned, command);
     }
-    return replayOrRefuseReviewEvidence(stored, planned, command);
+    const byRef =
+      reserved.result_kind === "observation"
+        ? null
+        : await loadReviewEvidence(client, reserved.result_ref);
+    if (byRef) {
+      return replayOrRefuseReviewEvidence(byRef, planned, command);
+    }
+    throw new Error("committed evidence idempotency is missing its row");
+  }
+
+  if (observation) {
+    return finishReplay(
+      client,
+      command,
+      planned,
+      replayOrConflictObservation(observation, planned, command),
+    );
+  }
+  if (review.status === "found") {
+    return finishReplay(
+      client,
+      command,
+      planned,
+      replayOrRefuseReviewEvidence(review.row, planned, command),
+    );
   }
 
   if (planned.kind === "observation") {
@@ -404,11 +479,12 @@ const executePlannedIngest = async (
           command.sourceIdentity,
         );
         if (!existing) throw error;
-        const replayed = replayOrConflictObservation(existing, planned, command);
-        if (replayed.ok) {
-          await commitIdempotency(client, command, planned, existing.id);
-        }
-        return replayed;
+        return finishReplay(
+          client,
+          command,
+          planned,
+          replayOrConflictObservation(existing, planned, command),
+        );
       }
       const mapped = mapInsertFailure(error, command);
       if (mapped) return { ok: false, error: mapped };
@@ -421,23 +497,24 @@ const executePlannedIngest = async (
     };
   }
 
-  const existing = await loadReviewEvidenceByIdentity(
-    client,
-    command.organizationId,
-    planned.sourceGraphRef,
-  );
-  if (existing) {
-    const replayed = replayOrRefuseReviewEvidence(existing, planned, command);
-    if (replayed.ok) {
-      await commitIdempotency(client, command, planned, existing.id);
-    }
-    return replayed;
-  }
-
   let stored: ReviewEvidenceRow;
   try {
     stored = await insertReviewEvidence(client, command, planned);
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      const existing = await loadReviewEvidenceByIdentity(
+        client,
+        command.organizationId,
+        command.sourceIdentity,
+      );
+      if (existing.status === "absent") throw error;
+      return finishReplay(
+        client,
+        command,
+        planned,
+        replayOrRefuseReviewEvidence(existing.row, planned, command),
+      );
+    }
     const mapped = mapInsertFailure(error, command);
     if (mapped) return { ok: false, error: mapped };
     throw error;

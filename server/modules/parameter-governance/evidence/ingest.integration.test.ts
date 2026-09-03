@@ -291,18 +291,18 @@ describe("immutable observation and review-evidence ingest", () => {
     const rows = await pool.query<{
       id: string;
       r_class: string | null;
-      source_graph_ref: string | null;
+      source_identity: string;
     }>(
-      `select id, r_class, source_graph_ref
+      `select id, r_class, evidence->>'sourceIdentity' as source_identity
        from parameter_catalog.parameter_review_evidence
        where organization_id = $1
-         and source_graph_ref in ($2, $3)
+         and evidence->>'sourceIdentity' in ($2, $3)
        order by r_class`,
       [ORG_ID, r6Identity, r8Identity],
     );
     expect(rows.rows).toEqual([
-      { id: r6.value.id, r_class: "R6", source_graph_ref: r6Identity },
-      { id: r8.value.id, r_class: "R8", source_graph_ref: r8Identity },
+      { id: r6.value.id, r_class: "R6", source_identity: r6Identity },
+      { id: r8.value.id, r_class: "R8", source_identity: r8Identity },
     ]);
     expect(
       await count(
@@ -354,7 +354,7 @@ describe("immutable observation and review-evidence ingest", () => {
       await count(
         `select count(*)::text as count
          from parameter_catalog.parameter_review_evidence
-         where organization_id = $1 and source_graph_ref = $2`,
+         where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
         [ORG_ID, sourceIdentity],
       ),
     ).toBe(1);
@@ -387,7 +387,7 @@ describe("immutable observation and review-evidence ingest", () => {
       await count(
         `select count(*)::text as count
          from parameter_catalog.parameter_review_evidence
-         where organization_id = $1 and source_graph_ref = $2`,
+         where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
         [ORG_ID, sourceIdentity],
       ),
     ).toBe(0);
@@ -422,5 +422,168 @@ describe("immutable observation and review-evidence ingest", () => {
         `select count(*)::text as count from parameter_catalog.catalog_releases`,
       ),
     ).toBe(beforeReleases);
+  });
+
+  it("replays exact review-evidence fingerprint to the same id without a second row", async () => {
+    const input = command({
+      sourceIdentity: `review-replay:${randomUUID()}`,
+      matcherOutput: { status: "unknown" },
+      evidence: { note: "stable-review" },
+    });
+    const first = await ingest.ingest(input);
+    const second = await ingest.ingest(input);
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.value.kind).toBe("review-evidence");
+    expect(second.value).toEqual({
+      ...first.value,
+      status: "replayed",
+    });
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_review_evidence
+         where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
+        [ORG_ID, input.sourceIdentity],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_observations
+         where organization_id = $1 and source_identity = $2`,
+        [ORG_ID, input.sourceIdentity],
+      ),
+    ).toBe(0);
+  });
+
+  it("conflicts when a matched observation is followed by a weak ingest for the same source_identity", async () => {
+    const sourceIdentity = `matched-then-weak:${randomUUID()}`;
+    const first = await ingest.ingest(command({ sourceIdentity }));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.kind).toBe("observation");
+
+    const second = await ingest.ingest(
+      command({
+        sourceIdentity,
+        matcherOutput: { status: "unknown" },
+      }),
+    );
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.error.kind).toBe("fingerprint-conflict");
+    if (second.error.kind === "fingerprint-conflict") {
+      expect(second.error.storedId).toBe(first.value.id);
+    }
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_observations
+         where organization_id = $1 and source_identity = $2`,
+        [ORG_ID, sourceIdentity],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_review_evidence
+         where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
+        [ORG_ID, sourceIdentity],
+      ),
+    ).toBe(0);
+  });
+
+  it("conflicts when review evidence is followed by a matched ingest for the same source_identity", async () => {
+    const sourceIdentity = `weak-then-matched:${randomUUID()}`;
+    const first = await ingest.ingest(
+      command({
+        sourceIdentity,
+        matcherOutput: { status: "ambiguous" },
+      }),
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.kind).toBe("review-evidence");
+
+    const second = await ingest.ingest(command({ sourceIdentity }));
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.error.kind).toBe("evidence-overwrite-refused");
+    if (second.error.kind === "evidence-overwrite-refused") {
+      expect(second.error.storedId).toBe(first.value.id);
+    }
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_review_evidence
+         where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
+        [ORG_ID, sourceIdentity],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
+        `select count(*)::text as count
+         from parameter_catalog.parameter_observations
+         where organization_id = $1 and source_identity = $2`,
+        [ORG_ID, sourceIdentity],
+      ),
+    ).toBe(0);
+  });
+
+  it("keeps distinct source identities separate even when source_graph_ref collides", async () => {
+    const sharedGraph = `graph:${randomUUID()}`;
+    const firstIdentity = `graph-a:${randomUUID()}`;
+    const secondIdentity = `graph-b:${randomUUID()}`;
+    const first = await ingest.ingest(
+      command({
+        sourceIdentity: firstIdentity,
+        matcherOutput: { status: "unknown" },
+        classification: { rClass: "R6", sourceGraphRef: sharedGraph },
+        evidence: { propertyKey: "synthetic.legacy-twin" },
+        provenance: null,
+      }),
+    );
+    const second = await ingest.ingest(
+      command({
+        sourceIdentity: secondIdentity,
+        matcherOutput: { status: "unknown" },
+        classification: { rClass: "R6", sourceGraphRef: sharedGraph },
+        evidence: { propertyKey: "synthetic.legacy-twin" },
+        provenance: null,
+      }),
+    );
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.value.id).not.toBe(second.value.id);
+
+    const replay = await ingest.ingest(
+      command({
+        sourceIdentity: firstIdentity,
+        matcherOutput: { status: "unknown" },
+        classification: { rClass: "R6", sourceGraphRef: sharedGraph },
+        evidence: { propertyKey: "synthetic.legacy-twin" },
+        provenance: null,
+      }),
+    );
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.value).toEqual({
+      ...first.value,
+      status: "replayed",
+    });
+
+    const rows = await pool.query<{ id: string; source_identity: string }>(
+      `select id, evidence->>'sourceIdentity' as source_identity
+       from parameter_catalog.parameter_review_evidence
+       where organization_id = $1
+         and source_graph_ref = $2
+       order by evidence->>'sourceIdentity'`,
+      [ORG_ID, sharedGraph],
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(new Set(rows.rows.map((row) => row.source_identity))).toEqual(
+      new Set([firstIdentity, secondIdentity]),
+    );
   });
 });

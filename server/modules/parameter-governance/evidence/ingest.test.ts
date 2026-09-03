@@ -36,7 +36,8 @@ const matchedCommand = (
 describe("evidence ingest contract", () => {
   it("fingerprints the frozen ingest contract", () => {
     expect(evidenceIngestContract.r6AndR8SamePropertyKeyRemainDistinct).toBe(true);
-    expect(evidenceIngestContract.observationReplayKey).toEqual([
+    expect(evidenceIngestContract.commandFamily).toBe("evidence-ingest");
+    expect(evidenceIngestContract.replayKey).toEqual([
       "organization_id",
       "source_identity",
     ]);
@@ -134,6 +135,10 @@ describe("evidence ingest contract", () => {
     if (r6.value.kind === "review-evidence" && r8.value.kind === "review-evidence") {
       expect(r6.value.rClass).toBe("R6");
       expect(r8.value.rClass).toBe("R8");
+      expect(r6.value.sourceGraphRef).toBeNull();
+      expect(r8.value.sourceGraphRef).toBeNull();
+      expect(r6.value.model.sourceIdentity).toBe("wf671-platform-subjectless-draft");
+      expect(r8.value.model.sourceIdentity).toBe("wf671-org-manual-node-draft");
     }
   });
 
@@ -148,5 +153,21 @@ describe("evidence ingest contract", () => {
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;
     expect(planned.value.kind).toBe("review-evidence");
+  });
+
+  it("does not treat source_graph_ref as the review-evidence replay identity", () => {
+    const planned = planEvidenceIngest(
+      matchedCommand({
+        matcherOutput: { status: "unknown" },
+        classification: { rClass: "R6", sourceGraphRef: "shared-graph" },
+        evidence: { propertyKey: "synthetic.legacy-twin" },
+        provenance: null,
+      }),
+    );
+    expect(planned.ok).toBe(true);
+    if (!planned.ok || planned.value.kind !== "review-evidence") return;
+    expect(planned.value.sourceGraphRef).toBe("shared-graph");
+    expect(planned.value.model.sourceIdentity).toBe("occurrence:charger:iin_max");
+    expect(planned.value.evidence.sourceIdentity).toBe("occurrence:charger:iin_max");
   });
 });

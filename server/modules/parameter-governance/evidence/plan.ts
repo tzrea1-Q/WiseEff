@@ -80,7 +80,7 @@ export type PlannedReviewEvidence = {
   readonly model: ReviewEvidenceFingerprintModel;
   readonly reason: ReviewReason;
   readonly rClass: LegacyRowClass | null;
-  readonly sourceGraphRef: string;
+  readonly sourceGraphRef: string | null;
   readonly evidence: SourceLocator;
 };
 
@@ -132,9 +132,9 @@ export const planEvidenceIngest = (
 
   if (reviewPath) {
     const sourceGraphRef =
-      (classification?.sourceGraphRef && isUsableToken(classification.sourceGraphRef)
+      classification?.sourceGraphRef && isUsableToken(classification.sourceGraphRef)
         ? classification.sourceGraphRef
-        : command.sourceIdentity);
+        : null;
     const payload = command.evidence ?? {};
     const reason = reviewReasonFor(command);
     const model = reviewEvidenceFingerprintModel(

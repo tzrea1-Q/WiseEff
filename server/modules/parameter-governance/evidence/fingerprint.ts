@@ -26,8 +26,8 @@ export const evidenceIngestContract = deepFreeze({
   contractVersion: "1.0.0",
   digestAlgorithm: "sha256",
   canonicalSerialization: "parameter-catalog-contract-serialize",
-  observationReplayKey: ["organization_id", "source_identity"],
-  reviewEvidenceReplayKey: ["organization_id", "source_identity"],
+  commandFamily: "evidence-ingest",
+  replayKey: ["organization_id", "source_identity"],
   r6AndR8SamePropertyKeyRemainDistinct: true,
   weakMatchCreatesReviewEvidence: true,
 } as const);
@@ -61,7 +61,7 @@ export type ReviewEvidenceFingerprintModel = {
   readonly matcherOutput: MatcherOutput;
   readonly reason: ReviewReason;
   readonly rClass: LegacyRowClass | null;
-  readonly sourceGraphRef: string;
+  readonly sourceGraphRef: string | null;
   readonly payload: SourceLocator;
 };
 
@@ -85,7 +85,7 @@ export const reviewEvidenceFingerprintModel = (
   command: IngestEvidenceCommand,
   reason: ReviewReason,
   rClass: LegacyRowClass | null,
-  sourceGraphRef: string,
+  sourceGraphRef: string | null,
   payload: SourceLocator,
 ): ReviewEvidenceFingerprintModel => ({
   kind: "review-evidence",
