@@ -4,11 +4,17 @@ import {
   CATALOG_RELEASE_HEADER,
   catalogLegacyIdentifierResponseSchema,
   parameterCatalogBoundedLegacyReadRouteIds,
+  parameterCatalogCanonicalRoutes,
   parameterCatalogLegacyWriteRouteIds,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../../contracts/routeManifest";
 import { ApiError, serializeApiError } from "../../../shared/http/errors";
-import { createRouter, type HttpMethod, type RouteRequest } from "../../../shared/http/router";
+import {
+  createRouter,
+  type HttpMethod,
+  type RouteRequest,
+  type WiseEffRouter,
+} from "../../../shared/http/router";
 
 import {
   boundedLegacyHeaders,
@@ -32,6 +38,29 @@ const writeRoutes = routeManifest.filter((route) =>
 const eligibleRoutes = routeManifest.filter((route) =>
   (parameterCatalogBoundedLegacyReadRouteIds as readonly string[]).includes(route.id),
 );
+
+const catalogLegacyIdentifierRoutes = parameterCatalogCanonicalRoutes.filter(
+  (route) => route.id === "catalog.getLegacyIdentifier",
+);
+
+function addRoute(
+  router: WiseEffRouter,
+  method: HttpMethod,
+  path: string,
+  handler: Parameters<WiseEffRouter["get"]>[1],
+): void {
+  const add =
+    method === "GET"
+      ? router.get
+      : method === "POST"
+        ? router.post
+        : method === "PUT"
+          ? router.put
+          : method === "PATCH"
+            ? router.patch
+            : router.delete;
+  add.call(router, path, handler);
+}
 
 const headerValue = (
   headers: RouteRequest["headers"],
@@ -283,29 +312,21 @@ export async function handleLegacyCatalogRequest(
 
   const router = createRouter();
 
-  router.get("/api/v2/catalog/legacy-identifiers/:legacyType/:legacyId", async (matched) => {
-    const result = await runLookup(
-      matched,
-      options,
-      matched.params.legacyType ?? "",
-      matched.params.legacyId ?? "",
-      lookupHeaders(options),
-    );
-    return { status: result.status, body: { __legacy: result } };
-  });
+  for (const route of catalogLegacyIdentifierRoutes) {
+    addRoute(router, route.method, route.path, async (matched) => {
+      const result = await runLookup(
+        matched,
+        options,
+        matched.params.legacyType ?? "",
+        matched.params.legacyId ?? "",
+        lookupHeaders(options),
+      );
+      return { status: result.status, body: { __legacy: result } };
+    });
+  }
 
   for (const route of writeRoutes) {
-    const add =
-      route.method === "GET"
-        ? router.get
-        : route.method === "POST"
-          ? router.post
-          : route.method === "PUT"
-            ? router.put
-            : route.method === "PATCH"
-              ? router.patch
-              : router.delete;
-    add.call(router, route.path, async (matched) => {
+    addRoute(router, route.method, route.path, async (matched) => {
       const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE);
       return { status: gone.status, body: { __legacy: gone } };
     });
@@ -370,6 +391,27 @@ export async function handleLegacyCatalogRequest(
       };
     }
     throw error;
+  }
+}
+
+export function registerCatalogLegacyRoutes(
+  router: WiseEffRouter,
+  options: LegacyCatalogOptions,
+): void {
+  const handler = async (request: RouteRequest) => {
+    const result = await handleLegacyCatalogRequest(request, options);
+    // RouteResponse has no headers field; Deprecation/Sunset/Link/Warning stay on the isolated HTTP server.
+    return { status: result.status, body: result.body };
+  };
+
+  for (const route of catalogLegacyIdentifierRoutes) {
+    addRoute(router, route.method, route.path, handler);
+  }
+  for (const route of writeRoutes) {
+    addRoute(router, route.method, route.path, handler);
+  }
+  for (const route of eligibleRoutes) {
+    addRoute(router, route.method, route.path, handler);
   }
 }
 

@@ -7,6 +7,7 @@ import {
 } from "../../auth/trustedInvocation";
 import type { AuthContext } from "../../auth/types";
 import type { MappingQueryable, ProtectedLookupResult } from "../../catalog-cutover/mapping";
+import { createRouter } from "../../../shared/http/router";
 import {
   CATALOG_DEPRECATION_HEADER,
   CATALOG_IDEMPOTENCY_HEADER,
@@ -18,7 +19,11 @@ import {
   CATALOG_WARNING_HEADER,
   catalogLegacyGoneResponseSchema,
   catalogLegacyIdentifierResponseSchema,
+  parameterCatalogBoundedLegacyReadRouteIds,
+  parameterCatalogCanonicalRoutes,
+  parameterCatalogLegacyWriteRouteIds,
 } from "../../contracts/dtoSchemas/parameterCatalog";
+import { routeManifest } from "../../contracts/routeManifest";
 
 import {
   LEGACY_SPEC_CONTRACT,
@@ -26,9 +31,9 @@ import {
   LEGACY_SUCCESSOR_LINK,
 } from "./headers";
 import { listenLegacyCatalogHttpServer } from "./httpServer";
-import { legacyWriteRouteManifest } from "./routes";
+import { legacyWriteRouteManifest, registerCatalogLegacyRoutes } from "./routes";
 import { LEGACY_SUCCESSOR_PATH } from "./types";
-import type { LegacyLookupFn } from "./types";
+import type { LegacyCatalogOptions, LegacyLookupFn } from "./types";
 
 const SUNSET = "Wed, 01 Dec 2026 00:00:00 GMT";
 const RELEASE = "crel_01K42";
@@ -75,6 +80,35 @@ const authFor = (organizationId: string, permissions: AuthContext["permissions"]
 });
 
 const fillPath = (path: string) => path.replace(/:([^/]+)/g, "fixture-id");
+
+const frozenLegacyIds = new Set<string>([
+  "catalog.getLegacyIdentifier",
+  ...parameterCatalogBoundedLegacyReadRouteIds,
+  ...parameterCatalogLegacyWriteRouteIds,
+]);
+
+const frozenLegacyKeys = routeManifest
+  .filter((route) => frozenLegacyIds.has(route.id))
+  .map((route) => `${route.method} ${route.path}`);
+
+describe("S8-LEG WiseEff router registration", () => {
+  it("registers frozen S8-CON legacy catalog paths on createRouter().listRoutes()", () => {
+    const router = createRouter();
+    registerCatalogLegacyRoutes(router, {} as LegacyCatalogOptions);
+    expect(parameterCatalogCanonicalRoutes.some((route) => route.id === "catalog.getLegacyIdentifier")).toBe(
+      true,
+    );
+    expect(frozenLegacyKeys).toEqual(expect.arrayContaining([
+      "GET /api/v2/catalog/legacy-identifiers/:legacyType/:legacyId",
+    ]));
+    expect(frozenLegacyKeys.length).toBe(
+      1 + parameterCatalogBoundedLegacyReadRouteIds.length + parameterCatalogLegacyWriteRouteIds.length,
+    );
+    expect(router.listRoutes().map((route) => `${route.method} ${route.pattern}`).sort()).toEqual(
+      [...frozenLegacyKeys].sort(),
+    );
+  });
+});
 
 describe("S8-LEG HTTP seam", () => {
   const client = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as MappingQueryable;

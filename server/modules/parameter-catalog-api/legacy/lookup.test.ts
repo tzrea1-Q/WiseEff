@@ -213,7 +213,11 @@ describe("S8-LEG production isolation", () => {
     }
 
     const lookup = sources.find((entry) => entry.file === "lookup.ts");
+    const index = sources.find((entry) => entry.file === "index.ts");
+    const routes = sources.find((entry) => entry.file === "routes.ts");
     expect(lookup?.source).toContain("lookupProtectedIdentity");
+    expect(index?.source).toContain("registerCatalogLegacyRoutes");
+    expect(routes?.source).toContain("registerCatalogLegacyRoutes");
     expect(THREAT_MATRIX).toHaveLength(12);
   });
 });

@@ -12,6 +12,7 @@ export { createLegacyCatalogHttpServer, listenLegacyCatalogHttpServer } from "./
 export { catalogTargetHref, lookupLegacyIdentifier } from "./lookup";
 export {
   handleLegacyCatalogRequest,
+  registerCatalogLegacyRoutes,
   legacyEligibleRouteManifest,
   legacyWriteRouteManifest,
 } from "./routes";
