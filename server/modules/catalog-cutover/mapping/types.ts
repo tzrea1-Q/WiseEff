@@ -4,11 +4,8 @@ import type {
   LegacyMappingSourceKind,
   Result,
 } from "../../parameter-catalog-contract/index";
-import type {
-  ClassificationResult,
-  OwnerScopeKind,
-  RClass,
-} from "../classifier";
+import type { ClassificationResult, RClass } from "../classifier";
+import type { OwnerScopeKind } from "../classifier/types";
 
 export type MappingQueryable = Pick<pg.Client, "query">;
 
