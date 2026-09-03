@@ -34,6 +34,8 @@ import {
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
+  VERIFICATION_MIGRATION,
+  VERIFICATION_RELATIONS,
   SYNCHRONIZER_EXECUTE_FUNCTION_NAMES,
   SYNCHRONIZER_HEAD_UPDATES,
   TRIGGER_SECURITY_DEFINER_FUNCTION_IDENTITIES,
@@ -512,7 +514,10 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
       order by tablename
     `);
     expect(tables.rows.length).toBe(
-      CATALOG_RELATIONS.length + GOVERNANCE_RELATIONS.length + BINDING_CUTOVER_RELATIONS.length,
+      CATALOG_RELATIONS.length +
+        GOVERNANCE_RELATIONS.length +
+        BINDING_CUTOVER_RELATIONS.length +
+        VERIFICATION_RELATIONS.length,
     );
     expect(new Set(tables.rows.map((row) => row.tableowner))).toEqual(
       new Set([CATALOG_MIGRATION_OWNER]),
@@ -1184,7 +1189,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh 0138 and 0137-then-0138 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and 0137-then-0138-then-0139 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1198,6 +1203,7 @@ describe("0138 Catalog role migration paths", () => {
         await applyMigrations(db, migrationsDir, { through: FLOOR_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: SCHEMA_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
+        await applyMigrations(db, migrationsDir, { through: VERIFICATION_MIGRATION });
         upgrade = await aclFingerprint(db);
       },
     );

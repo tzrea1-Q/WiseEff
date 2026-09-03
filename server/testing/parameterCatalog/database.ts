@@ -7,9 +7,9 @@ import { createEphemeralTestDatabase } from "../testDatabase";
 export const S2_SCH_0137_FINGERPRINT =
   "f2ad57b2af5c6e0d50841284bacf5aff927dd1dbf09039099144e20216c82453";
 
-/** Canonical catalog schema fingerprint of origin/main through 0138. */
+/** Live catalog schema fingerprint of origin/main through 0139. 0137-only freeze is S2_SCH_0137_FINGERPRINT. */
 export const S2_SCH_CONTRACT_FINGERPRINT =
-  "b3f1745aa2730755a2115b4bc6f4f7361ec060369256d2f1e7f3d5947c0cf2fc";
+  "5424d2588395ab736b7af2ad5146091d7c9592ede4a59eea48480917e84516f5";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
@@ -411,6 +411,10 @@ export async function assertCheckedEmptyCatalog(
     for (const table of tables.rows) {
       if (!/^[a-z0-9_]+$/.test(table.table_name)) {
         throw new Error(`Unexpected catalog table name ${table.table_name}`);
+      }
+      // 0139 seeds the closed gate registry; that is schema, not catalog residue.
+      if (table.table_name === "verification_gate_registry") {
+        continue;
       }
       const count = await client.query<{ n: string }>(
         `select count(*)::bigint as n from parameter_catalog.${table.table_name}`,

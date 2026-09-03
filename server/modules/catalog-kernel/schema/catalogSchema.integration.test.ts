@@ -181,7 +181,7 @@ describe("canonical parameter Catalog schema", () => {
     expect(result.rows.map((row) => row.table_name)).toEqual(expected);
   });
 
-  it("materializes exactly the frozen 37 canonical relations", async () => {
+  it("materializes exactly the frozen 43 canonical relations", async () => {
     const expected = [
       "binding_history_events",
       "catalog_command_idempotency",
@@ -220,6 +220,12 @@ describe("canonical parameter Catalog schema", () => {
       "project_parameter_bindings",
       "project_parameter_values",
       "subject_placements",
+      "verification_approvals",
+      "verification_attempts",
+      "verification_gate_registry",
+      "verification_gate_results",
+      "verification_plans",
+      "verification_reports",
     ];
     const result = await client.query<{ table_name: string }>(`
       select table_name
