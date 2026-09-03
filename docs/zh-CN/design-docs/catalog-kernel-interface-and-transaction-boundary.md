@@ -2,7 +2,7 @@
 
 > English: [English](../../design-docs/catalog-kernel-interface-and-transaction-boundary.md)
 
-状态：作为 [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 经联合验收补全后的已接受目标合同。本页是 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668) 后续实现规格的输入，不表示当前运行时已经实现此模块。
+状态：作为 [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 经联合验收补全后的已接受目标合同。本页是 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668) 后续实现规格的输入。S3-RUN（#691）在 `server/modules/catalog-kernel/interface.ts` 实现 TypeScript 公开类型以及 `loadCurrentCatalog` / `loadPinnedCatalog`。`installPublishedRelease`、`switchBackBeforeTraffic` 与 `verifyCurrentMaterialization` 在 S3-INS / S3-VFY 接管 adapter 前返回 tagged `permission-denied`。
 
 本决策以 [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b) 中通过验收的 ADR-0040/0041/0042 最终超集为前提；领域与关系语义继续以这些 ADR 为准。本页只决定深模块 seam、类型、事务所有权、权限、缓存行为和测试面，不创建生产代码、迁移、HTTP 路由、UI 或 implementation ticket，也不占用新的 ADR 编号。
 
