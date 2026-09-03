@@ -833,17 +833,17 @@ async function handleCreateProposal(
   } catch {
     return validationFailed(request.requestId, "base.definitionRevisionId");
   }
-  const command: ProposalCommand = {
-    kind: "submit",
+  const command = {
+    kind: "submit" as const,
     organizationId: scope.organizationId,
     baseRelease: pin.pin,
     currentRelease: pin.pin,
     baseDefinitionRevisionId,
-    payload: parsed.data.requestedChange,
+    payload: parsed.data.requestedChange as import("../../parameter-governance/proposals/command").ProposalPayload,
     reason: parsed.data.reason,
     evidenceRefs: parsed.data.evidenceRefs ?? [],
     idempotencyKey,
-    context: { actorKind: "org-admin", principalId: scope.principalId },
+    context: { actorKind: "org-admin" as const, principalId: scope.principalId },
   };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
