@@ -166,6 +166,9 @@ export async function lookupLegacyIdentifier(input: {
   if (only.status === "archived") {
     return { kind: "archived" };
   }
+  if (only.status !== "mapped") {
+    return { kind: "not-found" };
+  }
   return {
     kind: "mapped",
     item: mappedItem(parsedType.data, legacyId, only.value.targetKind, only.value.targetId),
