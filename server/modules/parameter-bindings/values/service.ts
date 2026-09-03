@@ -117,7 +117,11 @@ const validateAppendCommand = (
   ) {
     return fail({ kind: "invalid-command", reason: "placeholder-source" });
   }
-  return validatePayload(command.payload);
+  const payload = validatePayload(command.payload);
+  if (!payload.ok) {
+    return payload;
+  }
+  return { ok: true, value: command };
 };
 
 const createdAtIso = (value: Date | string): string =>
