@@ -61,6 +61,15 @@ export const GOVERNANCE_RELATIONS = [
   "subject_placements",
 ] as const;
 
+export const VERIFICATION_RELATIONS = [
+  "verification_approvals",
+  "verification_attempts",
+  "verification_gate_registry",
+  "verification_gate_results",
+  "verification_plans",
+  "verification_reports",
+] as const;
+
 export const BINDING_CUTOVER_RELATIONS = [
   "binding_history_events",
   "legacy_identities",
@@ -90,6 +99,7 @@ export const P01_GATE_ID = "PCAT-DB-P01";
 export const P02_GATE_ID = "PCAT-DB-P02";
 
 export const ROLES_MIGRATION = "0138_canonical_parameter_catalog_roles.sql";
+export const VERIFICATION_MIGRATION = "0139_parameter_catalog_verification_core.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 
