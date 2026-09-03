@@ -1,9 +1,21 @@
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import pg from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { compileCatalogRelease } from "../../../server/modules/catalog-kernel/compiler/index";
+import { validCatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import type { CatalogReleaseBundle } from "../../../server/modules/catalog-kernel/compiler/types";
+import {
+  PRE_ACTIVATION_PHASES,
+  UNAVAILABLE_PHASES,
+} from "../../../server/modules/catalog-cutover/interface";
+import { planCutover } from "../../../server/modules/catalog-cutover/orchestrator";
+import type { FrozenP0Graph } from "../../../server/modules/catalog-cutover/classifier";
+import { createDisposableParameterCatalogDatabase } from "../../../server/testing/parameterCatalog";
 
 const script = "ops/self-hosted/scripts/upgrade.sh";
 
@@ -3235,5 +3247,726 @@ describe("upgrade.sh public interface", () => {
     expect(implementation).not.toMatch(/db:seed|selfhost:.*provision|setup\.sh\s+--force/);
     expect(readFileSync("ops/self-hosted/upgrade-protocol.env", "utf8")).toContain("WISEEFF_UPGRADE_PROTOCOL_VERSION=1");
     expect(statSync("ops/self-hosted/scripts/upgrade.sh").mode & 0o111).not.toBe(0);
+  });
+});
+
+const S11_APL_THREAT_MATRIX = Object.freeze([
+  {
+    id: 1,
+    name: "startup-api-migration-refused",
+    attack:
+      "startup/API migration (migrateViaApi, startupMigration, compose-app migrate as apply)",
+    expected: "PCAT-UPG-API-MIGRATE-FORBIDDEN; journal/controller unchanged; no activation",
+    evidenceOwner: "L",
+  },
+  {
+    id: 2,
+    name: "duplicate-apply-idempotent",
+    attack: "duplicate apply of the same mode/input against the same journal",
+    expected: "replayed success or explicit no-op; never a second live P0-P10 mutation",
+    evidenceOwner: "L",
+  },
+  {
+    id: 3,
+    name: "apply-mode-fails-closed",
+    attack: "missing, ambiguous, or conflicting apply mode (fresh vs populated vs omitted vs both)",
+    expected: "fail closed; no cutover execute",
+    evidenceOwner: "L",
+  },
+  {
+    id: 4,
+    name: "fresh-zero-mode",
+    attack: "empty inventory / VerificationMode fresh as catalog apply",
+    expected:
+      "exact zero-mode apply through the frozen controller through P0-P10 then P11a; empty graph is not populated evidence",
+    evidenceOwner: "L",
+  },
+  {
+    id: 5,
+    name: "populated-full-mode",
+    attack: "populated P0 graph / VerificationMode populated as catalog apply",
+    expected: "exact full-mode apply through the frozen controller through P0-P10 then P11a",
+    evidenceOwner: "L",
+  },
+  {
+    id: 6,
+    name: "activation-phases-refused",
+    attack: "P11 / P12-P16 / activate-p12 / retire-p13 / public release as apply",
+    expected: "UNAVAILABLE_PHASES / illegal action; isolation remains after P11a",
+    evidenceOwner: "L",
+  },
+  {
+    id: 7,
+    name: "caller-cannot-select-gates-or-guess",
+    attack: "caller-supplied gates, waivers, or unknown-commit guesses",
+    expected:
+      "PCAT-UPG-GATE-SELECTION-FORBIDDEN, PCAT-UPG-API-MIGRATE-FORBIDDEN, or PCAT-UPG-UNKNOWN-OUTCOME",
+    evidenceOwner: "L",
+  },
+  {
+    id: 8,
+    name: "consume-frozen-controller-ports",
+    attack:
+      "reimplement planCutover/executeCutover/inspectCutover/recoverCutover/prepareVerification/runVerification/openCatalogUpgradeController in upgrade.sh",
+    expected: "production apply consumes those frozen symbols and does not redefine them",
+    evidenceOwner: "L",
+  },
+] as const);
+
+const EMPTY_P0_GRAPH: FrozenP0Graph = {
+  catalog: "parameter-catalog-p0-graph",
+  identities: [],
+  specs: [],
+  specVersions: [],
+  subjects: [],
+  driverRegistrations: [],
+  nodeTypeDefinitions: [],
+  driverSchemas: [],
+  driverSchemaVersions: [],
+  dtsPropertySpecs: [],
+  modules: [],
+  placements: [],
+  bindings: [],
+  bindingRevisions: [],
+};
+
+const populatedApplyGraph = (): FrozenP0Graph => ({
+  catalog: "parameter-catalog-p0-graph",
+  identities: [
+    {
+      id: "s7orc-lid-r1",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-spec",
+      ownerScopeKind: "platform",
+      ownerScopeId: "platform",
+      sourceId: "s7orc-spec-r1",
+    },
+    {
+      id: "s7orc-lid-r10",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-spec",
+      ownerScopeKind: "platform",
+      ownerScopeId: "platform",
+      sourceId: "s7orc-spec-r10",
+    },
+  ],
+  specs: [
+    {
+      id: "s7orc-spec-r1",
+      organizationId: null,
+      sourceKind: "dts",
+      specificationKey: "s7orc.r1.status",
+      attributionSubjectId: null,
+      definitionLifecycle: "active",
+      propertyKey: "status",
+    },
+    {
+      id: "s7orc-spec-r10",
+      organizationId: null,
+      sourceKind: "dts",
+      specificationKey: "s7orc.r10.unknown",
+      attributionSubjectId: null,
+      definitionLifecycle: "active",
+      propertyKey: "s7orc,unknown",
+    },
+  ],
+  specVersions: [
+    {
+      id: "s7orc-ver-r1",
+      parameterSpecId: "s7orc-spec-r1",
+      version: 1,
+      lifecycle: "active",
+      versionStatus: "active",
+    },
+    {
+      id: "s7orc-ver-r10",
+      parameterSpecId: "s7orc-spec-r10",
+      version: 1,
+      lifecycle: "active",
+      versionStatus: "active",
+    },
+  ],
+  subjects: [],
+  driverRegistrations: [],
+  nodeTypeDefinitions: [],
+  driverSchemas: [],
+  driverSchemaVersions: [],
+  dtsPropertySpecs: [],
+  modules: [],
+  placements: [],
+  bindings: [],
+  bindingRevisions: [],
+});
+
+const firstReleaseBundle = (): CatalogReleaseBundle => {
+  const full = validCatalogReleaseBundle();
+  const first = structuredClone(full.releases[0]!);
+  return {
+    schemaVersion: full.schemaVersion,
+    targetReleaseId: first.manifest.release.id,
+    releases: [first],
+  };
+};
+
+const FORBIDDEN_COMPOSE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
+const ARTIFACT_SHA = "b".repeat(40);
+
+const parseApplyJson = (stdout: string): Record<string, unknown> => {
+  const trimmed = stdout.trim();
+  const start = trimmed.indexOf("{");
+  const payload = start >= 0 ? trimmed.slice(start) : trimmed;
+  return JSON.parse(payload) as Record<string, unknown>;
+};
+
+const catalogJournalPath = (root: string): string => join(root, "journal.json");
+
+describe("S11-APL catalog apply threat matrix", () => {
+  it("freezes the eight R3 observations before production apply work", () => {
+    expect(S11_APL_THREAT_MATRIX).toHaveLength(8);
+    expect(Object.isFrozen(S11_APL_THREAT_MATRIX)).toBe(true);
+    expect(S11_APL_THREAT_MATRIX.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(S11_APL_THREAT_MATRIX.map((row) => row.name)).toEqual([
+      "startup-api-migration-refused",
+      "duplicate-apply-idempotent",
+      "apply-mode-fails-closed",
+      "fresh-zero-mode",
+      "populated-full-mode",
+      "activation-phases-refused",
+      "caller-cannot-select-gates-or-guess",
+      "consume-frozen-controller-ports",
+    ]);
+    for (const row of S11_APL_THREAT_MATRIX) {
+      expect(row.attack.length).toBeGreaterThan(0);
+      expect(row.expected.length).toBeGreaterThan(0);
+      expect(row.evidenceOwner).toBe("L");
+    }
+  });
+
+  it("T1 refuses startup/API migration and compose-app migrate as apply without touching the journal", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-t1-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-before-refuse\n");
+    const before = readFileSync(journalPath);
+
+    const migrateViaApi = runUpgrade(
+      ["apply", "--catalog-apply-mode", "fresh", "--migrate-via-api", "--catalog-journal", journalPath],
+      { WISEEFF_CATALOG_QUIESCED: "true" },
+    );
+    expect(migrateViaApi.status).not.toBe(0);
+    expect(`${migrateViaApi.stdout}\n${migrateViaApi.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
+
+    const startup = runUpgrade(
+      ["apply", "--catalog-apply-mode", "populated", "--startup-migration", "--catalog-journal", journalPath],
+      { WISEEFF_CATALOG_QUIESCED: "true" },
+    );
+    expect(startup.status).not.toBe(0);
+    expect(`${startup.stdout}\n${startup.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
+
+    const composeApp = runUpgrade(
+      ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
+      { DATABASE_URL: FORBIDDEN_COMPOSE_URL, WISEEFF_CATALOG_QUIESCED: "true" },
+    );
+    expect(composeApp.status).not.toBe(0);
+    expect(`${composeApp.stdout}\n${composeApp.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
+    expect(`${migrateViaApi.stdout}\n${startup.stdout}\n${composeApp.stdout}`).not.toContain("activate-p12");
+  });
+
+  it("T3 missing, ambiguous, omitted, and both apply modes fail closed with no cutover execute", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-t3-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-mode\n");
+    const before = readFileSync(journalPath);
+
+    const omitted = runUpgrade(["apply", "--catalog-apply", "--catalog-journal", journalPath]);
+    const bothFlags = runUpgrade([
+      "apply",
+      "--catalog-apply-mode",
+      "fresh",
+      "--catalog-apply-mode",
+      "populated",
+      "--catalog-journal",
+      journalPath,
+    ]);
+    const conflictingEnv = runUpgrade(
+      ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
+      { WISEEFF_CATALOG_APPLY_MODE: "populated" },
+    );
+    const invalid = runUpgrade([
+      "apply",
+      "--catalog-apply-mode",
+      "restored",
+      "--catalog-journal",
+      journalPath,
+    ]);
+
+    for (const result of [omitted, bothFlags, conflictingEnv, invalid]) {
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toMatch(/fresh XOR populated|PCAT-UPG-ILLEGAL-ACTION/);
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain("cutover-completed");
+    }
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
+  });
+
+  it("T6 refuses P11/P12-P16, activate-p12, retire-p13, and public release", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-t6-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-activation\n");
+    const before = readFileSync(journalPath);
+    const forbiddenActions = [
+      "P11",
+      "P12",
+      "activate-p12",
+      "retire-p13",
+      "public-release",
+      ...UNAVAILABLE_PHASES,
+    ];
+
+    for (const action of forbiddenActions) {
+      const result = runUpgrade([
+        "apply",
+        "--catalog-apply-mode",
+        "fresh",
+        "--catalog-action",
+        action,
+        "--catalog-journal",
+        journalPath,
+      ]);
+      expect(result.status, action).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`, action).toMatch(
+        /PCAT-UPG-ILLEGAL-ACTION|UNAVAILABLE_PHASES|activation phase/,
+      );
+    }
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
+  });
+
+  it("T7 refuses caller gate selection, API migrate, and unknown-commit guesses", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-s11-apl-t7-"));
+    const journalPath = catalogJournalPath(runDir);
+    writeFileSync(journalPath, "sentinel-gates\n");
+    const before = readFileSync(journalPath);
+
+    const gates = runUpgrade([
+      "apply",
+      "--catalog-apply-mode",
+      "fresh",
+      "--gates",
+      "PCAT-DB-V01",
+      "--catalog-journal",
+      journalPath,
+    ]);
+    const waiver = runUpgrade([
+      "apply",
+      "--catalog-apply-mode",
+      "populated",
+      "--waiver",
+      "skip",
+      "--catalog-journal",
+      journalPath,
+    ]);
+    const guess = runUpgrade([
+      "apply",
+      "--catalog-apply-mode",
+      "fresh",
+      "--catalog-action",
+      "guessUnknownCommit",
+      "--catalog-journal",
+      journalPath,
+    ]);
+
+    expect(gates.status).not.toBe(0);
+    expect(`${gates.stdout}\n${gates.stderr}`).toContain("PCAT-UPG-GATE-SELECTION-FORBIDDEN");
+    expect(waiver.status).not.toBe(0);
+    expect(`${waiver.stdout}\n${waiver.stderr}`).toContain("PCAT-UPG-GATE-SELECTION-FORBIDDEN");
+    expect(guess.status).not.toBe(0);
+    expect(`${guess.stdout}\n${guess.stderr}`).toContain("PCAT-UPG-UNKNOWN-OUTCOME");
+    expect(readFileSync(journalPath).equals(before)).toBe(true);
+  });
+
+  it("T8 consumes frozen controller, cutover, verification, and recovery-point ports", () => {
+    const source = readFileSync("ops/self-hosted/scripts/upgrade.sh", "utf8");
+    expect(source).toContain("openCatalogUpgradeController");
+    expect(source).toContain("planCutover");
+    expect(source).toContain("executeCutover");
+    expect(source).toContain("inspectCutover");
+    expect(source).toContain("recoverCutover");
+    expect(source).toContain("prepareVerification");
+    expect(source).toContain("runVerification");
+    expect(source).toContain("captureRecoveryPoint");
+    expect(source).toContain("asPrepareVerificationCutover");
+    expect(source).toContain("asPrepareVerificationRecovery");
+    expect(source).not.toMatch(/function\s+planCutover\b/);
+    expect(source).not.toMatch(/function\s+executeCutover\b/);
+    expect(source).not.toMatch(/function\s+inspectCutover\b/);
+    expect(source).not.toMatch(/function\s+recoverCutover\b/);
+    expect(source).not.toMatch(/function\s+prepareVerification\b/);
+    expect(source).not.toMatch(/function\s+runVerification\b/);
+    expect(source).not.toMatch(/function\s+openCatalogUpgradeController\b/);
+    expect(source).not.toMatch(
+      /\b(?:insert|update|delete)\s+(?:into|from)?\s*parameter_catalog\.catalog_releases\b/i,
+    );
+    expect(source).not.toMatch(/compose[^\n]*migrate|startupMigration/);
+    const protocol = readFileSync("ops/self-hosted/upgrade-protocol.env", "utf8");
+    expect(protocol).toContain("WISEEFF_CATALOG_APPLY_MODE=");
+    expect(protocol).toContain("WISEEFF_CATALOG_UPGRADE_JOURNAL=");
+    expect(protocol).toContain("WISEEFF_UPGRADE_PROTOCOL_VERSION=1");
+    expect(protocol).not.toMatch(/WISEEFF_CATALOG_APPLY_MODE=(fresh|populated)/);
+  });
+
+  it("keeps planCutover empty identities as not-populated evidence", async () => {
+    const empty = await planCutover({
+      graph: EMPTY_P0_GRAPH,
+      targetArtifactSha: ARTIFACT_SHA,
+      targetCatalogReleaseDigest: "sha256:release-empty",
+    });
+    expect(empty.ok).toBe(false);
+    if (empty.ok) return;
+    expect(empty.error.code).toBe("PCAT-ORC-NOT-POPULATED");
+  });
+});
+
+describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () => {
+  const databaseUrl = process.env.TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
+  let freshDb: Awaited<ReturnType<typeof createDisposableParameterCatalogDatabase>>;
+  let populatedDb: Awaited<ReturnType<typeof createDisposableParameterCatalogDatabase>>;
+  let bundle: CatalogReleaseBundle;
+  let releaseDigest: string;
+  const archiveKeyHex = randomBytes(32).toString("hex");
+
+  const requireLane = () => {
+    if (!databaseUrl) {
+      throw new Error(
+        "S11-APL PG tests require DATABASE_URL or TEST_DATABASE_URL pointing at real pgvector PostgreSQL; skipping is forbidden",
+      );
+    }
+    const url = new URL(databaseUrl);
+    const port = url.port === "" ? "5432" : url.port;
+    const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
+    if (url.hostname === "127.0.0.1" && port === "5432" && database === "wiseeff") {
+      throw new Error("S11-APL PG tests refuse the compose app 5432/wiseeff database");
+    }
+  };
+
+  const writeInputs = (root: string, graph: FrozenP0Graph) => {
+    mkdirSync(join(root, "archive"), { recursive: true });
+    const graphPath = join(root, "graph.json");
+    const releasePath = join(root, "release.json");
+    writeFileSync(graphPath, `${JSON.stringify(graph, null, 2)}\n`);
+    writeFileSync(releasePath, `${JSON.stringify(bundle, null, 2)}\n`);
+    return {
+      graphPath,
+      releasePath,
+      journalPath: catalogJournalPath(root),
+      archiveRoot: join(root, "archive"),
+    };
+  };
+
+  const runModeApply = (
+    mode: "fresh" | "populated",
+    dbUrl: string,
+    graph: FrozenP0Graph,
+    runId: string,
+    root = mkdtempSync(join(tmpdir(), `wiseeff-s11-apl-${mode}-`)),
+  ) => {
+    const paths = writeInputs(root, graph);
+    const result = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        mode,
+        "--catalog-graph",
+        paths.graphPath,
+        "--catalog-release-json",
+        paths.releasePath,
+        "--catalog-journal",
+        paths.journalPath,
+        "--catalog-run-id",
+        runId,
+        "--catalog-target-artifact-sha",
+        ARTIFACT_SHA,
+        "--catalog-target-release-digest",
+        releaseDigest,
+        "--catalog-archive-root",
+        paths.archiveRoot,
+        "--catalog-archive-key-hex",
+        archiveKeyHex,
+        "--catalog-operator-audit-ref",
+        "audit-s11-apl",
+        "--json",
+      ],
+      {
+        DATABASE_URL: dbUrl,
+        WISEEFF_CATALOG_QUIESCED: "true",
+      },
+    );
+    return { result, ...paths, root };
+  };
+
+  const seedPopulated = async (client: pg.Client, graph: FrozenP0Graph) => {
+    for (const spec of graph.specs) {
+      await client.query(
+        `
+        insert into public.parameter_specs (
+          id, organization_id, source_kind, specification_key,
+          attribution_subject_id, definition_lifecycle, property_key
+        ) values ($1, $2, $3, $4, $5, $6, $7)
+        `,
+        [
+          spec.id,
+          spec.organizationId,
+          spec.sourceKind,
+          spec.specificationKey,
+          spec.attributionSubjectId,
+          spec.definitionLifecycle,
+          spec.propertyKey,
+        ],
+      );
+    }
+    for (const version of graph.specVersions) {
+      await client.query(
+        `
+        insert into public.parameter_spec_versions (
+          id, parameter_spec_id, version, display_name, description, value_shape,
+          lifecycle, version_status
+        ) values ($1, $2, $3, $4, $4, '{}', $5, $6)
+        `,
+        [
+          version.id,
+          version.parameterSpecId,
+          version.version,
+          version.id,
+          version.lifecycle,
+          version.versionStatus,
+        ],
+      );
+    }
+    for (const identity of graph.identities) {
+      await client.query(
+        `
+        insert into parameter_catalog.legacy_identities (
+          id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+        ) values ($1, $2, $3, $4, $5, $6)
+        `,
+        [
+          identity.id,
+          identity.sourceSystem,
+          identity.sourceKind,
+          identity.ownerScopeKind,
+          identity.ownerScopeId,
+          identity.sourceId,
+        ],
+      );
+    }
+  };
+
+  const countCutoverRuns = async (url: string, planDigest?: string): Promise<number> => {
+    const client = new pg.Client({ connectionString: url });
+    await client.connect();
+    try {
+      const result = planDigest
+        ? await client.query<{ n: string }>(
+            `
+            select count(*)::text as n
+              from parameter_catalog.parameter_catalog_cutover_runs
+             where plan_digest = $1
+            `,
+            [planDigest],
+          )
+        : await client.query<{ n: string }>(
+            `select count(*)::text as n from parameter_catalog.parameter_catalog_cutover_runs`,
+          );
+      return Number(result.rows[0]?.n ?? 0);
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  };
+
+  beforeAll(async () => {
+    requireLane();
+    bundle = firstReleaseBundle();
+    const compiled = compileCatalogRelease(bundle);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error(compiled.error.kind);
+    releaseDigest = compiled.value.release.digest;
+    freshDb = await createDisposableParameterCatalogDatabase("s11aplf");
+    populatedDb = await createDisposableParameterCatalogDatabase("s11aplp");
+    const client = new pg.Client({ connectionString: populatedDb.url });
+    await client.connect();
+    try {
+      await seedPopulated(client, populatedApplyGraph());
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await freshDb?.close().catch(() => undefined);
+    await populatedDb?.close().catch(() => undefined);
+  });
+
+  it("T4 fresh empty inventory yields exact zero-mode apply through P0-P10 then P11a", async () => {
+    const emptyPlan = await planCutover({
+      graph: EMPTY_P0_GRAPH,
+      targetArtifactSha: ARTIFACT_SHA,
+      targetCatalogReleaseDigest: releaseDigest,
+    });
+    expect(emptyPlan.ok).toBe(false);
+    if (!emptyPlan.ok) {
+      expect(emptyPlan.error.code).toBe("PCAT-ORC-NOT-POPULATED");
+    }
+
+    const { result, journalPath } = runModeApply("fresh", freshDb.url, EMPTY_P0_GRAPH, "s11apl-fresh");
+    expect(result.status, result.stderr).toBe(0);
+    const payload = parseApplyJson(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(payload.mode).toBe("fresh");
+    expect(payload.state).toBe("verification-ran");
+    expect(payload.replayed).toBe(false);
+    expect(payload.phases).toEqual([...PRE_ACTIVATION_PHASES, "P11a"]);
+    expect(payload.isolation).toBe("isolated");
+    expect(payload.p12State).toBe("not-started");
+    expect(payload.p13State).toBe("not-started");
+    const verification = payload.verification as Record<string, unknown>;
+    expect(verification.mode).toBe("fresh");
+    expect(verification.purpose).toBe("pre-activation");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      state: string;
+      entries: { action: string }[];
+    };
+    expect(journal.state).toBe("verification-ran");
+    expect(journal.entries.map((entry) => entry.action)).toEqual([
+      "plan",
+      "execute",
+      "prepareVerification",
+      "runVerification",
+    ]);
+    expect(await countCutoverRuns(freshDb.url)).toBe(0);
+  });
+
+  it("T2 duplicate fresh apply is a journal replay without a second live mutation", async () => {
+    const first = runModeApply("fresh", freshDb.url, EMPTY_P0_GRAPH, "s11apl-fresh-dup");
+    expect(first.result.status, first.result.stderr).toBe(0);
+    const firstPayload = parseApplyJson(first.result.stdout);
+    expect(firstPayload.replayed).toBe(false);
+    const committed = readFileSync(first.journalPath);
+    const second = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "fresh",
+        "--catalog-graph",
+        first.graphPath,
+        "--catalog-release-json",
+        first.releasePath,
+        "--catalog-journal",
+        first.journalPath,
+        "--catalog-run-id",
+        "s11apl-fresh-dup",
+        "--catalog-target-artifact-sha",
+        ARTIFACT_SHA,
+        "--catalog-target-release-digest",
+        releaseDigest,
+        "--catalog-archive-root",
+        first.archiveRoot,
+        "--catalog-archive-key-hex",
+        archiveKeyHex,
+        "--catalog-operator-audit-ref",
+        "audit-s11-apl",
+        "--json",
+      ],
+      {
+        DATABASE_URL: freshDb.url,
+        WISEEFF_CATALOG_QUIESCED: "true",
+      },
+    );
+    expect(second.status, second.stderr).toBe(0);
+    const secondPayload = parseApplyJson(second.stdout);
+    expect(secondPayload.ok).toBe(true);
+    expect(secondPayload.replayed).toBe(true);
+    expect(secondPayload.state).toBe("verification-ran");
+    expect(readFileSync(first.journalPath).equals(committed)).toBe(true);
+    expect(await countCutoverRuns(freshDb.url)).toBe(0);
+  });
+
+  it("T5 populated P0 graph yields exact full-mode apply through P0-P10 then P11a", async () => {
+    const graph = populatedApplyGraph();
+    const { result, journalPath } = runModeApply(
+      "populated",
+      populatedDb.url,
+      graph,
+      "s11apl-populated",
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const payload = parseApplyJson(result.stdout);
+    expect(payload.ok).toBe(true);
+    expect(payload.mode).toBe("populated");
+    expect(payload.state).toBe("verification-ran");
+    expect(payload.replayed).toBe(false);
+    expect(payload.phases).toEqual([...PRE_ACTIVATION_PHASES, "P11a"]);
+    expect(payload.isolation).toBe("isolated");
+    const cutover = payload.cutover as Record<string, unknown>;
+    expect(cutover.currentPhase).toBe("P10");
+    expect(cutover.state).toBe("completed");
+    const verification = payload.verification as Record<string, unknown>;
+    expect(verification.mode).toBe("populated");
+    expect(verification.purpose).toBe("pre-activation");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      state: string;
+      planDigest: string;
+      entries: { action: string }[];
+    };
+    expect(journal.state).toBe("verification-ran");
+    expect(journal.entries.map((entry) => entry.action)).toEqual([
+      "plan",
+      "execute",
+      "prepareVerification",
+      "runVerification",
+    ]);
+    expect(await countCutoverRuns(populatedDb.url, journal.planDigest)).toBe(1);
+  });
+
+  it("T2 duplicate populated apply replays without a second live P0-P10 mutation", async () => {
+    const graph = populatedApplyGraph();
+    const first = runModeApply("populated", populatedDb.url, graph, "s11apl-populated-dup");
+    expect(first.result.status, first.result.stderr).toBe(0);
+    const journal = JSON.parse(readFileSync(first.journalPath, "utf8")) as { planDigest: string };
+    const runsAfterFirst = await countCutoverRuns(populatedDb.url, journal.planDigest);
+    expect(runsAfterFirst).toBe(1);
+    const committed = readFileSync(first.journalPath);
+    const second = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "populated",
+        "--catalog-graph",
+        first.graphPath,
+        "--catalog-release-json",
+        first.releasePath,
+        "--catalog-journal",
+        first.journalPath,
+        "--catalog-run-id",
+        "s11apl-populated-dup",
+        "--catalog-target-artifact-sha",
+        ARTIFACT_SHA,
+        "--catalog-target-release-digest",
+        releaseDigest,
+        "--catalog-archive-root",
+        first.archiveRoot,
+        "--catalog-archive-key-hex",
+        archiveKeyHex,
+        "--catalog-operator-audit-ref",
+        "audit-s11-apl",
+        "--json",
+      ],
+      {
+        DATABASE_URL: populatedDb.url,
+        WISEEFF_CATALOG_QUIESCED: "true",
+      },
+    );
+    expect(second.status, second.stderr).toBe(0);
+    const secondPayload = parseApplyJson(second.stdout);
+    expect(secondPayload.replayed).toBe(true);
+    expect(readFileSync(first.journalPath).equals(committed)).toBe(true);
+    expect(await countCutoverRuns(populatedDb.url, journal.planDigest)).toBe(1);
   });
 });

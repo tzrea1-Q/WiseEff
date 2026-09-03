@@ -63,6 +63,15 @@
 | queue backlog |  |  |
 | object-store probe |  |  |
 
+## Catalog apply
+
+| Mode | Result | Evidence |
+| --- | --- | --- |
+| fresh zero-mode through P0-P10 + P11a |  |  |
+| populated full-mode through P0-P10 + P11a |  |  |
+
+Isolation after P11a remains; P12-P16 are not executed.
+
 ## Go / No-Go
 
 Outcome: Go / No-Go
