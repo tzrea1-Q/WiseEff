@@ -213,6 +213,14 @@ This replaces PostgreSQL, the configured S3-compatible bucket, and durable Redis
 
 Stable exit classes are useful for automation: `0` completed/no-op, `2` invalid input or missing confirmation, `10` preflight/target failure, `20` candidate build failure, `30` quiescence failure with old stack restored, `40` recovery-point failure with old stack restored, `50` pre-migration data-service failure, `70` explicit recovery required, and `75` operation-lock contention.
 
+## Catalog upgrade controller
+
+The catalog upgrade controller is a fail-closed journal over frozen Cutover and Release Verification operations. It does not choose verification gates, start API or startup migrations, or guess unknown commit outcomes.
+
+Legal controller actions are `plan`, `execute`, `inspect`, `recover`, `prepareVerification`, `runVerification`, and same-plan `resume`. `execute` and `resume` must reuse the journaled plan digest and the frozen P0-P10 phase list. P11-P16 remain unavailable. Callers cannot select gates or waivers.
+
+This node owns the journal and legal-action guards only. `upgrade.sh apply` integration remains S11-APL. Local controller tests are L evidence; they are not target-host, release, or production-approval evidence.
+
 ## Operator safety
 
 - Keep backup storage outside the checkout and Docker data root; protect it with mode `0700` directories and `0600` files.

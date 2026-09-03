@@ -25,9 +25,8 @@ import type {
 
 import type { CutoverPorts, VerificationPorts } from "./actions";
 import { asPrepareVerificationCutover } from "./actions";
-import { openCatalogUpgradeController } from "./controller";
+import { openCatalogUpgradeController, THREAT_MATRIX } from "./controller";
 import { journalBytes } from "./journal";
-import { THREAT_MATRIX } from "./threatMatrix";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -394,6 +393,66 @@ describe("S11-UPG controller", () => {
     if (selected.ok) return;
     expect(selected.error.code).toBe("PCAT-UPG-GATE-SELECTION-FORBIDDEN");
     expect(journalBytes(journalPath).equals(before)).toBe(true);
+  });
+
+  it("refuses execute of a different plan digest and leaves journal unchanged", async () => {
+    const harness = createHarness();
+    const journalPath = journalPathFor("digest-pin");
+    const opened = openCatalogUpgradeController({
+      journalPath,
+      runId: "run-digest-pin",
+      cutover: harness.cutover,
+      verification: harness.verification,
+    });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    const controller = opened.value;
+    expect((await controller.dispatch({ action: "plan", input: planInput() })).ok).toBe(true);
+    const before = journalBytes(journalPath);
+    const executeCalls = harness.calls.filter((name) => name === "execute").length;
+    const otherPlan = { ...cutoverPlan(), planDigest: "sha256:other-plan" };
+    const refused = await controller.dispatch({
+      action: "execute",
+      input: { plan: otherPlan },
+    });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error.code).toBe("PCAT-UPG-ILLEGAL-ACTION");
+    expect(refused.error.detail).toContain("journal plan digest");
+    expect(journalBytes(journalPath).equals(before)).toBe(true);
+    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(executeCalls);
+  });
+
+  it("refuses execute when plan phases are missing or include unavailable activation", async () => {
+    const harness = createHarness();
+    const journalPath = journalPathFor("phases");
+    const opened = openCatalogUpgradeController({
+      journalPath,
+      runId: "run-phases",
+      cutover: harness.cutover,
+      verification: harness.verification,
+    });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    const controller = opened.value;
+    expect((await controller.dispatch({ action: "plan", input: planInput() })).ok).toBe(true);
+    const before = journalBytes(journalPath);
+    const missingPhases = await controller.dispatch({
+      action: "execute",
+      input: { plan: { ...cutoverPlan(), phases: undefined } },
+    });
+    expect(missingPhases.ok).toBe(false);
+    if (missingPhases.ok) return;
+    expect(missingPhases.error.code).toBe("PCAT-UPG-ILLEGAL-ACTION");
+    const withP12 = await controller.dispatch({
+      action: "execute",
+      input: { plan: { ...cutoverPlan(), phases: [...PRE_ACTIVATION_PHASES, "P12"] } },
+    });
+    expect(withP12.ok).toBe(false);
+    if (withP12.ok) return;
+    expect(withP12.error.code).toBe("PCAT-UPG-ILLEGAL-ACTION");
+    expect(journalBytes(journalPath).equals(before)).toBe(true);
+    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(0);
   });
 
   it("T5 cannot guess unknown commits or migrate through API startup", async () => {

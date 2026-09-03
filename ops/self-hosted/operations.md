@@ -28,6 +28,7 @@ The stock topology runs exactly one API replica. The wrapper accepts only exact 
 | Enterprise proxy/npm mirror/CA/TLS policy | `./scripts/build-network.sh init`, edit, then `status` | Creates and validates the private build transport contract consumed by setup/upgrade. |
 | Monitoring lifecycle | `./scripts/observability <up|status|logs|restart|down>` | Operates only the private monitoring profile. |
 | Upgrade/setup lock conflict | `./scripts/upgrade.sh lock-status`, then `unlock` only if stale | Inspects or safely clears stale lock metadata without killing a live operation. |
+| Catalog cutover/verification controller | `ops/self-hosted/scripts/parameter-catalog-upgrade/` journal and legal actions | Fail-closed plan/execute/inspect/recover/prepare/run over frozen S7-ORC and S10-PER; no gate selection, API migrate, or unknown-commit guess. Apply remains S11-APL. |
 
 Do not use `setup.sh --force` as an upgrade or restart command. It intentionally replaces `.env` and rotates database/object-store credentials. Do not use `compose down -v`, `docker volume rm`, or `docker system prune` in a data-preserving workflow.
 

@@ -28,6 +28,7 @@ stock 拓扑只运行一个 API 副本。wrapper 对 `up --scale api=...`、`up 
 | 企业代理/npm 镜像源/CA/TLS 策略 | `./scripts/build-network.sh init`，编辑后执行 `status` | 创建并校验 setup/upgrade 共用的私有构建传输契约。 |
 | 监控生命周期 | `./scripts/observability <up|status|logs|restart|down>` | 只操作私有监控 profile。 |
 | setup/upgrade 锁冲突 | `./scripts/upgrade.sh lock-status`，仅当 stale 时执行 `unlock` | 查看或安全清理陈旧锁元数据，不结束真实运行中的操作。 |
+| 目录切换/核验控制器 | `ops/self-hosted/scripts/parameter-catalog-upgrade/` journal 与合法动作 | 在冻结的 S7-ORC 与 S10-PER 上失败即关闭地执行 plan/execute/inspect/recover/prepare/run；禁止选择门禁、API 迁移或猜测未知 commit。apply 仍属于 S11-APL。 |
 
 不要把 `setup.sh --force` 当成升级或重启命令；它会替换 `.env` 并轮换数据库/对象存储凭据。任何保留数据的流程都禁止使用 `compose down -v`、`docker volume rm` 或 `docker system prune`。
 

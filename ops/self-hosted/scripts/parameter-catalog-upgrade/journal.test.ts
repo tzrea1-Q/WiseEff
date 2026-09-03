@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -104,6 +104,24 @@ describe("S11-UPG journal", () => {
     expect(resumed.value.snapshot.entryCount).toBe(2);
     expect(resumed.value.snapshot.nextAction).toBe("inspect");
     expect(resumed.value.snapshot.journalDigest).toBe(crashed.value.snapshot.journalDigest);
+  });
+
+  it("refuses to load a journal whose digest does not match the canonical payload", () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "run-digest" });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    const record = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      journalDigest: string;
+      state: string;
+    };
+    record.state = "planned";
+    writeFileSync(journalPath, `${JSON.stringify(record, null, 2)}\n`);
+    const tampered = loadUpgradeJournal({ journalPath, runId: "run-digest" });
+    expect(tampered.ok).toBe(false);
+    if (tampered.ok) return;
+    expect(tampered.error.code).toBe("PCAT-UPG-ILLEGAL-ACTION");
+    expect(tampered.error.detail).toContain("digest mismatch");
   });
 
   it("refuses to load a journal whose run identity does not match", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { THREAT_MATRIX } from "./threatMatrix";
+import { THREAT_MATRIX } from "./controller";
 import {
   CONTROLLER_STATES,
   FORBIDDEN_ACTIONS,
