@@ -152,7 +152,7 @@ export const runV03 = async (query: GateQuery): Promise<GateResult> => {
       where binding.organization_id is distinct from registration.organization_id
          or binding.subject_id is distinct from registration.subject_id
       union all
-      select value.id, 'project_parameter_values'
+      select value.id, '${projectValueRelation()}'
       from ${values} value
       join ${catalogRelation("project_parameter_bindings")} binding
         on binding.id = value.binding_id
