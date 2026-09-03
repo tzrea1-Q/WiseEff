@@ -224,25 +224,22 @@ const commandFingerprintModel = (command: ResolveReviewItemCommand): ContractJso
     id: command.expectedRelease.id,
     digest: command.expectedRelease.digest,
   };
-  const actor =
+  const actor: ContractJsonValue =
     command.context.actorKind === "anonymous"
-      ? { actorKind: command.context.actorKind }
+      ? { actorKind: "anonymous" }
       : {
           actorKind: command.context.actorKind,
           principalId: command.context.principalId,
         };
-  const base = {
-    organizationId: command.organizationId,
-    reviewItemId: command.reviewItemId,
-    expectedRelease: release,
-    etag: command.etag,
-    reason: command.reason,
-    context: actor,
-  };
   switch (command.resolution) {
     case "register-subject":
       return {
-        ...base,
+        organizationId: command.organizationId,
+        reviewItemId: command.reviewItemId,
+        expectedRelease: release,
+        etag: command.etag,
+        reason: command.reason,
+        context: actor,
         resolution: command.resolution,
         subjectId: command.subjectId,
         subjectKind: command.subjectKind,
@@ -252,19 +249,34 @@ const commandFingerprintModel = (command: ResolveReviewItemCommand): ContractJso
       };
     case "restore-registration":
       return {
-        ...base,
+        organizationId: command.organizationId,
+        reviewItemId: command.reviewItemId,
+        expectedRelease: release,
+        etag: command.etag,
+        reason: command.reason,
+        context: actor,
         resolution: command.resolution,
         registrationId: command.registrationId,
       };
     case "mark-out-of-scope":
       return {
-        ...base,
+        organizationId: command.organizationId,
+        reviewItemId: command.reviewItemId,
+        expectedRelease: release,
+        etag: command.etag,
+        reason: command.reason,
+        context: actor,
         resolution: command.resolution,
         outOfScopeReason: command.outOfScopeReason,
       };
     case "open-definition-proposal":
       return {
-        ...base,
+        organizationId: command.organizationId,
+        reviewItemId: command.reviewItemId,
+        expectedRelease: release,
+        etag: command.etag,
+        reason: command.reason,
+        context: actor,
         resolution: command.resolution,
         proposal: {
           reason: command.proposal.reason,
