@@ -38,6 +38,7 @@ describe("S8-READ production Catalog isolation", () => {
         "index.ts",
         "ports.ts",
         "query.ts",
+        "routes.ts",
         "threatMatrix.ts",
         "types.ts",
       ].sort(),
@@ -77,6 +78,7 @@ describe("S8-READ production Catalog isolation", () => {
     expect(handlers?.source).not.toContain("selectedRevision");
     expect(dto?.source).toContain("selectedRevision");
     expect(index?.source).toContain("handleCatalogRead");
+    expect(index?.source).toContain("registerCatalogReadRoutes");
     expect(handlers?.source).toContain("stripSpoofHeaders");
 
     for (const [routeId, operation] of Object.entries(parameterCatalogKernelReadByRouteId)) {

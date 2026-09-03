@@ -1,5 +1,6 @@
 export { handleCatalogRead, matchCatalogReadRoute, catalogReadRouteIds } from "./handlers";
 export { createCatalogReadHttpServer } from "./http";
+export { registerCatalogReadRoutes } from "./routes";
 export { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "./ports";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
