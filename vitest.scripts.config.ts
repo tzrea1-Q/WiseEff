@@ -13,6 +13,8 @@ export default defineConfig({
     environment: "node",
     include: ["scripts/**/*.test.ts", "ops/**/*.test.ts"],
     exclude: ["node_modules/**", ...siblingWorktreeExclude],
-    passWithNoTests: true
+    passWithNoTests: true,
+    // Ancestry walks in rehearsal source-lock tests exceed Vitest's 5s default on Hosted.
+    testTimeout: 60_000,
   }
 });
