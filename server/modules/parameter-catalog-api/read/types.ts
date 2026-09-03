@@ -8,12 +8,15 @@ import type {
 import type { parameterCatalogKernelReadByRouteId } from "../../contracts/dtoSchemas/parameterCatalog";
 import type {
   CatalogCursor,
-  CatalogIdSelection,
   CatalogReleasePin,
   CatalogSubjectId,
   OptionalValue,
   ParameterDefinitionId,
 } from "../../parameter-catalog-contract/index";
+
+export type CatalogIdSelection<Id extends string = string> =
+  | { readonly kind: "all" }
+  | { readonly kind: "only"; readonly ids: readonly Id[]; readonly fingerprint: string };
 
 export type CatalogReadRouteId = keyof typeof parameterCatalogKernelReadByRouteId;
 

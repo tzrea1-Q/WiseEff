@@ -13,14 +13,18 @@ import {
   CatalogSubjectId,
   ParameterDefinitionId,
   serializeContract,
-  type CatalogIdSelection,
   type CatalogSubjectKind,
   type ContractJsonValue,
   type DefinitionLifecycle,
   type SubjectLifecycle,
 } from "../../parameter-catalog-contract/index";
 import { validationFailed } from "./errors";
-import type { CatalogListQuery, CatalogReadRequest, CatalogReadResponse } from "./types";
+import type {
+  CatalogIdSelection,
+  CatalogListQuery,
+  CatalogReadRequest,
+  CatalogReadResponse,
+} from "./types";
 
 export const CATALOG_READ_DEFAULT_PAGE_LIMIT = 50;
 export const CATALOG_READ_MAX_PAGE_LIMIT = 100;
