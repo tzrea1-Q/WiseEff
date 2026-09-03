@@ -1,3 +1,4 @@
+import type { ZodTypeAny } from "zod";
 import {
   dtoSchemaCatalog as coreDtoSchemaCatalog,
   dtoSchemaCoveredRouteIds as coreDtoSchemaCoveredRouteIds
@@ -7,7 +8,7 @@ import {
   parameterCatalogDtoSchemaCatalog
 } from "./parameterCatalog";
 
-export const dtoSchemaCatalog = {
+export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ...coreDtoSchemaCatalog,
   ...parameterCatalogDtoSchemaCatalog
 };
