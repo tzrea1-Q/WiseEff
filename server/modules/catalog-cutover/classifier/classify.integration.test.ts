@@ -183,6 +183,17 @@ const seedFrozenP0Inventory = async (client: pg.Client): Promise<void> => {
     );
   }
 
+  for (const binding of FROZEN_P0_GRAPH_FIXTURE.bindings) {
+    await client.query(
+      `
+      insert into public.project_parameter_bindings (
+        id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+      ) values ($1, $2, 's7cls-project', 's7cls-logical-node', $3, $4)
+      `,
+      [binding.id, binding.organizationId, binding.parameterSpecId, binding.moduleId],
+    );
+  }
+
   for (const placement of FROZEN_P0_GRAPH_FIXTURE.placements) {
     await client.query(
       `

@@ -50,6 +50,57 @@ describe("full-graph legacy classifier", () => {
     );
   });
 
+  it("does not classify a platform spec as R0 solely because an organization binds it", () => {
+    const result = classifiedFixture();
+    const spec = result.assignments.find((assignment) => assignment.identityId === "s7cls-lid-r4-driver");
+    const binding = result.assignments.find((assignment) => assignment.identityId === "s7cls-lid-r4-binding");
+    expect(spec).toMatchObject({
+      rClass: "R4",
+      disposition: "mapped",
+      ownerScopeKind: "platform",
+      ownerScopeId: "platform",
+    });
+    expect(binding).toMatchObject({
+      rClass: "R4",
+      disposition: "mapped",
+      ownerScopeKind: "organization",
+      sourceKind: "project-parameter-binding",
+    });
+    expect(FROZEN_P0_GRAPH_FIXTURE.bindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "s7cls-bind-r4",
+          organizationId: "s7cls-org",
+          parameterSpecId: "s7cls-spec-r4-driver",
+        }),
+      ]),
+    );
+    expect(result.blockers.some((blocker) => blocker.identityId === "s7cls-lid-r4-driver")).toBe(
+      false,
+    );
+  });
+
+  it("still blocks when a binding organization disagrees with its module owner", () => {
+    const mutated = {
+      ...FROZEN_P0_GRAPH_FIXTURE,
+      bindings: FROZEN_P0_GRAPH_FIXTURE.bindings.map((binding) =>
+        binding.id === "s7cls-bind-r4"
+          ? { ...binding, organizationId: "s7cls-other-org" }
+          : binding,
+      ),
+    };
+    const result = classifyFrozenP0Graph(mutated);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const spec = result.value.assignments.find((assignment) => assignment.identityId === "s7cls-lid-r4-driver");
+    const binding = result.value.assignments.find((assignment) => assignment.identityId === "s7cls-lid-r4-binding");
+    expect(spec?.rClass).toBe("R0");
+    expect(binding?.rClass).toBe("R0");
+    expect(result.value.blockers.some((blocker) => blocker.invariant === "binding-module-owner-mismatch")).toBe(
+      true,
+    );
+  });
+
   it("treats R0 as a hard blocker and never archives it as success", () => {
     const result = classifiedFixture();
     const r0 = result.assignments.filter((assignment) => assignment.rClass === "R0");

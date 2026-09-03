@@ -29,6 +29,7 @@ export const FROZEN_P0_GRAPH_FIXTURE: FrozenP0Graph = {
     identity("s7cls-lid-r2-schema", "driver-schema", "s7cls-schema-r2", "platform", "platform"),
     identity("s7cls-lid-r3-root", "parameter-spec", "s7cls-spec-r3-root", "platform", "platform"),
     identity("s7cls-lid-r4-driver", "parameter-spec", "s7cls-spec-r4-driver", "platform", "platform"),
+    identity("s7cls-lid-r4-binding", "project-parameter-binding", "s7cls-bind-r4", "organization", ORG),
     identity("s7cls-lid-r4-current", "parameter-spec-version", "s7cls-ver-r4-current", "platform", "platform"),
     identity("s7cls-lid-r4-old", "parameter-spec-version", "s7cls-ver-r4-old", "platform", "platform"),
     identity("s7cls-lid-r5-node", "parameter-spec", "s7cls-spec-r5-node", "platform", "platform"),
@@ -390,12 +391,25 @@ export const FROZEN_P0_GRAPH_FIXTURE: FrozenP0Graph = {
       driverGroupModuleId: "s7cls-mod-driver",
     },
   ],
-  bindings: [],
-  bindingRevisions: [],
+  bindings: [
+    {
+      id: "s7cls-bind-r4",
+      organizationId: ORG,
+      parameterSpecId: "s7cls-spec-r4-driver",
+      moduleId: "s7cls-mod-driver",
+    },
+  ],
+  bindingRevisions: [
+    {
+      id: "s7cls-brev-r4",
+      bindingId: "s7cls-bind-r4",
+      parameterSpecVersionId: "s7cls-ver-r4-current",
+    },
+  ],
 };
 
 export const FROZEN_P0_GRAPH_SHA256 =
-  "7bf5e870a697fda5ed39ff6c705034990e2194abc3b621e6db3d09a8b40e7678";
+  "9db57a142bdb67a0c17862eee64663c0982e1b68fbaa72b91ad7be9c8174d667";
 
 export const EXPECTED_P0_CLASS_BY_IDENTITY = {
   "s7cls-lid-r0-cross": "R0",
@@ -405,6 +419,7 @@ export const EXPECTED_P0_CLASS_BY_IDENTITY = {
   "s7cls-lid-r2-schema": "R2",
   "s7cls-lid-r3-root": "R3",
   "s7cls-lid-r4-driver": "R4",
+  "s7cls-lid-r4-binding": "R4",
   "s7cls-lid-r4-current": "R4",
   "s7cls-lid-r4-old": "R9",
   "s7cls-lid-r5-node": "R5",

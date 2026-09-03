@@ -245,9 +245,6 @@ const specOwnerMismatch = (
     }
   }
   for (const binding of index.bindingsBySpecId.get(spec.id) ?? []) {
-    if (!ownersEqual(specOwner, { kind: "organization", id: binding.organizationId })) {
-      return { invariant: "spec-binding-owner-mismatch" };
-    }
     const module = index.moduleById.get(binding.moduleId);
     if (!module) {
       return { invariant: "missing-binding-module-parent" };
@@ -467,6 +464,56 @@ const classifyIdentity = (
     const spec = index.specById.get(schema.parameterSpecId);
     if (!spec) return { rClass: "R0", invariant: "missing-spec-parent", propertyKey: null };
     return { ...classifySpec(graph, index, spec), propertyKey: spec.propertyKey };
+  }
+
+  if (identity.sourceKind === "project-parameter-binding") {
+    const binding = index.bindingById.get(identity.sourceId);
+    if (!binding) {
+      return { rClass: "R0", invariant: "missing-binding-parent", propertyKey: null };
+    }
+    const spec = index.specById.get(binding.parameterSpecId);
+    if (!spec) return { rClass: "R0", invariant: "missing-spec-parent", propertyKey: null };
+    const module = index.moduleById.get(binding.moduleId);
+    if (!module) {
+      return { rClass: "R0", invariant: "missing-binding-module-parent", propertyKey: spec.propertyKey };
+    }
+    if (module.organizationId !== binding.organizationId) {
+      return {
+        rClass: "R0",
+        invariant: "binding-module-owner-mismatch",
+        propertyKey: spec.propertyKey,
+      };
+    }
+    return { ...classifySpec(graph, index, spec), propertyKey: spec.propertyKey };
+  }
+
+  if (identity.sourceKind === "project-parameter-binding-revision") {
+    const revision = graph.bindingRevisions.find((row) => row.id === identity.sourceId);
+    if (!revision) {
+      return { rClass: "R0", invariant: "missing-binding-revision-parent", propertyKey: null };
+    }
+    const binding = index.bindingById.get(revision.bindingId);
+    if (!binding) {
+      return { rClass: "R0", invariant: "missing-binding-parent", propertyKey: null };
+    }
+    const spec = index.specById.get(binding.parameterSpecId);
+    if (!spec) return { rClass: "R0", invariant: "missing-spec-parent", propertyKey: null };
+    const version = index.versionById.get(revision.parameterSpecVersionId);
+    if (!version || version.parameterSpecId !== spec.id) {
+      return {
+        rClass: "R0",
+        invariant: "binding-revision-owned-by-other-spec",
+        propertyKey: spec.propertyKey,
+      };
+    }
+    const specClass = classifySpec(graph, index, spec);
+    if (specClass.rClass === "R0") {
+      return { ...specClass, propertyKey: spec.propertyKey };
+    }
+    if (!isCurrentVersionOfSpec(index, spec, version)) {
+      return { rClass: "R9", invariant: null, propertyKey: spec.propertyKey };
+    }
+    return { ...specClass, propertyKey: spec.propertyKey };
   }
 
   if (identity.sourceKind === "parameter-module") {
