@@ -264,12 +264,13 @@ const loadLineageIds = async (
   let current: string | null = releaseId;
   while (current && !ids.has(current)) {
     ids.add(current);
-    const row = await client.query<{ predecessor_release_id: string | null }>(
-      `select predecessor_release_id
-         from parameter_catalog.catalog_releases
-        where id = $1`,
-      [current],
-    );
+    const row: pg.QueryResult<{ predecessor_release_id: string | null }> =
+      await client.query<{ predecessor_release_id: string | null }>(
+        `select predecessor_release_id
+           from parameter_catalog.catalog_releases
+          where id = $1`,
+        [current],
+      );
     current = row.rows[0]?.predecessor_release_id ?? null;
   }
   return ids;
