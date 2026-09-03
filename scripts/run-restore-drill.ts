@@ -1,5 +1,33 @@
 import { existsSync, readFileSync } from "node:fs";
+import { restoreCheck as restoreCheckCore } from "../ops/self-hosted/storage/recoveryPoint";
+import type {
+  RecoveryPointResult,
+  RestoreCheckInput,
+  RestoreCheckSuccess,
+} from "../ops/self-hosted/storage/recoveryPoint";
 import { loadEnvContent } from "./run-m5-smoke.shared";
+
+export { THREAT_MATRIX } from "../ops/self-hosted/storage/threatMatrix";
+export {
+  asEvidenceRequirementRecoveryDigest,
+  asPrepareVerificationRecovery,
+  captureRecoveryPoint,
+  createMemoryStorePort,
+  createPostgresStorePort,
+  isForbiddenComposeAppPostgres,
+  postgresIdentityFromUrl,
+  verifyRecoveryPoint,
+} from "../ops/self-hosted/storage/recoveryPoint";
+export type {
+  CaptureRecoveryPointInput,
+  PostgresStorePortOptions,
+  QuiescenceProof,
+  RecoveryPointCapture,
+  RecoveryPointResult,
+  RestoreCheckInput,
+  RestoreCheckSuccess,
+  StoreSnapshotPort,
+} from "../ops/self-hosted/storage/recoveryPoint";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -104,6 +132,22 @@ export function parseRestoreDrillArgs(
 function envValue(value: string | undefined) {
   const normalized = value?.trim();
   return normalized && normalized !== "true" ? normalized : "";
+}
+
+export async function restoreCheck(
+  input: RestoreCheckInput,
+): Promise<RecoveryPointResult<RestoreCheckSuccess>> {
+  const isolated = evaluateRestoreTargets(input.restoreTargets);
+  if (isolated.status !== "passed") {
+    return {
+      ok: false,
+      error: {
+        kind: "wrong-target",
+        detail: isolated.validationErrors.join(" "),
+      },
+    };
+  }
+  return restoreCheckCore(input);
 }
 
 export function runRestoreDrillCli({
