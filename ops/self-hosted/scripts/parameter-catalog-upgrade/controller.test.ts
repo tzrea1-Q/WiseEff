@@ -25,8 +25,9 @@ import type {
 
 import type { CutoverPorts, VerificationPorts } from "./actions";
 import { asPrepareVerificationCutover } from "./actions";
-import { openCatalogUpgradeController, THREAT_MATRIX } from "./controller";
+import { openCatalogUpgradeController } from "./controller";
 import { journalBytes } from "./journal";
+import { THREAT_MATRIX } from "./threatMatrix";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
