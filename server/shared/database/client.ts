@@ -23,8 +23,16 @@ export type RootDatabase = Database & {
 };
 
 const rootDatabases = new WeakSet<object>();
+const rootPools = new WeakMap<object, pg.Pool>();
 
 /** Runtime identity check for the server-owned pool root; wrappers and transactions are not roots. */
+export function getRootPostgresPool(value: Database | undefined): pg.Pool | undefined {
+  if (!value || !isRootDatabase(value)) {
+    return undefined;
+  }
+  return rootPools.get(value);
+}
+
 export function isRootDatabase(value: unknown): value is RootDatabase {
   return (
     typeof value === "object" &&
@@ -172,5 +180,6 @@ export function createPostgresDatabase(connectionString: string, options: Databa
   };
   Object.freeze(rootDatabase);
   rootDatabases.add(rootDatabase);
+  rootPools.set(rootDatabase, pool);
   return rootDatabase;
 }

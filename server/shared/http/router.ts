@@ -16,6 +16,7 @@ export type RouteRequest = {
 export type RouteResponse = {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
 } | {
   status: number;
   text: string;

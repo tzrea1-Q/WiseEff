@@ -39,7 +39,7 @@ export function registerCatalogGovernanceRoutes(
         body: request.body,
       };
       const result = await handleCatalogGovernance(ports, catalogRequest);
-      return { status: result.status, body: result.body };
+      return { status: result.status, body: result.body, headers: { ...result.headers } };
     });
   }
 }

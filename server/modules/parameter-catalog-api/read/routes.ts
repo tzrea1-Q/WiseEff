@@ -27,8 +27,7 @@ export function registerCatalogReadRoutes(router: WiseEffRouter, ports: CatalogR
   for (const route of catalogReadGetRoutes) {
     router.get(route.path, async (request) => {
       const result = await handleCatalogRead(ports, toCatalogReadRequest(request));
-      // RouteResponse has no headers field; release/retry headers stay on the isolated HTTP server.
-      return { status: result.status, body: result.body };
+      return { status: result.status, body: result.body, headers: { ...result.headers } };
     });
   }
 }

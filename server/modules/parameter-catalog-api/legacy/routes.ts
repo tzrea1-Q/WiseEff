@@ -136,22 +136,28 @@ const lookupHeaders = (options: LegacyCatalogOptions) =>
     catalogReleaseId: options.catalogReleaseId,
   });
 
-const requireRelease = (
+const currentCatalogReleaseId = async (options: LegacyCatalogOptions): Promise<string> =>
+  options.resolveCatalogReleaseId
+    ? options.resolveCatalogReleaseId()
+    : options.catalogReleaseId;
+
+const requireRelease = async (
   request: RouteRequest,
   options: LegacyCatalogOptions,
-): LegacyHttpResult | null => {
+): Promise<LegacyHttpResult | null> => {
+  const current = await currentCatalogReleaseId(options);
   const offered = headerValue(request.headers, CATALOG_RELEASE_HEADER);
-  if (!offered || offered === options.catalogReleaseId) {
+  if (!offered || offered === current) {
     return null;
   }
   return {
     status: 409,
-    headers: lookupHeaders(options),
+    headers: lookupHeaders({ ...options, catalogReleaseId: current }),
     body: serializeApiError(
       new ApiError("CONFLICT", "The catalog release changed. Refresh before continuing.", {
         reason: "release-drift",
         expectedCatalogReleaseId: offered,
-        currentCatalogReleaseId: options.catalogReleaseId,
+        currentCatalogReleaseId: current,
         retryable: true,
       }),
       request.requestId,
@@ -246,7 +252,7 @@ const runLookup = async (
   legacyId: string,
   headers: ReturnType<typeof boundedLegacyHeaders>,
 ): Promise<LegacyHttpResult> => {
-  const release = requireRelease(request, options);
+  const release = await requireRelease(request, options);
   if (release) {
     return release;
   }
@@ -310,6 +316,11 @@ export async function handleLegacyCatalogRequest(
     };
   }
 
+  options = {
+    ...options,
+    catalogReleaseId: await currentCatalogReleaseId(options),
+  };
+
   const router = createRouter();
 
   for (const route of catalogLegacyIdentifierRoutes) {
@@ -351,7 +362,7 @@ export async function handleLegacyCatalogRequest(
         const result = outcomeToResult(matched, options, headers, { kind: "not-found" });
         return { status: result.status, body: { __legacy: result } };
       }
-      const release = requireRelease(matched, options);
+      const release = await requireRelease(matched, options);
       if (release) {
         return { status: release.status, body: { __legacy: release } };
       }
@@ -400,8 +411,7 @@ export function registerCatalogLegacyRoutes(
 ): void {
   const handler = async (request: RouteRequest) => {
     const result = await handleLegacyCatalogRequest(request, options);
-    // RouteResponse has no headers field; Deprecation/Sunset/Link/Warning stay on the isolated HTTP server.
-    return { status: result.status, body: result.body };
+    return { status: result.status, body: result.body, headers: { ...result.headers } };
   };
 
   for (const route of catalogLegacyIdentifierRoutes) {

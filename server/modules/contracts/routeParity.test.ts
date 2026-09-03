@@ -23,17 +23,6 @@ const CONTRACT_EXEMPT = new Set<string>([
   "GET /metrics"
 ]);
 
-/**
- * S8-CON freezes PCAT-API-01..12 in routeManifest before S8-READ/S8-GOV/S8-LEG
- * register handlers. Ghosts in those families are expected until those nodes land.
- * Unpublished registered routes remain forbidden.
- */
-const isParameterCatalogContractAheadOfRuntime = (key: string): boolean =>
-  key.includes(" /api/v2/catalog") ||
-  key.includes(" /api/v2/organizations/:organizationId/subject-registrations") ||
-  key.includes(" /api/v2/organizations/:organizationId/parameter-observations") ||
-  key.includes(" /api/v2/organizations/:organizationId/parameter-review-items");
-
 function routeKey(method: string, pattern: string) {
   return `${method.toUpperCase()} ${pattern}`;
 }
@@ -70,7 +59,7 @@ describe("route manifest parity", () => {
   it("every manifest route is actually registered", () => {
     const registered = registeredKeys();
     const ghosts = [...manifestKeys()]
-      .filter((key) => !registered.has(key) && !isParameterCatalogContractAheadOfRuntime(key))
+      .filter((key) => !registered.has(key))
       .sort();
 
     expect(ghosts, "in routeManifest but not registered — remove or fix the entry").toEqual([]);
