@@ -16,6 +16,10 @@ import {
 import { planCutover } from "../../../server/modules/catalog-cutover/orchestrator";
 import type { FrozenP0Graph } from "../../../server/modules/catalog-cutover/classifier";
 import { createDisposableParameterCatalogDatabase } from "../../../server/testing/parameterCatalog";
+import {
+  isForbiddenComposeAppPostgres,
+  postgresIdentityFromUrl,
+} from "../storage/recoveryPoint";
 
 const script = "ops/self-hosted/scripts/upgrade.sh";
 
@@ -24,6 +28,15 @@ function runUpgrade(args: string[], env: NodeJS.ProcessEnv = {}) {
     encoding: "utf8",
     env: { ...process.env, ...env }
   });
+}
+
+function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    DATABASE_URL: "",
+    TEST_DATABASE_URL: "",
+    WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: "",
+    ...env
+  };
 }
 
 function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
@@ -3460,21 +3473,24 @@ describe("S11-APL catalog apply threat matrix", () => {
 
     const migrateViaApi = runUpgrade(
       ["apply", "--catalog-apply-mode", "fresh", "--migrate-via-api", "--catalog-journal", journalPath],
-      { WISEEFF_CATALOG_QUIESCED: "true" },
+      catalogCliEnv({ WISEEFF_CATALOG_QUIESCED: "true" }),
     );
     expect(migrateViaApi.status).not.toBe(0);
     expect(`${migrateViaApi.stdout}\n${migrateViaApi.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
 
     const startup = runUpgrade(
       ["apply", "--catalog-apply-mode", "populated", "--startup-migration", "--catalog-journal", journalPath],
-      { WISEEFF_CATALOG_QUIESCED: "true" },
+      catalogCliEnv({ WISEEFF_CATALOG_QUIESCED: "true" }),
     );
     expect(startup.status).not.toBe(0);
     expect(`${startup.stdout}\n${startup.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
 
     const composeApp = runUpgrade(
       ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
-      { DATABASE_URL: FORBIDDEN_COMPOSE_URL, WISEEFF_CATALOG_QUIESCED: "true" },
+      catalogCliEnv({
+        DATABASE_URL: FORBIDDEN_COMPOSE_URL,
+        WISEEFF_CATALOG_QUIESCED: "true",
+      }),
     );
     expect(composeApp.status).not.toBe(0);
     expect(`${composeApp.stdout}\n${composeApp.stderr}`).toContain("PCAT-UPG-API-MIGRATE-FORBIDDEN");
@@ -3488,27 +3504,30 @@ describe("S11-APL catalog apply threat matrix", () => {
     writeFileSync(journalPath, "sentinel-mode\n");
     const before = readFileSync(journalPath);
 
-    const omitted = runUpgrade(["apply", "--catalog-apply", "--catalog-journal", journalPath]);
-    const bothFlags = runUpgrade([
-      "apply",
-      "--catalog-apply-mode",
-      "fresh",
-      "--catalog-apply-mode",
-      "populated",
-      "--catalog-journal",
-      journalPath,
-    ]);
+    const omitted = runUpgrade(
+      ["apply", "--catalog-apply", "--catalog-journal", journalPath],
+      catalogCliEnv(),
+    );
+    const bothFlags = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "fresh",
+        "--catalog-apply-mode",
+        "populated",
+        "--catalog-journal",
+        journalPath,
+      ],
+      catalogCliEnv(),
+    );
     const conflictingEnv = runUpgrade(
       ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
-      { WISEEFF_CATALOG_APPLY_MODE: "populated" },
+      catalogCliEnv({ WISEEFF_CATALOG_APPLY_MODE: "populated" }),
     );
-    const invalid = runUpgrade([
-      "apply",
-      "--catalog-apply-mode",
-      "restored",
-      "--catalog-journal",
-      journalPath,
-    ]);
+    const invalid = runUpgrade(
+      ["apply", "--catalog-apply-mode", "restored", "--catalog-journal", journalPath],
+      catalogCliEnv(),
+    );
 
     for (const result of [omitted, bothFlags, conflictingEnv, invalid]) {
       expect(result.status).not.toBe(0);
@@ -3533,15 +3552,18 @@ describe("S11-APL catalog apply threat matrix", () => {
     ];
 
     for (const action of forbiddenActions) {
-      const result = runUpgrade([
-        "apply",
-        "--catalog-apply-mode",
-        "fresh",
-        "--catalog-action",
-        action,
-        "--catalog-journal",
-        journalPath,
-      ]);
+      const result = runUpgrade(
+        [
+          "apply",
+          "--catalog-apply-mode",
+          "fresh",
+          "--catalog-action",
+          action,
+          "--catalog-journal",
+          journalPath,
+        ],
+        catalogCliEnv(),
+      );
       expect(result.status, action).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`, action).toMatch(
         /PCAT-UPG-ILLEGAL-ACTION|UNAVAILABLE_PHASES|activation phase/,
@@ -3556,32 +3578,41 @@ describe("S11-APL catalog apply threat matrix", () => {
     writeFileSync(journalPath, "sentinel-gates\n");
     const before = readFileSync(journalPath);
 
-    const gates = runUpgrade([
-      "apply",
-      "--catalog-apply-mode",
-      "fresh",
-      "--gates",
-      "PCAT-DB-V01",
-      "--catalog-journal",
-      journalPath,
-    ]);
-    const waiver = runUpgrade([
-      "apply",
-      "--catalog-apply-mode",
-      "populated",
-      "--waiver",
-      "skip",
-      "--catalog-journal",
-      journalPath,
-    ]);
-    const guess = runUpgrade([
-      "apply",
-      "--catalog-apply-mode",
-      "fresh",
-      "--guessed-commit",
-      "--catalog-journal",
-      journalPath,
-    ]);
+    const gates = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "fresh",
+        "--gates",
+        "PCAT-DB-V01",
+        "--catalog-journal",
+        journalPath,
+      ],
+      catalogCliEnv(),
+    );
+    const waiver = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "populated",
+        "--waiver",
+        "skip",
+        "--catalog-journal",
+        journalPath,
+      ],
+      catalogCliEnv(),
+    );
+    const guess = runUpgrade(
+      [
+        "apply",
+        "--catalog-apply-mode",
+        "fresh",
+        "--guessed-commit",
+        "--catalog-journal",
+        journalPath,
+      ],
+      catalogCliEnv(),
+    );
 
     expect(gates.status).not.toBe(0);
     expect(`${gates.stdout}\n${gates.stderr}`).toContain("PCAT-UPG-GATE-SELECTION-FORBIDDEN");
@@ -3631,7 +3662,7 @@ describe("S11-APL catalog apply threat matrix", () => {
     const before = readFileSync(journalPath);
     const result = runUpgrade(
       ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath],
-      { WISEEFF_CATALOG_QUIESCED: "" },
+      catalogCliEnv({ WISEEFF_CATALOG_QUIESCED: "" }),
     );
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/WISEEFF_CATALOG_QUIESCED|not P2/);
@@ -3651,7 +3682,7 @@ describe("S11-APL catalog apply threat matrix", () => {
     ]) {
       const result = runUpgrade(
         ["apply", "--catalog-apply-mode", "fresh", "--catalog-journal", journalPath, ...extra],
-        { WISEEFF_CATALOG_QUIESCED: "true" },
+        catalogCliEnv({ WISEEFF_CATALOG_QUIESCED: "true" }),
       );
       expect(result.status, extra.join(" ")).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`, extra.join(" ")).toContain("PCAT-UPG-ILLEGAL-ACTION");
@@ -3686,13 +3717,28 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
         "S11-APL PG tests require DATABASE_URL or TEST_DATABASE_URL pointing at real pgvector PostgreSQL; skipping is forbidden",
       );
     }
-    const url = new URL(databaseUrl);
-    const port = url.port === "" ? "5432" : url.port;
-    const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
-    if (url.hostname === "127.0.0.1" && port === "5432" && database === "wiseeff") {
-      throw new Error("S11-APL PG tests refuse the compose app 5432/wiseeff database");
+    if (!/^postgres(ql)?:\/\//.test(databaseUrl)) {
+      throw new Error("S11-APL PG tests require a postgres:// URL; skipping is forbidden");
     }
   };
+
+  const allowComposeTestFor = (dbUrl: string): boolean => {
+    if (!isForbiddenComposeAppPostgres(dbUrl) || !isForbiddenComposeAppPostgres(databaseUrl)) {
+      return false;
+    }
+    try {
+      return postgresIdentityFromUrl(dbUrl) === postgresIdentityFromUrl(databaseUrl);
+    } catch {
+      return false;
+    }
+  };
+
+  const catalogApplyEnv = (dbUrl: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
+    DATABASE_URL: dbUrl,
+    WISEEFF_CATALOG_QUIESCED: "true",
+    WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: allowComposeTestFor(dbUrl) ? "true" : "",
+    ...extra,
+  });
 
   const writeInputs = (root: string, graph: FrozenP0Graph) => {
     mkdirSync(join(root, "archive"), { recursive: true });
@@ -3741,10 +3787,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
         "audit-s11-apl",
         "--json",
       ],
-      {
-        DATABASE_URL: dbUrl,
-        WISEEFF_CATALOG_QUIESCED: "true",
-      },
+      catalogApplyEnv(dbUrl),
     );
     return { result, ...paths, root };
   };
@@ -3943,10 +3986,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
         "audit-s11-apl",
         "--json",
       ],
-      {
-        DATABASE_URL: freshDb.url,
-        WISEEFF_CATALOG_QUIESCED: "true",
-      },
+      catalogApplyEnv(freshDb.url),
     );
     expect(second.status, second.stderr).toBe(0);
     const secondPayload = parseApplyJson(second.stdout);
@@ -4042,10 +4082,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
         "audit-s11-apl",
         "--json",
       ],
-      {
-        DATABASE_URL: populatedDb.url,
-        WISEEFF_CATALOG_QUIESCED: "true",
-      },
+      catalogApplyEnv(populatedDb.url),
     );
     expect(second.status, second.stderr).toBe(0);
     const secondPayload = parseApplyJson(second.stdout);

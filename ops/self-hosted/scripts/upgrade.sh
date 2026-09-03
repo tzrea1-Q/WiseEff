@@ -160,7 +160,9 @@ const main = async () => {
   const { createPostgresStorePort, isForbiddenComposeAppPostgres, postgresIdentityFromUrl } =
     recoveryMod;
 
-  if (isForbiddenComposeAppPostgres(databaseUrl)) {
+  const allowComposeTest = process.env.WISEEFF_CATALOG_ALLOW_COMPOSE_TEST === "true";
+  const composeAppTarget = isForbiddenComposeAppPostgres(databaseUrl);
+  if (composeAppTarget && !allowComposeTest) {
     fail(
       "PCAT-UPG-API-MIGRATE-FORBIDDEN",
       "default compose 5432/wiseeff database is forbidden as a catalog apply target",
@@ -316,7 +318,9 @@ const main = async () => {
     );
     const archiveEncryptionKey = Buffer.from(archiveKeyHex, "hex");
     const postgresIdentity = postgresIdentityFromUrl(databaseUrl);
-    const postgresPort = createPostgresStorePort(databaseUrl, { allowComposeApp: false });
+    const postgresPort = createPostgresStorePort(databaseUrl, {
+      allowComposeApp: allowComposeTest && composeAppTarget,
+    });
     const postgresSnapshot = await postgresPort.snapshot(new Date());
     if (!postgresSnapshot) {
       fail("PCAT-UPG-ILLEGAL-ACTION", "postgres recovery snapshot was not captured");
@@ -812,19 +816,7 @@ wiseeff_upgrade_main() {
     wiseeff_catalog_upgrade_refuse "PCAT-UPG-UNKNOWN-OUTCOME" "Unknown commit outcome cannot be guessed" || return $?
   fi
 
-  case "${DATABASE_URL:-}" in
-    *127.0.0.1:5432/wiseeff*|*localhost:5432/wiseeff*|*@127.0.0.1/wiseeff*|*@localhost/wiseeff*)
-      if [ "$catalog_intent" = "true" ]; then
-        wiseeff_catalog_upgrade_refuse "PCAT-UPG-API-MIGRATE-FORBIDDEN" "default compose 5432/wiseeff database is forbidden as a catalog apply target" || return $?
-      fi
-      ;;
-  esac
-
   if [ "$catalog_intent" != "true" ]; then
-    if [ -n "$catalog_illegal_action" ]; then
-      wiseeff_upgrade_stack_main "$@"
-      return $?
-    fi
     wiseeff_upgrade_stack_main "$@"
     return $?
   fi
@@ -854,6 +846,14 @@ wiseeff_upgrade_main() {
 
   if [ "${WISEEFF_CATALOG_QUIESCED:-}" != "true" ]; then
     wiseeff_catalog_upgrade_refuse "PCAT-UPG-ILLEGAL-ACTION" "catalog apply requires operator attestation WISEEFF_CATALOG_QUIESCED=true; this is not P2 quiesce proof" || return $?
+  fi
+
+  if [ "${WISEEFF_CATALOG_ALLOW_COMPOSE_TEST:-}" != "true" ]; then
+    case "${DATABASE_URL:-}" in
+      *127.0.0.1:5432/wiseeff*|*localhost:5432/wiseeff*|*@127.0.0.1/wiseeff*|*@localhost/wiseeff*)
+        wiseeff_catalog_upgrade_refuse "PCAT-UPG-API-MIGRATE-FORBIDDEN" "default compose 5432/wiseeff database is forbidden as a catalog apply target" || return $?
+        ;;
+    esac
   fi
 
   if [ -z "$catalog_run_id" ]; then
