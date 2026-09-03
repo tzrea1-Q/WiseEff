@@ -213,6 +213,14 @@ less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 
 自动化可使用稳定退出码：`0` 完成/无需操作，`2` 输入或确认缺失，`10` preflight/目标失败，`20` 候选构建失败，`30` 排空失败且旧服务已恢复，`40` 恢复点失败且旧服务已恢复，`50` migration 前数据服务失败，`70` 需要显式恢复，`75` 操作锁冲突。
 
+## 目录升级控制器
+
+目录升级控制器是覆盖冻结 Cutover 与发布核验操作的失败即关闭 journal。它不会选择核验门禁、启动 API/启动期迁移，也不会猜测未知 commit 结果。
+
+合法控制器动作是 `plan`、`execute`、`inspect`、`recover`、`prepareVerification`、`runVerification`，以及同一 plan digest 的 `resume`。`execute` 和 `resume` 必须复用 journal 中的 plan digest 以及冻结的 P0-P10 阶段列表。P11-P16 仍不可用。调用方不能选择门禁或 waiver。
+
+本节点只拥有 journal 与合法动作守卫。`upgrade.sh apply` 集成仍属于 S11-APL。本地控制器测试是 L 证据，不能当作目标主机、发布或生产审批证据。
+
 ## 运维安全
 
 - 备份目录必须位于 checkout 和 Docker data root 之外；目录权限 `0700`，文件权限 `0600`。
