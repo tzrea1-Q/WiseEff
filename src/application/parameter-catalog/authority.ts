@@ -50,7 +50,10 @@ export function isCatalogActionEnabled(
   if (action === "read") {
     return true;
   }
-  if (state.kind === "unregistered" && action === "register-subject") {
+  if (
+    state.kind === "unregistered" &&
+    (action === "register-subject" || action === "resolve-review-item")
+  ) {
     return true;
   }
   return state.kind === "ready";

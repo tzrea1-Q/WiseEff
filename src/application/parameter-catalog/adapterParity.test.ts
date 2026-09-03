@@ -15,12 +15,14 @@ import { createApiCatalogPorts } from "./apiAdapter";
 import {
   CATALOG_AUTHOR_PERSON_ID,
   CATALOG_ORGANIZATION_ID,
+  CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
   CATALOG_RELEASE_ID,
   CATALOG_REVIEW_ITEM_ID,
   CATALOG_SUBJECT_ID,
   activeDefinition,
   catalogObservation,
+  catalogPlacement,
   catalogProposal,
   catalogRegistration,
   catalogReviewItem,
@@ -53,8 +55,10 @@ const FORBIDDEN_LEGACY_CATALOG_PORT_METHODS = [
   "resolveSpecReviewTask",
   "invokeRetiredLegacyRoute"
 ] as const;
+
+import { isCatalogActionEnabled } from "./authority";
 import { createMockCatalogPorts, type CatalogMockScenario } from "./mockAdapter";
-import { deriveCatalogDomainState } from "./states";
+import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -454,6 +458,12 @@ describe("catalog API and mock adapter parity", () => {
     ).rejects.toMatchObject({ details: { reason: "proposal-self-approval-forbidden" } });
 
     const unavailable = createMockCatalogPorts({ scenario: "error" });
+    const unavailableApi = createApiCatalogPorts(
+      createParameterCatalogClient({
+        baseUrl: "",
+        fetchImpl: createScenarioFetch("error")
+      })
+    );
     await expect(
       unavailable.governance.createRegistration(
         CATALOG_ORGANIZATION_ID,
@@ -461,6 +471,23 @@ describe("catalog API and mock adapter parity", () => {
         { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "key-5" }
       )
     ).rejects.toMatchObject({ details: { reason: "catalog-not-ready" } });
+    for (const ports of [unavailable, unavailableApi]) {
+      await expect(ports.catalog.getCatalog()).rejects.toMatchObject({
+        details: { reason: "catalog-not-ready" }
+      });
+      await expect(ports.governance.listRegistrations(CATALOG_ORGANIZATION_ID)).rejects.toMatchObject({
+        details: { reason: "catalog-not-ready" }
+      });
+      await expect(ports.governance.listObservations(CATALOG_ORGANIZATION_ID)).rejects.toMatchObject({
+        details: { reason: "catalog-not-ready" }
+      });
+      await expect(ports.governance.listReviewItems(CATALOG_ORGANIZATION_ID)).rejects.toMatchObject({
+        details: { reason: "catalog-not-ready" }
+      });
+      await expect(ports.governance.listProposals()).rejects.toMatchObject({
+        details: { reason: "catalog-not-ready" }
+      });
+    }
     expect(unavailable.governance).not.toHaveProperty("createParameterSpec");
   });
 
@@ -515,5 +542,164 @@ describe("catalog API and mock adapter parity", () => {
         { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "key-6", ifMatch: "etag-1" }
       )
     ).rejects.toBeInstanceOf(WiseEffApiError);
+  });
+
+  it("applies parsed PlacementIntent on register-subject and does not invent Root on out-of-scope", async () => {
+    const mock = createMockCatalogPorts({ scenario: "unregistered" });
+    const chosen = {
+      mode: "choose-parent" as const,
+      parentPlacementId: CATALOG_PLACEMENT_ID,
+      displayName: "Charging ICs"
+    };
+    const registered = await mock.governance.resolveReviewItem(
+      CATALOG_ORGANIZATION_ID,
+      CATALOG_REVIEW_ITEM_ID,
+      {
+        resolution: {
+          type: "register-subject",
+          subjectId: CATALOG_SUBJECT_ID,
+          placement: chosen
+        },
+        reason: "explicit placement"
+      },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "resolve-register", ifMatch: catalogReviewItem.etag }
+    );
+    expect(registered.item.reviewItem.status).toBe("resolved");
+    expect(registered.item.registration).toEqual({
+      id: CATALOG_REGISTRATION_ID,
+      subjectId: CATALOG_SUBJECT_ID,
+      placement: {
+        id: CATALOG_PLACEMENT_ID,
+        displayName: "Charging ICs",
+        parentPlacementId: CATALOG_PLACEMENT_ID
+      }
+    });
+    expect(registered.item.registration?.placement).not.toEqual(catalogPlacement);
+
+    const invalidParent = createMockCatalogPorts({ scenario: "unregistered" });
+    await expect(
+      invalidParent.governance.resolveReviewItem(
+        CATALOG_ORGANIZATION_ID,
+        CATALOG_REVIEW_ITEM_ID,
+        {
+          resolution: {
+            type: "register-subject",
+            subjectId: CATALOG_SUBJECT_ID,
+            placement: { mode: "choose-parent", parentPlacementId: "splc_unknown", displayName: "Other" }
+          },
+          reason: "bad parent"
+        },
+        { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "resolve-invalid", ifMatch: catalogReviewItem.etag }
+      )
+    ).rejects.toMatchObject({ details: { reason: "invalid-placement-parent" } });
+
+    const conflict = createMockCatalogPorts();
+    await expect(
+      conflict.governance.resolveReviewItem(
+        CATALOG_ORGANIZATION_ID,
+        CATALOG_REVIEW_ITEM_ID,
+        {
+          resolution: {
+            type: "register-subject",
+            subjectId: CATALOG_SUBJECT_ID,
+            placement: chosen
+          },
+          reason: "conflicts with retained Root"
+        },
+        { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "resolve-conflict", ifMatch: catalogReviewItem.etag }
+      )
+    ).rejects.toMatchObject({ details: { reason: "placement-conflict" } });
+
+    const outOfScope = createMockCatalogPorts({ scenario: "unregistered" });
+    const marked = await outOfScope.governance.resolveReviewItem(
+      CATALOG_ORGANIZATION_ID,
+      CATALOG_REVIEW_ITEM_ID,
+      {
+        resolution: { type: "mark-out-of-scope" },
+        reason: "not our subject"
+      },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "resolve-oos", ifMatch: catalogReviewItem.etag }
+    );
+    expect(marked.item.reviewItem.status).toBe("out-of-scope");
+    expect(marked.item.registration).toBeUndefined();
+    await expect(
+      outOfScope.governance.getRegistration(CATALOG_ORGANIZATION_ID, CATALOG_REGISTRATION_ID)
+    ).rejects.toMatchObject({ details: { reason: "registration-required" } });
+  });
+
+  it("restores only registration status and keeps the retired Placement", async () => {
+    const mock = createMockCatalogPorts({ scenario: "unregistered" });
+    const chosen = {
+      mode: "choose-parent" as const,
+      parentPlacementId: CATALOG_PLACEMENT_ID,
+      displayName: "Charging ICs"
+    };
+    const created = await mock.governance.createRegistration(
+      CATALOG_ORGANIZATION_ID,
+      { subjectId: CATALOG_SUBJECT_ID, placement: chosen },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "create-chosen" }
+    );
+    expect(created.item.placement.displayName).toBe("Charging ICs");
+    const retired = await mock.governance.retireRegistration(
+      CATALOG_ORGANIZATION_ID,
+      CATALOG_REGISTRATION_ID,
+      { reason: "retire" },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "retire-chosen", ifMatch: "etag-reg" }
+    );
+    expect(retired.item.status).toBe("retired");
+    expect(retired.item.placement).toEqual(created.item.placement);
+    const restored = await mock.governance.restoreRegistration(
+      CATALOG_ORGANIZATION_ID,
+      CATALOG_REGISTRATION_ID,
+      { reason: "restore" },
+      { catalogReleaseId: CATALOG_RELEASE_ID, idempotencyKey: "restore-chosen", ifMatch: "etag-reg" }
+    );
+    expect(restored.item.status).toBe("active");
+    expect(restored.item.placement).toEqual(created.item.placement);
+    expect(restored.item.placement).not.toEqual(catalogPlacement);
+  });
+
+  it("hides unknown legacy, out-of-scope org, and never returns Acme fixtures", async () => {
+    const mock = createMockCatalogPorts();
+    const api = createApiCatalogPorts(
+      createParameterCatalogClient({
+        baseUrl: "",
+        fetchImpl: createScenarioFetch("ready")
+      })
+    );
+    for (const ports of [mock, api]) {
+      await expect(
+        ports.catalog.getLegacyIdentifier("parameter-spec", "spec-unknown")
+      ).rejects.toMatchObject({ details: { reason: "definition-not-found" } });
+      await expect(ports.governance.listRegistrations("org_other")).rejects.toMatchObject({
+        details: { reason: "definition-not-found" }
+      });
+      await expect(ports.governance.listReviewItems("org_other")).rejects.toMatchObject({
+        details: { reason: "definition-not-found" }
+      });
+      await expect(
+        ports.governance.getRegistration("org_other", CATALOG_REGISTRATION_ID)
+      ).rejects.toMatchObject({ details: { reason: "definition-not-found" } });
+    }
+  });
+
+  it("lets Org Admin resolve a review item while the subject stays unregistered and readable", async () => {
+    const unregistered = deriveCatalogDomainState({
+      document: readyCatalogDocument,
+      subject: unregisteredSubject
+    });
+    expect(unregistered.kind).toBe("unregistered");
+    expect(catalogWritesEnabled(unregistered)).toBe(false);
+    expect(isCatalogActionEnabled("org-admin", "read", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "resolve-review-item", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "register-subject", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "update-placement", unregistered)).toBe(false);
+    expect(isCatalogActionEnabled("user", "resolve-review-item", unregistered)).toBe(false);
+
+    const mock = createMockCatalogPorts({ scenario: "unregistered" });
+    const subject = await mock.catalog.getSubject(CATALOG_SUBJECT_ID);
+    expect(subject.item.registration.status).toBe("unregistered");
+    const review = await mock.governance.getReviewItem(CATALOG_ORGANIZATION_ID, CATALOG_REVIEW_ITEM_ID);
+    expect(review.item.status).toBe("open");
   });
 });

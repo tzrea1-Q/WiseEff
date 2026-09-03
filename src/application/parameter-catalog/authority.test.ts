@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { catalogActionsForActor, isCatalogActionEnabled } from "./authority";
-import { deriveCatalogDomainState } from "./states";
+import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
 import { readyCatalogDocument, unregisteredSubject } from "./fixtures";
 
 describe("catalog actor authority", () => {
@@ -25,10 +25,16 @@ describe("catalog actor authority", () => {
 
   it("separates Org Admin registration from Platform Admin proposal review", () => {
     expect(isCatalogActionEnabled("org-admin", "register-subject", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "resolve-review-item", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "read", unregistered)).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "update-placement", unregistered)).toBe(false);
+    expect(catalogWritesEnabled(unregistered)).toBe(false);
     expect(isCatalogActionEnabled("org-admin", "accept-proposal", ready)).toBe(false);
     expect(isCatalogActionEnabled("platform-admin", "register-subject", unregistered)).toBe(false);
+    expect(isCatalogActionEnabled("platform-admin", "resolve-review-item", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("platform-admin", "accept-proposal", ready)).toBe(true);
     expect(isCatalogActionEnabled("user", "register-subject", unregistered)).toBe(false);
+    expect(isCatalogActionEnabled("user", "resolve-review-item", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("user", "create-proposal", ready)).toBe(true);
   });
 

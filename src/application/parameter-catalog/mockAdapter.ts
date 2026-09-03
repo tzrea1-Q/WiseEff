@@ -22,6 +22,7 @@ import type {
   CatalogDefinitionResponse,
   CatalogListQuery,
   CatalogProposalResponse,
+  CatalogRegisterSubjectRequest,
   CatalogRegistrationResponse,
   CatalogReviewItemResponse,
   CatalogSubjectResponse
@@ -29,6 +30,7 @@ import type {
 
 import { catalogApiFailure } from "./errors";
 import {
+  CATALOG_ORGANIZATION_ID,
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
   CATALOG_RELEASE_ID,
@@ -128,22 +130,65 @@ function createStore(options: CatalogMockOptions): MockStore {
   };
 }
 
+type CatalogPlacementIntent = CatalogRegisterSubjectRequest["placement"];
+type CatalogPlacement = CatalogRegistrationResponse["item"]["placement"];
+
 function notReady(store: MockStore) {
   return catalogApiFailure("catalog-not-ready", {
     catalogReleaseId: store.catalog.item.catalogReleaseId
   });
 }
 
-function assertReadyForWrite(store: MockStore) {
+function assertReadyForRead(store: MockStore) {
   if (store.scenario === "error") {
     throw notReady(store);
   }
+}
+
+function assertReadyForWrite(store: MockStore) {
+  assertReadyForRead(store);
   if (store.scenario === "conflict") {
     throw catalogApiFailure("release-drift", { catalogReleaseId: CATALOG_RELEASE_ID });
   }
   if (store.scenario === "retired") {
     throw catalogApiFailure("subject-retired", { catalogReleaseId: CATALOG_RELEASE_ID });
   }
+}
+
+function assertOrganizationScope(organizationId: string) {
+  if (organizationId !== CATALOG_ORGANIZATION_ID) {
+    throw catalogApiFailure("definition-not-found");
+  }
+}
+
+function placementFromIntent(intent: CatalogPlacementIntent): CatalogPlacement {
+  if (intent.mode === "use-default") {
+    return clone(catalogPlacement);
+  }
+  if (!intent.parentPlacementId.trim() || intent.parentPlacementId !== CATALOG_PLACEMENT_ID) {
+    throw catalogApiFailure("invalid-placement-parent");
+  }
+  return {
+    id: CATALOG_PLACEMENT_ID,
+    displayName: intent.displayName,
+    parentPlacementId: intent.parentPlacementId
+  };
+}
+
+function samePlacement(left: CatalogPlacement, right: CatalogPlacement): boolean {
+  return (
+    left.id === right.id &&
+    left.displayName === right.displayName &&
+    left.parentPlacementId === right.parentPlacementId
+  );
+}
+
+function projectRegistration(registration: CatalogRegistrationResponse["item"]) {
+  return {
+    id: registration.id,
+    subjectId: registration.subjectId,
+    placement: clone(registration.placement)
+  };
 }
 
 function assertRelease(store: MockStore, catalogReleaseId: string) {
@@ -192,15 +237,11 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
 
   const catalog: ParameterCatalogRepository = {
     async getCatalog() {
-      if (store.scenario === "error") {
-        throw notReady(store);
-      }
+      assertReadyForRead(store);
       return clone(store.catalog);
     },
     async listSubjects(query) {
-      if (store.scenario === "error") {
-        throw notReady(store);
-      }
+      assertReadyForRead(store);
       if (store.scenario === "empty-no-registrations") {
         return emptyCatalogCollection("no-registrations");
       }
@@ -211,24 +252,21 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
     },
     async getSubject(subjectId) {
-      if (store.scenario === "error") {
-        throw notReady(store);
-      }
+      assertReadyForRead(store);
       if (subjectId !== store.subject.id) {
         throw catalogApiFailure("subject-not-published");
       }
       return { item: clone(store.subject) };
     },
     async listSubjectDefinitions(subjectId, query) {
+      assertReadyForRead(store);
       if (subjectId !== store.subject.id) {
         throw catalogApiFailure("subject-not-published");
       }
       return catalog.listDefinitions({ ...query, subjectId });
     },
     async listDefinitions(query) {
-      if (store.scenario === "error") {
-        throw notReady(store);
-      }
+      assertReadyForRead(store);
       if (store.scenario === "empty-no-definitions") {
         return emptyCatalogCollection("no-definitions");
       }
@@ -240,34 +278,42 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
     },
     async getDefinition(definitionId) {
-      if (store.scenario === "error") {
-        throw notReady(store);
-      }
+      assertReadyForRead(store);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(store.definition) };
     },
     async listDefinitionRevisions(definitionId) {
+      assertReadyForRead(store);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }
       return collection([catalogRevision]);
     },
     async getDefinitionRevision(definitionId, revisionId) {
+      assertReadyForRead(store);
       if (definitionId !== store.definition.id || revisionId !== CATALOG_REVISION_ID) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(catalogRevision) };
     },
     async listDefinitionTimeline(definitionId) {
+      assertReadyForRead(store);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }
       return clone(catalogTimeline);
     },
     async getLegacyIdentifier(legacyType, legacyId) {
+      assertReadyForRead(store);
       catalogLegacyIdentifierTypeSchema.parse(legacyType);
+      const mapped =
+        mappedLegacyIdentifier.item.legacyType === legacyType &&
+        mappedLegacyIdentifier.item.legacyId === legacyId;
+      if (!mapped) {
+        throw catalogApiFailure("definition-not-found");
+      }
       if (store.scenario === "retired") {
         throw catalogApiFailure("legacy-id-archived", {
           catalogReleaseId: store.catalog.item.catalogReleaseId
@@ -278,18 +324,14 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           catalogReleaseId: store.catalog.item.catalogReleaseId
         });
       }
-      if (
-        mappedLegacyIdentifier.item.legacyType === legacyType &&
-        mappedLegacyIdentifier.item.legacyId === legacyId
-      ) {
-        return clone(mappedLegacyIdentifier);
-      }
-      throw catalogApiFailure("forbidden");
+      return clone(mappedLegacyIdentifier);
     }
   };
 
   const governance: ParameterCatalogGovernanceRepository = {
-    async listRegistrations() {
+    async listRegistrations(organizationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (store.scenario === "empty-no-registrations" || !store.registration) {
         return emptyCatalogCollection("no-registrations");
       }
@@ -298,6 +340,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async createRegistration(organizationId, body, context) {
       const write = requireIdempotentWriteContext(context);
       assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogRegisterSubjectRequestSchema.parse(body);
       return replayOrStore(store, "createRegistration", write, parsed, () => {
@@ -309,14 +352,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           organizationId,
           subjectId: parsed.subjectId,
           id: CATALOG_REGISTRATION_ID,
-          placement:
-            parsed.placement.mode === "choose-parent"
-              ? {
-                  id: CATALOG_PLACEMENT_ID,
-                  displayName: parsed.placement.displayName,
-                  parentPlacementId: parsed.placement.parentPlacementId
-                }
-              : clone(catalogPlacement),
+          placement: placementFromIntent(parsed.placement),
           catalogReleaseId: write.catalogReleaseId
         };
         store.registration = created;
@@ -332,15 +368,18 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         return { item: created };
       });
     },
-    async getRegistration(_organizationId, registrationId) {
+    async getRegistration(organizationId, registrationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (!store.registration || store.registration.id !== registrationId) {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }
       return { item: clone(store.registration) };
     },
-    async retireRegistration(_organizationId, registrationId, body, context) {
+    async retireRegistration(organizationId, registrationId, body, context) {
       const write = requireConditionalWriteContext(context);
       assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogRetireRegistrationRequestSchema.parse(body);
       if (!store.registration || store.registration.id !== registrationId) {
@@ -354,9 +393,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         return { item: clone(store.registration) };
       });
     },
-    async restoreRegistration(_organizationId, registrationId, body, context) {
+    async restoreRegistration(organizationId, registrationId, body, context) {
       const write = requireConditionalWriteContext(context);
       assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogRestoreRegistrationRequestSchema.parse(body);
       if (!store.registration || store.registration.id !== registrationId) {
@@ -368,21 +408,23 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       return replayOrStore(store, "restoreRegistration", write, parsed, () => {
         store.registration = {
           ...store.registration!,
-          status: "active",
-          placement: clone(catalogPlacement)
+          status: "active"
         };
         return { item: clone(store.registration) };
       });
     },
-    async getPlacement(_organizationId, registrationId) {
+    async getPlacement(organizationId, registrationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (!store.registration || store.registration.id !== registrationId) {
         throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
       }
       return { item: clone(store.registration.placement) };
     },
-    async updatePlacement(_organizationId, registrationId, body, context) {
+    async updatePlacement(organizationId, registrationId, body, context) {
       const write = requireConditionalWriteContext(context);
       assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogUpdatePlacementRequestSchema.parse(body);
       if (!store.registration || store.registration.id !== registrationId) {
@@ -398,42 +440,44 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         throw catalogApiFailure("invalid-placement-parent");
       }
       return replayOrStore(store, "updatePlacement", write, parsed, () => {
-        const nextPlacement =
-          parsed.placement.mode === "choose-parent"
-            ? {
-                id: CATALOG_PLACEMENT_ID,
-                displayName: parsed.placement.displayName,
-                parentPlacementId: parsed.placement.parentPlacementId
-              }
-            : clone(catalogPlacement);
+        const nextPlacement = placementFromIntent(parsed.placement);
         store.registration = { ...store.registration!, placement: nextPlacement };
         return { item: clone(nextPlacement) };
       });
     },
-    async listObservations() {
+    async listObservations(organizationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       return collection([catalogObservation]);
     },
-    async getObservation(_organizationId, observationId) {
+    async getObservation(organizationId, observationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (observationId !== catalogObservation.id) {
         throw catalogApiFailure("forbidden");
       }
       return { item: clone(catalogObservation) };
     },
-    async listReviewItems() {
+    async listReviewItems(organizationId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (store.scenario === "empty-no-review-work") {
         return emptyCatalogCollection("no-review-work");
       }
       return collection([store.reviewItem]);
     },
-    async getReviewItem(_organizationId, reviewItemId) {
+    async getReviewItem(organizationId, reviewItemId) {
+      assertReadyForRead(store);
+      assertOrganizationScope(organizationId);
       if (reviewItemId !== store.reviewItem.id) {
         throw catalogApiFailure("forbidden");
       }
       return { item: clone(store.reviewItem) };
     },
-    async resolveReviewItem(_organizationId, reviewItemId, body, context) {
+    async resolveReviewItem(organizationId, reviewItemId, body, context) {
       const write = requireConditionalWriteContext(context);
       assertReadyForWrite(store);
+      assertOrganizationScope(organizationId);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogResolveReviewItemRequestSchema.parse(body);
       if (reviewItemId !== store.reviewItem.id || store.reviewItem.status !== "open") {
@@ -442,39 +486,88 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       if (write.ifMatch !== store.reviewItem.etag) {
         throw catalogApiFailure("revision-conflict");
       }
-      if (
-        parsed.resolution.type === "register-subject" &&
-        parsed.resolution.placement.mode === "choose-parent" &&
-        !parsed.resolution.placement.parentPlacementId
-      ) {
-        throw catalogApiFailure("invalid-placement-parent");
-      }
       return replayOrStore(store, "resolveReviewItem", write, parsed, () => {
-        store.reviewItem = { ...store.reviewItem, status: "resolved", etag: "etag-2" };
-        const resolved = {
+        if (parsed.resolution.type === "register-subject") {
+          if (parsed.resolution.subjectId !== store.subject.id) {
+            throw catalogApiFailure("subject-not-published");
+          }
+          const placement = placementFromIntent(parsed.resolution.placement);
+          let registration = store.registration;
+          if (registration) {
+            if (
+              registration.subjectId !== parsed.resolution.subjectId ||
+              !samePlacement(registration.placement, placement)
+            ) {
+              throw catalogApiFailure("placement-conflict");
+            }
+          } else {
+            registration = {
+              id: CATALOG_REGISTRATION_ID,
+              organizationId,
+              subjectId: parsed.resolution.subjectId,
+              status: "active",
+              method: "review",
+              placement,
+              catalogReleaseId: write.catalogReleaseId
+            };
+            store.registration = registration;
+            store.subject = {
+              ...store.subject,
+              registration: {
+                status: registration.status,
+                id: registration.id,
+                method: registration.method,
+                placement: registration.placement
+              }
+            };
+          }
+          store.reviewItem = { ...store.reviewItem, status: "resolved", etag: "etag-2" };
+          return {
+            item: {
+              reviewItem: { id: CATALOG_REVIEW_ITEM_ID, status: "resolved" as const },
+              registration: projectRegistration(registration),
+              catalogReleaseId: write.catalogReleaseId
+            }
+          };
+        }
+
+        if (parsed.resolution.type === "restore-registration") {
+          if (!store.registration || store.registration.id !== parsed.resolution.registrationId) {
+            throw catalogApiFailure("registration-required", { subjectId: CATALOG_SUBJECT_ID });
+          }
+          store.registration = { ...store.registration, status: "active" };
+          store.reviewItem = { ...store.reviewItem, status: "resolved", etag: "etag-2" };
+          return {
+            item: {
+              reviewItem: { id: CATALOG_REVIEW_ITEM_ID, status: "resolved" as const },
+              registration: projectRegistration(store.registration),
+              catalogReleaseId: write.catalogReleaseId
+            }
+          };
+        }
+
+        if (parsed.resolution.type === "open-definition-proposal") {
+          store.reviewItem = { ...store.reviewItem, status: "resolved", etag: "etag-2" };
+          return {
+            item: {
+              reviewItem: { id: CATALOG_REVIEW_ITEM_ID, status: "resolved" as const },
+              proposalId: store.proposal.id,
+              catalogReleaseId: write.catalogReleaseId
+            }
+          };
+        }
+
+        store.reviewItem = { ...store.reviewItem, status: "out-of-scope", etag: "etag-2" };
+        return {
           item: {
-            reviewItem: { id: CATALOG_REVIEW_ITEM_ID, status: "resolved" as const },
-            registration: store.registration
-              ? {
-                  id: store.registration.id,
-                  subjectId: store.registration.subjectId,
-                  placement: store.registration.placement
-                }
-              : {
-                  id: CATALOG_REGISTRATION_ID,
-                  subjectId: CATALOG_SUBJECT_ID,
-                  placement: clone(catalogPlacement)
-                },
+            reviewItem: { id: CATALOG_REVIEW_ITEM_ID, status: "out-of-scope" as const },
             catalogReleaseId: write.catalogReleaseId
           }
         };
-        if (!store.registration && parsed.resolution.type === "register-subject") {
-          store.registration = clone(catalogRegistration);
-        }
-        return resolved;
       });
     },
     async listProposals() {
+      assertReadyForRead(store);
       return collection([store.proposal]);
     },
     async createProposal(body, context) {
@@ -498,6 +591,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       });
     },
     async getProposal(proposalId) {
+      assertReadyForRead(store);
       if (proposalId !== store.proposal.id) {
         throw catalogApiFailure("forbidden");
       }
