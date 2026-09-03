@@ -3360,7 +3360,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "参数定义库"],
+        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "目录发布"],
         absent: ["项目参数 Admin", "items", "events", "建设中"]
       },
       {
@@ -3731,7 +3731,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeInTheDocument();
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
   });
 

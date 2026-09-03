@@ -172,7 +172,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto(disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "参数定义目录" })).toBeVisible({ timeout: 30_000 });
     await prepareInteractionSurface(page);
 
     // Bulk import is a TopBar action when the shell TopBar is mounted.

@@ -7,12 +7,21 @@ import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredR
 import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import {
+  createApiParameterCatalogRepository,
+  createMockParameterCatalogRepository,
+  type CatalogActorKind
+} from "@/application/parameter-catalog";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import {
   buildParameterAdminOrganizationPath,
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminOrganizationPath,
+  parseParameterAdminSpecsSubView,
   resolveParameterAdminOrganizationRedirect,
   type ParameterAdminOrganizationView
 } from "@/application/parameters/parameterAdminOrganizationPath";
+import { CatalogPage } from "@/features/parameter-catalog";
+import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -42,6 +51,32 @@ function normalizeSearch(search: string): string {
   return search.startsWith("?") ? search.slice(1) : search;
 }
 
+function catalogSearchQuery(search: string): string {
+  const raw = search.trim();
+  if (!raw) {
+    return "";
+  }
+  return raw.startsWith("?") ? raw : `?${raw}`;
+}
+
+function resolveCatalogRepository(mode: WiseEffRuntimeMode): ParameterCatalogRepository {
+  if (mode === "mock") {
+    return createMockParameterCatalogRepository();
+  }
+  return createApiParameterCatalogRepository(createParameterCatalogClient());
+}
+
+function catalogActorFromRole(roleId: string): CatalogActorKind {
+  const migrated = migrateLegacyRoleId(roleId);
+  if (migrated === "platform-admin") {
+    return "platform-admin";
+  }
+  if (migrated === "admin") {
+    return "org-admin";
+  }
+  return "user";
+}
+
 export type ParameterAdminNextPageProps = {
   area: "organization" | "projects";
   onNavigate: (path: string) => void;
@@ -64,6 +99,8 @@ export type ParameterAdminNextPageProps = {
   onNewProject?: () => void;
   /** Published knowledge referencing a definition (相关知识); absent without knowledge:view. */
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  /** Injected at the port seam for tests; production resolves from runtime mode. */
+  catalogRepository?: ParameterCatalogRepository;
 };
 
 /**
@@ -89,8 +126,14 @@ export function ParameterAdminNextPage({
   parameterActions,
   state,
   onNewProject,
-  relatedKnowledge
+  relatedKnowledge,
+  catalogRepository
 }: ParameterAdminNextPageProps) {
+  const catalog = useMemo(
+    () => catalogRepository ?? resolveCatalogRepository(runtimeMode),
+    [catalogRepository, runtimeMode]
+  );
+  const catalogActor = catalogActorFromRole(state?.activeRoleId ?? "");
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
     [parameterTopologyRepository, runtimeMode]
@@ -129,6 +172,8 @@ export function ParameterAdminNextPage({
       ? null
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
+  const specsSubView =
+    organizationView === "specs" ? parseParameterAdminSpecsSubView(pathname) ?? "library" : null;
   const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
@@ -206,7 +251,15 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
-            {organizationView === "specs" ? (
+            {organizationView === "specs" && specsSubView === "library" ? (
+              <CatalogPage
+                repository={catalog}
+                actor={catalogActor}
+                search={catalogSearchQuery(search)}
+                onAnchorChange={(href) => onNavigate(href)}
+              />
+            ) : null}
+            {organizationView === "specs" && specsSubView === "identity-mapping" ? (
               <OrganizationSpecsArea
                 pathname={pathname}
                 search={search}

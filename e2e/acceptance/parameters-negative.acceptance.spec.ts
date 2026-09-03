@@ -125,7 +125,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-REASON-001
     // @operation PARAM-REASON-001
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    const library = page.getByRole("region", { name: "参数定义库" });
+    const library = page.getByRole("region", { name: "参数定义目录" });
     await expect(library).toBeVisible({ timeout: 30_000 });
 
     const draftFilter = library.getByRole("button", { name: /draft/i }).first();
