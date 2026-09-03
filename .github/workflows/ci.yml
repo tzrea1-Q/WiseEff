@@ -189,6 +189,23 @@ jobs:
       - name: Frontend tests
         run: npm test
 
+      - name: Enable pgvector extension
+        run: |
+          node --input-type=module -e '
+            import pg from "pg";
+            const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            await client.query("create extension if not exists vector");
+            const row = await client.query(
+              "select extname from pg_extension where extname = $1",
+              ["vector"],
+            );
+            if (row.rowCount !== 1) {
+              throw new Error("pgvector extension was not created");
+            }
+            await client.end();
+          '
+
       - name: Script tests
         run: npm run test:scripts
 
