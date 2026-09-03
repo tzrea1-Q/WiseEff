@@ -7,6 +7,7 @@ import {
   CatalogReleaseVersion,
   MaintenanceAttemptId,
   type CatalogKernelError,
+  type CatalogReleaseCounts,
   type CatalogReleaseIdentity,
   type CatalogReleasePin,
   type InstallResult,
@@ -225,17 +226,15 @@ const identityFromCompiled = (
   digest: compiled.release.digest,
 });
 
-const pinOf = (identity: CatalogReleaseIdentity): CatalogReleasePin => ({
-  id: identity.id,
-  digest: identity.digest,
-});
+const NON_RETRYABLE_STORAGE_CODES = new Set(["23514", "23505", "55000"]);
 
 const storageFailure = (
   operation: "installPublishedRelease" | "switchBackBeforeTraffic",
+  retryable: boolean,
 ): CatalogKernelError => ({
   kind: "storage-failure",
   operation,
-  retryable: true,
+  retryable,
 });
 
 const mapWriteError = (
@@ -253,9 +252,12 @@ const mapWriteError = (
     return SYNCHRONIZATION_BUSY;
   }
   if (error instanceof CatalogMaterializationInjectedFailure) {
-    return storageFailure(operation);
+    return storageFailure(operation, true);
   }
-  return storageFailure(operation);
+  if (error instanceof pg.DatabaseError && error.code && NON_RETRYABLE_STORAGE_CODES.has(error.code)) {
+    return storageFailure(operation, false);
+  }
+  return storageFailure(operation, true);
 };
 
 const maybeFailPointer = (options: CatalogInstallerOptions | undefined): void => {
@@ -307,7 +309,7 @@ const defaultTrafficActivationGuard: TrafficActivationGuard = {
         where id = $1`,
       [maintenanceAttemptId],
     );
-    if (cutover.rows[0]?.pointer_rollback_closed_at) {
+    if (!cutover.rows[0] || cutover.rows[0].pointer_rollback_closed_at) {
       return { allowed: false, reason: "migration-incompatible" };
     }
 
@@ -366,14 +368,132 @@ const recastInstalledRelease = async (
   };
 };
 
-const recastAlreadyCurrent = (
+const loadReleaseCounts = async (
+  client: pg.PoolClient,
+  releaseId: string,
+): Promise<CatalogReleaseCounts> => {
+  const result = await client.query<{
+    subjects: string;
+    subject_memberships: string;
+    aliases: string;
+    alias_memberships: string;
+    definitions: string;
+    definition_revisions: string;
+  }>(
+    `select
+       (select count(*)::text
+          from parameter_catalog.catalog_release_subjects
+         where release_id = $1) as subjects,
+       (select count(*)::text
+          from parameter_catalog.catalog_release_subjects
+         where release_id = $1) as subject_memberships,
+       (select count(*)::text
+          from parameter_catalog.catalog_release_subject_aliases
+         where release_id = $1) as aliases,
+       (select count(*)::text
+          from parameter_catalog.catalog_release_subject_aliases
+         where release_id = $1) as alias_memberships,
+       (select count(*)::text
+          from parameter_catalog.catalog_release_definition_heads
+         where release_id = $1) as definitions,
+       (select count(*)::text
+          from parameter_catalog.definition_revisions
+         where catalog_release_id = $1) as definition_revisions`,
+    [releaseId],
+  );
+  const row = result.rows[0];
+  return {
+    subjects: Number(row?.subjects ?? 0),
+    subjectMemberships: Number(row?.subject_memberships ?? 0),
+    aliases: Number(row?.aliases ?? 0),
+    aliasMemberships: Number(row?.alias_memberships ?? 0),
+    definitions: Number(row?.definitions ?? 0),
+    definitionRevisions: Number(row?.definition_revisions ?? 0),
+  };
+};
+
+const loadVerifiedCurrentInstall = async (
+  client: pg.PoolClient,
   compiled: CompiledCatalogRelease,
-): InstallResult => ({
-  status: "already-current",
-  current: identityFromCompiled(compiled),
-  materializationFingerprint: compiled.materializationFingerprint,
-  counts: compiled.counts,
-});
+): Promise<InstallResult> => {
+  const result = await client.query<{
+    id: string;
+    release_version: string;
+    release_digest: string;
+    compiled_fingerprint: string | null;
+  }>(
+    `select
+       release.id,
+       release.release_version,
+       release.release_digest,
+       materialization.compiled_fingerprint
+     from parameter_catalog.catalog_releases release
+     left join parameter_catalog.catalog_materializations materialization
+       on materialization.release_id = release.id
+     where release.id = $1`,
+    [compiled.release.id],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new CatalogKernelFailure({
+      kind: "drift",
+      scope: "current",
+      expected: { id: compiled.release.id, digest: compiled.release.digest },
+      actual: null,
+      violations: [
+        {
+          code: "current-pointer-mismatch",
+          relation: "catalog_releases",
+          identity: compiled.release.id,
+          detail: "current-pointer-release-row-missing",
+        },
+      ],
+    });
+  }
+  if (row.release_digest !== compiled.release.digest) {
+    throw new CatalogKernelFailure({
+      kind: "digest-conflict",
+      releaseId: compiled.release.id,
+      expected: compiled.release.digest,
+      actual: CatalogReleaseDigest(row.release_digest),
+    });
+  }
+  if (
+    row.compiled_fingerprint === null ||
+    row.compiled_fingerprint !== compiled.materializationFingerprint
+  ) {
+    throw new CatalogKernelFailure({
+      kind: "drift",
+      scope: "current",
+      expected: { id: compiled.release.id, digest: compiled.release.digest },
+      actual: {
+        id: CatalogReleaseId(row.id),
+        version: CatalogReleaseVersion(row.release_version),
+        digest: CatalogReleaseDigest(row.release_digest),
+      },
+      violations: [
+        {
+          code: "materialization-fingerprint-mismatch",
+          relation: "catalog_materializations",
+          identity: compiled.release.id,
+          detail: "installed-fingerprint-disagrees-with-compiler",
+        },
+      ],
+    });
+  }
+  return {
+    status: "already-current",
+    current: {
+      id: CatalogReleaseId(row.id),
+      version: CatalogReleaseVersion(row.release_version),
+      digest: CatalogReleaseDigest(row.release_digest),
+    },
+    materializationFingerprint: CatalogMaterializationFingerprint(
+      row.compiled_fingerprint,
+    ),
+    counts: await loadReleaseCounts(client, row.id),
+  };
+};
 
 const evaluateInstallLineage = async (
   client: pg.PoolClient,
@@ -500,11 +620,12 @@ export const installPublishedRelease = async (
     async (client) => {
       const lineage = await evaluateInstallLineage(client, command, compiled.value);
       if (lineage === "already-current") {
-        return recastAlreadyCurrent(compiled.value);
+        return loadVerifiedCurrentInstall(client, compiled.value);
       }
       const pointer = await readCurrentCatalogPointer(client);
       const previous = recastPointer(pointer);
       await materializeCompiledRelease(client, compiled.value, options);
+      await client.query("set constraints all immediate");
       await restoreCurrentDefinitionHeads(client, compiled.value.release.id);
       maybeFailPointer(options);
       await advanceCurrentPointer(client, compiled.value.release.id);
