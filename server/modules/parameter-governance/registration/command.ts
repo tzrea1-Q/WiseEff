@@ -148,12 +148,6 @@ export const validateRegistrationCommand = (
     }
     return { ok: true, value: command };
   }
-  if (
-    command.context.actorKind !== "org-admin" &&
-    command.context.actorKind !== "review-coordinator"
-  ) {
-    return permissionDenied(command.context.actorKind, command.kind);
-  }
   if (!controlFree(command.reason)) {
     return invalid("reason");
   }
