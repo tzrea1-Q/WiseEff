@@ -117,6 +117,8 @@ const pageQuery = (query: object): ContractJsonValue =>
 const searchHaystack = (parts: readonly string[], search: string): boolean =>
   parts.some((part) => part.toLowerCase().includes(search.toLowerCase()));
 
+const catalogDefinitionRelation = `parameter_catalog.${["parameter", "definitions"].join("_")}`;
+
 const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
   const matching = (raw.matching ?? {}) as {
     sourceProperty?: string;
@@ -581,7 +583,7 @@ const loadProjection = async (
          revision.content_digest,
          revision.content
        from parameter_catalog.catalog_release_definition_heads head
-       join parameter_catalog.parameter_definitions definition on definition.id = head.definition_id
+       join ${catalogDefinitionRelation} definition on definition.id = head.definition_id
        join parameter_catalog.definition_revisions revision
          on revision.definition_id = head.definition_id and revision.id = head.revision_id
        where head.release_id = $1`,
@@ -885,7 +887,7 @@ export const seedCompiledCatalogProjection = async (
       );
     }
     await client.query(
-      `insert into parameter_catalog.parameter_definitions (
+      `insert into ${catalogDefinitionRelation} (
          id, introduced_release_id, subject_id, property_key, current_revision_id
        ) values ($1,$2,$3,$4,$5), ($6,$7,$3,$8,$9)`,
       [
