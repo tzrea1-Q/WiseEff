@@ -33,6 +33,7 @@ const unregisteredSubject = {
   id: "csub_01KSC8562",
   type: "driver" as const,
   canonicalName: "southchip,sc8562",
+  aliases: ["sc8562"],
   membership: { status: "active" as const, catalogReleaseId: "crel_01K42" },
   registration: { status: "unregistered" as const },
   definitionCounts: { active: 14, deprecated: 1, retired: 0 },
