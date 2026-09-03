@@ -380,6 +380,42 @@ describe("immutable ProjectValue history", () => {
       valueId: binding.currentValueId,
       mutation: "update",
     });
+    const sqlUpdate = await pool
+      .query(
+        `update parameter_catalog.${VALUES_RELATION}
+            set value_digest = 'tampered'
+          where id = $1`,
+        [appended.value.value.id],
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+    const sqlDelete = await pool
+      .query(`delete from parameter_catalog.${VALUES_RELATION} where id = $1`, [
+        appended.value.value.id,
+      ])
+      .then(() => null)
+      .catch((error: unknown) => error);
+    const placeholderSqlUpdate = await pool
+      .query(
+        `update parameter_catalog.${VALUES_RELATION}
+            set source_ref = 'tampered-placeholder'
+          where id = $1`,
+        [binding.currentValueId],
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+    expect(sqlUpdate).toBeInstanceOf(pg.DatabaseError);
+    expect(sqlDelete).toBeInstanceOf(pg.DatabaseError);
+    expect(placeholderSqlUpdate).toBeInstanceOf(pg.DatabaseError);
+    if (sqlUpdate instanceof pg.DatabaseError) {
+      expect(sqlUpdate.code).toBe("55000");
+    }
+    if (sqlDelete instanceof pg.DatabaseError) {
+      expect(sqlDelete.code).toBe("55000");
+    }
+    if (placeholderSqlUpdate instanceof pg.DatabaseError) {
+      expect(placeholderSqlUpdate.code).toBe("55000");
+    }
     expect(update).toEqual({
       ok: false,
       error: {
