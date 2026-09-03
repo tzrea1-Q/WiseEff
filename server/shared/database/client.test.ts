@@ -4,6 +4,7 @@ import {
   createDatabase,
   createPostgresDatabase,
   createSavepointDatabase,
+  getRootPostgresPool,
   isRootDatabase,
   type Queryable
 } from "./client";
@@ -246,6 +247,10 @@ describe("createDatabase", () => {
       expect(isRootDatabase(poolRoot)).toBe(true);
       expect(isRootDatabase(sessionDatabase)).toBe(false);
       expect(isRootDatabase(transactionDatabase)).toBe(false);
+      expect(getRootPostgresPool(poolRoot)).toBeDefined();
+      expect(getRootPostgresPool(sessionDatabase)).toBeUndefined();
+      expect(getRootPostgresPool(transactionDatabase)).toBeUndefined();
+      expect(getRootPostgresPool(undefined)).toBeUndefined();
     } finally {
       await poolRoot.close();
     }

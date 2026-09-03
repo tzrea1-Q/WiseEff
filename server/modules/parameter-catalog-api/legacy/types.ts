@@ -22,6 +22,7 @@ export type LegacyCatalogInvocationResolver = (
 
 export type LegacyCatalogOptions = {
   readonly catalogReleaseId: string;
+  readonly resolveCatalogReleaseId?: () => Promise<string>;
   readonly sunsetHttpDate: string;
   readonly getQueryable: () => MappingQueryable | Promise<MappingQueryable>;
   readonly resolveInvocation: LegacyCatalogInvocationResolver;

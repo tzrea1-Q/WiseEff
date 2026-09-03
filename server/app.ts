@@ -42,6 +42,7 @@ import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
 import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
+import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
 import { createHttpServer } from "./shared/http/server";
 import { createRouter, type RouteRequest } from "./shared/http/router";
 import type { Database } from "./shared/database/client";
@@ -242,6 +243,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     objectStore: options.objectStore,
     knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
     getCurrentAuthContext: authResolver
+  });
+  registerParameterCatalogApi(router, {
+    db: options.db,
+    resolveAuth: (request) => getCurrentAuthContext(options, request)
   });
 
   router.get("/metrics", async () => {

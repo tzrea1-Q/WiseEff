@@ -55,6 +55,20 @@ describe("createRouter", () => {
     expect(response).toEqual({ status: 200, body: { ok: true } });
   });
 
+  it("preserves optional JSON response headers through the HTTP server", async () => {
+    const router = createRouter();
+    router.get("/api/v2/catalog", async () => ({
+      status: 200,
+      body: { ok: true },
+      headers: { "X-WiseEff-Catalog-Release": "crel-headers" }
+    }));
+    const server = createHttpServer(router);
+    const { response, text } = await requestText(server, "/api/v2/catalog");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-wiseeff-catalog-release")).toBe("crel-headers");
+    expect(JSON.parse(text)).toEqual({ ok: true });
+  });
+
   it("returns 404 for missing routes", async () => {
     const router = createRouter();
 

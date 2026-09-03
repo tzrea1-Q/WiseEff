@@ -307,6 +307,14 @@ export function createHttpServer(
       } else if ("text" in routeResponse) {
         sendText(response, routeResponse.status, routeResponse.contentType, routeResponse.text);
       } else {
+        if (routeResponse.headers) {
+          for (const [name, value] of Object.entries(routeResponse.headers)) {
+            if (name.toLowerCase() === "content-type") {
+              continue;
+            }
+            response.setHeader(name, value);
+          }
+        }
         sendJson(response, routeResponse.status, routeResponse.body);
       }
       options.metrics?.recordHttpRequest({
