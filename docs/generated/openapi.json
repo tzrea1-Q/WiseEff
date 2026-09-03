@@ -2167,6 +2167,38 @@
                   "$ref": "#/components/schemas/ParameterModuleRegistryResponse"
                 }
               }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "400": {
@@ -2198,6 +2230,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ParameterModuleDiscoveryHintsResponse"
+                }
+              }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -2242,7 +2306,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2278,7 +2349,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2314,7 +2392,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2353,7 +2438,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2392,7 +2484,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2428,7 +2527,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2450,6 +2556,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DriverRegistryListResponse"
+                }
+              }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -2498,7 +2636,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2544,7 +2689,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2590,7 +2742,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2626,7 +2785,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2649,7 +2815,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2683,7 +2856,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2719,7 +2899,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2763,7 +2950,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2802,7 +2996,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2838,7 +3039,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2887,7 +3095,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2910,7 +3125,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2946,7 +3168,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -2985,7 +3214,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -3992,6 +4228,38 @@
                   "$ref": "#/components/schemas/ParameterSpecListResponse"
                 }
               }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "400": {
@@ -4035,7 +4303,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4067,6 +4342,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4128,7 +4435,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4164,7 +4478,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4213,7 +4534,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4262,7 +4590,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4284,6 +4619,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ParameterSpecReviewTaskListResponse"
+                }
+              }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -4344,7 +4711,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4393,7 +4767,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4442,7 +4823,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4491,7 +4879,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4540,7 +4935,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4576,7 +4978,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4622,7 +5031,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4671,7 +5087,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4720,7 +5143,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -4769,7 +5199,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5054,6 +5491,38 @@
                   "$ref": "#/components/schemas/IdentityMappingTaskListResponse"
                 }
               }
+            },
+            "headers": {
+              "Deprecation": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Link": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Warning": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-WiseEff-Legacy-Contract": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "400": {
@@ -5112,7 +5581,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5161,7 +5637,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -5357,6 +5840,16 @@
         "tags": [
           "catalog"
         ],
+        "parameters": [
+          {
+            "name": "catalogReleaseId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -5371,13 +5864,6 @@
               "X-WiseEff-Catalog-Release": {
                 "description": "Catalog release that produced this response.",
                 "required": true,
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Retry-After": {
-                "description": "Honor on catalog-not-ready.",
-                "required": false,
                 "schema": {
                   "type": "string"
                 }
@@ -5414,6 +5900,14 @@
         ],
         "parameters": [
           {
+            "name": "catalogReleaseId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "type",
             "in": "query",
             "required": false,
@@ -5439,6 +5933,14 @@
           },
           {
             "name": "registration",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "placement",
             "in": "query",
             "required": false,
             "schema": {
@@ -5656,6 +6158,14 @@
         ],
         "parameters": [
           {
+            "name": "catalogReleaseId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "subjectId",
             "in": "query",
             "required": false,
@@ -5665,6 +6175,14 @@
           },
           {
             "name": "propertyKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "registration",
             "in": "query",
             "required": false,
             "schema": {
@@ -12670,7 +13188,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "410": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Gone — retired endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogLegacyGoneResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -19758,6 +20283,12 @@
                 "canonicalName": {
                   "type": "string"
                 },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "membership": {
                   "type": "object",
                   "properties": {
@@ -19885,6 +20416,7 @@
                 "id",
                 "type",
                 "canonicalName",
+                "aliases",
                 "membership",
                 "registration",
                 "definitionCounts"
@@ -19937,6 +20469,12 @@
               },
               "canonicalName": {
                 "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               },
               "membership": {
                 "type": "object",
@@ -20065,6 +20603,7 @@
               "id",
               "type",
               "canonicalName",
+              "aliases",
               "membership",
               "registration",
               "definitionCounts"

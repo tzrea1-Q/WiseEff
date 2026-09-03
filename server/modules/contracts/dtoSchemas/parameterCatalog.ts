@@ -256,6 +256,7 @@ export const catalogSubjectDtoSchema = catalogObject({
   id: z.string(),
   type: catalogSubjectTypeSchema,
   canonicalName: z.string(),
+  aliases: z.array(z.string()),
   membership: catalogObject({
     status: catalogSubjectLifecycleSchema,
     catalogReleaseId: z.string()
@@ -1078,10 +1079,8 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     responseBody: "CatalogDocumentResponse",
     additionalResponses: catalogReadErrors,
-    successHeaders: [
-      catalogReleaseResponseHeader,
-      { name: CATALOG_RETRY_AFTER_HEADER, required: false, description: "Honor on catalog-not-ready." }
-    ]
+    requestParameters: [{ name: "catalogReleaseId", in: "query" }],
+    successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.listSubjects": {
     summary: "List catalog subjects in the current or pinned release",
@@ -1089,6 +1088,7 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogSubjectListResponse",
     additionalResponses: catalogReadErrors,
     requestParameters: [
+      { name: "catalogReleaseId", in: "query" },
       {
         name: "type",
         in: "query",
@@ -1100,6 +1100,7 @@ export const parameterCatalogSchemaRegistry = {
         schema: { type: "string", enum: [...subjectLifecycles] }
       },
       { name: "registration", in: "query" },
+      { name: "placement", in: "query" },
       { name: "search", in: "query" },
       ...pageQueryParameters
     ],
@@ -1126,8 +1127,10 @@ export const parameterCatalogSchemaRegistry = {
     responseBody: "CatalogDefinitionListResponse",
     additionalResponses: catalogReadErrors,
     requestParameters: [
+      { name: "catalogReleaseId", in: "query" },
       { name: "subjectId", in: "query" },
       { name: "propertyKey", in: "query" },
+      { name: "registration", in: "query" },
       {
         name: "lifecycle",
         in: "query",

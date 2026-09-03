@@ -79,9 +79,8 @@ describe("S8-CON threat matrix", () => {
     for (const gates of Object.values(parameterCatalogRouteGates)) {
       for (const gate of gates) covered.add(gate);
     }
-    covered.add("PCAT-API-08");
-    covered.add("PCAT-API-09");
-    covered.add("PCAT-API-12");
+    if (parameterCatalogLegacyWriteRouteIds.length > 0) covered.add("PCAT-API-08");
+    if (parameterCatalogProjectBindingRouteIds.length > 0) covered.add("PCAT-API-12");
     expect([...pcatApiGates].filter((gate) => !covered.has(gate))).toEqual([]);
     expect(parameterCatalogLegacyWriteRouteIds.length).toBeGreaterThan(0);
     expect(parameterCatalogProjectBindingRouteIds).toEqual([
@@ -238,6 +237,7 @@ describe("S8-CON threat matrix", () => {
         id: "csub_01KSC8562",
         type: "driver",
         canonicalName: "southchip,sc8562",
+        aliases: ["sc8562"],
         membership: { status: "active", catalogReleaseId: "crel_01K42" },
         registration: { status: "unregistered" },
         definitionCounts: { active: 14, deprecated: 1, retired: 0 },

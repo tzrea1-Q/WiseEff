@@ -28,15 +28,22 @@ export type ContractSchemaRef = {
   successHeaders?: readonly ContractHeaderRef[];
 };
 
+const boundedLegacyReadHeaders: readonly ContractHeaderRef[] = [
+  { name: "Deprecation", required: true },
+  { name: "Sunset", required: true },
+  { name: "Link", required: true },
+  { name: "Warning", required: true },
+  { name: "X-WiseEff-Legacy-Contract", required: true }
+];
+
 function retireLegacySurface(entry: ContractSchemaRef): ContractSchemaRef {
+  const additionalResponses = { ...entry.additionalResponses };
+  delete additionalResponses["410"];
   return {
     ...entry,
     successStatus: 410,
     responseBody: "CatalogLegacyGoneResponse",
-    additionalResponses: {
-      ...entry.additionalResponses,
-      "410": "ErrorResponse"
-    }
+    additionalResponses
   };
 }
 
@@ -338,13 +345,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Get parameter module registry with mappings",
     tags: ["parameter-modules"],
     responseBody: "ParameterModuleRegistryResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterModules.discoveryHints": {
     summary: "List unclassified compatible discovery hints",
     tags: ["parameter-modules"],
     responseBody: "ParameterModuleDiscoveryHintsResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterModules.dismissCompatible": retireLegacySurface({
     summary: "Dismiss a compatible from the unclassified queue",
@@ -391,7 +400,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List curated driver-group registry entries with parse coverage",
     tags: ["parameter-modules"],
     responseBody: "DriverRegistryListResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterModules.registerDriver": retireLegacySurface({
     summary: "Register or claim a driver group with exact compatible mappings",
@@ -632,7 +642,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List versioned parameter specifications",
     tags: ["parameters"],
     responseBody: "ParameterSpecListResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterSpecs.create": retireLegacySurface({
     summary: "Create a draft parameter definition bound to an attribution subject",
@@ -646,7 +657,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Get a parameter specification detail",
     tags: ["parameters"],
     responseBody: "ParameterSpecDetailResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterSpecs.getCutover": retireLegacySurface({
     summary: "Get open parameter spec version cutover impact",
@@ -672,7 +684,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List organization-scoped parameter specification review tasks",
     tags: ["parameters"],
     responseBody: "ParameterSpecReviewTaskListResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterSpecs.resolveReviewTask": retireLegacySurface({
     summary: "Resolve a parameter specification review task",
@@ -806,7 +819,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "List identity mapping tasks",
     tags: ["parameters"],
     responseBody: "IdentityMappingTaskListResponse",
-    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "410": "ErrorResponse" },
+    successHeaders: boundedLegacyReadHeaders
   },
   "parameterTopology.resolveIdentityMappingTask": retireLegacySurface({
     summary: "Resolve or protected re-resolve an identity mapping task",
