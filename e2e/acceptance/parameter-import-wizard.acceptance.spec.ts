@@ -97,7 +97,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     ]);
 
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    await expect(page.getByRole("region", { name: "参数定义目录" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
 

@@ -719,7 +719,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const specLibrary = page.getByRole("region", { name: "参数定义目录" });
+    const specLibrary = page.getByRole("region", { name: "参数定义库" });
     await expect(specLibrary).toBeVisible({ timeout: 30_000 });
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
     await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
