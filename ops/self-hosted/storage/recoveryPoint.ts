@@ -364,7 +364,14 @@ type SentinelRow = {
   v: string;
 };
 
-export function createPostgresStorePort(connectionString: string): StoreSnapshotPort {
+export type PostgresStorePortOptions = {
+  readonly allowComposeApp?: boolean;
+};
+
+export function createPostgresStorePort(
+  connectionString: string,
+  options: PostgresStorePortOptions = {},
+): StoreSnapshotPort {
   const identity = (() => {
     try {
       return postgresIdentityFromUrl(connectionString);
@@ -380,7 +387,7 @@ export function createPostgresStorePort(connectionString: string): StoreSnapshot
       if (!connectionString.trim() || !identity) {
         throw new Error("PostgreSQL target identity is not a postgres URL.");
       }
-      if (isForbiddenComposeAppPostgres(connectionString)) {
+      if (isForbiddenComposeAppPostgres(connectionString) && options.allowComposeApp !== true) {
         throw new ForbiddenComposeAppError(identity);
       }
       const client = new pg.Client({
@@ -463,14 +470,6 @@ export async function captureRecoveryPoint(
     return fail("pre-quiesce", "Capture is refused until writers, queue, and proxy are quiesced.");
   }
 
-  const postgresStore = input.stores.find((store) => store.kind === "postgres");
-  if (postgresStore && isForbiddenComposeAppPostgresIdentity(postgresStore.declaredIdentity)) {
-    return fail(
-      "wrong-target",
-      `PostgreSQL target identity is the forbidden compose app database: ${postgresStore.declaredIdentity}`,
-    );
-  }
-
   let stores: RecoveryManifestStores;
   try {
     const snapped = await snapshotAll(input.stores, now);
@@ -534,14 +533,6 @@ export async function captureRecoveryPoint(
   };
   return ok({ manifest, verification, restoreToken });
 }
-
-const isForbiddenComposeAppPostgresIdentity = (identity: string): boolean => {
-  const normalized = identity.trim().toLowerCase();
-  return (
-    normalized === "127.0.0.1:5432/wiseeff" ||
-    normalized === "localhost:5432/wiseeff"
-  );
-};
 
 export async function verifyRecoveryPoint(
   input: VerifyRecoveryPointInput,

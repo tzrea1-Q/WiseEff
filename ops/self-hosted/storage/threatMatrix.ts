@@ -40,8 +40,9 @@ export const THREAT_MATRIX = freezeMatrix([
     id: 5,
     name: "wrong-target-identity",
     attack:
-      "capture or restore-check against a mismatched target identity, including the default compose 5432/wiseeff database",
-    expected: "typed wrong-target rejection; no restore token is minted",
+      "capture against a mismatched store identity, snapshot the default compose 5432/wiseeff database without an explicit test-database allow, or restore-check into that compose database",
+    expected:
+      "typed wrong-target rejection; no restore token is minted; restore into 5432/wiseeff remains forbidden",
     evidenceOwner: "L+PG",
   },
   {

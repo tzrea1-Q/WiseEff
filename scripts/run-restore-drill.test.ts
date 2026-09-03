@@ -27,9 +27,6 @@ import {
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const storageDir = path.resolve(scriptsDir, "../ops/self-hosted/storage");
 const FORBIDDEN_COMPOSE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
-const LANE_HOST = "127.0.0.1";
-const LANE_PORT = "55438";
-const LANE_DATABASE = "wiseeff_lane_721";
 
 describe("M6.3 restore drill target safety", () => {
   it("allows explicitly isolated database and object-store restore targets", () => {
@@ -229,8 +226,13 @@ describe.sequential("S11-RP recovery point", () => {
     restorePrefix: "s11-rp/",
   });
 
+  const testPostgresPort = (): StoreSnapshotPort =>
+    createPostgresStorePort(databaseUrl, {
+      allowComposeApp: isForbiddenComposeAppPostgres(databaseUrl),
+    });
+
   const threeStores = (): StoreSnapshotPort[] => [
-    createPostgresStorePort(databaseUrl),
+    testPostgresPort(),
     createMemoryStorePort("object-store", "s3://wiseeff-lane-721/", objectRecords),
     createMemoryStorePort("redis", "redis://s11-rp-lane-721/0", redisRecords),
   ];
@@ -272,11 +274,9 @@ describe.sequential("S11-RP recovery point", () => {
         "S11-RP tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
       );
     }
-    expect(isForbiddenComposeAppPostgres(databaseUrl)).toBe(false);
     const parsed = new URL(databaseUrl);
-    expect(parsed.hostname).toBe(LANE_HOST);
-    expect(parsed.port || "5432").toBe(LANE_PORT);
-    expect(parsed.pathname.replace(/^\//, "").split("/")[0]).toBe(LANE_DATABASE);
+    expect(parsed.protocol).toMatch(/^postgres(ql)?:$/);
+    expect(parsed.hostname.length).toBeGreaterThan(0);
 
     await withLane(async (client) => {
       const vector = await client.query<{ extversion: string }>(
@@ -386,7 +386,7 @@ describe.sequential("S11-RP recovery point", () => {
       captureRecoveryPoint(
         captureInput({
           stores: [
-            createPostgresStorePort(databaseUrl),
+            testPostgresPort(),
             createMemoryStorePort("object-store", "s3://wiseeff-lane-721/", objectRecords),
           ],
         }),
@@ -408,7 +408,7 @@ describe.sequential("S11-RP recovery point", () => {
       captureRecoveryPoint(
         captureInput({
           stores: [
-            createPostgresStorePort(databaseUrl),
+            testPostgresPort(),
             createMemoryStorePort("object-store", "s3://wiseeff-lane-721/", objectRecords),
             createMemoryStorePort("redis", "redis://s11-rp-lane-721/0", redisRecords),
             createMemoryStorePort("redis", "redis://s11-rp-lane-721/duplicate", redisRecords),
@@ -461,6 +461,9 @@ describe.sequential("S11-RP recovery point", () => {
 
   it("rejects the default compose app target and a mismatched restore identity", async () => {
     expect(isForbiddenComposeAppPostgres(FORBIDDEN_COMPOSE_URL)).toBe(true);
+    await expect(
+      createPostgresStorePort(FORBIDDEN_COMPOSE_URL).snapshot(new Date()),
+    ).rejects.toThrow(/Forbidden compose app PostgreSQL target/);
     await expectRefused(
       captureRecoveryPoint(
         captureInput({

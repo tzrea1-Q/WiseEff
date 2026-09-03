@@ -20,6 +20,7 @@ export {
 } from "../ops/self-hosted/storage/recoveryPoint";
 export type {
   CaptureRecoveryPointInput,
+  PostgresStorePortOptions,
   QuiescenceProof,
   RecoveryPointCapture,
   RecoveryPointResult,
