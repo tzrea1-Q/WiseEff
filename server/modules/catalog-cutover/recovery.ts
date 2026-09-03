@@ -15,6 +15,7 @@ const INVENTORY_RELATIONS = [
   "public.parameter_spec_versions",
   "public.organizations",
   "parameter_catalog.legacy_identities",
+  "parameter_catalog.legacy_mapping_heads",
   "parameter_catalog.organization_subject_registrations",
   "parameter_catalog.project_parameter_bindings",
   definitionRelation,
@@ -124,6 +125,17 @@ export const restoreRunMutations = async (
     select encrypted_object_ref
       from parameter_catalog.parameter_catalog_archives
      where cutover_run_id = $1
+    `,
+    [runId],
+  );
+  await client.query(
+    `
+    delete from parameter_catalog.legacy_mapping_heads
+     where current_version_id in (
+       select id
+         from parameter_catalog.legacy_mapping_versions
+        where cutover_run_id = $1
+     )
     `,
     [runId],
   );

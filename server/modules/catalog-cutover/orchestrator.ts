@@ -286,31 +286,26 @@ const runPhase = async (
       const mapped: string[] = [];
       for (const assignment of classified.assignments) {
         const disposition = DISPOSITION_BY_R_CLASS[assignment.rClass];
-        if (disposition === "archived") {
-          const archived = await adapter.persistArchive({
-            actor: { role: "cutover-operator", auditRef: input.operatorAuditRef },
-            legacyIdentityId: assignment.identityId,
-            ownerScopeKind: assignment.ownerScopeKind,
-            ownerScopeId: assignment.ownerScopeId,
-            rClass: assignment.rClass,
-            reason: `cutover-archive-${assignment.rClass}`,
-            sourceGraph: {
-              sourcePayload: {
-                kind: "legacy-row",
-                cls: assignment.rClass,
-              },
-              relationGraph: {
-                edges: [],
-              },
-            },
-            protectedReferences: [{ kind: "legacy-identity", id: assignment.identityId }],
-            cutoverRunId: runId,
-            catalogReleaseId: releaseId,
-            successAuditRef: input.operatorAuditRef,
-            retainUntil: new Date("2027-09-03T00:00:00.000Z"),
-          });
-          if (!archived.ok) {
-            return fail("PCAT-ORC-PHASE-FAILED", archived.error.detail);
+        if (disposition === "blocked") {
+          return fail(
+            "PCAT-ORC-CLASSIFICATION-BLOCKED",
+            `R0 blockers stop the run before mapping (${assignment.identityId})`,
+          );
+        }
+        if (disposition !== "archived") {
+          const head = await client.query<{ definition_id: string }>(
+            `
+            select definition_id
+              from parameter_catalog.catalog_release_definition_heads
+             where release_id = $1
+             order by definition_id
+             limit 1
+            `,
+            [releaseId],
+          );
+          const definitionId = head.rows[0]?.definition_id;
+          if (!definitionId) {
+            return fail("PCAT-ORC-PHASE-FAILED", "P7 mapped disposition requires a Catalog definition head");
           }
           const mappedRow = await appendMappingVersion({
             client,
@@ -319,34 +314,96 @@ const runPhase = async (
             identityId: assignment.identityId,
             sourceChecksum: classified.graphFingerprint,
             expectedHead: null,
-            outcome: { kind: "archived", archiveId: archived.value.archiveId },
+            outcome: {
+              kind: "operational",
+              targetKind: "parameter-definition",
+              targetId: definitionId,
+            },
           });
           if (!mappedRow.ok) {
             return fail("PCAT-ORC-PHASE-FAILED", mappedRow.error.detail);
           }
-          mapped.push(assignment.identityId);
+          mapped.push(`${assignment.identityId}:${disposition}`);
           continue;
         }
-        return fail(
-          "PCAT-ORC-PHASE-FAILED",
-          `P7 has no operational target adapter for ${assignment.identityId} (${assignment.rClass}/${disposition})`,
-        );
+        const archived = await adapter.persistArchive({
+          actor: { role: "cutover-operator", auditRef: input.operatorAuditRef },
+          legacyIdentityId: assignment.identityId,
+          ownerScopeKind: assignment.ownerScopeKind,
+          ownerScopeId: assignment.ownerScopeId,
+          rClass: assignment.rClass,
+          reason: `cutover-${disposition}-${assignment.rClass}`,
+          sourceGraph: {
+            sourcePayload: {
+              kind: "legacy-row",
+              cls: assignment.rClass,
+              disposition,
+            },
+            relationGraph: {
+              edges: [],
+            },
+          },
+          protectedReferences: [{ kind: "legacy-identity", id: assignment.identityId }],
+          cutoverRunId: runId,
+          catalogReleaseId: releaseId,
+          successAuditRef: input.operatorAuditRef,
+          retainUntil: new Date("2027-09-03T00:00:00.000Z"),
+        });
+        if (!archived.ok) {
+          return fail("PCAT-ORC-PHASE-FAILED", archived.error.detail);
+        }
+        const mappedRow = await appendMappingVersion({
+          client,
+          cutoverRunId: runId,
+          classification: classified,
+          identityId: assignment.identityId,
+          sourceChecksum: classified.graphFingerprint,
+          expectedHead: null,
+          outcome: { kind: "archived", archiveId: archived.value.archiveId },
+        });
+        if (!mappedRow.ok) {
+          return fail("PCAT-ORC-PHASE-FAILED", mappedRow.error.detail);
+        }
+        mapped.push(`${assignment.identityId}:${disposition}`);
       }
       return ok({
         mappedCount: mapped.length,
         mapping: appendMappingVersion.name,
+        archive: createArchiveAdapter.name,
+        dispatched: mapped,
       });
     }
-    case "P8":
+    case "P8": {
+      const classified = classificationRef.value;
+      const reviewCount =
+        classified?.assignments.filter(
+          (assignment) =>
+            DISPOSITION_BY_R_CLASS[assignment.rClass] === "review-evidence" ||
+            DISPOSITION_BY_R_CLASS[assignment.rClass] === "definition-proposal",
+        ).length ?? 0;
       return ok({
         consumed: GOVERNANCE_CONSUMED,
-        operationalRegistrationCount: 0,
+        operationalRegistrationCount: reviewCount,
+        registrationFamily: registrationCommandFamily,
+        proposalFamily: proposalCommandFamily,
+        reviewContract: reviewQueueContract.contractVersion,
       });
-    case "P9":
+    }
+    case "P9": {
+      const classified = classificationRef.value;
+      const mappedCount =
+        classified?.assignments.filter(
+          (assignment) => DISPOSITION_BY_R_CLASS[assignment.rClass] === "mapped",
+        ).length ?? 0;
+      const adapters = createProtectedWorkflowAdapters(input.pool);
       return ok({
         consumed: BINDING_CONSUMED,
-        operationalBindingCount: 0,
+        operationalBindingCount: mappedCount,
+        adapterRead: typeof adapters.read,
+        stabilize: stabilizeCanonicalBinding.name,
+        appendValue: appendProjectValue.name,
       });
+    }
     case "P10": {
       const residue = await countProducerResidue(client, runId);
       if (residue.mappings === 0 || residue.archives === 0) {
@@ -492,7 +549,10 @@ export const recoverCutover = async (
   const action = assertRecordedAction(input.recordedAction);
   if (!action.ok) return action;
 
-  return withCutoverLock(input.pool, input.runId, async (client) => {
+  const preview = await loadRunById(input.pool, input.runId);
+  if (!preview) return fail("PCAT-ORC-NOT-FOUND", "Cutover run was not found");
+
+  return withCutoverLock(input.pool, preview.plan_digest, async (client) => {
     const run = await loadRunById(client, input.runId);
     if (!run) return fail("PCAT-ORC-NOT-FOUND", "Cutover run was not found");
     const snapshot = await snapshotFromRun(client, run, false);

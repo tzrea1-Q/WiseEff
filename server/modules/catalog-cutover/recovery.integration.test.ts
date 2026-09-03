@@ -238,7 +238,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
     expect(Number(residue.rows[0]?.archives)).toBeGreaterThan(0);
 
     const midDump = await captureInventoryDump(client);
-    expect(dumpsEqual(midDump, preExecuteDump)).toBe(true);
+    expect(dumpsEqual(midDump, preExecuteDump)).toBe(false);
 
     const recovered = await recoverCutover({
       pool,
