@@ -63,6 +63,16 @@
 | queue backlog |  |  |
 | object-store probe |  |  |
 
+## Catalog apply
+
+| Mode | Result | Evidence |
+| --- | --- | --- |
+| fresh zero-mode (empty inventory, P11a; not populated P0-P10) |  |  |
+| populated full-mode through P0-P10 + P11a |  |  |
+
+P11a reports gate statuses; isolation remains; P12-P16 are not executed.
+WISEEFF_CATALOG_QUIESCED=true is operator attestation, not P2 proof.
+
 ## Go / No-Go
 
 Outcome: Go / No-Go

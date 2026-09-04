@@ -11,6 +11,16 @@
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
 - 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
 
+## Catalog apply
+
+| 模式 | 结果 | 证据 |
+| --- | --- | --- |
+| fresh zero-mode（空库存 + P11a；不是 populated P0-P10） |  |  |
+| populated full-mode（P0-P10 + P11a） |  |  |
+
+P11a 报告门禁状态；保持隔离；不执行 P12-P16。
+WISEEFF_CATALOG_QUIESCED=true 是操作者 attestation，不是 P2 证明。
+
 ## 关键阅读点
 
 - 先确认该文档属于哪个决策面：self-hosted。
