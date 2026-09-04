@@ -383,4 +383,45 @@ describe("createHttpDebuggingGateway", () => {
 
     await expect(gateway.listDevices?.()).rejects.toBeInstanceOf(WiseEffApiError);
   });
+
+  it("parses exact Binding pins on parameters and session events", async () => {
+    const fetchMock = createFetchMock({
+      items: [
+        {
+          ...parameterDto,
+          bindingId: "pbind_dbg",
+          effectiveRevisionId: "drev_dbg",
+          currentValueId: "pval_dbg",
+          protectedReferenceKind: "canonical-pin"
+        }
+      ]
+    });
+    const gateway = createGateway(fetchMock);
+    await expect(gateway.listParameters?.()).resolves.toMatchObject([
+      {
+        bindingId: "pbind_dbg",
+        effectiveRevisionId: "drev_dbg",
+        currentValueId: "pval_dbg",
+        protectedReferenceKind: "canonical-pin"
+      }
+    ]);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            ...readOperationDto,
+            protectedReferenceKind: "typed-block",
+            protectedReferenceReason: "missing-binding"
+          }
+        ]
+      })
+    );
+    await expect(gateway.listSessionEvents?.("session-1")).resolves.toMatchObject([
+      {
+        protectedReferenceKind: "typed-block",
+        protectedReferenceReason: "missing-binding"
+      }
+    ]);
+  });
 });

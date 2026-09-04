@@ -14,6 +14,7 @@ import type {
   DebugValueKind
 } from "@/debugValueKind";
 import type {
+  CanonicalDebugPin,
   DebugReadbackOutcome,
   DebugWriteOutcome,
   DebugSnapshotSummary,
@@ -81,7 +82,7 @@ export type DebugParameterDto = {
   valueFormat?: DebugValueFormat;
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
-};
+} & CanonicalDebugPin;
 
 export type NodeOperationDto = {
   id: string;
@@ -110,7 +111,7 @@ export type NodeOperationDto = {
   previousValueDigest?: string | null;
   readbackValueDigest?: string | null;
   valuePreview?: string | null;
-};
+} & CanonicalDebugPin;
 
 export type DebugSnapshotDto = {
   id: string;
@@ -137,7 +138,7 @@ export function debugDeviceFromDto(dto: DebugDeviceDto): Device {
   };
 }
 
-export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
+export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter & CanonicalDebugPin {
   const bindings = dto.bindings?.map(debugParameterBindingFromDto);
   const selectedBinding = dto.selectedBinding;
   const hasSelectedBinding = "selectedBinding" in dto;
@@ -192,7 +193,12 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
     valueKind: valueMetadata.valueKind,
     valueFormat: valueMetadata.valueFormat,
     normalizationMode: valueMetadata.normalizationMode,
-    maxValueBytes: valueMetadata.maxValueBytes ?? null
+    maxValueBytes: valueMetadata.maxValueBytes ?? null,
+    bindingId: dto.bindingId,
+    effectiveRevisionId: dto.effectiveRevisionId,
+    currentValueId: dto.currentValueId,
+    protectedReferenceKind: dto.protectedReferenceKind,
+    protectedReferenceReason: dto.protectedReferenceReason
   };
 }
 
@@ -249,7 +255,12 @@ export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapsh
     requestedValueDigest: dto.requestedValueDigest ?? undefined,
     previousValueDigest: dto.previousValueDigest ?? undefined,
     readbackValueDigest: dto.readbackValueDigest ?? undefined,
-    valuePreview: dto.valuePreview ?? undefined
+    valuePreview: dto.valuePreview ?? undefined,
+    bindingId: dto.bindingId,
+    effectiveRevisionId: dto.effectiveRevisionId,
+    currentValueId: dto.currentValueId,
+    protectedReferenceKind: dto.protectedReferenceKind,
+    protectedReferenceReason: dto.protectedReferenceReason
   };
 }
 
@@ -324,9 +335,9 @@ export type DebugRuntimeNodeDto = {
   valueFormat?: DebugValueFormat;
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
-};
+} & CanonicalDebugPin;
 
-export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): DebugParameter {
+export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): DebugParameter & CanonicalDebugPin {
   const valueMetadata = resolveDebugValueMetadata(dto);
   return {
     id: dto.id,
@@ -352,6 +363,11 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     valueKind: valueMetadata.valueKind,
     valueFormat: valueMetadata.valueFormat,
     normalizationMode: valueMetadata.normalizationMode,
-    maxValueBytes: valueMetadata.maxValueBytes ?? null
+    maxValueBytes: valueMetadata.maxValueBytes ?? null,
+    bindingId: dto.bindingId,
+    effectiveRevisionId: dto.effectiveRevisionId,
+    currentValueId: dto.currentValueId,
+    protectedReferenceKind: dto.protectedReferenceKind,
+    protectedReferenceReason: dto.protectedReferenceReason
   };
 }
