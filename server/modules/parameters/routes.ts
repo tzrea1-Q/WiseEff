@@ -31,6 +31,11 @@ import {
   listParameters
 } from "./repository";
 import {
+  attachBindingPinTo,
+  attachDraftCanonicalPins,
+  attachSemanticBindingPin
+} from "./canonicalParameterPin";
+import {
   getProjectAdminDetail,
   listProjectAdminSummaries,
   listProjectModules,
@@ -395,7 +400,7 @@ export function registerParameterRoutes(
     requireCanView(auth);
     const query = parseWithSchema(listParametersQuerySchema, request.query) as ListParametersQuery;
     const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
-    const items = await listParameters(db, resolved);
+    const items = (await listParameters(db, resolved)).map(attachSemanticBindingPin);
 
     return { status: 200, body: { items } };
   });
@@ -415,7 +420,7 @@ export function registerParameterRoutes(
       throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
     }
 
-    return { status: 200, body: { item } };
+    return { status: 200, body: { item: attachSemanticBindingPin(item) } };
   });
 
   router.get("/api/v1/parameters/:parameterId/history", async (request) => {
@@ -432,7 +437,10 @@ export function registerParameterRoutes(
       await rejectRetiredLegacyParameterId(db, params.parameterId);
     }
 
-    return { status: 200, body: { items } };
+    return {
+      status: 200,
+      body: { items: items.map((entry) => attachBindingPinTo(entry, params.parameterId)) }
+    };
   });
 
   router.post("/api/v1/parameter-drafts", async (request) => {
@@ -440,8 +448,9 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(saveDraftBodySchema, request.body);
     const item = await saveDraft(db, auth, body);
+    const [pinned] = await attachDraftCanonicalPins(db, [item]);
 
-    return { status: 201, body: { item } };
+    return { status: 201, body: { item: pinned ?? item } };
   });
 
   router.get("/api/v1/parameter-drafts/mine", async (request) => {
@@ -450,7 +459,7 @@ export function registerParameterRoutes(
     const query = parseWithSchema(listDraftsQuerySchema, request.query);
     const items = await listDrafts(db, auth, query, { invocation: createUserInvocation(auth) });
 
-    return { status: 200, body: { items } };
+    return { status: 200, body: { items: await attachDraftCanonicalPins(db, items) } };
   });
 
   router.delete("/api/v1/parameter-drafts/:draftId", async (request) => {

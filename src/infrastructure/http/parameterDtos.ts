@@ -7,7 +7,12 @@ import type {
   ParameterSubmissionItem,
   RiskLevel
 } from "@/domain/parameters/types";
-import type { ParameterDraftDto as PortParameterDraftDto, ParameterImportBatchDto as PortParameterImportBatchDto, ProjectSummary } from "@/application/ports/ParameterRepository";
+import type {
+  CanonicalParameterPin,
+  ParameterDraftDto as PortParameterDraftDto,
+  ParameterImportBatchDto as PortParameterImportBatchDto,
+  ProjectSummary
+} from "@/application/ports/ParameterRepository";
 
 export type BackendRiskLevel = RiskLevel;
 
@@ -26,15 +31,16 @@ export type BackendSubmissionRoundStatus =
 
 export type ProjectDto = ProjectSummary;
 
-export type ParameterHistoryEntryDto = ParameterHistoryEntry;
+export type ParameterHistoryEntryDto = ParameterHistoryEntry & CanonicalParameterPin;
 
-export type ParameterRecordDto = Omit<ParameterRecord, "risk" | "history" | "valueKind"> & {
+export type ParameterRecordDto = Omit<ParameterRecord, "risk" | "history" | "valueKind"> &
+  CanonicalParameterPin & {
   risk: BackendRiskLevel;
   valueKind?: ParameterRecord["valueKind"];
   history: ParameterHistoryEntryDto[];
 };
 
-export type ParameterDraftDto = PortParameterDraftDto;
+export type ParameterDraftDto = PortParameterDraftDto & CanonicalParameterPin;
 
 export type ImpactItemDto = Omit<ImpactItem, "risk"> & {
   risk: BackendRiskLevel;
@@ -82,15 +88,20 @@ export function projectFromDto(dto: ProjectDto): ProjectSummary {
   return { ...dto };
 }
 
-export function parameterHistoryEntryFromDto(dto: ParameterHistoryEntryDto): ParameterHistoryEntry {
+export function parameterHistoryEntryFromDto(
+  dto: ParameterHistoryEntryDto
+): ParameterHistoryEntry & CanonicalParameterPin {
   return { ...dto };
 }
 
-export function parameterRecordFromDto(dto: ParameterRecordDto): ParameterRecord {
+export function parameterRecordFromDto(
+  dto: ParameterRecordDto
+): ParameterRecord & CanonicalParameterPin {
   return {
     ...dto,
     risk: riskLabels[dto.risk],
     valueKind: dto.valueKind ?? "scalar",
+    projectParameterBindingId: dto.projectParameterBindingId ?? dto.bindingId,
     history: dto.history.map(parameterHistoryEntryFromDto)
   };
 }

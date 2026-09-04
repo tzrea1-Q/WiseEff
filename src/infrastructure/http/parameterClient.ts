@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type {
   ApplyParameterImportBatchInput,
   ChangeRequestListQuery,
@@ -14,12 +16,10 @@ import { parseContractDto } from "./parseContractDto";
 import {
   parameterChangeRequestListResponseSchema,
   parameterChangeRequestResponseSchema,
-  parameterDraftListResponseSchema,
-  parameterDraftResponseSchema,
-  parameterHistoryResponseSchema,
+  parameterDraftDtoSchema,
+  parameterHistoryEntryDtoSchema,
   parameterImportBatchResponseSchema,
-  parameterListResponseSchema,
-  parameterResponseSchema,
+  parameterRecordDtoSchema,
   parameterSubmissionRoundListResponseSchema,
   parameterSubmissionRoundResponseSchema,
   projectListResponseSchema
@@ -48,6 +48,21 @@ type ItemEnvelope<T> = { item: T };
 type OkEnvelope = { ok: true };
 
 type ApiClient = ReturnType<typeof createApiClient>;
+
+const canonicalPinFields = {
+  bindingId: z.string().optional(),
+  effectiveRevisionId: z.string().optional(),
+  currentValueId: z.string().optional()
+};
+
+const workbenchParameterRecordSchema = parameterRecordDtoSchema.extend(canonicalPinFields);
+const workbenchHistoryEntrySchema = parameterHistoryEntryDtoSchema.extend(canonicalPinFields);
+const workbenchDraftSchema = parameterDraftDtoSchema.extend(canonicalPinFields);
+const workbenchParameterListSchema = z.object({ items: z.array(workbenchParameterRecordSchema) });
+const workbenchParameterResponseSchema = z.object({ item: workbenchParameterRecordSchema });
+const workbenchHistoryResponseSchema = z.object({ items: z.array(workbenchHistoryEntrySchema) });
+const workbenchDraftListSchema = z.object({ items: z.array(workbenchDraftSchema) });
+const workbenchDraftResponseSchema = z.object({ item: workbenchDraftSchema });
 
 const changeRequestStatusToDto: Record<NonNullable<ChangeRequestListQuery["status"]>[number], string> = {
   硬件Committer检视: "hardware_review",
@@ -134,7 +149,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     },
     async listParameters(query?: ParameterListQuery) {
       const response = parseContractDto(
-        parameterListResponseSchema,
+        workbenchParameterListSchema,
         await apiClient.get<ItemsEnvelope<ParameterRecordDto>>(buildParametersPath(query)),
         "ParameterListResponse"
       );
@@ -143,7 +158,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     async getParameter(parameterId: string) {
       try {
         const response = parseContractDto(
-          parameterResponseSchema,
+          workbenchParameterResponseSchema,
           await apiClient.get<ItemEnvelope<ParameterRecordDto>>(
             `/api/v1/parameters/${encodeURIComponent(parameterId)}`
           ),
@@ -173,7 +188,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     },
     async listParameterHistory(parameterId: string) {
       const response = parseContractDto(
-        parameterHistoryResponseSchema,
+        workbenchHistoryResponseSchema,
         await apiClient.get<ItemsEnvelope<ParameterHistoryEntryDto>>(
           `/api/v1/parameters/${encodeURIComponent(parameterId)}/history`
         ),
@@ -183,7 +198,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     },
     async listDrafts(projectId?: string) {
       const response = parseContractDto(
-        parameterDraftListResponseSchema,
+        workbenchDraftListSchema,
         await apiClient.get<ItemsEnvelope<ParameterDraftDto>>(buildDraftsPath(projectId)),
         "ParameterDraftListResponse"
       );
@@ -191,7 +206,7 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     },
     async saveDraft(input) {
       const response = parseContractDto(
-        parameterDraftResponseSchema,
+        workbenchDraftResponseSchema,
         await apiClient.post<ItemEnvelope<ParameterDraftDto>>("/api/v1/parameter-drafts", input),
         "ParameterDraftResponse"
       );
