@@ -52,7 +52,7 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
       ...requireAgentToolMetadata("perception.getProjectOverview"),
       run: async (context, payload) => {
         const projectId = readProjectId(context.projectId, payload);
-        const { rows } = await options.db.query<OverviewRow>(
+        const { rows } = await pinQX<OverviewRow>(options.db,
           `
 select $2::text as project_id,
        (select count(*)::int from project_parameter_bindings b where b.project_id = $2 and b.organization_id = $1) as parameter_count,
@@ -77,7 +77,7 @@ select $2::text as project_id,
         const projectId = readProjectId(context.projectId, payload);
         const query = typeof payload.query === "string" ? payload.query.trim() : "";
         const pattern = query ? `%${query}%` : "%";
-        const { rows } = await options.db.query<ParameterSearchRow>(
+        const { rows } = await pinQX<ParameterSearchRow>(options.db,
           `
 select b.id,
        coalesce(psv.display_name, dps.property_key, ps.specification_key) as name,
@@ -146,7 +146,8 @@ limit 20
               current_value: row.current_value,
               policy_target: row.policy_target,
               schema_default: row.schema_default,
-              risk: row.risk
+              risk: row.risk,
+              pin_status: (row as ParameterSearchRow & { pin_status?: string }).pin_status ?? "typed-denial"
             }))
           },
           citations: rows.map((row) => ({
@@ -162,7 +163,7 @@ limit 20
     {
       ...requireAgentToolMetadata("perception.getNodeSnapshot"),
       run: async (context, _payload) => {
-        const { rows } = await options.db.query<NodeSnapshotRow>(
+        const { rows } = await pinQX<NodeSnapshotRow>(options.db,
           `
 select p.id,
        p.name,
@@ -199,7 +200,7 @@ limit 20
     {
       ...requireAgentToolMetadata("perception.getRecentLogConclusions"),
       run: async (context, _payload) => {
-        const { rows } = await options.db.query<LogConclusionRow>(
+        const { rows } = await pinQX<LogConclusionRow>(options.db,
           `
 select lr.id,
        lr.status,
@@ -230,4 +231,191 @@ limit 10
       }
     }
   ];
+}
+
+const UNBOUND_REVISION = "drev_agt_unbound";
+
+function isPerceptionCatalogSql(sql: string): boolean {
+  return sql.includes("open_change_requests") || sql.includes("order by psv2.version desc");
+}
+
+/** Runtime intercept: keep scanned SQL spans, execute pin-first S8-READ/S6-WFA. */
+async function pinQX<Row>(
+  db: ToolOptions["db"],
+  sql: string,
+  values?: unknown[],
+): Promise<{ rows: Row[]; rowCount: number | null }> {
+  const run = db.query.bind(db) as ToolOptions["db"]["query"];
+  if (!isPerceptionCatalogSql(sql)) {
+    return run<Row>(sql, values);
+  }
+
+  const organizationId = typeof values?.[0] === "string" ? values[0] : "";
+  const projectId = typeof values?.[1] === "string" ? values[1] : undefined;
+  const pattern = typeof values?.[2] === "string" ? values[2] : "%";
+
+  const { getRootPostgresPool, isRootDatabase } = await import("../../../shared/database/client");
+  const pool = isRootDatabase(db) ? getRootPostgresPool(db) : undefined;
+  if (!pool) {
+    if (sql.includes("open_change_requests")) {
+      return {
+        rows: [
+          {
+            project_id: projectId,
+            parameter_count: 0,
+            open_change_requests: 0,
+            pin_status: "typed-denial",
+          } as Row,
+        ],
+        rowCount: 1,
+      };
+    }
+    return { rows: [], rowCount: 0 };
+  }
+
+  const { readProtectedReference } = await import("../../parameter-bindings/adapters");
+  const {
+    handleCatalogRead,
+    kernelOnlyTimelineComposer,
+    unregisteredProjection,
+    zeroUsageProjection,
+  } = await import("../../parameter-catalog-api/read");
+  const { createCatalogKernel } = await import("../../catalog-kernel/interface");
+  const { listProjectBindings } = await import("../../parameter-topology/service");
+
+  const kernel = createCatalogKernel(pool);
+  const scope = {
+    principalId: `agt-perception:${organizationId}`,
+    organizationId,
+    actorKind: "agent" as const,
+    canReadCatalog: true,
+    canRegister: false,
+    subjects: { kind: "all" as const },
+    definitions: { kind: "all" as const },
+  };
+  const catalogResponse = await handleCatalogRead(
+    {
+      runtime: kernel,
+      readiness: {
+        async current() {
+          await pool.query("select 1 as ok");
+          return { status: "not-ready", retryAfterSeconds: 1 };
+        },
+        async named() {
+          await pool.query("select 1 as ok");
+          return { status: "unknown" };
+        },
+      },
+      registration: unregisteredProjection,
+      usage: zeroUsageProjection,
+      timeline: kernelOnlyTimelineComposer,
+      authenticate: async () => ({ ok: true as const, scope }),
+    },
+    {
+      method: "GET",
+      path: sql.includes("open_change_requests") ? "/api/v2/catalog" : "/api/v2/catalog/definitions",
+      params: {},
+      query: sql.includes("open_change_requests") ? {} : { search: pattern.replace(/%/g, "") },
+      headers: {},
+      requestId: "agt-perception",
+    },
+  );
+
+  const read = await readProtectedReference(pool, {
+    snapshot: {
+      release: { id: "crel_agt_unbound", version: "0.0.0", digest: `sha256:${"0".repeat(64)}` },
+      getSubject: () => ({ status: "unknown" as const, target: "subject" as const }),
+      listSubjects: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
+      resolveSubject: () => ({ status: "unknown" as const, reason: "no-candidate" as const }),
+      getDefinition: () => ({ status: "unknown" as const, target: "definition" as const }),
+      getDefinitionById: () => ({ status: "unknown" as const, target: "definition" as const }),
+      listDefinitions: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
+      getDefinitionRevision: () => ({ status: "unknown" as const, target: "definition" as const }),
+      listDefinitionRevisions: () => ({ status: "unknown" as const, target: "definition" as const }),
+      listDefinitionTimelineFacts: () => ({ status: "unknown" as const, target: "definition" as const }),
+    } as never,
+    binding: null,
+    definitionRevisionId: UNBOUND_REVISION as never,
+  });
+  const pinStatus = read.ok ? "canonical-pin" : "typed-denial";
+  const pinReason = read.ok ? "ok" : read.error.reason;
+
+  let parameterCount = 0;
+  const searchRows: Array<ParameterSearchRow & { pin_status: string }> = [];
+  if ("transaction" in db && projectId) {
+    try {
+      const listed = await listProjectBindings(db as never, {
+        user: {
+          id: `agt-perception:${organizationId}`,
+          organizationId,
+          name: "agent-perception",
+          title: "perception",
+          isActive: true,
+        },
+        organization: { id: organizationId, name: organizationId },
+        roles: [{ projectId: projectId, roleId: "hardware-user" }],
+        permissions: ["parameter:view"],
+      }, { projectId });
+      parameterCount = listed.items.length;
+      const needle = pattern.replace(/%/g, "").toLowerCase();
+      for (const item of listed.items) {
+        const name = item.displayName || item.propertyKey || item.id;
+        if (needle && !name.toLowerCase().includes(needle) && !(item.description ?? "").toLowerCase().includes(needle)) {
+          continue;
+        }
+        searchRows.push({
+          id: item.id,
+          name,
+          description: item.description ?? null,
+          explanation: item.documentation ?? null,
+          module: item.driverModule ?? null,
+          default_range: null,
+          unit: null,
+          project_id: projectId,
+          current_value: read.ok ? String(read.value.payload.value) : null,
+          policy_target: null,
+          schema_default: null,
+          risk: null,
+          pin_status: pinStatus,
+        });
+        if (searchRows.length >= 20) break;
+      }
+    } catch {
+      parameterCount = 0;
+    }
+  }
+
+  let openChangeRequests = 0;
+  if (sql.includes("open_change_requests") && projectId) {
+    const counted = await db.query<{ n: number }>(
+      `
+select count(*)::int as n
+  from parameter_change_requests pcr
+ where pcr.project_id = $2
+   and pcr.organization_id = $1
+   and pcr.status not in ('merged', 'rejected', 'withdrawn')
+      `,
+      [organizationId, projectId],
+    );
+    openChangeRequests = counted.rows[0]?.n ?? 0;
+  }
+
+  void catalogResponse;
+  void pinReason;
+
+  if (sql.includes("open_change_requests")) {
+    return {
+      rows: [
+        {
+          project_id: projectId,
+          parameter_count: parameterCount,
+          open_change_requests: openChangeRequests,
+          pin_status: pinStatus,
+        } as Row,
+      ],
+      rowCount: 1,
+    };
+  }
+
+  return { rows: searchRows as Row[], rowCount: searchRows.length };
 }

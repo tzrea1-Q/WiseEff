@@ -43,39 +43,36 @@ describe("createPerceptionTools", () => {
     const result = await tool.run(adminContext as any, { projectId: "p1" });
     expect(result.summary).toContain("p1");
     expect(result.citations[0]?.type).toBe("parameter");
+    expect((result.data as { pin_status?: string }).pin_status).toBe("typed-denial");
   });
 
-  it("searchParameters returns description and explanation for grounding", async () => {
+  it("searchParameters refuses latest-version Catalog fallback without an exact pin", async () => {
+    const captured: string[] = [];
     const searchDb = {
-      query: async <Row,>(_text: string, _values?: unknown[]) =>
-        ({
-          rows: [
-            {
-              id: "battery-temp-target",
-              name: "battery_temp_target_c",
-              description: "电池快充过程中的目标温度区间。",
-              explanation: "配合散热策略控制电芯温度。",
-              module: "Battery Safety",
-              default_range: "30 - 42",
-              unit: "°C",
-              project_id: "aurora",
-              current_value: "38",
-              policy_target: "35",
-              schema_default: "36",
-              risk: "Medium"
-            }
-          ] as Row[],
-          rowCount: 1
-        }) as { rows: Row[]; rowCount: number | null }
+      query: async <Row,>(text: string, _values?: unknown[]) => {
+        captured.push(text);
+        return { rows: [] as Row[], rowCount: 0 };
+      }
     };
     const tool = createPerceptionTools({ db: searchDb }).find((t) => t.name === "perception.searchParameters")!;
     const result = await tool.run(adminContext as any, { projectId: "aurora", query: "battery_temp_target_c" });
-    const parameter = (result.data as { parameters?: Array<Record<string, unknown>> }).parameters?.[0];
-    expect(parameter?.description).toBe("电池快充过程中的目标温度区间。");
-    expect(parameter?.explanation).toBe("配合散热策略控制电芯温度。");
-    expect(parameter?.policy_target).toBe("35");
-    expect(parameter?.schema_default).toBe("36");
-    expect(result.citations[0]?.snippet).toContain("电池快充");
+    const parameters = (result.data as { parameters?: Array<Record<string, unknown>> }).parameters ?? [];
+    expect(parameters).toEqual([]);
+    expect(captured.join("\n")).not.toMatch(/order by psv2\.version desc/i);
+    expect(result.summary).toContain("No parameters found");
+  });
+
+  it("does not execute latest-version Catalog SQL for project overview", async () => {
+    const captured: string[] = [];
+    const overviewDb = {
+      query: async <Row,>(text: string, _values?: unknown[]) => {
+        captured.push(text);
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+    };
+    const tool = createPerceptionTools({ db: overviewDb }).find((t) => t.name === "perception.getProjectOverview")!;
+    await tool.run(adminContext as any, { projectId: "p1" });
+    expect(captured).toEqual([]);
   });
 
   it("getNodeSnapshot queries by organization only", async () => {
