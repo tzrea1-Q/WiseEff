@@ -145,7 +145,7 @@
 
 ## Canonical Parameter definitions 替换登记（#668）
 
-以下 requirement ID 已在 `e2e/acceptance/requirements.ts` 以 `required=false` 正式登记，并由 #668 规格预留。当前状态均为 `future`：metadata-only 登记不创建 Playwright stub，也不声称可执行覆盖。G0 后 S9-BRW 是唯一 registry-transition owner；只有三个命名 acceptance 文件存在且真实 candidate test 无 skip 运行后，才可把全部 requirement 切为 blocking、operation 切为 `automated`。canonical launch 没有 conditional 可选项。
+以下 requirement ID 已在 `e2e/acceptance/requirements.ts` 以 `required=false` 正式登记，并由 #668 规格预留。三个命名 acceptance 文件已经存在，每个 ID 都有 `@acceptance-planned` / `@operation-planned` stub，每个 operation 的 `specFiles` 指向该 exact owner 文件。CatalogPage 尚未挂载（`/parameter-admin/specs` 仍渲染 `ParameterAdminNextPage`），因此这些行保持 `future`，planned skip 不是 blocking 的 browser-real 覆盖。父会话挂载 CatalogPage 后，S9-BRW（或后续）必须把全部 requirement 切为 blocking、operation 切为 `automated`，并无 skip 重跑。canonical launch 没有 conditional 可选项。
 
 | Requirement ID | 状态 | 角色 | 路由/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Acceptance owner |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -165,7 +165,7 @@
 | `PCAT-UI-14` | future | authorized reader | 单页/list/detail/timeline/queue/dialog 无重叠、溢出、隐藏动作或焦点问题 | 三视口 | critical API success；DB/audit 明确 N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-UI-15` | future | Org Admin、Platform Admin、ordinary/Agent negatives | 真实导航、搜索、详情、timeline、queue、registration、proposal、conflict、deep link、keyboard/focus | 三视口 | operation request ledger；final DB predicates；每个 mutation/refusal audit；checkpoint screenshots + runtime/trace/report pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 
-职责文件固定为：`e2e/acceptance/parameter-catalog.acceptance.spec.ts`（read/detail/timeline/state/responsive）、`e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`（Registration/Placement、Review、Proposal）、`e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`（concurrency、role spoof、legacy、mock parity、fail closed）。15 个 operation 也已在 `e2e/acceptance/operationMatrix.ts` 以 `coverage=future`、完整 assertions、空 `specFiles` 登记，并在 `deferralReason` 写明 exact future file/owner；`npm run acceptance:operations` 从该 source 生成英文矩阵，不产生 missing-file reference。S9-BRW 切为 blocking 后，`npm run acceptance:browser` 必须在 owned real candidate runtime 上无 skip 运行全部 markers；`npm run acceptance:evidence` 必须校验同一 full run/source/runtime 的角色、路由、断言、API、DB、audit、截图/artifacts、trace/report 与 replay。当前 metadata checks 不产生 #668 browser 或 release evidence。
+职责文件固定为：`e2e/acceptance/parameter-catalog.acceptance.spec.ts`（read/detail/timeline/state/responsive）、`e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`（Registration/Placement、Review、Proposal）、`e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`（concurrency、role spoof、legacy、mock parity、fail closed）。15 个 operation 也已在 `e2e/acceptance/operationMatrix.ts` 以 `coverage=future`、完整 assertions、exact owner `specFiles` 登记，并在 `deferralReason` 写明 mount-blocked owner；`npm run acceptance:operations` 从该 source 生成英文矩阵。CatalogPage 挂载且 S9-BRW 切为 blocking 后，`npm run acceptance:browser` 必须在 owned real candidate runtime 上无 skip 运行全部 markers；`npm run acceptance:evidence` 必须校验同一 full run/source/runtime 的角色、路由、断言、API、DB、audit、截图/artifacts、trace/report 与 replay。当前 planned stub 与 metadata checks 不产生 #668 browser 或 release evidence。
 
 ### 旧 operation disposition
 

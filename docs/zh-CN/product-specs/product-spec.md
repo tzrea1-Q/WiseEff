@@ -66,6 +66,7 @@ MVP 成功标准：
 
 - 项目参数列表、筛选、搜索、排序和详情查看。
 - 参数定义与项目参数值分离。
+- 组织 Parameter definitions 只有一个 `/parameter-admin/specs` 页面：列表、不透明深链、详情、timeline、同页 Review Queue、Registration/Placement 与 Proposal。没有 Effective definitions 或 Governance history 对等入口，也不再增加第二条 catalog 路由。冲突须保留输入并重确认；遗留书签给出精确 mapped/gone/conflict/not-found，不做 Archive 推断；Agent 只读；API 与 mock 适配器状态一致；三视口为 1440x900、768x1024、390x844。浏览器验收 ID 为 `PCAT-UI-01` 到 `PCAT-UI-15`。
 - 参数草稿支持多条变更批量提交。
 - 变更请求进入固定审批流：提交、硬件检视、软件检视、软件合入、已合入或已打回。
 - 高风险参数必须明确展示风险、影响范围、原因和审阅结论。
