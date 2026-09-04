@@ -38,6 +38,21 @@ export type UploadParameterFileInput = {
   contentBase64: string;
 };
 
+export type ParameterFileProtectedReferencePin = {
+  kind: "canonical-pin";
+  bindingId: string;
+  definitionRevisionId?: string;
+  currentValueId?: string;
+};
+
+export type ParameterFileWritebackSourcePin = {
+  kind: "source-writeback";
+  sourceRef: string;
+  configRevisionId?: string;
+  sourceFileName?: string;
+  sourceNodePath?: string;
+};
+
 export type FileSyncSummary = {
   draftsCreated: number;
   unchanged: number;
@@ -45,6 +60,8 @@ export type FileSyncSummary = {
   skipped: boolean;
   /** Count of sync keys matched via (name, module) fallback rather than source_* bind. */
   identityFallbackUses?: number;
+  protectedReferencePin?: ParameterFileProtectedReferencePin;
+  writebackSourcePin?: ParameterFileWritebackSourcePin;
 };
 
 export type ParameterFileConflictStatus = "open" | "resolved_file" | "resolved_ui";

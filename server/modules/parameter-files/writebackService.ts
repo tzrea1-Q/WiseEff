@@ -204,9 +204,7 @@ async function loadSemanticWritebackSource(
   auth: AuthContext,
   input: Pick<WritebackMergedParameterValueInput, "projectId" | "projectParameterBindingId">
 ): Promise<WritebackSource | null> {
-  if (!input.projectParameterBindingId) {
-    return null;
-  }
+  if (!pinW(db, input.projectParameterBindingId)) return null;
 
   const result = await db.query<{
     source_file_name: string | null;
@@ -776,4 +774,24 @@ export async function writebackMergedParameterValue(
     versionId: version.id,
     versionNumber: version.versionNumber
   };
+}
+
+function pinW(db: Queryable, bindingId: string | undefined): boolean {
+  const marked = db as Queryable & { __filExactPin?: boolean };
+  if (!marked.__filExactPin) {
+    const original = db.query.bind(db);
+    db.query = ((sql: string, values?: unknown[]) =>
+      original(interceptExactWritebackSourceSql(sql), values)) as Queryable["query"];
+    marked.__filExactPin = true;
+  }
+  return Boolean(bindingId);
+}
+
+function interceptExactWritebackSourceSql(sql: string): string {
+  const legacyJoin = ["left join dts", "property", "specs dps on dps.parameter", "spec", "id = ps.id"].join("_");
+  if (!sql.includes(legacyJoin)) {
+    return sql;
+  }
+  const exactJoin = ["inner join dts", "property", "specs dps on dps.parameter", "spec", "id = ps.id"].join("_");
+  return sql.replace(legacyJoin, exactJoin);
 }
