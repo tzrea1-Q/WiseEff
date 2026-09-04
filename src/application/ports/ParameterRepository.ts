@@ -77,6 +77,9 @@ export type SubmitParameterChangesInput = {
         editSubjectKind?: "binding";
         projectParameterBindingId: string;
         parameterSpecId: string;
+        bindingId?: string;
+        effectiveRevisionId?: string;
+        currentValueId?: string;
         action?: "set" | "delete";
         targetValue: string;
         reason: string;
@@ -96,6 +99,12 @@ export type SubmitParameterChangesInput = {
     softwareCommitterId: string;
     softwareUserId: string;
   };
+};
+
+export type CanonicalParameterPin = {
+  bindingId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
 };
 
 export type WorkflowAssigneeCandidate = { id: string; name: string };
@@ -216,11 +225,11 @@ export type MoveParameterModuleInput = {
 export interface ParameterRepository {
   listProjects(): Promise<ProjectSummary[]>;
   listParameterModules(): Promise<ParameterModuleNode[]>;
-  listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]>;
-  getParameter(parameterId: string): Promise<ParameterRecord>;
-  listParameterHistory(parameterId: string): Promise<ParameterHistoryEntry[]>;
-  listDrafts(projectId?: string): Promise<ParameterDraftDto[]>;
-  saveDraft(input: SaveParameterDraftInput): Promise<ParameterDraftDto>;
+  listParameters(query?: ParameterListQuery): Promise<Array<ParameterRecord & CanonicalParameterPin>>;
+  getParameter(parameterId: string): Promise<ParameterRecord & CanonicalParameterPin>;
+  listParameterHistory(parameterId: string): Promise<Array<ParameterHistoryEntry & CanonicalParameterPin>>;
+  listDrafts(projectId?: string): Promise<Array<ParameterDraftDto & CanonicalParameterPin>>;
+  saveDraft(input: SaveParameterDraftInput): Promise<ParameterDraftDto & CanonicalParameterPin>;
   deleteDraft(draftId: string): Promise<void>;
   listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]>;
   listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]>;

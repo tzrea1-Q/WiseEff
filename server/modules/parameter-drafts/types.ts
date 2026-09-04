@@ -29,6 +29,12 @@ export type ParameterDraftDto = {
   candidateConfigRevisionId?: string;
   /** Spec id for topology-aware submit / tray hydration. */
   parameterSpecId?: string;
+  /** Canonical Binding id; same as projectParameterBindingId when present. */
+  bindingId?: string;
+  /** Pinned binding revision, not an implicit latest spec version. */
+  effectiveRevisionId?: string;
+  /** Canonical current ProjectValue id when the S6-WFA pin is present. */
+  currentValueId?: string;
   /** Property / parameter display name for history surfaces. */
   name?: string;
   module?: string;

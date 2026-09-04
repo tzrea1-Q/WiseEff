@@ -162,6 +162,59 @@ describe("createHttpParameterRepository", () => {
     expect(parameters).toEqual([{ ...parameterDto, risk: "High", valueKind: "scalar", history: [] }]);
   });
 
+  it("preserves canonical Binding, revision, and current value pins from the workbench API", async () => {
+    const pinned = {
+      ...parameterDto,
+      id: "binding-1",
+      bindingId: "binding-1",
+      projectParameterBindingId: "binding-1",
+      effectiveRevisionId: "bpr-1",
+      currentValueId: "pval-1",
+      history: [
+        {
+          ...historyDto,
+          bindingId: "binding-1",
+          effectiveRevisionId: "bpr-1",
+          currentValueId: "pval-1"
+        }
+      ]
+    };
+    const pinnedDraft = {
+      ...draftDto,
+      parameterId: "binding-1",
+      projectParameterBindingId: "binding-1",
+      bindingId: "binding-1",
+      effectiveRevisionId: "bpr-1",
+      currentValueId: "pval-1"
+    };
+    const fetchMock = fetchQueue({ items: [pinned] }, { items: [pinned.history[0]] }, { items: [pinnedDraft] });
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(repository.listParameters({ projectId: "aurora" })).resolves.toMatchObject([
+      {
+        bindingId: "binding-1",
+        projectParameterBindingId: "binding-1",
+        effectiveRevisionId: "bpr-1",
+        currentValueId: "pval-1"
+      }
+    ]);
+    await expect(repository.listParameterHistory("binding-1")).resolves.toMatchObject([
+      {
+        bindingId: "binding-1",
+        effectiveRevisionId: "bpr-1",
+        currentValueId: "pval-1"
+      }
+    ]);
+    await expect(repository.listDrafts("aurora")).resolves.toMatchObject([
+      {
+        bindingId: "binding-1",
+        projectParameterBindingId: "binding-1",
+        effectiveRevisionId: "bpr-1",
+        currentValueId: "pval-1"
+      }
+    ]);
+  });
+
   it("unwraps list and single item response envelopes", async () => {
     const project: ProjectDto = { id: "aurora", name: "Aurora EV Platform", code: "AUR" };
     const fetchMock = fetchQueue(

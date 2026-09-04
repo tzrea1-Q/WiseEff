@@ -62,6 +62,50 @@ describe("parameter http dto mappers", () => {
     });
   });
 
+  it("carries canonical Binding, revision, and current value pins", () => {
+    const dto: ParameterRecordDto = {
+      id: "binding-1",
+      name: "Fast charge current",
+      description: "Peak fast-charge current limit.",
+      explanation: "Caps charge current during thermal-sensitive phases.",
+      configFormat: "integer",
+      module: "Charging",
+      projectId: "aurora",
+      currentValue: "2800",
+      recommendedValue: "3000",
+      range: "0-3500",
+      unit: "mA",
+      risk: "High",
+      bindingId: "binding-1",
+      projectParameterBindingId: "binding-1",
+      effectiveRevisionId: "bpr-1",
+      currentValueId: "pval-1",
+      updatedAt: "2026-05-25 10:00",
+      updatedAtTs: "2026-05-25T02:00:00.000Z",
+      history: [
+        {
+          version: "v1",
+          value: "2800",
+          changedAt: "2026-05-24 09:00",
+          changedBy: "Xu Yun",
+          requestId: "PCR-1",
+          bindingId: "binding-1",
+          effectiveRevisionId: "bpr-1",
+          currentValueId: "pval-1"
+        }
+      ]
+    };
+
+    const mapped = parameterRecordFromDto(dto);
+    expect(mapped.bindingId).toBe("binding-1");
+    expect(mapped.projectParameterBindingId).toBe("binding-1");
+    expect(mapped.effectiveRevisionId).toBe("bpr-1");
+    expect(mapped.currentValueId).toBe("pval-1");
+    expect(mapped.history[0]?.bindingId).toBe("binding-1");
+    expect(mapped.history[0]?.effectiveRevisionId).toBe("bpr-1");
+    expect(mapped.history[0]?.currentValueId).toBe("pval-1");
+  });
+
   it("maps a change request dto to a change request", () => {
     const dto: ChangeRequestDto = {
       id: "PCR-1",
