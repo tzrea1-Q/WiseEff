@@ -525,12 +525,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:2587e0e17118d8f6:995da0da8047db6a",
-      "rule": "legacy-catalog-raw-read",
-      "file": "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:25fc42d11f3f31a9:b202ed70edee6079",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/repository.ts",
@@ -2403,156 +2397,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-route:0826cb9b9cad5ea2:7c6fb08a407ea72f",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:0ceaed2e4f910932:30d658d0ced66cc5",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:11a3b3c02dc109a8",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:6e3ff9e15b496c1e",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:12dc5c304ed39a2d",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:42e2090f3f6568e7",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:a97c50c15922c5d6",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:22a22bbe8683f880:a6bbff2cf6e1e1b2",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/globalSpecActivate.authz.test.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:055826a178e4d6a6",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:2252fa0a20043a62",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:375dbf35994b829f",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:3c4a22c946acec74",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:60c25d1ccd6abb7b",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:6e8577b33bb00951",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:b5fc11626f34de01",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:b6e579d58de3996b",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:b7e1001711fa0e1a",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:baf0ec416dc888bf",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:d3d8399df04f7084",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:e508984de2fb4b64",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:358f1f395c938ea2",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:3920c30c49a8ca6b",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:9ebb19645c0544a4",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:d40d844ad5f09015",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:6cfc4a907f0064d3:e9e6d63c72088e60",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-route:803f0803153eced9:19d801a756b9a93c",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-specs/specLifecycle.integration.test.ts",
@@ -2574,48 +2418,6 @@
       "id": "S12-CGH:legacy-catalog-route:803f0803153eced9:cf5761c83279f689",
       "rule": "legacy-catalog-route",
       "file": "server/modules/parameter-specs/specLifecycle.integration.test.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:bd9a4e7e0b43eccd:3b6e2410a9b4966a",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:c4e18d1fec6d97c7:2fcccd0105f2e1e2",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:68a4afefb8045bb5",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:b2c2fd6e3dd9b39c",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:f76ad508323ff8b1",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:e5f6b733bda8fa3e:4884128b2f4cedc8",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/globalSpecActivate.authz.test.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-route:e5f6b733bda8fa3e:d78f0374cd2627d1",
-      "rule": "legacy-catalog-route",
-      "file": "server/modules/parameter-specs/globalSpecActivate.authz.test.ts",
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
@@ -4479,12 +4281,6 @@
       "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-table-name:c768754fc3e79bfa:33e324a411d670a4",
-      "rule": "legacy-catalog-table-name",
-      "file": "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts",
-      "reason": "Legacy Catalog table identity remains embedded outside an explicit SQL statement."
-    },
-    {
       "id": "S12-CGH:legacy-effective-governance-contract:0352ce43c12c5ed2:17d613bc10baedc8",
       "rule": "legacy-effective-governance-contract",
       "file": "server/modules/parameter-specs/populatedUpgrade.integration.test.ts",
@@ -4869,12 +4665,6 @@
       "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
     },
     {
-      "id": "S12-CGH:legacy-effective-governance-contract:e81b0eb825d1cc13:8cbcdcf88cf80d88",
-      "rule": "legacy-effective-governance-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:008fcb7f58bc08b1:4a4d4450be56fcec",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayMaterialize.ts",
@@ -4929,24 +4719,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:0b95e32575ed9172",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:a581b093e2f383ca",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:ef6a7f0e5b316658",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:098c7d50f354c0fa:0d36f339f80abe27",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.test.ts",
@@ -4956,12 +4728,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:0a38899927e2298c:3b2a7d097b4bacb4",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0b8d35321fd290cc:59a782f714e9d5cd",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -4980,24 +4746,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:0eb9942cc73ee888:78117daa54cea96d",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:0d57f00aa1d668a5",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:1037665af17b5288",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:414f19f3edbf04ab",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5028,12 +4776,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:11f13d79cb87ddbc:aa783693e1629342",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.test.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:125089f203605422:ce11ba0c5bbe0345",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5103,12 +4845,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:2030e9ea3a4fec93:f20800e8160cc26c",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:21907d9327149c8a:925e93a5b73bbfe4",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
@@ -5145,12 +4881,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:29b969275625b83f:ddda728e0fafb03a",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:2a1b29db7bcff257:88936cea1a1a4be2",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
@@ -5169,12 +4899,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:3076e3613f4945ef:b12b63b4bc991927",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:32e54fd0dbb4eef7:7efc5d9dcd24873c",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayMaterialize.ts",
@@ -5184,12 +4908,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:33532e277d999929:b591023a4f9a26dc",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:33799ab41c31caac:47dd5be384226349",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5214,18 +4932,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:365d2e2f91ebebad:39528386935b0c50",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:383f0ffd4588fb04:f920249f4c2c2b5d",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:38992a1a67a37b48:57f79ad4b2a4403d",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5310,12 +5016,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:44e22f09833fcae4:c16f47561ad6ef6b",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:459b7e723a6183f4:5dba94db1d6e99a0",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5607,21 +5307,9 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:59197a4944b492dd:6f99b72e2aa5eea2",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:59a7958aba9d3f1d:d2c4d66e39b0883e",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:5a540956913e595d:be6ba28c4ad15305",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5664,12 +5352,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:6206ff888a997be7:469094fb95a4ec4c",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:6215b018edf11763:ee9a945c83142678",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -5865,12 +5547,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:7f8a0105451ce000:8a438d2d99a79cf3",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:7ff99e9d760f9189:4e5458e091863df4",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaPromotion.test.ts",
@@ -5898,12 +5574,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:86ae61aa71bdd211:d4c7813bb5c0938d",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:88539b48d1af6b06:8ec0ebaa671daf4d",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6027,12 +5697,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:93dca0cf3ad514ad:b393cc4fbe1b8f6a",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:96262c7c0f39eb1f:9beb99f04dfbda06",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.ts",
@@ -6093,12 +5757,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:9f3b14275823711f:ea3c61fe0512dba6",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:9fc628bf13b19dc1:bccb5e6075d1ef05",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayService.test.ts",
@@ -6144,12 +5802,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:a4953b74206d0342:be7495ae284f0a6e",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaPromotion.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:a5d5f7fa1d32614d:21ecde73c0c36332",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6243,12 +5895,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:b2e31c02a19a283c:5b2be56489ad3d91",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:b46352c9c4cdf189:cae8ce003f842d48",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayMaterialize.platform.test.ts",
@@ -6276,12 +5922,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:b5b1d0d2511eeba2:a786baa503d3e606",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaPromotion.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:b937336fc90d6fcc:1959002ded649613",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6333,21 +5973,9 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:bdc4d9fca645bfcc:dcdc8485bb5d5d22",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:be2d912b93fe80e9:c4b8685620bbc053",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:c05119f88460a807:fb6e25688a820242",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6366,12 +5994,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:c12a79d72b535078:6eb53dd3cfcb2d2c",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/schemaRegistryCache.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:c18408f8a2f0d034:c47ffa23cb859067",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6501,12 +6123,6 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:d6764c9d85da594f:c2b0188224e8228c",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:d67dfbb0374b4157:077f259d43ae129a",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
@@ -6585,27 +6201,9 @@
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:dc9beb83f0ff1976:bf0f6814889bd84c",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:dd52bfa3cc8de91b:fff670f1a7dafcdd",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
       "id": "S12-CGH:legacy-overlay-catalog-contract:df7e2c34f56b042b:59847a93b4ccd27c",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/driverSchemaOverlayRepository.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:dff770d853e1561c:b775fad5fadbda57",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {
@@ -6720,12 +6318,6 @@
       "id": "S12-CGH:legacy-overlay-catalog-contract:f8edc638ecabd3c7:b5f248f807134f54",
       "rule": "legacy-overlay-catalog-contract",
       "file": "server/modules/parameter-specs/coverageClaim.ts",
-      "reason": "Legacy driver-schema overlay authoring contract remains reachable."
-    },
-    {
-      "id": "S12-CGH:legacy-overlay-catalog-contract:fa05a0fb85205330:41c5351d86651f77",
-      "rule": "legacy-overlay-catalog-contract",
-      "file": "server/modules/parameter-specs/routes.ts",
       "reason": "Legacy driver-schema overlay authoring contract remains reachable."
     },
     {

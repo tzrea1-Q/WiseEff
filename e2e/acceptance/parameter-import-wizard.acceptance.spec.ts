@@ -184,16 +184,6 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
         [organizationId, projectId, workflowStartedAt]
       );
       const batch = batchResult.rows[0] ?? null;
-      const head = await client.query<{ raw_value: string | null }>(
-        `
-        select br.raw_value
-        from project_parameter_binding_revisions br
-        where br.binding_id = $1
-        order by br.created_at desc
-        limit 1
-        `,
-        [binding.bindingId]
-      );
       const history = await client.query<{ version: number; value: string }>(
         `
         select version, value
@@ -218,13 +208,20 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       return {
         batch,
         audit,
-        rawValue: head.rows[0]?.raw_value ?? null,
         history: history.rows[0] ?? null
       };
     });
     expect(applied.batch).toMatchObject({ status: "applied" });
     expect(applied.audit).toBeTruthy();
-    expect(applied.rawValue).toBe(importedCurrentValue);
+    const relisted = await request.get(apiRoute(`/api/v1/parameters?projectId=${projectId}&limit=500`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(relisted.ok(), await relisted.text()).toBe(true);
+    const relistedBody = (await relisted.json()) as {
+      items: Array<{ id: string; currentValue: string }>;
+    };
+    const appliedBinding = relistedBody.items.find((item) => item.id === binding.bindingId);
+    expect(appliedBinding?.currentValue).toBe(importedCurrentValue);
     expect(applied.history).toMatchObject({ value: importedCurrentValue });
 
     await recordOperationEvidence({
@@ -242,10 +239,10 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           rowCount: applied.batch ? 1 : 0
         },
         {
-          table: "project_parameter_binding_revisions",
+          table: "parameter_history_entries",
           predicate: `bindingId=${binding.bindingId}`,
-          observed: `rawValue=${applied.rawValue}`,
-          rowCount: applied.rawValue ? 1 : 0
+          observed: `value=${applied.history?.value ?? ""}`,
+          rowCount: applied.history ? 1 : 0
         }
       ],
       audit: [

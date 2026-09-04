@@ -1,6 +1,8 @@
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
+import { createParameterCatalogClient } from "./parameterCatalogClient";
+import type { CatalogListQuery } from "./parameterCatalogDtos";
 
 export type ParameterModuleDto = FlatModuleNode;
 
@@ -69,6 +71,7 @@ type ItemEnvelope<T> = { item: T };
 type ApiClient = ReturnType<typeof createApiClient>;
 
 export function createParameterAdminClient(client: ApiClient = createDefaultApiClient()) {
+  const catalogClient = createParameterCatalogClient();
   return {
     async listProjects() {
       const response = await client.get<ItemsEnvelope<ProjectAdminSummaryDto>>("/api/v1/parameters/admin/projects");
@@ -116,7 +119,14 @@ export function createParameterAdminClient(client: ApiClient = createDefaultApiC
     },
     async deleteModule(moduleId: string) {
       await client.delete<null>(`/api/v1/parameter-modules/${encodeURIComponent(moduleId)}`);
-    }
+    },
+    getCatalogDocument: () => catalogClient.getCatalog(),
+    listCatalogSubjects: (query?: CatalogListQuery) => catalogClient.listSubjects(query),
+    listCatalogDefinitions: (query?: CatalogListQuery) => catalogClient.listDefinitions(query),
+    getCatalogDefinition: (definitionId: string) => catalogClient.getDefinition(definitionId),
+    getCatalogLegacyIdentifier: (legacyType: string, legacyId: string) =>
+      catalogClient.getLegacyIdentifier(legacyType, legacyId),
+    invokeRetiredLegacyWrite: () => catalogClient.invokeRetiredLegacyRoute("parameterSpecs.create")
   };
 }
 

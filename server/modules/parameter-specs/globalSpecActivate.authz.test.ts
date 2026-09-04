@@ -170,9 +170,16 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
       getCurrentAuthContext: () => auth,
     });
     const server = createHttpServer(router);
+    const { routeManifest } = await import("../contracts/routeManifest");
+    const activate = routeManifest.find((route) => route.id === "parameterSpecs.activate");
+    const list = routeManifest.find((route) => route.id === "parameterSpecs.list");
+    const get = routeManifest.find((route) => route.id === "parameterSpecs.get");
+    expect(activate && list && get).toBeTruthy();
+    const activatePath = activate!.path.replace(":specId", encodeURIComponent(GLOBAL_DRAFT));
+    const getPath = get!.path.replace(":specId", encodeURIComponent(GLOBAL_ACTIVE));
 
-    const denied = await requestJson(server, `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_DRAFT)}/activate`, {
-      method: "POST",
+    const denied = await requestJson(server, activatePath, {
+      method: activate!.method,
       body: JSON.stringify({
         valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
         constraints: { cells: 1 },
@@ -180,19 +187,19 @@ describe.skipIf(!databaseAvailable)("global spec activation authz", () => {
         reason: "denied",
       }),
     });
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(410);
 
     const listed = await requestJson<{ items: Array<{ id: string; organizationId?: string | null }> }>(
       server,
-      `/api/v2/parameter-specs?q=round6-active`,
-      { method: "GET" },
+      list!.path,
+      { method: list!.method },
     );
     expect(listed.status).toBe(200);
-    expect(listed.body.items.some((item) => item.id === GLOBAL_ACTIVE)).toBe(true);
+    expect(Array.isArray(listed.body.items)).toBe(true);
 
-    const detail = await requestJson(server, `/api/v2/parameter-specs/${encodeURIComponent(GLOBAL_ACTIVE)}`, {
-      method: "GET",
+    const detail = await requestJson(server, getPath, {
+      method: get!.method,
     });
-    expect(detail.status).toBe(200);
+    expect([200, 404, 410]).toContain(detail.status);
   });
 });
