@@ -223,10 +223,16 @@ export function registerParameterModuleRoutes(
         match: inner.matchRoutePattern.bind(inner),
         patterns: new Set(
           routeManifest
-            .filter((route) => route.id.startsWith("parameterModules."))
+            .filter(
+              (route) =>
+                route.id.startsWith("parameterModules.") && route.method !== "GET",
+            )
             .map((route) => route.path),
         ),
       };
+    }
+    if (request.method === "GET") {
+      return originalHandle(request);
     }
     const pattern = adapter.match(request.method, request.path);
     if (pattern && adapter.patterns.has(pattern)) {

@@ -37,7 +37,7 @@ describe("parameter module HTTP adapter", () => {
     expect(body.error.details.retryable).toBe(false);
   });
 
-  it("returns typed legacy list outcome for eligible module registry reads", async () => {
+  it("does not intercept GET registry, discovery hints, or driver-registry navigation", async () => {
     const router = createRouter();
     registerParameterModuleRoutes(router, {
       getCurrentAuthContext: () =>
@@ -46,12 +46,16 @@ describe("parameter module HTTP adapter", () => {
         }),
     });
     const server = createHttpServer(router);
-    const list = routeManifest.find((route) => route.id === "parameterModules.getRegistry");
-    expect(list).toBeDefined();
-    const response = await requestJson<{ items: unknown[] }>(server, list!.path, {
-      method: list!.method,
-    });
-    expect(response.status).toBe(200);
-    expect(response.body.items).toEqual([]);
+    const reads = ["parameterModules.getRegistry", "parameterModules.discoveryHints", "parameterModules.listDriverRegistry"]
+      .map((id) => routeManifest.find((route) => route.id === id))
+      .filter((route): route is (typeof routeManifest)[number] => Boolean(route));
+    expect(reads).toHaveLength(3);
+    for (const route of reads) {
+      const response = await requestJson<Record<string, unknown>>(server, fillRoutePath(route.path), {
+        method: route.method,
+      });
+      expect(response.status).not.toBe(410);
+      expect(response.body).not.toEqual({ items: [] });
+    }
   });
 });
