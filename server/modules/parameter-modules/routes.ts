@@ -183,4 +183,55 @@ export function registerParameterModuleRoutes(
       return { status: 200, body: result };
     },
   );
+
+  const originalHandle = router.handle.bind(router);
+  let adapter:
+    | {
+        handle: WiseEffRouter["handle"];
+        match: WiseEffRouter["matchRoutePattern"];
+        patterns: ReadonlySet<string>;
+      }
+    | undefined;
+  router.handle = async (request) => {
+    if (!adapter) {
+      const [
+        { registerCatalogLegacyRoutes },
+        routerMod,
+        { routeManifest },
+        { createUserInvocation },
+      ] = await Promise.all([
+        import("../parameter-catalog-api/legacy"),
+        import("../../shared/http/router"),
+        import("../contracts/routeManifest"),
+        import("../auth/trustedInvocation"),
+      ]);
+      const inner = routerMod.createRouter();
+      registerCatalogLegacyRoutes(inner, {
+        catalogReleaseId: "catalog-unready",
+        sunsetHttpDate: "Fri, 31 Dec 2027 00:00:00 GMT",
+        getQueryable: async () => {
+          if (!options.db) {
+            throw new Error("Catalog legacy lookup requires a database");
+          }
+          return options.db as never;
+        },
+        resolveInvocation: async (legacyRequest) =>
+          createUserInvocation(await options.getCurrentAuthContext(legacyRequest)),
+      });
+      adapter = {
+        handle: inner.handle.bind(inner),
+        match: inner.matchRoutePattern.bind(inner),
+        patterns: new Set(
+          routeManifest
+            .filter((route) => route.id.startsWith("parameterModules."))
+            .map((route) => route.path),
+        ),
+      };
+    }
+    const pattern = adapter.match(request.method, request.path);
+    if (pattern && adapter.patterns.has(pattern)) {
+      return adapter.handle(request);
+    }
+    return originalHandle(request);
+  };
 }
