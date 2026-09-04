@@ -145,6 +145,26 @@ describe("acceptance operation matrix", () => {
       "PCAT-GOVERNANCE-JOURNEY-001"
     ];
     const operations = acceptanceOperations.filter((operation) => operation.id.startsWith("PCAT-"));
+    const catalogSpec = "e2e/acceptance/parameter-catalog.acceptance.spec.ts";
+    const governanceSpec = "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts";
+    const negativeSpec = "e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts";
+    const specFilesByIndex = [
+      catalogSpec,
+      catalogSpec,
+      catalogSpec,
+      governanceSpec,
+      catalogSpec,
+      catalogSpec,
+      governanceSpec,
+      catalogSpec,
+      catalogSpec,
+      negativeSpec,
+      negativeSpec,
+      negativeSpec,
+      negativeSpec,
+      catalogSpec,
+      governanceSpec
+    ];
 
     expect(operations.map((operation) => operation.id)).toEqual(expectedIds);
     expect(
@@ -161,7 +181,7 @@ describe("acceptance operation matrix", () => {
       expectedIds.map((_, index) => ({
         coverage: "future",
         acceptanceIds: [`PCAT-UI-${String(index + 1).padStart(2, "0")}`],
-        specFiles: [],
+        specFiles: [specFilesByIndex[index]],
         assertions: ["ui", "api", "db", "audit", "screenshot"],
         hasExactFutureOwner: true
       }))
