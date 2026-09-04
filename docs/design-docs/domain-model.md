@@ -21,6 +21,33 @@ The product model separates prototype display data into durable, auditable busin
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.
 - Agent state separates sessions, messages, tool calls, approvals, and run traces.
 - Audit events connect cross-domain writes through actor, target, action, severity, metadata, and trace ID.
+- Canonical catalog cutover comparison is a closed Release Verification corpus: eleven consumer families contribute non-sampled cases, S10-DCP owns the D01-D09 result schema, and a green report requires zero unexplained differences and zero unqueryable protected references.
+
+## Canonical Parameter Catalog Comparison Corpus
+
+S10-DCP owns the comparison corpus and result schema. S12 consumer families own their production case providers. The corpus is an immutable subordinate evidence artifact of Release Verification, not a user-editable catalog entity.
+
+Provider registration is exactly these eleven families, each once: `CGH`, `TOP`, `PRJ`, `FIL`, `AGT`, `LOG`, `DBG`, `DTS`, `KNW`, `MOD`, `OPS`. Missing, duplicate, or unknown family registration fails closed before comparison. Static allow-list shards, sampled rows, test-only fixtures, and DEV-only prototype code are not corpus inputs.
+
+Each contribution binds `contractVersion` `pcat-comparison-contribution/v1`, family, phase (`pre-activation` | `post-p13`), inventoryMode (`fresh` | `populated`), candidate SHA, plan pin, mapping head ID/version/checksum, Catalog snapshot checksum, source inventory count/checksum, cases, and checksum. Each case binds `caseId`, `comparisonId`, `protectedReference`, `legacyObservation`, `canonicalObservation`, `result`, and `expectedDifference`. Canonical bytes recursively sort object keys, sort cases by family, comparison ID, protected-reference kind/id, and case ID, and use UTF-8 without BOM, LF, and one trailing newline. Checksum is lowercase SHA-256 over those bytes with `checksum` omitted.
+
+The comparison IDs owned once by S10-DCP are:
+
+| ID | Name |
+| --- | --- |
+| `PCAT-CMP-D01-DEFINITION-SEMANTICS` | Definition membership, lifecycle, owner, property key, revision, typed gone |
+| `PCAT-CMP-D02-SUBJECT-IDENTITY` | Driver/NodeType kind, selector, identity, R class, mapping |
+| `PCAT-CMP-D03-REGISTRATION-PLACEMENT` | Registration/Placement state, exactly-one placement, ownership |
+| `PCAT-CMP-D04-BINDING-HISTORY` | Binding identity, current tip, ordered history |
+| `PCAT-CMP-D05-PROJECT-VALUE-PIN` | ProjectValue identity, exact revision pin, safe interpretation |
+| `PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION` | ReviewEvidence, Proposal, Observation, or Archive |
+| `PCAT-CMP-D07-PROTECTED-CONSUMER-REFERENCE` | Pin-first consumer reference resolution |
+| `PCAT-CMP-D08-SOURCE-WRITEBACK` | File/source occurrence, locator, config revision, provenance |
+| `PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME` | Typed legacy/operator redirect, gone, conflict, not-found |
+
+Result literals are exactly `exact-equivalent`, `declared-expected-difference`, `unexplained-difference`, and `unqueryable/protected-reference-missing`. A declared expected difference requires `rClass`, mapping head ID/version, `typedTarget` or `Archive`, `ruleId`, and `planPin`. Other results require `expectedDifference` null. The frozen failure code for unqueryable references is `PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE`.
+
+Fresh mode still runs D01-D09. Each family must execute a real PostgreSQL query and prove zero inventory and zero cases; skipped or failed queries are not zero. Populated mode must enumerate every applicable protected reference without sampling. An actual target uses only its true inventoryMode but still produces two independent P11 reports: pre-activation and post-P13. No contribution bytes, family checksums, corpus checksum, or report checksum may be reused across those attempts. Green aggregation requires unexplained-difference count `0` and unqueryable/protected-reference-missing count `0`.
 
 ## Project Parameter Files
 

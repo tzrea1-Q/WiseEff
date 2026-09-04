@@ -516,3 +516,17 @@ stateDiagram-v2
 - 业务写操作必须产生审计。
 - 审计不可由普通业务接口修改。
 - 审计查询需要权限过滤。
+
+### 2.10 规范参数目录比较语料
+
+S10-DCP 拥有比较语料与结果 schema；S12 消费方家族拥有各自的生产 case 提供者。该语料是 Release Verification 的不可变附属证据，不是用户可编辑的目录实体。
+
+提供者注册必须恰好一次覆盖这十一个家族：`CGH`、`TOP`、`PRJ`、`FIL`、`AGT`、`LOG`、`DBG`、`DTS`、`KNW`、`MOD`、`OPS`。缺失、重复或未知家族在比较前失败关闭。静态 allow-list shard、抽样行、测试夹具和 DEV-only 原型代码都不是语料输入。
+
+每份贡献绑定 `contractVersion` `pcat-comparison-contribution/v1`、家族、phase（`pre-activation` | `post-p13`）、inventoryMode（`fresh` | `populated`）、候选 SHA、plan pin、mapping head ID/version/checksum、Catalog snapshot checksum、源清单 count/checksum、cases 与 checksum。每个 case 绑定 `caseId`、`comparisonId`、`protectedReference`、`legacyObservation`、`canonicalObservation`、`result` 与 `expectedDifference`。规范字节递归排序对象键，并按家族、comparison ID、受保护引用 kind/id、case ID 排序 cases；编码为无 BOM 的 UTF-8、LF、恰好一个尾随换行。checksum 是省略 `checksum` 字段后对这些字节的小写 SHA-256。
+
+S10-DCP 唯一拥有的比较 ID 为：`PCAT-CMP-D01-DEFINITION-SEMANTICS`、`PCAT-CMP-D02-SUBJECT-IDENTITY`、`PCAT-CMP-D03-REGISTRATION-PLACEMENT`、`PCAT-CMP-D04-BINDING-HISTORY`、`PCAT-CMP-D05-PROJECT-VALUE-PIN`、`PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION`、`PCAT-CMP-D07-PROTECTED-CONSUMER-REFERENCE`、`PCAT-CMP-D08-SOURCE-WRITEBACK`、`PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME`。
+
+结果字面量恰好为 `exact-equivalent`、`declared-expected-difference`、`unexplained-difference` 与 `unqueryable/protected-reference-missing`。声明的预期差异必须包含 `rClass`、mapping head ID/version、`typedTarget` 或 `Archive`、`ruleId` 与 `planPin`；其他结果的 `expectedDifference` 必须为 null。不可查询受保护引用的冻结失败码是 `PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE`。
+
+fresh 模式仍要执行 D01-D09：每个家族必须对真实 PostgreSQL 查询并证明源清单为零且 cases 为零；跳过或失败的查询不算零。populated 模式必须无抽样地枚举每个适用的受保护引用。实际目标只使用其真实 inventoryMode，但仍要产出两次独立的 P11 报告：pre-activation 与 post-P13。贡献字节、家族 checksum、语料 checksum 与报告 checksum 不得跨两次尝试复用。绿色聚合要求 unexplained-difference 计数为 `0`，且 unqueryable/protected-reference-missing 计数为 `0`。
