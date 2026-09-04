@@ -22,6 +22,7 @@ import {
   getReloadCandidateRow,
   getReloadRunRow,
   listReloadRunTargets,
+  pinDtsReloadQueryable,
   type ReloadCandidateRow
 } from "./repository";
 import { resolveReloadValueShape, validateAuthoredDebugValue, type CandidateValueShape } from "./valueShape";
@@ -183,6 +184,7 @@ export async function promoteReloadRunToDrafts(
   input: PromoteReloadRunToDraftsInput,
   context: PromoteReloadRunToDraftsContext
 ): Promise<PromoteReloadRunToDraftsResult> {
+  pinDtsReloadQueryable(db);
   const trustedContext = assertDtsReloadInvocationContext(auth, context);
   const bindingIds = uniqueBindingIds(input.bindingIds);
   if (bindingIds.length === 0) {

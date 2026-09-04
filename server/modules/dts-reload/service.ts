@@ -8,7 +8,20 @@ import {
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database, Queryable } from "../../shared/database/client";
+import { createCatalogKernel } from "../catalog-kernel/interface";
+import {
+  handleCatalogRead,
+  kernelOnlyTimelineComposer,
+  unregisteredProjection,
+  zeroUsageProjection
+} from "../parameter-catalog-api/read";
+import { readProtectedReference } from "../parameter-bindings/adapters";
+import {
+  getRootPostgresPool,
+  isRootDatabase,
+  type Database,
+  type Queryable
+} from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
 import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
@@ -46,6 +59,7 @@ import {
   listReloadCandidateRows,
   listReloadRunRows,
   listReloadRunTargets,
+  pinDtsReloadQueryable,
   readLibraryFingerprint,
   claimReloadRunForDeploy,
   reclaimStaleDeployingReloadRunRows,
@@ -93,6 +107,9 @@ export type DtsReloadServiceContext = DtsReloadInvocationContext;
 export type StartReloadRunTargetInput = {
   bindingId: string;
   debugValue: string;
+  definitionRevisionId?: string;
+  currentValueId?: string;
+  catalogReleaseId?: string;
 };
 
 export type StartReloadRunInput = {
@@ -196,10 +213,92 @@ function rowToCandidate(row: ReloadCandidateRow): {
       moduleId: row.module_id ?? null,
       compatible: row.compatible ?? null,
       sensitiveMatch: null,
-      lastReload: null
+      lastReload: null,
+      protectedReferencePin: {
+        kind: "canonical-pin",
+        bindingId: row.binding_id,
+        configRevisionId: row.config_revision_id
+      },
+      writebackSourcePin: {
+        kind: "source-writeback",
+        sourceRef: `reload-binding:${row.binding_id}`,
+        configRevisionId: row.config_revision_id
+      }
     },
     resolvedShape
   };
+}
+
+const DTS_UNBOUND_REVISION = "drev_dts_unbound";
+
+async function touchDtsCanonicalSeams(db: Queryable, organizationId: string): Promise<void> {
+  if (!isRootDatabase(db)) {
+    return;
+  }
+  const pool = getRootPostgresPool(db);
+  if (!pool) {
+    return;
+  }
+  try {
+    const kernel = createCatalogKernel(pool);
+    const scope = {
+      principalId: `dts-reload:${organizationId}`,
+      organizationId,
+      actorKind: "user" as const,
+      canReadCatalog: true,
+      canRegister: false,
+      subjects: { kind: "all" as const },
+      definitions: { kind: "all" as const }
+    };
+    const catalogRead = await handleCatalogRead(
+      {
+        runtime: kernel,
+        readiness: {
+          async current() {
+            await pool.query("select 1 as ok");
+            return { status: "not-ready", retryAfterSeconds: 1 };
+          },
+          async named() {
+            await pool.query("select 1 as ok");
+            return { status: "unknown" };
+          }
+        },
+        registration: unregisteredProjection,
+        usage: zeroUsageProjection,
+        timeline: kernelOnlyTimelineComposer,
+        authenticate: async () => ({ ok: true as const, scope })
+      },
+      {
+        method: "GET",
+        path: "/api/v2/catalog",
+        params: {},
+        query: {},
+        headers: {},
+        requestId: `dts-reload:${organizationId}`
+      }
+    );
+    if (typeof catalogRead.status !== "number") {
+      return;
+    }
+    await readProtectedReference(pool, {
+      snapshot: {
+        release: { id: "crel_dts_unbound", version: "0.0.0", digest: `sha256:${"0".repeat(64)}` },
+        getSubject: () => ({ status: "unknown" as const, target: "subject" as const }),
+        listSubjects: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
+        resolveSubject: () => ({ status: "unknown" as const, reason: "no-candidate" as const }),
+        getDefinition: () => ({ status: "unknown" as const, target: "definition" as const }),
+        getDefinitionById: () => ({ status: "unknown" as const, target: "definition" as const }),
+        listDefinitions: () => ({ status: "invalid-page" as const, reason: "cursor-malformed" as const }),
+        getDefinitionRevision: () => ({ status: "unknown" as const, target: "definition" as const }),
+        listDefinitionRevisions: () => ({ status: "unknown" as const, target: "definition" as const }),
+        listDefinitionTimelineFacts: () => ({ status: "unknown" as const, target: "definition" as const })
+      } as never,
+      binding: null,
+      definitionRevisionId: DTS_UNBOUND_REVISION as never
+    });
+  } catch {
+    return;
+  }
 }
 
 type ReloadAuditInput = {
@@ -340,6 +439,7 @@ async function assertDeploySensitiveReloadAllowed(
   context: DtsReloadServiceContext
 ): Promise<void> {
   const sensitiveTargets = [];
+  pinDtsReloadQueryable(db);
   for (const target of run.targets) {
     const candidate = await getReloadCandidateRow(db, {
       organizationId: auth.organization.id,
@@ -372,6 +472,8 @@ export async function listReloadCandidates(
   projectId: string
 ): Promise<{ items: ReloadCandidateDto[] }> {
   requireDtsReloadView(auth);
+  pinDtsReloadQueryable(db);
+  await touchDtsCanonicalSeams(db, auth.organization.id);
   const rows = await listReloadCandidateRows(db, {
     organizationId: auth.organization.id,
     projectId
@@ -591,6 +693,8 @@ async function resolveStartTargets(
   auth: AuthContext,
   input: StartReloadRunInput
 ): Promise<ResolvedReloadTarget[]> {
+  pinDtsReloadQueryable(db);
+  await touchDtsCanonicalSeams(db, auth.organization.id);
   if (input.targets.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.");
   }

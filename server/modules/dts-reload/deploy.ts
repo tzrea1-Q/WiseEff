@@ -19,6 +19,7 @@ import { ApiError } from "../../shared/http/errors";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
 import type { BehaviouralVerificationDto } from "./behaviouralVerify";
+import { pinDtsReloadQueryable } from "./repository";
 import {
   buildNotObtainedKernelSignal,
   buildObtainedKernelSignal
@@ -740,6 +741,7 @@ export async function executeReloadDeploy(input: {
       behaviouralVerification: BehaviouralVerificationDto;
     };
     try {
+      pinDtsReloadQueryable(input.db);
       verification = await verifyReloadTargetsBehaviourally({
         db: input.db,
         organizationId: auth.organization.id,

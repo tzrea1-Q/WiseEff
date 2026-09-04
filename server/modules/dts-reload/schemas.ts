@@ -2,7 +2,10 @@ import { z } from "zod";
 
 export const startReloadRunTargetSchema = z.object({
   bindingId: z.string().min(1),
-  debugValue: z.string().min(1)
+  debugValue: z.string().min(1),
+  definitionRevisionId: z.string().min(1).optional(),
+  currentValueId: z.string().min(1).optional(),
+  catalogReleaseId: z.string().min(1).optional()
 });
 
 /** Upper bound on reload targets per run — bounds overlay size, audit metadata, and worst-case deploy duration against the device lease. */
