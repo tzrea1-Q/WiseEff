@@ -256,6 +256,20 @@ describe("S10-UI capture fail-closed identity", () => {
     expect(result.error.kind).toBe("stale-pins");
   });
 
+  it("refuses mounted CatalogPage as unclaimed Catalog-page B", async () => {
+    const result = await captureCatalogBrowserEvidence(
+      captureInput({
+        driver: completeDriver("crel_s10_ui", undefined, (gateId, viewport) =>
+          gateId === "PCAT-UI-01" && viewport === "1440x900" ? { catalogPageMounted: true } : undefined,
+        ),
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("incomplete-bundle");
+    expect(result.error.detail).toContain("Catalog-page B");
+  });
+
   it("refuses screenshot-only viewport evidence", async () => {
     const result = await captureCatalogBrowserEvidence(
       captureInput({

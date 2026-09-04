@@ -70,7 +70,7 @@ const observationsFor = (
     redactionStatus: viewports.every((record) => record.observation.redaction.status === "passed") ? "passed" : "failed",
     catalogReleaseIds,
     interactionCount: viewports.reduce((sum, record) => sum + record.observation.interactions.length, 0),
-    catalogPageMounted: viewports.some((record) => record.observation.catalogPageMounted === true),
+    catalogPageMounted: false,
     operationId: CATALOG_BROWSER_OPERATIONS[gateId as keyof typeof CATALOG_BROWSER_OPERATIONS] ?? null,
     auditIds: auditRefs.map((ref) => ref.id),
     mockHasExtraPower: parity?.mockHasExtraPower ?? false,
@@ -133,6 +133,15 @@ export const captureCatalogBrowserEvidence = async (
               ? error.message
               : `missing ${gateId} ${viewport.id}`;
         return { ok: false, error: catalogBrowserEvidenceRefusal("incomplete-bundle", detail) };
+      }
+      if (observation.catalogPageMounted === true) {
+        return {
+          ok: false,
+          error: catalogBrowserEvidenceRefusal(
+            "incomplete-bundle",
+            "Catalog-page B is unclaimed; mounted CatalogPage observation is refused",
+          ),
+        };
       }
       const diagnosticError = inspectViewportDiagnostics(
         gateId,
