@@ -3,6 +3,11 @@ import { X } from "lucide-react";
 import type { KnowledgeParameterReference } from "@/domain/knowledge/types";
 import { parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
 
+type KnowledgeReferenceChip = KnowledgeParameterReference & {
+  historicalOnly?: boolean;
+  mappingStatus?: "current" | "historical" | "orphaned" | "archived" | "unmapped";
+};
+
 export function referenceDisplayName(reference: Pick<KnowledgeParameterReference, "displayName" | "propertyKey">) {
   return reference.displayName?.trim() || reference.propertyKey;
 }
@@ -18,7 +23,7 @@ export function KnowledgeParameterReferenceChips({
   onRemove,
   removePendingSpecId = null
 }: {
-  references: KnowledgeParameterReference[];
+  references: KnowledgeReferenceChip[];
   onOpenSpec?: (specId: string) => void;
   /** Present in the editor: renders a per-chip remove control. */
   onRemove?: (specId: string) => void;
@@ -32,8 +37,30 @@ export function KnowledgeParameterReferenceChips({
       {references.map((reference) => {
         const name = referenceDisplayName(reference);
         const label = reference.driverModule ? `${name} · ${reference.driverModule}` : name;
+        const mappingStatus = reference.mappingStatus;
+        const historicalOnly = Boolean(reference.historicalOnly || mappingStatus === "historical");
+        const orphaned = mappingStatus === "orphaned";
+        const archived = mappingStatus === "archived";
+        const statusLabel = orphaned
+          ? "缺失映射"
+          : archived
+            ? "已归档"
+            : historicalOnly
+              ? "历史"
+              : parameterSpecReferenceLifecycleLabels[reference.lifecycle];
+        const statusClass = orphaned || archived
+          ? "is-deprecated"
+          : historicalOnly
+            ? "is-draft"
+            : `is-${reference.lifecycle}`;
         return (
-          <li key={reference.specId} className="knowledge-parameter-reference-chip" data-spec-id={reference.specId}>
+          <li
+            key={reference.specId}
+            className="knowledge-parameter-reference-chip"
+            data-spec-id={reference.specId}
+            data-mapping-status={mappingStatus ?? (historicalOnly ? "historical" : "current")}
+            data-historical={historicalOnly ? "true" : "false"}
+          >
             {onOpenSpec ? (
               <button
                 type="button"
@@ -47,10 +74,10 @@ export function KnowledgeParameterReferenceChips({
               <span className="knowledge-parameter-reference-chip__link">{label}</span>
             )}
             <span
-              className={`knowledge-parameter-reference-chip__lifecycle is-${reference.lifecycle}`}
+              className={`knowledge-parameter-reference-chip__lifecycle ${statusClass}`}
               data-lifecycle={reference.lifecycle}
             >
-              {parameterSpecReferenceLifecycleLabels[reference.lifecycle]}
+              {statusLabel}
             </span>
             {onRemove ? (
               <button

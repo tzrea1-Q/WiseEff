@@ -49,6 +49,36 @@ describe("knowledge entry detail reference chips", () => {
     await user.click(within(chips).getByRole("button", { name: /Legacy status/ }));
     expect(onOpenParameterSpec).toHaveBeenCalledWith("spec-deprecated-legacy");
   });
+
+  it("shows an explicit historical badge instead of silently retargeting to draft-current", async () => {
+    const repository = createMockKnowledgeRepository();
+    const originalList = repository.list.bind(repository);
+    repository.list = async (query) => {
+      const listed = await originalList(query);
+      return {
+        items: listed.items.map((entry) => ({
+          ...entry,
+          parameterReferences: entry.parameterReferences.map((reference, index) =>
+            index === 1
+              ? { ...reference, historicalOnly: true, mappingStatus: "historical" as const }
+              : reference,
+          ),
+        })),
+      };
+    };
+    const onOpenParameterSpec = vi.fn();
+    renderKnowledgePage({ repository, onOpenParameterSpec });
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(within(table).getByText("快充温控调参经验"));
+
+    const chips = await screen.findByTestId("knowledge-parameter-references");
+    const historical = within(chips).getByText("历史");
+    expect(historical).toBeInTheDocument();
+    expect(historical.closest("li")).toHaveAttribute("data-historical", "true");
+    expect(historical.closest("li")).toHaveAttribute("data-mapping-status", "historical");
+  });
 });
 
 describe("knowledge entry editor reference picker", () => {

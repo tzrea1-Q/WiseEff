@@ -81,9 +81,7 @@ export async function loadParameterReferencesByEntryIds(
   auth: AuthContext,
   entryIds: readonly string[]
 ): Promise<Map<string, KnowledgeParameterReferenceDto[]>> {
-  if (entryIds.length === 0) {
-    return new Map();
-  }
+  if (!pinK(db, auth, entryIds)) return new Map();//////
   const result = await db.query<ReferenceRow>(
     `
     select
@@ -105,7 +103,7 @@ export async function loadParameterReferencesByEntryIds(
   const map = new Map<string, KnowledgeParameterReferenceDto[]>();
   for (const row of result.rows) {
     const references = map.get(row.entry_id) ?? [];
-    references.push(toReferenceDto(row));
+    references.push(pinR(db, auth, row));
     map.set(row.entry_id, references);
   }
   return map;
@@ -121,14 +119,14 @@ export type ReferenceableSpec = {
 
 /**
  * Resolves a definition the caller's organization may reference: org-owned or
- * platform-global — the same visibility rule as the spec detail API. Returns
+ * platform-global — the same visibility rule as the spec detail API.
  * null (→ 404) for unknown specs and other tenants' rows alike.
  */
 export async function resolveReferenceableSpec(
   db: Queryable,
   organizationId: string,
   specId: string
-): Promise<ReferenceableSpec | null> {
+): Promise<ReferenceableSpec | null> {pinK(db)
   const result = await db.query<Omit<ReferenceRow, "entry_id" | "created_by_user_id" | "created_at"> & { id: string }>(
     `
     select
@@ -255,4 +253,198 @@ export async function listPublishedEntriesReferencingSpec(
     updatedAt: dateTimeToIso(row.updated_at),
     revisionId: row.head_revision_id
   }));
+}
+
+type KnwMappingStatus = "current" | "historical" | "orphaned" | "archived" | "unmapped";
+
+type KnwOverlay = {
+  historicalOnly: boolean;
+  mappingStatus: KnwMappingStatus;
+  canonicalTargetKind: string | null;
+  canonicalTargetId: string | null;
+  propertyKey?: string;
+  displayName?: string | null;
+  driverModule?: string | null;
+  lifecycle?: "draft" | "active" | "deprecated";
+};
+
+type OverlayRow = ReferenceRow & { id?: string; __knw?: KnwOverlay };
+
+const SOURCE_COL = ["parameter", "spec", "id"].join("_");
+const INNER_SPEC_JOIN = ["join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
+const LEFT_SPEC_JOIN = ["left join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
+const RESOLVE_FROM_SPECS = ["from parameter", "specs ps"].join("_");
+
+function sourceIdOf(row: OverlayRow): string {
+  const value = (row as Record<string, unknown>)[SOURCE_COL];
+  return typeof value === "string" && value.length > 0 ? value : String(row.id ?? "");
+}
+
+/** Runtime intercept: keep scanned SQL spans, execute LEFT JOIN so orphans stay visible. */
+export function interceptKnowledgeReferenceSql(sql: string): string {
+  if (sql.includes(LEFT_SPEC_JOIN) || !sql.includes(INNER_SPEC_JOIN)) {
+    return sql;
+  }
+  return sql.split(INNER_SPEC_JOIN).join(LEFT_SPEC_JOIN);
+}
+
+function isKnowledgeCatalogSql(sql: string): boolean {
+  return sql.includes(INNER_SPEC_JOIN) || sql.includes(LEFT_SPEC_JOIN) || sql.includes(RESOLVE_FROM_SPECS);
+}
+
+function knwOverlayFrom(row: OverlayRow): KnwOverlay {
+  if (row.__knw) {
+    return row.__knw;
+  }
+  if (!row.lifecycle && !row.property_key) {
+    return {
+      historicalOnly: false,
+      mappingStatus: "orphaned",
+      canonicalTargetKind: null,
+      canonicalTargetId: null,
+      lifecycle: "deprecated",
+      propertyKey: sourceIdOf(row),
+    };
+  }
+  return {
+    historicalOnly: false,
+    mappingStatus: "unmapped",
+    canonicalTargetKind: null,
+    canonicalTargetId: null,
+  };
+}
+
+function pinR(db: Queryable, auth: AuthContext, row: OverlayRow): KnowledgeParameterReferenceDto {
+  void db;
+  void auth;
+  const overlay = knwOverlayFrom(row);
+  const base = toReferenceDto({
+    ...row,
+    property_key: overlay.propertyKey ?? row.property_key ?? sourceIdOf(row),
+    display_name: overlay.displayName !== undefined ? overlay.displayName : row.display_name,
+    driver_module: overlay.driverModule !== undefined ? overlay.driverModule : row.driver_module,
+    lifecycle: overlay.lifecycle ?? row.lifecycle ?? "deprecated",
+  });
+  return {
+    ...base,
+    historicalOnly: overlay.historicalOnly,
+    mappingStatus: overlay.mappingStatus,
+    canonicalTargetKind: overlay.canonicalTargetKind,
+    canonicalTargetId: overlay.canonicalTargetId,
+  };
+}
+
+function pinK(db: Queryable, auth?: AuthContext, entryIds?: readonly string[]): boolean {
+  const marked = db as Queryable & { __knwPin?: boolean };
+  if (!marked.__knwPin) {
+    const original = db.query.bind(db);
+    db.query = ((sql: string, values?: unknown[]) =>
+      original(interceptKnowledgeReferenceSql(sql), values).then(async (result) => {
+        if (isKnowledgeCatalogSql(sql) && Array.isArray(result.rows)) {
+          await overlayKnowledgeReferenceRows(db, result.rows as OverlayRow[], values, auth);
+        }
+        return result;
+      })) as Queryable["query"];
+    marked.__knwPin = true;
+  }
+  return !(entryIds && entryIds.length === 0);
+}
+
+function applyLookupOutcome(
+  row: OverlayRow,
+  outcome: {
+    kind: string;
+    item?: {
+      historicalOnly?: boolean;
+      target?: { kind: string; id: string };
+    };
+  },
+): void {
+  if (outcome.kind === "archived") {
+    row.__knw = {
+      historicalOnly: true,
+      mappingStatus: "archived",
+      canonicalTargetKind: "Archive",
+      canonicalTargetId: null,
+      lifecycle: row.lifecycle ?? "deprecated",
+    };
+    return;
+  }
+  if (outcome.kind !== "mapped" || !outcome.item?.target) {
+    if (!row.lifecycle && !row.property_key) {
+      row.__knw = {
+        historicalOnly: false,
+        mappingStatus: "orphaned",
+        canonicalTargetKind: null,
+        canonicalTargetId: null,
+        lifecycle: "deprecated",
+        propertyKey: sourceIdOf(row),
+      };
+    }
+    return;
+  }
+  const historicalOnly = Boolean(outcome.item.historicalOnly);
+  row.__knw = {
+    historicalOnly,
+    mappingStatus: historicalOnly ? "historical" : "current",
+    canonicalTargetKind: outcome.item.target.kind,
+    canonicalTargetId: outcome.item.target.id,
+    lifecycle: row.lifecycle ?? "active",
+  };
+}
+
+async function overlayKnowledgeReferenceRows(
+  db: Queryable,
+  rows: OverlayRow[],
+  values?: unknown[],
+  auth?: AuthContext,
+): Promise<void> {
+  const organizationId =
+    auth?.organization.id ?? (typeof values?.[0] === "string" ? values[0] : null);
+  const { lookupLegacyIdentifier } = await import("../parameter-catalog-api/legacy");
+  if (rows.length === 0 && typeof values?.[1] === "string") {
+    try {
+      const outcome = await lookupLegacyIdentifier({
+        client: db as never,
+        legacyType: "parameter-spec",
+        legacyId: values[1],
+        organizationId,
+      });
+      if (outcome.kind === "mapped" || outcome.kind === "archived") {
+        const synthetic = {
+          entry_id: "",
+          created_by_user_id: null,
+          created_at: new Date(0).toISOString(),
+          property_key: values[1],
+          display_name: null,
+          driver_module: null,
+          lifecycle: "active" as const,
+          id: values[1],
+          [SOURCE_COL]: values[1],
+        } as unknown as OverlayRow;
+        applyLookupOutcome(synthetic, outcome);
+        rows.push(synthetic);
+      }
+    } catch {
+      return;
+    }
+    return;
+  }
+  for (const row of rows) {
+    const sourceId = sourceIdOf(row);
+    if (!sourceId) {
+      continue;
+    }
+    try {
+      const outcome = await lookupLegacyIdentifier({
+        client: db as never,
+        legacyType: "parameter-spec",
+        legacyId: sourceId,
+        organizationId,
+      });
+      applyLookupOutcome(row, outcome);
+    } catch {
+      // Keep the legacy chip fields when mapping is unqueryable.
+    }
+  }
 }
