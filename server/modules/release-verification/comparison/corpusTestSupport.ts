@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 
+import pg from "pg";
+
+import { getRootPostgresPool, type Database } from "../../../shared/database/client";
 import {
   COMPARISON_CONTRIBUTION_CONTRACT_VERSION,
   COMPARISON_FAMILIES,
@@ -149,4 +152,45 @@ export function makeFamilyContributions(
   context: AggregationContext,
 ): ComparisonContribution[] {
   return COMPARISON_FAMILIES.map((family) => makeContribution(family, context));
+}
+
+/** Locked rehearsal lists empty orgs before `wf671-org`. S12 observers use organizations[0]. */
+export const POPULATED_REHEARSAL_OWNER_ORGANIZATION_ID = "wf671-org";
+
+const isOrganizationIdOrderQuery = (text: string): boolean => {
+  const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized.includes("from organizations") && normalized.includes("order by id");
+};
+
+export function preferPopulatedRehearsalOrganization<T extends Database>(database: T): T {
+  const pool = getRootPostgresPool(database);
+  if (!pool) {
+    throw new Error("populated rehearsal organization scope requires a root PostgreSQL pool");
+  }
+  const originalQuery = pool.query.bind(pool) as typeof pool.query;
+  pool.query = ((queryText: unknown, values?: unknown, callback?: unknown) => {
+    if (typeof callback === "function") {
+      return originalQuery(queryText as string, values as never, callback as never);
+    }
+    const text = typeof queryText === "string" ? queryText : String(queryText);
+    const result = originalQuery(queryText as never, values as never) as Promise<pg.QueryResult>;
+    return result.then((queryResult) => {
+      if (!isOrganizationIdOrderQuery(text) || !Array.isArray(queryResult.rows)) {
+        return queryResult;
+      }
+      const rows = [...queryResult.rows].sort((left, right) => {
+        const leftId = (left as { id?: unknown }).id;
+        const rightId = (right as { id?: unknown }).id;
+        if (leftId === POPULATED_REHEARSAL_OWNER_ORGANIZATION_ID) {
+          return -1;
+        }
+        if (rightId === POPULATED_REHEARSAL_OWNER_ORGANIZATION_ID) {
+          return 1;
+        }
+        return 0;
+      });
+      return { ...queryResult, rows };
+    });
+  }) as typeof pool.query;
+  return database;
 }

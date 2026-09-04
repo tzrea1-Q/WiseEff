@@ -11,6 +11,7 @@ import {
   COMPARISON_FAMILIES,
   COMPARISON_IDS,
 } from "./corpusContributionSchema";
+import { preferPopulatedRehearsalOrganization } from "./corpusTestSupport";
 import {
   aggregateLiveComparisonCorpus,
   assertIndependentPhaseReports,
@@ -126,8 +127,8 @@ describe("live eleven-family comparison corpus", () => {
   it("populated pre-activation and post-p13 enumerate complete non-sampled inventories independently", async () => {
     populatedDb = await createDisposableParameterCatalogDatabase("dcppop");
     await loadParameterCatalogFixture(populatedDb.url, "populated");
-    const preDatabase = createPostgresDatabase(populatedDb.url);
-    const postDatabase = createPostgresDatabase(populatedDb.url);
+    const preDatabase = preferPopulatedRehearsalOrganization(createPostgresDatabase(populatedDb.url));
+    const postDatabase = preferPopulatedRehearsalOrganization(createPostgresDatabase(populatedDb.url));
     const prePool = getRootPostgresPool(preDatabase);
     const postPool = getRootPostgresPool(postDatabase);
     expect(prePool).toBeDefined();
@@ -158,22 +159,23 @@ describe("live eleven-family comparison corpus", () => {
       }
 
       expect(preCorpus.familyChecksums).not.toEqual(postCorpus.familyChecksums);
-      const blocking =
-        preCorpus.resultCounts["unexplained-difference"] +
-        preCorpus.resultCounts["unqueryable/protected-reference-missing"];
-      if (blocking === 0) {
-        const preReport = generateComparisonReport(preCorpus);
-        const postReport = generateComparisonReport(postCorpus);
-        expect(preReport.gateCoverage.map((gate) => gate.comparisonId)).toEqual([...COMPARISON_IDS]);
-        assertIndependentPhaseReports(preReport, postReport);
-        expect(preReport.unexplainedDifferenceCount).toBe(0);
-        expect(preReport.unqueryableProtectedReferenceCount).toBe(0);
-        expect(postReport.unexplainedDifferenceCount).toBe(0);
-        expect(postReport.unqueryableProtectedReferenceCount).toBe(0);
-      } else {
-        expect(() => generateComparisonReport(preCorpus)).toThrowError(/PCAT-CMP-UNEXPLAINED-DIFFERENCE|PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE/);
-        expect(() => generateComparisonReport(postCorpus)).toThrowError(/PCAT-CMP-UNEXPLAINED-DIFFERENCE|PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE/);
-      }
+      const blockingCases = preCorpus.cases.filter(
+        (item) =>
+          item.result === "unexplained-difference" ||
+          item.result === "unqueryable/protected-reference-missing",
+      );
+      expect(
+        blockingCases,
+        blockingCases.map((item) => item.caseId).join(","),
+      ).toEqual([]);
+      const preReport = generateComparisonReport(preCorpus);
+      const postReport = generateComparisonReport(postCorpus);
+      expect(preReport.gateCoverage.map((gate) => gate.comparisonId)).toEqual([...COMPARISON_IDS]);
+      assertIndependentPhaseReports(preReport, postReport);
+      expect(preReport.unexplainedDifferenceCount).toBe(0);
+      expect(preReport.unqueryableProtectedReferenceCount).toBe(0);
+      expect(postReport.unexplainedDifferenceCount).toBe(0);
+      expect(postReport.unqueryableProtectedReferenceCount).toBe(0);
     } finally {
       await preDatabase.close();
       await postDatabase.close();
