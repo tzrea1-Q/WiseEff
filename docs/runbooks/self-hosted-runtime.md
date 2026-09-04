@@ -6,6 +6,8 @@ For a consolidated operator command index, start with the [Self-Hosted Operation
 
 This runbook covers the M6.1 self-hosted Linux baseline plus the M6.4 durable queue runtime shape. It proves WiseEff can run as separate API, web, worker, PostgreSQL, Redis, and reverse-proxy services on a controlled Linux host. It does not replace the remaining M6 hardening for OIDC, self-hosted object storage evidence, observability, rollback, and capacity.
 
+The catalog public-release chain is P12, P13, P11b, P14a, P14b, P14c, then P15. `scripts/run-self-hosted-release-gate.ts` fail-closes that chain when producer evidence, the pre-activation pin, the P13 new-attempt digest, post-pin browser evidence, isolation, or distinct Operator and Platform-owner approvals are missing. Local and Hosted command-gate output is not target-host, release, or production evidence. P16 is not part of this chain.
+
 ## Preconditions
 
 - A Linux server or VM. The baseline expectation is Ubuntu 22.04/24.04 LTS, Debian 12, Rocky Linux 9, or another distribution that can run a supported Docker Engine release.

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  CATALOG_PUBLIC_RELEASE_PHASES,
+  CATALOG_RELEASE_CHAIN_THREAT_MATRIX,
   buildConfiguredCommandResults,
   buildReleaseGateEvidence,
+  evaluateCatalogReleaseChain,
   evaluateReleaseGate,
   parseReleaseGateArgs,
   requiredReleaseGateCommands,
+  type CatalogReleaseChainInput,
   type ReleaseGateInput
 } from "./run-self-hosted-release-gate";
 
@@ -187,6 +191,11 @@ describe("self-hosted release gate", () => {
     expect(evidence).toContain("| capacity readiness | pending |");
     expect(evidence).toContain("| target synthetic readiness | pending |");
     expect(evidence).toContain("### Pending Evidence");
+    expect(evidence).toContain("### Catalog public-release chain (RI-01)");
+    expect(evidence).toContain("- Catalog chain status: `failed`");
+    expect(evidence).toContain(
+      "- Local and Hosted command gates are not target, release, or production evidence."
+    );
     expect(evidence).not.toContain("token=secret");
   });
 
@@ -369,5 +378,144 @@ describe("self-hosted release gate", () => {
       status: "failed",
       detail: "missing package script"
     });
+  });
+});
+
+const digest = (seed: number): string => `sha256:${seed.toString(16).padStart(64, "0")}`;
+
+const legalCatalogChain = (): CatalogReleaseChainInput => ({
+  producersComplete: true,
+  preActivationReportDigest: digest(1),
+  postRetirementRuntimePinDigest: digest(2),
+  isolatedAcceptanceReportDigest: digest(3),
+  publicReleaseReportDigest: digest(4),
+  p13NewAttemptDigest: digest(5),
+  browserEvidenceAfterRuntimePin: true,
+  trafficReleased: true,
+  isolationHeldUntilApprovals: true,
+  operatorApproval: "operator@wiseeff",
+  platformOwnerApproval: "platform-owner@wiseeff",
+  claimedEvidenceLevel: "T",
+  localOrHostedLabeledAsTarget: false,
+  executedPhases: [...CATALOG_PUBLIC_RELEASE_PHASES]
+});
+
+describe("RI-01 catalog public-release chain", () => {
+  it("freezes the seven R3 observations before production chain work", () => {
+    expect(CATALOG_RELEASE_CHAIN_THREAT_MATRIX).toHaveLength(7);
+    expect(Object.isFrozen(CATALOG_RELEASE_CHAIN_THREAT_MATRIX)).toBe(true);
+    expect(CATALOG_RELEASE_CHAIN_THREAT_MATRIX.map((row) => row.name)).toEqual([
+      "missing-producer",
+      "missing-pre-pin",
+      "p13-delta-reuse",
+      "pre-runtime-browser",
+      "early-traffic",
+      "local-hosted-as-target",
+      "out-of-order-phases"
+    ]);
+  });
+
+  it("T1 refuses a missing producer set", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      producersComplete: false
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("Catalog public-release chain is missing required producer evidence.");
+  });
+
+  it("T2 refuses P12 without a pre-activation pin", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      preActivationReportDigest: null
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("P12 requires an approved pre-activation report digest.");
+  });
+
+  it("T3 refuses P13 without a new post-retirement attempt", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      p13NewAttemptDigest: null
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("P13 delta requires a new post-retirement verification attempt digest.");
+  });
+
+  it("T4 refuses browser evidence before the runtime pin", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      postRetirementRuntimePinDigest: null,
+      browserEvidenceAfterRuntimePin: true
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("Browser evidence before the approved runtime pin is forbidden.");
+  });
+
+  it("T5 refuses early public traffic", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      executedPhases: ["P12", "P13"],
+      trafficReleased: true,
+      operatorApproval: null,
+      platformOwnerApproval: null
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain(
+      "Public traffic before distinct Operator and Platform-owner approvals is forbidden."
+    );
+  });
+
+  it("T6 refuses local or Hosted labels as target evidence", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      localOrHostedLabeledAsTarget: true,
+      claimedEvidenceLevel: "H"
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        "Local or Hosted output cannot be labeled target, release, or production evidence.",
+        "Catalog public-release chain requires target-host evidence; local and Hosted output do not substitute."
+      ])
+    );
+  });
+
+  it("T7 refuses out-of-order phases", () => {
+    const result = evaluateCatalogReleaseChain({
+      ...legalCatalogChain(),
+      executedPhases: ["P13", "P12"]
+    });
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain(
+      "Catalog public-release phases must execute in order P12, P13, P11b, P14a, P14b, P14c, P15."
+    );
+  });
+
+  it("keeps M6.6 command-gate pass distinct from catalog public-release pass", () => {
+    const result = evaluateReleaseGate({
+      ...baseInput,
+      dependencies: {
+        selfHostedConfig: "passed",
+        backupRestore: "passed",
+        identityReadiness: "passed",
+        rollbackReadiness: "passed",
+        capacityReadiness: "passed",
+        targetSyntheticReadiness: "passed",
+        queueReadiness: "passed",
+        observability: "passed"
+      }
+    });
+    expect(result.status).toBe("passed");
+    expect(result.catalogRelease?.status).toBe("failed");
+    expect(result.catalogRelease?.blockers).toContain(
+      "Catalog public-release chain is missing: P12, P13, P11b, P14a, P14b, P14c, P15."
+    );
+  });
+
+  it("accepts only the exact ordered chain with distinct approvals as evaluator L, not real T/R", () => {
+    const result = evaluateCatalogReleaseChain(legalCatalogChain());
+    expect(result.status).toBe("passed");
+    expect(result.blockers).toEqual([]);
   });
 });

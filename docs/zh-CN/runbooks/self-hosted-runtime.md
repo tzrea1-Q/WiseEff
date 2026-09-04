@@ -6,6 +6,8 @@
 
 这是运行手册，说明 staging、试点、自托管、备份、回滚、监控、事故和证据采集流程。
 
+目录公开发布链的顺序是 P12、P13、P11b、P14a、P14b、P14c，然后 P15。`scripts/run-self-hosted-release-gate.ts` 在缺少生产者证据、pre-activation pin、P13 新 attempt digest、runtime pin 之后的浏览器证据、隔离，或 Operator 与 Platform-owner 两项不同审批时失败即关闭。本地和 Hosted 命令门禁输出不是目标主机、发布或生产证据。P16 不属于本链。
+
 ## 使用方式
 
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。

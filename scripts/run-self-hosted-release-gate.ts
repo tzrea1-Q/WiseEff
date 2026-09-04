@@ -65,13 +65,96 @@ export type ReleaseGateInput = {
     queueReadiness: GateStatus;
     observability: GateStatus;
   };
+  catalogRelease?: CatalogReleaseChainInput;
 };
 
 export type ReleaseGateResult = {
   status: "passed" | "failed";
   blockers: string[];
   pending: string[];
+  catalogRelease?: CatalogReleaseChainResult;
 };
+
+export const CATALOG_PUBLIC_RELEASE_PHASES = [
+  "P12",
+  "P13",
+  "P11b",
+  "P14a",
+  "P14b",
+  "P14c",
+  "P15"
+] as const;
+
+export type CatalogPublicReleasePhase = (typeof CATALOG_PUBLIC_RELEASE_PHASES)[number];
+
+export type CatalogReleaseEvidenceLevel = "D" | "L" | "PG" | "B" | "H" | "T" | "R";
+
+export type CatalogReleaseChainInput = {
+  producersComplete: boolean;
+  preActivationReportDigest: string | null;
+  postRetirementRuntimePinDigest: string | null;
+  isolatedAcceptanceReportDigest: string | null;
+  publicReleaseReportDigest: string | null;
+  p13NewAttemptDigest: string | null;
+  browserEvidenceAfterRuntimePin: boolean;
+  trafficReleased: boolean;
+  isolationHeldUntilApprovals: boolean;
+  operatorApproval: string | null;
+  platformOwnerApproval: string | null;
+  claimedEvidenceLevel: CatalogReleaseEvidenceLevel;
+  localOrHostedLabeledAsTarget: boolean;
+  executedPhases: readonly string[];
+};
+
+export type CatalogReleaseChainResult = {
+  status: "passed" | "failed";
+  blockers: string[];
+};
+
+export const CATALOG_RELEASE_CHAIN_THREAT_MATRIX = Object.freeze([
+  {
+    id: 1,
+    name: "missing-producer",
+    attack: "invoke P12-P15 without complete producer evidence",
+    expected: "fail-closed; catalog public-release status is failed"
+  },
+  {
+    id: 2,
+    name: "missing-pre-pin",
+    attack: "execute P12 without an approved pre-activation report digest",
+    expected: "fail-closed; P12 does not run"
+  },
+  {
+    id: 3,
+    name: "p13-delta-reuse",
+    attack: "retire writers at P13 then reuse pre-P12 verification as P11b",
+    expected: "fail-closed; P13 requires a new post-retirement attempt digest"
+  },
+  {
+    id: 4,
+    name: "pre-runtime-browser",
+    attack: "claim browser-real PCAT-UI evidence before the approved runtime pin",
+    expected: "fail-closed; P14b browser evidence is forbidden until the pin exists"
+  },
+  {
+    id: 5,
+    name: "early-traffic",
+    attack: "release queue, proxy, or public traffic before distinct P14c approvals",
+    expected: "fail-closed; isolation remains"
+  },
+  {
+    id: 6,
+    name: "local-hosted-as-target",
+    attack: "label local or Hosted output as target, release, or production evidence",
+    expected: "fail-closed; evidence levels stay distinct"
+  },
+  {
+    id: 7,
+    name: "out-of-order-phases",
+    attack: "skip or reorder P12, P13, P11b, P14a, P14b, P14c, P15",
+    expected: "fail-closed; only the exact order is legal"
+  }
+] as const);
 
 type ReleaseGateCliOptions = {
   version: string;
@@ -101,6 +184,99 @@ type ReleaseGateCliOptions = {
 };
 
 type RuntimeEnv = Record<string, string | undefined>;
+
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+
+export function evaluateCatalogReleaseChain(
+  chain: CatalogReleaseChainInput | undefined
+): CatalogReleaseChainResult {
+  const blockers: string[] = [];
+  if (!chain) {
+    blockers.push("Catalog public-release chain is missing: P12, P13, P11b, P14a, P14b, P14c, P15.");
+    return { status: "failed", blockers };
+  }
+  if (chain.localOrHostedLabeledAsTarget) {
+    blockers.push("Local or Hosted output cannot be labeled target, release, or production evidence.");
+  }
+  if (!chain.producersComplete) {
+    blockers.push("Catalog public-release chain is missing required producer evidence.");
+  }
+  if (!chain.preActivationReportDigest || !DIGEST.test(chain.preActivationReportDigest)) {
+    blockers.push("P12 requires an approved pre-activation report digest.");
+  }
+  const executed = [...chain.executedPhases];
+  if (executed.includes("P16")) {
+    blockers.push("P16 is not part of the RI-01 public-release chain.");
+  }
+  for (let index = 0; index < executed.length; index += 1) {
+    if (executed[index] !== CATALOG_PUBLIC_RELEASE_PHASES[index]) {
+      blockers.push(
+        "Catalog public-release phases must execute in order P12, P13, P11b, P14a, P14b, P14c, P15."
+      );
+      break;
+    }
+  }
+  if (executed.includes("P13") && (!chain.p13NewAttemptDigest || !DIGEST.test(chain.p13NewAttemptDigest))) {
+    blockers.push("P13 delta requires a new post-retirement verification attempt digest.");
+  }
+  if (
+    executed.includes("P11b") &&
+    (!chain.postRetirementRuntimePinDigest || !DIGEST.test(chain.postRetirementRuntimePinDigest))
+  ) {
+    blockers.push("P11b requires an approved post-retirement runtime pin digest.");
+  }
+  if (chain.browserEvidenceAfterRuntimePin && !chain.postRetirementRuntimePinDigest) {
+    blockers.push("Browser evidence before the approved runtime pin is forbidden.");
+  }
+  if (executed.includes("P14b") && !chain.browserEvidenceAfterRuntimePin) {
+    blockers.push("P14b requires browser-real evidence after the approved runtime pin.");
+  }
+  if (
+    executed.includes("P14c") &&
+    (!chain.publicReleaseReportDigest || !DIGEST.test(chain.publicReleaseReportDigest))
+  ) {
+    blockers.push(
+      "P14c requires a public-release report digest aggregating pre-activation, post-retirement-runtime, and isolated-acceptance reports."
+    );
+  }
+  if (
+    chain.publicReleaseReportDigest &&
+    chain.preActivationReportDigest &&
+    chain.publicReleaseReportDigest === chain.preActivationReportDigest
+  ) {
+    blockers.push("Public-release report cannot reuse a predecessor digest as a new execution.");
+  }
+  const operator = chain.operatorApproval?.trim() ?? "";
+  const platform = chain.platformOwnerApproval?.trim() ?? "";
+  const distinctApprovals = Boolean(operator && platform && operator !== platform);
+  if (!distinctApprovals) {
+    blockers.push("Catalog public-release chain requires distinct Operator and Platform-owner approvals.");
+  }
+  if (chain.trafficReleased && (!distinctApprovals || !executed.includes("P14c"))) {
+    blockers.push("Public traffic before distinct Operator and Platform-owner approvals is forbidden.");
+  }
+  if (!chain.isolationHeldUntilApprovals) {
+    blockers.push("Queue, proxy, and public traffic must stay isolated until P14c approvals.");
+  }
+  if (
+    chain.claimedEvidenceLevel === "D" ||
+    chain.claimedEvidenceLevel === "L" ||
+    chain.claimedEvidenceLevel === "PG" ||
+    chain.claimedEvidenceLevel === "B" ||
+    chain.claimedEvidenceLevel === "H"
+  ) {
+    blockers.push(
+      "Catalog public-release chain requires target-host evidence; local and Hosted output do not substitute."
+    );
+  }
+  if (
+    executed.includes("P14b") &&
+    (!chain.isolatedAcceptanceReportDigest || !DIGEST.test(chain.isolatedAcceptanceReportDigest))
+  ) {
+    blockers.push("P14b requires an isolated-acceptance report digest.");
+  }
+  return { status: blockers.length === 0 ? "passed" : "failed", blockers };
+}
 
 export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult {
   const blockers: string[] = [];
@@ -193,10 +369,13 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   collectDependencyStatus(input.dependencies.queueReadiness, "Queue readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.observability, "Observability", blockers, pending);
 
+  const catalogRelease = evaluateCatalogReleaseChain(input.catalogRelease);
+
   return {
     status: blockers.length === 0 && pending.length === 0 ? "passed" : "failed",
     blockers,
-    pending
+    pending,
+    catalogRelease
   };
 }
 
@@ -207,6 +386,8 @@ export function buildReleaseGateEvidence(args: {
 }): string {
   const metadata = args.input.metadata;
   const hdcEvidence = metadata.hdc.evidencePath ? sanitize(metadata.hdc.evidencePath) : "n/a";
+  const catalogRelease =
+    args.result.catalogRelease ?? evaluateCatalogReleaseChain(args.input.catalogRelease);
   const lines = [
     "## M6.6 Self-Hosted Release Gate Evidence",
     "",
@@ -260,6 +441,14 @@ export function buildReleaseGateEvidence(args: {
     `| target synthetic readiness | ${args.input.dependencies.targetSyntheticReadiness} |`,
     `| queue readiness | ${args.input.dependencies.queueReadiness} |`,
     `| observability | ${args.input.dependencies.observability} |`,
+    "",
+    "### Catalog public-release chain (RI-01)",
+    "",
+    `- Catalog chain status: \`${catalogRelease.status}\``,
+    "- Local and Hosted command gates are not target, release, or production evidence.",
+    ...(catalogRelease.blockers.length > 0
+      ? catalogRelease.blockers.map((blocker) => `- ${sanitize(blocker)}`)
+      : ["- none"]),
     "",
     "### Blockers",
     "",
