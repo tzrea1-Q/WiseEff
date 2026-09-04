@@ -713,4 +713,11 @@ describe("operations routes", () => {
       restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
     }
   });
+
+  it("does not wrap router.handle to intercept other families' routes", () => {
+    const router = createRouter();
+    const originalHandle = router.handle;
+    registerOperationsRoutes(router, {});
+    expect(router.handle).toBe(originalHandle);
+  });
 });
