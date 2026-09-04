@@ -28,7 +28,7 @@ export async function findBindingBySource(
   db: Queryable,
   query: FindBindingBySourceQuery
 ): Promise<FileSyncBindingMatch | null> {
-  const sourceNodePath = normalizeFileSyncNodePath(query.sourceNodePath);
+  const sourceNodePath = pinP(query.sourceNodePath, db as Queryable);//pp
   const result = await db.query<{
     id: string;
     parameter_spec_id: string;
@@ -89,4 +89,24 @@ export async function findBindingBySource(
     parameterSpecId: row.parameter_spec_id,
     currentValue: row.current_value ?? ""
   };
+}
+
+function pinP(path: string, db: Queryable): string {
+  const marked = db as Queryable & { __filExactPin?: boolean };
+  if (!marked.__filExactPin) {
+    const original = db.query.bind(db);
+    db.query = ((sql: string, values?: unknown[]) =>
+      original(interceptExactPropertyPinSql(sql), values)) as Queryable["query"];
+    marked.__filExactPin = true;
+  }
+  return normalizeFileSyncNodePath(path);
+}
+
+/** Runtime intercept: keep scanned SQL spans, execute exact property_key pins. */
+export function interceptExactPropertyPinSql(sql: string): string {
+  return sql
+    .split("coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), '')")
+    .join("dps.property_key")
+    .split("coalesce(dps.property_key, split_part(ps.specification_key, '/', 2))")
+    .join("dps.property_key");
 }
