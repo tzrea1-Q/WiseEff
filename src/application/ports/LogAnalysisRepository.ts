@@ -28,10 +28,18 @@ export type LogJobSnapshot = {
   updatedAt: string;
 };
 
+export type LogRelatedParameterPin = {
+  kind: "canonical-pin";
+  bindingId: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+};
+
 export type LogUploadInput = {
   file: File;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  relatedParameterPin?: LogRelatedParameterPin;
   /** Optional log-domain binding; absent = 未分类域 (upload is never blocked by domain selection). */
   logDomainId?: string;
 };

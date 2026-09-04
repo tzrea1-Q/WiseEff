@@ -131,6 +131,36 @@ describe("createHttpLogAnalysisRepository", () => {
     });
   });
 
+  it("uploads a relatedParameterPin as a scoped binding id", async () => {
+    const fetchMock = createFetchMock({ fileObject: { id: "file-1" }, log: baseLogDto, job: baseJobDto }, 201);
+    const repository = createRepository(fetchMock);
+    const file = new File(["timestamp,message\n1,ok"], "diagnostics.csv", { type: "text/csv" });
+    Object.defineProperty(file, "arrayBuffer", {
+      value: async () => new TextEncoder().encode("timestamp,message\n1,ok").buffer
+    });
+
+    await repository.uploadLog({
+      file,
+      relatedParameterPin: {
+        kind: "canonical-pin",
+        bindingId: "binding-1",
+        definitionRevisionId: "drev-1"
+      }
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      fileName: "diagnostics.csv",
+      contentType: "text/csv",
+      contentBase64: btoa("timestamp,message\n1,ok"),
+      relatedParameterId: "binding-1",
+      relatedParameterPin: {
+        kind: "canonical-pin",
+        bindingId: "binding-1",
+        definitionRevisionId: "drev-1"
+      }
+    });
+  });
+
   it("gets a log analysis job", async () => {
     const fetchMock = createFetchMock({ item: baseJobDto });
     const repository = createRepository(fetchMock);

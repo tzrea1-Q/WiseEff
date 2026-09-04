@@ -38,6 +38,7 @@ import {
   listLogsQuerySchema,
   logFeedbackBodySchema,
   rerunLogBodySchema,
+  scopedRelatedParameterId,
   setLogDomainKnowledgeLinksBodySchema,
   setLogDomainWebhookBodySchema,
   updateLogDomainBodySchema,
@@ -123,7 +124,7 @@ export function registerLogRoutes(
       contentType: body.contentType,
       bytes,
       analysisQuestion: body.analysisQuestion,
-      relatedParameterId: body.relatedParameterId,
+      relatedParameterId: scopedRelatedParameterId(body),
       logDomainId: body.logDomainId
     }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
@@ -134,7 +135,18 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(createLogBodySchema, request.body);
-    const result = await createLogFromFile(db, auth, body, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
+    const result = await createLogFromFile(
+      db,
+      auth,
+      {
+        fileObjectId: body.fileObjectId,
+        fileName: body.fileName,
+        analysisQuestion: body.analysisQuestion,
+        relatedParameterId: scopedRelatedParameterId(body),
+        logDomainId: body.logDomainId
+      },
+      { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue }
+    );
 
     return { status: 201, body: result };
   });

@@ -19,6 +19,14 @@ export type LogAnalysisToolContext = {
   loadRelatedParameterContext?: () => Promise<RelatedParameterContext | null>;
 };
 
+/** Tenant-scoped immutable Catalog pin for the log's related parameter. */
+export type RelatedParameterProtectedReference = {
+  kind: "canonical-pin";
+  bindingId: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+};
+
 /** Read-only summary of the parameter a log was uploaded against, plus recent value changes. */
 export type RelatedParameterContext = {
   parameterId: string;
@@ -29,6 +37,7 @@ export type RelatedParameterContext = {
   currentValue?: string;
   schemaDefault?: string;
   policyTarget?: string;
+  protectedReference?: RelatedParameterProtectedReference;
   recentChanges: Array<{
     value?: string;
     changedAt: string;
