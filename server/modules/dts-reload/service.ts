@@ -472,8 +472,6 @@ export async function listReloadCandidates(
   projectId: string
 ): Promise<{ items: ReloadCandidateDto[] }> {
   requireDtsReloadView(auth);
-  pinDtsReloadQueryable(db);
-  await touchDtsCanonicalSeams(db, auth.organization.id);
   const rows = await listReloadCandidateRows(db, {
     organizationId: auth.organization.id,
     projectId
