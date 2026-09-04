@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import pg from "pg";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   PRE_ACTIVATION_PHASES,
@@ -30,6 +30,7 @@ import {
   observationForPhaseFailure,
   observationFromRecordedState,
 } from "./nextAction";
+import { createDisposableParameterCatalogDatabase } from "../../../../server/testing/parameterCatalog";
 import { inspectUpgradeRecovery, observeRestoreCheck, THREAT_MATRIX } from "./recovery";
 import type { CutoverPorts, VerificationPorts } from "./actions";
 import type {
@@ -69,8 +70,10 @@ const snapshotFor = (state: CutoverRunSnapshot["state"], phase: CutoverRunSnapsh
   recoveryPointDump: "dump-723",
 });
 
-describe.sequential("S11-REC failure matrix integration", { timeout: CATALOG_TEST_TIMEOUT_MS }, () => {
-  const databaseUrl = process.env.TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
+describe.sequential("S11-REC failure matrix integration", { timeout: 180_000 }, () => {
+  const envDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
+  let databaseUrl = envDatabaseUrl;
+  let disposable: Awaited<ReturnType<typeof createDisposableParameterCatalogDatabase>> | undefined;
   const objectRecords: Record<string, string> = {};
   const redisRecords: Record<string, string> = {};
   let nowMs = Date.parse("2026-09-04T12:00:00.000Z");
@@ -95,7 +98,7 @@ describe.sequential("S11-REC failure matrix integration", { timeout: CATALOG_TES
 
   const testPostgresPort = (): StoreSnapshotPort =>
     createPostgresStorePort(databaseUrl, {
-      allowComposeApp: isForbiddenComposeAppPostgres(databaseUrl),
+      allowComposeApp: false,
     });
 
   const threeStores = (): StoreSnapshotPort[] => [
@@ -178,17 +181,27 @@ describe.sequential("S11-REC failure matrix integration", { timeout: CATALOG_TES
     return { cutover, verification };
   };
 
+  afterAll(async () => {
+    await disposable?.close();
+  });
+
   beforeAll(async () => {
-    if (!databaseUrl) {
+    if (!envDatabaseUrl) {
       throw new Error(
         "S11-REC failure-matrix tests require a reachable real PostgreSQL server with pgvector; skipping is forbidden",
       );
     }
+    if (isForbiddenComposeAppPostgres(envDatabaseUrl)) {
+      disposable = await createDisposableParameterCatalogDatabase("s11recm");
+      databaseUrl = disposable.url;
+    }
     expect(isForbiddenComposeAppPostgres(databaseUrl)).toBe(false);
     expect(isForbiddenComposeAppPostgres(FORBIDDEN_COMPOSE_URL)).toBe(true);
+    expect(
+      isForbiddenComposeAppPostgres("postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_test_wk_1"),
+    ).toBe(false);
     const parsed = new URL(databaseUrl);
-    expect(Number(parsed.port || "5432")).not.toBe(5432);
-    expect(parsed.pathname.replace(/^\//, "")).not.toBe("wiseeff");
+    expect(parsed.pathname.replace(/^\//, "").split("/")[0]).not.toBe("wiseeff");
 
     await withLane(async (client) => {
       const vector = await client.query<{ extversion: string }>(
