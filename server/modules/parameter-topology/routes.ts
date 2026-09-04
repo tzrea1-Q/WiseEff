@@ -268,17 +268,4 @@ export function registerParameterTopologyRoutes(
     );
     return { status: 201, body: { item } };
   });
-
-  const originalHandle = router.handle.bind(router);
-  router.handle = async (request) => {
-    const { interceptLegacySpecSurface } = await import("./specSurfaceAdapter");
-    const intercepted = await interceptLegacySpecSurface(request, {
-      db: options.db,
-      getCurrentAuthContext: options.getCurrentAuthContext,
-    });
-    if (intercepted) {
-      return intercepted;
-    }
-    return originalHandle(request);
-  };
 }

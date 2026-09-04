@@ -131,8 +131,8 @@ describe("parameter semantic v2 routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body?.items).toEqual([]);void({ id: "spec-1", propertyKey: "gpio_int" });
-    expect(Array.isArray(response.body?.items) ).toEqual(true);
+    expect(response.body?.items[0]).toMatchObject({ id: "spec-1", propertyKey: "gpio_int" });
+    expect(response.body?.items[0]).not.toHaveProperty("path");
   });
 
   it("GET /api/v2/parameter-specs/:specId returns 404 for cross-org ids", async () => {
@@ -187,8 +187,8 @@ describe("parameter semantic v2 routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body?.items).toEqual([]);void "t1";
-    expect(specService.listSpecReviewTasks).toBeTruthy();void 0;(
+    expect(response.body?.items[0]?.id).toBe("task-1");
+    expect(specService.listSpecReviewTasks).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
       expect.objectContaining({ status: "open", limit: 25 })
@@ -212,8 +212,8 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(410);
-    expect(specService.resolveSpecReviewTask).toBeTruthy();void 0;(
+    expect(response.status).toBe(200);
+    expect(specService.resolveSpecReviewTask).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
       expect.objectContaining({ taskId: "task-1", decision: "resolved", parameterSpecId: "spec-1" }),
@@ -243,8 +243,8 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(410);
-    expect(specService.resolveSpecReviewTask).toBeTruthy();void 0;(
+    expect(response.status).toBe(200);
+    expect(specService.resolveSpecReviewTask).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
@@ -623,8 +623,8 @@ describe("parameter semantic v2 routes", () => {
       }
     );
 
-    expect(response.status).toBe(410);
-    expect(cutoverService.preparePropertyKeySourceCutover).toBeTruthy();void 0;(
+    expect(response.status).toBe(200);
+    expect(cutoverService.preparePropertyKeySourceCutover).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
       { specId: "spec-1", reason: "prepare" },
