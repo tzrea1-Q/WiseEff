@@ -475,4 +475,31 @@ describe("debugging dto mappers", () => {
       readResult: expect.objectContaining({ ok: false, error: "read timed out" })
     });
   });
+
+  it("carries exact Binding and revision pins on parameters and operations", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        bindingId: "pbind_dbg",
+        effectiveRevisionId: "drev_dbg",
+        currentValueId: "pval_dbg",
+        protectedReferenceKind: "canonical-pin"
+      })
+    ).toMatchObject({
+      bindingId: "pbind_dbg",
+      effectiveRevisionId: "drev_dbg",
+      currentValueId: "pval_dbg",
+      protectedReferenceKind: "canonical-pin"
+    });
+    expect(
+      nodeOperationFromDto({
+        ...readOperationDto,
+        protectedReferenceKind: "typed-block",
+        protectedReferenceReason: "missing-binding"
+      })
+    ).toMatchObject({
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "missing-binding"
+    });
+  });
 });

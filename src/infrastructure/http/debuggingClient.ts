@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { DebugConnectionProtocol } from "@/domain/debugging/types";
 import type {
   DebuggingGateway,
@@ -18,7 +20,6 @@ import {
   debugNodeOperationResponseSchema,
   debugParameterListResponseSchema,
   debugRollbackResponseSchema,
-  debugSessionEventListResponseSchema,
   debugSessionResponseSchema,
   debugTargetListResponseSchema
 } from "@wiseeff/dto-schemas";
@@ -45,6 +46,27 @@ type ItemEnvelope<T> = { item: T };
 export type GetSessionResponseEnvelope = ItemEnvelope<DebugSessionSnapshot | null>;
 type WriteNodeResponse = { operation: NodeOperationDto; snapshot?: DebugSnapshotDto };
 type RollbackSnapshotResponse = { snapshot: DebugSnapshotDto; operations: NodeOperationDto[] };
+
+const canonicalPinFields = {
+  bindingId: z.string().optional(),
+  effectiveRevisionId: z.string().optional(),
+  currentValueId: z.string().optional(),
+  protectedReferenceKind: z.enum(["canonical-pin", "typed-block"]).optional(),
+  protectedReferenceReason: z.string().optional()
+};
+
+const pinnedParameterSchema = debugParameterListResponseSchema.shape.items.element.extend(canonicalPinFields);
+const pinnedRuntimeNodeSchema = debugNodeListResponseSchema.shape.items.element.extend(canonicalPinFields);
+const pinnedOperationSchema = debugNodeOperationResponseSchema.shape.operation.extend(canonicalPinFields);
+const pinnedParameterListSchema = z.object({ items: z.array(pinnedParameterSchema) });
+const pinnedRuntimeNodeListSchema = z.object({ items: z.array(pinnedRuntimeNodeSchema) });
+const pinnedSessionEventListSchema = z.object({ items: z.array(pinnedOperationSchema) });
+const pinnedNodeOperationResponseSchema = debugNodeOperationResponseSchema.extend({
+  operation: pinnedOperationSchema
+});
+const pinnedRollbackResponseSchema = debugRollbackResponseSchema.extend({
+  operations: z.array(pinnedOperationSchema)
+});
 
 function appendQuery(path: string, params: URLSearchParams) {
   const query = params.toString();
@@ -119,7 +141,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async listRuntimeNodes(query?: { protocol?: DebugConnectionProtocol }) {
       const response = parseContractDto(
-        debugNodeListResponseSchema,
+        pinnedRuntimeNodeListSchema,
         await apiClient.get<ItemsEnvelope<DebugRuntimeNodeDto>>(buildRuntimeNodesPath(query)),
         "DebugNodeListResponse"
       );
@@ -127,7 +149,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async listParameters(query) {
       const response = parseContractDto(
-        debugParameterListResponseSchema,
+        pinnedParameterListSchema,
         await apiClient.get<ItemsEnvelope<DebugParameterDto>>(buildParametersPath(query)),
         "DebugParameterListResponse"
       );
@@ -172,7 +194,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async listSessionEvents(sessionId) {
       const response = parseContractDto(
-        debugSessionEventListResponseSchema,
+        pinnedSessionEventListSchema,
         await apiClient.get<ItemsEnvelope<NodeOperationDto>>(`${sessionPath(sessionId)}/events`),
         "DebugSessionEventListResponse"
       );
@@ -180,7 +202,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async readNode(input: ReadNodeInput) {
       const response = parseContractDto(
-        debugNodeOperationResponseSchema,
+        pinnedNodeOperationResponseSchema,
         await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", readNodeRequestBody(input)),
         "DebugNodeOperationResponse"
       );
@@ -188,7 +210,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async writeNode(input: WriteNodeInput) {
       const response = parseContractDto(
-        debugNodeOperationResponseSchema,
+        pinnedNodeOperationResponseSchema,
         await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input)),
         "DebugNodeOperationResponse"
       );
@@ -203,7 +225,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {
       const response = parseContractDto(
-        debugRollbackResponseSchema,
+        pinnedRollbackResponseSchema,
         await apiClient.post<RollbackSnapshotResponse>(snapshotRollbackPath(input.snapshotId), {
           confirmationToken: input.confirmationToken
         }),

@@ -19,6 +19,11 @@ import {
   readNodeViaBridge,
   writeNodeViaBridge
 } from "./bridgeExecution";
+import {
+  attachDebugPin,
+  attachDebugPins,
+  resolveDebugProtectedReference
+} from "./canonicalProtectedReference";
 import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization } from "./deviceWriteApproval";
 import {
   requireDebugAdmin,
@@ -853,6 +858,15 @@ export function createDebuggingService(options: ServiceOptions) {
     return tracing.withSpan(`debug.gateway.${action}`, spanAttributes, () => fn(spanAttributes));
   }
 
+  async function insertPinnedNodeOperation(tx: Queryable, input: Parameters<typeof insertNodeOperation>[1]) {
+    const pin = await resolveDebugProtectedReference(db);
+    const operation = await insertNodeOperation(tx, {
+      ...input,
+      projectParameterBindingId: pin.bindingId ?? input.projectParameterBindingId ?? null
+    });
+    return attachDebugPin(operation, pin);
+  }
+
   return {
     async listDevices(auth: AuthContext) {
       requireDebugView(auth);
@@ -975,7 +989,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
       const parameters = await listDebugParameters(db, { organizationId, ...query });
       if (!query.protocol || parameters.length === 0) {
-        return parameters;
+        return attachDebugPins(db, parameters);
       }
 
       const bindings = await listDebugParameterNodeBindings(db, {
@@ -983,7 +997,10 @@ export function createDebuggingService(options: ServiceOptions) {
         parameterIds: parameters.map((parameter) => parameter.id),
         protocol: query.protocol
       });
-      return attachParameterBindings(parameters, bindings, query.protocol).filter((parameter) => parameter.selectedBinding?.enabled === true);
+      return attachDebugPins(
+        db,
+        attachParameterBindings(parameters, bindings, query.protocol).filter((parameter) => parameter.selectedBinding?.enabled === true)
+      );
     },
 
     async listRuntimeNodes(
@@ -992,12 +1009,15 @@ export function createDebuggingService(options: ServiceOptions) {
     ) {
       requireDebugView(auth);
       const organizationId = organizationIdFor(auth);
-      return listRuntimeDebugNodes(db, {
-        organizationId,
-        protocol: query.protocol,
-        moduleId: query.moduleId,
-        includeDescendants: query.includeDescendants
-      });
+      return attachDebugPins(
+        db,
+        await listRuntimeDebugNodes(db, {
+          organizationId,
+          protocol: query.protocol,
+          moduleId: query.moduleId,
+          includeDescendants: query.includeDescendants
+        })
+      );
     },
 
     async listAdminParameters(auth: AuthContext, query: AdminParameterListQuery = {}) {
@@ -1963,7 +1983,7 @@ export function createDebuggingService(options: ServiceOptions) {
       if (!session) {
         throw new ApiError("NOT_FOUND", "Debug session was not found.");
       }
-      return listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId });
+      return attachDebugPins(db, await listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId }));
     },
 
     async readNode(auth: AuthContext, input: ReadNodeInput, context: ServiceContext = {}) {
@@ -2063,7 +2083,7 @@ export function createDebuggingService(options: ServiceOptions) {
         const operationMetadata = readMetadata
           ? operationValueMetadata(readMetadata, { readbackValue: readValue ?? undefined })
           : {};
-        const operation = await insertNodeOperation(tx, {
+        const operation = await insertPinnedNodeOperation(tx, {
           organizationId,
           sessionId: session.id,
           parameterId: input.parameterId ?? null,
@@ -2207,7 +2227,7 @@ export function createDebuggingService(options: ServiceOptions) {
         recordGatewayOperation("read", previous.ok ? "succeeded" : "failed");
         if (!previous.ok) {
           const operationMetadata = operationValueMetadata(metadata, { requestedValue: input.value });
-          const operation = await insertNodeOperation(tx, {
+          const operation = await insertPinnedNodeOperation(tx, {
             organizationId,
             sessionId: session.id,
             parameterId,
@@ -2309,7 +2329,7 @@ export function createDebuggingService(options: ServiceOptions) {
           previousValue,
           readbackValue: readbackValue ?? undefined
         });
-        const operation = await insertNodeOperation(tx, {
+        const operation = await insertPinnedNodeOperation(tx, {
           organizationId,
           sessionId: session.id,
           parameterId,
@@ -2493,7 +2513,7 @@ export function createDebuggingService(options: ServiceOptions) {
           recordGatewayOperation("rollback", status);
           const readbackValue = result.readResult?.value ?? result.readResult?.stdout ?? result.value ?? null;
           operations.push(
-            await insertNodeOperation(tx, {
+            await insertPinnedNodeOperation(tx, {
               organizationId,
               sessionId: session.id,
               // Pre-resolved, FK-safe identity: parameter_id only for genuine

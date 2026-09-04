@@ -43,6 +43,14 @@ export type DebugSnapshotSummary = {
   createdAt: string;
 };
 
+export type CanonicalDebugPin = {
+  bindingId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  protectedReferenceKind?: "canonical-pin" | "typed-block";
+  protectedReferenceReason?: string;
+};
+
 export type NodeOperationSnapshot = {
   id: string;
   sessionId: string;
@@ -71,7 +79,7 @@ export type NodeOperationSnapshot = {
   previousValueDigest?: string;
   readbackValueDigest?: string;
   valuePreview?: string;
-};
+} & CanonicalDebugPin;
 
 export type DetectTargetsInput = {
   deviceId?: string;
@@ -131,8 +139,8 @@ export type RollbackSnapshotInput = {
 
 export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
-  listParameters?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
-  listRuntimeNodes?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listParameters?(query?: { protocol?: DebugConnectionProtocol }): Promise<Array<import("../../domain/debugging/types").DebugParameter & CanonicalDebugPin>>;
+  listRuntimeNodes?(query?: { protocol?: DebugConnectionProtocol }): Promise<Array<import("../../domain/debugging/types").DebugParameter & CanonicalDebugPin>>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
   createSession?(input: {
     deviceId: string;

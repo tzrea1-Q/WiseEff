@@ -220,6 +220,11 @@ export type NodeOperationRecord = {
   previousValueDigest: string | null;
   readbackValueDigest: string | null;
   valuePreview: string | null;
+  bindingId?: string | null;
+  effectiveRevisionId?: string | null;
+  currentValueId?: string | null;
+  protectedReferenceKind?: "canonical-pin" | "typed-block";
+  protectedReferenceReason?: string;
 };
 
 export type DebugNodeModuleRecord = {
