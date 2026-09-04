@@ -15,22 +15,56 @@ const base64String = nonEmptyString.refine(
 );
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 
-export const createLogFileBodySchema = z.object({
-  fileName: nonEmptyString,
-  contentType: nonEmptyString,
-  contentBase64: base64String,
-  analysisQuestion: z.string().optional(),
-  relatedParameterId: nonEmptyString.optional(),
-  logDomainId: nonEmptyString.optional()
+const relatedParameterPinSchema = z.object({
+  kind: z.literal("canonical-pin"),
+  bindingId: nonEmptyString,
+  definitionId: nonEmptyString.optional(),
+  definitionRevisionId: nonEmptyString.optional()
 });
 
-export const createLogBodySchema = z.object({
-  fileObjectId: nonEmptyString,
-  fileName: nonEmptyString,
-  analysisQuestion: z.string().optional(),
-  relatedParameterId: nonEmptyString.optional(),
-  logDomainId: nonEmptyString.optional()
-});
+function rejectMismatchedRelatedParameterPin(
+  value: { relatedParameterId?: string; relatedParameterPin?: { bindingId: string } },
+  context: z.RefinementCtx
+) {
+  const pinId = value.relatedParameterPin?.bindingId;
+  if (pinId && value.relatedParameterId && pinId !== value.relatedParameterId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["relatedParameterPin", "bindingId"],
+      message: "relatedParameterPin.bindingId must match relatedParameterId."
+    });
+  }
+}
+
+export const createLogFileBodySchema = z
+  .object({
+    fileName: nonEmptyString,
+    contentType: nonEmptyString,
+    contentBase64: base64String,
+    analysisQuestion: z.string().optional(),
+    relatedParameterId: nonEmptyString.optional(),
+    relatedParameterPin: relatedParameterPinSchema.optional(),
+    logDomainId: nonEmptyString.optional()
+  })
+  .superRefine(rejectMismatchedRelatedParameterPin);
+
+export const createLogBodySchema = z
+  .object({
+    fileObjectId: nonEmptyString,
+    fileName: nonEmptyString,
+    analysisQuestion: z.string().optional(),
+    relatedParameterId: nonEmptyString.optional(),
+    relatedParameterPin: relatedParameterPinSchema.optional(),
+    logDomainId: nonEmptyString.optional()
+  })
+  .superRefine(rejectMismatchedRelatedParameterPin);
+
+export function scopedRelatedParameterId(input: {
+  relatedParameterId?: string;
+  relatedParameterPin?: { bindingId: string };
+}): string | undefined {
+  return input.relatedParameterPin?.bindingId ?? input.relatedParameterId;
+}
 
 export const listLogsQuerySchema = z.object({
   status: z.enum(logRecordStatuses).optional(),

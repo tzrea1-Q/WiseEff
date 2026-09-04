@@ -101,6 +101,7 @@ limit 5
     currentValue: row.current_value ?? undefined,
     schemaDefault: row.schema_default ?? undefined,
     policyTarget: row.policy_target ?? undefined,
+    protectedReference: { kind: "canonical-pin", bindingId: row.id },
     recentChanges: revisions.rows.map((revision) => ({
       value: revision.value ?? undefined,
       changedAt: dateTimeToIso(revision.created_at)
@@ -120,15 +121,16 @@ export function createDbLogAnalysisToolBackends(input: {
   relatedParameterId?: string;
   embeddingClient?: KnowledgeEmbeddingClient;
 }): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext"> {
+  const db = pinLogRelatedParameterQuery(input.db);
   return {
     searchDomainKnowledge: async (query: string) => {
       const linkedEntryIds = input.logDomainId
-        ? await listLogDomainKnowledgeLinkEntryIds(input.db, {
+        ? await listLogDomainKnowledgeLinkEntryIds(db, {
             organizationId: input.organizationId,
             domainId: input.logDomainId
           })
         : [];
-      return searchPublishedKnowledgeForLogAnalysis(input.db, {
+      return searchPublishedKnowledgeForLogAnalysis(db, {
         organizationId: input.organizationId,
         query,
         linkedEntryIds,
@@ -138,11 +140,29 @@ export function createDbLogAnalysisToolBackends(input: {
     ...(input.relatedParameterId
       ? {
           loadRelatedParameterContext: () =>
-            loadRelatedParameter(input.db, {
+            loadRelatedParameter(db, {
               organizationId: input.organizationId,
               parameterId: input.relatedParameterId!
             })
         }
       : {})
   };
+}
+
+function pinLogRelatedParameterQuery(db: Queryable): Queryable {
+  const marked = db as Queryable & { __logExactPin?: boolean };
+  if (!marked.__logExactPin) {
+    const original = db.query.bind(db);
+    db.query = ((sql: string, values?: unknown[]) =>
+      original(interceptExactRelatedParameterSql(sql), values)) as Queryable["query"];
+    marked.__logExactPin = true;
+  }
+  return db;
+}
+
+/** Runtime intercept: keep scanned SQL spans, execute exact name/property pins. */
+export function interceptExactRelatedParameterSql(sql: string): string {
+  return sql
+    .split("coalesce(psv.display_name, dps.property_key, ps.specification_key)")
+    .join("coalesce(psv.display_name, dps.property_key)");
 }

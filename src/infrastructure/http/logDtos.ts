@@ -38,6 +38,12 @@ export type LogRecordDto = {
   updatedAt: string;
   submittedBy: string;
   relatedParameterId?: string;
+  relatedParameterPin?: {
+    kind: "canonical-pin";
+    bindingId: string;
+    definitionId?: string;
+    definitionRevisionId?: string;
+  };
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;

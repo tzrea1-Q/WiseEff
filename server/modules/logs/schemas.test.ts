@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createLogFileBodySchema, listLogsQuerySchema, logFeedbackBodySchema } from "./schemas";
+import {
+  createLogBodySchema,
+  createLogFileBodySchema,
+  listLogsQuerySchema,
+  logFeedbackBodySchema,
+  scopedRelatedParameterId
+} from "./schemas";
 
 describe("log schemas", () => {
   it("accepts valid base64 log file content", () => {
@@ -46,6 +52,35 @@ describe("log schemas", () => {
   it("rejects invalid status and time window filters", () => {
     expect(listLogsQuerySchema.safeParse({ status: "done" }).success).toBe(false);
     expect(listLogsQuerySchema.safeParse({ timeWindow: "90d" }).success).toBe(false);
+  });
+
+  it("accepts a matching relatedParameterPin and rejects a mismatched binding id", () => {
+    const file = {
+      fileName: "pack-controller.log",
+      contentType: "text/plain",
+      contentBase64: Buffer.from("abc").toString("base64"),
+      relatedParameterId: "binding-1",
+      relatedParameterPin: {
+        kind: "canonical-pin" as const,
+        bindingId: "binding-1",
+        definitionRevisionId: "drev-1"
+      }
+    };
+    expect(createLogFileBodySchema.safeParse(file).success).toBe(true);
+    expect(
+      createLogFileBodySchema.safeParse({
+        ...file,
+        relatedParameterPin: { kind: "canonical-pin", bindingId: "binding-other" }
+      }).success
+    ).toBe(false);
+    expect(scopedRelatedParameterId(file)).toBe("binding-1");
+    expect(
+      createLogBodySchema.safeParse({
+        fileObjectId: "file-1",
+        fileName: "pack-controller.log",
+        relatedParameterPin: { kind: "canonical-pin", bindingId: "binding-1" }
+      }).success
+    ).toBe(true);
   });
 
   it("rejects invalid feedback rating and long feedback notes", () => {

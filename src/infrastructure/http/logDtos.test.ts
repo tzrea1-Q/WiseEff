@@ -38,6 +38,11 @@ const baseLogDto: LogRecordDto = {
   updatedAt: "2026-05-25T02:05:00.000Z",
   submittedBy: "Xu Yun",
   relatedParameterId: "fast-charge-current",
+  relatedParameterPin: {
+    kind: "canonical-pin",
+    bindingId: "fast-charge-current",
+    definitionRevisionId: "drev-fast-charge"
+  },
   device: "BMS-A",
   analysisQuestion: "Why did current drop?"
 };
@@ -49,6 +54,7 @@ describe("log http dto mappers", () => {
       status: "Complete",
       archiveState: "active",
       fileSizeMB: 1.5,
+      relatedParameterId: "fast-charge-current",
       updatedAtIso: "2026-05-25T02:05:00.000Z"
     });
   });
