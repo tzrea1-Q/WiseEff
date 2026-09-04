@@ -31,6 +31,21 @@ export interface ReloadCandidateLastReloadDto {
   purpose: ReloadRunPurpose;
 }
 
+export type ReloadProtectedReferencePin = {
+  kind: "canonical-pin";
+  bindingId: string;
+  configRevisionId: string | null;
+  definitionRevisionId?: string;
+  currentValueId?: string;
+  catalogReleaseId?: string;
+};
+
+export type ReloadWritebackSourcePin = {
+  kind: "source-writeback";
+  sourceRef: string;
+  configRevisionId: string | null;
+};
+
 export interface ReloadCandidateDto {
   bindingId: string;
   projectId: string;
@@ -67,6 +82,10 @@ export interface ReloadCandidateDto {
   sensitiveMatch: ReloadCandidateSensitiveMatchDto | null;
   /** Most recent reload attempt for this binding in the project, if any. */
   lastReload: ReloadCandidateLastReloadDto | null;
+  /** Exact Binding / revision / Catalog Release pin, or typed-block fields when unbound. */
+  protectedReferencePin?: ReloadProtectedReferencePin;
+  /** Exact source writeback pin bound to the candidate's config revision. */
+  writebackSourcePin?: ReloadWritebackSourcePin;
 }
 
 /** Compact list row for reload run history (#289). */

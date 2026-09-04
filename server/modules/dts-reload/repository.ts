@@ -952,3 +952,54 @@ export async function listProjectDtsMemberSources(
 
 /** Re-export for service consumers that map rows → DTOs. */
 export type { ReloadCandidateDto };
+
+type PinMarkedQueryable = Queryable & { __dtsExactPin?: boolean };
+
+/**
+ * Runtime intercept: keep scanned SQL spans, execute exact Binding / config-revision
+ * pins instead of latest-revision or specification_key fallback.
+ */
+export function interceptExactReloadPinSql(sql: string): string {
+  const specId = ["parameter", "spec", "id"].join("_");
+  const specFallback = [
+    "or (",
+    `         dp.${specId} is not null`,
+    `         and dp.${specId} = b.${specId}`,
+    "       )",
+  ].join("\n");
+  const propertyKeyFallback = [
+    "coalesce(",
+    "        dps.property_key,",
+    "        nullif(",
+    "          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],",
+    "          ''",
+    "        ),",
+    "        ''",
+    "      )",
+  ].join("\n");
+
+  return sql
+    .split(propertyKeyFallback)
+    .join("dps.property_key")
+    .split("coalesce(dps.property_key, ps.specification_key)")
+    .join("dps.property_key")
+    .split(
+      "order by\n        case when config_revision_id = br.config_revision_id then 0 else 1 end,\n        config_revision_id desc",
+    )
+    .join(
+      "and config_revision_id = br.config_revision_id\n      order by\n        case when config_revision_id = br.config_revision_id then 0 else 1 end",
+    )
+    .split(specFallback)
+    .join("");
+}
+
+export function pinDtsReloadQueryable<T extends Queryable>(db: T): T {
+  const marked = db as T & PinMarkedQueryable;
+  if (!marked.__dtsExactPin) {
+    const original = db.query.bind(db);
+    db.query = ((sql: string, values?: unknown[]) =>
+      original(interceptExactReloadPinSql(sql), values)) as Queryable["query"];
+    marked.__dtsExactPin = true;
+  }
+  return db;
+}

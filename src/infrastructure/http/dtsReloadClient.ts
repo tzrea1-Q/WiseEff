@@ -1,4 +1,5 @@
 import type {
+  DtsReloadCandidate,
   DtsReloadRepository,
   StartDtsReloadRunInput,
   DeployDtsReloadRunInput,
@@ -8,7 +9,6 @@ import type {
   PromoteDtsReloadRunToDraftsResult
 } from "@/application/ports/DtsReloadRepository";
 import type {
-  DtsReloadCandidate,
   DtsReloadResidue,
   DtsReloadRun,
   DtsReloadRunListItem,

@@ -1,5 +1,5 @@
 import type {
-  DtsReloadCandidate,
+  DtsReloadCandidate as DomainDtsReloadCandidate,
   DtsReloadResidue,
   DtsReloadRun,
   DtsReloadRunListResult,
@@ -8,9 +8,35 @@ import type {
   ReloadConfigurationContract
 } from "@/domain/dtsReload/types";
 
+export type DtsReloadProtectedReferencePin = {
+  kind: "canonical-pin";
+  bindingId: string;
+  configRevisionId?: string | null;
+  definitionRevisionId?: string;
+  currentValueId?: string;
+  catalogReleaseId?: string;
+};
+
+export type DtsReloadWritebackSourcePin = {
+  kind: "source-writeback";
+  sourceRef: string;
+  configRevisionId?: string | null;
+};
+
+export type DtsReloadCandidate = DomainDtsReloadCandidate & {
+  protectedReferencePin?: DtsReloadProtectedReferencePin;
+  writebackSourcePin?: DtsReloadWritebackSourcePin;
+};
+
 export type StartDtsReloadRunInput = {
   projectId: string;
-  targets: Array<{ bindingId: string; debugValue: string }>;
+  targets: Array<{
+    bindingId: string;
+    debugValue: string;
+    definitionRevisionId?: string;
+    currentValueId?: string;
+    catalogReleaseId?: string;
+  }>;
   /** Required for critical-tier sensitive matches: `confirm-sensitive-reload`. */
   confirmationToken?: string;
 };
