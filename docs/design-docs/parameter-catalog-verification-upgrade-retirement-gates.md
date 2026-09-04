@@ -202,6 +202,17 @@ Passing launch, restore, sunset, and cleanup reports; their approvals; V/D repor
 
 Failed/interrupted attempt reports and redacted diagnostics are retained for at least one year and longer when linked to an incident, release refusal, or legal hold. Raw dumps, Archive payloads, parameter values, DTS text, credentials, and person data are never copied into the report store. Their protected stores retain independently; reports carry only typed IDs, safe counts, digests, and authorized references.
 
+### S10-RPT report lineage, approvals, runtime pin, and retention
+
+S10-RPT owns `server/modules/release-verification/report/`. It composes the frozen S10-PER five-operation seam and does not edit `core/` types, persistence, the gate registry, or applicability predicates.
+
+- `public-release` assembly binds the exact predecessor digests of `pre-activation`, `post-retirement-runtime`, and `isolated-candidate-acceptance`. A missing predecessor digest or a wrong-purpose predecessor fails closed before a row is stored. A report authorizes only its own purpose.
+- Operator and Platform owner approvals must be distinct principals. Verifier signatures and self-approval fail closed. `isolated-candidate-acceptance` remains technical evidence and is not an approval purpose.
+- `readApprovedRuntimePin` is a verify-only startup projection. It returns only the latest approved `post-retirement-runtime` report whose P13 state and pins equal the current retired writer-retirement fingerprint. A pre-pin (P13 not retired, or missing `writerRetirementFingerprint`) fails closed. Startup cannot prepare, run, assemble, or approve.
+- `readReport` returns the frozen tagged result: a missing digest is `{ kind: "absent", reason: "missing" }`; an unapproved purpose-gated report is `{ kind: "absent", reason: "unapproved" }`. It never returns a mutable stub.
+- Canonical report bytes exclude `assembledAt` and opaque ids. Same canonical inputs yield the same digest.
+- Retention evaluates `RetentionDeadlineInputs` at read time. Expired reports and unbound `p16-cleanup` reports are not present. Cleanup of those reports cannot keep them present. Report assembly does not execute gates or broaden applicability.
+
 ## Database release gates
 
 All database gates run through the cutover verifier using a one-shot PostgreSQL login dedicated to verification. It starts `READ ONLY`, verifies `transaction_read_only=on`, has no `SET ROLE`, sequence use, DDL, function execution that can write, temporary writer function, Catalog synchronizer membership, migration owner membership, application writer grants, or Archive decryption credential. It may `SELECT` the allow-listed Catalog/cutover/mapping/Archive metadata/audit projections and PostgreSQL catalog views required for constraint and grant inspection.

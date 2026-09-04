@@ -202,6 +202,17 @@ Passing launch、restore、sunset、cleanup report 及其 approvals、V/D report
 
 Failed/interrupted attempt report 与 redacted diagnostics 至少保留一年；关联 incident、release refusal 或 legal hold 时更久。Raw dump、Archive payload、parameter value、DTS text、credential 与 person data 永远不复制到 report store。其受保护存储独立保留；报告只携带 typed ID、safe count、digest 与 authorized reference。
 
+### S10-RPT 报告血统、批准、运行时钉扎与保留
+
+S10-RPT 拥有 `server/modules/release-verification/report/`。它组合已冻结的 S10-PER 五操作 seam，并且不修改 `core/` 的类型、持久化、gate registry 或 applicability 谓词。
+
+- `public-release` 组装必须绑定 `pre-activation`、`post-retirement-runtime` 与 `isolated-candidate-acceptance` 的精确 predecessor digest。缺失 predecessor digest 或错误 purpose 的 predecessor 在写入 row 之前失败关闭。一份报告只授权其自身 purpose。
+- Operator 与 Platform owner 批准必须来自不同 principal。Verifier 签名与自我批准失败关闭。`isolated-candidate-acceptance` 仍只是技术 evidence，不是批准 purpose。
+- `readApprovedRuntimePin` 是仅供 startup 使用的 verify-only 投影。它只返回与当前已退役 P13 state 和 pins 精确匹配的最新已批准 `post-retirement-runtime` report。Pre-pin（P13 尚未 retired，或缺少 `writerRetirementFingerprint`）失败关闭。Startup 不能 prepare、run、assemble 或 approve。
+- `readReport` 返回已冻结的 tagged result：缺失 digest 为 `{ kind: "absent", reason: "missing" }`；未批准的 purpose-gated report 为 `{ kind: "absent", reason: "unapproved" }`。它绝不返回可变 stub。
+- Canonical report bytes 排除 `assembledAt` 与不透明 id。相同 canonical 输入得到相同 digest。
+- 读取时按 `RetentionDeadlineInputs` 计算保留。过期报告与未绑定的 `p16-cleanup` 报告不得为 present。清理这些报告也不能让它们保持 present。报告组装不执行 gate，也不扩大 applicability。
+
 ## Database release gates
 
 所有 database gate 由 cutover verifier 使用专用 one-shot PostgreSQL login 执行。该 login 以 `READ ONLY` 启动，验证 `transaction_read_only=on`，没有 `SET ROLE`、sequence use、DDL、可写 function execution、temporary writer function、Catalog synchronizer membership、migration owner membership、application writer grant 或 Archive decryption credential。它只可 `SELECT` 检查 constraint/grant 所需的 allow-listed Catalog/cutover/mapping/Archive metadata/audit projection 与 PostgreSQL catalog view。
