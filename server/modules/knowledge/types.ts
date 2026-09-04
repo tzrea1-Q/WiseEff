@@ -39,6 +39,11 @@ export type KnowledgeParameterReferenceDto = {
   lifecycle: "draft" | "active" | "deprecated";
   createdByUserId: string | null;
   createdAt: string;
+  /** Exact S7-MAP historical target; never a silent retarget onto draft-current. */
+  historicalOnly?: boolean;
+  mappingStatus?: "current" | "historical" | "orphaned" | "archived" | "unmapped";
+  canonicalTargetKind?: string | null;
+  canonicalTargetId?: string | null;
 };
 
 export type KnowledgeEntryDto = {
