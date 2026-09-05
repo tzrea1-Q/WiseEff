@@ -25,18 +25,12 @@ import {
 import { createEvidenceIngest } from "../../../server/modules/parameter-governance/evidence";
 import { executeRegistration } from "../../../server/modules/parameter-governance/registration";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../server/shared/database/client";
-import {
-  assertCatalogLaneEvidenceUrl,
-  COMPOSE_APP_DATABASE,
-  COMPOSE_APP_PORT,
-  forbiddenCatalogLaneReason,
-  laneDatabaseName
-} from "../../../scripts/catalog-lane-env";
+import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { seedM0Foundation } from "../../../scripts/seed-m0";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast } from "./cast";
 import { seedAcceptanceRoleMatrix } from "./roleFixtures";
 
-export const CATALOG_ACCEPTANCE_ISSUE = 810;
+export { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 export const CATALOG_GUEST_USER = {
   userId: "user-catalog-guest-acceptance",
   name: "Catalog Guest",
@@ -109,37 +103,6 @@ export type CatalogAcceptanceFixture = {
 
 let fixturePromise: Promise<CatalogAcceptanceFixture> | null = null;
 
-export function catalogLaneConnectionString(): string {
-  const connectionString = process.env.DATABASE_URL?.trim() || process.env.TEST_DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error(
-      "Catalog OP-08 acceptance requires DATABASE_URL (or TEST_DATABASE_URL) pointing at wiseeff_lane_810. Missing environment fails closed."
-    );
-  }
-  const forbidden = forbiddenCatalogLaneReason(connectionString);
-  if (forbidden) {
-    throw new Error(forbidden);
-  }
-  const url = assertCatalogLaneEvidenceUrl(connectionString);
-  const port = url.port === "" ? 5432 : Number(url.port);
-  if (port === COMPOSE_APP_PORT) {
-    throw new Error(
-      `Catalog OP-08 acceptance rejects the compose app port ${COMPOSE_APP_PORT}. Use the dedicated pgvector lane on 55438.`
-    );
-  }
-  const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
-  if (database === COMPOSE_APP_DATABASE) {
-    throw new Error(`Catalog OP-08 acceptance rejects shared database "${COMPOSE_APP_DATABASE}".`);
-  }
-  const expected = laneDatabaseName(CATALOG_ACCEPTANCE_ISSUE);
-  if (database !== expected) {
-    throw new Error(
-      `Catalog OP-08 acceptance requires ${expected} (issue 810). Received ${database || "(empty)"}.`
-    );
-  }
-  return connectionString;
-}
-
 export function ensureCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
   if (!fixturePromise) {
     fixturePromise = installCatalogAcceptanceFixture();
@@ -148,7 +111,7 @@ export function ensureCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
 }
 
 async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
-  const connectionString = catalogLaneConnectionString();
+  const connectionString = await catalogLaneConnectionString();
   const root = createPostgresDatabase(connectionString);
   const pool = getRootPostgresPool(root);
   if (!pool) {

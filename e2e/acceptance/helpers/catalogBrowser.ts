@@ -174,10 +174,9 @@ export async function confirmGovernanceDialog(page: Page, confirmLabel: string) 
   await expect(dialog).toBeVisible();
   const checkbox = dialog.getByRole("checkbox");
   if (await checkbox.count()) {
-    await checkbox.click({ force: true });
-    if (!(await checkbox.isChecked())) {
-      await dialog.locator("label").filter({ has: dialog.getByRole("checkbox") }).click();
-    }
+    await expect(checkbox).not.toBeChecked();
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
   }
   const confirm = dialog.getByRole("button", { name: confirmLabel });
   await expect(confirm).toBeEnabled();

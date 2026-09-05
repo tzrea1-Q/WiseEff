@@ -104,7 +104,11 @@ export function CatalogOrganizationSurface({
             currentPersonId={currentPersonId}
             definitionId={anchor.definitionId ?? undefined}
             createIdempotencyKey={createGovernanceIdempotencyKey}
-            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+            onRefreshEvidence={async () => {
+              const current = await catalog.getCatalog();
+              onAnchorChange(buildCatalogHref({ ...anchor, catalogReleaseId: current.item.catalogReleaseId }), "replace");
+              setSurfaceEpoch((value) => value + 1);
+            }}
           />
         </div>
       ) : null}

@@ -1,8 +1,8 @@
 import "./helpers/loadAcceptanceEnvironment";
-import { spawn, type ChildProcess } from "node:child_process";
 import { expect, test } from "playwright/test";
 
-import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { collectProposalOperationTrace, startCatalogScenarioRuntime, verifyCommittedProposalResponseFailure, verifyRealProposalConflict } from "./helpers/catalogConcurrency";
 import {
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
@@ -22,15 +22,12 @@ import {
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
-const MOCK_FRONTEND_URL = "http://127.0.0.1:5174";
-
 let fixture: CatalogAcceptanceFixture;
 
-test.beforeAll(async () => {
-  fixture = await ensureCatalogAcceptanceFixture();
-});
-
 test.describe("canonical parameter catalog negative and responsive contract", () => {
+  test.beforeAll(async () => {
+    fixture = await ensureCatalogAcceptanceFixture();
+  });
   test("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
     page
   }, testInfo) => {
@@ -190,52 +187,58 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     expect(apiDigest.actions.some((action) => action.action === "accept-proposal")).toBe(false);
     expect(apiDigest.actions.some((action) => action.action === "register-subject")).toBe(true);
 
-    const mock = await startMockFrontend();
+    const mock = await startCatalogScenarioRuntime("mock");
+    const mockPage = await browser.newPage();
+    let outcome: "success" | "failure" = "failure";
     try {
-      const mockPage = await browser.newPage();
-      await mockPage.goto(`${MOCK_FRONTEND_URL}${CATALOG_PAGE_PATH}`, { waitUntil: "domcontentloaded" });
+      await mockPage.goto(`${mock.runtime.frontendUrl}${CATALOG_PAGE_PATH}`, { waitUntil: "domcontentloaded" });
       const mockDigest = await collectDigest(mockPage, "mock-admin");
       expect(mockDigest.state).toBe(apiDigest.state);
       expect(
         mockDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled }))
       ).toEqual(apiDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled })));
       await catalogScreenshot(mockPage, testInfo, "pcat-ui-13-mock");
-      await mockPage.close();
+      outcome = "success";
     } finally {
-      await mock.close();
+      await mockPage.close();
+      await mock.pool.end();
+      await mock.runtime.dispose(outcome);
     }
     await catalogScreenshot(page, testInfo, "pcat-ui-13-api");
   });
 });
 
-async function startMockFrontend(): Promise<{ close: () => Promise<void> }> {
-  const child: ChildProcess = spawn(
-    "npx",
-    ["vite", "--host", "127.0.0.1", "--port", "5174", "--strictPort"],
-    {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        VITE_WISEEFF_RUNTIME_MODE: "mock"
-      },
-      stdio: "pipe"
-    }
-  );
-  const started = Date.now();
-  while (Date.now() - started < 30_000) {
-    try {
-      const response = await fetch(MOCK_FRONTEND_URL);
-      if (response.ok) {
-        return {
-          close: async () => {
-            child.kill("SIGTERM");
-          }
-        };
-      }
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
-  child.kill("SIGTERM");
-  throw new Error("Mock Catalog frontend on :5174 did not become ready.");
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh (${viewport.name})`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await verifyRealProposalConflict(page, testInfo);
+  });
 }
+
+test("replays the original committed Proposal after a verified response-phase failure", async ({ browser }, testInfo) => {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const diagnostics = installBrowserDiagnostics(page, testInfo, {
+    expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES, { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 503 }],
+  });
+  try {
+    await verifyCommittedProposalResponseFailure(page, testInfo);
+    diagnostics.assertNoBrowserDiagnosticsFailures();
+  } finally {
+    await page.close();
+  }
+});
+
+test("compares API and product mock runtime after each actual Proposal browser operation", async ({ page }, testInfo) => {
+  const api = await collectProposalOperationTrace(page, testInfo, "api");
+  const mock = await collectProposalOperationTrace(page, testInfo, "mock");
+  expect(mock).toEqual(api);
+});
+
+test("refreshes a real installer release drift before explicitly withdrawing the historical Proposal", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await verifyRealProposalConflict(page, testInfo, true);
+});

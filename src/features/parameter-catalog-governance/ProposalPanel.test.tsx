@@ -26,6 +26,7 @@ function renderPanel(options: {
   currentPersonId?: string;
   repository?: ReturnType<typeof createMockParameterCatalogGovernanceRepository>;
   createIdempotencyKey?: () => string;
+  onRefreshEvidence?: () => void | Promise<void>;
 } = {}) {
   const repository = options.repository ?? createMockParameterCatalogGovernanceRepository({ getSession: () => ({
     personId: options.currentPersonId ?? CATALOG_AUTHOR_PERSON_ID,
@@ -50,6 +51,7 @@ function renderPanel(options: {
       definitionId={CATALOG_DEFINITION_ID}
       definitionRevisionId={CATALOG_REVISION_ID}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "key-proposal")}
+      onRefreshEvidence={options.onRefreshEvidence}
     />
   );
   return { ...view, repository, ...spies };
@@ -198,5 +200,44 @@ describe("ProposalPanel", () => {
     expect(banner).toHaveAttribute("data-silent-retry", "false");
     expect(screen.getByLabelText("仓库引用")).toHaveValue("repo@keep");
     expect(acceptProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes Proposal evidence without a write and requires a new explicit confirmation", async () => {
+    const repository = createMockParameterCatalogGovernanceRepository();
+    const draft = { ...catalogProposal, status: "draft" as const, etag: '"before-concurrent-submit"' };
+    const submitted = { ...draft, status: "submitted" as const, etag: '"after-concurrent-submit"', version: draft.version + 1 };
+    const list = vi.spyOn(repository, "listProposals")
+      .mockResolvedValueOnce({ items: [draft] })
+      .mockResolvedValue({ items: [submitted] });
+    const withdraw = vi.spyOn(repository, "withdrawProposal")
+      .mockRejectedValueOnce(catalogApiFailure("revision-conflict"))
+      .mockResolvedValue({ item: { ...submitted, status: "withdrawn", etag: '"after-withdraw"' } });
+    const refresh = vi.fn();
+    let key = 0;
+    renderPanel({ actor: "org-admin", repository, onRefreshEvidence: refresh, createIdempotencyKey: () => `refresh-key-${++key}` });
+    const user = userEvent.setup();
+    await screen.findByRole("cell", { name: "草稿" });
+    await user.type(screen.getByLabelText("原因"), "keep author input");
+    const confirmWithdraw = async () => {
+      await user.click(screen.getByRole("button", { name: "撤回修订", exact: true }));
+      const dialog = await screen.findByRole("dialog", { name: "确认撤回修订" });
+      await user.click(within(dialog).getByRole("checkbox"));
+      await user.click(within(dialog).getByRole("button", { name: "确认撤回", exact: true }));
+    };
+    await confirmWithdraw();
+    await screen.findByRole("alert");
+    expect(withdraw).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "刷新证据" }));
+    await screen.findByRole("cell", { name: "已提交" });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(withdraw).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("原因")).toHaveValue("keep author input");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await confirmWithdraw();
+    await waitFor(() => expect(withdraw).toHaveBeenCalledTimes(2));
+    expect(withdraw.mock.calls[0][2].ifMatch).toBe(draft.etag);
+    expect(withdraw.mock.calls[1][2].ifMatch).toBe(submitted.etag);
+    expect(withdraw.mock.calls[0][2].idempotencyKey).not.toBe(withdraw.mock.calls[1][2].idempotencyKey);
   });
 });

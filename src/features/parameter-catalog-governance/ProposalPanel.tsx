@@ -169,6 +169,7 @@ export function ProposalPanel({
         );
       }
       gateRef.current.succeed();
+      setWriteFailure(undefined);
       setConfirmAction(null);
       setTarget(null);
       await load();
@@ -356,7 +357,25 @@ export function ProposalPanel({
         />
       ) : null}
       {onRefreshEvidence && writeFailure ? (
-        <button type="button" className="button ghost sm" onClick={() => void onRefreshEvidence()}>
+        <button
+          type="button"
+          className="button ghost sm"
+          disabled={loading || pending}
+          onClick={async () => {
+            setConfirmAction(null);
+            setTarget(null);
+            gateRef.current.reset();
+            setLoading(true);
+            setError(null);
+            try {
+              await onRefreshEvidence();
+              await load();
+            } catch {
+              setError("定义修订证据刷新失败，请稍后重试。");
+              setLoading(false);
+            }
+          }}
+        >
           {governanceCopy.refreshEvidence}
         </button>
       ) : null}
