@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createWiseEffServer } from "../../../app";
@@ -11,6 +14,7 @@ import {
 } from "../../../testing/parameterCatalog";
 import { createLocalAuthService } from "../../auth/localAuth";
 import { hashLocalAccountPassword } from "../../auth/localAccountCredentials";
+import { createLocalObjectStore } from "../../logs/objectStore";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
 import {
   installPublishedCatalogChain,
@@ -20,6 +24,7 @@ import {
 } from "../../catalog-kernel/runtime/catalogChain.fixture";
 import { stabilizeCanonicalBinding } from "../../parameter-bindings/binding";
 import { appendProjectValue } from "../../parameter-bindings/values";
+import { ensureLocalPostCutoverIdentity } from "../../parameter-topology/localPostCutover";
 import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../parameter-catalog-contract";
 
 const ORG = "org-r2-818";
@@ -61,6 +66,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   let scriptedArgs: Record<string, unknown> = { projectId: PROJECT, query: "iin_max" };
   let advertisedTools: string[] = [];
   let providerUrl: string;
+  let objectStoreRoot: string;
 
   const runAgent = async (
     input: {
@@ -120,6 +126,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       (select jsonb_agg(to_jsonb(v) order by id) from parameter_catalog.project_parameter_values v) as values,
       (select jsonb_agg(to_jsonb(r) order by id) from parameter_catalog.organization_subject_registrations r) as registrations,
       (select jsonb_agg(to_jsonb(p) order by id) from parameter_catalog.definition_proposals p) as proposals,
+      (select jsonb_agg(to_jsonb(r) order by id) from dts_config_revisions r) as config_revisions,
+      (select jsonb_agg(to_jsonb(r) order by id) from parameter_submission_rounds r) as submission_rounds,
+      (select jsonb_agg(to_jsonb(i) order by id) from parameter_submission_items i) as submission_items,
       (select jsonb_agg(to_jsonb(d) order by id) from parameter_drafts d) as drafts,
       (select jsonb_agg(to_jsonb(c) order by id) from parameter_change_requests c) as changes`);
     return state.rows[0];
@@ -249,8 +258,10 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       }
     });
     providerUrl = await listen(provider);
+    objectStoreRoot = await mkdtemp(join(tmpdir(), "wiseeff-r2-818-source-"));
     server = createWiseEffServer({
       db: root,
+      objectStore: createLocalObjectStore(objectStoreRoot),
       auth: { mode: "production" },
       localAuthService: createLocalAuthService(root),
       env: {
@@ -313,6 +324,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     await close(provider);
     await root?.close();
     await database?.close();
+    if (objectStoreRoot) await rm(objectStoreRoot, { recursive: true, force: true });
   });
 
   it("R2-AGT-02: administrator's actual Agent reads a configured historical pin while current has advanced", async () => {
@@ -510,7 +522,8 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   const resumeBindingAction = async (
     threadId: string,
     decision: "approve" | "reject",
-    editedArgs?: Record<string, unknown>
+    editedArgs?: Record<string, unknown>,
+    principalToken = restrictedToken
   ) => {
     const pool = getRootPostgresPool(root)!;
     const approvals = await pool.query<{ id: string }>("select id from agent_approvals where session_id = $1", [
@@ -520,7 +533,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const approvalId = approvals.rows[0]!.id;
     const response = await fetch(`${baseUrl}/api/v1/agent/xiaoze`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${restrictedToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${principalToken}` },
       body: JSON.stringify({
         threadId,
         runId: randomUUID(),
@@ -600,5 +613,134 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       });
       expect(restored.status).toBe(200);
     }
+  });
+
+  it("R2-AGT-06: source-backed approval succeeds once, replays without writes, and still refuses a critical Agent write", async () => {
+    // Use the existing disposable-runtime initializer, never handwritten marker
+    // rows or schema weakening. This is the old semantic-identity initialization,
+    // not Catalog P12-P15 or a target-environment operation.
+    expect(await ensureLocalPostCutoverIdentity(root)).toMatchObject({ status: "applied" });
+    const set = await json("POST", `/api/v1/projects/${PROJECT}/config-sets`, {
+      name: "r2-agent-source",
+      description: "Isolated Agent approval source fixture"
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(201);
+    const source = `/dts-v1/;
+/ {
+  power {
+    compatible = "huawei,charging_core";
+    iin_max = <2300>;
+  };
+};
+`;
+    const upload = () =>
+      json("POST", `/api/v1/projects/${PROJECT}/parameter-files`, {
+        fileName: "r2-agent-source.dts",
+        contentBase64: Buffer.from(source).toString("base64")
+      });
+    const file = await upload();
+    expect(file.status, JSON.stringify(file.body)).toBe(201);
+    const member = await json("POST", `/api/v1/projects/${PROJECT}/config-sets/${set.body.item.id}/files`, {
+      fileId: file.body.item.id,
+      role: "base",
+      sortOrder: 0
+    });
+    expect([200, 201], JSON.stringify(member.body)).toContain(member.status);
+    const revision = await upload();
+    expect([200, 201], JSON.stringify(revision.body)).toContain(revision.status);
+    const pool = getRootPostgresPool(root)!;
+    const bindings = await pool.query<{ id: string }>(
+      `
+      select b.id from project_parameter_bindings b
+      join project_parameter_binding_revisions br on br.binding_id = b.id
+      join dts_config_revisions cr on cr.id = br.config_revision_id
+      where b.organization_id = $1 and b.project_id = $2 and cr.config_set_id = $3
+        and br.raw_value = '<2300>'
+      `,
+      [ORG, PROJECT, set.body.item.id]
+    );
+    expect(bindings.rows, "Real source ingest must produce an editable Binding before Agent approval").toHaveLength(1);
+    const sourceBindingId = bindings.rows[0]!.id;
+    const beforeApproval = await businessState();
+    const pending = await runAgent({
+      token: restrictedToken,
+      projectId: PROJECT,
+      tool: "action.submitParameterChange",
+      args: {
+        projectId: PROJECT,
+        parameterId: sourceBindingId,
+        targetValue: "<2400>",
+        reason: "R2 real source-backed approval"
+      }
+    });
+    expect(pending.calls.map((call) => call.status), pending.events).toEqual(["pending_approval"]);
+    const approved = await resumeBindingAction(pending.threadId, "approve");
+    expect(approved.status).toBe(200);
+    const calls = await pool.query(
+      "select status, result, error_message from agent_tool_calls where session_id = $1",
+      [pending.threadId]
+    );
+    const sourceNodes = await pool.query(
+      `select n.node_path, n.compatible from dts_nodes n
+       join project_parameter_file_versions v on v.id = n.file_version_id where v.file_id = $1`,
+      [file.body.item.id]
+    );
+    const logicalNodes = await pool.query(
+      `select node_locator, compatible from dts_logical_node_revisions
+       where config_revision_id in (select id from dts_config_revisions where config_set_id = $1)`,
+      [set.body.item.id]
+    );
+    expect(
+      calls.rows.map((call) => call.status),
+      JSON.stringify({ calls: calls.rows, sourceNodes: sourceNodes.rows, logicalNodes: logicalNodes.rows })
+    ).toEqual(["succeeded"]);
+    const beforeReplay = await businessState();
+    for (const key of ["bindings", "values", "registrations", "proposals"]) {
+      expect(beforeReplay[key]).toEqual(beforeApproval[key]);
+    }
+    const replay = await resumeBindingAction(pending.threadId, "approve");
+    expect(replay.status).toBe(200);
+    expect(await businessState()).toEqual(beforeReplay);
+    const requests = await pool.query(
+      "select target_value from parameter_change_requests where project_parameter_binding_id = $1",
+      [sourceBindingId]
+    );
+    expect(requests.rows).toEqual([{ target_value: "<2400>" }]);
+    expect(calls.rows[0]?.result.data).toMatchObject({
+      projectId: PROJECT,
+      parameterId: sourceBindingId,
+      targetValue: "<2400>"
+    });
+    expect((await pool.query(
+      "select actor_type, actor_user_id, action from audit_events where target_id = $1 and kind = 'agent-tool' order by created_at",
+      [pending.calls[0]!.id]
+    )).rows).toEqual([
+      { actor_type: "agent", actor_user_id: RESTRICTED, action: "approval-requested" },
+      { actor_type: "agent", actor_user_id: RESTRICTED, action: "approval-executed" }
+    ]);
+
+    // Security-policy fixture: this table has no product authoring command.
+    // Source, Binding, draft, approval and submission remain real command paths.
+    await pool.query(`insert into dts_sensitive_node_rules
+      (id, organization_id, project_id, match_type, pattern, risk_tier, required_capability)
+      values ('rule-r2-818-critical', $1, $2, 'compatible', 'huawei,charging_core', 'critical', 'parameter:edit-critical')`,
+      [ORG, PROJECT]);
+    const beforeCritical = await businessState();
+    const critical = await runAgent({
+      projectId: PROJECT,
+      tool: "action.submitParameterChange",
+      args: { projectId: PROJECT, parameterId: sourceBindingId, targetValue: "<2500>", reason: "Critical Agent denial" }
+    });
+    expect(critical.calls.map((call) => call.status)).toEqual(["pending_approval"]);
+    await resumeBindingAction(critical.threadId, "approve", undefined, token);
+    expect((await pool.query("select status from agent_tool_calls where session_id = $1", [critical.threadId])).rows)
+      .toEqual([{ status: "failed" }]);
+    expect(await businessState()).toEqual(beforeCritical);
+    expect((await pool.query(
+      "select actor_type, actor_user_id, action from audit_events where target_id = 'rule-r2-818-critical' and kind = 'parameter-sensitive-node-denied'"
+    )).rows).toEqual([{ actor_type: "agent", actor_user_id: ADMIN, action: "deny" }]);
+    expect((await pool.query(
+      "select action from audit_events where target_id = $1 and action in ('succeeded', 'approval-executed')", [critical.calls[0]!.id]
+    )).rows).toEqual([]);
   });
 });

@@ -240,6 +240,27 @@ export async function resolveDtsNodeCompatible(
     // remain governed by the persisted source path, while DTS sources require
     // an exact structural identity before compatible matching is attempted.
     if (scoped.format !== "dts") return null;
+    // The semantic resolver displays absolute locators (/soc/power), while
+    // structural ingest stores the same complete path without its root slash.
+    // Convert only that representation, after locking the exact DTS scope.
+    // Never normalize segments or inherit a parent when the identity is absent.
+    let structuralNodePath = nodePath;
+    if (input.sourcePath.kind === "node-locator") {
+      structuralNodePath = nodePath.startsWith("/") ? nodePath.slice(1) : nodePath;
+      if (
+        nodePath !== "/" &&
+        structuralNodePath.split("/").some((segment) => !segment || segment === "." || segment === "..")
+      ) {
+        throw new ApiError("CONFLICT", "Exact source node locator is malformed.", {
+          code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
+          projectId: input.projectId,
+          sourceFileName,
+          sourceFileVersionId,
+          nodePath,
+          sourcePathKind: input.sourcePath.kind,
+        });
+      }
+    }
     const exact = await db.query<{ node_id: string; compatible: string | null }>(
       `
       select n.id as node_id, n.compatible
@@ -255,7 +276,7 @@ export async function resolveDtsNodeCompatible(
         and f.file_name = $3
       limit 1
       `,
-      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, nodePath]
+      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, structuralNodePath]
     );
     if (!exact.rows[0]) {
       throw new ApiError("CONFLICT", "Exact source node identity was not found in the locked file version.", {
