@@ -45,5 +45,16 @@ export const mapWriterDatabaseError = (error: unknown): ProposalFailure | null =
   if (error.code === "23503") {
     return { kind: "invalid-command", reason: "foreign-key" };
   }
+  if (error.code === "23505") {
+    return {
+      kind: "revision-conflict",
+      idempotencyKey: "unique-violation",
+      storedFingerprint: error.constraint ?? "unique-violation",
+      attemptedFingerprint: "unique-violation",
+    };
+  }
+  if (error.code === "PCA05" || error.code === "55P03") {
+    return { kind: "invalid-command", reason: "synchronization-busy" };
+  }
   return null;
 };

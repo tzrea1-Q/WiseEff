@@ -15,8 +15,7 @@ export type PublicationIntentResult = {
   readonly successAuditRef: string;
 };
 
-export type ProposalResult = {
-  readonly outcome: "committed" | "replayed";
+export type ProposalResultSnapshot = {
   readonly proposalId: DefinitionProposalId;
   readonly proposalRevisionId: DefinitionProposalRevisionId;
   readonly revisionNumber: number;
@@ -25,7 +24,11 @@ export type ProposalResult = {
   readonly organizationId: string;
   readonly baseCatalogReleaseId: string;
   readonly baseDefinitionRevisionId: string | null;
+  readonly publicationIntent: PublicationIntentResult | null;
+};
+
+export type ProposalResult = ProposalResultSnapshot & {
+  readonly outcome: "committed" | "replayed";
   readonly fingerprint: string;
   readonly idempotencyKey: string;
-  readonly publicationIntent: PublicationIntentResult | null;
 };
