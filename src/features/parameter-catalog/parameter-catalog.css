@@ -401,3 +401,9 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-1);
 }
+
+/* Outline sm retry inherits --text-muted on --bg (4.48:1). Use catalog ink on surface. */
+.parameter-catalog .section-error [data-slot="button"] {
+  color: var(--pcat-text);
+  background: var(--pcat-surface);
+}
