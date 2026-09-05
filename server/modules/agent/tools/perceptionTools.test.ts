@@ -38,12 +38,11 @@ describe("createPerceptionTools", () => {
     }
   });
 
-  it("getProjectOverview returns a grounded summary with citations", async () => {
+  it("getProjectOverview refuses an untrusted caller rather than reporting a synthetic zero", async () => {
     const tool = createPerceptionTools({ db }).find((t) => t.name === "perception.getProjectOverview")!;
-    const result = await tool.run(adminContext as any, { projectId: "p1" });
-    expect(result.summary).toContain("p1");
-    expect(result.citations[0]?.type).toBe("parameter");
-    expect((result.data as { pin_status?: string }).pin_status).toBe("typed-denial");
+    await expect(tool.run(adminContext as any, { projectId: "p1" })).rejects.toMatchObject({
+      code: "INVALID_TRUSTED_INVOCATION_CONTEXT"
+    });
   });
 
   it("searchParameters refuses latest-version Catalog fallback without an exact pin", async () => {
@@ -55,11 +54,10 @@ describe("createPerceptionTools", () => {
       }
     };
     const tool = createPerceptionTools({ db: searchDb }).find((t) => t.name === "perception.searchParameters")!;
-    const result = await tool.run(adminContext as any, { projectId: "aurora", query: "battery_temp_target_c" });
-    const parameters = (result.data as { parameters?: Array<Record<string, unknown>> }).parameters ?? [];
-    expect(parameters).toEqual([]);
+    await expect(tool.run(adminContext as any, { projectId: "aurora", query: "battery_temp_target_c" })).rejects.toMatchObject({
+      code: "INVALID_TRUSTED_INVOCATION_CONTEXT"
+    });
     expect(captured.join("\n")).not.toMatch(/order by psv2\.version desc/i);
-    expect(result.summary).toContain("No parameters found");
   });
 
   it("does not execute latest-version Catalog SQL for project overview", async () => {
@@ -71,7 +69,9 @@ describe("createPerceptionTools", () => {
       }
     };
     const tool = createPerceptionTools({ db: overviewDb }).find((t) => t.name === "perception.getProjectOverview")!;
-    await tool.run(adminContext as any, { projectId: "p1" });
+    await expect(tool.run(adminContext as any, { projectId: "p1" })).rejects.toMatchObject({
+      code: "INVALID_TRUSTED_INVOCATION_CONTEXT"
+    });
     expect(captured).toEqual([]);
   });
 
