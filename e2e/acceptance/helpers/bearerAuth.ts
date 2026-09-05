@@ -101,13 +101,7 @@ export function authHeadersForRole(roleId: AcceptanceRoleId) {
 
 export async function signInBrowserAsRole(page: Page, roleId: AcceptanceRoleId, route = "/parameter-home") {
   const user = acceptanceUsersByRole[roleId];
-  const authorization = createBearerTokenForUser(user.userId, user.email, user.name);
-  if (!authorization) {
-    throw new Error("AUTH_TOKEN_ISSUER and AUTH_TOKEN_HMAC_SECRET are required for acceptance role switching.");
-  }
-
-  const token = authorization.replace(/^Bearer\s+/u, "");
-  await writeBrowserTokenBeforeRoute(page, token, route);
+  await signInBrowserAsUser(page, user.userId, user.email, user.name, route);
 }
 
 export async function signInBrowserAsRoleLabel(page: Page, roleLabel: string, route = "/parameter-home") {

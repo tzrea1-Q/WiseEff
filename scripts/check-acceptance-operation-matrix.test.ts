@@ -126,7 +126,7 @@ describe("acceptance operation matrix", () => {
     ]);
   });
 
-  it("registers fifteen deferred canonical parameter catalog operations without missing spec references", () => {
+  it("registers fifteen automated canonical parameter catalog operations with exact spec owners", () => {
     const expectedIds = [
       "PCAT-CATALOG-DISCOVER-001",
       "PCAT-CATALOG-DEEP-LINK-001",
@@ -173,17 +173,15 @@ describe("acceptance operation matrix", () => {
         acceptanceIds: operation.acceptanceIds,
         specFiles: operation.specFiles,
         assertions: operation.assertions,
-        hasExactFutureOwner: /e2e\/acceptance\/parameter-catalog(?:-governance|-negative)?\.acceptance\.spec\.ts/.test(
-          operation.deferralReason ?? ""
-        )
+        deferred: Boolean(operation.deferralReason)
       }))
     ).toEqual(
       expectedIds.map((_, index) => ({
-        coverage: "future",
+        coverage: "automated",
         acceptanceIds: [`PCAT-UI-${String(index + 1).padStart(2, "0")}`],
         specFiles: [specFilesByIndex[index]],
         assertions: ["ui", "api", "db", "audit", "screenshot"],
-        hasExactFutureOwner: true
+        deferred: false
       }))
     );
   });

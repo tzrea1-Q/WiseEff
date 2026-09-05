@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogActionsForActor, catalogActorForRole, isCatalogActionEnabled } from "./authority";
+import {
+  catalogActionsForActor,
+  catalogActorForRole,
+  catalogActorForSession,
+  isCatalogActionEnabled,
+  isCatalogAgentPrincipal
+} from "./authority";
 import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
 import { readyCatalogDocument, unregisteredSubject } from "./fixtures";
 
@@ -43,6 +49,14 @@ describe("catalog actor authority", () => {
     expect(catalogActorForRole("platform-admin")).toBe("platform-admin");
     expect(catalogActorForRole("hardware-user")).toBe("user");
     expect(catalogActorForRole("software-committer")).toBe("user");
+  });
+
+  it("maps WiseEff Agent principals onto the read-only Catalog actor", () => {
+    expect(isCatalogAgentPrincipal({ title: "WiseEff Agent" })).toBe(true);
+    expect(isCatalogAgentPrincipal({ userId: "agt-catalog-acceptance" })).toBe(true);
+    expect(catalogActorForSession({ roleId: "admin", userId: "agt-catalog-acceptance" })).toBe("agent");
+    expect(catalogActorForSession({ roleId: "guest", title: "WiseEff Agent" })).toBe("agent");
+    expect(catalogActorForSession({ roleId: "admin", userId: "acceptance-role-admin" })).toBe("org-admin");
   });
 
   it("disables mutations while loading even when a previous release is visible", () => {

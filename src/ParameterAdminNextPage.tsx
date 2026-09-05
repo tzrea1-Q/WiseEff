@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, type Dispatch } from "react";
 import type { AppRuntime } from "@/app/appRuntime";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
-import { catalogActorForRole } from "@/application/parameter-catalog";
+import { catalogActorForSession } from "@/application/parameter-catalog";
 import { CatalogOrganizationSurface } from "@/features/parameter-catalog-governance/CatalogOrganizationSurface";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -152,7 +152,11 @@ export function ParameterAdminNextPage({
       <CatalogOrganizationSurface
         catalog={runtime.parameterCatalogRepository}
         governance={runtime.parameterCatalogGovernanceRepository}
-        actor={catalogActorForRole(migrateLegacyRoleId(state?.activeRoleId ?? ""))}
+        actor={catalogActorForSession({
+          roleId: migrateLegacyRoleId(state?.activeRoleId ?? ""),
+          userId: state?.currentUserId,
+          title: state?.users.find((user) => user.id === state.currentUserId)?.title
+        })}
         search={search}
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}

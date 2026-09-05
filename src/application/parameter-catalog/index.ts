@@ -6,9 +6,11 @@ export {
 export {
   catalogActionsForActor,
   catalogActorForRole,
+  catalogActorForSession,
   catalogActorKinds,
   catalogAuthorizedActions,
   isCatalogActionEnabled,
+  isCatalogAgentPrincipal,
   type CatalogActorKind,
   type CatalogAuthorizedAction
 } from "./authority";

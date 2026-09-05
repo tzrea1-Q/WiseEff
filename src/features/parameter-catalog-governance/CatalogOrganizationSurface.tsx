@@ -41,14 +41,20 @@ export function CatalogOrganizationSurface({
   const anchor = parseCatalogUrlAnchor(search);
   const [domainState, setDomainState] = useState<CatalogDomainState | null>(null);
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
+  const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
+  const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
 
-  const handleAction = useCallback((next: CatalogAuthorizedAction) => {
-    if (next === "register-subject" || next === "update-placement") {
-      setAction(next);
-    }
-  }, []);
+  const handleAction = useCallback(
+    (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
+      if (next === "register-subject" || next === "update-placement") {
+        setAction(next);
+        setActionRegistrationId(context?.registrationId ?? null);
+      }
+    },
+    []
+  );
 
   const handleSelectReviewItem = useCallback(
     (id: string | null) => {
@@ -66,6 +72,7 @@ export function CatalogOrganizationSurface({
   return (
     <div className="parameter-catalog-organization">
       <CatalogPage
+        key={surfaceEpoch}
         repository={catalog}
         actor={actor}
         search={search}
@@ -87,6 +94,7 @@ export function CatalogOrganizationSurface({
             catalogReleaseId={catalogReleaseId}
             selectedReviewItemId={anchor.reviewItemId ?? undefined}
             onSelectReviewItem={handleSelectReviewItem}
+            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
           />
           <ProposalPanel
             actor={actor}
@@ -96,6 +104,7 @@ export function CatalogOrganizationSurface({
             currentPersonId={currentPersonId}
             definitionId={anchor.definitionId ?? undefined}
             createIdempotencyKey={createGovernanceIdempotencyKey}
+            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
           />
         </div>
       ) : null}
@@ -113,10 +122,13 @@ export function CatalogOrganizationSurface({
           organizationId={organizationId}
           subjectId={subjectId}
           catalogReleaseId={catalogReleaseId}
+          registrationId={actionRegistrationId ?? undefined}
           createIdempotencyKey={createGovernanceIdempotencyKey}
+          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
           onOpenChange={(open) => {
             if (!open) {
               setAction(null);
+              setActionRegistrationId(null);
             }
           }}
         />

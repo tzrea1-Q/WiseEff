@@ -20,6 +20,7 @@ import { resolveParameterTopologyRepository } from "@/application/parameters/par
 import type { PrototypeState } from "@/domain/prototype/types";
 import {
   createAuthClient,
+  readLocalAuthToken,
   type AuthContextDto,
   type AuthSessionDto,
   type ChangeCurrentUserPasswordInput,
@@ -39,7 +40,7 @@ import { createHttpProductFeedbackRepository } from "@/infrastructure/http/produ
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createMockOrganizationActions } from "@/infrastructure/mock/mockOrganizationActions";
 import type { OrganizationActions } from "@/OrganizationPage";
-import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { wiseEffApiAuthorization, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -104,7 +105,14 @@ export function createAppRuntime(
           governance: overrides.parameterCatalogGovernanceRepository
         }
       : api
-        ? createApiCatalogPorts(createParameterCatalogClient())
+        ? createApiCatalogPorts(
+            createParameterCatalogClient({
+              getAuthorization: async () => {
+                const localToken = readLocalAuthToken();
+                return localToken ? `Bearer ${localToken}` : wiseEffApiAuthorization;
+              }
+            })
+          )
         : createMockCatalogPorts();
   return {
     authClient: overrides.authClient ?? createAuthClient(),
