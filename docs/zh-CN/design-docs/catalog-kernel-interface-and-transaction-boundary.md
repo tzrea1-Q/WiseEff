@@ -19,6 +19,8 @@
 5. `loadCurrentCatalog` 加载一个已经验证且与应用预期一致的 current snapshot。
 6. `loadPinnedCatalog` 同时按 opaque ID 与 digest 加载一个精确历史 release。
 
+仅有历史 release ID 的运行时读取必须先调用 `resolveCatalogReleasePin(releaseId)`。Kernel 返回该 ID 自己的权威 digest，不得把 current pointer 的 digest 拼到另一个 ID 上。`resolveCatalogReleasePin` 是 `loadPinnedCatalog` 的定位器，不是第七个写操作，也不加入 `catalogKernelOperations`。
+
 `CurrentCatalogSnapshot` 和 `PinnedCatalogSnapshot` 暴露覆盖 canonical Catalog resource 的完整 typed read facet：release identity、Subject detail/listing、release-scoped membership 与 alias、Driver 优先且 NodeType fallback 的权威匹配、按 stable key 或 opaque ID 查询 Definition、全局或 subject-scoped Definition listing、精确 revision 查询与 history，以及 Catalog 自有 publication timeline fact。它们返回 tagged domain outcome，不用 `null` 隐藏状态。PostgreSQL 布局、join、锁、cache 对象、materialization fingerprint 和 release-to-revision-head 映射都属于私有实现。
 
 ## 模块 seam 与所有权
@@ -111,6 +113,10 @@ interface CatalogKernel {
   loadPinnedCatalog(
     pin: CatalogReleasePin,
   ): Promise<Result<PinnedCatalogSnapshot>>;
+
+  resolveCatalogReleasePin(
+    releaseId: CatalogReleaseId,
+  ): Promise<Result<CatalogReleasePin>>;
 }
 
 type CatalogRuntime = Pick<
@@ -211,6 +217,11 @@ interface SwitchBackResult {
 ```ts
 interface CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
+  readonly sequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly materializedAt: CatalogEventTime;
+  readonly compiledFingerprint: CatalogMaterializationFingerprint;
+  readonly databaseFingerprint: CatalogMaterializationFingerprint;
 
   getSubject(subjectId: CatalogSubjectId): SubjectLookupResult;
 
@@ -807,6 +818,8 @@ type CatalogVerificationCheck = {
 ## 事务所有权与并发
 
 每个 catalog mutation 都由 Catalog Kernel 拥有。公共操作只接受 domain command。生产 adapter 要求 pool-backed `RootDatabase`；caller-opened transaction、savepoint handle、`AuditTx` 或 arbitrary `Queryable` 在构造时被拒绝。这不只是约定“不应传事务”，而是使调用方无法拉长、嵌套、部分提交或绕开 catalog transaction。
+
+公共 `loadCurrentCatalog`、`loadPinnedCatalog` 和 `resolveCatalogReleasePin` 在最外层获取一个 pool client，开启短生命周期、只读的 Repeatable Read 事务，解析权威 release identity，在同一连接上执行全部投影查询，然后 commit 或 rollback 并释放连接。`loadProjection` 等下层 helper 只接收现有 client，不得自行 connect、commit 或 release。current 读取一次捕获 pointer 及其 identity，核对调用方 expected pin，随后坚持该 release。pinned 读取加载该 ID 的真实 digest 并与调用方 pin 比较。仅有 ID 的历史读取在 Kernel 内解析 pin，不得借用 current digest。Head 加载使用精确的 `(release_id, definition_id, revision_id)` 并校验归属；历史 revision 集合是目标 release 的 predecessor 闭包，限于该 snapshot 中的 definition，并按 revision 身份去重。缺少 materialization 或事件时间是错误。Kernel 不得发明全零 fingerprint 或 epoch 时间，也不得把 `revision.catalog_release_id = targetId` 或 `release_sequence <= targetSequence` 当作沿用或 lineage。构造后的嵌套 snapshot 对象在防御性拷贝后冻结，调用者改动不得污染后续读取。connect/query/commit 失败时按 node-postgres 规则释放或销毁连接，不得把坏连接还回连接池。读路径不得安装、迁移或修复 catalog 行。
 
 Compilation 与 content validation 在写事务前完成。安装阶段打开一个事务，取得 transaction-scoped exclusive catalog advisory lock，在 current-state singleton 存在时锁住该行，重新读取 installed state，复核幂等与 lineage，stage 完整 projection，执行 deferred constraint 和 transaction 内 projection check，前移全部 changed Definition head，再切换 current Catalog Release pointer。Success audit 和 materialization evidence 与它们在同一事务提交。
 

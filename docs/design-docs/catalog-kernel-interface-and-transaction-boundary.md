@@ -19,6 +19,8 @@ The seam has six operations:
 5. `loadCurrentCatalog` loads one verified, expected current snapshot.
 6. `loadPinnedCatalog` loads one exact historical release by both opaque ID and digest.
 
+Runtime historical ID-only reads call `resolveCatalogReleasePin(releaseId)` first. The Kernel returns that release's authoritative digest and never splices the current pointer's digest onto a different ID. `resolveCatalogReleasePin` is a locator for `loadPinnedCatalog`; it is not a seventh write operation and is not added to `catalogKernelOperations`.
+
 `CurrentCatalogSnapshot` and `PinnedCatalogSnapshot` expose a complete typed read facet for the canonical Catalog resources: release identity, subject detail/listing, release-scoped membership and aliases, authoritative Driver-first/NodeType-fallback matching, definition lookup by stable key or opaque ID, global or subject-scoped definition listing, exact revision lookup/history, and Catalog-owned publication timeline facts. They return tagged domain outcomes rather than `null`. PostgreSQL layout, joins, locks, cache objects, materialization fingerprints, and release-to-revision-head mappings are private implementation.
 
 ## Module seam and ownership
@@ -111,6 +113,10 @@ interface CatalogKernel {
   loadPinnedCatalog(
     pin: CatalogReleasePin,
   ): Promise<Result<PinnedCatalogSnapshot>>;
+
+  resolveCatalogReleasePin(
+    releaseId: CatalogReleaseId,
+  ): Promise<Result<CatalogReleasePin>>;
 }
 
 type CatalogRuntime = Pick<
@@ -211,6 +217,11 @@ interface SwitchBackResult {
 ```ts
 interface CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
+  readonly sequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly materializedAt: CatalogEventTime;
+  readonly compiledFingerprint: CatalogMaterializationFingerprint;
+  readonly databaseFingerprint: CatalogMaterializationFingerprint;
 
   getSubject(subjectId: CatalogSubjectId): SubjectLookupResult;
 
@@ -807,6 +818,8 @@ Any invalid source or comparison mismatch returns `Result.ok = false` with `inva
 ## Transaction ownership and concurrency
 
 Every catalog mutation is owned by the Catalog Kernel. Public operations accept domain commands only. The production adapter requires a pool-backed `RootDatabase`; a caller-opened transaction, savepoint handle, `AuditTx`, or arbitrary `Queryable` is rejected at construction. This is stricter than merely documenting “do not pass a transaction”: it makes the caller unable to stretch, nest, partially commit, or bypass the catalog transaction.
+
+Public `loadCurrentCatalog`, `loadPinnedCatalog`, and `resolveCatalogReleasePin` acquire one pool client at the outer boundary, begin a short read-only Repeatable Read transaction, resolve the authoritative release identity, run every projection query on that client, then commit or rollback and release. Nested helpers such as `loadProjection` receive the existing client and must not connect, commit, or release. Current reads capture the pointer and its identity once, verify the caller's expected pin, and then stick to that release. Pinned reads load that ID's real digest and compare the caller's pin. ID-only historical reads resolve the pin inside the Kernel and must not borrow the current digest. Head load is the exact `(release_id, definition_id, revision_id)` triple with ownership checks; historical revision sets are the predecessor closure of the target release, restricted to definitions in that snapshot and deduped by revision identity. Missing materialization or event time is an error. The Kernel does not invent an all-zero fingerprint or an epoch timestamp, and it does not treat `revision.catalog_release_id = targetId` or `release_sequence <= targetSequence` as carry-forward or lineage. Nested snapshot objects are frozen after a defensive copy so caller mutation cannot corrupt later reads. Connect, query, or commit failure releases or destroys the client per node-postgres rules; a broken client is never returned to the pool. Reads never install, migrate, or repair catalog rows.
 
 Compilation and content validation run before the write transaction. Installation then opens one transaction, obtains the exclusive transaction-scoped advisory catalog lock, locks the singleton current-state row where it exists, re-reads installed state, rechecks idempotency and lineage, stages the entire projection, runs deferred constraints and the independent-in-transaction projection checks, advances all changed Definition heads, and switches the current Catalog Release pointer. Success audit and materialization evidence commit in that same transaction.
 

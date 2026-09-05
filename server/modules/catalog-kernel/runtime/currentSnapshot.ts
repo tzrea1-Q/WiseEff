@@ -1,6 +1,7 @@
 import pg from "pg";
 
 import type {
+  CatalogDriftViolation,
   CatalogKernelError,
   CatalogReleaseIdentity,
   CatalogReleasePin,
@@ -59,6 +60,12 @@ import {
   fingerprintCatalogQuery,
   type CatalogCursorOrderTuple,
 } from "./cursors";
+import {
+  CatalogSnapshotReadFailure,
+  withCatalogReadTransaction,
+  type CatalogSnapshotClient,
+} from "./readTransaction";
+import { resolveCatalogSubject } from "./subjectMatch";
 
 type SubjectRow = {
   id: string;
@@ -127,7 +134,12 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
   };
   const unit = typeof raw.unit === "string" ? raw.unit : undefined;
   const documentation = typeof raw.documentation === "string" ? raw.documentation : undefined;
-  const examples = Array.isArray(raw.examples) ? (raw.examples as DefinitionContent["examples"]) : [];
+  const examples = Array.isArray(raw.examples)
+    ? (structuredClone(raw.examples) as DefinitionContent["examples"])
+    : [];
+  const schema = structuredClone(
+    (raw.valueSchema as Record<string, unknown> | undefined) ?? {},
+  );
   return {
     lifecycle: (raw.lifecycle as DefinitionLifecycle) ?? "active",
     displayName: typeof raw.displayName === "string" ? raw.displayName : "",
@@ -135,7 +147,7 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
     documentation: documentation ? present(documentation) : absent,
     valueShape: {
       kind: "json-schema",
-      schema: (raw.valueSchema as Record<string, unknown> | undefined) ?? {},
+      schema,
     },
     constraints: { kind: "none" },
     unit: unit ? present({ kind: "symbol", symbol: unit }) : absent,
@@ -147,6 +159,89 @@ const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
       notes: matching.notes ? present(matching.notes) : absent,
     },
   };
+};
+
+const deepFreeze = <Value>(value: Value): Value => {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+    return value;
+  }
+  Object.freeze(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      deepFreeze(item);
+    }
+    return value;
+  }
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+  return value;
+};
+
+const cloneFrozen = <Value>(value: Value): Value => deepFreeze(structuredClone(value));
+
+const eventTimeFromDatabase = (
+  value: unknown,
+  relation: string,
+  identity: string,
+): CatalogEventTime => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return CatalogEventTime(value.toISOString());
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return CatalogEventTime(parsed.toISOString());
+    }
+  }
+  throw new CatalogSnapshotReadFailure({
+    kind: "drift",
+    scope: "pinned",
+    expected: {
+      id: CatalogReleaseId(identity),
+      digest: CatalogReleaseDigest(`unresolved:${identity}`),
+    },
+    actual: null,
+    violations: [
+      {
+        code: "release-identity-mismatch",
+        relation,
+        identity,
+        detail: "missing-event-time",
+      },
+    ],
+  });
+};
+
+const classifyPublicationChanges = (
+  previous: DefinitionContent | null,
+  current: DefinitionContent,
+): DefinitionPublicationChange[] => {
+  if (!previous) {
+    return ["introduced"];
+  }
+  const changes: DefinitionPublicationChange[] = [];
+  if (previous.lifecycle !== current.lifecycle) {
+    changes.push("lifecycle");
+  }
+  if (
+    JSON.stringify(previous.documentation) !== JSON.stringify(current.documentation) ||
+    JSON.stringify(previous.description) !== JSON.stringify(current.description)
+  ) {
+    changes.push("documentation");
+  }
+  if (
+    previous.displayName !== current.displayName ||
+    JSON.stringify(previous.valueShape) !== JSON.stringify(current.valueShape) ||
+    JSON.stringify(previous.constraints) !== JSON.stringify(current.constraints) ||
+    JSON.stringify(previous.unit) !== JSON.stringify(current.unit) ||
+    JSON.stringify(previous.schemaDefault) !== JSON.stringify(current.schemaDefault) ||
+    JSON.stringify(previous.examples) !== JSON.stringify(current.examples) ||
+    JSON.stringify(previous.matching) !== JSON.stringify(current.matching)
+  ) {
+    changes.push("content");
+  }
+  return changes.length > 0 ? changes : ["content"];
 };
 
 const subjectOrder = (subject: CatalogSubjectSnapshot): CatalogCursorOrderTuple => [
@@ -166,6 +261,11 @@ const definitionOrder = (
 
 export class CapturedCatalogSnapshot implements CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
+  readonly sequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly materializedAt: CatalogEventTime;
+  readonly compiledFingerprint: CatalogMaterializationFingerprint;
+  readonly databaseFingerprint: CatalogMaterializationFingerprint;
   private readonly subjects: readonly CatalogSubjectDetailSnapshot[];
   private readonly definitions: readonly ParameterDefinitionSnapshot[];
   private readonly revisions: readonly DefinitionRevisionSnapshot[];
@@ -173,16 +273,26 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
 
   constructor(input: {
     release: CatalogReleaseIdentity;
+    sequence: CatalogReleaseSequence;
+    publishedAt: CatalogEventTime;
+    materializedAt: CatalogEventTime;
+    compiledFingerprint: CatalogMaterializationFingerprint;
+    databaseFingerprint: CatalogMaterializationFingerprint;
     subjects: readonly CatalogSubjectDetailSnapshot[];
     definitions: readonly ParameterDefinitionSnapshot[];
     revisions: readonly DefinitionRevisionSnapshot[];
     facts: readonly CatalogDefinitionPublicationFact[];
   }) {
-    this.release = Object.freeze({ ...input.release });
-    this.subjects = Object.freeze([...input.subjects]);
-    this.definitions = Object.freeze([...input.definitions]);
-    this.revisions = Object.freeze([...input.revisions]);
-    this.facts = Object.freeze([...input.facts]);
+    this.release = cloneFrozen(input.release);
+    this.sequence = input.sequence;
+    this.publishedAt = input.publishedAt;
+    this.materializedAt = input.materializedAt;
+    this.compiledFingerprint = input.compiledFingerprint;
+    this.databaseFingerprint = input.databaseFingerprint;
+    this.subjects = cloneFrozen(input.subjects);
+    this.definitions = cloneFrozen(input.definitions);
+    this.revisions = cloneFrozen(input.revisions);
+    this.facts = cloneFrozen(input.facts);
   }
 
   getSubject(subjectId: CatalogSubjectId): SubjectLookupResult {
@@ -230,64 +340,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
   }
 
   resolveSubject(selector: SubjectSelector): MatchResult {
-    const driverHits = this.subjects.filter((subject) => {
-      if (subject.kind !== "driver") return false;
-      if (subject.membership.selector.kind !== "driver-compatible") return false;
-      const values = new Set(subject.membership.selector.values);
-      const aliases = subject.aliases.filter(
-        (alias) =>
-          alias.selector.kind === "driver-compatible" &&
-          selector.driverCompatibles.includes(alias.selector.value),
-      );
-      return (
-        selector.driverCompatibles.some((value) => values.has(value)) || aliases.length > 0
-      );
-    });
-    if (driverHits.length === 1) {
-      const subject = driverHits[0]!;
-      const alias =
-        subject.aliases.find(
-          (candidate) =>
-            candidate.selector.kind === "driver-compatible" &&
-            selector.driverCompatibles.includes(candidate.selector.value),
-        ) ?? null;
-      if (subject.membership.lifecycle === "retired") {
-        return { status: "retired", subject, alias };
-      }
-      return {
-        status: "matched",
-        subject,
-        matchedBy: alias ? "alias" : "canonical-selector",
-        alias,
-      };
-    }
-    if (driverHits.length > 1) {
-      return { status: "ambiguous", candidates: driverHits };
-    }
-    if (selector.nodeTypeFallback.kind === "present") {
-      const nodeTypeName = selector.nodeTypeFallback.name;
-      const nodeHits = this.subjects.filter((subject) => {
-        if (subject.kind !== "node-type") return false;
-        if (subject.membership.selector.kind !== "node-type-name") return false;
-        return subject.membership.selector.value === nodeTypeName;
-      });
-      if (nodeHits.length === 1) {
-        const subject = nodeHits[0]!;
-        if (subject.membership.lifecycle === "retired") {
-          return { status: "retired", subject, alias: null };
-        }
-        return {
-          status: "matched",
-          subject,
-          matchedBy: "canonical-selector",
-          alias: null,
-        };
-      }
-      if (nodeHits.length > 1) {
-        return { status: "ambiguous", candidates: nodeHits };
-      }
-    }
-    return { status: "unknown", reason: "no-candidate" };
+    return resolveCatalogSubject(this.subjects, selector);
   }
 
   getDefinition(input: {
@@ -511,167 +564,355 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
   }
 }
 
-const loadProjection = async (
-  pool: pg.Pool,
+type HeadRow = {
+  id: string;
+  subject_id: string;
+  property_key: string;
+  revision_id: string;
+  revision_number: string | null;
+  content_digest: string | null;
+  content: Record<string, unknown> | null;
+};
+
+type LineageRow = {
+  id: string;
+  predecessor_release_id: string | null;
+  release_sequence: string;
+  release_version: string;
+  release_digest: string;
+  published_at: unknown;
+  path: string[];
+};
+
+const locatorPin = (releaseId: string, digest?: string): CatalogReleasePin => ({
+  id: CatalogReleaseId(releaseId),
+  digest: CatalogReleaseDigest(digest ?? `unresolved:${releaseId}`),
+});
+
+const projectionDrift = (
+  scope: "current" | "pinned",
+  expected: CatalogReleasePin,
+  actual: CatalogReleaseIdentity | null,
+  violation: CatalogDriftViolation,
+): never => {
+  throw new CatalogSnapshotReadFailure({
+    kind: "drift",
+    scope,
+    expected,
+    actual,
+    violations: [violation],
+  });
+};
+
+const loadPredecessorClosure = async (
+  client: CatalogSnapshotClient,
   releaseId: string,
+  expected: CatalogReleasePin,
+  actual: CatalogReleaseIdentity,
+  scope: "current" | "pinned",
+): Promise<readonly LineageRow[]> => {
+  const lineage = await client.query<LineageRow>(
+    `with recursive lineage as (
+       select
+         release.id,
+         release.predecessor_release_id,
+         release.release_sequence::text,
+         release.release_version,
+         release.release_digest,
+         release.published_at,
+         array[release.id]::text[] as path,
+         1 as depth
+       from parameter_catalog.catalog_releases release
+       where release.id = $1
+       union all
+       select
+         predecessor.id,
+         predecessor.predecessor_release_id,
+         predecessor.release_sequence::text,
+         predecessor.release_version,
+         predecessor.release_digest,
+         predecessor.published_at,
+         lineage.path || predecessor.id,
+         lineage.depth + 1
+       from parameter_catalog.catalog_releases predecessor
+       join lineage on predecessor.id = lineage.predecessor_release_id
+       where lineage.depth < 1024
+         and not predecessor.id = any (lineage.path)
+     )
+     select
+       id,
+       predecessor_release_id,
+       release_sequence,
+       release_version,
+       release_digest,
+       published_at,
+       path
+     from lineage`,
+    [releaseId],
+  );
+  if (lineage.rows.length === 0) {
+    throw new CatalogSnapshotReadFailure({
+      kind: "historical-release-unavailable",
+      pin: expected,
+    });
+  }
+  const ids = new Set(lineage.rows.map((row) => row.id));
+  for (const row of lineage.rows) {
+    if (new Set(row.path).size !== row.path.length) {
+      projectionDrift(scope, expected, actual, {
+        code: "unexpected-catalog-row",
+        relation: "catalog_releases",
+        identity: row.id,
+        detail: "predecessor-cycle",
+      });
+    }
+    if (row.predecessor_release_id && !ids.has(row.predecessor_release_id)) {
+      projectionDrift(scope, expected, actual, {
+        code: "unexpected-catalog-row",
+        relation: "catalog_releases",
+        identity: row.predecessor_release_id,
+        detail: "predecessor-missing-or-cyclic",
+      });
+    }
+  }
+  if (!ids.has(releaseId)) {
+    projectionDrift(scope, expected, actual, {
+      code: "release-identity-mismatch",
+      relation: "catalog_releases",
+      identity: releaseId,
+      detail: "lineage-missing-target",
+    });
+  }
+  return lineage.rows;
+};
+
+const loadProjection = async (
+  client: CatalogSnapshotClient,
+  releaseId: string,
+  scope: "current" | "pinned" = "pinned",
+  expectedPin?: CatalogReleasePin,
 ): Promise<{
   identity: CatalogReleaseIdentity;
   materializationFingerprint: CatalogMaterializationFingerprint;
   snapshot: CapturedCatalogSnapshot;
 } | null> => {
-  const client = await pool.connect();
-  try {
-    const release = await client.query<{
-      id: string;
-      release_version: string;
-      release_digest: string;
-      compiled_fingerprint: string | null;
-    }>(
-      `select
-         release.id,
-         release.release_version,
-         release.release_digest,
-         materialization.compiled_fingerprint
-       from parameter_catalog.catalog_releases release
-       left join parameter_catalog.catalog_materializations materialization
-         on materialization.release_id = release.id
-       where release.id = $1`,
-      [releaseId],
-    );
-    const row = release.rows[0];
-    if (!row) {
-      return null;
-    }
-    const identity = {
-      id: CatalogReleaseId(row.id),
-      version: CatalogReleaseVersion(row.release_version),
-      digest: CatalogReleaseDigest(row.release_digest),
-    };
-    const subjects = await client.query<SubjectRow>(
-      `select
-         subject.id,
-         subject.kind,
-         subject.canonical_key,
-         membership.lifecycle,
-         membership.selector_snapshot,
-         membership.tombstone_provenance
-       from parameter_catalog.catalog_release_subjects membership
-       join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
-       where membership.release_id = $1`,
-      [releaseId],
-    );
-    const aliases = await client.query<AliasRow>(
-      `select
-         alias.id,
-         alias.subject_id,
-         alias.selector_kind,
-         alias.normalized_selector,
-         membership.lifecycle,
-         membership.tombstone_provenance
-       from parameter_catalog.catalog_release_subject_aliases membership
-       join parameter_catalog.catalog_subject_aliases alias on alias.id = membership.alias_id
-       where membership.release_id = $1`,
-      [releaseId],
-    );
-    const definitions = await client.query<DefinitionRow>(
-      `select
-         definition.id,
-         definition.subject_id,
-         definition.property_key,
-         head.revision_id,
-         revision.revision_number::text,
-         revision.content_digest,
-         revision.content
-       from parameter_catalog.catalog_release_definition_heads head
-       join ${catalogDefinitionRelation} definition on definition.id = head.definition_id
-       join parameter_catalog.definition_revisions revision
-         on revision.definition_id = head.definition_id and revision.id = head.revision_id
-       where head.release_id = $1`,
-      [releaseId],
-    );
-    const revisions = await client.query<RevisionRow>(
-      `select
-         revision.id,
-         revision.definition_id,
-         revision.revision_number::text,
-         revision.catalog_release_id,
-         revision.content_digest,
-         revision.content,
-         release.published_at::text,
-         release.release_sequence::text,
-         release.release_version,
-         release.release_digest
-       from parameter_catalog.definition_revisions revision
-       join parameter_catalog.catalog_releases release on release.id = revision.catalog_release_id
-       where revision.catalog_release_id = $1`,
-      [releaseId],
-    );
+  const release = await client.query<{
+    id: string;
+    release_version: string;
+    release_digest: string;
+    release_sequence: string;
+    published_at: unknown;
+    compiled_fingerprint: string | null;
+    database_fingerprint: string | null;
+    installed_at: unknown;
+  }>(
+    `select
+       release.id,
+       release.release_version,
+       release.release_digest,
+       release.release_sequence::text,
+       release.published_at,
+       materialization.compiled_fingerprint,
+       materialization.database_fingerprint,
+       materialization.installed_at
+     from parameter_catalog.catalog_releases release
+     left join parameter_catalog.catalog_materializations materialization
+       on materialization.release_id = release.id
+     where release.id = $1`,
+    [releaseId],
+  );
+  const row = release.rows[0];
+  if (!row) {
+    return null;
+  }
+  const identity = {
+    id: CatalogReleaseId(row.id),
+    version: CatalogReleaseVersion(row.release_version),
+    digest: CatalogReleaseDigest(row.release_digest),
+  };
+  const expected = expectedPin ?? { id: identity.id, digest: identity.digest };
+  const compiledFingerprintValue = row.compiled_fingerprint;
+  const databaseFingerprintValue = row.database_fingerprint;
+  if (!compiledFingerprintValue || !databaseFingerprintValue) {
+    return projectionDrift(scope, expected, identity, {
+      code: "materialization-fingerprint-mismatch",
+      relation: "catalog_materializations",
+      identity: row.id,
+      detail: "release-not-materialized",
+    });
+  }
+  const sequence = CatalogReleaseSequence(Number(row.release_sequence));
+  const publishedAt = eventTimeFromDatabase(row.published_at, "catalog_releases", row.id);
+  const materializedAt = eventTimeFromDatabase(
+    row.installed_at,
+    "catalog_materializations",
+    row.id,
+  );
+  const compiledFingerprint = CatalogMaterializationFingerprint(compiledFingerprintValue);
+  const databaseFingerprint = CatalogMaterializationFingerprint(databaseFingerprintValue);
 
-    const subjectSnapshots: CatalogSubjectDetailSnapshot[] = subjects.rows.map((subject) => {
-      const selector =
-        subject.selector_snapshot.kind === "driver-compatible"
-          ? {
-              kind: "driver-compatible" as const,
-              values: (subject.selector_snapshot.values ?? []).map(DriverCompatible),
-            }
-          : {
-              kind: "node-type-name" as const,
-              value: NormalizedNodeTypeName(subject.selector_snapshot.value ?? ""),
-            };
-      const subjectAliases: SubjectAliasSnapshot[] = aliases.rows
-        .filter((alias) => alias.subject_id === subject.id)
-        .map((alias) => ({
-          id: CatalogAliasId(alias.id),
-          subjectId: CatalogSubjectId(alias.subject_id),
-          selector:
-            alias.selector_kind === "driver-compatible"
-              ? {
-                  kind: "driver-compatible" as const,
-                  value: DriverCompatible(alias.normalized_selector),
-                }
-              : {
-                  kind: "node-type-name" as const,
-                  value: NormalizedNodeTypeName(alias.normalized_selector),
-                },
-          membership: {
-            release: identity,
-            lifecycle: alias.lifecycle,
-            tombstone: alias.tombstone_provenance
-              ? present({
-                  reason: alias.tombstone_provenance.reason ?? "retired",
-                  successorSubjectId: absent,
-                })
-              : absent,
-          },
-        }));
-      const definitionCounts = { active: 0, deprecated: 0, retired: 0 };
-      for (const definition of definitions.rows.filter((row) => row.subject_id === subject.id)) {
-        const lifecycle = mapContent(definition.content).lifecycle;
-        definitionCounts[lifecycle] += 1;
-      }
-      return {
-        id: CatalogSubjectId(subject.id),
-        kind: subject.kind,
-        canonicalKey: CatalogCanonicalKey(subject.canonical_key),
+  const lineage = await loadPredecessorClosure(client, releaseId, expected, identity, scope);
+  const lineageIds = lineage.map((item) => item.id);
+
+  const subjects = await client.query<SubjectRow>(
+    `select
+       subject.id,
+       subject.kind,
+       subject.canonical_key,
+       membership.lifecycle,
+       membership.selector_snapshot,
+       membership.tombstone_provenance
+     from parameter_catalog.catalog_release_subjects membership
+     join parameter_catalog.catalog_subjects subject on subject.id = membership.subject_id
+     where membership.release_id = $1`,
+    [releaseId],
+  );
+  const aliases = await client.query<AliasRow>(
+    `select
+       alias.id,
+       alias.subject_id,
+       alias.selector_kind,
+       alias.normalized_selector,
+       membership.lifecycle,
+       membership.tombstone_provenance
+     from parameter_catalog.catalog_release_subject_aliases membership
+     join parameter_catalog.catalog_subject_aliases alias on alias.id = membership.alias_id
+     where membership.release_id = $1`,
+    [releaseId],
+  );
+  const heads = await client.query<HeadRow>(
+    `select
+       definition.id,
+       definition.subject_id,
+       definition.property_key,
+       head.revision_id,
+       revision.revision_number::text,
+       revision.content_digest,
+       revision.content
+     from parameter_catalog.catalog_release_definition_heads head
+     join ${catalogDefinitionRelation} definition on definition.id = head.definition_id
+     left join parameter_catalog.definition_revisions revision
+       on revision.definition_id = head.definition_id
+      and revision.id = head.revision_id
+     where head.release_id = $1`,
+    [releaseId],
+  );
+  for (const head of heads.rows) {
+    if (
+      head.revision_number === null ||
+      head.content_digest === null ||
+      head.content === null
+    ) {
+      projectionDrift(scope, expected, identity, {
+        code: "definition-head-mismatch",
+        relation: "catalog_release_definition_heads",
+        identity: `${releaseId}:${head.id}:${head.revision_id}`,
+        detail: "exact-head-revision-missing-or-not-owned",
+      });
+    }
+  }
+
+  const definitionIds = heads.rows.map((head) => head.id);
+  const revisions = await client.query<RevisionRow>(
+    `select
+       revision.id,
+       revision.definition_id,
+       revision.revision_number::text,
+       revision.catalog_release_id,
+       revision.content_digest,
+       revision.content,
+       release.published_at,
+       release.release_sequence::text,
+       release.release_version,
+       release.release_digest
+     from parameter_catalog.definition_revisions revision
+     join parameter_catalog.catalog_releases release
+       on release.id = revision.catalog_release_id
+     where revision.definition_id = any($1::text[])
+       and revision.catalog_release_id = any($2::text[])`,
+    [definitionIds, lineageIds],
+  );
+
+  const revisionById = new Map<string, RevisionRow>();
+  for (const revision of revisions.rows) {
+    const recorded = revisionById.get(revision.id);
+    if (recorded && recorded.definition_id !== revision.definition_id) {
+      projectionDrift(scope, expected, identity, {
+        code: "definition-revision-mismatch",
+        relation: "definition_revisions",
+        identity: revision.id,
+        detail: "duplicate-revision-identity",
+      });
+    }
+    revisionById.set(revision.id, revision);
+  }
+
+  const subjectSnapshots: CatalogSubjectDetailSnapshot[] = subjects.rows.map((subject) => {
+    const selector =
+      subject.selector_snapshot.kind === "driver-compatible"
+        ? {
+            kind: "driver-compatible" as const,
+            values: (subject.selector_snapshot.values ?? []).map(DriverCompatible),
+          }
+        : {
+            kind: "node-type-name" as const,
+            value: NormalizedNodeTypeName(subject.selector_snapshot.value ?? ""),
+          };
+    const subjectAliases: SubjectAliasSnapshot[] = aliases.rows
+      .filter((alias) => alias.subject_id === subject.id)
+      .map((alias) => ({
+        id: CatalogAliasId(alias.id),
+        subjectId: CatalogSubjectId(alias.subject_id),
+        selector:
+          alias.selector_kind === "driver-compatible"
+            ? {
+                kind: "driver-compatible" as const,
+                value: DriverCompatible(alias.normalized_selector),
+              }
+            : {
+                kind: "node-type-name" as const,
+                value: NormalizedNodeTypeName(alias.normalized_selector),
+              },
         membership: {
           release: identity,
-          lifecycle: subject.lifecycle,
-          selector,
-          tombstone: subject.tombstone_provenance
+          lifecycle: alias.lifecycle,
+          tombstone: alias.tombstone_provenance
             ? present({
-                reason: subject.tombstone_provenance.reason ?? "retired",
-                successorSubjectId: subject.tombstone_provenance.successorSubjectId
-                  ? present(CatalogSubjectId(subject.tombstone_provenance.successorSubjectId))
-                  : absent,
+                reason: alias.tombstone_provenance.reason ?? "retired",
+                successorSubjectId: absent,
               })
             : absent,
         },
-        aliases: subjectAliases,
-        definitionCounts,
-      };
-    });
+      }));
+    const definitionCounts = { active: 0, deprecated: 0, retired: 0 };
+    for (const definition of heads.rows.filter((head) => head.subject_id === subject.id)) {
+      const lifecycle = mapContent(definition.content ?? {}).lifecycle;
+      definitionCounts[lifecycle] += 1;
+    }
+    return {
+      id: CatalogSubjectId(subject.id),
+      kind: subject.kind,
+      canonicalKey: CatalogCanonicalKey(subject.canonical_key),
+      membership: {
+        release: identity,
+        lifecycle: subject.lifecycle,
+        selector,
+        tombstone: subject.tombstone_provenance
+          ? present({
+              reason: subject.tombstone_provenance.reason ?? "retired",
+              successorSubjectId: subject.tombstone_provenance.successorSubjectId
+                ? present(CatalogSubjectId(subject.tombstone_provenance.successorSubjectId))
+                : absent,
+            })
+          : absent,
+      },
+      aliases: subjectAliases,
+      definitionCounts,
+    };
+  });
 
-    const revisionSnapshots: DefinitionRevisionSnapshot[] = revisions.rows.map((revision) => ({
+  const revisionSnapshots: DefinitionRevisionSnapshot[] = [...revisionById.values()].map(
+    (revision) => ({
       id: DefinitionRevisionId(revision.id),
       definitionId: ParameterDefinitionId(revision.definition_id),
       revisionNumber: Number(revision.revision_number),
@@ -682,101 +923,166 @@ const loadProjection = async (
         digest: CatalogReleaseDigest(revision.release_digest),
       },
       content: mapContent(revision.content),
-    }));
+    }),
+  );
 
-    const definitionSnapshots: ParameterDefinitionSnapshot[] = definitions.rows.map(
-      (definition) => {
-        const selected =
-          revisionSnapshots.find((revision) => revision.id === definition.revision_id) ??
-          revisionSnapshots.find((revision) => revision.definitionId === definition.id)!;
-        return {
-          id: ParameterDefinitionId(definition.id),
-          subjectId: CatalogSubjectId(definition.subject_id),
-          propertyKey: toPropertyKey(definition.property_key),
-          selectedRevision: selected,
-        };
-      },
+  const subjectIds = new Set(subjectSnapshots.map((subject) => subject.id));
+  const definitionSnapshots: ParameterDefinitionSnapshot[] = heads.rows.map((definition) => {
+    const selected = revisionSnapshots.find(
+      (revision) =>
+        revision.id === definition.revision_id && revision.definitionId === definition.id,
     );
-
-    const facts: CatalogDefinitionPublicationFact[] = revisionSnapshots.map((revision) => ({
-      id: CatalogTimelineFactId(`${revision.definitionId}:${revision.id}`),
-      definitionId: revision.definitionId,
-      revisionId: revision.id,
-      revisionNumber: revision.revisionNumber,
-      release: revision.publishedIn,
-      releaseSequence: CatalogReleaseSequence(
-        Number(revisions.rows.find((row) => row.id === revision.id)?.release_sequence ?? 0),
-      ),
-      publishedAt: CatalogEventTime(
-        revisions.rows.find((row) => row.id === revision.id)?.published_at ??
-          "1970-01-01T00:00:00Z",
-      ),
-      previousRevisionId: absent,
-      changes: (revision.revisionNumber === 1 ? ["introduced"] : ["content"]) as DefinitionPublicationChange[],
-    }));
-
+    if (!selected) {
+      return projectionDrift(scope, expected, identity, {
+        code: "definition-head-mismatch",
+        relation: "catalog_release_definition_heads",
+        identity: `${releaseId}:${definition.id}:${definition.revision_id}`,
+        detail: "selected-revision-not-in-predecessor-closure",
+      });
+    }
+    if (!subjectIds.has(CatalogSubjectId(definition.subject_id))) {
+      return projectionDrift(scope, expected, identity, {
+        code: "subject-membership-mismatch",
+        relation: "catalog_release_subjects",
+        identity: definition.subject_id,
+        detail: "definition-subject-not-in-release-membership",
+      });
+    }
     return {
-      identity,
-      materializationFingerprint: CatalogMaterializationFingerprint(
-        row.compiled_fingerprint ?? `sha256:${"0".repeat(64)}`,
-      ),
-      snapshot: new CapturedCatalogSnapshot({
-        release: identity,
-        subjects: subjectSnapshots,
-        definitions: definitionSnapshots,
-        revisions: revisionSnapshots,
-        facts,
-      }),
+      id: ParameterDefinitionId(definition.id),
+      subjectId: CatalogSubjectId(definition.subject_id),
+      propertyKey: toPropertyKey(definition.property_key),
+      selectedRevision: selected,
     };
-  } finally {
-    client.release();
+  });
+
+  const factsByDefinition = new Map<string, CatalogDefinitionPublicationFact[]>();
+  for (const definition of definitionSnapshots) {
+    const owned = [...revisionById.values()]
+      .filter((row) => row.definition_id === definition.id)
+      .sort((left, right) => {
+        const sequence = Number(left.release_sequence) - Number(right.release_sequence);
+        if (sequence !== 0) return sequence;
+        const number = Number(left.revision_number) - Number(right.revision_number);
+        if (number !== 0) return number;
+        return left.id.localeCompare(right.id);
+      });
+    const facts: CatalogDefinitionPublicationFact[] = owned.map((row, index) => {
+      const snapshot = revisionSnapshots.find((revision) => revision.id === row.id)!;
+      const previous = index === 0 ? null : revisionSnapshots.find(
+        (revision) => revision.id === owned[index - 1]!.id,
+      )!;
+      return {
+        id: CatalogTimelineFactId(`${snapshot.definitionId}:${snapshot.id}`),
+        definitionId: snapshot.definitionId,
+        revisionId: snapshot.id,
+        revisionNumber: snapshot.revisionNumber,
+        release: snapshot.publishedIn,
+        releaseSequence: CatalogReleaseSequence(Number(row.release_sequence)),
+        publishedAt: eventTimeFromDatabase(
+          row.published_at,
+          "catalog_releases",
+          row.catalog_release_id,
+        ),
+        previousRevisionId: previous ? present(previous.id) : absent,
+        changes: classifyPublicationChanges(previous?.content ?? null, snapshot.content),
+      };
+    });
+    factsByDefinition.set(definition.id, facts);
   }
+  const facts = [...factsByDefinition.values()].flat();
+
+  return {
+    identity,
+    materializationFingerprint: compiledFingerprint,
+    snapshot: new CapturedCatalogSnapshot({
+      release: identity,
+      sequence,
+      publishedAt,
+      materializedAt,
+      compiledFingerprint,
+      databaseFingerprint,
+      subjects: subjectSnapshots,
+      definitions: definitionSnapshots,
+      revisions: revisionSnapshots,
+      facts,
+    }),
+  };
 };
 
 export const loadCurrentCatalogSnapshot = async (
   pool: pg.Pool,
   expected: CatalogReleasePin,
-): Promise<Result<CurrentCatalogSnapshot, CatalogKernelError>> => {
-  const client = await pool.connect();
-  try {
-    const pointer = await client.query<{ current_catalog_release_id: string }>(
-      `select current_catalog_release_id from parameter_catalog.catalog_state`,
+): Promise<Result<CurrentCatalogSnapshot, CatalogKernelError>> =>
+  withCatalogReadTransaction(pool, "loadCurrentCatalog", async (client) => {
+    const pointer = await client.query<{
+      current_catalog_release_id: string | null;
+      release_id: string | null;
+      release_version: string | null;
+      release_digest: string | null;
+    }>(
+      `select
+         state.current_catalog_release_id,
+         release.id as release_id,
+         release.release_version,
+         release.release_digest
+       from parameter_catalog.catalog_state state
+       left join parameter_catalog.catalog_releases release
+         on release.id = state.current_catalog_release_id`,
     );
-    const currentId = pointer.rows[0]?.current_catalog_release_id;
-    if (!currentId) {
+    const row = pointer.rows[0];
+    if (!row?.current_catalog_release_id) {
       return {
         ok: false,
         error: { kind: "release-mismatch", expected, actual: null },
       };
     }
-    const loaded = await loadProjection(pool, currentId);
-    if (!loaded) {
+    const releaseId = row.release_id;
+    const releaseVersion = row.release_version;
+    const releaseDigest = row.release_digest;
+    if (!releaseId || !releaseVersion || !releaseDigest) {
+      return projectionDrift("current", expected, null, {
+        code: "current-pointer-mismatch",
+        relation: "catalog_state",
+        identity: row.current_catalog_release_id,
+        detail: "current-pointer-release-missing",
+      });
+    }
+    const captured: CatalogReleaseIdentity = {
+      id: CatalogReleaseId(releaseId),
+      version: CatalogReleaseVersion(releaseVersion),
+      digest: CatalogReleaseDigest(releaseDigest),
+    };
+    if (captured.id !== expected.id || captured.digest !== expected.digest) {
       return {
         ok: false,
-        error: { kind: "historical-release-unavailable", pin: expected },
+        error: { kind: "release-mismatch", expected, actual: captured },
       };
     }
-    if (loaded.identity.id !== expected.id || loaded.identity.digest !== expected.digest) {
+    const loaded = await loadProjection(client, captured.id, "current", expected);
+    if (!loaded) {
+      return projectionDrift("current", expected, captured, {
+        code: "current-pointer-mismatch",
+        relation: "catalog_releases",
+        identity: captured.id,
+        detail: "current-release-projection-missing",
+      });
+    }
+    if (loaded.identity.id !== captured.id || loaded.identity.digest !== captured.digest) {
       return {
         ok: false,
-        error: {
-          kind: "release-mismatch",
-          expected,
-          actual: loaded.identity,
-        },
+        error: { kind: "release-mismatch", expected, actual: loaded.identity },
       };
     }
     const snapshot: CurrentCatalogSnapshot = Object.assign(loaded.snapshot, {
       snapshotKind: "current" as const,
       materializationFingerprint: loaded.materializationFingerprint,
     });
+    Object.freeze(snapshot);
     return { ok: true, value: snapshot };
-  } finally {
-    client.release();
-  }
-};
+  });
 
-export { loadProjection };
+export { loadProjection, locatorPin };
 
 export const seedCompiledCatalogProjection = async (
   url: string,

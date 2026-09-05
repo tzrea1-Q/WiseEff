@@ -25,7 +25,10 @@ import {
   ParameterDefinitionId,
 } from "../parameter-catalog-contract/index";
 import { loadCurrentCatalogSnapshot } from "./runtime/currentSnapshot";
-import { loadPinnedCatalogSnapshot } from "./runtime/pinnedSnapshot";
+import {
+  loadPinnedCatalogSnapshot,
+  resolveCatalogReleasePin,
+} from "./runtime/pinnedSnapshot";
 
 export type {
   CatalogKernelError,
@@ -362,6 +365,11 @@ export type DefinitionTimelineResult =
 
 export interface CatalogSnapshot {
   readonly release: CatalogReleaseIdentity;
+  readonly sequence: CatalogReleaseSequence;
+  readonly publishedAt: CatalogEventTime;
+  readonly materializedAt: CatalogEventTime;
+  readonly compiledFingerprint: CatalogMaterializationFingerprint;
+  readonly databaseFingerprint: CatalogMaterializationFingerprint;
   getSubject(subjectId: CatalogSubjectId): SubjectLookupResult;
   listSubjects(query: SubjectListQuery): SubjectListResult;
   resolveSubject(selector: SubjectSelector): MatchResult;
@@ -432,6 +440,9 @@ export interface CatalogKernel {
   loadPinnedCatalog(
     pin: CatalogReleasePin,
   ): Promise<Result<PinnedCatalogSnapshot, CatalogKernelError>>;
+  resolveCatalogReleasePin(
+    releaseId: CatalogReleaseId,
+  ): Promise<Result<CatalogReleasePin, CatalogKernelError>>;
 }
 
 export type CatalogRuntime = Pick<CatalogKernel, "loadCurrentCatalog" | "loadPinnedCatalog">;
@@ -507,6 +518,9 @@ export const createCatalogKernel = (pool: pg.Pool): CatalogKernel => ({
   },
   async loadPinnedCatalog(pin) {
     return loadPinnedCatalogSnapshot(pool, pin);
+  },
+  async resolveCatalogReleasePin(releaseId) {
+    return resolveCatalogReleasePin(pool, releaseId);
   },
 });
 
