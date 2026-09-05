@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createAppRuntime, type AppRuntimeDeps } from "@/app/appRuntime";
 import { initialState } from "@/mockData";
 import { createMockRuntimeState } from "@/infrastructure/mock/mockState";
+import { readyCatalogDocument } from "@/application/parameter-catalog/fixtures";
 
 function deps(): AppRuntimeDeps {
   const mockParameterRuntime = createMockRuntimeState(initialState);
@@ -10,6 +11,19 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("R2 Catalog API client honors the configured backend origin", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(readyCatalogDocument), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const runtime = createAppRuntime("api", deps());
+      await runtime.parameterCatalogRepository.getCatalog();
+      expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:18781/api/v2/catalog", expect.any(Object));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
   it("selects api adapters in api mode", () => {
     const runtime = createAppRuntime("api", deps());
 

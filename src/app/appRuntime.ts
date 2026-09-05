@@ -42,7 +42,7 @@ import { createHttpProductFeedbackRepository } from "@/infrastructure/http/produ
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createMockOrganizationActions } from "@/infrastructure/mock/mockOrganizationActions";
 import type { OrganizationActions } from "@/OrganizationPage";
-import { wiseEffApiAuthorization, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { resolveWiseEffApiBaseUrl, wiseEffApiAuthorization, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -109,6 +109,7 @@ export function createAppRuntime(
       : api
         ? createApiCatalogPorts(
             createParameterCatalogClient({
+              baseUrl: resolveWiseEffApiBaseUrl(),
               getAuthorization: async () => {
                 const localToken = readLocalAuthToken();
                 return localToken ? `Bearer ${localToken}` : wiseEffApiAuthorization;
