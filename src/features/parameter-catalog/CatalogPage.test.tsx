@@ -235,7 +235,7 @@ describe("CatalogPage", () => {
     const { unmount } = renderCatalog({ actor: "user" });
     const page = await screen.findByRole("region", { name: "参数定义目录" });
     expect(page).toHaveAttribute("data-writes-enabled", "true");
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("目录发布")).toHaveTextContent(CATALOG_RELEASE_ID);
