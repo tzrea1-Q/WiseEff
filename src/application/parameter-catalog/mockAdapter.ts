@@ -29,6 +29,8 @@ import type {
 } from "@/infrastructure/http/parameterCatalogDtos";
 
 import { catalogApiFailure } from "./errors";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import type { CatalogActorKind } from "./authority";
 import {
   CATALOG_ORGANIZATION_ID,
   CATALOG_PLACEMENT_ID,
@@ -73,7 +75,10 @@ export type CatalogMockScenario = (typeof catalogMockScenarios)[number];
 export type CatalogMockOptions = {
   scenario?: CatalogMockScenario;
   currentPersonId?: string;
+  getSession?: () => CatalogMockSession;
 };
+
+export type CatalogMockSession = { personId: string; organizationId: string; actorKind: CatalogActorKind; isActive: boolean };
 
 type IdempotencyRecord = { fingerprint: string; result: unknown };
 
@@ -86,6 +91,7 @@ type MockStore = {
   registration: CatalogRegistrationResponse["item"] | null;
   reviewItem: CatalogReviewItemResponse["item"];
   proposal: CatalogProposalResponse["item"];
+  proposals: Map<string, CatalogProposalResponse["item"]>;
   idempotency: Map<string, IdempotencyRecord>;
 };
 
@@ -126,6 +132,7 @@ function createStore(options: CatalogMockOptions): MockStore {
     registration,
     reviewItem: clone(catalogReviewItem),
     proposal: clone(catalogProposal),
+    proposals: new Map([[catalogProposal.id, clone(catalogProposal)]]),
     idempotency: new Map()
   };
 }
@@ -582,98 +589,150 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       });
     },
     async listProposals() {
+      const session = proposalSession();
       assertReadyForRead(store);
-      return collection([store.proposal]);
+      return collection([...store.proposals.values()].filter((proposal) => proposal.organizationId === session.organizationId));
     },
     async createProposal(body, context) {
+      const session = authorizeProposal("createProposal");
       const write = requireIdempotentWriteContext(context);
       assertReadyForWrite(store);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogCreateProposalRequestSchema.parse(body);
-      return replayOrStore(store, "createProposal", write, parsed, () => {
+      return replayProposal("createProposal", null, write, parsed, () => {
+        const id = `dprop_${crypto.randomUUID()}`;
         store.proposal = {
           ...clone(catalogProposal),
+          id,
+          organizationId: session.organizationId,
+          etag: `"${crypto.randomUUID()}"`,
+          version: 1,
           status: "draft",
-          submittedByPersonId: store.currentPersonId,
+          submittedByPersonId: session.personId,
           base: {
             catalogReleaseId: parsed.base.catalogReleaseId,
             definitionId: parsed.base.definitionId ?? null,
             definitionRevisionId: parsed.base.definitionRevisionId ?? null
           },
-          requestedChange: parsed.requestedChange
+          requestedChange: clone(parsed.requestedChange)
         };
+        store.proposals.set(id, store.proposal);
         return { item: clone(store.proposal) };
       });
     },
     async getProposal(proposalId) {
+      const session = proposalSession();
       assertReadyForRead(store);
-      if (proposalId !== store.proposal.id) {
-        throw catalogApiFailure("forbidden");
+      const proposal = store.proposals.get(proposalId);
+      if (!proposal || proposal.organizationId !== session.organizationId) {
+        throw new WiseEffApiError("NOT_FOUND", "Proposal not found.", {}, "catalog");
       }
-      return { item: clone(store.proposal) };
+      return { item: clone(proposal) };
     },
     async submitProposal(proposalId, body, context) {
-      return transitionProposal(proposalId, body, context, "submitProposal", (parsed) => {
+      return transitionProposal(proposalId, body, context, "submitProposal", (parsed, proposal) => {
         catalogSubmitProposalRequestSchema.parse(parsed);
-        store.proposal = { ...store.proposal, status: "submitted", etag: "etag-p2" };
-        return { item: clone(store.proposal) };
+        if (proposal.status !== "draft") throw catalogApiFailure("revision-conflict");
+        return commitProposal(proposal, { status: "submitted" });
       });
     },
     async withdrawProposal(proposalId, body, context) {
-      return transitionProposal(proposalId, body, context, "withdrawProposal", (parsed) => {
+      return transitionProposal(proposalId, body, context, "withdrawProposal", (parsed, proposal) => {
         catalogWithdrawProposalRequestSchema.parse(parsed);
-        store.proposal = { ...store.proposal, status: "withdrawn", etag: "etag-p2" };
-        return { item: clone(store.proposal) };
+        if (proposal.status !== "draft" && proposal.status !== "submitted") throw catalogApiFailure("revision-conflict");
+        return commitProposal(proposal, { status: "withdrawn" });
       });
     },
     async acceptProposal(proposalId, body, context) {
-      return transitionProposal(proposalId, body, context, "acceptProposal", (parsed) => {
+      return transitionProposal(proposalId, body, context, "acceptProposal", (parsed, proposal) => {
         catalogAcceptProposalRequestSchema.parse(parsed);
-        if (store.currentPersonId === store.proposal.submittedByPersonId) {
+        const session = proposalSession();
+        if (session.personId === proposal.submittedByPersonId) {
           throw catalogApiFailure("proposal-self-approval-forbidden");
         }
-        store.proposal = {
-          ...store.proposal,
+        if (proposal.status !== "submitted") throw catalogApiFailure("revision-conflict");
+        return commitProposal(proposal, {
           status: "accepted",
-          acceptedByPersonId: store.currentPersonId,
-          publicationIntentRef: "pint_01K",
-          etag: "etag-p2"
-        };
-        return { item: clone(store.proposal) };
+          acceptedByPersonId: session.personId,
+          publicationIntentRef: `cpint_${crypto.randomUUID()}`
+        });
       });
     },
     async rejectProposal(proposalId, body, context) {
-      return transitionProposal(proposalId, body, context, "rejectProposal", (parsed) => {
+      return transitionProposal(proposalId, body, context, "rejectProposal", (parsed, proposal) => {
         catalogRejectProposalRequestSchema.parse(parsed);
-        store.proposal = { ...store.proposal, status: "rejected", etag: "etag-p2" };
-        return { item: clone(store.proposal) };
+        if (proposalSession().personId === proposal.submittedByPersonId) throw catalogApiFailure("proposal-self-approval-forbidden");
+        if (proposal.status !== "submitted") throw catalogApiFailure("revision-conflict");
+        return commitProposal(proposal, { status: "rejected" });
       });
     }
   };
+
+  function proposalSession(): CatalogMockSession {
+    const session = options.getSession?.() ?? { personId: store.currentPersonId, organizationId: CATALOG_ORGANIZATION_ID, actorKind: "platform-admin", isActive: true };
+    if (!session.personId || !session.organizationId) throw new WiseEffApiError("UNAUTHENTICATED", "Authentication is required.", {}, "catalog");
+    if (!session.isActive) throw catalogApiFailure("forbidden");
+    return { ...session };
+  }
+
+  function authorizeProposal(method: string): CatalogMockSession {
+    const session = proposalSession();
+    const review = method === "acceptProposal" || method === "rejectProposal";
+    if (session.actorKind !== (review ? "platform-admin" : "org-admin")) throw catalogApiFailure("forbidden");
+    return session;
+  }
+
+  function commitProposal(proposal: CatalogProposalResponse["item"], change: Partial<CatalogProposalResponse["item"]>) {
+    const updated = { ...proposal, ...change, etag: `"${crypto.randomUUID()}"`, version: proposal.version + 1 };
+    store.proposals.set(updated.id, updated);
+    store.proposal = updated;
+    return { item: clone(updated) };
+  }
+
+  function replayProposal<T>(method: string, proposalId: string | null, write: CatalogIdempotentWriteContext, body: unknown, compute: () => T): T {
+    const session = proposalSession();
+    const key = JSON.stringify([session.organizationId, method, proposalId, write.idempotencyKey]);
+    const fingerprint = JSON.stringify([session.personId, session.actorKind, method === "withdrawProposal" ? null : write.catalogReleaseId, "ifMatch" in write ? write.ifMatch : null, canonicalJson(body)]);
+    const existing = store.idempotency.get(key);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw catalogApiFailure("revision-conflict");
+      return clone(existing.result as T);
+    }
+    const result = compute();
+    store.idempotency.set(key, { fingerprint, result: clone(result) });
+    return clone(result);
+  }
 
   function transitionProposal<T>(
     proposalId: string,
     body: unknown,
     context: CatalogConditionalWriteContext,
     method: string,
-    compute: (parsed: unknown) => T
+    compute: (parsed: unknown, proposal: CatalogProposalResponse["item"]) => T
   ): T {
+    const session = authorizeProposal(method);
     const write = requireConditionalWriteContext(context);
     assertReadyForWrite(store);
     assertRelease(store, write.catalogReleaseId);
-    if (proposalId !== store.proposal.id) {
-      throw catalogApiFailure("forbidden");
+    const proposal = store.proposals.get(proposalId);
+    if (!proposal || proposal.organizationId !== session.organizationId) {
+      throw new WiseEffApiError("NOT_FOUND", "Proposal not found.", {}, "catalog");
     }
-    if (write.ifMatch !== store.proposal.etag) {
-      throw catalogApiFailure("revision-conflict");
-    }
-    if (store.proposal.base.catalogReleaseId !== write.catalogReleaseId) {
-      throw catalogApiFailure("proposal-stale");
-    }
-    return replayOrStore(store, method, write, body, () => compute(body));
+    return replayProposal(method, proposalId, write, body, () => {
+      if (write.ifMatch !== proposal.etag) throw catalogApiFailure("revision-conflict");
+      if ((method === "submitProposal" || method === "withdrawProposal") && proposal.submittedByPersonId !== session.personId) throw catalogApiFailure("forbidden");
+      if (method !== "withdrawProposal" && proposal.base.catalogReleaseId !== write.catalogReleaseId) throw catalogApiFailure("proposal-stale");
+      return compute(body, proposal);
+    });
   }
 
   return { catalog, governance };
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonicalJson(item)]));
+  return value;
 }
 
 export function createMockParameterCatalogRepository(

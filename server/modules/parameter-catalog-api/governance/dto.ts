@@ -117,7 +117,7 @@ export function mapProposalRecord(
     id: record.id,
     organizationId: record.organizationId,
     status: record.status,
-    etag: record.etag,
+    etag: quoteEtag(record.etag),
     base: record.base,
     requestedChange: record.requestedChange,
     submittedByPersonId: record.submittedByPersonId,
@@ -129,7 +129,6 @@ export function mapProposalRecord(
 
 export function mapProposalResult(
   result: ProposalResult,
-  submittedByPersonId: string | null,
 ): ReturnType<typeof catalogProposalDtoSchema.parse> {
   return catalogProposalDtoSchema.parse({
     id: result.proposalId,
@@ -138,11 +137,11 @@ export function mapProposalResult(
     etag: quoteEtag(`${result.proposalId}-v${result.etagVersion}`),
     base: {
       catalogReleaseId: result.baseCatalogReleaseId,
-      definitionId: null,
+      definitionId: result.baseDefinitionId,
       definitionRevisionId: result.baseDefinitionRevisionId,
     },
-    requestedChange: { kind: "definition-proposal" },
-    submittedByPersonId,
+    requestedChange: { ...result.requestedChange, kind: result.requestedChange.kind ?? "definition-proposal" },
+    submittedByPersonId: result.submittedByPersonId,
     acceptedByPersonId: result.publicationIntent?.reviewerPrincipalId ?? null,
     publicationIntentRef: result.publicationIntent?.id ?? null,
     version: result.etagVersion,

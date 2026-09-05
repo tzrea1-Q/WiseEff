@@ -54,6 +54,7 @@ export type SubmitExistingProposalCommand = {
   readonly organizationId: string;
   readonly proposalId: DefinitionProposalId;
   readonly expectedEtag: number;
+  readonly reason?: string;
   readonly currentRelease: CatalogReleasePin;
   readonly idempotencyKey: string;
   readonly context: ProposalTrustedContext;
@@ -82,6 +83,7 @@ export type WithdrawProposalCommand = {
   readonly organizationId: string;
   readonly proposalId: DefinitionProposalId;
   readonly expectedEtag: number;
+  readonly reason?: string;
   readonly idempotencyKey: string;
   readonly context: ProposalTrustedContext;
 };
@@ -259,6 +261,8 @@ export const validateProposalCommand = (
   if (!controlFree(command.context.principalId)) {
     return invalid("principalId");
   }
+  if ((command.kind === "submit-existing" || command.kind === "withdraw") && command.reason !== undefined
+    && typeof command.reason !== "string") return invalid("reason");
 
   if (command.kind === "create-draft") {
     if (command.context.actorKind !== "org-admin") {
@@ -396,6 +400,7 @@ const commandFingerprintModel = (command: ProposalCommand): ContractJsonValue =>
     case "submit-existing":
       return {
         kind: command.kind,
+        ...(command.reason === undefined ? {} : { reason: command.reason }),
         organizationId: command.organizationId,
         proposalId: command.proposalId,
         expectedEtag: command.expectedEtag,
@@ -405,6 +410,7 @@ const commandFingerprintModel = (command: ProposalCommand): ContractJsonValue =>
     case "withdraw":
       return {
         kind: command.kind,
+        ...(command.reason === undefined ? {} : { reason: command.reason }),
         organizationId: command.organizationId,
         proposalId: command.proposalId,
         expectedEtag: command.expectedEtag,

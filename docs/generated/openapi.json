@@ -7752,7 +7752,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProposalUnavailableResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -7922,7 +7929,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProposalUnavailableResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -8027,7 +8041,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProposalUnavailableResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -8132,7 +8153,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProposalUnavailableResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -8237,7 +8265,14 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "503": {
-            "$ref": "#/components/responses/ErrorResponse"
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProposalUnavailableResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -22848,6 +22883,88 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogProposalResponse"
+      },
+      "CatalogProposalUnavailableResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "SERVICE_UNAVAILABLE"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "details": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "catalog-not-ready"
+                        ]
+                      },
+                      "retryable": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "retryable"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "proposal-replay-unavailable"
+                        ]
+                      },
+                      "retryable": {
+                        "type": "boolean",
+                        "enum": [
+                          false
+                        ]
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "retryable"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId",
+              "details"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogProposalUnavailableResponse"
       },
       "CatalogSubmitProposalRequest": {
         "type": "object",

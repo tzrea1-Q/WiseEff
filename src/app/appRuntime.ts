@@ -13,6 +13,8 @@ import {
   createApiCatalogPorts,
   createMockCatalogPorts
 } from "@/application/parameter-catalog";
+import { catalogActorForRole } from "@/application/parameter-catalog/authority";
+import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { resolveDebuggingGateway } from "@/application/debugging/debuggingGatewayRuntime";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
@@ -113,7 +115,11 @@ export function createAppRuntime(
               }
             })
           )
-        : createMockCatalogPorts();
+        : createMockCatalogPorts({ getSession: () => {
+            const state = deps.getState();
+            const user = state.users.find((candidate) => candidate.id === state.currentUserId);
+            return { personId: user?.id ?? "", organizationId: CATALOG_ORGANIZATION_ID, actorKind: catalogActorForRole(user?.roleId ?? ""), isActive: user?.isActive ?? false };
+          } });
   return {
     authClient: overrides.authClient ?? createAuthClient(),
     parameterRepository:

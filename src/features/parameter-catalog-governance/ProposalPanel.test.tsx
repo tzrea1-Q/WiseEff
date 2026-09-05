@@ -27,7 +27,12 @@ function renderPanel(options: {
   repository?: ReturnType<typeof createMockParameterCatalogGovernanceRepository>;
   createIdempotencyKey?: () => string;
 } = {}) {
-  const repository = options.repository ?? createMockParameterCatalogGovernanceRepository();
+  const repository = options.repository ?? createMockParameterCatalogGovernanceRepository({ getSession: () => ({
+    personId: options.currentPersonId ?? CATALOG_AUTHOR_PERSON_ID,
+    organizationId: "org_acme",
+    actorKind: options.actor ?? "org-admin",
+    isActive: true
+  }) });
   const spies = {
     createProposal: vi.spyOn(repository, "createProposal"),
     submitProposal: vi.spyOn(repository, "submitProposal"),
@@ -37,7 +42,7 @@ function renderPanel(options: {
   };
   const view = render(
     <ProposalPanel
-      actor={options.actor ?? "user"}
+      actor={options.actor ?? "org-admin"}
       domainState={ready}
       repository={repository}
       catalogReleaseId={CATALOG_RELEASE_ID}
@@ -59,8 +64,8 @@ async function confirmAction(confirmName: string) {
 }
 
 describe("ProposalPanel", () => {
-  it("lets a User create a Proposal without materializing a definition", async () => {
-    const { createProposal, acceptProposal } = renderPanel({ actor: "user" });
+  it("lets an Org Admin create a Proposal without materializing a definition", async () => {
+    const { createProposal, acceptProposal } = renderPanel({ actor: "org-admin" });
     const user = userEvent.setup();
     const region = await screen.findByRole("region", { name: "定义修订" });
     expect(within(region).getByText("不会在此界面生成参数定义")).toBeVisible();
@@ -82,6 +87,14 @@ describe("ProposalPanel", () => {
     );
     expect(acceptProposal).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /生成定义|物化|应用到目录/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps ordinary Users read-only without a Proposal create form", async () => {
+    const { createProposal } = renderPanel({ actor: "user" });
+    await screen.findByRole("region", { name: "定义修订" });
+    expect(screen.queryByLabelText("变更类型")).not.toBeInTheDocument();
+    expect(screen.getByText(/仅可阅读/)).toBeVisible();
+    expect(createProposal).not.toHaveBeenCalled();
   });
 
   it("lets Org Admin withdraw a submitted Proposal with If-Match", async () => {

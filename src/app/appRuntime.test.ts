@@ -78,4 +78,19 @@ describe("createAppRuntime", () => {
     expect(document.item.catalogReleaseId).toBeTruthy();
     expect(typeof runtime.parameterCatalogGovernanceRepository.listReviewItems).toBe("function");
   });
+
+  it("R2-PROP runtime uses current session identity and rechecks roles before replay", async () => {
+    const state = structuredClone(initialState);
+    const admin = state.users.find((user) => user.roleId === "admin");
+    if (!admin) throw new Error("test requires the independent admin fixture");
+    state.currentUserId = admin.id;
+    const runtime = createAppRuntime("mock", { getState: () => state, mockParameterRuntime: createMockRuntimeState(state) });
+    const release = (await runtime.parameterCatalogRepository.getCatalog()).item.catalogReleaseId;
+    const body = { base: { catalogReleaseId: release }, requestedChange: { kind: "new-definition" }, reason: "runtime session" };
+    const write = { catalogReleaseId: release, idempotencyKey: "runtime-proposal" };
+    const created = await runtime.parameterCatalogGovernanceRepository.createProposal(body, write);
+    expect(created.item.submittedByPersonId).toBe(admin.id);
+    admin.roleId = "guest";
+    await expect(runtime.parameterCatalogGovernanceRepository.createProposal(body, write)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });

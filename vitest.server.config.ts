@@ -11,6 +11,12 @@ const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 const defaultMaxWorkers = Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2) || 1));
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": path.resolve(projectRoot, "src"),
+      "@wiseeff/dto-schemas": path.resolve(projectRoot, "server/modules/contracts/dtoSchemas/index.ts"),
+    },
+  },
   test: {
     environment: "node",
     include: ["server/**/*.test.ts"],

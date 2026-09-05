@@ -14,6 +14,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "invalid-placement-parent": "CONFLICT",
   "observation-ambiguous": "CONFLICT",
   "proposal-stale": "CONFLICT",
+  "proposal-replay-unavailable": "SERVICE_UNAVAILABLE",
   "proposal-self-approval-forbidden": "FORBIDDEN",
   "revision-conflict": "CONFLICT",
   "legacy-id-archived": "GONE",

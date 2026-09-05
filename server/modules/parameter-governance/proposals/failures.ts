@@ -5,6 +5,7 @@ import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
 import type { ProposalTrustedContext } from "./command";
 
 export type ProposalFailure =
+  | { readonly kind: "proposal-replay-unavailable"; readonly proposalId: string }
   | {
       readonly kind: "proposal-stale";
       readonly capturedRelease: CatalogReleasePin;

@@ -19,7 +19,7 @@ export const catalogAuthorizedActions = [
 export type CatalogAuthorizedAction = (typeof catalogAuthorizedActions)[number];
 
 const ACTOR_ACTIONS: Record<CatalogActorKind, readonly CatalogAuthorizedAction[]> = {
-  user: ["read", "create-proposal", "submit-proposal", "withdraw-proposal"],
+  user: ["read"],
   "org-admin": [
     "read",
     "register-subject",

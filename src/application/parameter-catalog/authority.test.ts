@@ -40,7 +40,7 @@ describe("catalog actor authority", () => {
     expect(isCatalogActionEnabled("platform-admin", "accept-proposal", ready)).toBe(true);
     expect(isCatalogActionEnabled("user", "register-subject", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("user", "resolve-review-item", unregistered)).toBe(false);
-    expect(isCatalogActionEnabled("user", "create-proposal", ready)).toBe(true);
+    expect(isCatalogActionEnabled("user", "create-proposal", ready)).toBe(false);
   });
 
   it("maps live platform roles onto Catalog actors", () => {

@@ -62,6 +62,7 @@ import {
 import {
   CatalogGovernanceQueryError,
   catalogGovernanceOk,
+  catalogGovernanceError,
   catalogNotReady,
   conflict,
   forbidden,
@@ -411,6 +412,8 @@ function mapGovernanceFailure(error: GovernanceFailure, requestId: string): Cata
 
 function mapProposalFailure(error: ProposalFailure, requestId: string): CatalogGovernanceResponse {
   switch (error.kind) {
+    case "proposal-replay-unavailable":
+      return catalogGovernanceError({ status: 503, code: "SERVICE_UNAVAILABLE", message: "The original proposal response is unavailable.", requestId, reason: "proposal-replay-unavailable", details: { retryable: false } });
     case "proposal-stale":
       return conflict(requestId, "proposal-stale");
     case "proposal-self-approval-forbidden":
@@ -954,7 +957,7 @@ async function handleCreateProposal(
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
   return catalogGovernanceOk({
     status: 201,
-    body: { item: mapProposalResult(result.value, scope.principalId) },
+    body: { item: mapProposalResult(result.value) },
     requestId: request.requestId,
     catalogReleaseId: result.value.baseCatalogReleaseId,
     etag: proposalEtag(result.value.proposalId, result.value.etagVersion),
@@ -985,11 +988,13 @@ async function handleSubmitProposal(
   } catch {
     return validationFailed(request.requestId, "proposalId");
   }
+  if (etagHeader !== proposalEtag(proposalId, expectedEtag)) return revisionConflict(request.requestId);
   const command: SubmitExistingProposalCommand = {
     kind: "submit-existing",
     organizationId: scope.organizationId,
     proposalId,
     expectedEtag,
+    ...(parsed.data.reason === undefined ? {} : { reason: parsed.data.reason }),
     currentRelease: pin.pin,
     idempotencyKey,
     context,
@@ -997,7 +1002,7 @@ async function handleSubmitProposal(
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
   return catalogGovernanceOk({
-    body: { item: mapProposalResult(result.value, scope.principalId) },
+    body: { item: mapProposalResult(result.value) },
     requestId: request.requestId,
     catalogReleaseId: result.value.baseCatalogReleaseId,
     etag: proposalEtag(result.value.proposalId, result.value.etagVersion),
@@ -1028,18 +1033,20 @@ async function handleWithdrawProposal(
   }
   const context = proposalAuthorContext(scope);
   if (!context) return forbidden(request.requestId);
+  if (etagHeader !== proposalEtag(proposalId, expectedEtag)) return revisionConflict(request.requestId);
   const command: ProposalCommand = {
     kind: "withdraw",
     organizationId: scope.organizationId,
     proposalId,
     expectedEtag,
+    ...(parsed.data.reason === undefined ? {} : { reason: parsed.data.reason }),
     idempotencyKey,
     context,
   };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
   return catalogGovernanceOk({
-    body: { item: mapProposalResult(result.value, scope.principalId) },
+    body: { item: mapProposalResult(result.value) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
     etag: proposalEtag(result.value.proposalId, result.value.etagVersion),
@@ -1072,6 +1079,7 @@ async function handleAcceptOrRejectProposal(
   }
   const context = proposalReviewerContext(scope);
   if (!context) return forbidden(request.requestId);
+  if (etagHeader !== proposalEtag(proposalId, expectedEtag)) return revisionConflict(request.requestId);
   const command: ProposalCommand =
     kind === "accept"
       ? {
@@ -1097,7 +1105,7 @@ async function handleAcceptOrRejectProposal(
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
   return catalogGovernanceOk({
-    body: { item: mapProposalResult(result.value, null) },
+    body: { item: mapProposalResult(result.value) },
     requestId: request.requestId,
     catalogReleaseId: pin.pin.id,
     etag: proposalEtag(result.value.proposalId, result.value.etagVersion),

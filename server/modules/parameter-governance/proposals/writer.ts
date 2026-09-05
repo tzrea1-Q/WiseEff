@@ -38,6 +38,7 @@ import {
   loadReleasePin,
   loadRevision,
   loadSuccessAuditSnapshot,
+  loadProposalSnapshotContent,
   lockAndLoadCurrentRelease,
   reserveIdempotency,
   updateProposalStatus,
@@ -73,11 +74,13 @@ const etagOf = (row: ProposalRow): number => Number(row.etag_version);
 const pinsEqual = (left: CatalogReleasePin, right: CatalogReleasePin): boolean =>
   left.id === right.id && left.digest === right.digest;
 
-const snapshotOf = (
+const snapshotOf = async (
+  client: ProposalWriterClient,
   proposal: ProposalRow,
   revision: ProposalRevisionRow,
   publicationIntent: PublicationIntentResult | null,
-): ProposalResultSnapshot => ({
+): Promise<ProposalResultSnapshot> => ({
+  ...await loadProposalSnapshotContent(client, proposal),
   proposalId: DefinitionProposalId(proposal.id),
   proposalRevisionId: DefinitionProposalRevisionId(revision.id),
   revisionNumber: Number(revision.revision_number),
@@ -141,23 +144,7 @@ const replayStored = async (
       value: toResult(snapshot, command, fingerprint, "replayed"),
     };
   }
-  const stored = await loadResultBundle(client, command.organizationId, proposalId);
-  if (!stored) {
-    return fail({ kind: "proposal-not-found", proposalId });
-  }
-  return {
-    ok: true,
-    value: toResult(
-      snapshotOf(
-        stored.proposal,
-        stored.revision,
-        stored.intent ? intentResult(stored.intent) : null,
-      ),
-      command,
-      fingerprint,
-      "replayed",
-    ),
-  };
+  return fail({ kind: "proposal-replay-unavailable", proposalId });
 };
 
 const etagConflict = (
@@ -235,7 +222,7 @@ const commitStatus = async (
     });
   }
   await testHooks?.afterStatusBeforeSuccessAudit?.();
-  const snapshot = snapshotOf(updated, revision, publicationIntent);
+  const snapshot = await snapshotOf(client, updated, revision, publicationIntent);
   await writeSuccessAudit(client, command, updated.id, fingerprint, snapshot);
   await commitIdempotency(client, command, updated.id);
   return { ok: true, value: toResult(snapshot, command, fingerprint, "committed") };
@@ -300,7 +287,7 @@ const writeCreatedProposal = async (
     evidenceRefs: asJson(command.evidenceRefs),
   });
   await testHooks?.afterStatusBeforeSuccessAudit?.();
-  const snapshot = snapshotOf(proposal, revision, null);
+  const snapshot = await snapshotOf(client, proposal, revision, null);
   await writeSuccessAudit(client, command, proposalId, fingerprint, snapshot);
   await commitIdempotency(client, command, proposalId);
   return { ok: true, value: toResult(snapshot, command, fingerprint, "committed") };
@@ -434,7 +421,7 @@ const writeAccept = async (
     reviewerPrincipalId: command.context.principalId,
     successAuditRef: auditId,
   };
-  const snapshot = snapshotOf(updated, revision, publicationIntent);
+  const snapshot = await snapshotOf(client, updated, revision, publicationIntent);
   await writeSuccessAudit(client, command, proposal.id, fingerprint, snapshot, auditId);
   const intent = await insertPublicationIntent(client, {
     id: intentId,
@@ -449,7 +436,7 @@ const writeAccept = async (
   return {
     ok: true,
     value: toResult(
-      snapshotOf(updated, revision, intentResult(intent)),
+      await snapshotOf(client, updated, revision, intentResult(intent)),
       command,
       fingerprint,
       "committed",
