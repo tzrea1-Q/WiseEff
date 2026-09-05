@@ -1,7 +1,17 @@
 export { handleCatalogRead, matchCatalogReadRoute, catalogReadRouteIds } from "./handlers";
 export { createCatalogReadHttpServer } from "./http";
 export { registerCatalogReadRoutes } from "./routes";
-export { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "./ports";
+export {
+  createRegistrationProjectionFromQueries,
+  createUsageProjectionFromQueries,
+  kernelOnlyTimelineComposer,
+  unavailableRegistrationProjection,
+  unavailableUsageProjection,
+  unregisteredProjection,
+  unregisteredProjectionForTests,
+  zeroUsageProjection,
+  zeroUsageProjectionForTests,
+} from "./ports";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
 export type {

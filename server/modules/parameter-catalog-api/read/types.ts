@@ -67,7 +67,7 @@ export type CatalogReadinessResult =
 
 export type CatalogReadinessPort = {
   current(): Promise<CatalogReadinessResult>;
-  named(catalogReleaseId: string): Promise<CatalogReadinessResult>;
+  named(catalogReleaseId: string, expectedDigest?: string): Promise<CatalogReadinessResult>;
 };
 
 export type CatalogRegistrationProjection =
@@ -88,6 +88,8 @@ export type RegistrationProjectionPort = {
     readonly organizationId: string;
     readonly subjectId: CatalogSubjectId;
     readonly canRegister: boolean;
+    readonly principalId?: string;
+    readonly observedRelease?: CatalogReleasePin;
   }): Promise<{
     readonly registration: CatalogRegistrationProjection;
     readonly reviewCount: number;
@@ -95,14 +97,23 @@ export type RegistrationProjectionPort = {
   projectDefinition(input: {
     readonly organizationId: string;
     readonly subjectId: CatalogSubjectId;
+    readonly principalId?: string;
+    readonly observedRelease?: CatalogReleasePin;
   }): Promise<CatalogRegistrationProjection>;
   selectSubjectIds(input: {
     readonly organizationId: string;
     readonly registration?: string;
+    readonly principalId?: string;
+    readonly catalogSubjectIds?: readonly CatalogSubjectId[];
   }): Promise<CatalogIdSelection<CatalogSubjectId>>;
   selectDefinitionIds(input: {
     readonly organizationId: string;
     readonly registration?: string;
+    readonly principalId?: string;
+    readonly catalogDefinitions?: ReadonlyArray<{
+      readonly id: ParameterDefinitionId;
+      readonly subjectId: CatalogSubjectId;
+    }>;
   }): Promise<CatalogIdSelection<ParameterDefinitionId>>;
 };
 
@@ -116,6 +127,7 @@ export type UsageProjectionPort = {
   summarize(input: {
     readonly organizationId: string;
     readonly definitionId: ParameterDefinitionId;
+    readonly principalId?: string;
   }): Promise<CatalogUsageSummary>;
 };
 

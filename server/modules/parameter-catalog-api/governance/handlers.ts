@@ -14,6 +14,7 @@ import {
   CatalogSubjectId,
   DefinitionProposalId,
   DefinitionRevisionId,
+  ParameterDefinitionId,
   ReviewItemEtag,
   ReviewItemId,
   SubjectPlacementId,
@@ -24,6 +25,11 @@ import {
   type PlacementIntent,
   type ReviewReason,
 } from "../../parameter-catalog-contract/index";
+import type {
+  CreateDraftProposalCommand,
+  ProposalTrustedContext,
+  SubmitExistingProposalCommand,
+} from "../../parameter-governance/proposals/command";
 import type { RegistrationCommand } from "../../parameter-governance/registration/command";
 import type { RegistrationFailure } from "../../parameter-governance/registration/failures";
 import type { ReviewQueueFailure, ReviewQueueTrustedContext } from "../../parameter-governance/review/types";
@@ -54,10 +60,12 @@ import {
   reviewEtag,
 } from "./dto";
 import {
+  CatalogGovernanceQueryError,
   catalogGovernanceOk,
   catalogNotReady,
   conflict,
   forbidden,
+  mapGovernanceQueryError,
   notFound,
   releaseDrift,
   revisionConflict,
@@ -166,8 +174,63 @@ function reviewContext(scope: TrustedGovernanceScope): ReviewQueueTrustedContext
 
 function registrationContext(
   scope: TrustedGovernanceScope,
-): Extract<import("../../parameter-governance/registration/command").TrustedInvocationContext, { actorKind: "org-admin" }> {
+): Extract<import("../../parameter-governance/registration/command").TrustedInvocationContext, { actorKind: "org-admin" }> | null {
+  if (scope.actorKind !== "org-admin") {
+    return null;
+  }
   return { actorKind: "org-admin", principalId: scope.principalId };
+}
+
+function proposalAuthorContext(scope: TrustedGovernanceScope): ProposalTrustedContext | null {
+  if (scope.actorKind !== "org-admin") {
+    return null;
+  }
+  return { actorKind: "org-admin", principalId: scope.principalId };
+}
+
+function proposalReviewerContext(scope: TrustedGovernanceScope): ProposalTrustedContext | null {
+  if (scope.actorKind !== "platform-admin") {
+    return null;
+  }
+  return { actorKind: "platform-admin", principalId: scope.principalId };
+}
+
+function queryScope(
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+  pin: CatalogReleasePin,
+) {
+  return {
+    organizationId: request.params.organizationId ?? scope.organizationId,
+    catalogReleaseId: pin.id,
+    principalId: scope.principalId,
+  };
+}
+
+async function resolveSubjectKind(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  subjectId: string,
+): Promise<CatalogSubjectKind | null> {
+  if (ports.resolveSubjectKind) {
+    return ports.resolveSubjectKind(subjectId);
+  }
+  return scope.defaultSubjectKind;
+}
+
+async function resolveDestinationModuleId(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  input: {
+    readonly organizationId: string;
+    readonly subjectKind: CatalogSubjectKind;
+    readonly placement: PlacementIntent;
+  },
+): Promise<string | null> {
+  if (ports.resolveDestinationModuleId) {
+    return ports.resolveDestinationModuleId(input);
+  }
+  return scope.defaultDestinationModuleId || null;
 }
 
 function parsePlacement(value: unknown): PlacementIntent | null {
@@ -259,7 +322,7 @@ function authorizeOrganizationWrite(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): CatalogGovernanceResponse | null {
-  if (scope.actorKind === "agent" || !scope.canMutateOrganization) {
+  if (scope.actorKind !== "org-admin" || !scope.canMutateOrganization) {
     return forbidden(request.requestId);
   }
   const organizationId = request.params.organizationId ?? scope.organizationId;
@@ -273,7 +336,7 @@ function authorizeProposalReview(
   scope: TrustedGovernanceScope,
   request: CatalogGovernanceRequest,
 ): CatalogGovernanceResponse | null {
-  if (scope.actorKind === "agent" || !scope.canReviewProposals) {
+  if (scope.actorKind !== "platform-admin" || !scope.canReviewProposals) {
     return forbidden(request.requestId);
   }
   return null;
@@ -402,18 +465,29 @@ async function handleCreateRegistration(
   } catch {
     return validationFailed(request.requestId, "subjectId");
   }
+  const context = registrationContext(scope);
+  if (!context) return forbidden(request.requestId);
+  const organizationId = request.params.organizationId ?? scope.organizationId;
+  const subjectKind = await resolveSubjectKind(ports, scope, subjectId);
+  if (!subjectKind) return validationFailed(request.requestId, "subjectId");
+  const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
+    organizationId,
+    subjectKind,
+    placement,
+  });
+  if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
     kind: "register",
-    organizationId: request.params.organizationId ?? scope.organizationId,
+    organizationId,
     subjectId,
-    subjectKind: scope.defaultSubjectKind,
+    subjectKind,
     expectedRelease: pin.pin,
     placement,
-    destinationModuleId: scope.defaultDestinationModuleId,
+    destinationModuleId,
     method: "explicit",
     proof: { reason: parsed.data.reason ?? "explicit-registration" },
     idempotencyKey,
-    context: registrationContext(scope),
+    context,
   };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
@@ -449,13 +523,15 @@ async function handleRetireOrRestore(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
+  const context = registrationContext(scope);
+  if (!context) return forbidden(request.requestId);
   const command: RegistrationCommand = {
     kind,
     organizationId: request.params.organizationId ?? scope.organizationId,
     registrationId,
     expectedRelease: pin.pin,
     idempotencyKey,
-    context: registrationContext(scope),
+    context,
     reason: parsed.data.reason,
   };
   const result = await ports.executeRegistration(command);
@@ -488,14 +564,32 @@ async function handleUpdatePlacement(
   } catch {
     return validationFailed(request.requestId, "registrationId");
   }
+  const placement = parsePlacement(parsed.data.placement);
+  if (!placement) return validationFailed(request.requestId, "placement");
+  const context = registrationContext(scope);
+  if (!context) return forbidden(request.requestId);
+  const organizationId = request.params.organizationId ?? scope.organizationId;
+  const existing = await ports.getRegistration({
+    ...queryScope(scope, request, pin.pin),
+    registrationId,
+  });
+  if (!existing) return notFound(request.requestId);
+  const subjectKind = await resolveSubjectKind(ports, scope, existing.subjectId);
+  if (!subjectKind) return validationFailed(request.requestId, "subjectId");
+  const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
+    organizationId,
+    subjectKind,
+    placement,
+  });
+  if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
   const command: RegistrationCommand = {
     kind: "move-placement",
-    organizationId: request.params.organizationId ?? scope.organizationId,
+    organizationId,
     registrationId,
     expectedRelease: pin.pin,
-    destinationModuleId: scope.defaultDestinationModuleId,
+    destinationModuleId,
     idempotencyKey,
-    context: registrationContext(scope),
+    context,
   };
   const result = await ports.executeRegistration(command);
   if (!result.ok) return mapRegistrationFailure(result.error, request.requestId);
@@ -517,10 +611,7 @@ async function handleListRegistrations(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
-  const items = await ports.listRegistrations({
-    organizationId: request.params.organizationId ?? scope.organizationId,
-    catalogReleaseId: pin.pin.id,
-  });
+  const items = await ports.listRegistrations(queryScope(scope, request, pin.pin));
   return catalogGovernanceOk({
     body: listEnvelope(items.map(mapRegistrationRecord), pin.pin.id, "no-registrations"),
     requestId: request.requestId,
@@ -538,9 +629,8 @@ async function handleGetRegistration(
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
   const record = await ports.getRegistration({
-    organizationId: request.params.organizationId ?? scope.organizationId,
+    ...queryScope(scope, request, pin.pin),
     registrationId: request.params.registrationId ?? "",
-    catalogReleaseId: pin.pin.id,
   });
   if (!record) return notFound(request.requestId);
   return catalogGovernanceOk({
@@ -561,9 +651,8 @@ async function handleGetPlacement(
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
   const placement = await ports.getPlacement({
-    organizationId: request.params.organizationId ?? scope.organizationId,
+    ...queryScope(scope, request, pin.pin),
     registrationId: request.params.registrationId ?? "",
-    catalogReleaseId: pin.pin.id,
   });
   if (!placement) return notFound(request.requestId);
   return catalogGovernanceOk({
@@ -583,10 +672,7 @@ async function handleListObservations(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
-  const items = await ports.listObservations({
-    organizationId: request.params.organizationId ?? scope.organizationId,
-    catalogReleaseId: pin.pin.id,
-  });
+  const items = await ports.listObservations(queryScope(scope, request, pin.pin));
   return catalogGovernanceOk({
     body: listEnvelope(items.map(mapObservation), pin.pin.id, "no-filter-match"),
     requestId: request.requestId,
@@ -604,9 +690,8 @@ async function handleGetObservation(
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
   const record = await ports.getObservation({
-    organizationId: request.params.organizationId ?? scope.organizationId,
+    ...queryScope(scope, request, pin.pin),
     observationId: request.params.observationId ?? "",
-    catalogReleaseId: pin.pin.id,
   });
   if (!record) return notFound(request.requestId);
   return catalogGovernanceOk({
@@ -697,6 +782,8 @@ async function handleResolveReviewItem(
   const organizationId = request.params.organizationId ?? scope.organizationId;
   const reason = parseReviewReason(parsed.data.reason) ?? "unknown";
   const resolution = parsed.data.resolution;
+  const writeContext = registrationContext(scope);
+  if (!writeContext) return forbidden(request.requestId);
   const base = {
     organizationId,
     reviewItemId,
@@ -705,7 +792,7 @@ async function handleResolveReviewItem(
     idempotencyKey,
     context: {
       actorKind: "org-admin" as const,
-      principalId: scope.principalId,
+      principalId: writeContext.principalId,
       organizationId,
     },
     reason,
@@ -720,13 +807,21 @@ async function handleResolveReviewItem(
     } catch {
       return validationFailed(request.requestId, "subjectId");
     }
+    const subjectKind = await resolveSubjectKind(ports, scope, subjectId);
+    if (!subjectKind) return validationFailed(request.requestId, "subjectId");
+    const destinationModuleId = await resolveDestinationModuleId(ports, scope, {
+      organizationId,
+      subjectKind,
+      placement,
+    });
+    if (!destinationModuleId) return validationFailed(request.requestId, "destinationModuleId");
     command = {
       ...base,
       resolution: "register-subject",
       subjectId,
-      subjectKind: scope.defaultSubjectKind as CatalogSubjectKind,
+      subjectKind,
       placement,
-      destinationModuleId: scope.defaultDestinationModuleId,
+      destinationModuleId,
     };
   } else if (resolution.type === "restore-registration") {
     let registrationId: ReturnType<typeof SubjectRegistrationId>;
@@ -778,10 +873,7 @@ async function handleListProposals(
   if (denied) return denied;
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
-  const items = await ports.listProposals({
-    organizationId: scope.actorKind === "platform-admin" ? null : scope.organizationId,
-    catalogReleaseId: pin.pin.id,
-  });
+  const items = await ports.listProposals(queryScope(scope, request, pin.pin));
   return catalogGovernanceOk({
     body: listEnvelope(items.map(mapProposalRecord), pin.pin.id, "no-filter-match"),
     requestId: request.requestId,
@@ -799,9 +891,8 @@ async function handleGetProposal(
   const pin = await requirePin(ports, request, { requireHeader: false });
   if (!pin.ok) return pin.response;
   const record = await ports.getProposal({
-    organizationId: scope.actorKind === "platform-admin" ? null : scope.organizationId,
+    ...queryScope(scope, request, pin.pin),
     proposalId: request.params.proposalId ?? "",
-    catalogReleaseId: pin.pin.id,
   });
   if (!record) return notFound(request.requestId);
   return catalogGovernanceOk({
@@ -825,25 +916,39 @@ async function handleCreateProposal(
   if (!pin.ok) return pin.response;
   const idempotencyKey = idempotencyKeyHeader(request.headers);
   if (!idempotencyKey) return revisionConflict(request.requestId);
-  const revisionId = parsed.data.base.definitionRevisionId;
-  if (!revisionId) return validationFailed(request.requestId, "base.definitionRevisionId");
-  let baseDefinitionRevisionId: ReturnType<typeof DefinitionRevisionId>;
-  try {
-    baseDefinitionRevisionId = DefinitionRevisionId(revisionId);
-  } catch {
-    return validationFailed(request.requestId, "base.definitionRevisionId");
+  const context = proposalAuthorContext(scope);
+  if (!context) return forbidden(request.requestId);
+  const definitionIdRaw = parsed.data.base.definitionId;
+  const revisionIdRaw = parsed.data.base.definitionRevisionId;
+  if (Boolean(definitionIdRaw) !== Boolean(revisionIdRaw)) {
+    return validationFailed(
+      request.requestId,
+      definitionIdRaw ? "base.definitionRevisionId" : "base.definitionId",
+    );
   }
-  const command = {
-    kind: "submit" as const,
+  let baseDefinitionId: ReturnType<typeof ParameterDefinitionId> | undefined;
+  let baseDefinitionRevisionId: ReturnType<typeof DefinitionRevisionId> | undefined;
+  if (definitionIdRaw && revisionIdRaw) {
+    try {
+      baseDefinitionId = ParameterDefinitionId(definitionIdRaw);
+      baseDefinitionRevisionId = DefinitionRevisionId(revisionIdRaw);
+    } catch {
+      return validationFailed(request.requestId, "base.definitionId");
+    }
+  }
+  const command: CreateDraftProposalCommand = {
+    kind: "create-draft",
     organizationId: scope.organizationId,
     baseRelease: pin.pin,
     currentRelease: pin.pin,
-    baseDefinitionRevisionId,
+    claimedBaseReleaseId: parsed.data.base.catalogReleaseId,
+    ...(baseDefinitionId ? { baseDefinitionId } : {}),
+    ...(baseDefinitionRevisionId ? { baseDefinitionRevisionId } : {}),
     payload: parsed.data.requestedChange as import("../../parameter-governance/proposals/command").ProposalPayload,
     reason: parsed.data.reason,
     evidenceRefs: parsed.data.evidenceRefs ?? [],
     idempotencyKey,
-    context: { actorKind: "org-admin" as const, principalId: scope.principalId },
+    context,
   };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
@@ -868,25 +973,26 @@ async function handleSubmitProposal(
   const pin = await requirePin(ports, request, { requireHeader: true });
   if (!pin.ok) return pin.response;
   const idempotencyKey = idempotencyKeyHeader(request.headers);
-  if (!idempotencyKey) return revisionConflict(request.requestId);
-  const proposalId = request.params.proposalId ?? "";
-  let baseDefinitionRevisionId: ReturnType<typeof DefinitionRevisionId>;
+  const etagHeader = ifMatchHeader(request.headers);
+  if (!idempotencyKey || !etagHeader) return revisionConflict(request.requestId);
+  const expectedEtag = parseEtagVersion(etagHeader);
+  if (!expectedEtag) return revisionConflict(request.requestId);
+  const context = proposalAuthorContext(scope);
+  if (!context) return forbidden(request.requestId);
+  let proposalId: ReturnType<typeof DefinitionProposalId>;
   try {
-    baseDefinitionRevisionId = DefinitionRevisionId(proposalId);
+    proposalId = DefinitionProposalId(request.params.proposalId ?? "");
   } catch {
     return validationFailed(request.requestId, "proposalId");
   }
-  const command: ProposalCommand = {
-    kind: "submit",
+  const command: SubmitExistingProposalCommand = {
+    kind: "submit-existing",
     organizationId: scope.organizationId,
-    baseRelease: pin.pin,
+    proposalId,
+    expectedEtag,
     currentRelease: pin.pin,
-    baseDefinitionRevisionId,
-    payload: { kind: "submit-proposal", proposalId },
-    reason: parsed.data.reason ?? "submit",
-    evidenceRefs: [proposalId],
     idempotencyKey,
-    context: { actorKind: "org-admin", principalId: scope.principalId },
+    context,
   };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
@@ -920,13 +1026,15 @@ async function handleWithdrawProposal(
   } catch {
     return validationFailed(request.requestId, "proposalId");
   }
+  const context = proposalAuthorContext(scope);
+  if (!context) return forbidden(request.requestId);
   const command: ProposalCommand = {
     kind: "withdraw",
     organizationId: scope.organizationId,
     proposalId,
     expectedEtag,
     idempotencyKey,
-    context: { actorKind: "org-admin", principalId: scope.principalId },
+    context,
   };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
@@ -962,6 +1070,8 @@ async function handleAcceptOrRejectProposal(
   } catch {
     return validationFailed(request.requestId, "proposalId");
   }
+  const context = proposalReviewerContext(scope);
+  if (!context) return forbidden(request.requestId);
   const command: ProposalCommand =
     kind === "accept"
       ? {
@@ -972,7 +1082,7 @@ async function handleAcceptOrRejectProposal(
           currentRelease: pin.pin,
           repositoryReference: (parsed.data as { repositoryReference: string }).repositoryReference,
           idempotencyKey,
-          context: { actorKind: "platform-admin", principalId: scope.principalId },
+          context,
         }
       : {
           kind: "reject",
@@ -982,7 +1092,7 @@ async function handleAcceptOrRejectProposal(
           currentRelease: pin.pin,
           reason: (parsed.data as { reason: string }).reason,
           idempotencyKey,
-          context: { actorKind: "platform-admin", principalId: scope.principalId },
+          context,
         };
   const result = await ports.executeProposal(command);
   if (!result.ok) return mapProposalFailure(result.error, request.requestId);
@@ -1016,6 +1126,7 @@ export async function handleCatalogGovernance(
   }
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
   void asCommandName(matched.id);
+  try {
   switch (matched.id) {
     case "catalog.listRegistrations":
       return handleListRegistrations(ports, auth.scope, scopedRequest);
@@ -1055,6 +1166,13 @@ export async function handleCatalogGovernance(
       return handleAcceptOrRejectProposal(ports, auth.scope, scopedRequest, "accept");
     case "catalog.rejectProposal":
       return handleAcceptOrRejectProposal(ports, auth.scope, scopedRequest, "reject");
+  }
+  return notFound(request.requestId);
+  } catch (error) {
+    if (error instanceof CatalogGovernanceQueryError) {
+      return mapGovernanceQueryError(error, request.requestId);
+    }
+    throw error;
   }
 }
 

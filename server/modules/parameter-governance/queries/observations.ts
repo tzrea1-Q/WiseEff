@@ -203,7 +203,7 @@ export const getObservation = async (
   if (!isUsableToken(query.observationId) || !isUsableToken(query.observedCatalogReleaseId)) {
     return fail({ kind: "invalid-query", reason: "observationId" });
   }
-  return runQuery(source, "getObservation", async (client) => {
+  return runQuery<GovernanceObservationRecord>(source, "getObservation", async (client) => {
     const loaded = await loadObservationRecords(client, query.organizationId, query.observedCatalogReleaseId);
     if (!loaded.ok) return loaded;
     const record = loaded.value.find((item) => item.id === query.observationId);

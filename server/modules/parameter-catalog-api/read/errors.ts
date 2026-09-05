@@ -8,6 +8,39 @@ import type { CatalogReadResponse } from "./types";
 
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
+export type CatalogProjectionFailure = {
+  readonly kind: string;
+  readonly reason?: string;
+  readonly operation?: string;
+  readonly resource?: string;
+};
+
+export class CatalogProjectionError extends Error {
+  readonly failure: CatalogProjectionFailure;
+
+  constructor(failure: CatalogProjectionFailure) {
+    super(failure.kind);
+    this.name = "CatalogProjectionError";
+    this.failure = failure;
+  }
+}
+
+export function mapProjectionError(error: CatalogProjectionError, requestId: string): CatalogReadResponse {
+  if (error.failure.kind === "invalid-query") {
+    return validationFailed(requestId, error.failure.reason ?? "query");
+  }
+  if (error.failure.kind === "not-found") {
+    return notFound(
+      requestId,
+      error.failure.resource === "organization" ? "subject-not-published" : "definition-not-found",
+    );
+  }
+  if (error.failure.kind === "invalid-cursor") {
+    return validationFailed(requestId, "cursor");
+  }
+  return catalogNotReady(requestId);
+}
+
 export function catalogReadError(input: {
   readonly status: number;
   readonly code: string;
@@ -156,6 +189,20 @@ export function mapKernelLoadError(
       return error.retryable ? catalogNotReady(requestId) : catalogNotReady(requestId);
     case "historical-release-unavailable":
       return documentRoute ? catalogNotReady(requestId) : notFound(requestId, "subject-not-published");
+    case "digest-conflict":
+      return catalogReadError({
+        status: 409,
+        code: "CONFLICT",
+        message: "The catalog release digest does not match the requested pin.",
+        reason: "release-drift",
+        requestId,
+        details: {
+          expectedCatalogReleaseId: error.releaseId,
+          currentCatalogReleaseId: error.releaseId,
+          expectedDigest: error.expected,
+          actualDigest: error.actual,
+        },
+      });
     case "permission-denied":
       return forbidden(requestId);
     default:

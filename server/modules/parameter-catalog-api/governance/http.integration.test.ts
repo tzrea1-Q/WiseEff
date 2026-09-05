@@ -251,6 +251,7 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
       body: {
         base: {
           catalogReleaseId: pin.id,
+          definitionId: "pdef_acme_power_iin_max",
           definitionRevisionId: "drev_acme_power_iin_max_1",
         },
         requestedChange: { kind: "revise-definition", note: "s8-gov" },
@@ -259,13 +260,13 @@ describe("S8-GOV HTTP against real PostgreSQL", () => {
     });
     expect(result.status, JSON.stringify(result.body)).toBe(201);
     const body = catalogProposalResponseSchema.parse(result.body);
-    expect(body.item.status).toBe("submitted");
+    expect(body.item.status).toBe("draft");
     expect(body.item.organizationId).toBe(ORG_ID);
     const audits = await pool.query<{ count: string }>(
       `select count(*)::text as count
          from public.audit_events
         where organization_id = $1
-          and action = 'proposal-submit'`,
+          and action = 'proposal-create-draft'`,
       [ORG_ID],
     );
     expect(Number(audits.rows[0]?.count)).toBeGreaterThan(0);

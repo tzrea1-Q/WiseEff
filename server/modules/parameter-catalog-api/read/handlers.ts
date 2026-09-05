@@ -8,8 +8,10 @@ import {
   parameterCatalogKernelReadByRouteId,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import {
+  CatalogPageLimit,
   CatalogSubjectId,
   DefinitionRevisionId,
+  ParameterDefinitionId,
   type CatalogCursor,
   type OptionalValue,
 } from "../../parameter-catalog-contract/index";
@@ -22,11 +24,13 @@ import {
   nextCursorValue,
 } from "./dto";
 import {
+  CatalogProjectionError,
   catalogNotReady,
   catalogReadOk,
   forbidden,
   mapInvalidPage,
   mapKernelLoadError,
+  mapProjectionError,
   notFound,
   releaseDrift,
   unauthenticated,
@@ -126,6 +130,41 @@ function listEnvelope(
   };
 }
 
+function catalogSubjectUniverse(snapshot: CatalogSnapshot): CatalogSubjectId[] {
+  const result = snapshot.listSubjects({
+    selection: { kind: "all" },
+    kinds: [],
+    lifecycles: ["active", "retired"],
+    search: absent,
+    page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent },
+  });
+  if (result.status !== "found") {
+    return [];
+  }
+  return result.page.items.map((item) => item.id);
+}
+
+function catalogDefinitionIndex(
+  snapshot: CatalogSnapshot,
+): Array<{ id: ParameterDefinitionId; subjectId: CatalogSubjectId }> {
+  const result = snapshot.listDefinitions({
+    selection: { kind: "all" },
+    scope: { kind: "all" },
+    lifecycles: ["active", "deprecated", "retired"],
+    propertyKey: absent,
+    search: absent,
+    page: { limit: CatalogPageLimit(Number.MAX_SAFE_INTEGER), after: absent },
+  });
+  if (result.status !== "found" && result.status !== "retired") {
+    return [];
+  }
+  return result.page.items.map((item) => ({ id: item.id, subjectId: item.subjectId }));
+}
+
+function observedPin(snapshot: CatalogSnapshot) {
+  return { id: snapshot.release.id, digest: snapshot.release.digest };
+}
+
 async function resolveDocumentFacts(
   ports: CatalogReadPorts,
   request: CatalogReadRequest,
@@ -133,16 +172,25 @@ async function resolveDocumentFacts(
 ): Promise<{ ok: true; facts: CatalogDocumentFacts } | { ok: false; response: CatalogReadResponse }> {
   const queryRelease = queryValue(request.query, "catalogReleaseId");
   const headerRelease = headerValue(request.headers, CATALOG_RELEASE_HEADER);
+  const expectedDigest = queryValue(request.query, "catalogReleaseDigest");
   if (queryRelease && headerRelease && queryRelease !== headerRelease && !documentRoute) {
     return { ok: false, response: releaseDrift(request.requestId, headerRelease, queryRelease) };
   }
   const named = queryRelease;
-  const readiness = named ? await ports.readiness.named(named) : await ports.readiness.current();
+  const readiness = named
+    ? await ports.readiness.named(named, expectedDigest)
+    : await ports.readiness.current();
   if (readiness.status === "not-ready") {
     return { ok: false, response: catalogNotReady(request.requestId, readiness.retryAfterSeconds) };
   }
   if (readiness.status === "unknown") {
     return { ok: false, response: notFound(request.requestId, "subject-not-published") };
+  }
+  if (expectedDigest && expectedDigest !== readiness.document.pin.digest) {
+    return {
+      ok: false,
+      response: releaseDrift(request.requestId, queryRelease ?? readiness.document.pin.id, readiness.document.pin.id),
+    };
   }
   if (!documentRoute && headerRelease && headerRelease !== readiness.document.pin.id) {
     return {
@@ -215,7 +263,11 @@ async function handleListSubjects(
   }
   const registrationSelection = await ports.registration.selectSubjectIds({
     organizationId: scope.organizationId,
+    principalId: scope.principalId,
     registration: parsed.query.registration,
+    catalogSubjectIds: parsed.query.registration
+      ? catalogSubjectUniverse(snapshot)
+      : undefined,
   });
   const selection = mergeIdSelection(scope.subjects, registrationSelection);
   const result = snapshot.listSubjects({
@@ -232,8 +284,10 @@ async function handleListSubjects(
   for (const subject of result.page.items) {
     const projection = await ports.registration.projectSubject({
       organizationId: scope.organizationId,
+      principalId: scope.principalId,
       subjectId: subject.id,
       canRegister: scope.canRegister,
+      observedRelease: observedPin(snapshot),
     });
     items.push(
       mapCatalogSubject(subject, projection.registration, {
@@ -278,8 +332,10 @@ async function handleGetSubject(
   const subject = result.subject;
   const projection = await ports.registration.projectSubject({
     organizationId: scope.organizationId,
+    principalId: scope.principalId,
     subjectId: subject.id,
     canRegister: scope.canRegister,
+    observedRelease: observedPin(snapshot),
   });
   return catalogReadOk(
     {
@@ -332,7 +388,9 @@ async function handleListDefinitions(
 
   const registrationSelection = await ports.registration.selectDefinitionIds({
     organizationId: scope.organizationId,
+    principalId: scope.principalId,
     registration: parsed.query.registration,
+    catalogDefinitions: parsed.query.registration ? catalogDefinitionIndex(snapshot) : undefined,
   });
   const selection = mergeIdSelection(scope.definitions, registrationSelection);
   const result = snapshot.listDefinitions({
@@ -357,10 +415,13 @@ async function handleListDefinitions(
   for (const definition of page.items) {
     const registration = await ports.registration.projectDefinition({
       organizationId: scope.organizationId,
+      principalId: scope.principalId,
       subjectId: definition.subjectId,
+      observedRelease: observedPin(snapshot),
     });
     const usage = await ports.usage.summarize({
       organizationId: scope.organizationId,
+      principalId: scope.principalId,
       definitionId: definition.id,
     });
     const mapped = mapCatalogDefinition(snapshot, definition, registration, usage);
@@ -412,10 +473,13 @@ async function handleGetDefinition(
   }
   const registration = await ports.registration.projectDefinition({
     organizationId: scope.organizationId,
+    principalId: scope.principalId,
     subjectId: definition.subjectId,
+    observedRelease: observedPin(snapshot),
   });
   const usage = await ports.usage.summarize({
     organizationId: scope.organizationId,
+    principalId: scope.principalId,
     definitionId: definition.id,
   });
   const mapped = mapCatalogDefinition(snapshot, definition, registration, usage);
@@ -595,6 +659,9 @@ export async function handleCatalogRead(
         return notFound(request.requestId, "definition-not-found");
     }
   } catch (error) {
+    if (error instanceof CatalogProjectionError) {
+      return mapProjectionError(error, request.requestId);
+    }
     if (error instanceof TypeError) {
       return catalogNotReady(request.requestId);
     }

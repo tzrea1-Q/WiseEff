@@ -59,7 +59,7 @@ const connectionCodes = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "57P
 const mapQueryError = (error: unknown, operation: string): UsageQueryFailure => {
   const code =
     error instanceof pg.DatabaseError
-      ? error.code
+      ? error.code ?? ""
       : error !== null && typeof error === "object" && "code" in error
         ? String((error as { code?: unknown }).code ?? "")
         : "";

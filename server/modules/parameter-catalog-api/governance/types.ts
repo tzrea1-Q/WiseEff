@@ -102,6 +102,12 @@ export type ProposalRecord = {
   readonly publicationIntentRef: string | null;
 };
 
+export type CatalogGovernanceQueryScope = {
+  readonly organizationId: string;
+  readonly catalogReleaseId: string;
+  readonly principalId?: string;
+};
+
 export type CatalogGovernancePorts = {
   readonly authenticate: (
     request: CatalogGovernanceRequest,
@@ -122,38 +128,35 @@ export type CatalogGovernancePorts = {
   readonly getReviewItem: (
     query: GetReviewItemQuery,
   ) => Promise<Result<ReviewQueueItem, ReviewQueueFailure>>;
-  readonly listRegistrations: (input: {
+  readonly resolveSubjectKind?: (
+    subjectId: string,
+  ) => Promise<"driver" | "node-type" | null>;
+  readonly resolveDestinationModuleId?: (input: {
     readonly organizationId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<readonly RegistrationRecord[]>;
-  readonly getRegistration: (input: {
-    readonly organizationId: string;
-    readonly registrationId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<RegistrationRecord | null>;
-  readonly getPlacement: (input: {
-    readonly organizationId: string;
-    readonly registrationId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<RegistrationRecord["placement"] | null>;
-  readonly listObservations: (input: {
-    readonly organizationId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<readonly ObservationRecord[]>;
-  readonly getObservation: (input: {
-    readonly organizationId: string;
-    readonly observationId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<ObservationRecord | null>;
-  readonly listProposals: (input: {
-    readonly organizationId: string | null;
-    readonly catalogReleaseId: string;
-  }) => Promise<readonly ProposalRecord[]>;
-  readonly getProposal: (input: {
-    readonly organizationId: string | null;
-    readonly proposalId: string;
-    readonly catalogReleaseId: string;
-  }) => Promise<ProposalRecord | null>;
+    readonly subjectKind: "driver" | "node-type";
+    readonly placement: PlacementIntent;
+  }) => Promise<string | null>;
+  readonly listRegistrations: (
+    input: CatalogGovernanceQueryScope,
+  ) => Promise<readonly RegistrationRecord[]>;
+  readonly getRegistration: (
+    input: CatalogGovernanceQueryScope & { readonly registrationId: string },
+  ) => Promise<RegistrationRecord | null>;
+  readonly getPlacement: (
+    input: CatalogGovernanceQueryScope & { readonly registrationId: string },
+  ) => Promise<RegistrationRecord["placement"] | null>;
+  readonly listObservations: (
+    input: CatalogGovernanceQueryScope,
+  ) => Promise<readonly ObservationRecord[]>;
+  readonly getObservation: (
+    input: CatalogGovernanceQueryScope & { readonly observationId: string },
+  ) => Promise<ObservationRecord | null>;
+  readonly listProposals: (
+    input: CatalogGovernanceQueryScope,
+  ) => Promise<readonly ProposalRecord[]>;
+  readonly getProposal: (
+    input: CatalogGovernanceQueryScope & { readonly proposalId: string },
+  ) => Promise<ProposalRecord | null>;
 };
 
 export type { PlacementIntent, RegistrationTrustedContext };
