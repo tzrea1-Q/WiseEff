@@ -42,6 +42,12 @@ manual disposable 清理调用未定义的 `stopRuntime`，已记录为环境缺
 
 Standards/Spec 在同一 accepted base/检查点独立审查。本节不声称 review PASS、PR、Hosted、merge、attestation 或关闭 issue。额外一次清理设计咨询因模型容量失败，没有结论；#812/#813 历史证据不能替代缺失门禁。
 
+对 `1009ecbfb` 的两份独立审查均返回 finding，不是 PASS。统一返修包保留原编号：R2-REV-01 = STD-01/SPEC-01（mock 接受无效 Proposal base）；R2-REV-02 = STD-02（空 kind 的 mutation 与 GET/list 不一致）；R2-REV-03 = SPEC-02（evidenceRefs 省略与 [] 的重放不一致）。收齐后一次交给 Proposal owner。原报告：`work/catalog-r2/reviews/standards.md`、`spec.md`。
+
+后续精确 `89904eb1a445f4143482e5fa586962f12578f48a` 集成 focused：server 43 文件 / 261 测试通过；frontend 12 文件通过、1 失败，105 测试通过、1 失败，根因为旧测试要求普通 User 创建 Proposal，与 API 权限表不符。父 `4da0c44cbea5fa571a25f75466cc52865e28663b` 改为断言无创建入口，单文件 12 测试通过；不是全量通过。
+
+在 `4da0c44cb` 加明确记录的临时只读探针，实测 Definition 的 N+1 仍存在：1/25/100 行业务查询 5/101/401，事务 10/106/406，auth 1、Kernel 15、未分类 0、waiting 0。预设五查询预算下，4 条测试中 2 通过、2 失败。探针源码与原始 SQL 保留在 `work/catalog-r2/evidence/definition-budget-red/`，采集后移除临时测试文件。单样本耗时不算容量分位值。Definition 批量继续等待 #815 usage 契约，不转移至 OP-09。
+
 ## 文件所有权、依赖与预算
 
 ### Preflight 决策与限定交接

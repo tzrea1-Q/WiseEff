@@ -42,6 +42,12 @@ Manual disposable cleanup calls an undefined `stopRuntime`. Record this environm
 
 Standards and Spec independently review the same accepted base/checkpoint. No review PASS, PR, Hosted run, merge, attestation or issue closure is claimed here. A separate cleanup-design consultation failed due to model capacity and produced no review result. Historical #812/#813 evidence does not replace missing gates.
 
+Both independent reviews of `1009ecbfb` returned findings, not PASS. The unified repair packet preserves their identities: R2-REV-01 = STD-01/SPEC-01 (mock accepts an invalid Proposal base); R2-REV-02 = STD-02 (empty-kind mutation differs from GET/list); R2-REV-03 = SPEC-02 (omitted evidenceRefs versus [] replay differs). The Proposal owner received all findings together. Reports: `work/catalog-r2/reviews/standards.md` and `spec.md`.
+
+The subsequent exact `89904eb1a445f4143482e5fa586962f12578f48a` integrated focused run passed 43 server files / 261 tests. Frontend had 12 files passed / 1 failed, 105 tests passed / 1 failed: an old test expected the User to create a Proposal, contrary to the role table in the API contract. Parent `4da0c44cbea5fa571a25f75466cc52865e28663b` corrected that assertion to require no User create action; the single file then passed 12 tests. This is not a full-suite pass.
+
+A temporary read-only Definition SQL probe on `4da0c44cb` plus the explicitly recorded probe source confirmed the outstanding N+1: at limits 1/25/100, business queries were 5/101/401 and transactions 10/106/406, auth 1, Kernel 15, unclassified 0, waiting 0. Against a fixed five-query projection budget it collected four tests: two passed, two failed. The probe source and raw SQL remain in `work/catalog-r2/evidence/definition-budget-red/`; the temporary test file was removed after collection. Its individual timings are not capacity percentiles. Definition batching remains blocked by the #815 usage contract, not deferred to OP-09.
+
 ## File ownership and execution budget
 
 ### Preflight decisions and bounded handoffs
