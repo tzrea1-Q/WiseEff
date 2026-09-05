@@ -6,7 +6,12 @@ import { loadServerEnv } from "./config/env";
 import { resolveXiaozeLlmConfig } from "./config/xiaozeLlmConfig";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
+import {
+  CATALOG_IDEMPOTENCY_HEADER,
+  CATALOG_RELEASE_HEADER
+} from "./modules/contracts/dtoSchemas/parameterCatalog";
 import { createMetricsRegistry } from "./observability/metrics";
+import type { AuthContext } from "./modules/auth/types";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -762,11 +767,15 @@ describe("WiseEff API", () => {
     const parameters = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/parameters?projectId=aurora", {
       headers: { Authorization: `Bearer ${registered.body.token}` }
     });
+    const catalog = await requestJson<{ error?: { code: string } }>(server(), "/api/v2/catalog", {
+      headers: { Authorization: `Bearer ${registered.body.token}` }
+    });
 
     expect(projects.status).toBe(200);
     expect(projects.body.items.map((item) => item.id)).toEqual(["aurora"]);
     expect(parameters.status).toBe(200);
     expect(parameters.body.items).toHaveLength(1);
+    expect(catalog.status).not.toBe(401);
   });
 
   it("ignores a retired department organization field on local register", async () => {
@@ -815,6 +824,232 @@ describe("WiseEff API", () => {
     expect(response.body.error).toMatchObject({
       code: "UNAUTHENTICATED",
       message: "Authorization bearer token is required."
+    });
+  });
+
+  describe("production Catalog auth (CATFIX-AUTH)", () => {
+    const catalogReadPath = "/api/v2/catalog";
+    const catalogWritePath = "/api/v2/catalog/definition-proposals";
+    const catalogLegacyPath = "/api/v2/catalog/legacy-identifiers/parameter-spec/spec-gpio-int";
+    const rejectingVerifier = {
+      verify: async () => {
+        throw new Error("Authorization bearer token is required.");
+      }
+    };
+
+    function productionCatalogServer(input: {
+      db?: Database;
+      verify?: (authorization: string | string[] | undefined) => Promise<AuthContext>;
+    } = {}) {
+      return createWiseEffServer({
+        db: input.db,
+        auth: {
+          mode: "production",
+          verifier: input.verify ? { verify: input.verify } : rejectingVerifier
+        }
+      });
+    }
+
+    async function catalogFamily(server: ReturnType<typeof createWiseEffServer>, headers: Record<string, string> = {}) {
+      const writeHeaders = {
+        [CATALOG_RELEASE_HEADER]: "crel_test_release",
+        [CATALOG_IDEMPOTENCY_HEADER]: "catalog-auth-test",
+        ...headers
+      };
+      const read = await requestJson<{ error?: { code: string } }>(server, catalogReadPath, { headers });
+      const write = await requestJson<{ error?: { code: string } }>(server, catalogWritePath, {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          base: { catalogReleaseId: "crel_test_release", definitionRevisionId: "drev_test_revision_1" },
+          requestedChange: { kind: "revise-definition", note: "auth" },
+          reason: "catalog auth regression"
+        })
+      });
+      const legacy = await requestJson<{ error?: { code: string } }>(server, catalogLegacyPath, { headers });
+      return { read, write, legacy };
+    }
+
+    it("rejects production Catalog read, governance write, and legacy read without credentials (CATFIX-AUTH-01)", async () => {
+      const { calls, db } = createProductionIdentityDb({
+        dbUserId: "u-prod",
+        email: "prod@example.com",
+        roleId: "admin"
+      });
+      const responses = await catalogFamily(productionCatalogServer({ db }));
+
+      expect(responses.read.status).toBe(401);
+      expect(responses.write.status).toBe(401);
+      expect(responses.legacy.status).toBe(401);
+      expect(responses.read.body.error?.code).toBe("UNAUTHENTICATED");
+      expect(responses.write.body.error?.code).toBe("UNAUTHENTICATED");
+      expect(responses.legacy.body.error?.code).toBe("UNAUTHENTICATED");
+      expect(calls.filter((call) => /insert|update|delete/i.test(call.text))).toHaveLength(0);
+    });
+
+    it("rejects production Catalog requests that only carry a development user header (CATFIX-AUTH-02)", async () => {
+      const { calls, db } = createProductionIdentityDb({
+        dbUserId: "u-prod",
+        email: "prod@example.com",
+        roleId: "admin"
+      });
+      const responses = await catalogFamily(productionCatalogServer({ db }), {
+        "X-WiseEff-User": "u-prod"
+      });
+
+      expect(responses.read.status).toBe(401);
+      expect(responses.write.status).toBe(401);
+      expect(responses.legacy.status).toBe(401);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("rejects invalid Catalog credentials even when identity headers are present (CATFIX-AUTH-03)", async () => {
+      const responses = await catalogFamily(
+        productionCatalogServer({
+          verify: async () => {
+            throw new Error("Token is expired.");
+          }
+        }),
+        {
+          Authorization: "Bearer expired-token",
+          "X-WiseEff-User": "u-prod",
+          "X-WiseEff-Organization": "org-forged"
+        }
+      );
+
+      expect(responses.read.status).toBe(401);
+      expect(responses.write.status).toBe(401);
+      expect(responses.legacy.status).toBe(401);
+    });
+
+    it("keeps the verified Catalog principal when forged user headers are present (CATFIX-AUTH-04)", async () => {
+      const { calls, db } = createProductionIdentityDb({
+        dbUserId: "u-prod",
+        email: "prod@example.com",
+        roleId: "admin",
+        organizationId: "org-prod",
+        organizationName: "Pilot Org"
+      });
+      const response = await requestJson<{ error?: { code: string } }>(
+        productionCatalogServer({
+          db,
+          verify: async (authorization) => {
+            if (authorization !== "Bearer signed-token") {
+              throw new Error("Authorization bearer token is required.");
+            }
+            return {
+              user: {
+                id: "u-prod",
+                organizationId: "org-prod",
+                name: "Prod User",
+                email: "prod@example.com",
+                emailVerified: true,
+                title: "Pilot Admin",
+                isActive: true
+              },
+              organization: { id: "org-prod", name: "Pilot Org" },
+              roles: [{ projectId: null, roleId: "admin" }],
+              permissions: ["admin:access", "parameter:view"]
+            };
+          }
+        }),
+        catalogReadPath,
+        {
+          headers: {
+            Authorization: "Bearer signed-token",
+            "X-WiseEff-User": "u-forged",
+            "X-WiseEff-Organization": "org-forged"
+          }
+        }
+      );
+
+      expect(response.status).not.toBe(401);
+      expect(calls.some((call) => call.values.includes("u-prod"))).toBe(true);
+      expect(calls.some((call) => call.values.includes("u-forged"))).toBe(false);
+      expect(calls.some((call) => call.values.includes("org-forged"))).toBe(false);
+    });
+
+    it("does not report a successful Catalog list for an authenticated caller without parameter view (CATFIX-AUTH-05)", async () => {
+      const { db } = createProductionIdentityDb({
+        dbUserId: "u-noview",
+        email: "noview@example.com",
+        roleId: "no-parameter-view" as never
+      });
+      const response = await requestJson<{ error?: { code: string }; items?: unknown[] }>(
+        productionCatalogServer({
+          db,
+          verify: async () => ({
+            user: {
+              id: "u-noview",
+              organizationId: "org-chargelab",
+              name: "No View",
+              email: "noview@example.com",
+              emailVerified: true,
+              title: "None",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "guest" }],
+            permissions: []
+          })
+        }),
+        catalogReadPath,
+        { headers: { Authorization: "Bearer signed-token" } }
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.body.error?.code).toBe("FORBIDDEN");
+      expect(response.body.items).toBeUndefined();
+    });
+
+    it("rejects a same-organization read-only Catalog governance write (CATFIX-AUTH-06)", async () => {
+      const { calls, db } = createProductionIdentityDb({
+        dbUserId: "u-guest",
+        email: "guest@example.com",
+        roleId: "guest"
+      });
+      const response = await requestJson<{ error?: { code: string } }>(
+        productionCatalogServer({
+          db,
+          verify: async () => ({
+            user: {
+              id: "u-guest",
+              organizationId: "org-chargelab",
+              name: "Guest",
+              email: "guest@example.com",
+              emailVerified: true,
+              title: "Guest",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "guest" }],
+            permissions: ["parameter:view"]
+          })
+        }),
+        catalogWritePath,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer signed-token",
+            [CATALOG_RELEASE_HEADER]: "crel_test_release",
+            [CATALOG_IDEMPOTENCY_HEADER]: "catalog-auth-guest"
+          },
+          body: JSON.stringify({
+            base: { catalogReleaseId: "crel_test_release", definitionRevisionId: "drev_test_revision_1" },
+            requestedChange: { kind: "revise-definition", note: "auth" },
+            reason: "catalog auth regression"
+          })
+        }
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.body.error?.code).toBe("FORBIDDEN");
+      expect(calls.filter((call) => /insert|update|delete/i.test(call.text))).toHaveLength(0);
+    });
+
+    it("keeps development Catalog debug auth available (CATFIX-AUTH-07)", async () => {
+      const response = await requestJson<{ error?: { code: string } }>(createWiseEffServer(), catalogReadPath);
+      expect(response.status).not.toBe(401);
     });
   });
 

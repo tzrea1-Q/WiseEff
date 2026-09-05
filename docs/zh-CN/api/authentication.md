@@ -18,7 +18,7 @@ AUTH_MODE=development
 x-wiseeff-user: <seed-user-id>
 ```
 
-该模式只用于本地开发和测试，不是生产身份边界。Catalog 路由仍然从服务端可信上下文推导 Organization、角色、Agent 与 System 身份；请求不得自报 `X-WiseEff-Role`、`X-WiseEff-Organization`、`X-WiseEff-Actor-Kind` 或 `X-WiseEff-Agent`。依赖发布状态的写入发送 `X-WiseEff-Catalog-Release`；治理写入还发送 `If-Match` 与 `Idempotency-Key`。
+该模式只用于本地开发和测试，不是生产身份边界。生产模式（`AUTH_MODE=production`）下，Catalog 读接口、治理接口和 legacy 接口与 `/api/v1/me` 使用同一个 `authResolver`。只携带 `x-wiseeff-user`、没有合法生产凭据的请求返回 `401 UNAUTHENTICATED`，该请求头不能构造 principal。认证成功后，Catalog 路由仍然从服务端可信上下文推导 Organization、角色、Agent 与 System 身份；请求不得自报 `X-WiseEff-Role`、`X-WiseEff-Organization`、`X-WiseEff-Actor-Kind` 或 `X-WiseEff-Agent`。依赖发布状态的写入发送 `X-WiseEff-Catalog-Release`；治理写入还发送 `If-Match` 与 `Idempotency-Key`。
 
 ## OIDC 生产模式
 
