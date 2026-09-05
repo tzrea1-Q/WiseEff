@@ -95,6 +95,24 @@ R3 实现前，每行必须定义初始状态、principal/组织/项目、请求
 
 测量前预算：1/25/100 行的业务投影 SQL 必须固定，与 auth、Kernel、事务分开；精确数量等待 Policy 契约和已有查询盘点后冻结。空页不查询页级投影。不增加全局缓存、pool 或 timeout 隐藏问题。容量采样覆盖小/代表/增长库存、current/pinned、第一页/后续页、注册过滤/详情，记录分布、page size、pool/并发、warm/cold、样本/预热、SQL、waiting、p50/p95 及可用内存指标；未测项写 unavailable。不允许挂起、泄漏、混版、跨组织污染，不虚构延迟 SLO。
 
+### Subject 临时容量观测
+
+实测来源为 `5b4118ae5f1bfb2964f425722e409854ba662d03` 加保留的只读测量探针，不是最终集成候选。三个独立安装器生成的合成库存分别为 25/125/500 Subject，每个含两个 Definition，均未登记；只测 current 的 Subject 第一页。pool max 实测默认 10、请求并发 1，每个 limit 预热 2 次、warm 样本 20 次，下表采用 nearest-rank 分位数。同主机还有其他隔离 lane 活动。未添加或清空缓存，业务查询预算事先固定为四条。
+
+| Subject / Definition | Limit（实际返回） | p50 ms | p95 ms |
+| --- | --- | --- | --- |
+| 25 / 50 | 1（1） | 11.88 | 14.34 |
+| 25 / 50 | 25（25） | 10.92 | 14.20 |
+| 25 / 50 | 100（25） | 10.57 | 13.45 |
+| 125 / 250 | 1（1） | 22.85 | 26.13 |
+| 125 / 250 | 25（25） | 23.11 | 25.49 |
+| 125 / 250 | 100（100） | 22.36 | 25.29 |
+| 500 / 1000 | 1（1） | 82.98 | 91.51 |
+| 500 / 1000 | 25（25） | 76.87 | 81.89 |
+| 500 / 1000 | 100（100） | 75.37 | 80.36 |
+
+所有组的业务/auth/Kernel/事务查询数均为 4/1/15/8，响应后 waitingCount 为 0、total connection 为 1、idle connection 为 1。三次分别收集并通过 64 测试，无 skipped。原始 JSON 记录实际 RSS/heap，属于同进程测试 worker/API，不冒充独立生产进程。disk-cold、连接等待时长、生产代表性、pinned/后续页、登记过滤、详情及更高并发均 unavailable，不推出毫秒级 SLO。这不满足 #820 完整容量门禁。探针、起止时刻、SQL、内存与未取整摘要：`work/catalog-r2/evidence/subject-capacity-checkpoint/`。
+
 ## Git & PR Workflow
 
 父 Scratch：当前隔离工作树 `codex/catalog-r2-integration`，来自真实 accepted main。子 Scratch 从相同 main 在独立 worktree 开始，仅父智能体集成提交。建议串行顺序 #815→#816→#817→#818→#819→#820，调整必须记录真实依赖理由。子智能体不开 PR、不写 main、不关闭 issue、不派下游。PR 使用 Refs #814/子单，最终独立审查及 integration-ready 后才创建。合并与关闭需要实际审批及 merge attestation。

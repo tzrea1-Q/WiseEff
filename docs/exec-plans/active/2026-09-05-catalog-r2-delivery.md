@@ -95,6 +95,24 @@ Raw sanitized environment records: `work/catalog-r2/evidence/lane-820-provision.
 
 SQL budget is frozen before measurement: business projection query counts must be independent of page size (1/25/100), separately classified from auth, Kernel and transactions. Exact projection budget awaits the approved Policy contract and existing-query inventory. Empty pages issue no page projection queries. No global caching, larger pool or relaxed timeout is permitted as a fix. Capacity reports compare small/representative/growth datasets, current/pinned, first/later page, registered filter and detail; record distributions, page size, pool/concurrency, warmup/samples, warm/cold, SQL, waiting, p50/p95 and available memory. Unmeasured fields are unavailable. No hangs/leaks/mixed release/cross-organization pollution is mandatory; no invented latency SLO.
 
+### Provisional Subject capacity observations
+
+Measured source is `5b4118ae5f1bfb2964f425722e409854ba662d03` plus the retained read-only measurement probe, not the final integration candidate. Three independent installer-generated inventories contain 25/125/500 Subjects, each with two Definitions; all are unregistered. The route is the current first Subject page. Pool maximum is the observed default 10, request concurrency 1, two warmups and 20 warm samples per limit; the table uses nearest-rank percentiles. Other isolated lanes were active on the same host. No cache was added or cleared. The business-query budget stayed four before and throughout these runs.
+
+| Subjects / Definitions | Limit (returned) | p50 ms | p95 ms |
+| --- | --- | --- | --- |
+| 25 / 50 | 1 (1) | 11.88 | 14.34 |
+| 25 / 50 | 25 (25) | 10.92 | 14.20 |
+| 25 / 50 | 100 (25) | 10.57 | 13.45 |
+| 125 / 250 | 1 (1) | 22.85 | 26.13 |
+| 125 / 250 | 25 (25) | 23.11 | 25.49 |
+| 125 / 250 | 100 (100) | 22.36 | 25.29 |
+| 500 / 1000 | 1 (1) | 82.98 | 91.51 |
+| 500 / 1000 | 25 (25) | 76.87 | 81.89 |
+| 500 / 1000 | 100 (100) | 75.37 | 80.36 |
+
+All groups observed business/auth/Kernel/transaction query counts 4/1/15/8, waitingCount 0, total connections 1 and idle connections 1 after response. The three runs each collected/passed 64 tests without skipped tests. The raw JSON records actual RSS/heap for the combined test worker/API process, not a standalone production process. Disk-cold behavior, connection-wait duration, production representativeness, pinned/later pages, registration filters, details and higher concurrency are unavailable; no latency SLO is inferred. This does not satisfy the full #820 capacity gate. Raw probe, timestamps, SQL, memory and unrounded summary: `work/catalog-r2/evidence/subject-capacity-checkpoint/`.
+
 ## Git & PR Workflow
 
 Parent Scratch branch: `codex/catalog-r2-integration`, created from the accepted main in the existing isolated worktree. Child Scratch branches start from that accepted main in separate worktrees; only the parent integrates commits. Proposed serial order #815 → #816 → #817 → #818 → #819 → #820 may be adjusted only for recorded dependency reasons. Child agents do not create PRs, write main, close issues or dispatch downstream work. PR bodies use Refs #814 and child numbers, not automatic closure. Final PR creation waits for integration-ready and independent review. Merge and closing remain pending actual approval and exact merge attestation.
