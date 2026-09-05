@@ -205,6 +205,21 @@ function reconstructChain(
 }
 
 async function seedCatalogActors(pool: pg.Pool): Promise<void> {
+  // A dedicated platform-only reviewer keeps role-matrix assertions distinct
+  // from the demo user who holds both organization and platform roles.
+  const platform = acceptanceCast.platformOperator;
+  await pool.query(
+    `insert into public.users (id, organization_id, name, email, title, is_active)
+     values ($1, $2, $3, $4, $5, true)
+     on conflict (id) do update set organization_id = excluded.organization_id, is_active = true`,
+    [platform.userId, ACCEPTANCE_ORGANIZATION.id, platform.name, platform.email, platform.title]
+  );
+  await pool.query(
+    `insert into public.user_role_bindings (id, user_id, organization_id, project_id, role_id)
+     values ('urb-catalog-platform-only', $1, $2, null, 'platform-admin')
+     on conflict (id) do update set user_id = excluded.user_id, organization_id = excluded.organization_id, role_id = excluded.role_id`,
+    [platform.userId, ACCEPTANCE_ORGANIZATION.id]
+  );
   await pool.query(
     `insert into public.organizations (id, name) values ($1, $2)
      on conflict (id) do update set name = excluded.name`,
@@ -243,7 +258,6 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
        role_id = excluded.role_id`,
     [CATALOG_GUEST_USER.userId, ACCEPTANCE_ORGANIZATION.id, CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B.id]
   );
-  void acceptanceCast;
   void X_REVISION_1;
 }
 

@@ -67,9 +67,9 @@ export async function signInCatalogActor(page: Page, actor: CatalogBrowserActor,
   if (actor === "platform-admin") {
     await signInBrowserAsUser(
       page,
-      acceptanceCast.xuYun.userId,
-      acceptanceCast.xuYun.email,
-      acceptanceCast.xuYun.name,
+      acceptanceCast.platformOperator.userId,
+      acceptanceCast.platformOperator.email,
+      acceptanceCast.platformOperator.name,
       route
     );
     return;
@@ -113,7 +113,7 @@ export function catalogAuthHeaders(actor: CatalogBrowserActor) {
     );
   }
   if (actor === "platform-admin") {
-    return authHeadersForUser(acceptanceCast.xuYun.userId, acceptanceCast.xuYun.email, acceptanceCast.xuYun.name);
+    return authHeadersForRole("platform-admin");
   }
   if (actor === "user") {
     return authHeadersForRole("hardware-user");

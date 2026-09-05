@@ -353,11 +353,17 @@ export async function collectProposalOperationTrace(page: Page, testInfo: TestIn
     primaryFailure = error;
     throw error;
   } finally {
-    await pool.end();
-    try { await runtime.dispose(outcome); }
-    catch (cleanupError) {
-      if (primaryFailure) throw new AggregateError([primaryFailure, cleanupError], "Catalog operation trace and cleanup both failed.");
-      throw cleanupError;
+    try {
+      // Detach the product page before stopping its owned server, so a reused
+      // page cannot send background requests to the previous adapter runtime.
+      await page.goto("about:blank");
+    } finally {
+      await pool.end();
+      try { await runtime.dispose(outcome); }
+      catch (cleanupError) {
+        if (primaryFailure) throw new AggregateError([primaryFailure, cleanupError], "Catalog operation trace and cleanup both failed.");
+        throw cleanupError;
+      }
     }
   }
 }
