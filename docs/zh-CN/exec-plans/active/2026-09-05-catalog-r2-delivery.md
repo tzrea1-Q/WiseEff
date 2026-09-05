@@ -119,7 +119,7 @@ R3 实现前，每行必须定义初始状态、principal/组织/项目、请求
 
 focused 使用当前 package.json 中真实路径和实际 issue lane。完整候选执行 `test:all`、`build`、`lint`（仅 src）、`contract:check`、`ui:check`、`docs:check`、`acceptance:coverage`、`acceptance:operations`、`acceptance:models`、`git diff --check`。边界命令为 `npm run parameter-catalog-boundaries:check -- --trusted-base-sha 35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`，执行前核对 scanner 的可信基线规则，不换成 HEAD 隐藏新增违规。尚无批准的 Hosted 命令替代。
 
-浏览器执行三份 Catalog `acceptance:e2e`、`acceptance:gate0`、`acceptance:artifacts:check`，并用 playwright-cli 验证 1440×900、768×1024、390×844 的 snapshot/screenshot、键盘/焦点/弹层/滚动、console/network。最终产物绑定实际候选；当前尚未运行。
+浏览器执行三份 Catalog `acceptance:e2e`、`acceptance:gate0`、`acceptance:artifacts:check`，并用 playwright-cli 验证 1440×900、768×1024、390×844 的 snapshot/screenshot、键盘/焦点/弹层/滚动、console/network。初始预检时尚未运行；以下检查点更新实际执行状态。
 
 ## 文档影响矩阵
 
@@ -139,3 +139,51 @@ focused 使用当前 package.json 中真实路径和实际 issue lane。完整�
 ## 文档更新门禁
 
 完成前逐条记录 Update/Review 的改动路径或明确无变化依据。中英分离双向链接；coverage/OpenAPI 使用实际生成器并检查 diff。`npm run docs:check` 必须通过。R2 必需证据未齐保持 active；OP-09 独立待授权。向用户提供保留目录结构的完整修改代码文件包和路径清单，排除凭据及无关文件。
+
+## 已验证的 Scratch 检查点：2026-09-06 Asia/Shanghai
+
+代码候选为 `b54a126b594effe5470f7df4c8b4d0458abc14c6`，tree 为 `c51651772664dfdc91e68673e67027a8dc3ed8be`。再次 fetch 后 accepted base 仍为 `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。后续纯报告提交不改变历史执行 SHA 的归属。本候选未 sealed、未 integration-ready、未 Hosted、未合并、未 attested。没有关闭 R2 issue；#813 仍是实际观察到的唯一开放 PR，其历史表述不能代替本轮证据。
+
+| Issue | implemented | verified | merged / attested | 剩余阻塞 |
+| --- | --- | --- | --- | --- |
+| #815 | 否 | 已调查模型缺口 | 否 / 否 | 没有可证明完整的 Policy→canonical Definition 关联及生产 Policy writer；分阶段 unavailable 契约尚未获批，固定零仍存在。 |
+| #816 | 仅 Subject 页 | 真实根路由 SQL 预算及批量/空集/缺失/故障 | 否 / 否 | Definition/usage 仍逐行增长，依赖 #815。 |
+| #817 | 是 | 共用真实 API/PG 与产品 mock 向量、集成服务端和浏览器 | 否 / 否 | 最终集成门禁和批准未齐。 |
+| #818 | 真实 Agent pin 读取及经批准的 Binding 工作流修复 | 18 条真实 HTTP/PG Agent；仅模型提供商确定性替代；另有 23 条真实 PG 身份测试 | 否 / 否 | T5 adapter-disagreement/missing-current-pointer 补充证据仍缺；边界门禁见下文。 |
+| #819 | Proposal 刷新/重确认、真实冲突/重放/parity 和夹具修正 | 代码候选三份 Catalog spec 共 21 通过，无失败/跳过 | 否 / 否 | 完整候选仍缺 #815/#816 和完整 Gate 0。 |
+| #820 | 计划、映射、初步容量、独立审查及产物框架 | 部分，结果分 SHA 如下 | 否 / 否 | Policy 决策、Definition 批量/容量、T5、扫描位置重定位、广域门禁失败。 |
+
+### 根因、文件所有权与永久回归
+
+- #816：正式 Subject handler 原先逐行投影。`read/types.ts`、`read/ports.ts`、`read/handlers.ts` 在授权/业务筛选和 Kernel 分页后，对本页 ID 去重并批量映射必要结果。`rootBatchQueries.integration.test.ts` 实测根路由 SQL，`read/ports.batch.test.ts` 验证缺失、故障和空页语义。Definition 明确未修复。
+- #817：可变重放结果、先检查已推进 ETag、固定 mock 版本破坏请求身份与历史。Proposal command/writer/repositories/result/query 和 HTTP DTO 保存首次成功快照；mockAdapter 具有新 opaque ETag、状态/作者/审核权限和不可变结果。`proposalContractVectors.ts`、`proposalContract.test.ts`、`proposalAdapterParity.integration.test.ts` 覆盖生命周期、重放、key 语义、并发、权限、终态和副作用唯一。历史缺快照返回 `proposal-replay-unavailable`，不补当前可变对象。
+- #818：perception 伪造空结果且未真实读取 pin。Binding 所有的 `adapters/projectReadAdapter.ts` 读取实际受保护引用，Agent perception 使用可信 invocation。`xiaoze/catalogBoundary.integration.test.ts` 经过本地认证、真实 orchestrator/registry/dispatcher、PG、pin 与高权限发起者的 Agent 限制。T6 暴露语义绝对路径与结构相对路径差异。`sensitiveNode.ts` 只在锁定范围/版本内接受两种严格校验的完整表示，零行或多行均拒绝。独立作者的 `sensitiveNode.identity.integration.test.ts` 用真实 PG 覆盖两种表示、根、重复、外组织/current、兄弟及畸形路径；基线 Red 为 14 失败/9 通过，候选 Green 为 23/23。`propertyKeyCutover.integration.test.ts` 重复 charger 夹具改为更新已有身份，未删除 critical/审计断言。
+- #819：`ProposalPanel.tsx` 和 `CatalogOrganizationSurface.tsx` 刷新 Proposal/release 证据、清除旧确认并保留输入，新写入必须再次显式确认。`catalogConcurrency.ts` 证明真实 A/B 旧 ETag、真实安装器 drift、提交后响应阶段故障重放和浏览器操作 parity。共享文件从 #818 的 guest-only `835700c` 交接，经父集成 `ee60c5a1d`，再有 `116273025`、`c1032d730` 和当前候选修复。主 Catalog spec 残留 guest/Agent 错名已改。`catalogEvidence.ts` 创建真实 platform-only 审核用户；bearer 可选组织参数由生产 verifier 测试，claims 不授予权限。停止 owned server 前页面先脱离。lane guard 保留 loopback/端口/数据库/所有权检查，并拒绝 query/fragment 重定向。
+
+额外路径均通过对应独立 threat/readiness 审查后交接：sensitiveNode 及测试、精确重复夹具修复、新身份测试（Scratch `aa6b603`）、Catalog 浏览器夹具/spec、`bearerAuth.ts` 的兼容组织参数及 `scripts/catalog-bearer-auth.test.ts`。审查者未写父生产文件；实现子智能体未开 PR、合并、关单或修改他人 worktree。
+
+### 执行账本与证据层级
+
+| 候选 / 输入 | 实际执行 | 结果与限制 |
+| --- | --- | --- |
+| `b54a126b594e` | 四个真实文件：`server/modules/agent/xiaoze/catalogBoundary.integration.test.ts`；`server/modules/parameter-kernel/sensitiveNode.identity.integration.test.ts`；`server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts`；`server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts` | 86/86，无跳过；真实 PG/根 HTTP，其中 18 条真实 Agent。另处 40 条 sensitiveNode Queryable 测试是纯测试，不能称 PG。 |
+| `b54a126b594e` | `acceptance:e2e` 三份 Catalog spec，Desktop Chrome，无依赖 project，真实 owned 本地 runtime | 21/21，无跳过，1.3 分钟；含三视口冲突、提交后响应故障、操作 parity、角色及历史链接。原始 metadata 保留精确起止与命令。 |
+| `b54a126b594e` | build、lint、contract:check、ui:check、acceptance:coverage、acceptance:operations、acceptance:models | 通过。lint 仅 src，不声称 server lint。报告提交 docs 检查单独记录。 |
+| `77586ba67d50` | `npm run test:server` | 501 文件、3816/3816、无跳过。到代码候选 server 字节不变；没有把它称为较后 helper-only SHA 的重新执行。 |
+| `ee60c5a1d` | `npm run test:all` | 前端 3354 通过；scripts 1178 通过/20 失败/5 跳过，在 bridge/server 前停止。三个本轮脚本失败已修；15 个临时库路由失败在专用容器的一次受控复查中消失；两个未改动的 finalize-gate0-upload 进程身份用例仍失败，未第三次重试或相邻修复。后来的 boundary 失败另记。 |
+| `1162730256fd` | bridge:test、acceptance:gate0 | Bridge 通过。Gate 0 visual 16 通过/4 失败；完整 server 暴露本轮回归后父发送 SIGINT，exit130，browser 不完整。属于失败/中断，不是完整 Gate 0 通过。其自身 safety scan 为零违例。 |
+| `c1032d730d50` | playwright-cli，经真实 local-login/API/PG 访问 `/parameter-admin/specs` | 1440×900、768×1024、390×844 snapshot/screenshot；输入、弹层、Tab 焦点、取消/输入保留、滚动及显式创建。认证后 console 零错误/两警告；初次未登录 401 保留在 network。到代码候选 UI src 字节不变。 |
+
+代码候选 Subject limit 1/25/100 的 business/auth/Kernel/transaction/other SQL 均为 `4/1/15/8/0`，waitingCount0；空页无页投影查询。保留的 Definition Red 实测业务查询 `5/101/401`，证明 N+1 残留。上文容量仅是早期初步结果，不能升级成最终候选或代表性库存证据。
+
+代码候选 boundary 失败：总数 3513，23 个 unallowlisted、23 个 stale，逐项配对到 property-key 夹具中内容未变但位置移动的旧 SQL。`work/catalog-r2/evidence/boundary-relocation-23.json` 保存两边 ID、位置、token 和 evidence。独立 Standards 未找到现有获授权的重定位机制。未增加 allowance、未替换 trusted base、未填充空白或放宽扫描。需要单独批准并独立审查的重定位机制；数量相同不等于通过。
+
+独立 Standards/Spec 报告在 `work/catalog-r2/reviews/`，包括 `standards-b54.md`、`spec-b54.md`，均为保留阻塞的限定 PASS。Spec 编写了 23 条 PG 测试但未实现生产，Standards 独立检查了这些测试。历史 finding 和修复记录保留。当前没有 Hosted job/checkout、新 PR、merge SHA 或 attestation。
+
+### 文档处置与交付
+
+已更新计划/索引、双语 API transition 和生成 operation coverage；Proposal 实际契约/错误变化对应 OpenAPI 已经生成器更新，数据库 schema 未变。保留 requirement/operation ID 和 mandatory 状态。仓库地图、架构、产品、安全模型、前端设计系统、runbook 和通用验证参考不变，原因是沿用既有边界，未授权新的产品、领域或发布工作流。覆盖 metadata 通过只是结构检查，不是全部 mandatory 验收通过。计划保持 active，不伪造完成记录。
+
+脱敏后的日志、metadata、SQL、截图、审查和 SHA 适用性比较位于 `work/catalog-r2/shareable-evidence/`，安全检查和 hash manifest 独立于源文件交付。`work/catalog-r2/delivery/<report-head>/complete-changed-files.zip` 按原目录保存全部已修改 tracked 文件的完整字节，`paths.json` 逐项列路径/hash；排除私密 lane URL、storage-state token 和 runtime descriptor。保留原始与所有 Scratch/受控 mutant worktree；owned 测试进程已停止，失败运行的数据库/object-store 证据保留，不静默清理。
+
+重跑时按现有脚本 provision/doctor 实际 lane820，私下读取其真实输出 URL，然后执行各 metadata JSON 中的精确命令。focused 命令列出上表四个真实文件；`work/catalog-r2/run-catalog-specs.ts` 使用既有 owned runtime provisioner 执行三份 spec，不伪造 descriptor。完整 Gate0/容量待解除其阻塞后再执行。OP-09、#811/#735 目标机工作、P12–P15、生产恢复/数据修改/切流均未执行，仍独立待授权。
