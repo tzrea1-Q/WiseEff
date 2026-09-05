@@ -99,6 +99,14 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+function proposalToken(value: string): boolean {
+  return value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
+}
+
+function invalidProposal(field: string): never {
+  throw new WiseEffApiError("VALIDATION_FAILED", "Invalid catalog governance request.", { retryable: false, field }, "catalog");
+}
+
 function collection<T>(items: T[], emptyReason?: Parameters<typeof emptyCatalogCollection>[0]) {
   if (items.length === 0 && emptyReason) {
     return emptyCatalogCollection<T>(emptyReason);
@@ -599,7 +607,21 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertReadyForWrite(store);
       assertRelease(store, write.catalogReleaseId);
       const parsed = catalogCreateProposalRequestSchema.parse(body);
-      return replayProposal("createProposal", null, write, parsed, () => {
+      const definitionId = parsed.base.definitionId || null;
+      const revisionId = parsed.base.definitionRevisionId || null;
+      if (Boolean(definitionId) !== Boolean(revisionId)) invalidProposal(definitionId ? "base.definitionRevisionId" : "base.definitionId");
+      if (!proposalToken(parsed.base.catalogReleaseId)) invalidProposal("claimedBaseReleaseId");
+      if (parsed.base.catalogReleaseId !== write.catalogReleaseId) throw catalogApiFailure("proposal-stale");
+      if (!proposalToken(parsed.reason)) invalidProposal("reason");
+      const evidenceRefs = parsed.evidenceRefs ?? [];
+      if (evidenceRefs.some((ref) => !proposalToken(ref))) invalidProposal("evidenceRefs");
+      // Match the HTTP command's defaults; retain the raw payload in its fingerprint.
+      const semanticBody = { ...parsed, base: { ...parsed.base, definitionId, definitionRevisionId: revisionId }, evidenceRefs };
+      return replayProposal("createProposal", null, write, semanticBody, () => {
+        if (revisionId !== null) {
+          if (revisionId !== catalogRevision.id) invalidProposal("baseDefinitionRevisionId");
+          if (definitionId !== catalogRevision.definitionId) invalidProposal("baseDefinitionId");
+        }
         const id = `dprop_${crypto.randomUUID()}`;
         store.proposal = {
           ...clone(catalogProposal),
@@ -611,10 +633,10 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
           submittedByPersonId: session.personId,
           base: {
             catalogReleaseId: parsed.base.catalogReleaseId,
-            definitionId: parsed.base.definitionId ?? null,
-            definitionRevisionId: parsed.base.definitionRevisionId ?? null
+            definitionId,
+            definitionRevisionId: revisionId
           },
-          requestedChange: clone(parsed.requestedChange)
+          requestedChange: { ...clone(parsed.requestedChange), kind: proposalToken(parsed.requestedChange.kind) ? parsed.requestedChange.kind : "definition-proposal" }
         };
         store.proposals.set(id, store.proposal);
         return { item: clone(store.proposal) };

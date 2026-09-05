@@ -108,6 +108,29 @@ describe("R2 Proposal shared operation vectors: actual API adapter, root HTTP an
     });
   }
 
+  it("R2-REV-02-history: stored legacy content and its original success snapshot use the same output normalization", async () => {
+    const governance = createApiParameterCatalogGovernanceRepository(client());
+    const body = { base: { catalogReleaseId: releaseId }, requestedChange: { kind: "", note: "Retained legacy field", nested: { enabled: true } }, reason: "historical output compatibility" };
+    const write = { catalogReleaseId: releaseId, idempotencyKey: "review-historical-payload" };
+    const created = await governance.createProposal(body, write);
+    const pool = getRootPostgresPool(root)!;
+    // The real command stores the legacy-accepted empty kind unchanged. Verify the
+    // raw immutable revision and original success snapshot, without rewriting either.
+    const stored = (await pool.query("select payload from parameter_catalog.definition_proposal_revisions where proposal_id=$1", [created.item.id])).rows[0].payload;
+    const snapshot = (await pool.query("select metadata->'resultSnapshot'->'requestedChange' as content from public.audit_events where target_id=$1 and action='proposal-create-draft'", [created.item.id])).rows[0].content;
+    expect(stored).toEqual(body.requestedChange);
+    expect(snapshot).toEqual(body.requestedChange);
+    const expected = { ...body.requestedChange, kind: "definition-proposal" };
+    const before = await evidence();
+    expect((await governance.getProposal(created.item.id)).item.requestedChange).toEqual(expected);
+    expect((await governance.listProposals({ limit: 100 })).items.find((item) => item.id === created.item.id)?.requestedChange).toEqual(expected);
+    expect((await governance.createProposal(body, write)).item.requestedChange).toEqual(expected);
+    expect(await evidence()).toEqual(before);
+    const submitted = await governance.submitProposal(created.item.id, {}, { catalogReleaseId: releaseId, idempotencyKey: "review-historical-submit", ifMatch: created.item.etag });
+    expect(submitted.item.requestedChange).toEqual(expected);
+    expect((await governance.getProposal(created.item.id)).item.requestedChange).toEqual(expected);
+  });
+
   it("R2-PROP-09: create fault rolls back status, success audit and idempotency before retry", async () => {
     const pool = getRootPostgresPool(root)!;
     const counts = async () => (await pool.query(`select

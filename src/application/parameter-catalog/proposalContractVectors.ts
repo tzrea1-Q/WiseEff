@@ -1,4 +1,4 @@
-import type { ParameterCatalogGovernanceRepository } from "../ports/ParameterCatalogGovernanceRepository";
+import type { CatalogCreateProposalRequest, ParameterCatalogGovernanceRepository } from "../ports/ParameterCatalogGovernanceRepository";
 
 /** Shared executable semantics; no test framework or server implementation imports. */
 export type ProposalContractHarness = {
@@ -16,7 +16,9 @@ function check(condition: boolean, message: string): asserts condition {
 }
 
 function equal(actual: unknown, expected: unknown, message: string) {
-  check(JSON.stringify(actual) === JSON.stringify(expected), `${message}: ${JSON.stringify(actual)}`);
+  const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
+    : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
+  check(JSON.stringify(canonical(actual)) === JSON.stringify(canonical(expected)), `${message}: ${JSON.stringify(actual)}`);
 }
 
 async function conflict(operation: Promise<unknown>) {
@@ -52,6 +54,74 @@ const create = (h: ProposalContractHarness, key: string) => h.governance.createP
 });
 
 export const proposalContractVectors = [
+  ...[
+    { name: "body release differs from the current header", edit: (body: CatalogCreateProposalRequest) => { body.base.catalogReleaseId = "crel_not_installed"; }, code: "CONFLICT", reason: "proposal-stale" },
+    { name: "Definition lacks revision", edit: (body: CatalogCreateProposalRequest) => { delete body.base.definitionRevisionId; }, code: "VALIDATION_FAILED", field: "base.definitionRevisionId" },
+    { name: "revision lacks Definition", edit: (body: CatalogCreateProposalRequest) => { delete body.base.definitionId; }, code: "VALIDATION_FAILED", field: "base.definitionId" },
+    { name: "revision belongs to another Definition", edit: (body: CatalogCreateProposalRequest) => { body.base.definitionId = "pdef_other_owner"; }, code: "VALIDATION_FAILED", field: "baseDefinitionId" },
+    { name: "revision is not installed", edit: (body: CatalogCreateProposalRequest) => { body.base.definitionRevisionId = "drev_not_installed"; }, code: "VALIDATION_FAILED", field: "baseDefinitionRevisionId" },
+    { name: "empty reason", edit: (body: CatalogCreateProposalRequest) => { body.reason = ""; }, code: "VALIDATION_FAILED", field: "reason" },
+    { name: "whitespace reason", edit: (body: CatalogCreateProposalRequest) => { body.reason = " "; }, code: "VALIDATION_FAILED", field: "reason" },
+    { name: "control character evidence", edit: (body: CatalogCreateProposalRequest) => { body.evidenceRefs = ["evidence:\ninvalid"]; }, code: "VALIDATION_FAILED", field: "evidenceRefs" },
+    { name: "empty body release", edit: (body: CatalogCreateProposalRequest) => { body.base.catalogReleaseId = ""; }, code: "VALIDATION_FAILED", field: "claimedBaseReleaseId" },
+  ].map((invalid, index) => ({
+    id: `R2-REV-01-${index + 1}`,
+    name: `invalid create ${invalid.name} has no effects and corrected original key succeeds`,
+    async run(h: ProposalContractHarness) {
+      const body: CatalogCreateProposalRequest = createBody(h);
+      invalid.edit(body);
+      const write = { catalogReleaseId: h.releaseId, idempotencyKey: `review-invalid-${index}` };
+      const before = await h.governance.listProposals();
+      const evidence = await h.businessEvidence?.();
+      try {
+        await h.governance.createProposal(body, write);
+        throw new Error("invalid create unexpectedly succeeded");
+      } catch (error) {
+        const failure = error as { code?: string; details?: { reason?: string; field?: string } };
+        equal(failure.code, invalid.code, "invalid create error code");
+        if (invalid.reason) equal(failure.details?.reason, invalid.reason, "invalid create reason");
+        if (invalid.field) equal(failure.details?.field, invalid.field, "invalid create field");
+      }
+      equal(await h.governance.listProposals(), before, "invalid create leaves proposal collection unchanged");
+      if (h.businessEvidence) equal(await h.businessEvidence(), evidence, "invalid create has no business, success audit or committed dedupe effects");
+      const corrected = await h.governance.createProposal(createBody(h), write);
+      check(corrected.item.status === "draft", "failed create does not reserve the key");
+    }
+  })),
+  ...["", " ", " padded-kind ", "bad\nkind", "revise-definition"].map((kind, index) => ({
+    id: `R2-REV-02-${index + 1}`,
+    name: `kind representation ${JSON.stringify(kind)} is identical in mutation, get, list and replay`,
+    async run(h: ProposalContractHarness) {
+      const body = { ...createBody(h), requestedChange: { kind, documentation: "Retain all content", nested: { amount: 7 } } };
+      const write = { catalogReleaseId: h.releaseId, idempotencyKey: `review-kind-${index}` };
+      const created = await h.governance.createProposal(body, write);
+      const expected = { ...body.requestedChange, kind: index === 4 ? "revise-definition" : "definition-proposal" };
+      equal(created.item.requestedChange, expected, "mutation applies historical output normalization without losing fields");
+      equal((await h.governance.getProposal(created.item.id)).item.requestedChange, expected, "get has same content");
+      equal((await h.governance.listProposals({ limit: 100 })).items.find((item) => item.id === created.item.id)?.requestedChange, expected, "list has same content");
+      const evidence = await h.businessEvidence?.();
+      equal(await h.governance.createProposal(body, write), created, "replay has same normalized snapshot");
+      if (h.businessEvidence) equal(await h.businessEvidence(), evidence, "replay does not create effects");
+      if (index !== 4) await conflict(h.governance.createProposal({ ...body, requestedChange: { ...body.requestedChange, kind: "definition-proposal" } }, write));
+    }
+  })),
+  {
+    id: "R2-REV-03",
+    name: "omitted and empty evidence are identical create semantics but changed evidence conflicts",
+    async run(h: ProposalContractHarness) {
+      const body: CatalogCreateProposalRequest = createBody(h);
+      delete body.evidenceRefs;
+      // Both absent base IDs are a legal new Definition proposal.
+      delete body.base.definitionId;
+      delete body.base.definitionRevisionId;
+      const write = { catalogReleaseId: h.releaseId, idempotencyKey: "review-evidence-default" };
+      const first = await h.governance.createProposal(body, write);
+      const evidence = await h.businessEvidence?.();
+      equal(await h.governance.createProposal({ ...body, evidenceRefs: [] }, write), first, "defaulted evidence replays original response and ETag");
+      await conflict(h.governance.createProposal({ ...body, evidenceRefs: ["evidence:changed"] }, write));
+      if (h.businessEvidence) equal(await h.businessEvidence(), evidence, "equivalent replay and conflict have no extra effects");
+    }
+  },
   {
     id: "R2-PROP-01",
     name: "create and submit preserve identity, base, content and author",

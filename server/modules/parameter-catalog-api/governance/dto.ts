@@ -130,6 +130,10 @@ export function mapProposalRecord(
 export function mapProposalResult(
   result: ProposalResult,
 ): ReturnType<typeof catalogProposalDtoSchema.parse> {
+  // Match the query projection's historical payload representation, including replays.
+  const kind = result.requestedChange.kind;
+  const usableKind = typeof kind === "string" && kind.length > 0 && kind.trim() === kind
+    && !/[\u0000-\u001F\u007F-\u009F]/u.test(kind);
   return catalogProposalDtoSchema.parse({
     id: result.proposalId,
     organizationId: result.organizationId,
@@ -140,7 +144,7 @@ export function mapProposalResult(
       definitionId: result.baseDefinitionId,
       definitionRevisionId: result.baseDefinitionRevisionId,
     },
-    requestedChange: { ...result.requestedChange, kind: result.requestedChange.kind ?? "definition-proposal" },
+    requestedChange: { ...result.requestedChange, kind: usableKind ? kind : "definition-proposal" },
     submittedByPersonId: result.submittedByPersonId,
     acceptedByPersonId: result.publicationIntent?.reviewerPrincipalId ?? null,
     publicationIntentRef: result.publicationIntent?.id ?? null,
