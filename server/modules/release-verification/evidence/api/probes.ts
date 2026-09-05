@@ -203,7 +203,8 @@ export const probesFor = (ctx: CatalogApiProbeContext): Record<(typeof CATALOG_A
         body: {
           base: {
             catalogReleaseId: ctx.catalogReleaseId,
-            definitionRevisionId: "drev_acme_power_iin_max_1",
+            definitionId: ctx.definitionId,
+            definitionRevisionId: ctx.revisionId,
           },
           requestedChange: { kind: "revise-definition", note: "s10-api" },
           reason: "s10-api proposal evidence",
