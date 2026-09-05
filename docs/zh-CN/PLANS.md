@@ -49,6 +49,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md`：已落地 Catalog 的 Review 修复（F1–F7、INT-01/INT-02），不重写领域模型。程序 #802；工作包 #803–#811。OP-01 生产认证优先；OP-09 仍是需人工授权的目标机/发布证据，不是智能体 cutover。本计划不重开冻结的 Wayfinder #668 nodes。
 - `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 与 G0.1 已合入；Phase A 已发布 #683–#735，Phase B/Phase C 已完成；S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。G0.2 引入仓库交付协议。G0.3 提高开发并发、要求专用 lane PostgreSQL 与角色忠实的本地验收，并禁止把 Hosted 当调试器，但不改变任何冻结 node 或 dependency edge。launch graph 保持 53 nodes 与 `CD=90`、`CF=54`、`ID=27`、`RE=18`；S13-PROGRAM/S14-PROGRAM 继续作为 Temporal 工作延后。G0.2/G0.3 不声称新的实现、Hosted、target、release 或 production evidence。剩余 launch Issues 遵守 `docs/agents/catalog-launch-operating-rules.md`。
 
 #### Wayfinder #668 Phase A launch 映射

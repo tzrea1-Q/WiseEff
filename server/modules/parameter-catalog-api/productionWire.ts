@@ -2,25 +2,34 @@ import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
-import { createCatalogKernel } from "../catalog-kernel/interface";
+import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
   CatalogReleaseDigest,
   CatalogReleaseId,
+  CatalogSubjectId,
   type CatalogReleasePin,
+  type CatalogSubjectKind,
+  type PlacementIntent,
 } from "../parameter-catalog-contract/index";
 import { canViewParameters } from "../parameter-kernel/policy";
 import { executeProposal } from "../parameter-governance/proposals";
+import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
 import { createReviewQueueReader } from "../parameter-governance/review";
+import { createUsageQueries } from "../parameter-bindings/usage";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
 
 import { registerCatalogGovernanceRoutes } from "./governance/routes";
-import { bindCatalogGovernanceCommands, emptyGovernanceQueryPorts } from "./governance/ports";
+import {
+  bindCatalogGovernanceCommands,
+  bindGovernanceCatalogQueryPorts,
+  unavailableGovernanceQueryPorts,
+} from "./governance/ports";
 import type {
   CatalogGovernancePorts,
   CatalogGovernanceRequest,
@@ -31,34 +40,34 @@ import { registerCatalogLegacyRoutes } from "./legacy/routes";
 import type { LegacyCatalogOptions } from "./legacy/types";
 import { registerCatalogReadRoutes } from "./read/routes";
 import {
+  createRegistrationProjectionFromQueries,
+  createUsageProjectionFromQueries,
   kernelOnlyTimelineComposer,
-  unregisteredProjection,
-  zeroUsageProjection,
+  unavailableRegistrationProjection,
+  unavailableUsageProjection,
 } from "./read/ports";
 import type {
+  CatalogDocumentFacts,
   CatalogReadPorts,
   CatalogReadRequest,
+  CatalogReadinessResult,
+  LoadedCatalogSnapshot,
   TrustedCatalogActorKind,
   TrustedCatalogScope,
 } from "./read/types";
 
 const CATALOG_SUNSET_HTTP_DATE = "Fri, 31 Dec 2027 00:00:00 GMT";
 const UNAVAILABLE_RELEASE_ID = "catalog-unready";
+const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
 export type CatalogApiAuthResolver = (request: RouteRequest) => Promise<AuthContext> | AuthContext;
 
 const unavailableRuntime: CatalogReadPorts["runtime"] = {
   async loadCurrentCatalog() {
-    return {
-      ok: false,
-      error: { kind: "permission-denied", operation: "loadCurrentCatalog" },
-    };
+    return { ok: false, error: { kind: "synchronization-busy", retryable: true } };
   },
   async loadPinnedCatalog() {
-    return {
-      ok: false,
-      error: { kind: "permission-denied", operation: "loadPinnedCatalog" },
-    };
+    return { ok: false, error: { kind: "synchronization-busy", retryable: true } };
   },
 };
 
@@ -80,9 +89,6 @@ const catalogActorKind = (auth: AuthContext): TrustedCatalogActorKind => {
   if (auth.roles.some((role) => role.roleId === "admin")) {
     return "org-admin";
   }
-  if (auth.roles.some((role) => role.roleId === "guest")) {
-    return "user";
-  }
   return "user";
 };
 
@@ -96,32 +102,32 @@ const governanceActorKind = (auth: AuthContext): TrustedGovernanceActorKind => {
   return "org-member";
 };
 
-const catalogScope = (auth: AuthContext): TrustedCatalogScope => ({
-  principalId: auth.user.id,
-  organizationId: auth.organization.id,
-  actorKind: catalogActorKind(auth),
-  canReadCatalog: canViewParameters(auth),
-  canRegister:
-    auth.permissions.includes("parameter:edit") ||
-    auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin"),
-  subjects: { kind: "all" },
-  definitions: { kind: "all" },
-});
+const catalogScope = (auth: AuthContext): TrustedCatalogScope => {
+  const actorKind = catalogActorKind(auth);
+  return {
+    principalId: auth.user.id,
+    organizationId: auth.organization.id,
+    actorKind,
+    canReadCatalog: canViewParameters(auth),
+    canRegister: actorKind === "org-admin",
+    subjects: { kind: "all" },
+    definitions: { kind: "all" },
+  };
+};
 
-const governanceScope = (auth: AuthContext): TrustedGovernanceScope => ({
-  principalId: auth.user.id,
-  organizationId: auth.organization.id,
-  actorKind: governanceActorKind(auth),
-  canReadGovernance: canViewParameters(auth),
-  canMutateOrganization:
-    auth.permissions.includes("parameter:edit") ||
-    auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin"),
-  canReviewProposals:
-    auth.permissions.includes("parameter:review") ||
-    auth.roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin"),
-  defaultDestinationModuleId: "",
-  defaultSubjectKind: "driver",
-});
+const governanceScope = (auth: AuthContext): TrustedGovernanceScope => {
+  const actorKind = governanceActorKind(auth);
+  return {
+    principalId: auth.user.id,
+    organizationId: auth.organization.id,
+    actorKind,
+    canReadGovernance: canViewParameters(auth),
+    canMutateOrganization: actorKind === "org-admin",
+    canReviewProposals: actorKind === "platform-admin",
+    defaultDestinationModuleId: "",
+    defaultSubjectKind: "driver",
+  };
+};
 
 const authenticateCatalog =
   (resolveAuth: CatalogApiAuthResolver) =>
@@ -143,80 +149,133 @@ const authenticateGovernance =
     return { ok: true as const, scope: governanceScope(auth) };
   };
 
+const factsFromSnapshot = (snapshot: LoadedCatalogSnapshot): CatalogDocumentFacts => ({
+  pin: { id: snapshot.release.id, digest: snapshot.release.digest },
+  snapshotKind: snapshot.snapshotKind,
+  releaseSequence: Number(snapshot.sequence),
+  publishedAt: snapshot.publishedAt,
+  materializedAt: snapshot.materializedAt,
+  materializationFingerprint:
+    snapshot.snapshotKind === "current"
+      ? snapshot.materializationFingerprint
+      : snapshot.databaseFingerprint,
+});
+
+const notReady = (): CatalogReadinessResult => ({
+  status: "not-ready",
+  retryAfterSeconds: CATALOG_NOT_READY_RETRY_AFTER_SECONDS,
+});
+
+const createKernelReadiness = (
+  kernel: CatalogKernel,
+  pool: pg.Pool,
+): CatalogReadPorts["readiness"] => {
+  const current = async (): Promise<CatalogReadinessResult> => {
+    const pointer = await readCurrentCatalogPointer(pool);
+    if (pointer.kind !== "installed") {
+      return notReady();
+    }
+    const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
+    if (!loaded.ok) {
+      return notReady();
+    }
+    return { status: "ready", document: factsFromSnapshot(loaded.value) };
+  };
+
+  return {
+    current,
+    async named(catalogReleaseId) {
+      let releaseId: ReturnType<typeof CatalogReleaseId>;
+      try {
+        releaseId = CatalogReleaseId(catalogReleaseId);
+      } catch {
+        return { status: "unknown" };
+      }
+      const pointer = await readCurrentCatalogPointer(pool);
+      if (pointer.kind === "installed" && pointer.current.id === releaseId) {
+        return current();
+      }
+      const resolved = await kernel.resolveCatalogReleasePin(releaseId);
+      if (!resolved.ok) {
+        return { status: "unknown" };
+      }
+      const loaded = await kernel.loadPinnedCatalog(resolved.value);
+      if (!loaded.ok) {
+        return { status: "unknown" };
+      }
+      return { status: "ready", document: factsFromSnapshot(loaded.value) };
+    },
+  };
+};
+
+const expectedModuleKind = (subjectKind: CatalogSubjectKind): string =>
+  subjectKind === "driver" ? "driver-group" : "node-type";
+
+const lookupDefaultDestinationModule = async (
+  pool: pg.Pool,
+  organizationId: string,
+  subjectKind: CatalogSubjectKind,
+): Promise<string | null> => {
+  const result = await pool.query<{ id: string }>(
+    `select id
+       from public.parameter_modules
+      where organization_id = $1
+        and kind = $2
+      order by depth asc, id asc
+      limit 1`,
+    [organizationId, expectedModuleKind(subjectKind)],
+  );
+  return result.rows[0]?.id ?? null;
+};
+
+const lookupChooseParentDestinationModule = async (
+  pool: pg.Pool,
+  organizationId: string,
+  placement: Extract<PlacementIntent, { mode: "choose-parent" }>,
+): Promise<string | null> => {
+  const result = await pool.query<{ id: string }>(
+    `select module.id
+       from public.parameter_modules module
+       join parameter_catalog.subject_placements parent
+         on parent.module_id = module.parent_id
+        and parent.organization_id = module.organization_id
+      where parent.id = $1
+        and module.organization_id = $2
+        and module.name = $3
+      order by module.id asc
+      limit 1`,
+    [placement.parentPlacementId, organizationId, placement.displayName],
+  );
+  return result.rows[0]?.id ?? null;
+};
+
 const createReadPorts = (pool: pg.Pool | undefined, resolveAuth: CatalogApiAuthResolver): CatalogReadPorts => {
   if (!pool) {
     return {
       runtime: unavailableRuntime,
       readiness: {
         async current() {
-          return { status: "not-ready", retryAfterSeconds: 5 };
+          return notReady();
         },
         async named() {
           return { status: "unknown" };
         },
       },
-      registration: unregisteredProjection,
-      usage: zeroUsageProjection,
+      registration: unavailableRegistrationProjection,
+      usage: unavailableUsageProjection,
       timeline: kernelOnlyTimelineComposer,
       authenticate: authenticateCatalog(resolveAuth),
     };
   }
 
   const kernel = createCatalogKernel(pool);
-  const readinessFromPointer = async (namedId?: string) => {
-    const pointer = await readCurrentCatalogPointer(pool);
-    if (pointer.kind !== "installed") {
-      return { status: "not-ready" as const, retryAfterSeconds: 5 };
-    }
-    const pin = pinOf(pointer.current.id, pointer.current.digest);
-    if (namedId && namedId !== pin.id) {
-      let namedPin: CatalogReleasePin;
-      try {
-        namedPin = pinOf(namedId, pin.digest);
-      } catch {
-        return { status: "unknown" as const };
-      }
-      const loadedNamed = await kernel.loadPinnedCatalog(namedPin);
-      if (!loadedNamed.ok) {
-        return { status: "unknown" as const };
-      }
-      return {
-        status: "ready" as const,
-        document: {
-          pin: { id: loadedNamed.value.release.id, digest: loadedNamed.value.release.digest },
-          snapshotKind: "pinned" as const,
-          releaseSequence: 0,
-          publishedAt: new Date(0).toISOString(),
-          materializedAt: new Date(0).toISOString(),
-          materializationFingerprint: pin.digest,
-        },
-      };
-    }
-    const loaded = await kernel.loadCurrentCatalog(pin);
-    if (!loaded.ok) {
-      return { status: "not-ready" as const, retryAfterSeconds: 5 };
-    }
-    return {
-      status: "ready" as const,
-      document: {
-        pin: { id: loaded.value.release.id, digest: loaded.value.release.digest },
-        snapshotKind: "current" as const,
-        releaseSequence: 0,
-        publishedAt: new Date(0).toISOString(),
-        materializedAt: new Date(0).toISOString(),
-        materializationFingerprint: loaded.value.materializationFingerprint,
-      },
-    };
-  };
-
+  const queries = createGovernanceCatalogQueries(pool);
+  const usage = createUsageQueries(pool);
   return {
     runtime: kernel,
-    readiness: {
-      current: () => readinessFromPointer(),
-      named: (catalogReleaseId) => readinessFromPointer(catalogReleaseId),
-    },
-    registration: unregisteredProjection,
-    usage: zeroUsageProjection,
+    readiness: createKernelReadiness(kernel, pool),
+    registration: createRegistrationProjectionFromQueries(queries),
+    usage: createUsageProjectionFromQueries(usage),
     timeline: kernelOnlyTimelineComposer,
     authenticate: authenticateCatalog(resolveAuth),
   };
@@ -271,6 +330,9 @@ const createGovernancePorts = (
         }),
       };
 
+  const kernel = pool ? createCatalogKernel(pool) : undefined;
+  const queries = pool ? createGovernanceCatalogQueries(pool) : undefined;
+
   return {
     authenticate: authenticateGovernance(resolveAuth),
     currentRelease: async () => {
@@ -284,7 +346,38 @@ const createGovernancePorts = (
       return pinOf(pointer.current.id, pointer.current.digest);
     },
     ...commands,
-    ...emptyGovernanceQueryPorts,
+    resolveSubjectKind: kernel
+      ? async (subjectId) => {
+          const pointer = await readCurrentCatalogPointer(pool!);
+          if (pointer.kind !== "installed") {
+            return null;
+          }
+          const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
+          if (!loaded.ok) {
+            return null;
+          }
+          let id: ReturnType<typeof CatalogSubjectId>;
+          try {
+            id = CatalogSubjectId(subjectId);
+          } catch {
+            return null;
+          }
+          const subject = loaded.value.getSubject(id);
+          if (subject.status !== "found" && subject.status !== "retired") {
+            return null;
+          }
+          return subject.subject.kind;
+        }
+      : undefined,
+    resolveDestinationModuleId: pool
+      ? async ({ organizationId, subjectKind, placement }) => {
+          if (placement.mode === "choose-parent") {
+            return lookupChooseParentDestinationModule(pool, organizationId, placement);
+          }
+          return lookupDefaultDestinationModule(pool, organizationId, subjectKind);
+        }
+      : undefined,
+    ...(queries ? bindGovernanceCatalogQueryPorts(queries) : unavailableGovernanceQueryPorts),
   };
 };
 

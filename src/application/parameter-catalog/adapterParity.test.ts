@@ -659,6 +659,15 @@ describe("catalog API and mock adapter parity", () => {
     expect(restored.item.placement).not.toEqual(catalogPlacement);
   });
 
+  it("does not silently switch a historical pin to the current release", async () => {
+    const mock = createMockCatalogPorts();
+    await expect(
+      mock.catalog.getCatalog({ catalogReleaseId: "crel_historical" })
+    ).rejects.toMatchObject({ details: { reason: "release-drift" } });
+    const current = await mock.catalog.getCatalog({ catalogReleaseId: CATALOG_RELEASE_ID });
+    expect(current.item.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
+  });
+
   it("hides unknown legacy, out-of-scope org, and never returns Acme fixtures", async () => {
     const mock = createMockCatalogPorts();
     const api = createApiCatalogPorts(

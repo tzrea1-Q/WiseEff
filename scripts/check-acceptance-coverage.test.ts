@@ -107,7 +107,7 @@ describe("acceptance coverage checker", () => {
     ).toEqual(m58RequiredIds.map((id) => ({ id, required: true })));
   });
 
-  it("registers the canonical parameter catalog requirements as non-blocking metadata until S9", () => {
+  it("registers the canonical parameter catalog requirements as blocking browser coverage", () => {
     const expectedIds = [
       "PCAT-UI-01",
       "PCAT-UI-02",
@@ -130,7 +130,7 @@ describe("acceptance coverage checker", () => {
       acceptanceRequirements
         .filter((requirement) => requirement.id.startsWith("PCAT-UI-"))
         .map((requirement) => ({ id: requirement.id, workflow: requirement.workflow, required: requirement.required }))
-    ).toEqual(expectedIds.map((id) => ({ id, workflow: "C", required: false })));
+    ).toEqual(expectedIds.map((id) => ({ id, workflow: "C", required: true })));
   });
 
   it("planned markers never satisfy a required requirement", () => {

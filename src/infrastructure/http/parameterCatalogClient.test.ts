@@ -56,6 +56,16 @@ describe("parameter catalog client contract", () => {
     );
   });
 
+  it("pins historical catalog reads with catalogReleaseId instead of borrowing current", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(catalogDocument));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await client.getCatalog({ catalogReleaseId: "crel_historical" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/catalog?catalogReleaseId=crel_historical",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("sends release, If-Match, and Idempotency-Key on review resolution and never spoofs a role", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({

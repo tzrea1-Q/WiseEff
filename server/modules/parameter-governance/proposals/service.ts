@@ -1,6 +1,6 @@
 import type pg from "pg";
 
-import type { ProposalCommand } from "./command";
+import type { ProposalCommand, SubmitProposalCommand } from "./command";
 import { validateProposalCommand } from "./command";
 import { writeRefusalAudit } from "./audit";
 import type { ProposalFailure } from "./failures";
@@ -45,3 +45,9 @@ export const executeProposal = async (
 export const createProposalService = (pool: pg.Pool): ProposalService => ({
   execute: (command) => executeProposal(pool, command),
 });
+
+/** Internal create-and-submit adapter. Existing kind:"submit" callers only. */
+export const executeCreateAndSubmit = (
+  pool: pg.Pool,
+  command: SubmitProposalCommand,
+): Promise<Result<ProposalResult, ProposalFailure>> => executeProposal(pool, command);

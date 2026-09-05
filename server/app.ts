@@ -246,7 +246,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
-    resolveAuth: (request) => getCurrentAuthContext(options, request)
+    resolveAuth: authResolver
   });
 
   router.get("/metrics", async () => {

@@ -12,16 +12,16 @@ export function createApiParameterCatalogRepository(
   client: ParameterCatalogClient
 ): ParameterCatalogRepository {
   return {
-    getCatalog: () => client.getCatalog(),
+    getCatalog: (query) => client.getCatalog(query),
     listSubjects: (query) => client.listSubjects(query),
-    getSubject: (subjectId) => client.getSubject(subjectId),
+    getSubject: (subjectId, query) => client.getSubject(subjectId, query),
     listSubjectDefinitions: (subjectId, query) => client.listSubjectDefinitions(subjectId, query),
     listDefinitions: (query) => client.listDefinitions(query),
-    getDefinition: (definitionId) => client.getDefinition(definitionId),
+    getDefinition: (definitionId, query) => client.getDefinition(definitionId, query),
     listDefinitionRevisions: (definitionId, query) =>
       client.listDefinitionRevisions(definitionId, query),
-    getDefinitionRevision: (definitionId, revisionId) =>
-      client.getDefinitionRevision(definitionId, revisionId),
+    getDefinitionRevision: (definitionId, revisionId, query) =>
+      client.getDefinitionRevision(definitionId, revisionId, query),
     listDefinitionTimeline: (definitionId, query) =>
       client.listDefinitionTimeline(definitionId, query),
     getLegacyIdentifier: (legacyType, legacyId) => client.getLegacyIdentifier(legacyType, legacyId)

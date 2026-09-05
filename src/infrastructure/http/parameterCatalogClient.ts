@@ -114,6 +114,7 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (query.search) params.set("search", query.search);
   if (query.subjectId) params.set("subjectId", query.subjectId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
+  if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
   const encoded = params.toString();
   return encoded ? `${path}?${encoded}` : path;
 }
@@ -201,8 +202,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
   }
 
   const client = {
-    getCatalog: () =>
-      request("GET", canonical("catalog.get"), catalogDocumentResponseSchema, "CatalogDocumentResponse"),
+    getCatalog: (query?: CatalogListQuery) =>
+      request(
+        "GET",
+        canonical("catalog.get", {}, query),
+        catalogDocumentResponseSchema,
+        "CatalogDocumentResponse"
+      ),
     listSubjects: (query?: CatalogListQuery) =>
       request(
         "GET",
@@ -210,10 +216,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogSubjectListResponseSchema,
         "CatalogSubjectListResponse"
       ),
-    getSubject: (subjectId: string) =>
+    getSubject: (subjectId: string, query?: CatalogListQuery) =>
       request(
         "GET",
-        canonical("catalog.getSubject", { subjectId }),
+        canonical("catalog.getSubject", { subjectId }, query),
         catalogSubjectResponseSchema,
         "CatalogSubjectResponse"
       ),
@@ -231,10 +237,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionListResponseSchema,
         "CatalogDefinitionListResponse"
       ),
-    getDefinition: (definitionId: string) =>
+    getDefinition: (definitionId: string, query?: CatalogListQuery) =>
       request(
         "GET",
-        canonical("catalog.getDefinition", { definitionId }),
+        canonical("catalog.getDefinition", { definitionId }, query),
         catalogDefinitionResponseSchema,
         "CatalogDefinitionResponse"
       ),
@@ -245,10 +251,14 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogDefinitionRevisionListResponseSchema,
         "CatalogDefinitionRevisionListResponse"
       ),
-    getDefinitionRevision: (definitionId: string, revisionId: string) =>
+    getDefinitionRevision: (
+      definitionId: string,
+      revisionId: string,
+      query?: CatalogListQuery
+    ) =>
       request(
         "GET",
-        canonical("catalog.getDefinitionRevision", { definitionId, revisionId }),
+        canonical("catalog.getDefinitionRevision", { definitionId, revisionId }, query),
         catalogDefinitionRevisionResponseSchema,
         "CatalogDefinitionRevisionResponse"
       ),

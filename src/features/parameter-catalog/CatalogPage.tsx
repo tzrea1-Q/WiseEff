@@ -10,9 +10,11 @@ import {
 import {
   buildCatalogHref,
   parseCatalogUrlAnchor,
+  readLegacyCatalogBookmark,
+  withCatalogReleasePin,
   type CatalogUrlAnchor
 } from "@/application/parameter-catalog/urlAnchor";
-import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
+import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/parameter-catalog/authority";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { DataTable, type Column } from "@/components/admin";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -72,6 +74,11 @@ export type CatalogPageProps = {
   actor: CatalogActorKind;
   search?: string;
   onAnchorChange?: (href: string, mode: "push" | "replace") => void;
+  onDomainStateChange?: (state: CatalogDomainState) => void;
+  onAction?: (
+    action: CatalogAuthorizedAction,
+    context?: { subjectId?: string | null; registrationId?: string | null }
+  ) => void;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
   listReviewItems?: (
@@ -137,6 +144,8 @@ export function CatalogPage({
   actor,
   search,
   onAnchorChange,
+  onDomainStateChange,
+  onAction,
   layoutMode: layoutOverride,
   organizationId,
   listReviewItems
@@ -193,13 +202,29 @@ export function CatalogPage({
   const load = useCallback(async () => {
     setInFlight(true);
     try {
-      const query: CatalogListQuery = {};
+      const catalog = repositoryRef.current;
+      const currentAnchor = parseCatalogUrlAnchor(resolvedSearch);
+      const legacyBookmark = readLegacyCatalogBookmark(resolvedSearch);
+      if (legacyBookmark && !currentAnchor.definitionId && !currentAnchor.subjectId) {
+        const mapped = await catalog.getLegacyIdentifier(legacyBookmark.legacyType, legacyBookmark.legacyId);
+        const target = mapped.item.target;
+        commitAnchor(
+          {
+            subjectId: target.kind === "catalog-subject" ? target.id : currentAnchor.subjectId,
+            definitionId: target.kind === "parameter-definition" ? target.id : currentAnchor.definitionId,
+            catalogReleaseId: currentAnchor.catalogReleaseId,
+            reviewItemId: currentAnchor.reviewItemId
+          },
+          "replace"
+        );
+        return;
+      }
+      const pin = withCatalogReleasePin(undefined, currentAnchor.catalogReleaseId);
+      const query: CatalogListQuery = { ...pin };
       if (searchQuery.trim()) {
         query.search = searchQuery.trim();
       }
-      const catalog = repositoryRef.current;
-      const document = await catalog.getCatalog();
-      const currentAnchor = parseCatalogUrlAnchor(resolvedSearch);
+      const document = await catalog.getCatalog(pin);
       const subjects = await catalog.listSubjects(query);
       let subject: SubjectItem | null = null;
       let definition: DefinitionItem | null = null;
@@ -213,10 +238,10 @@ export function CatalogPage({
       const subjectsEmptyReason = emptyCollectionReason(subjects);
 
       if (currentAnchor.definitionId) {
-        const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId);
+        const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
         definition = definitionResponse.item;
-        timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId);
-        const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId);
+        timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, query);
+        const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, query);
         revisions = revisionList.items;
       }
 
@@ -229,7 +254,7 @@ export function CatalogPage({
           emptyReason: "no-registrations"
         };
       } else if (subjectId) {
-        const subjectResponse = await catalog.getSubject(subjectId);
+        const subjectResponse = await catalog.getSubject(subjectId, pin);
         subject = subjectResponse.item;
         definitions = await catalog.listSubjectDefinitions(subjectId, query);
       } else {
@@ -239,7 +264,11 @@ export function CatalogPage({
       let review: CatalogReviewItemListResponse | null = null;
       const reviewLoader = listReviewItemsRef.current;
       if (reviewLoader && organizationId) {
-        review = await reviewLoader(organizationId);
+        try {
+          review = await reviewLoader(organizationId, query);
+        } catch {
+          review = null;
+        }
       }
 
       setSnapshot({
@@ -258,7 +287,7 @@ export function CatalogPage({
     } finally {
       setInFlight(false);
     }
-  }, [organizationId, resolvedSearch, searchQuery]);
+  }, [commitAnchor, organizationId, resolvedSearch, searchQuery]);
 
   useEffect(() => {
     void load();
@@ -268,10 +297,10 @@ export function CatalogPage({
     if (!snapshot) {
       return;
     }
-    const catalogReleaseId = snapshot.document.item.catalogReleaseId;
-    if (anchor.catalogReleaseId === catalogReleaseId) {
+    if (anchor.catalogReleaseId) {
       return;
     }
+    const catalogReleaseId = snapshot.document.item.catalogReleaseId;
     commitAnchor(
       {
         ...anchor,
@@ -303,6 +332,19 @@ export function CatalogPage({
   });
   const writesEnabled = catalogWritesEnabled(domainState);
   const actions = catalogActionAffordances(actor, domainState);
+  const onDomainStateChangeRef = useRef(onDomainStateChange);
+  onDomainStateChangeRef.current = onDomainStateChange;
+  const lastNotifiedDomainState = useRef("");
+
+  useEffect(() => {
+    const emptyReason = domainState.kind === "empty" ? domainState.emptyReason : "";
+    const key = `${domainState.kind}:${domainState.catalogReleaseId ?? ""}:${emptyReason}`;
+    if (lastNotifiedDomainState.current === key) {
+      return;
+    }
+    lastNotifiedDomainState.current = key;
+    onDomainStateChangeRef.current?.(domainState);
+  }, [domainState]);
   const statusMessage = catalogStateMessage(domainState);
   const reviewEmptyReason = emptyCollectionReason(snapshot?.review ?? null);
   const listEmptyReason =
@@ -404,12 +446,18 @@ export function CatalogPage({
   const definition = snapshot?.definition ?? null;
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
+  const noOrgRegistrations =
+    !anchor.subjectId &&
+    (snapshot?.subjects.items.length ?? 0) > 0 &&
+    (snapshot?.subjects.items.every((item) => item.registration.status === "unregistered") ?? false);
   const pageEmptyReason =
     domainState.kind === "empty"
       ? domainState.emptyReason
       : filterEmptyReason && visibleDefinitions.length === 0
         ? filterEmptyReason
-        : null;
+        : noOrgRegistrations
+          ? "no-registrations"
+          : null;
 
   return (
     <div
@@ -468,6 +516,15 @@ export function CatalogPage({
               disabled={!action.enabled}
               title={action.disabledReason ?? undefined}
               aria-disabled={!action.enabled}
+              onClick={() =>
+                onAction?.(action.action, {
+                  subjectId: subject?.id ?? anchor.subjectId,
+                  registrationId:
+                    subject?.registration.status && subject.registration.status !== "unregistered"
+                      ? subject.registration.id
+                      : null
+                })
+              }
             >
               {action.label}
             </button>

@@ -93,6 +93,7 @@ export type CatalogListQuery = {
   search?: string;
   subjectId?: string;
   propertyKey?: string;
+  catalogReleaseId?: string;
 };
 
 export function catalogDocumentFromDto(dto: CatalogDocumentResponse): CatalogDocumentResponse {

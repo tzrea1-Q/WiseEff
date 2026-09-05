@@ -67,4 +67,20 @@ export const THREAT_MATRIX: readonly ThreatMatrixRow[] = Object.freeze([
     expected: "exact stored proposal and revision 1 with outcome=replayed",
     leftover: "no second proposal or revision row",
   }),
+  freezeRow({
+    id: 8,
+    name: "create-draft-then-submit-existing",
+    initialState: "no Proposal; captured Catalog pin and Definition revision",
+    action: "create-draft then submit-existing of the same proposalId",
+    expected: "one draft then the same identity submitted; no second Proposal",
+    leftover: "one proposal row, one revision row; ETag advanced; no publication intent",
+  }),
+  freezeRow({
+    id: 9,
+    name: "submit-existing-not-create-and-submit",
+    initialState: "internal kind:submit adapter still used by existing callers",
+    action: "compare submit-existing against kind:submit create-and-submit",
+    expected: "submit-existing never inserts a Proposal; adapter remains one-transaction create-and-submit",
+    leftover: "HTTP /proposals/:id/submit must not use the adapter",
+  }),
 ]);

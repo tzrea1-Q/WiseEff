@@ -129,9 +129,9 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | Review queue | `GET /api/v2/organizations/{organizationId}/parameter-review-items` | unknown、ambiguous、placement-conflict、retired-registration 工作。 |
 | Review detail | `GET /api/v2/organizations/{organizationId}/parameter-review-items/{reviewItemId}` | evidence、candidates、status 与 allowed resolutions。 |
 | Review resolution | `POST .../{reviewItemId}/resolve` | 单一显式 resolution；绝不创建 Organization definition。 |
-| Proposals | `GET, POST /api/v2/catalog/definition-proposals` | 按角色 scope 的列表或 Organization 编写的 draft；Organization 从可信上下文得到。 |
-| Proposal detail | `GET /api/v2/catalog/definition-proposals/{proposalId}` | 不可变 base release/revision 与可变 draft metadata。 |
-| Proposal workflow | `POST .../{proposalId}/submit`、`/withdraw`、`/accept`、`/reject` | Org Admin submit/withdraw；另一名 Platform Admin accept/reject；acceptance 只记录 publication intent。 |
+| Proposals | `GET, POST /api/v2/catalog/definition-proposals` | 按角色 scope 的列表，或 `POST` 创建 draft（`kind: "create-draft"`）。Organization 从可信上下文得到。Create 不会提交。 |
+| Proposal detail | `GET /api/v2/catalog/definition-proposals/{proposalId}` | 不可变 base release/revision 与可变 draft metadata。Proposal ID 不是 definition revision ID。 |
+| Proposal workflow | `POST .../{proposalId}/submit`、`/withdraw`、`/accept`、`/reject` | Submit-existing（`kind: "submit-existing"`）是同一 proposalId 的原位 ETag 转换。Org Admin submit/withdraw；另一名 Platform Admin accept/reject；acceptance 只记录一条 publication intent，不写正式 Catalog 定义。 |
 | Legacy identifier | `GET /api/v2/catalog/legacy-identifiers/{legacyType}/{legacyId}` | 有界、带授权的精确 mapping lookup；不提供搜索或候选暴露。 |
 | Project bindings | `GET /api/v2/projects/{projectId}/parameter-bindings` | 保留原 path；协调切换后返回规范 binding DTO 与 ID。 |
 | Binding history/compare | 现有 `/api/v2/projects/{projectId}/bindings/{bindingId}/history` 与 `/compare` | 保留 path；entry 固定规范 definition revision 和 value。 |

@@ -7,6 +7,36 @@ import type { CatalogGovernanceResponse } from "./types";
 
 const CATALOG_NOT_READY_RETRY_AFTER_SECONDS = 5;
 
+export type CatalogGovernanceQueryFailure = {
+  readonly kind: string;
+  readonly reason?: string;
+  readonly operation?: string;
+  readonly resource?: string;
+};
+
+export class CatalogGovernanceQueryError extends Error {
+  readonly failure: CatalogGovernanceQueryFailure;
+
+  constructor(failure: CatalogGovernanceQueryFailure) {
+    super(failure.kind);
+    this.name = "CatalogGovernanceQueryError";
+    this.failure = failure;
+  }
+}
+
+export function mapGovernanceQueryError(
+  error: CatalogGovernanceQueryError,
+  requestId: string,
+): CatalogGovernanceResponse {
+  if (error.failure.kind === "invalid-query" || error.failure.kind === "invalid-cursor") {
+    return validationFailed(requestId, error.failure.reason ?? "query");
+  }
+  if (error.failure.kind === "not-found") {
+    return notFound(requestId);
+  }
+  return catalogNotReady(requestId);
+}
+
 export function catalogGovernanceError(input: {
   readonly status: number;
   readonly code: string;

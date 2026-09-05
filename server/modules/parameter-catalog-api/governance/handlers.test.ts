@@ -407,6 +407,7 @@ describe("S8-GOV one-command HTTP mapping", () => {
         body: {
           base: {
             catalogReleaseId: pin.id,
+            definitionId: "pdef_acme_power_iin_max",
             definitionRevisionId: "drev_acme_power_iin_max_1",
           },
           requestedChange: { kind: "revise-definition" },
@@ -415,8 +416,32 @@ describe("S8-GOV one-command HTTP mapping", () => {
       }),
     );
     expect(calls).toEqual(["executeProposal"]);
-    expect(commands[0]).toMatchObject({ kind: "submit" });
+    expect(commands[0]).toMatchObject({ kind: "create-draft" });
     expect(response.status).toBe(201);
+    catalogProposalResponseSchema.parse(response.body);
+  });
+
+  it("submits an existing proposal by proposalId and If-Match, not as a revision id", async () => {
+    const { ports, calls, commands } = createHarness();
+    const response = await handleCatalogGovernance(
+      ports,
+      request("POST", "/api/v2/catalog/definition-proposals/dprop_s8_gov/submit", {
+        headers: {
+          [CATALOG_RELEASE_HEADER]: pin.id,
+          [CATALOG_IDEMPOTENCY_HEADER]: "idem-submit-existing",
+          [CATALOG_IF_MATCH_HEADER]: '"dprop_s8_gov-v1"',
+        },
+        body: { reason: "submit draft" },
+      }),
+    );
+    expect(calls).toEqual(["executeProposal"]);
+    expect(commands[0]).toMatchObject({
+      kind: "submit-existing",
+      proposalId: "dprop_s8_gov",
+      expectedEtag: 1,
+    });
+    expect(commands[0]).not.toMatchObject({ kind: "submit" });
+    expect(response.status).toBe(200);
     catalogProposalResponseSchema.parse(response.body);
   });
 

@@ -4,6 +4,7 @@ import {
   CATALOG_PAGE_PATH,
   buildCatalogHref,
   parseCatalogUrlAnchor,
+  readLegacyCatalogBookmark,
   serializeCatalogUrlAnchor
 } from "./urlAnchor";
 import { CATALOG_DEFINITION_ID, CATALOG_RELEASE_ID, CATALOG_REVIEW_ITEM_ID, CATALOG_SUBJECT_ID } from "./fixtures";
@@ -52,5 +53,17 @@ describe("catalog URL and release anchors", () => {
       reviewItemId: null
     });
     expect(serializeCatalogUrlAnchor(parseCatalogUrlAnchor(""))).toBe("");
+  });
+
+  it("reads leftover spec-library keys as official legacy bookmarks, not search text", () => {
+    expect(readLegacyCatalogBookmark("?spec=spec-sc8562-gpio-int&q=gpio")).toEqual({
+      legacyType: "parameter-spec",
+      legacyId: "spec-sc8562-gpio-int"
+    });
+    expect(readLegacyCatalogBookmark("?parameterSpecId=spec-sc8562-gpio-int")).toEqual({
+      legacyType: "parameter-spec",
+      legacyId: "spec-sc8562-gpio-int"
+    });
+    expect(readLegacyCatalogBookmark("?q=gpio&subjectId=csub_01KSC8562")).toBeNull();
   });
 });

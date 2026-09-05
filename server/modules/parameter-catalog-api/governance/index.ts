@@ -6,7 +6,13 @@ export {
 } from "./mapping";
 export { registerCatalogGovernanceRoutes, catalogGovernanceRouteManifest } from "./routes";
 export { createCatalogGovernanceHttpServer, listenCatalogGovernanceHttpServer } from "./http";
-export { bindCatalogGovernanceCommands, emptyGovernanceQueryPorts } from "./ports";
+export {
+  bindCatalogGovernanceCommands,
+  bindGovernanceCatalogQueryPorts,
+  emptyGovernanceQueryPorts,
+  emptyGovernanceQueryPortsForTests,
+  unavailableGovernanceQueryPorts,
+} from "./ports";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
 export type {

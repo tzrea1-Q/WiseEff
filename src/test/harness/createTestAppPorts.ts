@@ -70,6 +70,8 @@ export function createTestAppPorts(options: CreateTestAppPortsOptions = {}): Tes
     authClient: pickPort(assembled, overrides, "authClient"),
     parameterRepository: pickPort(assembled, overrides, "parameterRepository"),
     parameterTopologyRepository: pickPort(assembled, overrides, "parameterTopologyRepository"),
+    parameterCatalogRepository: pickPort(assembled, overrides, "parameterCatalogRepository"),
+    parameterCatalogGovernanceRepository: pickPort(assembled, overrides, "parameterCatalogGovernanceRepository"),
     parameterDashboardRepository: pickPort(assembled, overrides, "parameterDashboardRepository"),
     logAnalysisRepository: pickPort(assembled, overrides, "logAnalysisRepository"),
     productFeedbackRepository: pickPort(assembled, overrides, "productFeedbackRepository"),

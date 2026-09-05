@@ -1570,12 +1570,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["User", "Org Admin", "Platform Admin", "Agent"],
     action: "Enter the only Parameter definitions destination and load one exact Catalog Release and its definition list.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-01"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-CATALOG-DEEP-LINK-001",
@@ -1584,12 +1582,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs?subjectId=:subjectId&definitionId=:definitionId&catalogReleaseId=:catalogReleaseId",
     roles: ["User", "Org Admin"],
     action: "Reload and navigate Back and Forward while retaining opaque Subject, Definition, and exact Catalog Release selection.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-02"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-DEFINITION-DETAIL-001",
@@ -1598,12 +1594,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["User", "Org Admin"],
     action: "Search and select a Subject and Definition, then inspect formal owner, current and pinned revision, safe usage, Registration, and Placement.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-03"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-REVIEW-RESOLVE-001",
@@ -1612,12 +1606,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Org Admin"],
     action: "Resolve register, restore, out-of-scope, and open-proposal Review Queue variants with exact release, ETag, idempotency, and Placement preconditions.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-04"],
     specFiles: ["e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-GOV owns e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-TIMELINE-001",
@@ -1626,12 +1618,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Authorized reader"],
     action: "Page deterministic Catalog publication and revision facts together with only authorized governance and audit history.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-05"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-READY-ACTIONS-001",
@@ -1640,12 +1630,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["User", "Org Admin", "Platform Admin", "Agent"],
     action: "Compare ready-state action affordances and server denials for every represented role while keeping the Catalog Release anchor visible.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-06"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-REGISTRATION-001",
@@ -1654,12 +1642,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Org Admin", "User", "Platform Admin", "Agent"],
     action: "Choose default-root or explicit-parent Placement for an unregistered Subject, register once, reload stable IDs, and prove all unauthorized roles are denied.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-07"],
     specFiles: ["e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-GOV owns e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-CATALOG-STATES-001",
@@ -1668,12 +1654,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Authorized reader"],
     action: "Exercise loading, error, no registrations, no definitions, no review work, and no filter match; disable writes while stale data remains visible.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-08"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-RETIRED-HISTORY-001",
@@ -1682,12 +1666,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Authorized reader", "Org Admin"],
     action: "Read retired or deprecated Subject, Definition, Registration, and history, then attempt a prohibited new mutation.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-09"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-CONFLICT-RECONFIRM-001",
@@ -1696,12 +1678,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Org Admin", "Platform Admin"],
     action: "Trigger Catalog Release, ReviewItem ETag, Placement, and idempotency-fingerprint conflicts, preserve input, refresh evidence, and require reconfirmation.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-10"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-BRW owns e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-LEGACY-LINK-001",
@@ -1710,12 +1690,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/api/v2/catalog/legacy-identifiers/:kind/:legacyId",
     roles: ["Authorized caller", "Scope-hidden caller"],
     action: "Exercise exact mapped redirect, archived gone, ambiguous conflict, unknown not-found, and scope-hidden legacy bookmark outcomes.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-11"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-BRW owns e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-AGENT-READONLY-001",
@@ -1724,12 +1702,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Agent"],
     action: "Read within the invoking principal scope and probe every Registration, Placement, Review, Proposal, Catalog mutation, and role-spoof path.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-12"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-BRW owns e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-ADAPTER-PARITY-001",
@@ -1738,12 +1714,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["User", "Org Admin", "Platform Admin", "Agent"],
     action: "Replay the same ready, unregistered, empty, loading, error, retired, and conflict corpus through API and explicit mock adapters.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-13"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-BRW owns e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-RESPONSIVE-001",
@@ -1752,12 +1726,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Authorized reader", "Org Admin"],
     action: "Inspect list, detail, timeline, queue, dialog, drawer, and keyboard focus with no overlap, clipping, hidden action, obstructed overlay, or page overflow.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-14"],
     specFiles: ["e2e/acceptance/parameter-catalog.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-CAT owns e2e/acceptance/parameter-catalog.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PCAT-GOVERNANCE-JOURNEY-001",
@@ -1766,12 +1738,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/specs",
     roles: ["Org Admin", "Platform Admin", "User", "Agent"],
     action: "Complete navigation, search, detail, timeline, Registration and Placement, Review, Proposal, conflict refresh, deep-link, and keyboard-focus journeys with positive and negative roles.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PCAT-UI-15"],
     specFiles: ["e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit", "screenshot"],
-    deferralReason:
-      "S9-GOV owns e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts with a planned mount-blocked stub. CatalogPage is not mounted on /parameter-admin/specs, so coverage stays future until the parent App.tsx mount; this metadata is not browser evidence."
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
     id: "PARAM-SPEC-GOVERN-001",
