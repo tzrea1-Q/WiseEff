@@ -130,19 +130,21 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await catalogScreenshot(page, testInfo, "pcat-ui-11-legacy");
   });
 
-  test("keeps Agent access read-only and refuses governance mutation or role-spoof paths", async ({
+  test("keeps guest access read-only and refuses governance mutation or role-spoof paths", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-12
     // @operation PCAT-AGENT-READONLY-001
+    // This is the guest UI/API portion only. Actual Agent execution is covered
+    // separately by server/modules/agent/xiaoze/catalogBoundary.integration.test.ts.
     const before = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
-    await openCatalogAt(page, "agent");
+    await openCatalogAt(page, "guest");
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
-    const read = await catalogJson(page.request, "GET", "/api/v2/catalog", { actor: "agent" });
+    const read = await catalogJson(page.request, "GET", "/api/v2/catalog", { actor: "guest" });
     expect(read.status).toBe(200);
     const write = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
-      actor: "agent",
+      actor: "guest",
       headers: {
         "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
         "Idempotency-Key": `pcat-ui-12:${Date.now()}`,
@@ -150,12 +152,12 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
         "X-WiseEff-Organization": fixture.organizationId,
         "X-WiseEff-Actor-Kind": "org-admin"
       },
-      data: { subjectId: fixture.sensorSubjectId, placement: { mode: "use-default" }, reason: "spoofed agent write" }
+      data: { subjectId: fixture.sensorSubjectId, placement: { mode: "use-default" }, reason: "spoofed guest write" }
     });
     expect(write.status).toBe(403);
     const after = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
     expect(after).toBe(before);
-    await catalogScreenshot(page, testInfo, "pcat-ui-12-agent");
+    await catalogScreenshot(page, testInfo, "pcat-ui-12-guest");
   });
 
   test("replays identical API and mock catalog states without extra mock governance authority", async ({

@@ -37,11 +37,11 @@ import { ACCEPTANCE_ORGANIZATION, acceptanceCast } from "./cast";
 import { seedAcceptanceRoleMatrix } from "./roleFixtures";
 
 export const CATALOG_ACCEPTANCE_ISSUE = 810;
-export const CATALOG_AGENT_USER = {
-  userId: "agt-catalog-acceptance",
-  name: "Catalog Agent",
-  email: "catalog.agent@chargelab.cn",
-  title: "WiseEff Agent"
+export const CATALOG_GUEST_USER = {
+  userId: "user-catalog-guest-acceptance",
+  name: "Catalog Guest",
+  email: "catalog.guest@chargelab.cn",
+  title: "Guest"
 } as const;
 export const CATALOG_ORG_B = { id: "org-catalog-b", name: "Catalog Org B" } as const;
 export const CATALOG_ORG_B_ADMIN = {
@@ -74,7 +74,7 @@ export type CatalogAcceptanceFixture = {
   chain: InstalledCatalogMatchChain;
   organizationId: string;
   organizationBId: string;
-  agentUserId: string;
+  guestUserId: string;
   chargerSubjectId: string;
   sensorSubjectId: string;
   powerSubjectId: string;
@@ -179,7 +179,7 @@ async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
     chain,
     organizationId: ACCEPTANCE_ORGANIZATION.id,
     organizationBId: CATALOG_ORG_B.id,
-    agentUserId: CATALOG_AGENT_USER.userId,
+    guestUserId: CATALOG_GUEST_USER.userId,
     chargerSubjectId: CHARGER_SUBJECT_ID,
     sensorSubjectId: SENSOR_SUBJECT_ID,
     powerSubjectId: SUBJECT_ID,
@@ -257,11 +257,11 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
        title = excluded.title,
        is_active = excluded.is_active`,
     [
-      CATALOG_AGENT_USER.userId,
+      CATALOG_GUEST_USER.userId,
       ACCEPTANCE_ORGANIZATION.id,
-      CATALOG_AGENT_USER.name,
-      CATALOG_AGENT_USER.email,
-      CATALOG_AGENT_USER.title,
+      CATALOG_GUEST_USER.name,
+      CATALOG_GUEST_USER.email,
+      CATALOG_GUEST_USER.title,
       CATALOG_ORG_B_ADMIN.userId,
       CATALOG_ORG_B.id,
       CATALOG_ORG_B_ADMIN.name,
@@ -272,13 +272,13 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
   await pool.query(
     `insert into public.user_role_bindings (id, user_id, organization_id, project_id, role_id)
      values
-       ('urb-op08-agent', $1, $2, null, 'guest'),
+       ('urb-op08-guest', $1, $2, null, 'guest'),
        ('urb-op08-org-b-admin', $3, $4, null, 'admin')
      on conflict (id) do update set
        user_id = excluded.user_id,
        organization_id = excluded.organization_id,
        role_id = excluded.role_id`,
-    [CATALOG_AGENT_USER.userId, ACCEPTANCE_ORGANIZATION.id, CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B.id]
+    [CATALOG_GUEST_USER.userId, ACCEPTANCE_ORGANIZATION.id, CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B.id]
   );
   void acceptanceCast;
   void X_REVISION_1;

@@ -4,7 +4,7 @@ import { acceptanceCast } from "./cast";
 import { authHeadersForRole, authHeadersForUser, signInBrowserAsUser } from "./bearerAuth";
 import type { ExpectedApiFailure } from "./browserDiagnostics";
 import {
-  CATALOG_AGENT_USER,
+  CATALOG_GUEST_USER,
   CATALOG_ORG_B_ADMIN,
   type CatalogAcceptanceFixture
 } from "./catalogEvidence";
@@ -39,7 +39,7 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 }
 ];
 
-export type CatalogBrowserActor = "org-admin" | "user" | "platform-admin" | "agent" | "org-b-admin";
+export type CatalogBrowserActor = "org-admin" | "user" | "platform-admin" | "guest" | "org-b-admin";
 
 export function catalogPage(page: Page) {
   return page.getByRole("region", { name: "参数定义目录" });
@@ -83,12 +83,12 @@ export async function signInCatalogActor(page: Page, actor: CatalogBrowserActor,
     );
     return;
   }
-  if (actor === "agent") {
+  if (actor === "guest") {
     await signInBrowserAsUser(
       page,
-      CATALOG_AGENT_USER.userId,
-      CATALOG_AGENT_USER.email,
-      CATALOG_AGENT_USER.name,
+      CATALOG_GUEST_USER.userId,
+      CATALOG_GUEST_USER.email,
+      CATALOG_GUEST_USER.name,
       route
     );
     return;
@@ -116,8 +116,8 @@ export function catalogAuthHeaders(actor: CatalogBrowserActor) {
   if (actor === "user") {
     return authHeadersForRole("hardware-user");
   }
-  if (actor === "agent") {
-    return authHeadersForUser(CATALOG_AGENT_USER.userId, CATALOG_AGENT_USER.email, CATALOG_AGENT_USER.name);
+  if (actor === "guest") {
+    return authHeadersForUser(CATALOG_GUEST_USER.userId, CATALOG_GUEST_USER.email, CATALOG_GUEST_USER.name);
   }
   return authHeadersForUser(CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B_ADMIN.email, CATALOG_ORG_B_ADMIN.name);
 }
