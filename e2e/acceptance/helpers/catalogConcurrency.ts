@@ -17,6 +17,19 @@ import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { assertNoPageOverflow, confirmGovernanceDialog, dismissXiaozeHint } from "./catalogBrowser";
 import { startDisposablePostCutoverRuntime } from "./disposablePostCutoverRuntime";
 
+async function proposalBusinessSnapshot(pool: pg.Pool) {
+  return {
+    proposals: (await pool.query("select * from parameter_catalog.definition_proposals order by id")).rows,
+    revisions: (await pool.query("select * from parameter_catalog.definition_proposal_revisions order by id")).rows,
+    intents: (await pool.query("select * from parameter_catalog.catalog_publication_intents order by id")).rows,
+    successAudits: (await pool.query("select * from public.audit_events where kind='definition-proposal' and severity='info' order by id")).rows,
+    dedupe: (await pool.query("select * from parameter_catalog.governance_command_idempotency order by organization_id,command_family,idempotency_key")).rows,
+    registrations: (await pool.query("select * from parameter_catalog.organization_subject_registrations order by id")).rows,
+    placements: (await pool.query("select * from parameter_catalog.subject_placements order by id")).rows,
+    reviews: (await pool.query("select * from parameter_catalog.parameter_review_items order by id")).rows,
+  };
+}
+
 /** Catalog uses the production installer; identity uses password hashes and real session persistence. */
 export async function startCatalogScenarioRuntime(mode: "api" | "mock" = "api", initialRelease: "A" | "F" = "F") {
   const baseLane = await catalogLaneConnectionString();
@@ -90,6 +103,14 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
     await dismissXiaozeHint(page);
     const panel = page.getByRole("region", { name: "定义修订", exact: true });
     const reason = panel.getByRole("textbox", { name: "原因" });
+    const governanceWrites: Array<{ method: string; path: string }> = [];
+    const recordGovernanceWrite = (request: Request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method()) && pathname.startsWith("/api/v2/catalog/")) {
+        governanceWrites.push({ method: request.method(), path: pathname });
+      }
+    };
+    page.on("request", recordGovernanceWrite);
     await reason.fill("R2 keep author input across refresh");
     const creation = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v2/catalog/definition-proposals" && response.request().method() === "POST");
     await panel.getByRole("button", { name: "继续确认", exact: true }).click();
@@ -97,6 +118,7 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
     const created = await creation;
     expect(created.status()).toBe(201);
     const proposal = (await created.json()).item as { id: string; etag: string };
+    expect(governanceWrites).toEqual([{ method: "POST", path: "/api/v2/catalog/definition-proposals" }]);
     const operationPath = `/api/v2/catalog/definition-proposals/${proposal.id}/withdraw`;
     const requests: Array<{ ifMatch: string | undefined; release: string | undefined; key: string | undefined }> = [];
     page.on("request", (request) => {
@@ -127,6 +149,7 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
       "select status, current_proposal_revision_id from parameter_catalog.definition_proposals where id = $1", [proposal.id],
     )).rows;
     const submittedState = await state();
+    const submittedBusiness = await proposalBusinessSnapshot(pool);
     const auditCount = async () => (await pool.query(
       "select count(*)::integer as count from public.audit_events where target_id = $1 and kind = 'definition-proposal' and severity = 'info'", [proposal.id],
     )).rows[0].count;
@@ -137,8 +160,13 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
     expect(rejected.status()).toBe(409);
     expect((await rejected.json()).error.details.reason).toBe(releaseDrift ? "release-drift" : "revision-conflict");
     expect(await state()).toEqual(submittedState);
+    expect(await proposalBusinessSnapshot(pool)).toEqual(submittedBusiness);
     expect(await auditCount()).toBe(beforeAudit);
     expect(requests).toHaveLength(1);
+    expect(governanceWrites).toEqual([
+      { method: "POST", path: "/api/v2/catalog/definition-proposals" },
+      { method: "POST", path: operationPath },
+    ]);
     expect(requests[0].ifMatch).toBe(proposal.etag);
     await expect(reason).toHaveValue("R2 keep author input across refresh");
     await expect(panel.getByRole("alert")).toBeVisible();
@@ -149,6 +177,11 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
     await expect(reason).toHaveValue("R2 keep author input across refresh");
     expect(requests).toHaveLength(1);
     expect(await state()).toEqual(submittedState);
+    expect(await proposalBusinessSnapshot(pool)).toEqual(submittedBusiness);
+    expect(governanceWrites).toEqual([
+      { method: "POST", path: "/api/v2/catalog/definition-proposals" },
+      { method: "POST", path: operationPath },
+    ]);
     await panel.getByRole("button", { name: "撤回修订", exact: true }).click();
     const success = page.waitForResponse((response) => new URL(response.url()).pathname === operationPath && response.request().method() === "POST");
     await confirmGovernanceDialog(page, "确认撤回");
@@ -160,11 +193,35 @@ export async function verifyRealProposalConflict(page: Page, testInfo: TestInfo,
     expect(requests[1].key).not.toBe(requests[0].key);
     expect((await state())[0].status).toBe("withdrawn");
     expect(await auditCount()).toBe(beforeAudit + 1);
+    expect(governanceWrites).toEqual([
+      { method: "POST", path: "/api/v2/catalog/definition-proposals" },
+      { method: "POST", path: operationPath },
+      { method: "POST", path: operationPath },
+    ]);
+    const finalBusiness = await proposalBusinessSnapshot(pool);
+    expect(finalBusiness.proposals).toHaveLength(1);
+    const previous = submittedBusiness.proposals[0];
+    expect(finalBusiness.proposals[0]).toEqual({
+      ...previous,
+      status: "withdrawn",
+      etag_version: String(Number(previous.etag_version) + 1),
+      updated_at: finalBusiness.proposals[0].updated_at,
+    });
+    expect(finalBusiness.revisions).toEqual(submittedBusiness.revisions);
+    expect(finalBusiness.intents).toEqual(submittedBusiness.intents);
+    expect(finalBusiness.registrations).toEqual(submittedBusiness.registrations);
+    expect(finalBusiness.placements).toEqual(submittedBusiness.placements);
+    expect(finalBusiness.reviews).toEqual(submittedBusiness.reviews);
+    expect(finalBusiness.successAudits).toHaveLength(submittedBusiness.successAudits.length + 1);
+    expect(finalBusiness.successAudits).toEqual(expect.arrayContaining(submittedBusiness.successAudits));
+    expect(finalBusiness.dedupe).toHaveLength(submittedBusiness.dedupe.length + 1);
+    expect(finalBusiness.dedupe).toEqual(expect.arrayContaining(submittedBusiness.dedupe));
+    page.off("request", recordGovernanceWrite);
     await expect(panel.getByRole("alert")).toHaveCount(0);
     await assertNoPageOverflow(page);
     await testInfo.attach("r2-real-conflict-snapshot", { body: await page.locator("body").ariaSnapshot(), contentType: "text/plain" });
     await testInfo.attach("r2-real-conflict-evidence", {
-      body: Buffer.from(JSON.stringify({ layer: "browser-real/root-HTTP/real-PG", parentLaneIssue: process.env.WISEEFF_CATALOG_ACCEPTANCE_ISSUE ?? "810", nestedDatabase: runtime.databaseName, sessions: "two real local login sessions of one org-admin author", writes: requests, statuses: [409, 200] }, null, 2)),
+      body: Buffer.from(JSON.stringify({ layer: "browser-real/root-HTTP/real-PG", parentLaneIssue: process.env.WISEEFF_CATALOG_ACCEPTANCE_ISSUE ?? "810", nestedDatabase: runtime.databaseName, sessions: "two real local login sessions of one org-admin author", writes: requests, governanceWrites, submittedBusiness, finalBusiness, statuses: [409, 200] }, null, 2)),
       contentType: "application/json",
     });
     await page.screenshot({ path: testInfo.outputPath("r2-real-conflict.png"), fullPage: true });
@@ -200,13 +257,7 @@ export async function verifyCommittedProposalResponseFailure(page: Page, testInf
     let firstSnapshot: unknown;
     let committedEvidence: unknown;
     let writeCount = 0;
-    const evidence = async () => ({
-      proposals: (await pool.query("select id,status,current_proposal_revision_id from parameter_catalog.definition_proposals order by id")).rows,
-      revisions: (await pool.query("select id,proposal_id,revision_number from parameter_catalog.definition_proposal_revisions order by id")).rows,
-      intents: (await pool.query("select id from parameter_catalog.catalog_publication_intents order by id")).rows,
-      successAudits: (await pool.query("select id from public.audit_events where kind='definition-proposal' and severity='info' order by id")).rows,
-      dedupe: (await pool.query("select command_family,idempotency_key,state,result_ref from parameter_catalog.governance_command_idempotency order by command_family,idempotency_key")).rows,
-    });
+    const evidence = () => proposalBusinessSnapshot(pool);
     await page.route("**/api/v2/catalog/definition-proposals", async (route) => {
       if (route.request().method() !== "POST") return route.continue();
       writeCount += 1;

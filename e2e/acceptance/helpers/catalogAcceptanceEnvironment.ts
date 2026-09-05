@@ -22,6 +22,12 @@ export async function catalogLaneConnectionString(
   }
   const connectionString = env.DATABASE_URL?.trim() || env.TEST_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("Catalog acceptance requires a dedicated PostgreSQL lane URL.");
+  // node-postgres accepts routing overrides in query parameters. Lane scripts
+  // emit plain URLs; reject extensions before any ownership probe can connect.
+  const inputUrl = new URL(connectionString);
+  if (inputUrl.search || inputUrl.hash) {
+    throw new Error("Catalog lane URLs cannot contain query parameters or a fragment.");
+  }
   const url = assertCatalogLaneEvidenceUrl(connectionString);
   if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || Number(url.port) !== DEFAULT_LANE_PORT) {
     throw new Error("Catalog acceptance requires the dedicated loopback pgvector server on port 55438.");

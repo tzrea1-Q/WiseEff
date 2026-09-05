@@ -139,6 +139,7 @@ describe("parameter catalog stable failures", () => {
       "invalid-placement-parent",
       "observation-ambiguous",
       "proposal-stale",
+      "proposal-replay-unavailable",
       "proposal-self-approval-forbidden",
       "revision-conflict",
       "legacy-id-archived",

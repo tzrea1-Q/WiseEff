@@ -21,6 +21,21 @@ function environment(url: string, issue?: string) {
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 describe("Catalog acceptance database authorization", () => {
+  it.each([
+    "?host=127.0.0.1&port=5432",
+    "?port=5432",
+    "?host=/tmp",
+    "?%68ost=example.test",
+    "?host=127.0.0.1&host=example.test",
+    "?dbname=wiseeff",
+    "?options=-csearch_path=public",
+    "#ignored-fragment",
+  ])("rejects alternate driver connection parameters before ownership checks: %s", async (suffix) => {
+    environment(lane(819) + suffix, "819");
+    await expect(catalogLaneConnectionString()).rejects.toThrow(/parameters|fragment/i);
+    expect(owned.verify).not.toHaveBeenCalled();
+  });
+
   it.each([810, 819, 820])("accepts only the exact assigned lane %i", async (issue) => {
     environment(lane(issue), String(issue));
     expect(await catalogLaneConnectionString()).toBe(lane(issue));

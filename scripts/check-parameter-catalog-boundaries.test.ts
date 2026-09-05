@@ -767,8 +767,8 @@ describe("parameter catalog boundary checker", () => {
       });
       expect(report.status).toBe("passed");
       expect(report.summary).toEqual({
-        violations: 3_519,
-        allowlisted: 3_519,
+        violations: 3_513,
+        allowlisted: 3_513,
         unallowlisted: 0,
         staleAllowances: 0,
         metadataMismatches: 0,
