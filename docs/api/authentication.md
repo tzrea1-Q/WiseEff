@@ -18,7 +18,7 @@ Development requests may use:
 x-wiseeff-user: <seed-user-id>
 ```
 
-This is only for local development and tests. Catalog routes still derive Organization, role, Agent, and System identity from trusted server context. Requests must not self-assert `X-WiseEff-Role`, `X-WiseEff-Organization`, `X-WiseEff-Actor-Kind`, or `X-WiseEff-Agent`. Publication-dependent catalog writes send `X-WiseEff-Catalog-Release`; governance writes also send `If-Match` and `Idempotency-Key`.
+This is only for local development and tests. In production (`AUTH_MODE=production`), Catalog read, governance, and legacy routes use the same `authResolver` as `/api/v1/me`. A request that carries `x-wiseeff-user` without a valid production credential is `401 UNAUTHENTICATED`; the header cannot construct a principal. Catalog routes still derive Organization, role, Agent, and System identity from trusted server context after authentication. Requests must not self-assert `X-WiseEff-Role`, `X-WiseEff-Organization`, `X-WiseEff-Actor-Kind`, or `X-WiseEff-Agent`. Publication-dependent catalog writes send `X-WiseEff-Catalog-Release`; governance writes also send `If-Match` and `Idempotency-Key`.
 
 ## Production Mode With OIDC
 

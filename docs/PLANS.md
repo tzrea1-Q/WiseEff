@@ -38,6 +38,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
+- `exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md`: review remediation for the landed Catalog (F1–F7, INT-01/INT-02) without rewriting the domain model. Program #802; work packages #803–#811. OP-01 production auth is first; OP-09 remains human-authorized target/release evidence and is not an agent cutover. This plan does not reopen frozen Wayfinder #668 nodes.
 - `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`: complete implementation specification for Wayfinder #668. G0 and G0.1 are merged; Phase A published #683-#735; Phase B/Phase C completed; S0-ID, S0-FIX, and S1-BND are closed through PRs #739, #743, and #741. G0.2 adopted the repository delivery protocol. G0.3 then raises development concurrency, requires dedicated-lane PostgreSQL and role-faithful local acceptance, and forbids Hosted-as-debugger without changing any frozen node or dependency edge. The launch graph remains 53 nodes with `CD=90`, `CF=54`, `ID=27`, `RE=18`; S13-PROGRAM and S14-PROGRAM remain deferred Temporal work. G0.2/G0.3 claim no new implementation, Hosted, target, release, or production evidence. Remaining launch Issues follow `docs/agents/catalog-launch-operating-rules.md`.
 
 #### Wayfinder #668 Phase A launch map
