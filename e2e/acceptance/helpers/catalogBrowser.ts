@@ -5,6 +5,7 @@ import { authHeadersForRole, authHeadersForUser, signInBrowserAsUser } from "./b
 import type { ExpectedApiFailure } from "./browserDiagnostics";
 import {
   CATALOG_GUEST_USER,
+  CATALOG_ORG_B,
   CATALOG_ORG_B_ADMIN,
   type CatalogAcceptanceFixture
 } from "./catalogEvidence";
@@ -66,9 +67,9 @@ export async function signInCatalogActor(page: Page, actor: CatalogBrowserActor,
   if (actor === "platform-admin") {
     await signInBrowserAsUser(
       page,
-      acceptanceCast.platformOperator.userId,
-      acceptanceCast.platformOperator.email,
-      acceptanceCast.platformOperator.name,
+      acceptanceCast.xuYun.userId,
+      acceptanceCast.xuYun.email,
+      acceptanceCast.xuYun.name,
       route
     );
     return;
@@ -98,7 +99,8 @@ export async function signInCatalogActor(page: Page, actor: CatalogBrowserActor,
     CATALOG_ORG_B_ADMIN.userId,
     CATALOG_ORG_B_ADMIN.email,
     CATALOG_ORG_B_ADMIN.name,
-    route
+    route,
+    CATALOG_ORG_B.id
   );
 }
 
@@ -111,7 +113,7 @@ export function catalogAuthHeaders(actor: CatalogBrowserActor) {
     );
   }
   if (actor === "platform-admin") {
-    return authHeadersForRole("platform-admin");
+    return authHeadersForUser(acceptanceCast.xuYun.userId, acceptanceCast.xuYun.email, acceptanceCast.xuYun.name);
   }
   if (actor === "user") {
     return authHeadersForRole("hardware-user");
@@ -119,7 +121,7 @@ export function catalogAuthHeaders(actor: CatalogBrowserActor) {
   if (actor === "guest") {
     return authHeadersForUser(CATALOG_GUEST_USER.userId, CATALOG_GUEST_USER.email, CATALOG_GUEST_USER.name);
   }
-  return authHeadersForUser(CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B_ADMIN.email, CATALOG_ORG_B_ADMIN.name);
+  return authHeadersForUser(CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B_ADMIN.email, CATALOG_ORG_B_ADMIN.name, CATALOG_ORG_B.id);
 }
 
 export async function openCatalogViaNav(page: Page, actor: CatalogBrowserActor = "org-admin") {

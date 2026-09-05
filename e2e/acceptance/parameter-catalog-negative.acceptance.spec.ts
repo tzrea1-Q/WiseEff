@@ -11,6 +11,7 @@ import {
   catalogScreenshot,
   catalogUiCopy,
   confirmGovernanceDialog,
+  signInCatalogActor,
   openCatalogAt
 } from "./helpers/catalogBrowser";
 import {
@@ -127,7 +128,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await catalogScreenshot(page, testInfo, "pcat-ui-11-legacy");
   });
 
-  test("keeps guest access read-only and refuses governance mutation or role-spoof paths", async ({
+  test("refuses the guest Catalog page and governance writes while preserving authorized API reads", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-12
@@ -135,7 +136,9 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     // This is the guest UI/API portion only. Actual Agent execution is covered
     // separately by server/modules/agent/xiaoze/catalogBoundary.integration.test.ts.
     const before = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
-    await openCatalogAt(page, "guest");
+    await signInCatalogActor(page, "guest");
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    await expect(catalogPage(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const read = await catalogJson(page.request, "GET", "/api/v2/catalog", { actor: "guest" });
@@ -166,6 +169,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     const collectDigest = async (target: typeof page, label: string) => {
       const region = catalogPage(target);
       await expect(region).toBeVisible({ timeout: 30_000 });
+      await expect(region).toHaveAttribute("data-catalog-state", "ready");
       const state = await region.getAttribute("data-catalog-state");
       const actions = await target.locator("[data-catalog-action]").evaluateAll((nodes) =>
         nodes.map((node) => ({
