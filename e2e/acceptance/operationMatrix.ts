@@ -1701,10 +1701,13 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/specs",
     roles: ["Agent"],
-    action: "Read within the invoking principal scope and probe every Registration, Placement, Review, Proposal, Catalog mutation, and role-spoof path.",
+    action: "Read within the invoking principal scope and probe every Registration, Placement, Review, Proposal, Catalog mutation, and role-spoof path. Guest browser denial is separate from authenticated deterministic Agent execution through the real dispatcher and PostgreSQL; neither proves live-model quality.",
     coverage: "automated",
     acceptanceIds: ["PCAT-UI-12"],
-    specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
+    specFiles: [
+      "e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts",
+      "server/modules/agent/xiaoze/catalogBoundary.integration.test.ts"
+    ],
     assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {

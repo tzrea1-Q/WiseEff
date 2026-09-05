@@ -25,6 +25,23 @@ PR #812 已合并；历史最终候选为 `da52f6d5b7e328d0302cd3b2cbde0ca75db23
 
 上表不表示 implemented、verified、merged 或 attested。三位只读 preflight 智能体分别调查 Policy/批量、Proposal、Agent/冲突；父协调者维护计划、环境、证据及集成。生产编辑前冻结精确路径；R3 矩阵由另一位 Spec 智能体挑战。
 
+## 已观测集成检查点
+
+上表为历史 preflight。Subject 批量、Agent 读取和 Proposal 已集成至 `1009ecbfb28dea6f867f09fa13fa17709bdf40e5`，仍是 Scratch，未 seal，未达到 integration-ready。#815 等待已提出的产品决策；Definition/usage 批量和完整容量证据未完成。
+
+| 分片 | 精确来源 / 父集成 | 实际证据 | 剩余门禁 |
+| --- | --- | --- | --- |
+| #816 Subject | `b26067e72accee2249a5f75a609c7cd730184a2c` | 精确提交 7 文件 / 25 测试通过；根 HTTP 的 1/25/100 行业务 SQL 为 4/4/4，空页投影零；auth 1、Kernel 15、事务 8、未分类 0、waiting 0 | Definition/usage、filter/cursor/隔离矩阵、容量分布 |
+| #817 Proposal | 子 `143fe6736a331fd88ed455744647cb689fd705c4`、`389e58727c4ae60e306ae06cf317316f8cad1f50`；父 `bd05961ad`、`1009ecbfb` | 精确最终子提交：server 12 文件 / 106 测试、frontend 11 文件 / 92 测试通过；build、contract check、appRuntime 窄 lint 通过 | 集成检查、独立审查、浏览器操作轨迹 |
+| #818 Agent | guest `835700cdc1c0e60c176907e19cc75e1ca097ea72`；子读 `773545fc4be7c7402c2335efb50f8eda87297e36`；父 `3ebe49d9d`、`425cc0864` | 子分支 17 条根 HTTP/PG + 8 单测及精确 build 通过；User-invocation 变异选中 1 条并失败，其余 16 条过滤，不算通过套件 | source-backed Binding 批准成功/重复确认、缺失/不一致补充证据、浏览器 |
+| #819 浏览器 | guest 与 Proposal 顺序交接 | 真实 local-login A/B：B submit 200，A 旧 ETag withdraw 409，业务/成功审计无变化，输入保留；刷新未重新加载 submitted，实际 Red | UI 修复、提交后丢响应重放、操作 parity、三视口 |
+
+父提交 `e1fa24376a83e24505f25e5b006176970ac03cd0` 只删除 6 条已失效 Agent SQL allowance，无新增。对 accepted base 扫描通过：3513 处 violation 全部已 allowlist，stale/mismatch/growth 均为零；不能自动外推后续字节。
+
+manual disposable 清理调用未定义的 `stopRuntime`，已记录为环境缺陷；#819 使用既有 tracked nested manifest 路径。父匹配 PID、启动身份及工作树命令后，用既有 stop helper 仅停止本轮泄漏的 #819 API 进程组。数据库/对象目录保留，未停止共享或目标进程。原始证据：`work/catalog-r2/evidence/owned-819-process-takeover.json`。
+
+Standards/Spec 在同一 accepted base/检查点独立审查。本节不声称 review PASS、PR、Hosted、merge、attestation 或关闭 issue。额外一次清理设计咨询因模型容量失败，没有结论；#812/#813 历史证据不能替代缺失门禁。
+
 ## 文件所有权、依赖与预算
 
 ### Preflight 决策与限定交接

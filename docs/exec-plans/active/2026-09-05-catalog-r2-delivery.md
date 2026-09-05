@@ -25,6 +25,23 @@ PR #812 is merged at the accepted base. Its historical candidate is `da52f6d5b7e
 
 No implementation, verification, merge or attestation is claimed by this table. Read-only preflight agents own Policy/batch, Proposal, and Agent/conflict investigations. The parent owns plan/environment/evidence integration. Production edits require frozen precise paths and a Spec challenge for R3. Later sections record those handoffs before editing.
 
+## Observed integration checkpoint
+
+The initial table above is historical preflight. Subject batching, Agent reads and Proposal fixes are integrated through `1009ecbfb28dea6f867f09fa13fa17709bdf40e5`, still Scratch, not sealed or integration-ready. #815 awaits the requested product decision; Definition/usage batching and final capacity remain pending.
+
+| Slice | Exact source / parent integration | Actual evidence | Remaining gate |
+| --- | --- | --- | --- |
+| #816 Subject | `b26067e72accee2249a5f75a609c7cd730184a2c` | exact committed tree: 7 files / 25 tests passed; root HTTP business SQL 4/4/4 at 1/25/100, empty-page projection zero; auth 1, Kernel 15, transactions 8, unclassified 0, waiting 0 | Definition/usage, filter/cursor/isolation matrix and capacity distribution |
+| #817 Proposal | child `143fe6736a331fd88ed455744647cb689fd705c4`, `389e58727c4ae60e306ae06cf317316f8cad1f50`; parent `bd05961ad`, `1009ecbfb` | exact final child: 12 server files / 106 tests and 11 frontend files / 92 tests passed; build, contract check, focused appRuntime lint passed | integrated checks, independent reviews and browser operation trace |
+| #818 Agent | guest `835700cdc1c0e60c176907e19cc75e1ca097ea72`; child read `773545fc4be7c7402c2335efb50f8eda87297e36`; parent `3ebe49d9d`, `425cc0864` | child 17 root HTTP/PG + 8 unit tests and exact build passed; one selected User-invocation mutant failed (16 filtered), not a passing suite | successful source-backed Binding approval / duplicate confirmation; controlled missing/disagreement evidence; browser |
+| #819 browser | guest and Proposal handoffs consumed sequentially | actual local-login A/B sessions: B submit 200, A stale withdraw 409, unchanged business/success audit and retained input; refresh failed to reload submitted state | UI repair, committed response-loss replay, operation parity and three viewports |
+
+Parent `e1fa24376a83e24505f25e5b006176970ac03cd0` removed exactly six stale Agent SQL allowances, adding none. Scanner against accepted base passed: 3513 violations all allowlisted, zero stale/mismatch/growth; this does not automatically cover later bytes.
+
+Manual disposable cleanup calls an undefined `stopRuntime`. Record this environment defect; #819 uses the existing tracked nested manifest path. Parent stopped only the proven leaked #819 API group after matching PID, start identity and worktree command using the existing stop helper. Database/object-store evidence is retained; no shared or target process was stopped. Raw record: `work/catalog-r2/evidence/owned-819-process-takeover.json`.
+
+Standards and Spec independently review the same accepted base/checkpoint. No review PASS, PR, Hosted run, merge, attestation or issue closure is claimed here. A separate cleanup-design consultation failed due to model capacity and produced no review result. Historical #812/#813 evidence does not replace missing gates.
+
 ## File ownership and execution budget
 
 ### Preflight decisions and bounded handoffs
