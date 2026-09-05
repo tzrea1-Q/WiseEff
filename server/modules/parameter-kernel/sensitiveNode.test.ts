@@ -339,9 +339,10 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
         return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
       }
-      expect(sql).toContain("n.node_path = $5");
+      expect(sql).toContain("n.node_path = any($5::text[])");
+      expect(sql).not.toMatch(/limit\s+1/i);
       expect(sql).not.toMatch(/\bor\s+n\.node_path|\blike\b/i);
-      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", structuralPath]);
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", [structuralPath, `/${structuralPath}`]]);
       return { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
     });
     await expect(resolveDtsNodeCompatible({ query }, {
@@ -398,9 +399,9 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
         return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
       }
-      expect(text).toContain("n.node_path = $5");
+      expect(text).toContain("n.node_path = any($5::text[])");
       expect(text).not.toContain("or n.node_path");
-      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", "amba/wdt@0"]);
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", ["amba/wdt@0", "/amba/wdt@0"]]);
       return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
     });
 

@@ -242,7 +242,8 @@ export async function resolveDtsNodeCompatible(
     if (scoped.format !== "dts") return null;
     // The semantic resolver displays absolute locators (/soc/power), while
     // structural ingest stores the same complete path without its root slash.
-    // Convert only that representation, after locking the exact DTS scope.
+    // Accept either persisted spelling of that complete path in the locked
+    // DTS scope. Two matching rows are ambiguous and must fail closed.
     // Never normalize segments or inherit a parent when the identity is absent.
     let structuralNodePath = nodePath;
     if (input.sourcePath.kind === "node-locator") {
@@ -261,6 +262,9 @@ export async function resolveDtsNodeCompatible(
         });
       }
     }
+    const exactPaths = input.sourcePath.kind === "node-locator"
+      ? [structuralNodePath, `/${structuralNodePath}`]
+      : [structuralNodePath];
     const exact = await db.query<{ node_id: string; compatible: string | null }>(
       `
       select n.id as node_id, n.compatible
@@ -270,16 +274,15 @@ export async function resolveDtsNodeCompatible(
        and v.id = $4
       inner join dts_nodes n
         on n.file_version_id = v.id
-       and n.node_path = $5
+       and n.node_path = any($5::text[])
       where f.organization_id = $1
         and f.project_id = $2
         and f.file_name = $3
-      limit 1
       `,
-      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, structuralNodePath]
+      [input.organizationId, input.projectId, sourceFileName, sourceFileVersionId, exactPaths]
     );
-    if (!exact.rows[0]) {
-      throw new ApiError("CONFLICT", "Exact source node identity was not found in the locked file version.", {
+    if (exact.rows.length !== 1) {
+      throw new ApiError("CONFLICT", "Exact source node identity is missing or ambiguous in the locked file version.", {
         code: PARAMETER_SENSITIVE_NODE_IDENTITY_MISMATCH_CODE,
         projectId: input.projectId,
         sourceFileName,

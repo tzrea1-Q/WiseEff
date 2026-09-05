@@ -841,10 +841,15 @@ describe.skipIf(!databaseAvailable)("property-key prepare trusted provenance (ow
             twoLocationStored.fileSizeBytes
           ]
         );
+        // The shared fixture already owns the charger node. Keep one exact
+        // identity so this test reaches the second, critical location.
+        await db.query(
+          `update dts_nodes set compatible = 'wiseeff,safe' where id = $1`,
+          [`dts-node-pk-cutover-${FILE_VERSION_ID}`]
+        );
         await db.query(
           `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
            values
-             ('dts-node-pk-cutover-locked-safe', $1, 'charger', '/charger@6e', 'wiseeff,safe'),
              ('dts-node-pk-cutover-locked-parent', $1, 'i2c', '/soc/i2c@1', 'wiseeff,safe'),
              ('dts-node-pk-cutover-locked-critical', $1, 'critical', '/soc/i2c@1/critical@7f', 'wiseeff,locked-critical')`,
           [FILE_VERSION_ID]
