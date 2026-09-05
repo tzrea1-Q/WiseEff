@@ -98,6 +98,7 @@ export type PageProps = {
   onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
   onAuthContextRefresh?: (context: AuthContextDto) => void;
+  organizationId?: string;
 };
 
 /**
@@ -146,6 +147,7 @@ export function PageRouter({
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onAuthContextRefresh,
+  organizationId,
   onFeedback,
   onNewProject,
   TopBarProjectId,
@@ -326,6 +328,8 @@ export function PageRouter({
           state={state}
           onNewProject={onNewProject}
           relatedKnowledge={specRelatedKnowledge}
+          runtime={runtime}
+          catalogOrganizationId={organizationId}
         />
       );
     }

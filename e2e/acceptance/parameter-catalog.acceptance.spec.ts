@@ -2,7 +2,7 @@ import { test } from "playwright/test";
 
 const CATALOG_PAGE_PATH = "/parameter-admin/specs";
 const mountBlocked =
-  "S9-CAT CatalogPage is not mounted: /parameter-admin/specs still renders ParameterAdminNextPage. Parent process-only wire of CatalogPage in App.tsx is outside S9-CAT ownership.";
+  "OP-08 owns PCAT browser assertions. CatalogPage is mounted at /parameter-admin/specs; this spec still lacks observable assertions.";
 
 test.describe("canonical parameter catalog page", () => {
   test("enters the only Parameter definitions destination without Effective or Governance peers", async ({

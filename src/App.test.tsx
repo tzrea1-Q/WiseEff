@@ -3360,7 +3360,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "参数定义库"],
+        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "目录发布"],
         absent: ["项目参数 Admin", "items", "events", "建设中"]
       },
       {
@@ -3731,8 +3731,33 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
+    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
+  });
+
+  it("mounts CatalogPage on /parameter-admin/specs and keeps project operations on ParameterAdminNextPage", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/specs");
+    renderApp({ initialAppState: adminState });
+
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-page", "true");
+    expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
+    cleanup();
+
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    renderApp({ initialAppState: adminState });
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
+  });
+
+  it("keeps identity-mapping on ParameterAdminNextPage instead of CatalogPage", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/specs/identity-mapping");
+    renderApp({ initialAppState: adminState });
+
+    expect(await screen.findByRole("region", { name: "节点对应确认" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数定义目录" })).not.toBeInTheDocument();
   });
 
   it("omits unfinished workflows from sidebar discovery", () => {

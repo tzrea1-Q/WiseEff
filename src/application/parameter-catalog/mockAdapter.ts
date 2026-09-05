@@ -199,6 +199,12 @@ function assertRelease(store: MockStore, catalogReleaseId: string) {
   }
 }
 
+function assertPinnedRead(store: MockStore, query?: CatalogListQuery) {
+  if (query?.catalogReleaseId) {
+    assertRelease(store, query.catalogReleaseId);
+  }
+}
+
 function replayOrStore<T>(
   store: MockStore,
   method: string,
@@ -236,12 +242,14 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
   const store = createStore(options);
 
   const catalog: ParameterCatalogRepository = {
-    async getCatalog() {
+    async getCatalog(query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       return clone(store.catalog);
     },
     async listSubjects(query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (store.scenario === "empty-no-registrations") {
         return emptyCatalogCollection("no-registrations");
       }
@@ -251,8 +259,9 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       const items = matchesQuery([store.subject], query);
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
     },
-    async getSubject(subjectId) {
+    async getSubject(subjectId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (subjectId !== store.subject.id) {
         throw catalogApiFailure("subject-not-published");
       }
@@ -260,6 +269,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listSubjectDefinitions(subjectId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (subjectId !== store.subject.id) {
         throw catalogApiFailure("subject-not-published");
       }
@@ -267,6 +277,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listDefinitions(query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (store.scenario === "empty-no-definitions") {
         return emptyCatalogCollection("no-definitions");
       }
@@ -277,29 +288,33 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         query?.search && query.search !== store.definition.propertyKey ? [] : [store.definition];
       return collection(items, items.length === 0 ? "no-filter-match" : undefined);
     },
-    async getDefinition(definitionId) {
+    async getDefinition(definitionId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(store.definition) };
     },
-    async listDefinitionRevisions(definitionId) {
+    async listDefinitionRevisions(definitionId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }
       return collection([catalogRevision]);
     },
-    async getDefinitionRevision(definitionId, revisionId) {
+    async getDefinitionRevision(definitionId, revisionId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (definitionId !== store.definition.id || revisionId !== CATALOG_REVISION_ID) {
         throw catalogApiFailure("definition-not-found");
       }
       return { item: clone(catalogRevision) };
     },
-    async listDefinitionTimeline(definitionId) {
+    async listDefinitionTimeline(definitionId, query) {
       assertReadyForRead(store);
+      assertPinnedRead(store, query);
       if (definitionId !== store.definition.id) {
         throw catalogApiFailure("definition-not-found");
       }

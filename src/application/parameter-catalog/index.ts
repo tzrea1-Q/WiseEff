@@ -5,6 +5,7 @@ export {
 } from "./apiAdapter";
 export {
   catalogActionsForActor,
+  catalogActorForRole,
   catalogActorKinds,
   catalogAuthorizedActions,
   isCatalogActionEnabled,
@@ -16,7 +17,10 @@ export {
   EMPTY_CATALOG_URL_ANCHOR,
   buildCatalogHref,
   parseCatalogUrlAnchor,
+  readLegacyCatalogBookmark,
   serializeCatalogUrlAnchor,
+  withCatalogReleasePin,
+  type CatalogLegacyBookmark,
   type CatalogUrlAnchor
 } from "./urlAnchor";
 export {

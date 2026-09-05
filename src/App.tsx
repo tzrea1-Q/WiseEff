@@ -75,7 +75,8 @@ import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjec
 import { isDiscoveryGroupVisible } from "@/domain/workflowDiscovery";
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
-import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
+import { createAppRuntime, type AppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
+import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { appFooterConfig } from "@/config/appFooterConfig";
 import { isProjectConfigurationWorkbenchPath } from "@/application/project-configuration/workbenchPath";
 
@@ -222,6 +223,8 @@ type AppProps = {
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   parameterTopologyRepository?: ParameterTopologyRepository;
+  parameterCatalogRepository?: AppRuntime["parameterCatalogRepository"];
+  parameterCatalogGovernanceRepository?: AppRuntime["parameterCatalogGovernanceRepository"];
   parameterInitializationRepository?: ParameterInitializationRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
@@ -240,6 +243,8 @@ function App({
   listParameterConfigSets,
   parameterRepository,
   parameterTopologyRepository,
+  parameterCatalogRepository,
+  parameterCatalogGovernanceRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
   knowledgeRepository,
@@ -265,6 +270,8 @@ function App({
           listParameterConfigSets={listParameterConfigSets}
           parameterRepository={parameterRepository}
           parameterTopologyRepository={parameterTopologyRepository}
+          parameterCatalogRepository={parameterCatalogRepository}
+          parameterCatalogGovernanceRepository={parameterCatalogGovernanceRepository}
           parameterInitializationRepository={parameterInitializationRepository}
           productFeedbackRepository={productFeedbackRepository}
           knowledgeRepository={knowledgeRepository}
@@ -286,6 +293,8 @@ function AppShell({
   listParameterConfigSets,
   parameterRepository,
   parameterTopologyRepository,
+  parameterCatalogRepository,
+  parameterCatalogGovernanceRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
   knowledgeRepository,
@@ -301,6 +310,8 @@ function AppShell({
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   parameterRepository?: ParameterRepository;
   parameterTopologyRepository?: ParameterTopologyRepository;
+  parameterCatalogRepository?: AppRuntime["parameterCatalogRepository"];
+  parameterCatalogGovernanceRepository?: AppRuntime["parameterCatalogGovernanceRepository"];
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
@@ -320,6 +331,9 @@ function AppShell({
   const [apiAuthError, setApiAuthError] = useState("");
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
+  const [organizationId, setOrganizationId] = useState(
+    () => (runtimeMode === "api" ? "" : CATALOG_ORGANIZATION_ID)
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
   // between 769–900px it stays the auto-collapsed rail the media query used to force.
@@ -369,6 +383,8 @@ function AppShell({
           authClient,
           parameterRepository,
           parameterTopologyRepository,
+          parameterCatalogRepository,
+          parameterCatalogGovernanceRepository,
           logAnalysisRepository,
           productFeedbackRepository,
           knowledgeRepository,
@@ -385,6 +401,8 @@ function AppShell({
       authClient,
       parameterRepository,
       parameterTopologyRepository,
+      parameterCatalogRepository,
+      parameterCatalogGovernanceRepository,
       logAnalysisRepository,
       productFeedbackRepository,
       knowledgeRepository,
@@ -627,6 +645,7 @@ function AppShell({
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
     const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
+    setOrganizationId(context.organization.id);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
       roleId: primaryRole,
@@ -814,6 +833,7 @@ function AppShell({
 
     if (nextUrl === currentUrl) {
       setPath(nextPage.path);
+      setSearch(url.search);
       return;
     }
 
@@ -1090,6 +1110,7 @@ function AppShell({
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 onAuthContextRefresh={hydrateAuthContext}
+                organizationId={organizationId}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1131,6 +1152,7 @@ function AppShell({
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 onAuthContextRefresh={hydrateAuthContext}
+                organizationId={organizationId}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
               {showsApplicationFooter ? (

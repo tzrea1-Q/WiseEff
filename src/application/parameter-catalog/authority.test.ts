@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogActionsForActor, isCatalogActionEnabled } from "./authority";
+import { catalogActionsForActor, catalogActorForRole, isCatalogActionEnabled } from "./authority";
 import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
 import { readyCatalogDocument, unregisteredSubject } from "./fixtures";
 
@@ -36,6 +36,13 @@ describe("catalog actor authority", () => {
     expect(isCatalogActionEnabled("user", "register-subject", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("user", "resolve-review-item", unregistered)).toBe(false);
     expect(isCatalogActionEnabled("user", "create-proposal", ready)).toBe(true);
+  });
+
+  it("maps live platform roles onto Catalog actors", () => {
+    expect(catalogActorForRole("admin")).toBe("org-admin");
+    expect(catalogActorForRole("platform-admin")).toBe("platform-admin");
+    expect(catalogActorForRole("hardware-user")).toBe("user");
+    expect(catalogActorForRole("software-committer")).toBe("user");
   });
 
   it("disables mutations while loading even when a previous release is visible", () => {

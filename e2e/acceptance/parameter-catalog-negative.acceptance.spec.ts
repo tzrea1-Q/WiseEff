@@ -3,7 +3,7 @@ import { test } from "playwright/test";
 const CATALOG_PAGE_PATH = "/parameter-admin/specs";
 const LEGACY_IDENTIFIER_PATH = "/api/v2/catalog/legacy-identifiers/:kind/:legacyId";
 const mountBlocked =
-  "S9-BRW Catalog destination is not mounted: /parameter-admin/specs still renders ParameterAdminNextPage. Parent process-only wire of CatalogPage in App.tsx is outside S9-BRW ownership.";
+  "OP-08 owns PCAT browser assertions. CatalogPage is mounted at /parameter-admin/specs; this spec still lacks observable assertions.";
 
 test.describe("canonical parameter catalog negative and responsive contract", () => {
   test("enters the only Parameter definitions destination without Effective or Governance peers", async ({

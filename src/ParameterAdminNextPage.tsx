@@ -1,6 +1,9 @@
-import { useEffect, useMemo, type Dispatch } from "react";
+import { useCallback, useEffect, useMemo, type Dispatch } from "react";
+import type { AppRuntime } from "@/app/appRuntime";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
+import { catalogActorForRole } from "@/application/parameter-catalog";
+import { CatalogOrganizationSurface } from "@/features/parameter-catalog-governance/CatalogOrganizationSurface";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
@@ -64,6 +67,8 @@ export type ParameterAdminNextPageProps = {
   onNewProject?: () => void;
   /** Published knowledge referencing a definition (相关知识); absent without knowledge:view. */
   relatedKnowledge?: SpecRelatedKnowledgeSource;
+  runtime?: AppRuntime;
+  catalogOrganizationId?: string;
 };
 
 /**
@@ -89,7 +94,9 @@ export function ParameterAdminNextPage({
   parameterActions,
   state,
   onNewProject,
-  relatedKnowledge
+  relatedKnowledge,
+  runtime,
+  catalogOrganizationId
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
@@ -130,6 +137,28 @@ export function ParameterAdminNextPage({
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
   const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
+  const handleCatalogAnchorChange = useCallback(
+    (href: string, mode: "push" | "replace") => {
+      if (mode === "replace") {
+        const url = new URL(href, window.location.origin);
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      }
+      onNavigate(href);
+    },
+    [onNavigate]
+  );
+  const catalogLibrary =
+    runtime?.parameterCatalogRepository && runtime.parameterCatalogGovernanceRepository ? (
+      <CatalogOrganizationSurface
+        catalog={runtime.parameterCatalogRepository}
+        governance={runtime.parameterCatalogGovernanceRepository}
+        actor={catalogActorForRole(migrateLegacyRoleId(state?.activeRoleId ?? ""))}
+        search={search}
+        onAnchorChange={handleCatalogAnchorChange}
+        organizationId={catalogOrganizationId}
+        currentPersonId={state?.currentUserId ?? ""}
+      />
+    ) : undefined;
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
     isProjectConfigurationWorkbenchPath(pathname);
@@ -212,6 +241,7 @@ export function ParameterAdminNextPage({
                 search={search}
                 onNavigate={onNavigate}
                 isPlatformSuperAdmin={isPlatformSuperAdmin}
+                catalogLibrary={catalogLibrary}
               />
             ) : null}
             {organizationView === "modules" ? (

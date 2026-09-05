@@ -6,7 +6,13 @@ import type { ParameterDashboardRepository } from "@/application/ports/Parameter
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import {
+  createApiCatalogPorts,
+  createMockCatalogPorts
+} from "@/application/parameter-catalog";
 import { resolveDebuggingGateway } from "@/application/debugging/debuggingGatewayRuntime";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
@@ -28,6 +34,7 @@ import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeCl
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
+import { createParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { createMockOrganizationActions } from "@/infrastructure/mock/mockOrganizationActions";
@@ -59,6 +66,8 @@ export type AppRuntime = {
   authClient: WiseEffAuthClient;
   parameterRepository: ParameterRepository;
   parameterTopologyRepository: ParameterTopologyRepository;
+  parameterCatalogRepository: ParameterCatalogRepository;
+  parameterCatalogGovernanceRepository: ParameterCatalogGovernanceRepository;
   parameterDashboardRepository: ParameterDashboardRepository;
   logAnalysisRepository?: LogAnalysisRepository;
   productFeedbackRepository: ProductFeedbackRepository;
@@ -88,12 +97,24 @@ export function createAppRuntime(
   // Resolved before the knowledge repository: mock distillation reads reload
   // runs from THIS instance so both ports describe the same device story.
   const dtsReloadRepository = overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode);
+  const catalogPorts =
+    overrides.parameterCatalogRepository && overrides.parameterCatalogGovernanceRepository
+      ? {
+          catalog: overrides.parameterCatalogRepository,
+          governance: overrides.parameterCatalogGovernanceRepository
+        }
+      : api
+        ? createApiCatalogPorts(createParameterCatalogClient())
+        : createMockCatalogPorts();
   return {
     authClient: overrides.authClient ?? createAuthClient(),
     parameterRepository:
       overrides.parameterRepository ??
       (api ? createHttpParameterRepository() : createMockParameterRepository(deps.mockParameterRuntime)),
     parameterTopologyRepository: overrides.parameterTopologyRepository ?? resolveParameterTopologyRepository(mode),
+    parameterCatalogRepository: overrides.parameterCatalogRepository ?? catalogPorts.catalog,
+    parameterCatalogGovernanceRepository:
+      overrides.parameterCatalogGovernanceRepository ?? catalogPorts.governance,
     parameterDashboardRepository:
       overrides.parameterDashboardRepository ??
       (api ? createHttpParameterDashboardRepository() : createMockParameterDashboardRepository(deps.getState)),

@@ -47,3 +47,28 @@ export function serializeCatalogUrlAnchor(anchor: CatalogUrlAnchor): string {
 export function buildCatalogHref(anchor: CatalogUrlAnchor): string {
   return `${CATALOG_PAGE_PATH}${serializeCatalogUrlAnchor(anchor)}`;
 }
+
+export type CatalogLegacyBookmark = {
+  legacyType: "parameter-spec";
+  legacyId: string;
+};
+
+/** Official leftover spec-library keys. Name search is not a bookmark resolver. */
+export function readLegacyCatalogBookmark(search: string): CatalogLegacyBookmark | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const legacyId = params.get("spec")?.trim() || params.get("parameterSpecId")?.trim() || "";
+  if (!legacyId) {
+    return null;
+  }
+  return { legacyType: "parameter-spec", legacyId };
+}
+
+export function withCatalogReleasePin<T extends { catalogReleaseId?: string }>(
+  query: T | undefined,
+  catalogReleaseId: string | null
+): T | { catalogReleaseId: string } | undefined {
+  if (!catalogReleaseId) {
+    return query;
+  }
+  return { ...(query ?? ({} as T)), catalogReleaseId };
+}

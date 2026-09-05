@@ -22,7 +22,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
 - `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。
 - `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。样式在同目录 `parameter-review.css`（#479）。
-- `src/features/parameter-catalog/`：`/parameter-admin/specs` 的规范 Parameter definitions 页面模块（`CatalogPage`）。页面已实现但尚未挂载；现行路由仍渲染 `ParameterAdminNextPage`。
+- `src/features/parameter-catalog/`：挂在 `/parameter-admin/specs` 的规范 Parameter definitions 页面模块（`CatalogPage`）。项目运营仍由 `ParameterAdminNextPage` 负责。
 - `src/features/parameter-catalog-governance/`：挂在同一 `CatalogPage` 上的 Registration、Review Queue 与 Proposal 交互。
 - `src/components/project-configuration-workbench/`：配置工作台。样式在同目录 `configuration-workbench.css`（#484）；共享 `.workbench-page` / `.workbench-sheet` 仍在 `src/styles.css`。
 - `src/features/product-feedback/`：应用壳层共享的 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
@@ -110,7 +110,7 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 定义库 API 默认返回服务端生效投影：产品浏览调用 `listSpecs` 时不传 `view`，语义等同 `view=effective`，每个驱动/属性身份只渲染一个同时具备 active、规范主体和组织放置的胜出定义。治理面板显式传 `view=governance`，以查看 draft、deprecated、被遮蔽或未解决行。DTO 中的 `effectiveScope`、`overrideOfSpecId`、`declaredPlacement` 与 `observationState` 由服务端负责，UI 不得再按实测模块名或生命周期计数自行重建优先级。
 
-**规范 Parameter definitions（`/parameter-admin/specs`，#668 / S9）：** 产品目的地只有一个 Parameter definitions 页面。没有第二条 catalog 路由，也没有 Effective definitions 或 Governance history 对等入口。`CatalogPage` 与同页治理在该路由上组合列表、不透明 Subject/Definition/`catalogReleaseId` 深链、详情、timeline、Review Queue、Registration/Placement 和 Proposal。领域状态为 `ready`、`unregistered`、`empty`（`no-registrations` / `no-definitions` / `no-review-work` / `no-filter-match`）、`loading`、`error`、`retired` 与 `conflict`。负向与响应式浏览器用例为 `PCAT-UI-01` 到 `PCAT-UI-15`：冲突保留输入并要求重确认（`PCAT-UI-10`）；遗留书签给出精确 mapped/410/409/404，不做 Archive 推断（`PCAT-UI-11`）；Agent 只读（`PCAT-UI-12`）；API 与显式 mock 适配器重放相同状态且 mock 无额外权限（`PCAT-UI-13`）；`1440x900`、`768x1024`、`390x844` 布局与诊断成立（`PCAT-UI-14`）。现行壳层仍在该路由挂载 `ParameterAdminNextPage`，因此浏览器验收保持 `@acceptance-planned` / skip，直到父会话在 App.tsx 做 process-only 挂载。不要为了让这些用例变绿再发明第二个 catalog 产品面。
+**规范 Parameter definitions（`/parameter-admin/specs`，#668 / S9 / #809）：** 产品目的地只有一个 Parameter definitions 页面。没有第二条 catalog 路由，也没有 Effective definitions 或 Governance history 对等入口。`src/app/routes.tsx` 把既有 `CatalogPage` 与同页治理挂到 `/parameter-admin/specs`（不透明 Subject/Definition/`catalogReleaseId` 深链、详情、timeline、Review Queue、Registration/Placement 和 Proposal）。`/parameter-admin/projects` 与 `/parameter-admin/specs/identity-mapping` 仍由 `ParameterAdminNextPage` 负责。适配器经 `createAppRuntime` 选择：API 模式用 `createApiCatalogPorts` / `createApiParameterCatalogRepository`，mock 模式用同语义的 `createMockCatalogPorts`。领域状态为 `ready`、`unregistered`、`empty`（`no-registrations` / `no-definitions` / `no-review-work` / `no-filter-match`）、`loading`、`error`、`retired` 与 `conflict`。负向与响应式浏览器用例为 `PCAT-UI-01` 到 `PCAT-UI-15`：冲突保留输入并要求重确认（`PCAT-UI-10`）；遗留书签给出精确 mapped/410/409/404，不做 Archive 推断（`PCAT-UI-11`）；Agent 只读（`PCAT-UI-12`）；API 与显式 mock 适配器重放相同状态且 mock 无额外权限（`PCAT-UI-13`）；`1440x900`、`768x1024`、`390x844` 布局与诊断成立（`PCAT-UI-14`）。页面已挂载；补齐可观察的 PCAT 浏览器断言仍属 OP-08。不要为了让这些用例变绿再发明第二个 catalog 产品面。
 
 已解决的节点对应历史会显示当前候选。歧义任务保存了上一节点/原选择连续性且还有另一候选时，同一候选选择器提供**受保护 re-resolve**；若相关节点已有下游草稿、提交或设备操作，服务端拒绝更正。对已应用映射，UI 不提供反向 undo 或 reopen（ADR-0033）。
 

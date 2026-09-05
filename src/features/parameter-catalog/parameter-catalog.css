@@ -368,3 +368,36 @@
   min-width: 0;
   max-width: 100%;
 }
+
+.parameter-catalog-organization {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.parameter-catalog__governance {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .parameter-catalog__governance {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.parameter-catalog__review,
+.parameter-catalog__proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  overflow: auto;
+  background: var(--pcat-surface, var(--surface));
+  border: 1px solid var(--pcat-border, var(--border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}

@@ -24,6 +24,8 @@ export function toAppPortProps(ports?: Partial<AppRuntime>): Partial<{
   authClient: AppRuntime["authClient"];
   parameterRepository: AppRuntime["parameterRepository"];
   parameterTopologyRepository: AppRuntime["parameterTopologyRepository"];
+  parameterCatalogRepository: AppRuntime["parameterCatalogRepository"];
+  parameterCatalogGovernanceRepository: AppRuntime["parameterCatalogGovernanceRepository"];
   parameterInitializationRepository: AppRuntime["parameterInitializationRepository"];
   logAnalysisRepository: AppRuntime["logAnalysisRepository"];
   productFeedbackRepository: AppRuntime["productFeedbackRepository"];
@@ -43,6 +45,12 @@ export function toAppPortProps(ports?: Partial<AppRuntime>): Partial<{
   if (ports.parameterRepository !== undefined) props.parameterRepository = ports.parameterRepository;
   if (ports.parameterTopologyRepository !== undefined) {
     props.parameterTopologyRepository = ports.parameterTopologyRepository;
+  }
+  if (ports.parameterCatalogRepository !== undefined) {
+    props.parameterCatalogRepository = ports.parameterCatalogRepository;
+  }
+  if (ports.parameterCatalogGovernanceRepository !== undefined) {
+    props.parameterCatalogGovernanceRepository = ports.parameterCatalogGovernanceRepository;
   }
   if (ports.parameterInitializationRepository !== undefined) {
     props.parameterInitializationRepository = ports.parameterInitializationRepository;

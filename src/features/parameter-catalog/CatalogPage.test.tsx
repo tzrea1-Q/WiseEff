@@ -36,17 +36,17 @@ function deferred<T>() {
 
 function wrapAfterGate(repository: ParameterCatalogRepository, gate: Promise<void>): ParameterCatalogRepository {
   return {
-    getCatalog: async () => {
+    getCatalog: async (query) => {
       await gate;
-      return repository.getCatalog();
+      return repository.getCatalog(query);
     },
     listSubjects: async (query) => {
       await gate;
       return repository.listSubjects(query);
     },
-    getSubject: async (subjectId) => {
+    getSubject: async (subjectId, query) => {
       await gate;
-      return repository.getSubject(subjectId);
+      return repository.getSubject(subjectId, query);
     },
     listSubjectDefinitions: async (subjectId, query) => {
       await gate;
@@ -56,9 +56,9 @@ function wrapAfterGate(repository: ParameterCatalogRepository, gate: Promise<voi
       await gate;
       return repository.listDefinitions(query);
     },
-    getDefinition: async (definitionId) => {
+    getDefinition: async (definitionId, query) => {
       await gate;
-      return repository.getDefinition(definitionId);
+      return repository.getDefinition(definitionId, query);
     },
     listDefinitionRevisions: async (definitionId, query) => {
       await gate;
@@ -424,5 +424,63 @@ describe("CatalogPage", () => {
       "no-filter-match"
     ]);
     expect(readyCatalogDocument.item.catalogReleaseId).toBe(CATALOG_RELEASE_ID);
+  });
+
+  it("does not replace a historical catalogReleaseId after refresh", async () => {
+    const historical = "crel_historical";
+    const hrefs: string[] = [];
+    const ready = createMockParameterCatalogRepository({ scenario: "ready" });
+    const historicalDocument = {
+      item: { ...readyCatalogDocument.item, catalogReleaseId: historical, releaseName: "2026.07.1" }
+    };
+    const unpin = <T extends { catalogReleaseId?: string }>(query?: T) => {
+      if (!query) return query;
+      const { catalogReleaseId: _ignored, ...rest } = query;
+      return rest as T;
+    };
+    const repository: ParameterCatalogRepository = {
+      ...ready,
+      getCatalog: async (query) => {
+        if (query?.catalogReleaseId === historical) {
+          return historicalDocument;
+        }
+        return ready.getCatalog(unpin(query));
+      },
+      listSubjects: (query) => ready.listSubjects(unpin(query)),
+      getSubject: (subjectId, query) => ready.getSubject(subjectId, unpin(query)),
+      listSubjectDefinitions: (subjectId, query) => ready.listSubjectDefinitions(subjectId, unpin(query)),
+      listDefinitions: (query) => ready.listDefinitions(unpin(query)),
+      getDefinition: (definitionId, query) => ready.getDefinition(definitionId, unpin(query)),
+      listDefinitionRevisions: (definitionId, query) =>
+        ready.listDefinitionRevisions(definitionId, unpin(query)),
+      listDefinitionTimeline: (definitionId, query) =>
+        ready.listDefinitionTimeline(definitionId, unpin(query))
+    };
+    renderCatalog({
+      repository,
+      search: `?catalogReleaseId=${historical}`,
+      onHref: (href) => hrefs.push(href)
+    });
+    const page = await screen.findByRole("region", { name: "参数定义目录" });
+    expect(page).toHaveAttribute("data-catalog-release", historical);
+    expect(hrefs.some((href) => href.includes(`catalogReleaseId=${CATALOG_RELEASE_ID}`))).toBe(false);
+  });
+
+  it("resolves a leftover spec bookmark through official legacy identifiers", async () => {
+    const hrefs: string[] = [];
+    const ready = createMockParameterCatalogRepository({ scenario: "ready" });
+    const getLegacyIdentifier = vi.fn().mockImplementation(ready.getLegacyIdentifier);
+    renderCatalog({
+      repository: { ...ready, getLegacyIdentifier },
+      search: "?spec=spec-sc8562-gpio-int",
+      onHref: (href) => hrefs.push(href)
+    });
+    await waitFor(() =>
+      expect(getLegacyIdentifier).toHaveBeenCalledWith("parameter-spec", "spec-sc8562-gpio-int")
+    );
+    await waitFor(() =>
+      expect(hrefs.some((href) => href.includes(`definitionId=${CATALOG_DEFINITION_ID}`))).toBe(true)
+    );
+    expect(hrefs.at(-1)).not.toMatch(/(^|[?&])spec=/);
   });
 });

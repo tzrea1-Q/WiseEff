@@ -2,7 +2,7 @@ import { test } from "playwright/test";
 
 const CATALOG_PAGE_PATH = "/parameter-admin/specs";
 const mountBlocked =
-  "S9-GOV governance interactions are not mounted on a live route: /parameter-admin/specs still renders ParameterAdminNextPage, and CatalogPage composition is outside S9-GOV ownership.";
+  "OP-08 owns PCAT browser assertions. CatalogPage and same-page governance are mounted at /parameter-admin/specs; this spec still lacks observable assertions.";
 
 test.describe("canonical parameter catalog governance interactions", () => {
   test("resolves Review Queue items through one atomic typed command", async ({ page }) => {

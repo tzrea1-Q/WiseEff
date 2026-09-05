@@ -13,6 +13,8 @@ describe("createAppRuntime", () => {
   it("selects api adapters in api mode", () => {
     const runtime = createAppRuntime("api", deps());
 
+    expect(runtime.parameterCatalogRepository).toBeDefined();
+    expect(runtime.parameterCatalogGovernanceRepository).toBeDefined();
     expect(runtime.logAnalysisRepository).toBeDefined();
     expect(runtime.dtsReloadRepository).toBeDefined();
     expect(runtime.debuggingGateway).toBeDefined();
@@ -29,6 +31,8 @@ describe("createAppRuntime", () => {
     expect(runtime.userGovernanceActions).toBeUndefined();
     expect(runtime.organizationActions).toBeDefined();
     expect(runtime.parameterRepository).toBeDefined();
+    expect(runtime.parameterCatalogRepository).toBeDefined();
+    expect(runtime.parameterCatalogGovernanceRepository).toBeDefined();
     expect(runtime.productFeedbackRepository).toBeDefined();
     expect(runtime.knowledgeRepository).toBeDefined();
     expect(runtime.parameterDashboardRepository).toBeDefined();
@@ -66,5 +70,12 @@ describe("createAppRuntime", () => {
 
     const projects = await runtime.parameterRepository.listProjects();
     expect(projects.length).toBeGreaterThan(0);
+  });
+
+  it("selects mock catalog ports with the same operation names as api ports", async () => {
+    const runtime = createAppRuntime("mock", deps());
+    const document = await runtime.parameterCatalogRepository.getCatalog();
+    expect(document.item.catalogReleaseId).toBeTruthy();
+    expect(typeof runtime.parameterCatalogGovernanceRepository.listReviewItems).toBe("function");
   });
 });

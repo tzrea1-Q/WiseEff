@@ -39,6 +39,17 @@ export function catalogActionsForActor(actor: CatalogActorKind): readonly Catalo
   return ACTOR_ACTIONS[actor];
 }
 
+/** Map the live shell role onto Catalog authority. Agent is not a platform role. */
+export function catalogActorForRole(roleId: string): CatalogActorKind {
+  if (roleId === "platform-admin") {
+    return "platform-admin";
+  }
+  if (roleId === "admin") {
+    return "org-admin";
+  }
+  return "user";
+}
+
 export function isCatalogActionEnabled(
   actor: CatalogActorKind,
   action: CatalogAuthorizedAction,

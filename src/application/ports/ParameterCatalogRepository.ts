@@ -26,22 +26,23 @@ export type {
 
 /** CatalogRead + DefinitionTimeline + LegacyLink. Closed canonical catalog read seam. */
 export interface ParameterCatalogRepository {
-  getCatalog(): Promise<CatalogDocumentResponse>;
+  getCatalog(query?: CatalogListQuery): Promise<CatalogDocumentResponse>;
   listSubjects(query?: CatalogListQuery): Promise<CatalogSubjectListResponse>;
-  getSubject(subjectId: string): Promise<CatalogSubjectResponse>;
+  getSubject(subjectId: string, query?: CatalogListQuery): Promise<CatalogSubjectResponse>;
   listSubjectDefinitions(
     subjectId: string,
     query?: CatalogListQuery
   ): Promise<CatalogDefinitionListResponse>;
   listDefinitions(query?: CatalogListQuery): Promise<CatalogDefinitionListResponse>;
-  getDefinition(definitionId: string): Promise<CatalogDefinitionResponse>;
+  getDefinition(definitionId: string, query?: CatalogListQuery): Promise<CatalogDefinitionResponse>;
   listDefinitionRevisions(
     definitionId: string,
     query?: CatalogListQuery
   ): Promise<CatalogDefinitionRevisionListResponse>;
   getDefinitionRevision(
     definitionId: string,
-    revisionId: string
+    revisionId: string,
+    query?: CatalogListQuery
   ): Promise<CatalogDefinitionRevisionResponse>;
   listDefinitionTimeline(
     definitionId: string,

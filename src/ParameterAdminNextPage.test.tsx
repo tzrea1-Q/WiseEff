@@ -14,7 +14,10 @@ import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mo
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import { initialState } from "@/mockData";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
+import { createMockCatalogPorts } from "@/application/parameter-catalog";
+import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
+import type { AppRuntime } from "@/app/appRuntime";
 
 afterEach(() => {
   cleanup();
@@ -148,6 +151,8 @@ function renderPage(options: {
   dtsStructuredRepository?: import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository;
   configurationWorkbenchEnabled?: boolean;
   state?: typeof initialState;
+  runtime?: AppRuntime;
+  catalogOrganizationId?: string;
 } = {}) {
   const path = options.path ?? "/parameter-admin/specs";
   window.history.replaceState(null, "", path);
@@ -181,6 +186,8 @@ function renderPage(options: {
         dispatch={dispatch}
         parameterActions={parameterActions}
         state={options.state ?? initialState}
+        runtime={options.runtime}
+        catalogOrganizationId={options.catalogOrganizationId}
       />
     </ToastProvider>
   );
@@ -245,6 +252,25 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "定义匹配审核队列" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块归属" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
+  });
+
+  it("renders CatalogPage on /parameter-admin/specs when catalog ports are injected", async () => {
+    const ports = createMockCatalogPorts();
+    renderPage({
+      path: "/parameter-admin/specs",
+      runtime: {
+        parameterCatalogRepository: ports.catalog,
+        parameterCatalogGovernanceRepository: ports.governance
+      } as AppRuntime,
+      catalogOrganizationId: CATALOG_ORGANIZATION_ID
+    });
+
+    expect(await screen.findByRole("region", { name: "参数定义目录" })).toHaveAttribute(
+      "data-catalog-page",
+      "true"
+    );
+    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
   });
 
