@@ -10,7 +10,6 @@ export {
   catalogActorKinds,
   catalogAuthorizedActions,
   isCatalogActionEnabled,
-  isCatalogAgentPrincipal,
   type CatalogActorKind,
   type CatalogAuthorizedAction
 } from "./authority";

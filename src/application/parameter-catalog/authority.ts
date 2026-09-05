@@ -50,21 +50,7 @@ export function catalogActorForRole(roleId: string): CatalogActorKind {
   return "user";
 }
 
-/** Server Catalog identity treats WiseEff Agent principals as actor kind `agent`. */
-export function isCatalogAgentPrincipal(input: { userId?: string | null; title?: string | null }): boolean {
-  const userId = input.userId ?? "";
-  const title = input.title ?? "";
-  return title === "WiseEff Agent" || userId.startsWith("agt-");
-}
-
-export function catalogActorForSession(input: {
-  roleId?: string | null;
-  userId?: string | null;
-  title?: string | null;
-}): CatalogActorKind {
-  if (isCatalogAgentPrincipal(input)) {
-    return "agent";
-  }
+export function catalogActorForSession(input: { roleId?: string | null }): CatalogActorKind {
   return catalogActorForRole(input.roleId ?? "");
 }
 

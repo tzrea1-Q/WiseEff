@@ -129,9 +129,9 @@ Every route below is a target contract, not current implementation evidence.
 | Review queue | `GET /api/v2/organizations/{organizationId}/parameter-review-items` | Unknown, ambiguous, placement-conflict, and retired-registration work. |
 | Review detail | `GET /api/v2/organizations/{organizationId}/parameter-review-items/{reviewItemId}` | Evidence, candidates, status, and allowed resolutions. |
 | Review resolution | `POST .../{reviewItemId}/resolve` | One explicit resolution; never creates an Organization definition. |
-| Proposals | `GET, POST /api/v2/catalog/definition-proposals` | Role-scoped list or Organization-authored draft. The Organization is derived from trusted context. |
-| Proposal detail | `GET /api/v2/catalog/definition-proposals/{proposalId}` | Immutable base release/revision plus mutable draft metadata. |
-| Proposal workflow | `POST .../{proposalId}/submit`, `/withdraw`, `/accept`, `/reject` | Org Admin submits/withdraws; a different Platform Admin accepts/rejects. Acceptance records publication intent only. |
+| Proposals | `GET, POST /api/v2/catalog/definition-proposals` | Role-scoped list, or `POST` create-draft (`kind: "create-draft"`). The Organization is derived from trusted context. Create does not submit. |
+| Proposal detail | `GET /api/v2/catalog/definition-proposals/{proposalId}` | Immutable base release/revision plus mutable draft metadata. Proposal IDs are not definition revision IDs. |
+| Proposal workflow | `POST .../{proposalId}/submit`, `/withdraw`, `/accept`, `/reject` | Submit-existing (`kind: "submit-existing"`) is an in-place ETag transition of the same proposalId. Org Admin submits/withdraws; a different Platform Admin accepts/rejects. Acceptance records one publication intent and does not write official Catalog definitions. |
 | Legacy identifier | `GET /api/v2/catalog/legacy-identifiers/{legacyType}/{legacyId}` | Bounded, authorized exact mapping lookup; no search or candidate disclosure. |
 | Project bindings | `GET /api/v2/projects/{projectId}/parameter-bindings` | Existing path, canonical binding DTO and IDs after coordinated consumer cutover. |
 | Binding history/compare | Existing `/api/v2/projects/{projectId}/bindings/{bindingId}/history` and `/compare` | Retained paths; entries pin canonical definition revisions and values. |

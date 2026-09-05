@@ -82,13 +82,7 @@ const wrapMappingQueryable = (
   query: ((text: string, values?: unknown[]) => query(text, values)) as MappingQueryable["query"],
 });
 
-const isAgentPrincipal = (auth: AuthContext): boolean =>
-  auth.user.title === "WiseEff Agent" || auth.user.id.startsWith("agt-");
-
 const catalogActorKind = (auth: AuthContext): TrustedCatalogActorKind => {
-  if (isAgentPrincipal(auth)) {
-    return "agent";
-  }
   if (auth.roles.some((role) => role.roleId === "platform-admin")) {
     return "platform-admin";
   }
@@ -99,9 +93,6 @@ const catalogActorKind = (auth: AuthContext): TrustedCatalogActorKind => {
 };
 
 const governanceActorKind = (auth: AuthContext): TrustedGovernanceActorKind => {
-  if (isAgentPrincipal(auth)) {
-    return "agent";
-  }
   if (auth.roles.some((role) => role.roleId === "platform-admin")) {
     return "platform-admin";
   }

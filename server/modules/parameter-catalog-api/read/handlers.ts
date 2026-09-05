@@ -297,15 +297,18 @@ async function handleListSubjects(
       }),
     );
   }
-  const filtered = Boolean(
-    parsed.query.type || parsed.query.lifecycle || parsed.query.registration || parsed.query.search || parsed.query.cursor.kind === "present",
+  const extraFiltered = Boolean(
+    parsed.query.type || parsed.query.lifecycle || parsed.query.search || parsed.query.cursor.kind === "present",
   );
+  const filtered = extraFiltered || Boolean(parsed.query.registration);
+  const noRegistrations =
+    Boolean(parsed.query.registration) && items.length === 0 && !extraFiltered;
   return catalogReadOk(
     listEnvelope(
       items,
       result.page.next,
       snapshot.release.id,
-      emptyReasonFor(items.length, "subjects", filtered),
+      emptyReasonFor(items.length, "subjects", filtered, { noRegistrations }),
     ),
     snapshot.release.id,
     request.requestId,

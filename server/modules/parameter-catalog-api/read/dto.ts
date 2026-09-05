@@ -160,9 +160,13 @@ export function emptyReasonFor(
   itemCount: number,
   kind: "subjects" | "definitions" | "revisions" | "timeline",
   filtered: boolean,
-): "no-definitions" | "no-filter-match" | undefined {
+  options?: { readonly noRegistrations?: boolean },
+): "no-definitions" | "no-filter-match" | "no-registrations" | undefined {
   if (itemCount > 0) {
     return undefined;
+  }
+  if (options?.noRegistrations) {
+    return "no-registrations";
   }
   if (filtered) {
     return "no-filter-match";

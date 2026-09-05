@@ -153,9 +153,7 @@ export function ParameterAdminNextPage({
         catalog={runtime.parameterCatalogRepository}
         governance={runtime.parameterCatalogGovernanceRepository}
         actor={catalogActorForSession({
-          roleId: migrateLegacyRoleId(state?.activeRoleId ?? ""),
-          userId: state?.currentUserId,
-          title: state?.users.find((user) => user.id === state.currentUserId)?.title
+          roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
         })}
         search={search}
         onAnchorChange={handleCatalogAnchorChange}

@@ -18,5 +18,7 @@ describe("production Catalog composition import ratchet", () => {
     expect(source).toContain("unavailableUsageProjection");
     expect(source).toContain("unavailableGovernanceQueryPorts");
     expect(source).toContain("resolveCatalogReleasePin");
+    expect(source).not.toContain("WiseEff Agent");
+    expect(source).not.toContain('startsWith("agt-")');
   });
 });

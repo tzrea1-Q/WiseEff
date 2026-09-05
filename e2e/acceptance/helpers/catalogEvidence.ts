@@ -272,7 +272,7 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
   await pool.query(
     `insert into public.user_role_bindings (id, user_id, organization_id, project_id, role_id)
      values
-       ('urb-op08-agent', $1, $2, null, 'admin'),
+       ('urb-op08-agent', $1, $2, null, 'guest'),
        ('urb-op08-org-b-admin', $3, $4, null, 'admin')
      on conflict (id) do update set
        user_id = excluded.user_id,
@@ -611,6 +611,45 @@ export async function countProposals(pool: pg.Pool): Promise<number> {
     `select count(*)::text as count from parameter_catalog.definition_proposals`
   );
   return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function latestOrganizationProposal(
+  pool: pg.Pool,
+  organizationId: string
+): Promise<{ id: string; status: string } | null> {
+  const result = await pool.query<{ id: string; status: string }>(
+    `select id, status
+       from parameter_catalog.definition_proposals
+      where organization_id = $1
+      order by created_at desc
+      limit 1`,
+    [organizationId]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function countPublicationIntents(pool: pg.Pool, proposalId: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `select count(*)::text as count
+       from parameter_catalog.catalog_publication_intents
+      where proposal_id = $1`,
+    [proposalId]
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function definitionHeadRevision(
+  pool: pg.Pool,
+  releaseId: string,
+  definitionId: string
+): Promise<string | null> {
+  const result = await pool.query<{ revision_id: string }>(
+    `select revision_id
+       from parameter_catalog.catalog_release_definition_heads
+      where release_id = $1 and definition_id = $2`,
+    [releaseId, definitionId]
+  );
+  return result.rows[0]?.revision_id ?? null;
 }
 
 export function newIdempotencyKey(prefix: string): string {

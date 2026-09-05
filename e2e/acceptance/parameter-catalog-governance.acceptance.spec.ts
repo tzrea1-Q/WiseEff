@@ -17,9 +17,12 @@ import {
 } from "./helpers/catalogBrowser";
 import {
   countProposals,
+  countPublicationIntents,
   countSubjectRegistrations,
+  definitionHeadRevision,
   ensureCatalogAcceptanceFixture,
   ingestOpenReview,
+  latestOrganizationProposal,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
@@ -147,17 +150,28 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await openCatalogViaNav(page, "org-admin");
     await waitForCatalogState(page, /ready|unregistered/);
     const beforeProposals = await countProposals(fixture.pool);
+    const headBefore = await definitionHeadRevision(
+      fixture.pool,
+      fixture.chain.pinF.id,
+      fixture.xDefinitionId
+    );
     const proposal = page.getByRole("region", { name: "定义修订" });
     await expect(proposal).toBeVisible();
     await proposal.getByRole("textbox", { name: "原因" }).fill("op08 documentation proposal");
     await proposal.getByRole("button", { name: "继续确认" }).click();
     await confirmGovernanceDialog(page, "确认提出修订");
     await expect(proposal.getByText("草稿").first()).toBeVisible();
-    const afterCreate = await countProposals(fixture.pool);
-    expect(afterCreate).toBeGreaterThanOrEqual(beforeProposals);
+    const created = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
+    expect(created).not.toBeNull();
+    expect(created?.status).toBe("draft");
+    expect(await countProposals(fixture.pool)).toBe(beforeProposals + 1);
     await proposal.getByRole("button", { name: "提交修订" }).first().click();
     await confirmGovernanceDialog(page, "确认提交");
     await expect(proposal.getByText("已提交")).toBeVisible();
+    const submitted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
+    expect(submitted?.id).toBe(created?.id);
+    expect(submitted?.status).toBe("submitted");
+    expect(await countPublicationIntents(fixture.pool, created!.id)).toBe(0);
 
     await page.goto(
       catalogHref(fixture, {
@@ -175,10 +189,13 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await platformProposal.getByRole("button", { name: "接受修订" }).first().click();
     await confirmGovernanceDialog(page, "确认接受");
     await expect(platformProposal.getByText(/发布意图已记录|已接受/).first()).toBeVisible();
-    const heads = await fixture.pool.query<{ count: string }>(
-      `select count(*)::text as count from parameter_catalog.catalog_release_definition_heads`
+    const accepted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
+    expect(accepted?.id).toBe(created?.id);
+    expect(accepted?.status).toBe("accepted");
+    expect(await countPublicationIntents(fixture.pool, created!.id)).toBe(1);
+    expect(await definitionHeadRevision(fixture.pool, fixture.chain.pinF.id, fixture.xDefinitionId)).toBe(
+      headBefore
     );
-    expect(Number(heads.rows[0]?.count ?? 0)).toBeGreaterThan(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-15-journey");
   });
 });

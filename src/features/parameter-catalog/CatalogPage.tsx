@@ -446,12 +446,18 @@ export function CatalogPage({
   const definition = snapshot?.definition ?? null;
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
+  const noOrgRegistrations =
+    !anchor.subjectId &&
+    (snapshot?.subjects.items.length ?? 0) > 0 &&
+    (snapshot?.subjects.items.every((item) => item.registration.status === "unregistered") ?? false);
   const pageEmptyReason =
     domainState.kind === "empty"
       ? domainState.emptyReason
       : filterEmptyReason && visibleDefinitions.length === 0
         ? filterEmptyReason
-        : null;
+        : noOrgRegistrations
+          ? "no-registrations"
+          : null;
 
   return (
     <div

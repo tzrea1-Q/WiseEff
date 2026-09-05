@@ -14,7 +14,6 @@ import {
   openCatalogAt
 } from "./helpers/catalogBrowser";
 import {
-  CATALOG_AGENT_USER,
   countProposals,
   countSubjectRegistrations,
   ensureCatalogAcceptanceFixture,
@@ -139,9 +138,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     const before = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
     await openCatalogAt(page, "agent");
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
-    await expect(page.getByText(/仅可阅读|不能执行写入/)).toBeVisible();
     const read = await catalogJson(page.request, "GET", "/api/v2/catalog", { actor: "agent" });
     expect(read.status).toBe(200);
     const write = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
@@ -158,7 +155,6 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     expect(write.status).toBe(403);
     const after = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
     expect(after).toBe(before);
-    expect(CATALOG_AGENT_USER.title).toBe("WiseEff Agent");
     await catalogScreenshot(page, testInfo, "pcat-ui-12-agent");
   });
 
@@ -197,9 +193,10 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       const mockPage = await browser.newPage();
       await mockPage.goto(`${MOCK_FRONTEND_URL}${CATALOG_PAGE_PATH}`, { waitUntil: "domcontentloaded" });
       const mockDigest = await collectDigest(mockPage, "mock-admin");
-      expect(mockDigest.actions.some((action) => action.action === "accept-proposal")).toBe(false);
-      expect(mockDigest.actions.some((action) => action.action === "register-subject")).toBe(true);
-      expect(mockDigest.state).toBeTruthy();
+      expect(mockDigest.state).toBe(apiDigest.state);
+      expect(
+        mockDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled }))
+      ).toEqual(apiDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled })));
       await catalogScreenshot(mockPage, testInfo, "pcat-ui-13-mock");
       await mockPage.close();
     } finally {

@@ -164,8 +164,22 @@ describe("catalog snapshot lineage and metadata", () => {
       [A_RELEASE_ID, X_DEFINITION_ID],
     );
     expect(aHead.rows[0]?.revision_id).toBe(X_REVISION_1);
-    // Binding/ProjectValue pin conservation is owned by OP-06/08; Catalog install
-    // does not rewrite historical heads or invent Binding rows.
+    const bindingsBefore = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.project_parameter_bindings`,
+    );
+    const valuesBefore = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.project_parameter_values`,
+    );
+    unwrap(await kernel.loadCurrentCatalog(chain.pinC), "reload current C");
+    unwrap(await kernel.loadPinnedCatalog(chain.pinA), "reload pinned A");
+    const bindingsAfter = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.project_parameter_bindings`,
+    );
+    const valuesAfter = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.project_parameter_values`,
+    );
+    expect(bindingsAfter.rows[0]?.n).toBe(bindingsBefore.rows[0]?.n);
+    expect(valuesAfter.rows[0]?.n).toBe(valuesBefore.rows[0]?.n);
   });
 
   it("CATFIX-SNAP-04 current is C; pinned A/B contain no C content", async () => {

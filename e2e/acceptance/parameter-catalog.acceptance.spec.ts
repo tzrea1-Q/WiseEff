@@ -229,7 +229,6 @@ test.describe("canonical parameter catalog page", () => {
 
     await openCatalogAt(page, "agent");
     await assertReleaseVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const agentWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
@@ -249,7 +248,7 @@ test.describe("canonical parameter catalog page", () => {
   }, testInfo) => {
     // @acceptance PCAT-UI-08
     // @operation PCAT-CATALOG-STATES-001
-    let catalogMode: "delay" | "not-ready" | "no-registrations" | "live" = "delay";
+    let catalogMode: "delay" | "not-ready" | "live" = "delay";
     await page.route("**/api/v2/catalog**", async (route) => {
       const url = new URL(route.request().url());
       const method = route.request().method();
@@ -272,19 +271,6 @@ test.describe("canonical parameter catalog page", () => {
         });
         return;
       }
-      if (method === "GET" && url.pathname === "/api/v2/catalog/subjects" && catalogMode === "no-registrations") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            items: [],
-            nextCursor: null,
-            catalogReleaseId: fixture.chain.pinF.id,
-            emptyReason: "no-registrations"
-          })
-        });
-        return;
-      }
       await route.continue();
     });
 
@@ -302,16 +288,16 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"])).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-08-not-ready");
 
-    catalogMode = "no-registrations";
-    await page.reload();
-    await expect(catalogPage(page)).toHaveAttribute("data-empty-reason", "no-registrations");
-    await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"]).first()).toBeVisible();
-
     catalogMode = "live";
-    await page.reload();
+    await openCatalogAt(page, "org-b-admin");
+    await waitForCatalogState(page, /ready|empty|unregistered/);
+    await expect(page.getByRole("list", { name: "主体列表" })).toBeVisible();
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"]).first()).toBeVisible();
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-review-work"]).first()).toBeVisible();
+
+    await openCatalogAt(page, "org-admin");
     await selectSubjectByName(page, CHARGER_SUBJECT);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
-    await expect(page.getByRole("region", { name: "待审核事项" })).toBeVisible();
 
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("zzzz-no-such-definition");
     await page.getByRole("button", { name: "搜索" }).click();
