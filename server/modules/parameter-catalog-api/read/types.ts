@@ -84,6 +84,16 @@ export type CatalogRegistrationProjection =
     };
 
 export type RegistrationProjectionPort = {
+  projectSubjects(input: {
+    readonly organizationId: string;
+    readonly subjectIds: readonly CatalogSubjectId[];
+    readonly canRegister: boolean;
+    readonly principalId?: string;
+    readonly observedRelease?: CatalogReleasePin;
+  }): Promise<ReadonlyMap<CatalogSubjectId, {
+    readonly registration: CatalogRegistrationProjection;
+    readonly reviewCount: number;
+  }>>;
   projectSubject(input: {
     readonly organizationId: string;
     readonly subjectId: CatalogSubjectId;

@@ -280,15 +280,17 @@ async function handleListSubjects(
   if (result.status === "invalid-page") {
     return mapInvalidPage(result.reason, request.requestId, snapshot.release.id);
   }
+  const projections: Awaited<ReturnType<CatalogReadPorts["registration"]["projectSubjects"]>> = result.page.items.length === 0 ? new Map() : await ports.registration.projectSubjects({
+    organizationId: scope.organizationId,
+    principalId: scope.principalId,
+    subjectIds: [...new Set(result.page.items.map((subject) => subject.id))],
+    canRegister: scope.canRegister,
+    observedRelease: observedPin(snapshot),
+  });
   const items = [];
   for (const subject of result.page.items) {
-    const projection = await ports.registration.projectSubject({
-      organizationId: scope.organizationId,
-      principalId: scope.principalId,
-      subjectId: subject.id,
-      canRegister: scope.canRegister,
-      observedRelease: observedPin(snapshot),
-    });
+    const projection = projections.get(subject.id);
+    if (!projection) return catalogNotReady(request.requestId);
     items.push(
       mapCatalogSubject(subject, projection.registration, {
         reviewCount: projection.reviewCount,

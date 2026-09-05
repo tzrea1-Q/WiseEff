@@ -29,6 +29,9 @@ const requirePrincipal = (principalId: string | undefined, operation: string): s
 
 /** Test-only unregistered Catalog projection. Must not be the production pool default. */
 export const unregisteredProjectionForTests: RegistrationProjectionPort = {
+  async projectSubjects({ subjectIds }) {
+    return new Map(subjectIds.map((id) => [id, { registration: { status: "unregistered" as const }, reviewCount: 0 }]));
+  },
   async projectSubject() {
     return {
       registration: { status: "unregistered" },
@@ -75,6 +78,9 @@ export const kernelOnlyTimelineComposer: TimelineComposerPort = {
 };
 
 export const unavailableRegistrationProjection: RegistrationProjectionPort = {
+  async projectSubjects() {
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubjects" });
+  },
   async projectSubject() {
     throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubject" });
   },
@@ -99,6 +105,23 @@ export function createRegistrationProjectionFromQueries(
   queries: GovernanceCatalogQueries,
 ): RegistrationProjectionPort {
   return {
+    async projectSubjects(input) {
+      const principalId = requirePrincipal(input.principalId, "projectSubjects");
+      const subjectIds = [...new Set(input.subjectIds)];
+      if (subjectIds.length === 0) return new Map();
+      const result = await queries.projectRegistrations({
+        organizationId: input.organizationId,
+        subjectIds,
+        authScope: { organizationId: input.organizationId, principalId },
+        observedRelease: fallbackPin(input),
+      });
+      if (!result.ok) throw new CatalogProjectionError(result.error);
+      const projections = new Map(result.value.projections.map((projection) => [projection.subjectId, projection]));
+      if (subjectIds.some((id) => !projections.has(id))) {
+        throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubjects" });
+      }
+      return projections;
+    },
     async projectSubject(input) {
       const principalId = requirePrincipal(input.principalId, "projectSubject");
       const result = await queries.projectRegistrations({
