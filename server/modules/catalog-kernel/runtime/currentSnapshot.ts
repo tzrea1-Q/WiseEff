@@ -65,6 +65,7 @@ import {
   withCatalogReadTransaction,
   type CatalogSnapshotClient,
 } from "./readTransaction";
+import { resolveCatalogSubject } from "./subjectMatch";
 
 type SubjectRow = {
   id: string;
@@ -339,64 +340,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
   }
 
   resolveSubject(selector: SubjectSelector): MatchResult {
-    const driverHits = this.subjects.filter((subject) => {
-      if (subject.kind !== "driver") return false;
-      if (subject.membership.selector.kind !== "driver-compatible") return false;
-      const values = new Set(subject.membership.selector.values);
-      const aliases = subject.aliases.filter(
-        (alias) =>
-          alias.selector.kind === "driver-compatible" &&
-          selector.driverCompatibles.includes(alias.selector.value),
-      );
-      return (
-        selector.driverCompatibles.some((value) => values.has(value)) || aliases.length > 0
-      );
-    });
-    if (driverHits.length === 1) {
-      const subject = driverHits[0]!;
-      const alias =
-        subject.aliases.find(
-          (candidate) =>
-            candidate.selector.kind === "driver-compatible" &&
-            selector.driverCompatibles.includes(candidate.selector.value),
-        ) ?? null;
-      if (subject.membership.lifecycle === "retired") {
-        return { status: "retired", subject, alias };
-      }
-      return {
-        status: "matched",
-        subject,
-        matchedBy: alias ? "alias" : "canonical-selector",
-        alias,
-      };
-    }
-    if (driverHits.length > 1) {
-      return { status: "ambiguous", candidates: driverHits };
-    }
-    if (selector.nodeTypeFallback.kind === "present") {
-      const nodeTypeName = selector.nodeTypeFallback.name;
-      const nodeHits = this.subjects.filter((subject) => {
-        if (subject.kind !== "node-type") return false;
-        if (subject.membership.selector.kind !== "node-type-name") return false;
-        return subject.membership.selector.value === nodeTypeName;
-      });
-      if (nodeHits.length === 1) {
-        const subject = nodeHits[0]!;
-        if (subject.membership.lifecycle === "retired") {
-          return { status: "retired", subject, alias: null };
-        }
-        return {
-          status: "matched",
-          subject,
-          matchedBy: "canonical-selector",
-          alias: null,
-        };
-      }
-      if (nodeHits.length > 1) {
-        return { status: "ambiguous", candidates: nodeHits };
-      }
-    }
-    return { status: "unknown", reason: "no-candidate" };
+    return resolveCatalogSubject(this.subjects, selector);
   }
 
   getDefinition(input: {
