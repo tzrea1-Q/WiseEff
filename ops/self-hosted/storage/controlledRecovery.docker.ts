@@ -1,0 +1,306 @@
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { mkdtemp, open, readdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import pg from "pg";
+import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
+import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s3ObjectStore";
+import { hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryPackageInput, type RecoveryRole } from "./recoveryPackage";
+import { recoveryRefuse, type ControlledRecoverySource, type ControlledRecoveryTarget } from "./controlledRecovery";
+
+const OWNER_LABEL = "wiseeff.controlled-recovery-run";
+const LIMIT = 256 * 1024 * 1024;
+const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+type Container = { id: string; imageId: string; mounts: readonly { name: string; destination: string; createdAt: string }[] };
+export type DockerRecoveryResources = {
+  profile: "owned-pg16-minio2024-redis7-v1";
+  runId: string; deploymentId: string; daemonId: string; networkId: string;
+  postgres: Container; objects: Container; redis: Container; objectClient: Container;
+  writers: readonly (Container & { service: "api" | "worker" | "web" })[];
+  database: string; bucket: string;
+};
+/** Private closure only: no secret is an argv, receipt, manifest or error field. */
+export type DockerRecoverySecrets = {
+  postgresPassword: string; objectAccessKey: string; objectSecretKey: string;
+  rolePasswords?: Readonly<Record<string, string>>;
+};
+
+const ROLE_PROFILE_SQL = `select json_build_object(
+ 'unsupportedRoles',(select count(*) from pg_roles where rolname !~ '^pg_' and rolname<>'postgres'
+   and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit<>-1 or rolvaliduntil is not null or rolconfig is not null)),
+ 'unsupportedMembership',(select count(*) from pg_auth_members a join pg_roles member on member.oid=a.member
+   join pg_roles granted on granted.oid=a.roleid join pg_roles grantor on grantor.oid=a.grantor
+   where (member.rolname !~ '^pg_' and member.rolname<>'postgres' or granted.rolname !~ '^pg_' and granted.rolname<>'postgres')
+   and (a.admin_option or grantor.rolname<>'postgres' or member.rolname ~ '^pg_' or member.rolname='postgres' or granted.rolname ~ '^pg_' or granted.rolname='postgres')),
+ 'unsupportedSettings',(select count(*) from pg_db_role_setting s join pg_roles r on r.oid=s.setrole where r.rolname !~ '^pg_' and r.rolname<>'postgres'),
+ 'roles',(select coalesce(json_agg(json_build_object('name',rolname,'login',rolcanlogin,'inherit',rolinherit,'members',
+   (select coalesce(json_agg(json_build_object('name',member.rolname,'inherit',am.inherit_option,'set',am.set_option) order by member.rolname),'[]')
+    from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid)) order by rolname),'[]')
+   from pg_roles r where rolname !~ '^pg_' and rolname<>'postgres')) as value`;
+const tablesSql = "select format('%I.%I',n.nspname,c.relname) as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in ('r','p') and n.nspname not in ('pg_catalog','information_schema') and n.nspname !~ '^pg_toast' order by 1";
+const quote = (value: string) => pg.escapeLiteral(value);
+
+/** Deliberately limited to an explicitly owned internal Docker network. This is
+ * not a production host selector. It never creates/stops/removes a resource. */
+function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecrets, sourceMode: boolean) {
+  // Subsequent caller mutations cannot redefine which objects this adapter owns.
+  resources = JSON.parse(JSON.stringify(resources)) as DockerRecoveryResources;
+  secrets = { ...secrets, rolePasswords: secrets.rolePasswords ? { ...secrets.rolePasswords } : undefined };
+  if (resources.profile !== "owned-pg16-minio2024-redis7-v1" || !/^[a-f0-9]{24}$/.test(resources.runId)
+    || !/^[a-z][a-z0-9_]{0,62}$/.test(resources.database) || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(resources.bucket)
+    || resources.writers.map(w => w.service).sort().join(",") !== "api,web,worker"
+    || ![secrets.postgresPassword, secrets.objectAccessKey, secrets.objectSecretKey].every(s => typeof s === "string" && s.length > 0 && !s.includes("\0"))) recoveryRefuse("docker-profile-unsupported");
+  const docker = createIsolatedUpgradeDocker();
+  if (docker.daemonId !== resources.daemonId) recoveryRefuse("daemon-mismatch");
+  let lockClient: pg.PoolClient | undefined;
+  let lockPid: number | undefined;
+  const all = [resources.postgres, resources.objects, resources.redis, resources.objectClient, ...resources.writers];
+  if (new Set(all.map(c => c.id)).size !== all.length) recoveryRefuse("container-alias");
+  const volumeNames = all.flatMap(c => c.mounts.map(m => m.name));
+  if (new Set(volumeNames).size !== volumeNames.length) recoveryRefuse("volume-alias");
+  const inspect = (container: Container) => {
+    const info = docker.assertOwned(container.id, OWNER_LABEL, resources.runId);
+    if (info.Image !== container.imageId || !/^sha256:[a-f0-9]{64}$/.test(container.imageId)) recoveryRefuse("container-image-drift");
+    const mounts = info.Mounts as { Type: string; Name?: string; Destination: string }[];
+    if (mounts.some(m => m.Type !== "volume") || mounts.length !== container.mounts.length) recoveryRefuse("container-mount-unsupported");
+    for (const mount of container.mounts) {
+      const actual = mounts.find(m => m.Name === mount.name && m.Destination === mount.destination);
+      const volume = JSON.parse(docker.command(["volume", "inspect", mount.name]).toString())[0];
+      if (!actual || volume.Name !== mount.name || volume.CreatedAt !== mount.createdAt || volume.Labels?.[OWNER_LABEL] !== resources.runId
+        || volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length) recoveryRefuse("volume-identity-drift");
+      const consumers = docker.command(["ps", "-a", "--no-trunc", "--filter", `volume=${mount.name}`, "--format", "{{.ID}}"])
+        .toString().trim().split("\n").filter(Boolean);
+      if (consumers.length !== 1 || consumers[0] !== container.id) recoveryRefuse("volume-shared-with-other-container");
+    }
+    const networks = Object.values(info.NetworkSettings.Networks) as { NetworkID: string }[];
+    // A never-started restore container has no active endpoint yet. Its actual
+    // Docker HostConfig must still pin the already-inspected network ID.
+    if (networks.length !== 1 || (networks[0].NetworkID !== resources.networkId
+      && (info.State.Running || networks[0].NetworkID || info.HostConfig.NetworkMode !== resources.networkId))) recoveryRefuse("container-network-drift");
+    for (const bindings of Object.values(info.NetworkSettings.Ports) as ({ HostIp: string }[] | null)[]) {
+      if (bindings?.some(b => b.HostIp !== "127.0.0.1")) recoveryRefuse("published-port-not-private");
+    }
+    return info;
+  };
+  const check = () => {
+    const network = JSON.parse(docker.command(["network", "inspect", resources.networkId]).toString())[0];
+    if (network.Id !== resources.networkId || network.Internal !== true || network.Labels?.[OWNER_LABEL] !== resources.runId
+      || Object.keys(network.Containers ?? {}).some(id => !all.some(c => c.id === id))) recoveryRefuse("network-not-isolated");
+    const infos = all.map(inspect);
+    for (const writer of resources.writers) if (inspect(writer).State.Running || inspect(writer).State.Restarting) recoveryRefuse("writer-still-running");
+    for (const [container, image] of [[resources.postgres, "postgres:16-alpine"], [resources.redis, "redis:7-alpine"],
+      [resources.objects, "minio/minio:RELEASE.2024-12-18T13-15-44Z"], [resources.objectClient, "minio/mc:RELEASE.2024-11-21T17-21-54Z"]] as const) {
+      // A fixed image ID and the inspected trusted local tag must identify the same bytes.
+      const expected = JSON.parse(docker.command(["image", "inspect", image]).toString())[0];
+      if (expected.Id !== container.imageId) recoveryRefuse("image-profile-unsupported");
+    }
+    const redis = infos[2];
+    const command = redis.Config.Cmd as string[];
+    if (command.length !== 5 || command[0] !== "redis-server" || command[1] !== "--appendonly" || command[2] !== "yes"
+      || command[3] !== "--appendfsync" || !["always", "everysec"].includes(command[4])) recoveryRefuse("redis-config-unsupported");
+    if (redis.State.Running || redis.State.Restarting || redis.State.OOMKilled || redis.State.ExitCode !== 0 || redis.State.Error
+      || (sourceMode && (!Date.parse(redis.State.StartedAt) || Date.parse(redis.State.FinishedAt) <= Date.parse(redis.State.StartedAt)))) recoveryRefuse("redis-not-cleanly-stopped");
+    return infos;
+  };
+  const endpoint = (container: Container, port: number) => {
+    const rows = inspect(container).NetworkSettings.Ports[`${port}/tcp`];
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].HostIp !== "127.0.0.1" || !/^[0-9]+$/.test(rows[0].HostPort)) recoveryRefuse("store-endpoint-unavailable");
+    return { host: "127.0.0.1", port: Number(rows[0].HostPort) };
+  };
+  const exec = (container: Container, args: string[], input?: Buffer) => { check(); return docker.command(["exec", "-i", container.id, ...args], input); };
+  const db = async <T>(body: (client: pg.Client) => Promise<T>) => {
+    check();
+    const client = new pg.Client({ ...endpoint(resources.postgres, 5432), user: "postgres", password: secrets.postgresPassword, database: resources.database,
+      application_name: "controlled-recovery", connectionTimeoutMillis: 5000, query_timeout: 10000 });
+    try { await client.connect(); return await body(client); } finally { await client.end(); }
+  };
+  const mc = (args: string[]) => {
+    const networks = Object.values(inspect(resources.objects).NetworkSettings.Networks) as { IPAddress: string }[];
+    const config = { version: "10", aliases: { recovery: { url: `http://${networks[0].IPAddress}:9000`, accessKey: secrets.objectAccessKey, secretKey: secrets.objectSecretKey, api: "S3v4", path: "auto" } } };
+    // Secret JSON is stdin and a 0600 temporary file inside the owned client,
+    // never Docker -e/argv. Only this ephemeral secret directory is removed.
+    const script = 'umask 077; d=$(mktemp -d); trap \'rm -rf "$d"\' EXIT HUP INT TERM; cat > "$d/config.json"; mc --config-dir "$d" "$@"';
+    return exec(resources.objectClient, ["sh", "-c", script, "controlled-mc", ...args], Buffer.from(JSON.stringify(config)));
+  };
+  const jsonLines = (bytes: Buffer) => bytes.toString().trim() ? bytes.toString().trim().split("\n").map(line => JSON.parse(line)) : [];
+  const list = () => {
+    const rows = jsonLines(mc(["ls", "--recursive", "--json", `recovery/${resources.bucket}`]));
+    if (rows.length > 10000 || rows.some(row => row.status !== "success" || row.type !== "file" || typeof row.key !== "string" || !Number.isSafeInteger(row.size) || row.size < 0)
+      || new Set(rows.map(row => row.key)).size !== rows.length || rows.reduce((n, row) => n + row.size, 0) > LIMIT) recoveryRefuse("object-list-unsupported");
+    return rows.sort((a, b) => a.key.localeCompare(b.key));
+  };
+  const store = () => createHttpObjectStorageTransport({ endpoint: `http://${endpoint(resources.objects, 9000).host}:${endpoint(resources.objects, 9000).port}`, accessKeyId: secrets.objectAccessKey, secretAccessKey: secrets.objectSecretKey });
+  const assertNoOtherSessions = async (client: pg.Client | pg.PoolClient) => {
+    const result = await client.query("select count(*)::int as n from pg_stat_activity where backend_type='client backend' and pid<>pg_backend_pid() and ($1::integer is null or pid<>$1)", [lockPid ?? null]);
+    if (result.rows[0]?.n !== 0) recoveryRefuse("database-writer-boundary-unavailable");
+  };
+  const observe = async () => {
+    const infos = check();
+    const postgres = await db(async client => {
+      await assertNoOtherSessions(client);
+      const row = (await client.query("select system_identifier::text as system, (select oid::text from pg_database where datname=current_database()) as database from pg_control_system()" )).rows[0];
+      if (!row?.system || !row.database) recoveryRefuse("database-identity-unavailable");
+      return row;
+    });
+    const info = JSON.parse(mc(["admin", "info", "--json", "recovery"]).toString());
+    if (info.status !== "success" || typeof info.info?.deploymentID !== "string" || !info.info.deploymentID) recoveryRefuse("object-deployment-identity-unavailable");
+    const version = JSON.parse(mc(["version", "info", "--json", `recovery/${resources.bucket}`]).toString());
+    // This pinned mc version emits a versioning object whose status is empty
+    // for a never-versioned bucket (cmd/version-info.go), not its human label.
+    if (version.status !== "success" || version.versioning?.status !== "" || version.versioning.MFADelete
+      || version.versioning.ExcludeFolders || version.versioning.ExcludedPrefixes?.length) recoveryRefuse("object-versioning-unsupported");
+    const buckets = jsonLines(mc(["ls", "--json", "recovery"]));
+    if (buckets.length !== 1 || buckets[0].status !== "success" || buckets[0].key !== `${resources.bucket}/`
+      || !Number.isFinite(Date.parse(buckets[0].lastModified))) recoveryRefuse("bucket-inventory-unsupported");
+    return { deploymentId: resources.deploymentId, hostFingerprint: docker.daemonId,
+      postgresIdentity: digest({ container: resources.postgres, ...postgres }),
+      objectStoreIdentity: digest({ container: resources.objects, deployment: info.info.deploymentID, bucket: resources.bucket, createdAt: buckets[0].lastModified, versioning: version.versioning }),
+      redisIdentity: digest({ container: resources.redis, command: infos[2].Config.Cmd, startedAt: infos[2].State.StartedAt, finishedAt: infos[2].State.FinishedAt }) };
+  };
+  const redisFiles = async () => {
+    check();
+    const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-aof-"));
+    try {
+      docker.command(["cp", `${resources.redis.id}:/data/appendonlydir/.`, directory]);
+      const names = (await readdir(directory)).sort();
+      if (names.length > 1000) recoveryRefuse("aof-size-limit");
+      let total = 0;
+      const files = [];
+      for (const name of names) {
+        if (!/^appendonly\.aof(?:\.manifest|\.[0-9]+\.(?:base\.rdb|base\.aof|incr\.aof))$/.test(name)) recoveryRefuse("aof-file-unsupported");
+        const file = await open(path.join(directory, name), constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+          const stat = await file.stat(); total += stat.size;
+          if (!stat.isFile() || stat.nlink !== 1 || total > LIMIT) recoveryRefuse("aof-size-limit");
+          const bytes = await file.readFile();
+          if (bytes.length !== stat.size) recoveryRefuse("aof-file-changed");
+          files.push({ name, bytes });
+        } finally { await file.close(); }
+      }
+      check(); return { appendonly: true as const, files };
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  };
+  return { check, db, exec, mc, list, store, observe, redisFiles, docker, assertNoOtherSessions,
+    setLock(client: pg.PoolClient | undefined, pid?: number) { lockClient = client; lockPid = pid; },
+    async openSource() {
+      if (lockClient) recoveryRefuse("source-already-open");
+      check();
+      const pool = new pg.Pool({ ...endpoint(resources.postgres, 5432), user: "postgres", password: secrets.postgresPassword, database: resources.database, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
+      const client = await pool.connect();
+      try {
+        await assertNoOtherSessions(client);
+        await client.query("begin isolation level repeatable read");
+        const names = (await client.query(tablesSql)).rows.map(row => row.name as string);
+        if (!names.length || names.length > 10000) recoveryRefuse("source-table-inventory-unsupported");
+        await client.query(`lock table ${names.join(", ")} in share mode nowait`);
+        const pid = (await client.query("select pg_backend_pid() as pid")).rows[0].pid as number;
+        this.setLock(client, pid);
+        const snapshot = (await client.query("select pg_export_snapshot() as snapshot")).rows[0].snapshot as string;
+        return { client, snapshot, async close() {
+          let destroy = false;
+          try { await client.query("rollback"); } catch { destroy = true; }
+          client.release(destroy); await pool.end();
+          lockClient = undefined; lockPid = undefined;
+          if (destroy) recoveryRefuse("source-close-unknown");
+        } };
+      } catch {
+        client.release(true); await pool.end(); recoveryRefuse("source-lock-unavailable");
+      }
+    },
+  };
+}
+
+export function createDockerRecoverySource(resources: DockerRecoveryResources, secrets: DockerRecoverySecrets): ControlledRecoverySource {
+  const io = access(resources, secrets, true);
+  return { observe: io.observe, async open() {
+    const locked = await io.openSource();
+    return {
+      async postgres() {
+        io.check();
+        const inventory = (await locked.client.query(RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL)).rows[0];
+        if (hasUnsupportedNonDumpCapabilities(Object.values(inventory)[0])) recoveryRefuse("non-dump-capability-unsupported");
+        const profile = (await locked.client.query(ROLE_PROFILE_SQL)).rows[0].value;
+        if (profile.unsupportedRoles !== 0 || profile.unsupportedMembership !== 0 || profile.unsupportedSettings !== 0) recoveryRefuse("role-capability-unsupported");
+        const postgres = io.exec(resources.postgres, ["pg_dump", "-U", "postgres", "-d", resources.database, "--format=custom", `--snapshot=${locked.snapshot}`]);
+        return { postgres, roles: profile.roles as RecoveryRole[] };
+      },
+      async objects() {
+        const before = io.list();
+        const objects: RecoveryPackageInput["objects"] = [];
+        for (const entry of before) {
+          io.check();
+          const stat = JSON.parse(io.mc(["stat", "--json", `recovery/${resources.bucket}/${entry.key}`]).toString());
+          const contentType = stat.metadata?.["Content-Type"];
+          const head = await io.store().head({ bucket: resources.bucket, key: entry.key });
+          if (stat.status !== "success" || typeof contentType !== "string" || (head && !head.ok)) recoveryRefuse("object-metadata-unavailable");
+          const bytes = await io.store().get({ bucket: resources.bucket, key: entry.key });
+          if (bytes.length !== entry.size) recoveryRefuse("object-size-drift");
+          // The existing HEAD transport returns void for a successful object
+          // with no user metadata; failed requests throw instead.
+          objects.push({ key: entry.key, bytes, contentType, metadata: head?.metadata ?? {} });
+        }
+        if (digest(before) !== digest(io.list())) recoveryRefuse("object-inventory-drift");
+        return objects;
+      },
+      redis: io.redisFiles, close: locked.close,
+    };
+  } };
+}
+
+export function createDockerRecoveryDestination(resources: DockerRecoveryResources, secrets: DockerRecoverySecrets): ControlledRecoveryTarget {
+  const io = access(resources, secrets, false);
+  return {
+    observe: io.observe,
+    async assertEmptyAndIsolated() {
+      io.check();
+      await io.db(async client => {
+        await io.assertNoOtherSessions(client);
+        const inventory = (await client.query(RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL)).rows[0];
+        if (hasUnsupportedNonDumpCapabilities(Object.values(inventory)[0])) recoveryRefuse("restore-database-profile-unsupported");
+        if ((await client.query(tablesSql)).rowCount !== 0 || (await client.query("select count(*)::int as n from pg_roles where rolname !~ '^pg_' and rolname<>'postgres'")).rows[0].n !== 0) recoveryRefuse("restore-database-not-empty");
+      });
+      if (io.list().length) recoveryRefuse("restore-bucket-not-empty");
+      const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-empty-redis-"));
+      try {
+        io.docker.command(["cp", `${resources.redis.id}:/data/.`, directory]);
+        if ((await readdir(directory)).length) recoveryRefuse("restore-redis-not-empty");
+      } finally { await rm(directory, { recursive: true, force: true }); }
+    },
+    async restorePostgres(backup) {
+      if (backup.roles.some(role => role.login && (!secrets.rolePasswords?.[role.name] || secrets.rolePasswords[role.name].includes("\0")))) recoveryRefuse("restore-role-secret-unavailable");
+      await io.db(async client => {
+        await client.query("begin");
+        try {
+          // Only this controlled bootstrap session changes logging. Password
+          // statements must not enter even a locally enabled SQL-duration log.
+          await client.query("set local log_statement='none'; set local log_min_error_statement='panic'; set local log_min_duration_statement=-1; set local log_min_duration_sample=-1");
+          // Package verification has already restricted names and capabilities.
+          for (const role of backup.roles) {
+            const password = role.login ? secrets.rolePasswords?.[role.name] : undefined;
+            if (role.login && (!password || password.includes("\0"))) recoveryRefuse("restore-role-secret-unavailable");
+            await client.query(`create role "${role.name}" ${role.login ? `login password ${quote(password!)}` : "nologin"} ${role.inherit ? "inherit" : "noinherit"} nosuperuser nobypassrls nocreatedb nocreaterole noreplication`);
+          }
+          for (const role of backup.roles) for (const member of role.members) {
+            await client.query(`grant "${role.name}" to "${member.name}" with admin false`);
+            await client.query(`grant "${role.name}" to "${member.name}" with inherit ${member.inherit}`);
+            await client.query(`grant "${role.name}" to "${member.name}" with set ${member.set}`);
+          }
+          await client.query("commit");
+        } catch { await client.query("rollback").catch(() => {}); recoveryRefuse("restore-role-outcome-unknown"); }
+      });
+      io.exec(resources.postgres, ["pg_restore", "-U", "postgres", "-d", resources.database, "--exit-on-error"], backup.postgres);
+    },
+    async restoreObjects(objects) {
+      for (const object of objects) { io.check(); await io.store().put({ bucket: resources.bucket, ...object }); }
+    },
+    async restoreRedis(redis) {
+      io.check();
+      const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-redis-import-"));
+      try {
+        for (const file of redis.files) await writeFile(path.join(directory, file.name), file.bytes, { flag: "wx", mode: 0o600 });
+        io.docker.command(["cp", directory, `${resources.redis.id}:/data/appendonlydir`]);
+      } finally { await rm(directory, { recursive: true, force: true }); }
+    },
+  };
+}
