@@ -13,6 +13,7 @@
 
 ## 关键阅读点
 
+- 对外展示与项目交流：阅读[项目介绍](../presentations/project-introduction.zh-CN.md)，包含核心能力、模块流程图和本地应用实机截图。
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。

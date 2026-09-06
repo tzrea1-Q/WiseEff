@@ -8,6 +8,8 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 
 ## Reading Order
 
+For project demonstrations, use the [Chinese project introduction](presentations/project-introduction.zh-CN.md), with Mermaid diagrams and local application screenshots.
+
 1. [Product Specs](product-specs/index.md): product goals, prototype behavior, MVP scope, and onboarding flows.
 2. [Architecture](../ARCHITECTURE.md): top-level runtime and codebase map.
 3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
