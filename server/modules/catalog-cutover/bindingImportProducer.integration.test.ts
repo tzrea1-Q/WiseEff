@@ -187,6 +187,28 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     } finally { await writer.query("rollback"); writer.release(); }
     expect(await producer.archive.objectStore.listRefs()).toHaveLength(0);
   });
+  it("destroys the real source connection when lock refusal is followed by an unknown rollback response", async () => {
+    const writer = await admin.connect();
+    const source = await admin.connect();
+    let destroyed = false;
+    const wrapped = new Proxy(source, { get(target, key) {
+      if (key === "query") return async (...args: unknown[]) => {
+        const result = await (target.query as (...args: unknown[]) => Promise<unknown>).apply(target, args);
+        if (args[0] === "rollback") throw new Error("synthetic rollback response loss");
+        return result;
+      };
+      if (key === "release") return (destroy?: boolean) => { destroyed = destroy === true; target.release(destroy); };
+      return Reflect.get(target, key);
+    } });
+    const pool = new Proxy(admin, { get(target, key) { return key === "connect" ? async () => wrapped : Reflect.get(target, key); } });
+    try {
+      await writer.query("begin");
+      await writer.query("update public.project_parameter_files set enabled=enabled where id='file-1'");
+      await expect(withLockedBindingSource(pool, client, async () => { throw new Error("unexpected import"); }))
+        .rejects.toThrow("binding-source-transaction-close-unknown");
+      expect(destroyed).toBe(true);
+    } finally { await writer.query("rollback"); writer.release(); }
+  });
   it("rejects an independent database as the source before trying to lock its tables",async () => {
     const other = await createCheckedEmptyDatabase("s7wrongsource");
     const otherPool = new pg.Pool({connectionString:other.url,max:1});
