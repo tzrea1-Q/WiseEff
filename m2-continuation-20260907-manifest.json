@@ -1,0 +1,1443 @@
+{
+  "createdAtUtc": "2026-09-06T16:36:31.984405+00:00",
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "codeCandidate": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+  "codeTree": "4690333c6d62a9c613b344d9616c473c92bcc0e9",
+  "reportHead": "7fabeb8c46a3112b007ea93738c8c0a6fc2963ab",
+  "reportTree": "f56f345758121551d020f2eec8fbe9b903e3f894",
+  "reportOnlyPaths": [
+    "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+    "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+    "ops/self-hosted/populated-upgrade-evidence.md",
+    "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+    "ops/self-hosted/populated-upgrade.md",
+    "ops/self-hosted/populated-upgrade.zh-CN.md"
+  ],
+  "sourceDeploymentSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "sourceHistoricalImageId": "sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c",
+  "sourceIdentityNote": "user supplied historical deployment observation, not a local rebuilt image or manifest digest",
+  "target": "newly owned local Docker Desktop synthetic resources; no production connection",
+  "platform": "linux/arm64 PostgreSQL16 Alpine component matrix",
+  "tools": {
+    "node": "22.22.3",
+    "npm": "10.9.8",
+    "vitest": "4.1.5",
+    "typescript": "5.9.3"
+  },
+  "migrationInventory": "126 original schema files + 11 immutable 0129-0139 suffix files; full filenames/checksums verified; 0140 NOT integrated",
+  "pins": "real component-generated frozen source/mapping/receipt pins; no complete deployment report lineage or runtime/public approval pin",
+  "states": {
+    "M1": "Scratch; boundary/focused passed, historical full scripts 1301 passed/1 failed/5 skipped",
+    "M2": "INCOMPLETE; components are not complete terminal/controller upgrade",
+    "realBackup": "not authorized/supplied, not run",
+    "enterpriseNetworkBuild": "not verified",
+    "Hosted": "no jobs/checkouts/merge-ref",
+    "PR": "none, not integration-ready",
+    "production": "not authorized, not executed, no production upgrade command"
+  },
+  "internalGaps": [
+    "terminal P2/P3 composition and handoff",
+    "unknown-outcome reconciliation",
+    "complete consumer conversion/oracle",
+    "P12/P13 and complete fresh report lineage",
+    "API/worker actual startup/pool integration",
+    "browser/business/growth acceptance"
+  ],
+  "externalDependencies": [
+    "authorized recoverable backup",
+    "enterprise CA/network evidence",
+    "Policy #815 decision",
+    "separate unapproved runtime capability proposal",
+    "frozen source-lock performance decision",
+    "production maintenance/release authorization"
+  ],
+  "reviews": "bounded independent delta reviews; findings fixed and tested; no overall M2 seal",
+  "files": [
+    {
+      "path": ".dockerignore",
+      "mode": "100644",
+      "blob": "5740037c8c6c245a732e480723ffc543c301e9dd",
+      "bytes": 431,
+      "sha256": "e6136fb6b2ead77ab74c94ef5ff1abfbf3a54b5a8306992ef1e3a2ee785dc470"
+    },
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "a59f3861e15fc06bbde345d741211787a26b2517",
+      "bytes": 14794,
+      "sha256": "22a23e13d63a5d9358e51b6c1fb90fd02818f6317dfe4c4d16292bcc911183d9"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "0f1c26f7529313759e4937104940fd0c20c928b8",
+      "bytes": 12140,
+      "sha256": "ad50ce00d23340c44505a3d9c661c6dbda4e1b163ad5a80db94a91d81d37d4a6"
+    },
+    {
+      "path": "ops/self-hosted/Dockerfile",
+      "mode": "100644",
+      "blob": "f508ac1a74774e4f366256557ad1cf7a67889be4",
+      "bytes": 4558,
+      "sha256": "0758857462b706cb98bf40c1c6f1d1da3ad0aa7e1ad659dd1fa8a8e590fb4d89"
+    },
+    {
+      "path": "ops/self-hosted/compose.catalog.yaml",
+      "mode": "100644",
+      "blob": "43617bf9e01d53c73a60782592d010b80fa33bd2",
+      "bytes": 2463,
+      "sha256": "428dfe2bcfcdd544dd80ae0f9ea94a861f4c9865f166879664e95dc4fcee2412"
+    },
+    {
+      "path": "ops/self-hosted/compose.yaml",
+      "mode": "100644",
+      "blob": "de506348d48012bccc9ec57f00bd433d043144f9",
+      "bytes": 9881,
+      "sha256": "6e9fe2687102b071a2d02f83d4b6c5df803fdf6d5bb508ba3c862bd131e15ffe"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "mode": "100644",
+      "blob": "2e55520b5aef3dcfdb461634f9facd233c2c0866",
+      "bytes": 30448,
+      "sha256": "b99469eff7d1e9b31450a7fde48540cc50fda5a4b3bbb39e498a7b7888b5885e"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "mode": "100644",
+      "blob": "6bbd508438306155caa1e1860808a6a1d0705c0e",
+      "bytes": 26393,
+      "sha256": "b032eb8c0046af840d99950f4b292128873ca09ee896ba40ebcb6fd78573ab11"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "mode": "100644",
+      "blob": "50e960d0aec89cddaf2b7cdd68a84bcb93e3bbb1",
+      "bytes": 17862,
+      "sha256": "8d57054bf0fe056114688483a3d31e4d8425ba8efc55d579452464396b1fc4f8"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "1058d7605b8736e8c6d32c4f5ec89078cf553916",
+      "bytes": 15402,
+      "sha256": "7d3cf00c6ca1ecc7d1fb0f79b084ef86e5b2ecf61710ff9b367e362d425bdb07"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-lib.sh",
+      "mode": "100755",
+      "blob": "36b5046e77a06fb6368daf06dd33493a57f52a99",
+      "bytes": 12233,
+      "sha256": "db6c774984e170d4a4dd3b7c5e8e31a519f8669b0ef78bd9e9d15cdd9aca832a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-trust.test.ts",
+      "mode": "100644",
+      "blob": "c7ff4a2bba1a16844b62a7a67b952863f5f3df56",
+      "bytes": 5912,
+      "sha256": "8ab0ed798757bff91c6e8e933592ad33a06ea13c723c89240d0645af2e71bcd3"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network.sh",
+      "mode": "100755",
+      "blob": "67cfc64ecaf77074cebe5d9694e1d030a0c96c18",
+      "bytes": 2108,
+      "sha256": "b94ee3d00a7d47644f3e70991abc5f7bd36216f433ede041382f0eaee4135a23"
+    },
+    {
+      "path": "ops/self-hosted/scripts/catalog-compose.test.ts",
+      "mode": "100644",
+      "blob": "4ab7332e6e8c0e78bbf30b892b2d9c2c4b414f72",
+      "bytes": 4552,
+      "sha256": "65bc5c8d1190d708cf3f653c1bad75ab13a280aec3517cadf37c3a4d0cfd1542"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.test.ts",
+      "mode": "100644",
+      "blob": "ca5ddb718a50dfbed18ddd0bc7a809528d4b4e32",
+      "bytes": 3703,
+      "sha256": "86d21779246ffb129dabf8fa7c822ae8213525067e4c2cf1f8ead935eccc370c"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts",
+      "mode": "100644",
+      "blob": "524efa34c85e2ac64619771baf647632771518a4",
+      "bytes": 4335,
+      "sha256": "e4e6bb8f4a291cd43879f5eab03aa8a5aecb35d3b3118f1f9bc298ae6c1438bc"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.test.ts",
+      "mode": "100644",
+      "blob": "c64717edbf8d9f98763e3ec662fee47fd7d0a1a4",
+      "bytes": 6479,
+      "sha256": "ff9cd8795b64e371333486c34f318834301a3108f9e01930febf9c93f96a7e53"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.ts",
+      "mode": "100644",
+      "blob": "e3f16173bbdc792f2c7d26fbe86aca7b76136ed4",
+      "bytes": 7109,
+      "sha256": "a3beb7055633bfde2e4cd130433e6a2c05689971cbbaa48fa3ce882d09d7e4a3"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.test.ts",
+      "mode": "100644",
+      "blob": "6d5fd35d8f867186a748104057e915cce02fb9d1",
+      "bytes": 28279,
+      "sha256": "6d4fa83c7e87a2195e5088d9d7ed76d62c9269eec0adc7bf5172a4b951a04e30"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts",
+      "mode": "100644",
+      "blob": "1820e6f18e98ed6749bae23784789e3d6e648068",
+      "bytes": 16726,
+      "sha256": "ab27ecc5335e810d7fa2ca8f407b83c35c6ebbd537568cfde0aa619622eae415"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts",
+      "mode": "100644",
+      "blob": "d19822c157a277cb263c88c226f055da2b6056ad",
+      "bytes": 23590,
+      "sha256": "dab48f97ef8b1bc47ba205dc7eb47af7a781fe5558dff2863741d9e18a7de293"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts",
+      "mode": "100644",
+      "blob": "682dc46563959f987ca528e0205ba9788e58776f",
+      "bytes": 21627,
+      "sha256": "fc4d5692f4df44ed7ea661f817049471e935480c20b4ac3a537fbb5bc5d3fb9d"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.test.ts",
+      "mode": "100644",
+      "blob": "594b9cded4d60c7e5d67a62663150bf234609efe",
+      "bytes": 8886,
+      "sha256": "f4bf5f8683b0d06e3b096e24fbf437d28d6fc93bb161a1f876de37aeddedc58f"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.ts",
+      "mode": "100644",
+      "blob": "0f3445a65d46516cdeaab65badd01a86292fdf3c",
+      "bytes": 16885,
+      "sha256": "38db2b853644da1382e77cf6f858aa2ff12db32fd18603406118aa60e57d032c"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.test.ts",
+      "mode": "100644",
+      "blob": "9bbc032b7c29b4fa8abb125a1c3e9fafac8adfbe",
+      "bytes": 13513,
+      "sha256": "af43e77b907980fdf34d38dafa67f86064b853bde06170c5be242ffa21a12ed7"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.ts",
+      "mode": "100644",
+      "blob": "b2def9ad56966f4849c0f1171c1b4b4fcbeb82af",
+      "bytes": 12305,
+      "sha256": "aef67b59b7c226804a6448c3872d6ba8f94e6fc6fe60325c34c45679f845b501"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementPreparation.ts",
+      "mode": "100644",
+      "blob": "f54b2290151994b1dcaf1c0aa4e463e2a0c310cd",
+      "bytes": 3434,
+      "sha256": "2e167ad362d9efdb0fa516936a73e4e13e96b0d03f6d0e460e6be674d6c3c43c"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/stateMachine.ts",
+      "mode": "100644",
+      "blob": "ea443814f25f36f2f1f93df418f13eccf23784e3",
+      "bytes": 5798,
+      "sha256": "1b68292c831da10f0ea2ada0180ac450129c137eb7e787b2b6666c2e80b4dc5a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-compatibility.test.ts",
+      "mode": "100644",
+      "blob": "3c0ad8e7e4bf3515a8e46f88f65eb4d4f1ce2634",
+      "bytes": 3309,
+      "sha256": "15680cb7dd6ca6b7ee858840fc3114b77e645939876db83d79d08822908b2a7a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-lib.sh",
+      "mode": "100755",
+      "blob": "bc1e1cf57ee269638aa6a3e976b605b3a28c1838",
+      "bytes": 136827,
+      "sha256": "4b91949ceaa94cc8bed62c22e39bcc17c96ad1a4bacbc73382ac97653fd0ddad"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh",
+      "mode": "100755",
+      "blob": "3533d19d71f843711407e63e85861a1a830a1ba4",
+      "bytes": 32386,
+      "sha256": "686bd604bf06b5b0aa07457b8082dc628cfdfb4cdbd6d4d4eb5bbae7267848ac"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh.test.ts",
+      "mode": "100644",
+      "blob": "85d7fe111aad0127d9f8229e1f649fc39697ce86",
+      "bytes": 188829,
+      "sha256": "4e2cd688fe2155bfc7a30f84811d63f747a06e448299d35c2e36cba0e8f06f02"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts",
+      "mode": "100644",
+      "blob": "db71dd3ffef8598e7fa5ce5ded72b357287d4930",
+      "bytes": 23103,
+      "sha256": "11382fd55329ea01b6e006e76d22a7dd9dacb2cb1cc49261e80294d2375bfa32"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.ts",
+      "mode": "100644",
+      "blob": "445aad248eda12cddb12c36607f6ef3ba02cf437",
+      "bytes": 31401,
+      "sha256": "8cbc77e217cd27437831331b030a2ccec9c050e5db9c9cd1aef1be752bbac3d5"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.test.ts",
+      "mode": "100644",
+      "blob": "b74426bcad9555af8c6f7ddb6608c38b346f09c3",
+      "bytes": 7153,
+      "sha256": "542c86295160885a1733771a0ae30bce636ad1291bae422c1d561e054800d341"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.ts",
+      "mode": "100644",
+      "blob": "edb3e1efeefa7d74509878f595ff2a1614048525",
+      "bytes": 6971,
+      "sha256": "fbb3f0dff7e2a85f80567d8281b63b5e261b68a387edccc6fd32d8e021be4eb0"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.test.ts",
+      "mode": "100644",
+      "blob": "c4a210fef55300413d0207c6f5bced77ef2fd5eb",
+      "bytes": 14888,
+      "sha256": "f63ee7cc17bef24c0f368e73a482cbea64efa5031e09ad13171097a33197422b"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.ts",
+      "mode": "100644",
+      "blob": "f4e798940863d9bb087ffb91c26fe0ea8d948f2c",
+      "bytes": 21449,
+      "sha256": "3ec7ad50385e650e3c06c1e5e10d9c3d92870674c234a6b30580882077de98d2"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.md",
+      "mode": "100644",
+      "blob": "cd848130e7c1e2c39b4ad4234db747ab8929fbbf",
+      "bytes": 27078,
+      "sha256": "a1ad340ad44b78a8029c2d7813d8c170ffb399aeb4350b3096157b41971dde53"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "25f308025a594998cc1fe348109efb276e92c588",
+      "bytes": 24181,
+      "sha256": "dc8c9b1c2064c7600952608b510330a78c931962f628cc914a811b1b9f5a4cf9"
+    },
+    {
+      "path": "package.json",
+      "mode": "100644",
+      "blob": "97b47af50387235b0dc8aeb831f428bd7b403df5",
+      "bytes": 9252,
+      "sha256": "3f5a6a8c4f201afc89507290612743fd757f4d7011e4e59a4d32c31730a2c6cb"
+    },
+    {
+      "path": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "mode": "100644",
+      "blob": "2c63eda9352727cd18363892f02aab85d2e02d28",
+      "bytes": 39877,
+      "sha256": "38e07728c0593908e5e7f470bd9f08f8f31176a541d92eb7eed90e790082ea64"
+    },
+    {
+      "path": "scripts/fixtures/upgrade-82344044-catalog-gate.sh",
+      "mode": "100644",
+      "blob": "4c8b7cd3739cc21910e8cecc581b451311848979",
+      "bytes": 351,
+      "sha256": "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.integration.test.ts",
+      "mode": "100644",
+      "blob": "8a74c9f8028b70d53703a173593ed67818826a38",
+      "bytes": 8806,
+      "sha256": "2c708ec615d1baaa1d9c709ca4e840760bced319f88be882af7d2b6e290237e4"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.test.ts",
+      "mode": "100644",
+      "blob": "049584927c90888a4d6dce1a90fed1c1b29de227",
+      "bytes": 2227,
+      "sha256": "1749afeccefc0e7daaa00913a98371b656643b152759ebf20b4c933f981b2a85"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.ts",
+      "mode": "100644",
+      "blob": "da0a7f4a579a49acdeae806d1768a56cef87e163",
+      "bytes": 6933,
+      "sha256": "f6a346cd4c4eabc9fe8680e57c755de2310ad21e150a2b1e53b76622dbea412f"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.test.ts",
+      "mode": "100644",
+      "blob": "a6c19a4ed720f342da465780f3b3fea78e0357f9",
+      "bytes": 6514,
+      "sha256": "c8da36ee7dfa0ef55958c352b6daa4c01f1e623db794c338d78964ff0ff6a738"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.ts",
+      "mode": "100644",
+      "blob": "0daef545bfddf96f7494a504b28418f1880aad35",
+      "bytes": 5611,
+      "sha256": "31ea2292ef9c1aafb1b228f780a5b16884d3cb1ecf419664aaba6ddd7c291eb3"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.test.ts",
+      "mode": "100644",
+      "blob": "b3294dfcb3b5b9912f48431df51d701741650cec",
+      "bytes": 3924,
+      "sha256": "287cbf271b40968780070cf16ff46c3b87a6822f2fe903ae7f5721f83c60bea9"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.ts",
+      "mode": "100644",
+      "blob": "2713d43373bdd839ab2dd2a3f1b21fd59fd57715",
+      "bytes": 3166,
+      "sha256": "86e29d232f594088d78302add272b06d1a72f4255a2c6e86e82c1095656b2129"
+    },
+    {
+      "path": "scripts/migrate.test.ts",
+      "mode": "100644",
+      "blob": "8383265b047e9b0d634cf335f2f655ff9b225e8e",
+      "bytes": 8044,
+      "sha256": "3ffe171178fe20ec7e95962253501237302652d56f60fb54dd848ac41c7cd3ac"
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "mode": "100644",
+      "blob": "92ebb5666a6cc32f22f729b2a09c6f1a334c9606",
+      "bytes": 19367,
+      "sha256": "d65d22d86d060ccd38a5aa24f842eb6f7d7a869ef80e08bf63af5c39f14bc6fb"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "mode": "100644",
+      "blob": "aa4e6ce4861f6659ebf2982a305e0409ccaf8d47",
+      "bytes": 8418,
+      "sha256": "045a6ea6a9e37afedce58d5548faf6fb35bab40f2af234efb8ca8efd8df6b319"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/shards/s12-ops.json",
+      "mode": "100644",
+      "blob": "5873255fa8ef9b9a1db0724409b0da39aec36281",
+      "bytes": 298,
+      "sha256": "faa252d4358ebd0ef934ccdd2c87c6bd2e53b69a0d507a4c795807dc05f08750"
+    },
+    {
+      "path": "scripts/reconcile-legacy-isolation.test.ts",
+      "mode": "100644",
+      "blob": "8b63c706a0c7996e71a1719c84e4aaf4a69f6b72",
+      "bytes": 1475,
+      "sha256": "36d08023bfb562d4ef16c16c23b487ac4dfde2a1d80ea5e7e3568b6f4dbe7fa6"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.test.ts",
+      "mode": "100644",
+      "blob": "12364f463a1978be127740f9409e5d73da136e3f",
+      "bytes": 2322,
+      "sha256": "962ba867b7e29b0d255a322ff681af56f6db882221ba72c3d2a3ca89bbe3d0a6"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.ts",
+      "mode": "100644",
+      "blob": "60d253931ea9db550dd6fde9d60add31e9b4e375",
+      "bytes": 6909,
+      "sha256": "31a14c9c43adff343fe462e3adb4bdd04595459be126ba592cb0e76f50ce2da5"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-cli.test.ts",
+      "mode": "100644",
+      "blob": "b660c652dfb6909e82fd4861778dc59efc856624",
+      "bytes": 2714,
+      "sha256": "5f1e951ef12a48e1e45e1dbe7593d00c896e2294576b0308f5b67f3b81bbed59"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-gate.test.ts",
+      "mode": "100644",
+      "blob": "ad7e94b6a7105f0dd6b6844072ce728c3ba6565d",
+      "bytes": 986,
+      "sha256": "b81e02a02296c9e92e9c6ac091e8d486ebc63645624549b6c3a895772b2b93b1"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.test.ts",
+      "mode": "100644",
+      "blob": "972af101a2110cfeac52492210369be082ea604f",
+      "bytes": 4081,
+      "sha256": "772014aeeba9bff491947a540d7cc38a61b3f100d7923076215473879228fb72"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.ts",
+      "mode": "100644",
+      "blob": "9f7da4eeb6f9815595a83ba08cfcfaf5081a5ebb",
+      "bytes": 30621,
+      "sha256": "d4bb95f2c179618e5abd3df39c137de92074bb56c808e31642fc4b0661c98348"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.test.ts",
+      "mode": "100644",
+      "blob": "3c80319555d809ad30c11935101abe2cbe02c244",
+      "bytes": 21922,
+      "sha256": "180696b17d76c8db361dc990097022a4f6b8b22291a0c9198b186f509b20bbb6"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.ts",
+      "mode": "100644",
+      "blob": "6084d75b86a149f5507006f0e4935d2dcc0a036b",
+      "bytes": 27333,
+      "sha256": "a0335c381472c72673df792fd1965c26a7a2f4f0840828f97e141828bd34c510"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.test.ts",
+      "mode": "100644",
+      "blob": "e527945cfff83d7e83506c2cf631207ec29a3e40",
+      "bytes": 2624,
+      "sha256": "78437e4890b9688fff9883a771d5247829b240f2d8e11297f5c5be8ad0510092"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.ts",
+      "mode": "100644",
+      "blob": "37c6cc828572c485d4f1b4d2c3e59b2e1f816681",
+      "bytes": 9991,
+      "sha256": "421e96eb5d10ddbde04e0f4dad4e70b91497092cda76fbaba7a41055a2d73fdb"
+    },
+    {
+      "path": "scripts/upgrade-test-target.test.ts",
+      "mode": "100644",
+      "blob": "503c2c94e5e5322c3f176361da352ab499a421c3",
+      "bytes": 3223,
+      "sha256": "76a57abc84477e4c716e53cc64bf5685d026cab1e8058c38a9cbc16d82207753"
+    },
+    {
+      "path": "scripts/upgrade-test-target.ts",
+      "mode": "100644",
+      "blob": "f5db7542892d5d9acd2717dad5438f49f539bd8d",
+      "bytes": 2627,
+      "sha256": "c6bea33c24cb3864d93fe10d4ead3ebd9b1759558f683f1eca2d8c7d190df816"
+    },
+    {
+      "path": "server/app.ts",
+      "mode": "100644",
+      "blob": "e74999d69ff25aca3a769fa0ed9e6f93cfb4ef85",
+      "bytes": 22059,
+      "sha256": "0d271e98b010723fe5fd2e3eb70eae36f228cc2114fc6b93e676cb61d6b4b2fc"
+    },
+    {
+      "path": "server/config/env.ts",
+      "mode": "100644",
+      "blob": "ae41869f32fe425c7e77d4c148e008f8c16b6725",
+      "bytes": 9085,
+      "sha256": "b7299880e9fd83994fe6a2696aaefc948a0bce4314a06e0cb4d69afd07dd740b"
+    },
+    {
+      "path": "server/index.ts",
+      "mode": "100644",
+      "blob": "55388b3b3154c7d0cf88acc5564ce4b7a9790029",
+      "bytes": 11376,
+      "sha256": "893f7b8a4a388befa6b50117c0caed2fb7ed4f1149451fd494eb006238ebac49"
+    },
+    {
+      "path": "server/modules/agent/xiaoze/durableCheckpointer.ts",
+      "mode": "100644",
+      "blob": "265376f88b4c2e58151288e2beb7209bc072b0a4",
+      "bytes": 10916,
+      "sha256": "736060c035aa1f6a897d38569ae2ab4dc354e8e1a3d7ede1b35a76b62413cddc"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.integration.test.ts",
+      "mode": "100644",
+      "blob": "869ce0b5d26d0359ff68b70eedd42f1f051902f6",
+      "bytes": 22611,
+      "sha256": "d96be9711f69648f489ace5e317ca16a2937454532789c1510ae0dfb021225cf"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.test.ts",
+      "mode": "100644",
+      "blob": "1bea8183b026a470afce87e0cab8dc9fe65a1799",
+      "bytes": 5560,
+      "sha256": "6a5f6e5ad09fa3d561a76aef592641ec5a7454abc0bc5b96dfe2527b80dc0ea9"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.ts",
+      "mode": "100644",
+      "blob": "e9842bc5cac4039dc9d5c55aaeeaabca99af8ad6",
+      "bytes": 20459,
+      "sha256": "897e2c163df722ead9678fd52b398d698b4d0cc1e3443b32de25803b435b1f49"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/types.ts",
+      "mode": "100644",
+      "blob": "7c3414acc8d2ca08debb22c739048cda3460196b",
+      "bytes": 3897,
+      "sha256": "5883beceecdd0a00708a6a5c34e01906215dbe320282fc8da3035458c1e9f655"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "mode": "100644",
+      "blob": "14a10e36b8022bd0f7b2cb3c807f589ed13def73",
+      "bytes": 32216,
+      "sha256": "c036d3c317c54a4be00d3f495bd0ceab74b4292b9b787d49538eb05cc5ac45b0"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.ts",
+      "mode": "100644",
+      "blob": "ec78751d24f603d82285a143736b3745f9696c1f",
+      "bytes": 18797,
+      "sha256": "c28fe2c696c88f677bf5bcc0c0f6554f153f9bcd20f98f2c1058d44051868ed9"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.integration.test.ts",
+      "mode": "100644",
+      "blob": "0cebec0aa4c808ad9e7ecdef8181a18598744a71",
+      "bytes": 12810,
+      "sha256": "9565fd372629970e709fc99178a0a3c5833a920eac2fa0a2b8d4eec034773a6c"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.ts",
+      "mode": "100644",
+      "blob": "4288aec0091db9dd0e9a54ce1426ca8dadafb56f",
+      "bytes": 9279,
+      "sha256": "b85e83899cd6b5dc6d1c2c746c8bed923119cc427cc716790276852ce72d822a"
+    },
+    {
+      "path": "server/modules/catalog-cutover/interface.ts",
+      "mode": "100644",
+      "blob": "1f75fcb413010dcbb56da65a8ff121a7a4dff34c",
+      "bytes": 6833,
+      "sha256": "6af41803e4e16ae2dbf95ed2430091f2f15123b5f9e3b837f4c97fa4ed13954d"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.test.ts",
+      "mode": "100644",
+      "blob": "46d713655a1f69bfef3931027ab7d82784679370",
+      "bytes": 7019,
+      "sha256": "3cec12f0c28c81977923d3bbd32c2b7f8af3eee62fbc9c5e0340df17869b1074"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.ts",
+      "mode": "100644",
+      "blob": "5cb024998cf9518c290b707f2e409d00897ad03c",
+      "bytes": 15784,
+      "sha256": "4c7010b16a3d4e73a9a430c4e946e91e3244b16843ee600a15e1bc132f82f219"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.test.ts",
+      "mode": "100644",
+      "blob": "d6a8727a79cf164ca5411054f17bff60faad3bfe",
+      "bytes": 17096,
+      "sha256": "5ccb0c430177abca03183e7217dea9eab28e2201ed647af1e583ebb472d872bc"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.ts",
+      "mode": "100644",
+      "blob": "e6a68fc56f25ecb178038622d694230c1cddc1af",
+      "bytes": 46025,
+      "sha256": "f54bcb24ed6a0b47660f913a48919b372d829ffdc94829187fd55738ca923b0e"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.test.ts",
+      "mode": "100644",
+      "blob": "36a7fb20361f971d406108b0398eb8ee572cf9ce",
+      "bytes": 10695,
+      "sha256": "7f37a9553953866ec1a7eb98cc13d7026ed2d0b7c957cd223ef84bba6c0bee5a"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.ts",
+      "mode": "100644",
+      "blob": "48f7b8b6d6f5cbe7f9e5ba12ff460861c2ac0e42",
+      "bytes": 8765,
+      "sha256": "30b670f601684441fec9f678643a9da1c66bcbad6abeab6f6360c11733e8f5ca"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.test.ts",
+      "mode": "100644",
+      "blob": "a1e66c8f1c60daf8dc9c566039452013fc7cd809",
+      "bytes": 21335,
+      "sha256": "8fe6bd553cfc740d2a86d9a04b8de23cbca127bfb31289053ec90f613c3680e3"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.ts",
+      "mode": "100644",
+      "blob": "cf0631f83dced9caac88addc023cfe25d12be964",
+      "bytes": 14084,
+      "sha256": "441f9581931f0b67f42a1cdd34ae4bd8aeda3232579588ec4598abc6c8a88c19"
+    },
+    {
+      "path": "server/modules/logs/workerRunner.ts",
+      "mode": "100644",
+      "blob": "c4728eb025cee2a0aeaa68a6a5e83b8fc2a2978e",
+      "bytes": 8461,
+      "sha256": "50f2aff9f27cf491168d1db1cbab36e292cea542bbe50e92bbf5e76c6e2bdd99"
+    },
+    {
+      "path": "server/modules/parameter-bindings/binding/repositories.ts",
+      "mode": "100644",
+      "blob": "504f9cfa619907db093d5188bf3726debe3950ff",
+      "bytes": 6479,
+      "sha256": "49151bdc174c6760d16647e1d59fbeee65bf9998cfc2973b01e5cdce9c5bf803"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.md",
+      "mode": "100644",
+      "blob": "9a0ee9c3c4236ad7e919b21abdf5695316c6424e",
+      "bytes": 7570,
+      "sha256": "a69acf4a8f6f27f23880564efe944b28719b82d52665adba91cee9549ed80c19"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "7dea2d805f4ccbc9763d897e0a06a4711194971e",
+      "bytes": 6708,
+      "sha256": "c475983b57408e8011d92e8b8a5180c675e02f860a53ef32738fb96d3e960a12"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/import.integration.test.ts",
+      "mode": "100644",
+      "blob": "4032f73f76975539127cd249d2e7445bb8476d9d",
+      "bytes": 25465,
+      "sha256": "94359dcbfb93bd0192131961bd30d78edbab73eb90581192e7d2e8378e36f4fd"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/index.ts",
+      "mode": "100644",
+      "blob": "0aa6f25a9540e54d15dcc553aa7479f8d35828c4",
+      "bytes": 25044,
+      "sha256": "61321e8af03f219ad13c24b5cacdc9e1d326ca1feb8f0fee9b8673f5bba1b3f5"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/intent.ts",
+      "mode": "100644",
+      "blob": "91f70e6151de1ec7ec03e2d68578e25171f64dc9",
+      "bytes": 6159,
+      "sha256": "3e9d13518f6182070ae323d3fe954934bd69cad5fa5ffcbf020590f1b09d7f2f"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/sourceBoundary.ts",
+      "mode": "100644",
+      "blob": "5f7ee4bc8638bda4ada027bb23df4bc174ca5794",
+      "bytes": 4992,
+      "sha256": "fa45301ee610c246e7b0a132fefe43ef1a05d09c29a6d6bf5f1b03cb22c549a2"
+    },
+    {
+      "path": "server/modules/parameter-bindings/values/repositories.ts",
+      "mode": "100644",
+      "blob": "ac0475d10a1049708a39a6c8256cd898fc8e4634",
+      "bytes": 8933,
+      "sha256": "ec8c966e8b350b9fcf80cf8da51b99eacfc39050616cf21ec429ecd54672d67b"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.pools.test.ts",
+      "mode": "100644",
+      "blob": "879f9a8b9e5e855fae052db7e74c2eed07d7961a",
+      "bytes": 2792,
+      "sha256": "77d05c277cd72b3a2975dfc8cf73de27bf6ec5c676185a6b9c37d5ab11d6812b"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.ts",
+      "mode": "100644",
+      "blob": "da3619cb1b47376ac692586da8e67e5d4a91f57c",
+      "bytes": 16207,
+      "sha256": "96dd5d0d795510aea7a855513714e889326257edf824e8d13eb42f9849beec1a"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.md",
+      "mode": "100644",
+      "blob": "01bcde48ac9a904be9a9c99f4280e4207fbb6624",
+      "bytes": 6985,
+      "sha256": "7cef22c3949a7877021af54760e7929ad3202cb565422fa9bf548d6a5a924efd"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "4d2cc4bb40be091ab2a21a07587f6fcf72f08d5e",
+      "bytes": 6049,
+      "sha256": "e7f3f18a8ec9104515561ee1dbbc4839b6926d9674eb3b4d2af6ec8665116d75"
+    },
+    {
+      "path": "server/modules/release-verification/startup/interface.ts",
+      "mode": "100644",
+      "blob": "b0ac9c9952b3dc135ec0e52d1f3a2804b8e771e0",
+      "bytes": 1457,
+      "sha256": "8beade552009250b436a034875c2663fe50090eef1039888bce8bfc0c7f6f151"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.test.ts",
+      "mode": "100644",
+      "blob": "0ada7066357ac1047e2286baf875e0fbaa3b5ea0",
+      "bytes": 5699,
+      "sha256": "0c04f701e27ff19873be8431ef99ce4664a241d0d882ac367d3c8e0c91f9ab59"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.ts",
+      "mode": "100644",
+      "blob": "c66e78338a32d0c51c4ba090ed73f36a482a31c1",
+      "bytes": 2458,
+      "sha256": "36813e6a60a625af50d933ad30574ef96e26affa4d924b32b818471021a56f0c"
+    },
+    {
+      "path": "server/shared/database/migrations.ts",
+      "mode": "100644",
+      "blob": "7ccbb53c9ad85766460d82330107e1f2a800e9b1",
+      "bytes": 10250,
+      "sha256": "cd0a58c4b6ffbf88eadf227ab4c301e3689a2836a15c368c3ae26cde72250039"
+    },
+    {
+      "path": "server/shared/database/migrationsExpectedInventory.test.ts",
+      "mode": "100644",
+      "blob": "732f1e417f128de82b573e393c32c9ec7e10d98f",
+      "bytes": 2963,
+      "sha256": "99ba82a0e959699d4028f074534ea115ec9646d4a1120ca477f4a008ab3b9748"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.integration.test.ts",
+      "mode": "100644",
+      "blob": "6e9ce45d8543c6c733c187c8411257d648202a49",
+      "bytes": 16290,
+      "sha256": "ca0d0fe324714188488ee7baeeff65b23d2bcedf899e2104fdefb740b74f7a18"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.test.ts",
+      "mode": "100644",
+      "blob": "3e913ab7cf44969832a41ad0591333c8d0576450",
+      "bytes": 2922,
+      "sha256": "09a5a39c1422f256a2c4d0daba8719deacee41160af4df6acb2e72ff476ffd7f"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.ts",
+      "mode": "100644",
+      "blob": "2c5047fefc8045c7a271663a1cec34876315d905",
+      "bytes": 4473,
+      "sha256": "f04661b50cd84a377376cc5d94d8d26809d6fcc7b6744b0f83906e68d84ba7fe"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.test.ts",
+      "mode": "100644",
+      "blob": "fd408d63a67ef31d3281138d5073ea8edeb276e4",
+      "bytes": 7945,
+      "sha256": "40fd365621d957cf6a67a8851cb110b18be993c97a02f986f87c747b6905bf17"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.ts",
+      "mode": "100644",
+      "blob": "a64320f662344291d852a2092abd56f8b9978696",
+      "bytes": 11531,
+      "sha256": "c970cd3586042a4276912ea521617a5fd24e552cd411c0a11c32edd0fe07aadb"
+    },
+    {
+      "path": "server/testing/upgradeComponents.ts",
+      "mode": "100644",
+      "blob": "24b1619fdd5c0760702f602e4219224c24be6de2",
+      "bytes": 1274,
+      "sha256": "be794c20de55b74b613693be8613fd41b1f8b52ffe6cc86e4a2c4a467e7fd06b"
+    },
+    {
+      "path": "tsconfig.node.json",
+      "mode": "100644",
+      "blob": "37a42c0f85c3bf8307d07e18d6f5cc424a9fbacc",
+      "bytes": 812,
+      "sha256": "062497450fc3455797649d7fc0fe5365d56a81ffb5f977e3a93d9e1bf1f84d57"
+    },
+    {
+      "path": "vitest.runtime-bootstrap.config.ts",
+      "mode": "100644",
+      "blob": "96dce4f5f3ad72496d0bb32c6f67bd3516deaf42",
+      "bytes": 909,
+      "sha256": "546894c2fe1fd3459acb046b32ffbe49c7f4ec1f8a157a2d3ca0bce4cc0b7ad1"
+    },
+    {
+      "path": "vitest.upgrade-cutover.config.ts",
+      "mode": "100644",
+      "blob": "fcd18889116af629274e4655bab4be7491a245fe",
+      "bytes": 502,
+      "sha256": "d594a198a890875d88c16578d83318a3342a32b57cec609215093347b170bddc"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "evidence/boundary-final-code.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "npm run parameter-catalog-boundaries:check -- --trusted-base-sha 9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "deliveredSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "redacted": true
+    },
+    {
+      "path": "evidence/boundary-pinned-final.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "deliveredSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "redacted": true
+    },
+    {
+      "path": "evidence/boundary.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "deliveredSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "redacted": true
+    },
+    {
+      "path": "evidence/build-final-code.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "npm run build",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "29a9884fd3223f63f7d310ac6b5e322e249c1fa5b29dca3406c33ffe2d2dfa27",
+      "deliveredSha256": "e0cd7af9f1b9f86135549e5e4bf193ab08aae06ae81e9d34a0c7a0035ce09c54",
+      "redacted": true
+    },
+    {
+      "path": "evidence/build-pinned-final.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "faa560a9db21e829b4d02a65f529cc973bc5df0e572a016a1cc54f6e54563a68",
+      "deliveredSha256": "296e80e209c70a77c32a1f064394c8f4cb8978c67abee5f65fda947942a06726",
+      "redacted": true
+    },
+    {
+      "path": "evidence/build.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "d42518e6460c60eae3c2de18682c9c6c824d33c9e547d99f0637108ad75f3714",
+      "deliveredSha256": "8d349451730ec993bfb82bea8c56e05c9c5b5de07c901e7c2b61c93c0ebdd3a4",
+      "redacted": true
+    },
+    {
+      "path": "evidence/components-final-code.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "./node_modules/.bin/tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id <privately-verified-development-daemon> --suite bindings-pg16",
+      "exitCode": 0,
+      "counts": {
+        "passed": 92
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "5fbd6aaecbb41c7617d8615285bf85b3426b86ce57ae4b38addd0e40d62c067d",
+      "deliveredSha256": "09773dabdbdaf0109a3a8e6c869465c9be6acbc684d7e5c42a059efadc9fc29b",
+      "redacted": true
+    },
+    {
+      "path": "evidence/components-pg16-corrected.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 89
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "ee4b1e30fd1b475d75ee76054741a9bbc206537501cf1912ec50433c763d2699",
+      "deliveredSha256": "872cda8b6653b62d842d5d5bffe70bf63f8743f83811f4ca41d85f54a82a9408",
+      "redacted": true
+    },
+    {
+      "path": "evidence/components-pg16-final.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 1,
+        "passed": 88
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "1128ee7dc9e4a8a8526cb3abd5d37c362715ff87254a6c93d48b160573f58eaa",
+      "deliveredSha256": "661727b31a72dfb0d0da8389d554d0641482bf63e6c29ffe1895d3c6425ccc02",
+      "redacted": true
+    },
+    {
+      "path": "evidence/components-pg16.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 68
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "a1aaa0b387c3f573bb2ff525fac81c9696fabfbda8bcbc49883d49ed23f124d9",
+      "deliveredSha256": "8cf962148ac0d2f00d52c6d36bc0d03e5f46f417ab0a09343e46b920254013f0",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-corrected-green.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 2,
+        "skipped": 15
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "e36cc50a5443025dba7e70b43945c6ee237a96fc10dbfd09a3dbc95a1e20dad6",
+      "deliveredSha256": "88dc7f33974a0c78d65a75c65251ce9742f4a060e2164f17b742d76b5f284e78",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-corrected-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "skipped": 15
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "a6b2879c12e658883933f2a3f5346d8901213832ccb7ce9084691587abaefcfd",
+      "deliveredSha256": "60a601912c37e70308af5a0abf527f8601f0071288ea7828539dd96280f67dd3",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-final-green.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 49
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "31c0a428ffbf5a0ec60f82d91d94e447327848a38a39f09fbb310a3a0143e1d8",
+      "deliveredSha256": "a3b177938a487f4e6567e52deccea0cf8f6af6dd159ff48189b1bc76f0ec225c",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-green.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "passed": 47
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "aae3a8730f6261315fa29ad0e523ea49bbe2499da1c892e7941b822ca7cebc0c",
+      "deliveredSha256": "21c7e13742ac6e61ae23e9d37aff92c9d5adbd072fdf4c1b5b0ebb0c947c87d8",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "skipped": 15
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "5afe96dba0925ec826932d353a9cf7d3b32127e98a5d6dd7afc7181f2ee63d2d",
+      "deliveredSha256": "d3601a78b57bb34d135c6f602fa2561f1044988488744bb7fb179a5f20d46e90",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-setup-detail.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "skipped": 15
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "5e84040ad4805801d8ba829ac95578f21600e46a4d67ebc37df0438e8a3cf387",
+      "deliveredSha256": "71dcaad4419f11294d877595da4cf723e4a58eebaa8aa97030f0821cd58457ce",
+      "redacted": true
+    },
+    {
+      "path": "evidence/controller-cross-run-setup.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "skipped": 15
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "20c4eda8534c3b33c4af1a543937a6cf13b5cb82e980a1c30ecdfb339bc61eac",
+      "deliveredSha256": "38b27955562ed9219fcfc81b0658ca802f66d5b7334bb9ca062f203e090b810d",
+      "redacted": true
+    },
+    {
+      "path": "evidence/final-checks.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "2955a0fd0dc1d5ce3d5b3ada85dd3ac24959ef45bdd076d2ee2289cd4a0484ec",
+      "deliveredSha256": "2955a0fd0dc1d5ce3d5b3ada85dd3ac24959ef45bdd076d2ee2289cd4a0484ec",
+      "redacted": true
+    },
+    {
+      "path": "evidence/final-code-checks.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "./node_modules/.bin/tsx work/upg-milestones/final-checks.ts (commands recorded in this log; guarded private owned PostgreSQL receipt)",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "2955a0fd0dc1d5ce3d5b3ada85dd3ac24959ef45bdd076d2ee2289cd4a0484ec",
+      "deliveredSha256": "2955a0fd0dc1d5ce3d5b3ada85dd3ac24959ef45bdd076d2ee2289cd4a0484ec",
+      "redacted": true
+    },
+    {
+      "path": "evidence/journal-components.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 47
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "8467f6d5d9c539b016c98ef834d92be40b7534d127db3e8c03a45d380dc981cf",
+      "deliveredSha256": "b7b8cc48f34da565e65d1b07fd70945be93d56c8647dc258bf5b3d10fe7d0684",
+      "redacted": true
+    },
+    {
+      "path": "evidence/management-final-pure.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 67
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "b161fdb30bb7ab2c802a471acac6a4f457a33b56df9a07c6a7922afbb1c6ca1c",
+      "deliveredSha256": "7c7572c8a81b731427f22e0491261ffb12f98e48e319f95e8befd5ba3fa08cc8",
+      "redacted": true
+    },
+    {
+      "path": "evidence/management-pure.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 24
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "a9da4c5c00d7067c94e9add9f9c325776d99276223910ede57315937d087c6c9",
+      "deliveredSha256": "4450938259ad02b02a3f307f6fca8acfbe8b020e774c0388f99ee321d435fd1a",
+      "redacted": true
+    },
+    {
+      "path": "evidence/management-structure-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 2,
+        "passed": 67
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "e3dd4f06bb3dbc84b5de4079767be5447ce619f71fbb1ba4b9d1862877707868",
+      "deliveredSha256": "f9370fbe2916b471bf10f0dd0e4b61eddf39379d369de7c9805913e77de2e88e",
+      "redacted": true
+    },
+    {
+      "path": "evidence/p4-mutable-plan-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 1,
+        "skipped": 6
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "79e31f84aee806c1477ec5b03af28456e33a3d390b6bb4be20398d39ffb66295",
+      "deliveredSha256": "c87f43e96075a2464ae9da59ab11e6039e18a1dbb70303b30d48066d22c07285",
+      "redacted": true
+    },
+    {
+      "path": "evidence/p4-resume-green.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 7
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "746522c6c110df357f62494153a8325e3ad48b0cc35ab9c323082e73bc476da6",
+      "deliveredSha256": "cdb7c7f2f7480d2c4f723e50000c6ee057e49b6827319c09800b150f0b339895",
+      "redacted": true
+    },
+    {
+      "path": "evidence/p4-resume-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 1,
+        "skipped": 6
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "583b99dffe005bb8fe251e03de4cc6e057dcbe1e2aa24d9018603cc8665be82d",
+      "deliveredSha256": "a31d4e94ebb372175dc81dac9f77f6ce53301304239e3dc5b66948eb59f119d5",
+      "redacted": true
+    },
+    {
+      "path": "evidence/recovery-package.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "zero collected, NOT PASS",
+      "rawSha256": "7b612f468b6378a8b0ad1df7500b91353958b5413bd1d49b50bf8a610f2228b0",
+      "deliveredSha256": "81f1afabda387ae8dfd3c001371974ab62d325b8e0ba823a57c73247fd80a8f1",
+      "redacted": true
+    },
+    {
+      "path": "evidence/recovery-storage.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 42
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "1569f2368d915d3435e7f958ad9c8e3fe0a4d87986550b976bbffb327589ea9a",
+      "deliveredSha256": "ce191ef26e7eb51d10d1ea95697ad6ef5f1c94a55608be8f850bbc0d74fb61e0",
+      "redacted": true
+    },
+    {
+      "path": "evidence/report-docs-check.log",
+      "executionSha": "7fabeb8c46a3112b007ea93738c8c0a6fc2963ab",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "./node_modules/.bin/tsx work/upg-milestones/final-checks.ts --docs-only (guarded private owned PostgreSQL receipt)",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "8e2896c6dfdb1596effaa9252a20cbdef632d284336b1972f108b4ecdc54161a",
+      "deliveredSha256": "8e2896c6dfdb1596effaa9252a20cbdef632d284336b1972f108b4ecdc54161a",
+      "redacted": true
+    },
+    {
+      "path": "evidence/runtime-bootstrap.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 96
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "f9f8aa614732364a2728c5fc58f63728585600f0d4ddf0f7d47827dc58dd9db0",
+      "deliveredSha256": "c444edb5db9bace28e79ecb323866bc88fd5c5a75f0f032221877beb8f4d2776",
+      "redacted": true
+    },
+    {
+      "path": "evidence/runtime-isolation-final.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "UPG_RUNTIME_DOCKER_DAEMON_ID=<privately-verified-development-daemon> ./node_modules/.bin/vitest run --config vitest.runtime-bootstrap.config.ts --maxWorkers=1",
+      "exitCode": 0,
+      "counts": {
+        "passed": 96
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "7b03a0223fa195205634797420d62abcb888a90af8f021d235e42733ffcf647b",
+      "deliveredSha256": "3011379d09ced9f21f278c8e91b7b9fc4c0c34415dc165c62460cca8d7bf4d17",
+      "redacted": true
+    },
+    {
+      "path": "evidence/structure-privileges-green.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": {
+        "passed": 23
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "4880347c54046941990ad53fced9bff14f828f860df7e9edb718a18e0f442bb1",
+      "deliveredSha256": "a2c0d6fd06d3252bd68a5c22a0bfd680b5e075b6e837a37c0d11f21929cb895d",
+      "redacted": true
+    },
+    {
+      "path": "evidence/structure-privileges-red.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": {
+        "failed": 3,
+        "skipped": 20
+      },
+      "selectorFilteredNotPassed": true,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "ec4f3299a3d1662f1bc0fd06cd89704c964e9af6b9a9d09c940720c34ffded0b",
+      "deliveredSha256": "e798657c03bbc898c033fc41c3c72582c971c489ca4d3248e3bb62e3d16214ef",
+      "redacted": true
+    },
+    {
+      "path": "evidence/typecheck-node-fixed.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "deliveredSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redacted": true
+    },
+    {
+      "path": "evidence/typecheck-node.log",
+      "executionSha": null,
+      "executionIdentityNote": "historical/WIP identity recorded in bilingual evidence; do not relabel as final SHA",
+      "command": null,
+      "exitCode": 1,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "f71315d623c1148b8b376240d7a0815fc36c618feb6b5976c50f902b8d59d5ae",
+      "deliveredSha256": "f71315d623c1148b8b376240d7a0815fc36c618feb6b5976c50f902b8d59d5ae",
+      "redacted": true
+    },
+    {
+      "path": "evidence/m2-focused-final.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "See final-code-checks.log or report-docs-check.log for exact npm command; guarded private PostgreSQL receipt",
+      "exitCode": 0,
+      "counts": {
+        "passed": 63
+      },
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "b3ccd75da307e555054035b9c14b2545de453f2b73847f718e91355c7ac353a1",
+      "deliveredSha256": "5919ab8e556f6ed2dbdf4c55f66943eabe6825d948a1c1e65e1d270b1b93e21a",
+      "redacted": true
+    },
+    {
+      "path": "evidence/m2-contract-final.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "See final-code-checks.log or report-docs-check.log for exact npm command; guarded private PostgreSQL receipt",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "deliveredSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "redacted": true
+    },
+    {
+      "path": "evidence/m2-selfhost-final.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "See final-code-checks.log or report-docs-check.log for exact npm command; guarded private PostgreSQL receipt",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "deliveredSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "redacted": true
+    },
+    {
+      "path": "evidence/m2-docs-final.log",
+      "executionSha": "df644163e28d0aaa11733b9b08f398ac7d2429e4",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "See final-code-checks.log or report-docs-check.log for exact npm command; guarded private PostgreSQL receipt",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "deliveredSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "redacted": true
+    },
+    {
+      "path": "evidence/m2-docs-final-report.log",
+      "executionSha": "7fabeb8c46a3112b007ea93738c8c0a6fc2963ab",
+      "executionIdentityNote": "exact committed code; documentation-only worktree edits do not change tested code",
+      "command": "See final-code-checks.log or report-docs-check.log for exact npm command; guarded private PostgreSQL receipt",
+      "exitCode": 0,
+      "counts": null,
+      "selectorFilteredNotPassed": false,
+      "evidenceStatus": "retained execution output",
+      "rawSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "deliveredSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "redacted": true
+    }
+  ]
+}
