@@ -47,6 +47,37 @@ const ROLE_PROFILE_SQL = `select json_build_object(
     from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid)) order by rolname),'[]')
    from pg_roles r where rolname !~ '^pg_' and rolname<>'postgres')) as value`;
 const tablesSql = "select format('%I.%I',n.nspname,c.relname) as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in ('r','p') and n.nspname not in ('pg_catalog','information_schema') and n.nspname !~ '^pg_toast' order by 1";
+// This is an empty vanilla PG16 target profile, not permission to overwrite a
+// partially restored database. Include every relation kind and standalone user
+// object: a table-only check misses executable functions and event triggers.
+// 16384 is PostgreSQL's FirstNormalObjectId; checking both namespace and OID also
+// rejects user objects placed inside an otherwise built-in namespace.
+const EMPTY_TARGET_SQL = `select json_build_object(
+ 'relations',(select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+   where c.oid>=16384 or n.nspname not in ('pg_catalog','information_schema','pg_toast')),
+ 'routines',(select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where p.oid>=16384 or n.nspname not in ('pg_catalog','information_schema')),
+ 'types',(select count(*) from pg_type t join pg_namespace n on n.oid=t.typnamespace
+   where t.oid>=16384 or n.nspname not in ('pg_catalog','information_schema','pg_toast')),
+ 'schemas',(select count(*) from pg_namespace where nspname not in ('pg_catalog','information_schema','pg_toast','public')),
+ 'extensions',(select count(*) from pg_extension where extname<>'plpgsql'),
+ 'missingPlpgsql',(select case when count(*)=1 then 0 else 1 end from pg_extension where extname='plpgsql'),
+ 'eventTriggers',(select count(*) from pg_event_trigger),
+ 'largeObjects',(select count(*) from pg_largeobject_metadata),
+ 'defaultAcls',(select count(*) from pg_default_acl),
+ 'foreignData',(select count(*) from pg_foreign_data_wrapper)+(select count(*) from pg_foreign_server)+(select count(*) from pg_user_mapping),
+ 'replicationObjects',(select count(*) from pg_publication)+(select count(*) from pg_subscription where subdbid=(select oid from pg_database where datname=current_database())),
+ 'casts',(select count(*) from pg_cast where oid>=16384),
+ 'collations',(select count(*) from pg_collation where oid>=16384),
+ 'languages',(select count(*) from pg_language where oid>=16384 or lanname not in ('internal','c','sql','plpgsql')),
+ 'operators',(select count(*) from pg_operator where oid>=16384)+(select count(*) from pg_opclass where oid>=16384)+(select count(*) from pg_opfamily where oid>=16384),
+ 'accessMethods',(select count(*) from pg_am where oid>=16384),
+ 'conversions',(select count(*) from pg_conversion where oid>=16384),
+ 'transforms',(select count(*) from pg_transform),
+ 'textSearch',(select count(*) from pg_ts_config where oid>=16384)+(select count(*) from pg_ts_dict where oid>=16384)
+   +(select count(*) from pg_ts_parser where oid>=16384)+(select count(*) from pg_ts_template where oid>=16384),
+ 'roles',(select count(*) from pg_roles where rolname !~ '^pg_' and rolname<>'postgres')
+) as inventory`;
 const quote = (value: string) => pg.escapeLiteral(value);
 const copyInputs = (resources: DockerRecoveryResources, secrets: DockerRecoverySecrets) => ({
   resources: JSON.parse(JSON.stringify(resources)) as DockerRecoveryResources,
@@ -296,7 +327,8 @@ export function createDockerRecoveryDestination(resources: DockerRecoveryResourc
         await io.assertNoOtherSessions(client);
         const inventory = (await client.query(RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL)).rows[0];
         if (hasUnsupportedNonDumpCapabilities(Object.values(inventory)[0])) recoveryRefuse("restore-database-profile-unsupported");
-        if ((await client.query(tablesSql)).rowCount !== 0 || (await client.query("select count(*)::int as n from pg_roles where rolname !~ '^pg_' and rolname<>'postgres'")).rows[0].n !== 0) recoveryRefuse("restore-database-not-empty");
+        const empty = (await client.query(EMPTY_TARGET_SQL)).rows[0]?.inventory;
+        if (!empty || Object.values(empty).some(count => count !== 0)) recoveryRefuse("restore-database-not-empty");
       });
       if (io.list().length) recoveryRefuse("restore-bucket-not-empty");
       const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-empty-redis-"));

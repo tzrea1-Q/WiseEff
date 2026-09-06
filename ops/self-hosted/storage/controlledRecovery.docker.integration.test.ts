@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -8,8 +8,9 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s3ObjectStore";
-import { captureControlledRecovery } from "./controlledRecovery";
-import { createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
+import { captureControlledRecovery, createControlledRecoveryTarget } from "./controlledRecovery";
+import { createDockerRecoveryDestination, createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
+import { restoreRecoveryPackage } from "./recoveryPackage";
 
 // Explicit opt-in uses only the owned Docker guard; no globalSetup or ambient DB URL.
 describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("controlled three-store Docker adapter", () => {
@@ -152,6 +153,45 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       expect(captured.status).toBe("captured-not-restored");
       for (const c of [source.resources.postgres, source.resources.objects, source.resources.objectClient]) stop(c.id);
       const destination = await timed("setup-destination", () => setup("destination"));
+      const destinationIo = createDockerRecoveryDestination(destination.resources, destination.secrets);
+      const destinationIdentity = await destinationIo.observe();
+      const targetSql = (sql: string) => exec(destination.resources.postgres.id,
+        ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
+      const targetFaults = [
+        { name: "function", create: "create function public.preexisting_fn() returns integer language sql as 'select 7'",
+          read: "select public.preexisting_fn()", expected: "7", remove: "drop function public.preexisting_fn()" },
+        { name: "view", create: "create view public.preexisting_view as select 7 as value",
+          read: "select value from public.preexisting_view", expected: "7", remove: "drop view public.preexisting_view" },
+        { name: "sequence", create: "create sequence public.preexisting_seq start 7",
+          read: "select last_value from public.preexisting_seq", expected: "7", remove: "drop sequence public.preexisting_seq" },
+        { name: "type", create: "create type public.preexisting_type as enum ('hold')",
+          read: "select 'hold'::public.preexisting_type", expected: "hold", remove: "drop type public.preexisting_type" },
+        { name: "extension", create: "create extension hstore",
+          read: "select extname from pg_extension where extname='hstore'", expected: "hstore", remove: "drop extension hstore" },
+        { name: "event-trigger", create: "create function public.preexisting_event() returns event_trigger language plpgsql as 'begin end'; create event trigger preexisting_event on ddl_command_start execute function public.preexisting_event()",
+          read: "select evtname from pg_event_trigger where evtname='preexisting_event'", expected: "preexisting_event",
+          remove: "drop event trigger preexisting_event; drop function public.preexisting_event()" },
+      ];
+      for (const fault of targetFaults) {
+        targetSql(fault.create);
+        try {
+          await timed(`restore-nonempty-${fault.name}-refusal`, async () => {
+            const journalPath = path.join(directory, `refused-${fault.name}.json`);
+            const port = createControlledRecoveryTarget({ target: destinationIdentity, journalPath, authorize: async binding => {
+              expect(binding.runId).toBe(runId); expect(binding.packageDigest).toBe(captured.packageDigest);
+              expect(binding.target).toEqual(destinationIdentity);
+            } }, destinationIo);
+            await expect(restoreRecoveryPackage(directory, captured.packageDigest, port)).rejects.toThrow("controlled-recovery-restore-database-not-empty");
+            await expect(lstat(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
+            expect(targetSql(fault.read)).toBe(fault.expected);
+            expect(targetSql("select count(*) from pg_roles where rolname in ('data_owner','read_capability','reader')")).toBe("0");
+          });
+        } finally {
+          // Only the fixture removes its exact injected object. The restore
+          // adapter must preserve it and refuse before creating a journal.
+          targetSql(fault.remove);
+        }
+      }
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
       const childScript = `import { readFileSync } from 'node:fs';
