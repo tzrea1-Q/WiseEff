@@ -71,6 +71,8 @@ describe("actual management structure continuity", () => {
     ["enum", "alter type parameter_catalog.lifecycle add value 'unapproved'"],
     ["role membership", "grant pg_monitor to current_user"],
     ["role attribute", "alter role current_user nocreatedb"],
+    ["parameter SET privilege", "grant set on parameter session_replication_role to pg_monitor"],
+    ["builtin function privilege", "grant execute on function pg_catalog.pg_read_file(text) to pg_monitor"],
   ])("invalidates the receipt after %s drift", async (_kind, sql) => {
     const before = await digest();
     const client = await pool.connect();
@@ -90,6 +92,17 @@ describe("actual management structure continuity", () => {
       await client.query("revoke all on function parameter_catalog.read_marker() from public,current_user");
       const actual = (await client.query("select proacl::text as acl from pg_catalog.pg_proc where oid='parameter_catalog.read_marker()'::regprocedure")).rows[0];
       expect(actual.acl).toBe("{}");
+      expect(await captureManagementStructureDigest({ client, target })).not.toBe(before);
+    } finally { await client.query("rollback"); client.release(); }
+  });
+
+  it("detects privileged role settings even when a settings row already exists", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("alter role current_user set work_mem='4MB'");
+      const before = await captureManagementStructureDigest({ client, target });
+      await client.query("alter role current_user set session_replication_role=replica");
       expect(await captureManagementStructureDigest({ client, target })).not.toBe(before);
     } finally { await client.query("rollback"); client.release(); }
   });

@@ -125,19 +125,26 @@ const queries: Readonly<Record<string, string>> = {
   roles: `select rolname as name,rolsuper as superuser,rolinherit as inherit,rolcreaterole as create_role,
     rolcreatedb as create_database,rolcanlogin as login,rolreplication as replication,rolbypassrls as bypass_rls,
     rolconnlimit as connection_limit,extract(epoch from rolvaliduntil)::text as valid_until,
-    array(select config from pg_catalog.unnest(rolconfig) config where config like 'search_path=%' or config like 'role=%' or config like 'row_security=%' order by config collate "C") as security_settings
+    array(select pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(config,'UTF8')),'hex')
+      from pg_catalog.unnest(rolconfig) config order by config collate "C") as settings_digests
     from pg_catalog.pg_roles`,
   databaseRoleSettings: `select case when s.setrole=0 then 'PUBLIC' else pg_catalog.pg_get_userbyid(s.setrole) end as role,
     s.setdatabase=0 as all_databases,
-    array(select setting from pg_catalog.unnest(s.setconfig) setting
-      where setting like 'search_path=%' or setting like 'role=%' or setting like 'row_security=%'
-      order by setting collate "C") as security_settings
+    array(select pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(setting,'UTF8')),'hex') from pg_catalog.unnest(s.setconfig) setting
+      order by setting collate "C") as settings_digests
     from pg_catalog.pg_db_role_setting s where s.setdatabase=0
       or s.setdatabase=(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database())`,
   memberships: `select r.rolname as role,m.rolname as member,g.rolname as grantor,
     a.admin_option as admin,a.inherit_option as inherit,a.set_option as set
     from pg_catalog.pg_auth_members a join pg_catalog.pg_roles r on r.oid=a.roleid
     join pg_catalog.pg_roles m on m.oid=a.member join pg_catalog.pg_roles g on g.oid=a.grantor`,
+  parameterPrivileges: `select parname as name,paracl is null as default_acl,
+    array(select a::text from pg_catalog.unnest(paracl) a order by a::text collate "C") as acl
+    from pg_catalog.pg_parameter_acl`,
+  builtinFunctionPrivileges: `select p.proname as name,pg_catalog.pg_get_function_identity_arguments(p.oid) as arguments,
+    array(select a::text from pg_catalog.unnest(p.proacl) a order by a::text collate "C") as acl
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='pg_catalog' and p.proacl is not null`,
   defaults: `select pg_catalog.pg_get_userbyid(d.defaclrole) as role,n.nspname as schema,d.defaclobjtype as kind,
     array(select a::text from pg_catalog.unnest(d.defaclacl) a order by a::text collate "C") as acl
     from pg_catalog.pg_default_acl d left join pg_catalog.pg_namespace n on n.oid=d.defaclnamespace
