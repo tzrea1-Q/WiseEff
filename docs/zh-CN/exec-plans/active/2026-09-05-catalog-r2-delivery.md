@@ -4,6 +4,10 @@
 
 ## CI 修复就绪审查 — 2026-09-06
 
+Hosted 前结果：代码候选 `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`，tree `528b831ab20d40efbc892c1bb07b241d71b2720b`。Standards 与 Spec 分别完成就绪审查、固定 `164b832f543433564b3f5cd75d6b9445a7b9bb8d` 的封存前审查和最终摘要增量复核，均 PASS。两者独立计算记录 SHA-256 均为 `fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`，仅固化一次。验证器新增 33 个永久用例；实现前有实际收集 1 项的行为 Red，首次模块缺失／零收集不算 Red。
+
+干净 97d5e5 上完整 `npm run test:scripts` 为 94 文件通过、1241 项通过；本地缺少 `dt-validate`，5 项 vendor-schema 用例跳过，不记通过。使用 35cb 的真实 boundary CLI 通过：3513 occurrences 全部匹配，unallowlisted/stale/metadata mismatch/growth 均 0，精确映射 23 项。原 fixture 3519 条和全部 11 份 allowance 不变。build/docs 在封存前 164b832 通过，随后只变更已审摘要常量和注释。未放宽扫描规则、SQL 夹具、运行时代码、workflow、timeout 或测试期望。[限定证据索引](../../../exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.json)和[原始归档](../../../exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.zip)保留精确命令、SHA 和独立报告。本发布检查点的报告 head Hosted 待运行；其正式 job 使用原始 trusted 9b3，与本地命令 35cb 分开记录。后续 Hosted 状态见 PR 正文及 Actions。没有新增广域浏览器、容量或 Gate 0 执行声明。Policy、历史 Gate 0、增长容量仍阻塞；保持 Draft，不合并、不关单、不执行生产操作。
+
 用户在得知精确 23 对阻塞后要求“修复ci报错”，授权本项限定实现，不包含 Policy 范围变化、合并、关单或生产操作。基线为 `e2b305d026a0e90cbed32bb8e851de279aae09f1`。run 34011746179 实际 checkout 为 `d0adfb52afa2751740873daa1c4b35ff78f751c9`：脚本 1191 通过、1 失败、21 跳过，下游 boundary/backend/contract 跳过。旧未批准方案保留为历史证据。
 
 交付风险 R3：清单身份。父协调者独占现有 checker 及其测试、新增 `scripts/parameter-catalog-allowlist/exactRelocation.ts` 与 `exactRelocation.test.ts`、`scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json`、这两份计划、新增 `docs/agents/catalog-boundary-relocation.md` 与 `docs/zh-CN/agents/catalog-boundary-relocation.md`，以及最终 `docs/exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.json` / `.zip`。其他路径只读，尤其原始清单、11 份 allowance、SQL 夹具、扫描规则和 workflow。Standards/Spec 在实现前独立质询下表，并在固定候选审查后才固化完整记录的摘要锚点。

@@ -1,0 +1,841 @@
+{
+  "schemaVersion": 1,
+  "finding": "CI-821-01",
+  "issues": [
+    814,
+    820
+  ],
+  "base": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+  "codeCandidate": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+  "tree": "528b831ab20d40efbc892c1bb07b241d71b2720b",
+  "acceptedOriginMain": "27bc39d53235879afb579a86f6ee777a462e4204",
+  "localTrustedBoundaryBase": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+  "hostedTrustedBoundaryBase": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "authorization": "User explicitly requested fixing CI after the exact 23-pair blocker was explained; independent preflight accepted this bounded authority. Not merge/Policy/production approval.",
+  "recordSha256": "fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074",
+  "status": "bounded repair locally verified and independently reviewed; report-head Hosted pending at publication; PR remains Draft",
+  "boundary": {
+    "status": "passed",
+    "summary": {
+      "violations": 3513,
+      "allowlisted": 3513,
+      "unallowlisted": 0,
+      "staleAllowances": 0,
+      "metadataMismatches": 0,
+      "allowlistGrowth": 0
+    },
+    "relocations": [
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:21f6946065901ef9",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:0f3c0478c0cfb89e",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 905,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 31875,
+          "byteEnd": 32742,
+          "token": "read:parameter_spec_property_key_cutover_runs\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:71e0f1f0047e20e1",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:81da3c00c3a1c3ca",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 945,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 34040,
+          "byteEnd": 34923,
+          "token": "read:parameter_spec_property_key_cutover_runs\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:ede413093f2b70c4",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:83e69800daeb823b",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1098,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 41134,
+          "byteEnd": 42001,
+          "token": "read:parameter_spec_property_key_cutover_runs\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:df02c58b73bb1a2a",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:c7e8395ea37f83f6",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 945,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 34040,
+          "byteEnd": 34923,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:6aa25f953653e18d",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:e0d0245130fdf7dc",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 905,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 31875,
+          "byteEnd": 32742,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:00163dd8378f6ff7",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:099413edf7896955:e2bc43d12861e0f6",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1098,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 41134,
+          "byteEnd": 42001,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:0a627279b5140f1e:6edc154fb450c6c4",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:0a627279b5140f1e:0a050ca9f6159372",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1571,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 60040,
+          "byteEnd": 60877,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:0a627279b5140f1e:66c1d73130a74506",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:0a627279b5140f1e:862b0ad53713976d",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1610,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 62035,
+          "byteEnd": 62872,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:127958eea52695ab:c5423ad99a74a47f",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:127958eea52695ab:0831061c4be31f53",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1022,
+          "column": 11,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 37592,
+          "byteEnd": 38443,
+          "token": "read:parameter_spec_property_key_cutover_runs",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:127958eea52695ab:f53ea948b2173b1f",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:127958eea52695ab:f570c2e922d7a11c",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1022,
+          "column": 11,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 37592,
+          "byteEnd": 38443,
+          "token": "read:parameter_spec_property_key_cutover_runs\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_runs: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (s…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:23e308eabc59655f",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:04ed8726ebfb9e23",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 945,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 34040,
+          "byteEnd": 34923,
+          "token": "read:parameter_spec_property_key_cutover_items\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:466fd278e323c14a",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:15519c527d10ca24",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 945,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 34040,
+          "byteEnd": 34923,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:2b187ab3f7117ac0",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:2cc49e43a173b3b2",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1098,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 41134,
+          "byteEnd": 42001,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:94d4b75043e01474",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:46a02d858e5bd955",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 905,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 31875,
+          "byteEnd": 32742,
+          "token": "read:parameter_spec_property_key_cutover_items\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:192a36ad9d88acc1",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:a8e2217c86604ad0",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 905,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 31875,
+          "byteEnd": 32742,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:ba40c7f147ed0c7a",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:240b3e85c436c0d4:f3d4baca19c026b0",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1098,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 41134,
+          "byteEnd": 42001,
+          "token": "read:parameter_spec_property_key_cutover_items\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:93c98fa21115935c:4562da6ddea53fa8",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:93c98fa21115935c:17d863ef05327364",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1610,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 62035,
+          "byteEnd": 62872,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:93c98fa21115935c:6c4576e9ccb9e0ed",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:93c98fa21115935c:82c89b9ee7ab9085",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1571,
+          "column": 15,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 60040,
+          "byteEnd": 60877,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:d56251573b176326:dd9b9f476c41f8bc",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:d56251573b176326:53ed4ec4cf3fd5ab",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1022,
+          "column": 11,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 37592,
+          "byteEnd": 38443,
+          "token": "read:parameter_spec_property_key_cutover_items",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-raw-read:d56251573b176326:08e88fa89c50458a",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-raw-read:d56251573b176326:82b06de82a8265a6",
+          "rule": "legacy-catalog-raw-read",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1022,
+          "column": 11,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 37592,
+          "byteEnd": 38443,
+          "token": "read:parameter_spec_property_key_cutover_items\u0000detector-duplicate:2",
+          "evidence": "read parameter_spec_property_key_cutover_items: select (select status from parameter_spec_property_key_cutover_runs where parameter_spec_id = $1) as status, (select count(*)::text from parameter_spec_property_key_cutover_items) as items, (…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-sql-write:62dc19ad152a4961:cda389171148bedc",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-sql-write:62dc19ad152a4961:ae243d6313e984f0",
+          "rule": "legacy-catalog-sql-write",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1528,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 57938,
+          "byteEnd": 58183,
+          "token": "write:project_parameter_bindings",
+          "evidence": "write project_parameter_bindings: insert into project_parameter_bindings ( id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id ) values ('zz-binding-pk-cutover-missing-child', $1, $2, $3, $4, 'ln-pk-cutover-missi…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-catalog-sql-write:c12307e3e40ebe49:a207040f85935be2",
+        "observed": {
+          "id": "S12-CGH:legacy-catalog-sql-write:c12307e3e40ebe49:b497b46826ee486d",
+          "rule": "legacy-catalog-sql-write",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+          "family": "S12-CGH",
+          "line": 1534,
+          "column": 13,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 58290,
+          "byteEnd": 58580,
+          "token": "write:project_parameter_binding_revisions",
+          "evidence": "write project_parameter_binding_revisions: insert into project_parameter_binding_revisions ( id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value ) values ( 'rev-pk-cutover-missing-child', 'zz-binding-pk-cu…"
+        }
+      },
+      {
+        "id": "S12-CGH:legacy-parameter-spec-identifier:b33b29dcf20f4f7b:e4db9172f6f72c0d",
+        "observed": {
+          "id": "S12-CGH:legacy-parameter-spec-identifier:b33b29dcf20f4f7b:bf17c2ee6dac1649",
+          "rule": "legacy-parameter-spec-identifier",
+          "file": "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts",
+          "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+          "family": "S12-CGH",
+          "line": 1212,
+          "column": 7,
+          "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+          "trustedBlobOid": "1854772393388a8778b27594d2789b8635bfa3de",
+          "byteStart": 46025,
+          "byteEnd": 46040,
+          "token": "parameterSpecId",
+          "evidence": "parameterSpecId"
+        }
+      }
+    ]
+  },
+  "scriptTests": {
+    "files": 94,
+    "collected": 1246,
+    "passed": 1241,
+    "failed": 0,
+    "skipped": 5,
+    "skipScope": "Five vendor schema real dt-validate fixtures; missing local dt-validate executable. Not counted as passed."
+  },
+  "testMapping": [
+    {
+      "file": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "cases": 33,
+      "layer": "real source scanner, Git blob and filesystem plus controlled record mutations; no runtime business/PG claim"
+    },
+    {
+      "file": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "case": "locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base",
+      "layer": "actual repository scanner and immutable inventory/ancestry/allowance comparison"
+    }
+  ],
+  "runs": [
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+      "trackedStatusAtStart": "",
+      "fullStatusAtStart": "",
+      "exactCommittedTree": true,
+      "checkout": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+      "tree": "528b831ab20d40efbc892c1bb07b241d71b2720b",
+      "command": [
+        "npm",
+        "run",
+        "test:scripts"
+      ],
+      "start": "2026-09-06T05:15:37.431477+00:00",
+      "end": "2026-09-06T05:16:59.306092+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/",
+        "WAYFINDER_POSTGRES_CONTAINER": "wiseeff-g668-pg"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+      "trackedStatusAtStart": "",
+      "fullStatusAtStart": "",
+      "exactCommittedTree": true,
+      "checkout": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+      "tree": "528b831ab20d40efbc892c1bb07b241d71b2720b",
+      "command": [
+        "npm",
+        "run",
+        "parameter-catalog-boundaries:check",
+        "--",
+        "--trusted-base-sha",
+        "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391"
+      ],
+      "start": "2026-09-06T05:15:38.671336+00:00",
+      "end": "2026-09-06T05:16:03.010773+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M scripts/check-parameter-catalog-boundaries.ts\n",
+      "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M scripts/check-parameter-catalog-boundaries.ts\n?? scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json\n?? scripts/parameter-catalog-allowlist/exactRelocation.test.ts\n?? scripts/parameter-catalog-allowlist/exactRelocation.ts\n",
+      "exactCommittedTree": false,
+      "checkout": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "tree": "c43501c2d9db2a1e516e3072f1054da2f6bb65de",
+      "command": [
+        "npm",
+        "run",
+        "test:scripts",
+        "--",
+        "scripts/parameter-catalog-allowlist/exactRelocation.test.ts"
+      ],
+      "start": "2026-09-06T05:10:52.116263+00:00",
+      "end": "2026-09-06T05:11:06.325413+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n",
+      "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n?? scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json\n?? scripts/parameter-catalog-allowlist/exactRelocation.test.ts\n?? scripts/parameter-catalog-allowlist/exactRelocation.ts\n",
+      "exactCommittedTree": false,
+      "checkout": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "tree": "c43501c2d9db2a1e516e3072f1054da2f6bb65de",
+      "command": [
+        "npm",
+        "run",
+        "test:scripts",
+        "--",
+        "scripts/parameter-catalog-allowlist/exactRelocation.test.ts"
+      ],
+      "start": "2026-09-06T05:08:15.418732+00:00",
+      "end": "2026-09-06T05:08:15.949339+00:00",
+      "exit": 1,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n",
+      "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n?? scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json\n?? scripts/parameter-catalog-allowlist/exactRelocation.test.ts\n",
+      "exactCommittedTree": false,
+      "checkout": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "tree": "c43501c2d9db2a1e516e3072f1054da2f6bb65de",
+      "command": [
+        "npm",
+        "run",
+        "test:scripts",
+        "--",
+        "scripts/parameter-catalog-allowlist/exactRelocation.test.ts"
+      ],
+      "start": "2026-09-06T05:07:58.674493+00:00",
+      "end": "2026-09-06T05:07:59.266529+00:00",
+      "exit": 1,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M scripts/check-parameter-catalog-boundaries.ts\n",
+      "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M scripts/check-parameter-catalog-boundaries.ts\n?? scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json\n?? scripts/parameter-catalog-allowlist/exactRelocation.test.ts\n?? scripts/parameter-catalog-allowlist/exactRelocation.ts\n",
+      "exactCommittedTree": false,
+      "checkout": "e2b305d026a0e90cbed32bb8e851de279aae09f1",
+      "tree": "c43501c2d9db2a1e516e3072f1054da2f6bb65de",
+      "command": [
+        "npm",
+        "run",
+        "test:scripts",
+        "--",
+        "scripts/parameter-catalog-allowlist/exactRelocation.test.ts"
+      ],
+      "start": "2026-09-06T05:09:24.201281+00:00",
+      "end": "2026-09-06T05:09:24.767495+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "164b832f543433564b3f5cd75d6b9445a7b9bb8d",
+      "trackedStatusAtStart": "",
+      "fullStatusAtStart": "",
+      "exactCommittedTree": true,
+      "checkout": "164b832f543433564b3f5cd75d6b9445a7b9bb8d",
+      "tree": "7da2b2afecde0e0b9af6c28e5de366d4c16f2fb0",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "start": "2026-09-06T05:13:06.919630+00:00",
+      "end": "2026-09-06T05:13:28.615601+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    },
+    {
+      "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+      "candidate": "164b832f543433564b3f5cd75d6b9445a7b9bb8d",
+      "trackedStatusAtStart": "",
+      "fullStatusAtStart": "",
+      "exactCommittedTree": true,
+      "checkout": "164b832f543433564b3f5cd75d6b9445a7b9bb8d",
+      "tree": "7da2b2afecde0e0b9af6c28e5de366d4c16f2fb0",
+      "command": [
+        "npm",
+        "run",
+        "docs:check"
+      ],
+      "start": "2026-09-06T05:13:06.919630+00:00",
+      "end": "2026-09-06T05:13:09.286181+00:00",
+      "exit": 0,
+      "environment": "local isolated lane 820; no target or production operations",
+      "nonSecretEnvironmentOverrides": {
+        "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+      },
+      "checkoutUnchanged": true
+    }
+  ],
+  "reviews": [
+    {
+      "path": "reviews/ci-relocation-final-spec.md",
+      "content": "# Independent Spec final delta review\n\n**PASS for the exact anchor-materialization delta; no findings.**\n\nReviewed `164b832f543433564b3f5cd75d6b9445a7b9bb8d` → `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`, within overall base `e2b305d026a0e90cbed32bb8e851de279aae09f1`. Verified final tree `528b831ab20d40efbc892c1bb07b241d71b2720b` and clean tracked status.\n\nThe sole changed path is `scripts/parameter-catalog-allowlist/exactRelocation.ts:13–15`: replace the deliberately nonfunctional pending marker with the independently reviewed digest and identify the pre-seal review SHA in comments. No validation logic, scanner, test expectation, fixture, allowance shard or production source changed in this delta.\n\nI read both committed record blobs and verified byte equality (45,788 bytes). Independently recomputed SHA-256:\n\n`fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`\n\nIt exactly matches the new literal and my pre-seal calculation. The complete record/matrix review in `ci-relocation-preseal-spec.md` therefore remains applicable to these unchanged bytes. This final delta introduces no additional mapping or broader approval.\n\nThis is a read-only review, not a new test execution. The pre-seal 33-case run belongs to 164b832f; it is not relabeled as a 97d5e5bc run. Parent-reported trusted-base-35cb CLI/full-script runs were in progress when this review was requested and are not counted as passes here. Actual final-candidate results, Hosted checkout/job evidence and remaining program blockers must still be reported separately. No merge, issue closure or production authorization follows from this PASS.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-final-standards.md",
+      "content": "# Final Standards delta review\n\nResult: **limited PASS**. No new actionable finding in the reviewed delta.\n\n- Reviewed base: `164b832f543433564b3f5cd75d6b9445a7b9bb8d`.\n- Reviewed head: `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`.\n- Verified head tree: `528b831ab20d40efbc892c1bb07b241d71b2720b`.\n- Complete repair base remains `e2b305d026a0e90cbed32bb8e851de279aae09f1`.\n\nThe complete commit delta changes only the review provenance comment and `reviewedRecordSha256` in `scripts/parameter-catalog-allowlist/exactRelocation.ts`. The placeholder is replaced with the digest independently established during pre-seal review: `fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`.\n\nI independently hashed the record from both Git commits. Both copies are byte-identical, 45,788 bytes, and match that SHA-256. No validator logic, occurrence pair, metadata, source fixture, allowance shard, or checker guard changed in this delta. `git diff --check` passed. The findings and limited PASS in `ci-relocation-preseal-standards.md` therefore remain applicable to the reviewed implementation bytes.\n\nThis is independent Standards approval of this final code delta, including activation of the previously reviewed exact record. It does not report the parent's in-progress real checker or full scripts as passed, establish Hosted success, authorize merge or production actions, or close the remaining program requirements. Those execution and delivery gates require their own exact-candidate evidence.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-hosted-scope.md",
+      "content": "# Independent CI relocation scope and Hosted expectation audit\n\n**Scope/filter audit: PASS. Exact `164b832f` Hosted readiness: HOLD pending the explicit pre-seal digest materialization.** This report is a read-only scope/evidence audit, not approval of the relocation implementation, its authorization, merge, full-program acceptance or production work.\n\nFixed comparison: `e2b305d026a0e90cbed32bb8e851de279aae09f1..164b832f543433564b3f5cd75d6b9445a7b9bb8d`. Destination tree: `7da2b2afecde0e0b9af6c28e5de366d4c16f2fb0`. GitHub status below was actually read on 2026-09-06 through `gh run view`, the direct job-log endpoint, the Git commit endpoint and PR metadata. No GitHub mutation or broad test run occurred. Only this ignored report was written.\n\n## Exact change boundary\n\nThe comparison changes nine files: four documentation files and five checker/relocation files. It adds the two language versions of `docs/agents/catalog-boundary-relocation.md`, updates the two delivery plans, changes `scripts/check-parameter-catalog-boundaries.ts` and its test, and adds `scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json`, `scripts/parameter-catalog-allowlist/exactRelocation.ts` and its test. There are no runtime, browser, SQL fixture, workflow, dependency, migration, test-configuration or path-classifier changes.\n\nThe original `scripts/fixtures/parameter-catalog-allowlist/current-violations.json` is unchanged across c3d, e2b and 164: Git blob `3175e8aef4881e916b7828004bd029d5c7d7dd5c`, SHA-256 `fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951`. The new relocation record is separate from that immutable inventory.\n\nAll **11** existing allowance shards are byte-identical across those three commits:\n\n| Shard under scripts/parameter-catalog-allowlist/shards | Unchanged Git blob |\n| --- | --- |\n| s12-agt.json | `c888a59d1c7cd7e44755b1291915c77fae698610` |\n| s12-cgh.json | `074a3ba451ad469b5af9fef6ce585ccc5e16166e` |\n| s12-dbg.json | `3611d1829e5108ff131b49137a20f60f99d31577` |\n| s12-dts.json | `f6a93019c5931d2d6fcaf4febf35a001cc559c99` |\n| s12-fil.json | `977a54c38b4b598a543895fe2fce1680a35a3cb8` |\n| s12-knw.json | `3550e5a472d30687716c37e8a8eeb48ef904f454` |\n| s12-log.json | `d2f243a18b8debbb55017858e6490680afb6866e` |\n| s12-mod.json | `31b4c3ffbab1a0e095e9059cb0a13778a764243d` |\n| s12-ops.json | `208ece8dabce639fee420d8f587eaf0d9dfa9e06` |\n| s12-prj.json | `7c9382ebcbd443f726fb72a6ee6754bae7161fce` |\n| s12-top.json | `63bb436cfd593b9235dc6f9d679c87d010445a4c` |\n\nThe SQL-bearing `server/modules/parameter-specs/propertyKeyCutover.integration.test.ts` stays at destination blob `1854772393388a8778b27594d2789b8635bfa3de`, SHA-256 `011a144061b8f78aef58349f4c7a8f01e4bdfb7ed96dae015578f79193369708`. This repair does not edit that fixture to move, normalize or remove violations.\n\nWhole-directory tree identities also match at c3d/e2b/164:\n\n| Directory | Identical tree |\n| --- | --- |\n| server | `330d484b0f842b882cf45dd24ba576eb8f5731bf` |\n| src | `e5b46cd305780f7f62723548565f58e9ce0dc0b9` |\n| e2e | `9adcb2b35f70c30333848a17c8bdbaa1b6f5d6a2` |\n| packages | `67c376a0087d1e92eff662b4089e56c98e281d4e` |\n| ops | `3665701cef3ddb0b423aff7c9b738aa771790854` |\n\n`.github/workflows/ci.yml`, `scripts/ci-changed-paths.ts`, `scripts/check-acceptance-ci.ts`, package.json/package-lock.json, Vite, Playwright and server/scripts Vitest configurations were each independently checked as unchanged blobs. Workflow blob is `d9ad0e3a1278a302ead406da3acd131389492794`; classifier blob is `4e1c56c06743445bf4b198599570eeb3b8ecc885`.\n\n## c3d evidence applicability\n\nExisting real-PG/root-HTTP and browser/CLI execution evidence remains bound to **`c3d592011d05109adb64bd295159e33ade9fd604`**, tree `8dc261d28748d86ead510f8c34c76da0d9d638e9`: 255 relevant tests, 21 Catalog business browser cases plus one warmup, and the separately recorded three CLI viewports. The unchanged runtime/test/dependency/config blobs establish applicability to those unchanged behaviors; they do **not** constitute reruns at e2b or 164, and do not validate the new relocation parser.\n\nNo new full frontend/server/test:all, capacity or Gate 0 result is inferred. Prior be610 results and blockers retain their original execution identity. A later seal digest, documentation commit, PR push or generated merge-ref must record its actual SHA and the scope of any reused evidence explicitly.\n\n## Path classification and Hosted gates\n\nThe unchanged workflow detects a PR's **full** `BASE_SHA...github.sha` diff (`ci.yml:70–85`), not only the last commit. The unchanged classifier treats otherwise-unclassified non-documentation `scripts/` paths conservatively as product changes. A read-only execution of that classifier (`node --import tsx scripts/ci-changed-paths.ts --stdin --json`; no `--github-output`) produced:\n\n- This exact nine-path repair: `docsOnly=false`, `ui=false`, `product=true`, `workflow=false`, `runL1=true`, `runQuality=true`, `runSmoke=true`.\n- Local full PR comparison from main `27bc39d53235879afb579a86f6ee777a462e4204` to 164 (94 paths): `docsOnly=false`, `ui=true`, `product=true`, `workflow=false`, all three run flags true.\n\nThus the scripts-focused repair does not suppress required L1, quality or smoke work. The future actual merge-ref must still be checked when Hosted creates it; this local classification is a prediction of unchanged rules, not proof of a future job execution.\n\n`Build and test` is gated only by `run_l1 == 'true'` and has a 20-minute job budget with a pgvector PostgreSQL 16 service. After setup/metadata/toolchain, the ordinary sequential steps are:\n\n1. `npm run build` — **before** Script tests, not newly enabled after them.\n2. `npm run docs:check`, `npm run ui:check`, `npm run lint`, `npm test` and pgvector-extension verification.\n3. `npm run test:scripts`.\n4. Fetch and verify the exact trusted base, then the dedicated Catalog boundary CLI.\n5. `npm run bridge:test`.\n6. `npm run test:server` (full backend command).\n7. `npm run contract:check`.\n8. `npm run logs:eval`.\n\nSteps 4–8 have no path-level skip conditions, but ordinary failure propagation means a failed earlier step prevents their execution. Restoring Script tests only allows the next boundary step to start; it does not prove that boundary, backend or contract passed. The only advisory continue-on-error step in this sequence is the earlier DTS seed compile.\n\n**Hosted's actual boundary parameter is the original fixture base**, not the local accepted implementation base. At `ci.yml:212–219` it is:\n\n```sh\nPARAMETER_CATALOG_TRUSTED_BASE_SHA=9b3ba7df7e21f5589684bc92c872da593ad4c246\ngit fetch --no-tags origin \"${PARAMETER_CATALOG_TRUSTED_BASE_SHA}\"\ntest \"$(git rev-parse --verify \"${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}\")\" = \"${PARAMETER_CATALOG_TRUSTED_BASE_SHA}\"\nnpm run parameter-catalog-boundaries:check -- --trusted-base-sha \"${PARAMETER_CATALOG_TRUSTED_BASE_SHA}\"\n```\n\nLocal approved-baseline validation uses `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`; the original fixture retains 9b3. Neither parameter nor existing fixture-integrity, ancestry or allowance-growth checks is removed by this delta. Any final candidate must be checked against the workflow's actual 9b3 invocation as well as its required local baseline; do not report a local 35 run as the Hosted 9b3 command.\n\nQuality and smoke remain enabled. Broad local non-HDC Gate 0 is separately controlled by `run_l2`: on PRs, the workflow forces it false unless the PR carries `full-acceptance`. The actually read PR metadata has no labels. Target-synthetic runs require explicit workflow_dispatch and a target mode; they are not enabled by this repair. No label, manual dispatch or target action was performed here. Therefore this normal PR run is not expected to supply broad Gate 0, even if all its scheduled jobs turn green. Merge bar rejects failure/cancellation and requires Detect success; its green result must not be expanded into acceptance of intentionally skipped gates.\n\n## Current pre-seal hold\n\nAt the **fixed 164 commit**, `scripts/parameter-catalog-allowlist/exactRelocation.ts:14` still sets `reviewedRecordSha256` to `pending-independent-preseal-review`. The real-file path compares a 64-character SHA-256 digest with that literal before applying any relocation, so this candidate intentionally cannot pass the real record-integrity check. Synthetic fixtures that bypass this path do not resolve that hold.\n\nThis is an explicit outstanding pre-seal step, not a request to weaken the guard. After the required independent review, the coordinator must materialize only the reviewed record's exact digest under the existing authorization, record the resulting new commit/tree, and perform the appropriate exact-candidate checks. Do not call 164 sealed or Hosted-ready, or carry any earlier result across the changed digest as if it had executed on that new SHA. This audit does not itself grant that approval or modify the digest.\n\n## Actual latest inspected Hosted run\n\n[Run 34011746179](https://github.com/tzrea1-Q/WiseEff/actions/runs/34011746179) is **completed/failure**, PR event, recorded head **e2b305d026a0e90cbed32bb8e851de279aae09f1**. It is not an execution of 164. PR #821 was actually read as open Draft, head e2b, base main 27bc, no labels.\n\nThe actual build job log and independent Git commit response identify checkout `refs/remotes/pull/821/merge` → **`d0adfb52afa2751740873daa1c4b35ff78f751c9`**, tree **`debce1e9fc5866aa00f9040d3a7f8d5a54857781`**, parents main 27bc and PR head e2b. Build-and-test job `101428743708` ran 2026-09-06T04:32:55Z–04:42:02Z. The direct log response was 786794 bytes, SHA-256 `794bc85b5e1f87c7fe757d3f93a8ee980b2bb5bead82de3a7860a54b7135e0b5`.\n\nThe sole failed script test remains “locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base”: **93 script files, 92 passed / 1 failed; 1213 tests, 1191 passed / 1 failed / 21 skipped**. Frontend passed 438 files / 3374 tests. Job metadata marks the dedicated boundary CLI, Device bridge, Backend, Contract and Log analysis eval **skipped**. Build, docs, UI and lint succeeded earlier. Detect, Acceptance quality and Acceptance smoke succeeded; local non-HDC and target-synthetic were skipped. Merge bar `101429857823` failed.\n\nThat failure is retained as actual predecessor evidence. It establishes neither success nor failure of the new 164 relocation implementation. Future Hosted results must be recorded from their own head, actual merge checkout, job steps and conclusions. This scope audit performed no production operation, OP-09, target drill, cleanup, GitHub write or broad validation run.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-preseal-spec.md",
+      "content": "# Independent Spec pre-seal review\n\n**PASS for the bounded pre-seal implementation; no findings.**\n\nBase `e2b305d026a0e90cbed32bb8e851de279aae09f1`; reviewed head `164b832f543433564b3f5cd75d6b9445a7b9bb8d`. I reviewed the exact nine-file diff independently of Standards, without implementing these files. No tracked/GitHub/environment changes were made.\n\nIndependent SHA-256 of the committed 45,788-byte record:\n\n`fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`\n\nAll 23 complete old/new records and slice hashes exactly match the independently checked preflight proposal. Old/new blobs remain `dd0168f369b615f45eeb1e5539557fb63967e1dd` / `1854772393388a8778b27594d2789b8635bfa3de`. Original fixture and all shards are byte-identical to this review base; 3519 fixture / 3513 allowances / six deletions remain intact.\n\n## Contract and assertions\n\n- `exactRelocation.ts:39–73` validates the entire record before aliasing: strict schema/count, whole-file hashes, complete original/discovered records, existing allowance metadata, uniqueness, exact positions and identical raw slices. The +216 condition restricts an already enumerated pair; it does not discover mappings. JSON cannot self-authorize.\n- `exactRelocation.test.ts` directly asserts altered identity/rule/token/evidence/reason/path/ranges/digests, omitted/duplicate/reused pairs, duplicate/missing discovery, missing original/allowance, already-bound source, wrong fixture base and outside-slice source edits are rejected. The repeated-SQL swap case first establishes an actual duplicate slice, then asserts rejection.\n- Unmapped debt stays unallowlisted; every one of the six removed occurrences remains unallowlisted. Filesystem cases cover missing, changed and partial records. Existing checker tests retain fixture-integrity, missing/non-ancestor trusted base, allowance-growth and Hosted-fetch assertions. Real shallow/Hosted execution remains an evidence requirement, not proof supplied by a text assertion.\n- `check-parameter-catalog-boundaries.ts:339–343` applies aliases only after existing integrity/ancestry/growth checks and retains normal comparison for all other discoveries. Reports expose observed locations separately. The original inventory test only gains three uniqueness/count assertions; no existing expected count, scanner rule, allowance or skip is weakened.\n\nI ran `npm run test:scripts -- scripts/parameter-catalog-allowlist/exactRelocation.test.ts` on the clean fixed head: **1 file, 33 passed, exit 0, 13.90s**. HEAD and tracked status remained unchanged afterward.\n\n## Remaining gate\n\n`pending-independent-preseal-review` intentionally rejects the real checker. This PASS permits the agreed single anchor materialization after both independent reviews agree, using the digest above; it does not certify that resulting delta automatically. Review that exact delta, then run the unchanged inventory/full scripts, trusted-base-35cb checker, documentation checks and actual Hosted checkout. Missing/bad-record regressions must still pass after anchoring. No CI-green, seal, merge, program-closure or production claim is made here.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-preseal-standards.md",
+      "content": "# Independent Standards — exact relocation pre-seal review\n\n**PASS for the reviewed record and implementation; no actionable finding.** Base `e2b305d026a0e90cbed32bb8e851de279aae09f1`; head `164b832f543433564b3f5cd75d6b9445a7b9bb8d`; tree `7da2b2afecde0e0b9af6c28e5de366d4c16f2fb0`. Reviewed all nine changed files against the authorized R3 preflight, repository integrity/ancestry rules and Standards smell baseline. No Spec findings were read and no tracked source was changed.\n\n**Independently computed raw record SHA-256 to materialize:** `fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074` (45,788 bytes, `scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json` at this exact head). All 23 complete old/new records and slice hashes equal the earlier independently reviewed packet. The original 3519 fixture, eleven shards, SQL fixture and workflows are unchanged.\n\nThe filesystem entry requires the separately reviewed raw-file hash before JSON interpretation. Strict schema and literals prevent self-approval fields, arbitrary paths, bases or blobs. Both whole-file Git blob identities are checked, including the actual working destination bytes. Every original record equals immutable inventory; each destination equals a scanner discovery; old allowance metadata must match and remain present; new IDs cannot already be allowed. Duplicate, reused, already-bound, missing, changed or out-of-bounds mappings fail. Every slice must be identical and hash-match. Alias construction occurs only after the complete validation loop, preserving atomic refusal.\n\nThe checker still verifies fixture integrity and explicit-base ancestry, then enforces original allowance anti-growth before applying relocation. Its final full-array `map` retains every unmapped discovery; original comparison still detects new/restored debt and stale entries. Current positions are exposed separately without rewriting historical identity metadata. Synthetic-fixture bypass is confined by the existing public checker's integrity anchor and does not bypass real inventory verification. No new SQL interpretation, search, permissive approval input, cache or runtime authority is introduced. No significant actionable possible smell.\n\nRead the actual one-collected-test behavioral Red and 33-test adversarial Green logs; the earlier missing-module/zero-collected attempt is not counted as Red. Tests cover strict record mutations, full blobs, repeated-SQL swaps, missing/changed allowances and retained unknown debt. `git diff --check` passes. These are pre-anchor results; the current pending hash deliberately prevents real inventory success.\n\nAfter both independent reviews return, the parent may materialize only the exact digest above under the existing authorization. The resulting byte-changing candidate needs final delta review, real checker/inventory and full-script results, including actual filesystem-entry activation and original negative guards, then exact Hosted checkout evidence. This PASS is not that execution, a final seal, merge, Issue closure, Policy authorization or production/OP-09 approval.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-threat-spec.md",
+      "content": "# CI relocation — independent Spec preflight\n\n**PASS for bounded threat readiness; not implementation acceptance or a passed gate.** Review baseline: `e2b305d026a0e90cbed32bb8e851de279aae09f1`. Sources: the parent's supplied latest user instruction to fix CI, `boundary-relocation-exact-proposal.json`, `boundary-relocation-proposal.md`, current checker/inventory test and repository delivery/launch rules. No Standards report was read. No tracked file, test, environment or GitHub state was changed.\n\n## Authority\n\nThe latest user request, as supplied in this task, explicitly asks to fix CI after the exact 23-pair blocker was explained. It authorizes implementing this particular repair. The proposal's historical `unapproved` fields record an earlier state; they are not a current prohibition and must not be silently rewritten as historical approval. Record the subsequent user authorization separately, with the exact approved object and review evidence.\n\nThe repository requires inventories to lock once (`docs/agents/catalog-launch-operating-rules.md:49`; `agent-delivery-protocol.md:242`). This repair must preserve that inventory and allowance contract, rather than regenerate either. The provenance/release-gate seam merits R3 treatment: threat cases before implementation and independent Standards/Spec before sealing (`agent-delivery-protocol.md:37,49–53`). I found no additional named external approver required before this narrowly authorized local implementation. User authorization does not supply final independent review, merge approval, or production authorization. Any broader mapping/debt change falls outside it.\n\n## Independently verified approval object\n\n- Exactly one path: `server/modules/parameter-specs/propertyKeyCutover.integration.test.ts`.\n- Old blob `dd0168f369b615f45eeb1e5539557fb63967e1dd`, SHA-256 `7ec2aef0577d686d77ba10109db7b3285ae67a29791b07353a8b0990ab1c5d41`; new blob `1854772393388a8778b27594d2789b8635bfa3de`, SHA-256 `011a144061b8f78aef58349f4c7a8f01e4bdfb7ed96dae015578f79193369708`. The old blob matches fixture base, accepted 35cb and main 27bc; the new blob matches current e2b305.\n- Fixture SHA-256 remains `fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951`, 3519 records. Current allowances remain 3513, with exactly six original records absent. Owning-shard and checker hashes match the proposal.\n- All 23 old/new IDs are unique. I compared every exact UTF-8 slice, range, family/rule/file/token/evidence and current old allowance, and independently recomputed all 46 occurrence suffixes. Each slice is identical, with +216 bytes; no algorithm may infer future mappings from that delta. The pair sets exactly cover the historical report's 23 stale/23 new entries. This last comparison is to the preserved report, not a fresh scanner execution.\n- Verified fixture-base `9b3ba7…` → accepted boundary base `35cbfb…` → e2b305 ancestry. The CLI trusted base remains full `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`; the fixture's original trusted SHA also stays unchanged.\n\n## Permanent acceptance/threat matrix\n\n| Case / counterexample | Required observation |\n| --- | --- |\n| Exact authorized record, current destination blob, original fixture/shards | Actual checker and unchanged inventory test pass: 3513 matches, zero stale/new/metadata mismatch/growth; fixture remains 3519. |\n| Record absent, unauthorized, unknown, malformed or integrity anchor altered | No relocation authority; reject/fail closed. A JSON `approved: true` or caller-supplied digest cannot authorize itself. |\n| Old/new whole blob, byte start/end, slice, ID, family/rule/path/token/evidence/reason changed | Reject even if normalized SQL or the overall count matches. Validate all pairs before applying any. |\n| Duplicate old ID, duplicate destination, reused mapping, omitted pair, unused extra pair, cross-file pair | Reject; one-to-one and exact-set completeness are mandatory. |\n| Two repeated SQL occurrences swapped despite equal text | Reject exact occurrence identities/positions; no fuzzy search or first match. |\n| Missing old immutable record/current allowance, changed allowance metadata, reinstated removed debt | Reject; preserve all six deletions and existing shard bytes. Mapping is not a new allowance or permission to restore debt. |\n| Added violation outside mapped slices, new file, future edit anywhere in the bound destination file | Normal checker still detects new debt; future whole-file hash invalidates this record. |\n| Wrong/missing trusted ancestor, shallow checkout lacking proof | Fail closed or fetch required ancestry through the established mechanism; never substitute HEAD as trusted base. |\n| Direct checkout, actual Hosted merge topology, later full history | Same exact source/blob identities and intact normal comparison; capture real checkout SHA and job contents. A locally simulated merge is not Hosted evidence. |\n\nFreeze the exact parser/validator, record, integrity anchor, existing-checker integration, new adversarial-test paths and bilingual documentation ownership before writing. Add tests without changing the existing expected counts or skip conditions. Final independent review must verify the fixed bytes and all negative cases; an initially green count alone is insufficient. This preflight does not clear unrelated Policy, capacity, Gate 0, merge or OP-09 boundaries.\n"
+    },
+    {
+      "path": "reviews/ci-relocation-threat-standards.md",
+      "content": "# CI relocation — independent Standards R3 preflight\n\n**PASS for the bounded authorization assessment and design constraints below.** This is not implementation approval by a reviewer, a completed executable threat matrix, a seal, merge approval or a passing CI result. Read-only checkout: `e2b305d026a0e90cbed32bb8e851de279aae09f1`.\n\n## Current authority, distinguished from historical pending state\n\nThe parent reports that the user was explicitly told the sole CI failure was the 23 occurrence relocations and then instructed **“修复ci报错”**. On that stated conversation record, the bounded repair is authorized. No repository provision located in this review requires a second named external authority to approve this implementation after that user instruction. Do not repeat the earlier lack-of-instruction blocker as though authorization had not changed.\n\nThe actual mandatory gates remain:\n\n- `docs/agents/agent-delivery-protocol.md:126`: “For R3, a Spec reviewer challenges the invariant before production implementation begins.” Standards alone does not fulfill that independent Spec challenge.\n- Same document `:136`: each matrix row has its observation/evidence owner and “Executable cases begin red in Scratch”; `:140` requires both independent reviews against the same Scratch SHA before sealing.\n- `docs/agents/catalog-launch-operating-rules.md:49`: “Lock occurrence counts, allow-lists, schema fingerprints, and lock files once at THREAT-READY” and treats a second patch of the invariant as a circuit breaker. Re-entering this threat/design review is appropriate; regenerating the old inventory is not.\n\nThe old `boundary-relocation-proposal.md` and exact packet's unapproved status document the earlier state and reviewer-proposed process, not an additional superior authority. Preserve those bytes/history. Add a separate, truthful authorization/scope record referencing the new user instruction; do not backdate or rewrite the old packet as already approved. This authorization does not cover Policy replacement, merge, production, OP-09, new debt or a general relocation mechanism.\n\n## Exact object and minimum implementation boundary\n\nThe historical packet SHA-256 remains `ecde795be9211db187380c950d0d96ef3a4e060e8a4e4d0bbc9719f40b5bd4df`. Its destination file blob `1854772393388a8778b27594d2789b8635bfa3de` still matches current HEAD. The original fixture hash remains `fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951`; all 11 current shard blobs match be610. The source blob remains `dd0168f369b615f45eeb1e5539557fb63967e1dd`. Only the 23 previously verified slices are unchanged; the surrounding DTS fixture is a semantic UPDATE-versus-duplicate-INSERT repair, not a whole-file translation.\n\nFreeze exact editable filenames before Scratch: existing checker and its test, dedicated `exactRelocations.ts` and test, one exact relocation fixture, and explicitly named bilingual plan/evidence documentation. Keep original fixture, all 11 shards, domain/product code and generic ancestry/anti-growth logic read-only. A new record should contain only the executable exact contract and provenance, with its **entire raw file hash** pinned in reviewed code; editable `approved: true` flags, environment variables, CLI switches or arbitrary paths cannot grant authority.\n\nRun the ordinary full discovery and existing trusted-base/ancestor/anti-growth checks. Validate relocation against original inventory and current allowance membership, then bind only the exact listed discovered destinations back to their original identities. Preserve current-location evidence separately if needed. Never discard an unmatched discovery. Verify both full blobs, original raw slices, metadata, byte bounds, ID suffixes, fixture/shard anchors and all bijection invariants. Validate the actual working source that was scanned, not merely HEAD's blob while ignoring dirty source. Missing/unknown records, changed bytes, future source versions and unused/reused pairs must refuse activation or fail the checker; they must never produce a pass by omission.\n\n## Required permanent adversarial observations\n\nParent owns executable rows; independent Spec challenges them before implementation, Standards reviews the finished same-SHA implementation.\n\n| Row | Input / counterexample | Required result |\n| --- | --- | --- |\n| R1 | Exact 23 pairs with source/destination anchors and original allowances | Actual checker passes 3513 current debts; original fixture remains 3519; original six deletions stay deleted |\n| R2 | Missing/malformed/unknown record, altered raw-record hash or purported approval flag | No automatic authorization; fail closed |\n| R3 | Changed whole-file blob, dirty working source, slice, token/evidence/rule/family/reason/span/ID | Reject, even if count and normalized SQL text match |\n| R4 | Duplicate/reused/omitted/unused pair; cross-file or swapped identical-SQL destinations | Reject; exactly one old identity per exact observed destination |\n| R5 | Old allowance absent, shard/fixture altered, deleted debt reinstated, extra new occurrence | Existing ratchet still fails; no new debt or allowlist growth |\n| R6 | Wrong/missing/unrelated trusted base, changed original blob, forged lineage | Existing ancestry/integrity checks remain mandatory and fail |\n| R7 | Exact descendant and actual Hosted merge topology preserve approved file bytes | Same semantics; no requirement that current HEAD equal the historical evidence SHA |\n| R8 | Shallow checkout lacks required trusted objects; later full history/future source edit | Preserve established missing-evidence refusal; no fabricated fallback; future blob edit fails |\n\nTest through the actual checker as well as parser tests; include the existing failing inventory case and explicit trusted-base CLI. No timeout/limit increase, fuzzy matching, byte padding, count-only matching, global exemption, inventory refresh or credential-bearing evidence. Record Red/Green and final checkout separately. No implementation, test execution or external mutation occurred in this review.\n"
+    }
+  ],
+  "archive": {
+    "path": "docs/exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.zip",
+    "bytes": 368189,
+    "sha256": "38166dd2011fe91be237c1c930ccf2f1d44cf2a2c0a583b05ff5b5f90168a5b4",
+    "manifest": {
+      "candidate": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
+      "tree": "528b831ab20d40efbc892c1bb07b241d71b2720b",
+      "files": [
+        {
+          "path": "README-en.txt",
+          "bytes": 608,
+          "sha256": "fcb7cba6bb43e3bf00cfcb082d9a7b33be370a2f6ce37b877fcf2214b3663faa"
+        },
+        {
+          "path": "README-zh.txt",
+          "bytes": 548,
+          "sha256": "0ab94a40f61e5ca9f2b5181a4731ffaf60c5aca9dd07acbbbc2d3d7cb5a00fe4"
+        },
+        {
+          "path": "artifact-safety.txt",
+          "bytes": 370,
+          "sha256": "12298b61d10e00444741b14cc6692b48780fdc24a07c39236e6307fffd725d79"
+        },
+        {
+          "path": "candidate/ci-relocation-all-scripts.json",
+          "bytes": 752,
+          "sha256": "22ccc4efbc281a66948686c6be90c4a61d73fac64921ad199a7e9130bd9e57a8"
+        },
+        {
+          "path": "candidate/ci-relocation-all-scripts.log",
+          "bytes": 460,
+          "sha256": "4d786cef7f0080d031bda6513eecda07ad2bc7dfbc44b406c236b27470e727a9"
+        },
+        {
+          "path": "candidate/ci-relocation-boundary.json",
+          "bytes": 803,
+          "sha256": "8eca36121ccb511d547145c5f9c6ac1d4bace0987fe171dfe2ed14ad602a533d"
+        },
+        {
+          "path": "candidate/ci-relocation-boundary.log",
+          "bytes": 2626522,
+          "sha256": "a6b392b860aa80a1e7dc95276b4136ae2509c61d3d52371d7da8f458269c2cc4"
+        },
+        {
+          "path": "development/ci-relocation-adversarial.json",
+          "bytes": 1340,
+          "sha256": "31e44ae8aeaad7204ead5fbc30da933a697a3300bc7ae066ac85c20301dc2e3f"
+        },
+        {
+          "path": "development/ci-relocation-adversarial.log",
+          "bytes": 464,
+          "sha256": "8bdf08537bb56c8ebeaf60794e5cb2d80a872b64a917941b47a5bdf502d171f5"
+        },
+        {
+          "path": "development/ci-relocation-behavior-red.json",
+          "bytes": 1240,
+          "sha256": "34bf75ead8291ad33974e54fc411b5138262a8ea400b8322b79000fb03aaeaa6"
+        },
+        {
+          "path": "development/ci-relocation-behavior-red.log",
+          "bytes": 1497,
+          "sha256": "09b4e485b9d3ba16d51a6e2e9f9c2f5b33bb3ffa9589a3cb587f83b2dae3d39b"
+        },
+        {
+          "path": "development/ci-relocation-red.json",
+          "bytes": 1181,
+          "sha256": "778e0c7e8a3c7e922424cdb4a35b652b4ebfbcf2f038ddd2e6a060eb0423edb8"
+        },
+        {
+          "path": "development/ci-relocation-red.log",
+          "bytes": 1254,
+          "sha256": "48c9185693218475cccfc03c18961724529abd3e60069b017f5586bfb0c92f1b"
+        },
+        {
+          "path": "development/ci-relocation-validator-green.json",
+          "bytes": 1340,
+          "sha256": "5dac76e52795e07f7a798538347c4f32c1014a47d78ec183f744efee9409c354"
+        },
+        {
+          "path": "development/ci-relocation-validator-green.log",
+          "bytes": 457,
+          "sha256": "a951b33e1ed660e83963d1c18d68ca20084cdf2ab9d58d9807e20737d48b639a"
+        },
+        {
+          "path": "preseal/ci-relocation-build.json",
+          "bytes": 690,
+          "sha256": "e1b87e7d0e504c045260b8e9eff023d4c059597beb71b80865bd1c80efbfc2fa"
+        },
+        {
+          "path": "preseal/ci-relocation-build.log",
+          "bytes": 38469,
+          "sha256": "39d8c45c8a384d47c04e511d171f8dfd49cae59283b0dd714c74e6ee7e7e7285"
+        },
+        {
+          "path": "preseal/ci-relocation-docs.json",
+          "bytes": 695,
+          "sha256": "3de6a2916075d65d08a64449e4692e1a112e928e7a27145be2d2eb04ed5e473a"
+        },
+        {
+          "path": "preseal/ci-relocation-docs.log",
+          "bytes": 193,
+          "sha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747"
+        },
+        {
+          "path": "previous-hosted/ci-34011746179-build.log",
+          "bytes": 786544,
+          "sha256": "2b3f89f147ca2be81fee3390f56d2713e4da758b41061933f9e31ec753fc217b"
+        },
+        {
+          "path": "previous-hosted/ci-34011746179-status.json",
+          "bytes": 13396,
+          "sha256": "10d861e762f47dfa20cb1654f9c8fb5ed74a5189a00ff12822af1476964ed49b"
+        },
+        {
+          "path": "reviews/ci-relocation-final-spec.md",
+          "bytes": 1634,
+          "sha256": "2bec0a13f117463fc76b4824eca36d0951f65540dd144c4c9fe011d4081497df"
+        },
+        {
+          "path": "reviews/ci-relocation-final-standards.md",
+          "bytes": 1503,
+          "sha256": "313af4de37f5c57acbfb3905956ffb2819b33ee328d4b759c823f14f066b167a"
+        },
+        {
+          "path": "reviews/ci-relocation-hosted-scope.md",
+          "bytes": 10673,
+          "sha256": "29716cb0d0ad583bc04146fa152049bef61f59f42a869511c7e79c96d822b2e7"
+        },
+        {
+          "path": "reviews/ci-relocation-preseal-spec.md",
+          "bytes": 3136,
+          "sha256": "db13d6bd4b083aa03397c80be98746c44b6cae2e07289889a635350cb6bfe00d"
+        },
+        {
+          "path": "reviews/ci-relocation-preseal-standards.md",
+          "bytes": 3138,
+          "sha256": "7ce76c21cd0801cc5cd9014c7d0e4d6ac03cdcabdda1229f4381a3c08c08ff8c"
+        },
+        {
+          "path": "reviews/ci-relocation-threat-spec.md",
+          "bytes": 5377,
+          "sha256": "9407b2d4f7926577969d52186849e512915b42c2c02f906e0e33cd36785d1d05"
+        },
+        {
+          "path": "reviews/ci-relocation-threat-standards.md",
+          "bytes": 6088,
+          "sha256": "934020ee311c25610548e26191d7ffafd644a34bbf13fd54f8a18dd33e6c3521"
+        }
+      ]
+    }
+  },
+  "limits": [
+    "No production, UI, API, SQL fixture, workflow or allowance change.",
+    "No new real browser/Agent/capacity/Gate0 run; earlier evidence remains bound to its original SHA, with unchanged runtime file blobs.",
+    "Policy fixed zero/model decision, historical broad Gate0 failure and growth capacity remain separate blockers.",
+    "No merge, attestation or Issue closure. OP-09 not executed."
+  ]
+}
