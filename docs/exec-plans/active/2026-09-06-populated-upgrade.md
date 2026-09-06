@@ -4,6 +4,8 @@
 
 ## Scope and state
 
+Current state: SCRATCH, incomplete. See the [execution evidence](../../../ops/self-hosted/populated-upgrade-evidence.md) for refreshed base/candidate, passing checks and unresolved boundary/release blockers. The following paragraph records the initial preflight.
+
 PREFLIGHT, R3. Source deployment stays `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is freshly fetched `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d` (no difference from the supplied main). Source counts and image identity are supplied historical observations, not rerun evidence. The local clean isolated worktree uses `codex/populated-upgrade-scratch`. No production access is authorized. Stop at a reviewed candidate/PR; do not merge, close historical issues, approve release, or operate production.
 
 ## Ownership and dependencies
