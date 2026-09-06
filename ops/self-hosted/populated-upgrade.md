@@ -66,6 +66,42 @@ node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$
 
 ## Authorized backup, rehearsal and maintenance
 
+### Continuation implementation boundaries
+
+The candidate now includes `compose.catalog.yaml`, an explicit overlay that replaces
+the API and worker environment files with `WISEEFF_API_ENV_FILE` and
+`WISEEFF_WORKER_ENV_FILE`. Only the API file contains
+`CATALOG_GOVERNANCE_DATABASE_URL`; neither runtime file may contain migration
+credentials. `WISEEFF_MANAGEMENT_ENV_FILE` belongs solely to the opt-in
+`catalog-management` profile. API startup in this overlay runs the verify-only
+server entry. The old ordinary-stack Compose file is retained for compatibility.
+The overlay alone does not bind volumes, stop writers, authorize migrations or
+make a new checkout a safe production entry.
+
+Machine: isolated development host; user: developer; directory: fixed candidate
+checkout with dependencies installed. The following permanent regression runs
+actual Compose configuration resolution, creates only temporary private files,
+and does not start or stop containers:
+
+```bash
+npx vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/catalog-compose.test.ts
+```
+
+Expected: one passing test; management secrets absent from API/worker/web/proxy,
+governance credentials absent from worker, missing API file rejected, management
+service isolated in its explicit profile. Failure stops integration. Compose must
+support `!override` and `!reset`; unsupported versions fail rather than merge the
+old shared secret file. Build metadata uses `WISEEFF_SOURCE_SHA` and
+`WISEEFF_SOURCE_TREE`; handoff separately verifies these labels against fixed Git
+objects and the actual image ID. Labels alone are not reproducible-build evidence.
+
+The new `handoff.ts` binds the observed source artifact, Compose resources and
+store identities, and opens the existing controller journal under the existing
+operation lock. Its real Compose regression uses identity-fixture application
+images. It proves initial takeover only: phase-aware resume after stopping or
+replacing applications, actual old application artifacts and complete report
+lineage still require integration. There is no production handoff command yet.
+
 A bounded developer-only synthetic three-store restore creates its own PostgreSQL, Redis and MinIO source/target containers, retains PostgreSQL owner/ACL, verifies a restricted login, object bytes/metadata/count and a restored Redis RDB key. It accepts no external URL or backup. Prerequisites are the local images listed in `scripts/rehearse-upgrade-recovery.ts`; missing images fail before container creation. From the reviewed development clone:
 
 ```bash

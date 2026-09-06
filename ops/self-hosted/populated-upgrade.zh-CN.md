@@ -70,6 +70,33 @@ node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$
 
 ## 隔离副本预演
 
+### 续工接线与验证边界
+
+当前候选新增显式叠加文件 `compose.catalog.yaml`，用
+`WISEEFF_API_ENV_FILE`、`WISEEFF_WORKER_ENV_FILE` 替换原共享环境文件。
+`CATALOG_GOVERNANCE_DATABASE_URL` 仅供 API；两个运行文件均不得放迁移凭据。
+`WISEEFF_MANAGEMENT_ENV_FILE` 仅供需显式选择的 `catalog-management` profile。
+该叠加配置中 API 通过 verify-only 服务入口启动；原普通 stack 配置保留兼容。
+叠加文件本身不绑定旧卷、不停写、不批准迁移，也不使新 checkout 自动成为安全生产入口。
+
+机器：隔离开发机；用户：开发者；目录：固定候选 checkout，已安装依赖。
+以下永久回归调用真实 Compose 配置解析，仅写临时私有文件，不启动或停止容器：
+
+```bash
+npx vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/catalog-compose.test.ts
+```
+
+预期一项通过：API/worker/web/proxy 不含管理秘密，worker 不含治理凭据，
+缺少 API 私有配置时拒绝，管理服务仅属于显式 profile。失败即停止集成。
+Compose 必须支持 `!override`、`!reset`；版本不支持时失败，不能退回合并旧共享秘密文件。
+构建元数据使用 `WISEEFF_SOURCE_SHA`、`WISEEFF_SOURCE_TREE`；handoff 还需对照
+固定 Git 对象和真实 image ID，标签本身不是可复现构建证明。
+
+新增 `handoff.ts` 绑定实测源 artifact、Compose 资源与三存储身份，在既有
+operation lock 内打开既有 controller journal。真实 Compose 回归的应用镜像为
+明确的身份 fixture，仅证明首次接管；停服或替换应用后的阶段化 resume、真实旧应用
+artifact 和完整报告链仍需集成。当前仍没有可执行的生产交接命令。
+
 开发机合成三存储恢复有真实入口。机器／用户／目录同开发测试；前置为 `scripts/rehearse-upgrade-recovery.ts` 列出的本地镜像和本地隔离 Docker endpoint，缺镜像会在创建容器前失败。仅接受合成模式，自建独立 PostgreSQL／Redis／MinIO 源与目标，写入临时数据，不接受外部 URL 或备份：
 
 ```bash
