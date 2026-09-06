@@ -6,7 +6,10 @@ import { captureRecoveryPoint, verifyRecoveryPoint, type QuiescenceProof, type R
 
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const LIMIT = 256 * 1024 * 1024;
-export type RecoveryRole = { name: string; login: boolean; members: string[] };
+export type RecoveryRoleMembership = { name: string; inherit: boolean; set: boolean };
+// ADMIN OPTION and privileged role attributes are deliberately not representable.
+// Every inheritance flag is explicit: v1 packages must be re-exported, not guessed.
+export type RecoveryRole = { name: string; login: boolean; inherit: boolean; members: RecoveryRoleMembership[] };
 type ObjectBackup = { key: string; contentType: string; metadata: Record<string, string>; bytes: Buffer };
 type RedisBackup = { appendonly: true; files: { name: string; bytes: Buffer }[] };
 export type RecoveryPackageInput = {
@@ -15,7 +18,7 @@ export type RecoveryPackageInput = {
 };
 type FileRef = { file: string; sha256: string; size: number };
 type Manifest = {
-  format: "wiseeff-recovery-package-v1"; recovery: RecoveryManifest;
+  format: "wiseeff-recovery-package-v2"; recovery: RecoveryManifest;
   postgres: FileRef; roles: RecoveryRole[];
   objects: (Omit<ObjectBackup, "bytes"> & FileRef)[];
   redis: { appendonly: true; files: ({ name: string } & FileRef)[] };
@@ -24,9 +27,25 @@ export type VerifiedRecoveryPackage = {
   digest: string; manifest: Manifest; postgres: Buffer; roles: RecoveryRole[]; objects: ObjectBackup[]; redis: RedisBackup;
 };
 const invalid = () => new Error("recovery-package-invalid");
-const validRole = (role: RecoveryRole) => /^[a-z][a-z0-9_]{0,62}$/.test(role.name) && !role.name.startsWith("pg_") && role.name !== "postgres" && typeof role.login === "boolean" && Array.isArray(role.members);
+const roleName = (name: unknown): name is string => typeof name === "string" && /^[a-z][a-z0-9_]{0,62}$/.test(name) && !name.startsWith("pg_") && name !== "postgres";
 const validateRoles = (roles: RecoveryRole[]) => {
-  if (!Array.isArray(roles) || roles.length > 1000 || new Set(roles.map(r => r.name)).size !== roles.length || roles.some(r => !validRole(r) || Object.keys(r).some(k => !["name", "login", "members"].includes(k)) || r.members.some(m => !roles.some(candidate => candidate.name === m)))) throw invalid();
+  if (!Array.isArray(roles) || roles.length > 1000 || roles.some(role => !role || !roleName(role.name) || typeof role.login !== "boolean" || typeof role.inherit !== "boolean" || !Array.isArray(role.members) || Object.keys(role).some(key => !["name", "login", "inherit", "members"].includes(key)))) throw invalid();
+  const names = new Set(roles.map(role => role.name));
+  const byName = new Map(roles.map(role => [role.name, role]));
+  if (names.size !== roles.length || roles.reduce((count, role) => count + role.members.length, 0) > 10000) throw invalid();
+  for (const role of roles) {
+    if (role.members.some(member => !member || !roleName(member.name) || !names.has(member.name) || member.name === role.name || typeof member.inherit !== "boolean" || typeof member.set !== "boolean" || Object.keys(member).some(key => !["name", "inherit", "set"].includes(key))) || new Set(role.members.map(member => member.name)).size !== role.members.length) throw invalid();
+  }
+  // PostgreSQL rejects circular membership. Detect it before any target role is created.
+  const active = new Set<string>(); const visited = new Set<string>();
+  const visit = (role: RecoveryRole) => {
+    if (active.has(role.name)) throw invalid();
+    if (visited.has(role.name)) return;
+    active.add(role.name);
+    for (const member of role.members) visit(byName.get(member.name)!);
+    active.delete(role.name); visited.add(role.name);
+  };
+  for (const role of roles) visit(role);
 };
 const storePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | "roles">, target: RecoveryTargetIdentity): StoreSnapshotPort[] => [
   ["postgres", target.postgresIdentity, { dump: manifest.postgres, roles: manifest.roles }],
@@ -57,7 +76,7 @@ export async function captureRecoveryPackage(directory: string, input: RecoveryP
   const capture = await captureRecoveryPoint({ runId: input.runId, target: input.target, quiescence: input.quiescence,
     maximumAgeMs: 24 * 60 * 60 * 1000, stores: storePorts(content, input.target) });
   if (!capture.ok) throw invalid();
-  const manifest: Manifest = { format: "wiseeff-recovery-package-v1", recovery: capture.value.manifest, ...content };
+  const manifest: Manifest = { format: "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
   const bytes = Buffer.from(JSON.stringify(manifest));
   await writeFile(path.join(directory, "manifest.json"), bytes, { flag: "wx", mode: 0o600 });
   const digest = hash(bytes);
@@ -92,7 +111,7 @@ export async function verifyRecoveryPackage(directory: string, digest: string): 
     const bytes = await read("manifest.json", 2 * 1024 * 1024);
     if (!/^[a-f0-9]{64}$/.test(digest) || hash(bytes) !== digest) throw invalid();
     const manifest = JSON.parse(bytes.toString()) as Manifest;
-    if (manifest.format !== "wiseeff-recovery-package-v1" || manifest.redis.appendonly !== true) throw invalid();
+    if (manifest.format !== "wiseeff-recovery-package-v2" || manifest.redis.appendonly !== true) throw invalid();
     validateRoles(manifest.roles);
     if (manifest.objects.length > 10000 || manifest.redis.files.length > 1000 || new Set(manifest.objects.map(o => o.key)).size !== manifest.objects.length) throw invalid();
     const seen = new Set<string>();

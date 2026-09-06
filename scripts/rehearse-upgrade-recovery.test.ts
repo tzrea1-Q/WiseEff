@@ -35,7 +35,7 @@ describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated t
     const evidence = JSON.parse(result.stdout);
     expect(evidence).toMatchObject({ status: "passed", evidence: "synthetic package only", releaseReady: false,
       fullBusinessVerification: false, backupExists: true, checksumVerified: true, restoreExecuted: true,
-      businessVerified: true, ownerAclVerified: true, cleanupVerified: true, objectCount: 2,
+      businessVerified: true, ownerAclVerified: true, roleCapabilitiesVerified: true, cleanupVerified: true, objectCount: 2,
       sourceStoppedBeforeRestore: true, separateRestoreProcess: true, redisPersistence: "AOF" });
     expect(result.status).toBe(0);
     expect(evidence.manifestDigest).toMatch(/^[a-f0-9]{64}$/);

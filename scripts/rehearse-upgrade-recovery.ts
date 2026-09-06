@@ -54,9 +54,13 @@ async function restoreSyntheticPackage(config: RestoreChild) {
     },
     async restore(backup) {
       // Structured nonprivileged role restore; secrets come only from this process stdin.
-      const roles = backup.roles.map(role => `create role "${role.name}" ${role.login ? `login password '${config.password}'` : "nologin"} nosuperuser nobypassrls nocreatedb nocreaterole noreplication;`).join("\n");
-      const members = backup.roles.flatMap(role => role.members.map(member => `grant "${role.name}" to "${member}";`)).join("\n");
-      exec(config.pg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles + "\n" + members));
+      const roles = backup.roles.map(role => `create role "${role.name}" ${role.login ? `login password '${config.password}'` : "nologin"} ${role.inherit ? "inherit" : "noinherit"} nosuperuser nobypassrls nocreatedb nocreaterole noreplication;`).join("\n");
+      const members = backup.roles.flatMap(role => role.members.flatMap(member => [
+        `grant "${role.name}" to "${member.name}" with admin false;`,
+        `grant "${role.name}" to "${member.name}" with inherit ${member.inherit ? "true" : "false"};`,
+        `grant "${role.name}" to "${member.name}" with set ${member.set ? "true" : "false"};`,
+      ])).join("\n");
+      exec(config.pg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(`begin;\n${roles}\n${members}\ncommit;`));
       exec(config.pg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], backup.postgres);
       const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.password });
       const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
@@ -89,10 +93,10 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
   const network = `upg-recovery-${run}`;
   const pinnedImages = new Map<string, string>();
   const result = {
-    schemaVersion: "synthetic-three-store-recovery-v2", evidence: "synthetic package only",
+    schemaVersion: "synthetic-three-store-recovery-v3", evidence: "synthetic package only",
     releaseReady: false, fullBusinessVerification: false, status: "blocked",
     backupExists: false, backupRetained: false, checksumVerified: false, restoreExecuted: false, businessVerified: false,
-    ownerAclVerified: false, cleanupVerified: false, objectCount: 0,
+    ownerAclVerified: false, roleCapabilitiesVerified: false, cleanupVerified: false, objectCount: 0,
     reason: "not-started", imageIdentities: {} as Record<string, string>, manifestDigest: "",
     sourceStoppedBeforeRestore: false, separateRestoreProcess: false, redisPersistence: "AOF", daemonIdentity: "",
   };
@@ -168,12 +172,23 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
     result.reason = "source-object-store-preparation-failed";
     await wait(async () => mc(sourceObjects, ["mb", `synthetic/${bucket}`]));
     result.reason = "source-synthetic-seed-failed";
-    const roles = `create role sentinel_owner nologin; create role sentinel_reader login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;`;
+    const roles = `create role sentinel_owner nologin noinherit;
+      create role sentinel_read_capability nologin noinherit;
+      create role sentinel_explicit_capability nologin noinherit;
+      create role sentinel_reader login inherit password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;
+      grant sentinel_read_capability to sentinel_reader with inherit true;
+      grant sentinel_read_capability to sentinel_reader with set false;
+      grant sentinel_explicit_capability to sentinel_reader with inherit false;
+      grant sentinel_explicit_capability to sentinel_reader with set true;`;
     execute(sourcePg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles + `
       create table public.sentinel(id integer primary key, value text not null);
       alter table public.sentinel owner to sentinel_owner;
       insert into public.sentinel values (1,'synthetic-value');
-      grant select on public.sentinel to sentinel_reader;
+      grant select on public.sentinel to sentinel_read_capability;
+      create table public.explicit_sentinel(id integer primary key, value text not null);
+      alter table public.explicit_sentinel owner to sentinel_owner;
+      insert into public.explicit_sentinel values (2,'synthetic-explicit');
+      grant select on public.explicit_sentinel to sentinel_explicit_capability;
     `));
     const objectOracle = [
       { key: "evidence/alpha.json", bytes: Buffer.from('{"value":null}'), contentType: "application/json", metadata: { source: "alpha", revision: "2" } },
@@ -185,11 +200,24 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
     // Only these seeded stores exist; no API, worker, proxy or external writer has this private network/credentials.
     result.reason = "backup-failed";
     const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
-    const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname not like 'pg_%' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or not rolinherit or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
-    const unsupportedMembership = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_auth_members a join pg_roles r on r.oid=a.member where r.rolname not like 'pg_%' and r.rolname <> 'postgres' and (a.admin_option or not a.inherit_option or not a.set_option)`]).toString().trim();
+    const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname not like 'pg_%' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
+    // This profile preserves only package-contained, non-administrative edges
+    // granted by the controlled source bootstrap identity. No pg_* membership
+    // or alternate grantor is silently discarded or reconstructed with more power.
+    const unsupportedMembership = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_auth_members a
+      join pg_roles member on member.oid=a.member join pg_roles granted on granted.oid=a.roleid
+      join pg_roles grantor on grantor.oid=a.grantor
+      where (member.rolname not like 'pg_%' and member.rolname <> 'postgres'
+        or granted.rolname not like 'pg_%' and granted.rolname <> 'postgres')
+      and (a.admin_option or grantor.rolname <> 'postgres'
+        or member.rolname like 'pg_%' or member.rolname='postgres'
+        or granted.rolname like 'pg_%' or granted.rolname='postgres')`]).toString().trim();
     const unsupportedRoleSettings = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_db_role_setting s join pg_roles r on r.oid=s.setrole where r.rolname not like 'pg_%' and r.rolname <> 'postgres'`]).toString().trim();
     if (unsupportedRoles !== "0" || unsupportedMembership !== "0" || unsupportedRoleSettings !== "0") throw new Error("role-manifest-capability-unsupported");
-    const roleManifest = JSON.parse(execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select json_agg(json_build_object('name',rolname,'login',rolcanlogin,'members',(select coalesce(json_agg(member.rolname),'[]') from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid))) from pg_roles r where rolname not like 'pg_%' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
+    const roleManifest = JSON.parse(execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select coalesce(json_agg(json_build_object('name',rolname,'login',rolcanlogin,'inherit',rolinherit,'members',
+      (select coalesce(json_agg(json_build_object('name',member.rolname,'inherit',am.inherit_option,'set',am.set_option) order by member.rolname),'[]')
+       from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid)) order by rolname),'[]')
+      from pg_roles r where rolname not like 'pg_%' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
     const listing = mc(sourceObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").map(line => JSON.parse(line));
     const objects = [];
     for (const entry of listing) {
@@ -245,6 +273,42 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
         has_table_privilege(current_user,oid,'INSERT') as can_write from pg_class where oid='public.sentinel'::regclass`);
       if (JSON.stringify(acl.rows[0]) !== JSON.stringify({ owner_ok: true, can_read: true, can_write: false })) throw new Error("owner-acl-mismatch");
       result.ownerAclVerified = true;
+      const expectDenied = async (sql: string) => {
+        try { await login.query(sql); } catch (error) {
+          if ((error as { code?: string }).code === "42501") return;
+          throw error;
+        }
+        throw new Error("restored-role-allowed-forbidden-operation");
+      };
+      await expectDenied("insert into public.sentinel values (9,'forbidden')");
+      await expectDenied("set role sentinel_owner");
+      await expectDenied("set role sentinel_read_capability");
+      await expectDenied("select * from public.explicit_sentinel");
+      const attributes = await login.query(`select rolname as name, rolcanlogin as login, rolinherit as "inherit",
+        rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication as privileged
+        from pg_roles where rolname like 'sentinel_%' order by rolname`);
+      const expectedAttributes = [
+        { name: "sentinel_explicit_capability", login: false, inherit: false, privileged: false },
+        { name: "sentinel_owner", login: false, inherit: false, privileged: false },
+        { name: "sentinel_read_capability", login: false, inherit: false, privileged: false },
+        { name: "sentinel_reader", login: true, inherit: true, privileged: false },
+      ];
+      if (JSON.stringify(attributes.rows) !== JSON.stringify(expectedAttributes)) throw new Error("restored-role-attributes-mismatch");
+      const memberships = await login.query(`select granted.rolname as role, member.rolname as member,
+        a.admin_option as admin, a.inherit_option as "inherit", a.set_option as "set"
+        from pg_auth_members a join pg_roles granted on granted.oid=a.roleid join pg_roles member on member.oid=a.member
+        where member.rolname='sentinel_reader' order by granted.rolname`);
+      const expectedMemberships = [
+        { role: "sentinel_explicit_capability", member: "sentinel_reader", admin: false, inherit: false, set: true },
+        { role: "sentinel_read_capability", member: "sentinel_reader", admin: false, inherit: true, set: false },
+      ];
+      if (JSON.stringify(memberships.rows) !== JSON.stringify(expectedMemberships)) throw new Error("restored-role-membership-mismatch");
+      await login.query("set role sentinel_explicit_capability");
+      const explicit = await login.query("select * from public.explicit_sentinel order by id");
+      if (JSON.stringify(explicit.rows) !== JSON.stringify([{ id: 2, value: "synthetic-explicit" }])) throw new Error("restored-explicit-capability-mismatch");
+      await expectDenied("insert into public.explicit_sentinel values (9,'forbidden')");
+      await login.query("reset role");
+      result.roleCapabilitiesVerified = true;
     } finally { await login.end(); }
     for (const object of objectOracle) {
       if (hash(await targetStore.get({ bucket, key: object.key })) !== hash(object.bytes)) throw new Error("restored-object-mismatch");
