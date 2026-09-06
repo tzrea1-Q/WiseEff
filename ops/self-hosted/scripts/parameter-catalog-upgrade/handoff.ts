@@ -1,12 +1,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, lstatSync } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CatalogUpgradeController, ControllerCommand } from "./controller";
-import { canonicalJson, sha256Prefixed } from "./journal";
+import { canonicalJson, loadUpgradeJournal, sha256Prefixed, type BindingPhaseEvent } from "./journal";
+import { bindingJournalPath } from "./bindingJournal";
 import { parseEnvText } from "../ip-lab-profile";
 
 type Docker = { daemonId: string; command(args: string[]): Buffer };
@@ -99,7 +100,30 @@ const observePrivateConfigurations = async (mainPath: string, buildRoots: readon
   }
   return { env: main.env, binding: { main: main.binding, runtime } };
 };
-const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
+/** This changes only observation of the old app process state, never authorizes
+ * migration, startup, queue or public traffic. The actual controller still
+ * verifies the current target, phase and boundary before its domain action. */
+export function readHandoffApplicationRequirement(input: HandoffInputs, action: string): "running" | "stopped" | "observable" {
+  if (action === "inspect" || action === "recover") return "observable";
+  try { lstatSync(input.journalPath); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return "running"; return fail("journal-unavailable"); }
+  const loaded = loadUpgradeJournal({ journalPath: input.journalPath, runId: input.runId, requireSettled: true });
+  if (!loaded.ok) return fail("journal-unavailable");
+  const record = loaded.value.record;
+  const events = new Map<string, BindingPhaseEvent>();
+  for (const entry of record.entries) {
+    const event = entry.bindingPhase;
+    if (!event) continue;
+    const previous = events.get(event.attemptId);
+    if ((!previous && event.outcome !== "pending") || (previous && (previous.outcome !== "pending" || canonicalJson({ ...previous, outcome: event.outcome }) !== canonicalJson(event)))) return fail("phase-event-conflict");
+    if (event.runId !== record.cutoverRunId || event.planDigest !== record.planDigest || bindingJournalPath({ operationRoot: input.lockRoot, target: event.target, runId: input.runId }) !== input.journalPath) return fail("phase-identity-mismatch");
+    events.set(event.attemptId, event);
+  }
+  if ([...events.values()].some(event => event.outcome === "pending" || event.outcome === "unknown")) return fail("phase-outcome-unresolved");
+  return [...events.values()].some(event => event.phase === "P2" && event.outcome === "committed") ? "stopped" : "running";
+}
+
+const observe = async (input: HandoffInputs, deps: HandoffObserver, applicationRequirement: () => "running" | "stopped" | "observable" = () => "running") => {
   if (deps.docker.daemonId !== input.expectedDaemonId) fail("daemon-mismatch");
   if (!/^[A-Za-z0-9_-]+$/.test(input.runId) || !/^[a-z0-9][a-z0-9_-]*$/.test(input.source.project)) fail("invalid-identity");
   if (![input.entrypoint.sha, input.entrypoint.tree, input.source.sha, input.candidate.sha, input.candidate.tree].every(sha)) fail("artifact-not-fixed");
@@ -131,9 +155,12 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
     return info;
   };
   if (input.source.applications.map(a => a.service).sort().join(",") !== "api,web,worker" || input.source.stores.map(s => s.service).sort().join(",") !== "minio,postgres,redis") fail("source-service-set-incomplete");
+  const required = applicationRequirement();
   const applications = input.source.applications.map(app => {
     const info = inspect(app.containerId, app.service);
-    if (info.Image !== app.imageId || info.Config.Image !== app.imageReference || !info.State.Running) fail("source-running-artifact-mismatch");
+    if (info.Image !== app.imageId || info.Config.Image !== app.imageReference) fail("source-running-artifact-mismatch");
+    if (required === "running" && !info.State.Running) fail("source-running-artifact-mismatch");
+    if (required === "stopped" && (info.State.Running || info.State.Restarting || info.State.Status !== "exited")) fail("source-writer-not-stopped");
     if (!app.imageReference.endsWith(`:${input.source.sha}`) || (info.Config.Labels?.["org.opencontainers.image.revision"] && info.Config.Labels["org.opencontainers.image.revision"] !== input.source.sha)) fail("source-sha-image-reference-mismatch");
     return { service: app.service, id: info.Id as string, imageId: info.Image as string, imageReference: info.Config.Image as string };
   });
@@ -253,11 +280,14 @@ export async function withHostOperationLock<T>(lockRoot: string, action: (lock: 
  * after immutable source/config/store pins are re-observed under the host lock. */
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,
   deps: HandoffObserver & { openController(binding: { runId: string; journalPath: string; operationLock: HostOperationLock }): CatalogUpgradeController; withOperationLock<T>(root: string, action: (lock: HostOperationLock) => Promise<T>): Promise<T> }) {
+  plan = structuredClone(plan);
   const { digest, ...body } = plan;
   if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
   return deps.withOperationLock(plan.inputs.lockRoot, async operationLock => {
     await operationLock.assertHeld();
-    const observed = await inspectHandoff(plan.inputs, deps);
+    let observed: HandoffObservation;
+    try { observed = await observe(plan.inputs, deps, () => readHandoffApplicationRequirement(plan.inputs, command.action)); }
+    catch (error) { if (error instanceof Error && /^handoff-[a-z-]+$/.test(error.message)) throw error; return fail("observation-failed"); }
     if (canonicalJson(observed) !== canonicalJson(plan.observation)) fail("target-changed-after-plan");
     await operationLock.assertHeld();
     const controller = deps.openController({ runId: plan.inputs.runId, journalPath: plan.inputs.journalPath, operationLock });

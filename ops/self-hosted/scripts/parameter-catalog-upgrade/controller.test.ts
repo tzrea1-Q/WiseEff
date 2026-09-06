@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,6 +201,19 @@ const createHarness = (options?: {
 
 const journalPathFor = (runId: string): string =>
   path.join(mkdtempSync(path.join(tmpdir(), `s11-upg-${runId}-`)), "journal.json");
+
+it("does not invoke an owner through a general controller after an unsettled journal write", async () => {
+  const harness = createHarness();
+  const journalPath = journalPathFor("unsettled");
+  const opened = openCatalogUpgradeController({ journalPath, runId: "unsettled", cutover: harness.cutover, verification: harness.verification });
+  if (!opened.ok) throw new Error("fixture-controller-open-failed");
+  mkdirSync(`${journalPath}.write-lock`, { mode: 0o700 });
+  const before = journalBytes(journalPath);
+  const result = await opened.value.dispatch({ action: "plan", input: planInput() });
+  expect(result.ok).toBe(false);
+  expect(harness.calls).toEqual([]);
+  expect(journalBytes(journalPath)).toEqual(before);
+});
 
 describe("S11-UPG threat matrix", () => {
   it("freezes the seven R3 observations before production controller work", () => {

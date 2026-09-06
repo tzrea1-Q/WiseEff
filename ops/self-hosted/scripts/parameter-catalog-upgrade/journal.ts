@@ -5,6 +5,7 @@ import {
   existsSync,
   fstatSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readSync,
@@ -306,7 +307,18 @@ export const journalBytes = (journalPath: string): Buffer => {
 export const loadUpgradeJournal = (input: {
   readonly journalPath: string;
   readonly runId: string;
+  /** Domain dispatch must reject a persisted/active write outcome before effects.
+   * Diagnostic readers may still inspect the bytes without authorizing actions. */
+  readonly requireSettled?: boolean;
 }): ControllerResult<UpgradeJournal> => {
+  if (input.requireSettled) {
+    try {
+      lstatSync(`${input.journalPath}.write-lock`);
+      return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "journal write outcome requires explicit reconciliation");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "journal write outcome is unavailable");
+    }
+  }
   const runId = requireRunId(input.runId);
   if (!runId.ok) {
     return runId;

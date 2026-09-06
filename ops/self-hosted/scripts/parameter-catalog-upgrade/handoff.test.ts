@@ -8,6 +8,35 @@ import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { openCatalogUpgradeController } from "./controller";
 import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, type HandoffInputs, type HostOperationLock } from "./handoff";
+import { readHandoffApplicationRequirement } from "./handoff";
+import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
+import { commitJournalTransition, openUpgradeJournal } from "./journal";
+
+it("resumes the exact stopped source only after the same journal durably completed P2", async () => {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "handoff-resume-")));
+  const target = { systemIdentifier: "123", databaseOid: "45" };
+  const runId = "handoff-resume";
+  const planDigest = `sha256:${"a".repeat(64)}`;
+  const journalPath = bindingJournalPath({ operationRoot: directory, target, runId });
+  const inputs = { runId, journalPath, lockRoot: directory } as HandoffInputs;
+  try {
+    expect(readHandoffApplicationRequirement(inputs, "execute")).toBe("running");
+    const opened = openUpgradeJournal({ journalPath, runId });
+    if (!opened.ok) throw new Error("fixture-journal-failed");
+    expect(commitJournalTransition(opened.value, { action: "plan", inputDigest: planDigest, planDigest, toState: "planned", nextAction: "execute" }).ok).toBe(true);
+    const adapter = createBindingCutoverJournal({ operationRoot: directory, target, journal: opened.value });
+    const attempt = await adapter.begin({ target, runId: "cutover-source", planDigest, phase: "P2", inputDigest: planDigest });
+    expect(() => readHandoffApplicationRequirement(inputs, "resume")).toThrow("handoff-phase-outcome-unresolved");
+    expect(readHandoffApplicationRequirement(inputs, "inspect")).toBe("observable");
+    await adapter.finish({ attempt, outcome: "committed" });
+    expect(readHandoffApplicationRequirement(inputs, "resume")).toBe("stopped");
+    const later = await adapter.begin({ target, runId: "cutover-source", planDigest, phase: "P3", inputDigest: planDigest });
+    await adapter.finish({ attempt: later, outcome: "unknown" });
+    expect(() => readHandoffApplicationRequirement(inputs, "resume")).toThrow("handoff-phase-outcome-unresolved");
+    expect(readHandoffApplicationRequirement(inputs, "recover")).toBe("observable");
+    expect(() => readHandoffApplicationRequirement({ ...inputs, runId: "another-run" }, "execute")).toThrow("handoff-journal-unavailable");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 it("refuses an unbound daemon before observing any deployment resource", async () => {
   let observed = false;
@@ -159,6 +188,29 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         return opened.value;
       };
       expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
+      const mutableCommand = { action: "inspect" };
+      const dispatched: string[] = [];
+      const fixedResult = await executeHandoff(plan, plan.digest, mutableCommand, {
+        ...observer,
+        async observeDataIdentity() {
+          const identity = await observer.observeDataIdentity();
+          mutableCommand.action = "execute";
+          return identity;
+        },
+        openController(binding) {
+          const controller = openController(binding);
+          return { dispatch(command) { dispatched.push(command.action); return controller.dispatch(command); } };
+        },
+        withOperationLock: withHostOperationLock,
+      });
+      expect(dispatched).toEqual(["inspect"]);
+      expect(fixedResult.ok).toBe(true);
+      for (const service of ["api", "worker", "web"]) owned(service);
+      compose("stop", "api", "worker", "web");
+      expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
+      expect(await refusal(executeHandoff(plan, plan.digest, { action: "resume" }, { ...observer, openController, withOperationLock: withHostOperationLock }))).toBe("handoff-source-running-artifact-mismatch");
+      for (const service of ["api", "worker", "web"]) owned(service);
+      compose("start", "api", "worker", "web");
       let controllerOpened = false;
       for (const [key, file] of Object.entries(roleFiles)) {
         await writeFile(file, `ROLE_PURPOSE=${key}\nCONFIGURATION_CHANGED=true\n`);

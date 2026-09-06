@@ -4,6 +4,20 @@
 
 ## 范围与状态
 
+本次从报告`1190ba591`续工，R3职责已实际分配：父协调者独占controller／journal、
+根组合入口与全部执行；release分片独占handoff锁存活；runtime分片新增startup／
+真实状态读取；recovery分片新增controlledRecovery adapter及测试。独立预审发现
+历史重放早于当前核验、旧日志句柄覆盖新提交、跨run未知结果、锁进程死亡及停写后
+resume身份不匹配。这些是实现缺口，不是外部环境依赖。P12/P13沿用既有ownership
+与批准语义；unavailable常量本身不构成新增批准要求。不修改冻结grant或Policy决策。
+
+第一组Red在`1190ba591`加测试后得到5通过、2失败：旧句柄覆盖新日志、接受符号链接。
+首段修复在独占写锁内比较当前digest，使用独占临时文件、文件及目录fsync，拒绝不安全
+日志文件；工作树journal／controller回归19/19。下一段实现跨进程／run的持久phase
+intent与重放前真实目标核验；每项外部效果仍须在部署锁存活期间重新观察身份。
+Documentation Impact：先同步本计划双语文件，实际adapter执行后更新既有运维及证据
+双语文件。组件结果不代表完整升级或生产就绪。
+
 初始开发base为`67d4a7732`，继承报告head为`1a9ba7745`；后续刷新发现纯文档
 PR #823，origin/main为`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
 父阅读新增安全／测试规范，以`7218a43dcd5402d52b5e57166b746d0c6409642f`

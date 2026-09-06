@@ -174,7 +174,7 @@ export const openCatalogUpgradeController = (
 
   const controller: CatalogUpgradeController = {
     async dispatch(command) {
-      const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId });
+      const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId, requireSettled: true });
       if (!current.ok) return current;
       if (current.value.record.journalDigest !== journal.record.journalDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
       try { await deps.operationLock?.assertHeld(); }

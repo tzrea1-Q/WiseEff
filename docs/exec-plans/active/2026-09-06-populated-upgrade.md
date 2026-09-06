@@ -70,6 +70,28 @@ component/inspection commands, not an invented full-upgrade command.
 
 ## Ownership and dependencies
 
+### Increment at report `1190ba591`
+
+R3 continuation: parent owns controller/journal, root composition and all actual
+execution. Release lane owns handoff lock liveness; runtime lane owns new
+startup/state readers; recovery lane owns controlledRecovery adapter/test files.
+Independent pre-review found replay before live admission, stale journal writes,
+unknown phase outcomes across runs, lost host locks and stopped-writer resume
+mismatches. These are implementation work, not external dependencies. P12/P13
+must retain existing ownership and approvals; its unavailable constant alone is
+not an approval requirement. No frozen grant or Policy decision changes.
+
+First Red at `1190ba591` plus tests: stale handles overwrite newer entries and
+symlink paths are accepted (5 passed, 2 failed). The first fix checks the current
+digest under an exclusive writer lock, uses exclusive temporary files, file and
+directory fsync, and refuses unsafe journal files. Journal/controller tests then
+pass 19/19 on the working tree. Next: durable phase intents across process and run
+boundaries, with replay checked against the current real target. The root must
+hold the deployment lock and re-observe identity before each external effect.
+Documentation impact: this plan and its Chinese companion now; the existing
+operator/evidence pair after actual adapter execution. No full-upgrade or
+production readiness is inferred from component results.
+
 | Package | Owner / paths | Dependencies / success |
 | --- | --- | --- |
 | A | Parent: this bilingual plan, final evidence and operator guide | Freeze threats before production edits; independent Spec challenge |

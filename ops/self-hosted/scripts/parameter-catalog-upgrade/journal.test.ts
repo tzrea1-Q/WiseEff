@@ -19,11 +19,32 @@ import {
   loadUpgradeJournal,
   openUpgradeJournal,
 } from "./journal";
+import { openCatalogUpgradeController } from "./controller";
 
 const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("keeps rename-then-fsync failure inspectable but blocks a reopened controller before owners", async () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "rename-unknown" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    faults.directoryInode = statSync(path.dirname(journalPath)).ino;
+    try {
+      expect(commitJournalTransition(opened.value, { action: "plan", inputDigest: "uncertain-plan", toState: "planned", nextAction: "execute" }).ok).toBe(false);
+    } finally { faults.directoryInode = null; }
+    expect(existsSync(`${journalPath}.write-lock`)).toBe(true);
+    const diagnostic = loadUpgradeJournal({ journalPath, runId: "rename-unknown" });
+    expect(diagnostic.ok && diagnostic.value.record.state).toBe("planned");
+    const owner = vi.fn(() => { throw new Error("must-not-call-owner"); });
+    const reopened = openCatalogUpgradeController({ journalPath, runId: "rename-unknown", cutover: { plan: owner, execute: owner, inspect: owner, recover: owner }, verification: { prepareVerification: owner, runVerification: owner } });
+    if (!reopened.ok) throw new Error("fixture-reopen-failed");
+    for (const action of ["plan", "execute", "resume", "runVerification"]) {
+      const result = await reopened.value.dispatch({ action });
+      expect(result.ok ? "unexpected-success" : result.error.code).toBe("PCAT-UPG-UNKNOWN-OUTCOME");
+    }
+    expect(owner).not.toHaveBeenCalled();
+  });
   it("does not treat a directory left by failed parent fsync as durable on retry", () => {
     const parent = mkdtempSync(path.join(tmpdir(), "upg-directory-durability-"));
     const directory = path.join(parent, "created", "child");
