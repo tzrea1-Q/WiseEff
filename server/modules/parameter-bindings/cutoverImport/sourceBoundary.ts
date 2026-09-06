@@ -56,8 +56,10 @@ export async function openLockedBindingSource(pool:pg.Pool, management:pg.PoolCl
       source.release();
     }};
   } catch (error) {
-    await source.query("rollback").catch(() => undefined);
-    source.release();
+    let discard = false;
+    try { await source.query("rollback"); } catch { discard = true; }
+    source.release(discard);
+    if (discard) throw new BindingSourceRefusal("binding-source-transaction-close-unknown");
     if (error instanceof BindingSourceRefusal) throw error;
     const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
     throw new BindingSourceRefusal(code === "55P03" ? "binding-source-lock-held":"binding-source-authority-unavailable",code);
