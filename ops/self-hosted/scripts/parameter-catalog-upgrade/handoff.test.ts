@@ -36,6 +36,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
     const candidateTag = `${run}-candidate:fixture`;
     let composeFile = "";
     let worktree = false;
+    let composeAttempted = false;
     const compose = (...args: string[]) => docker.command(["compose", "-p", run, "-f", composeFile, ...args]);
     const ids: Record<string, string> = {};
     const owned = (service: string) => {
@@ -52,7 +53,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       const redisImage = docker.command(["image", "inspect", "redis:7-alpine", "--format", "{{.Id}}"] ).toString().trim();
       docker.command(["tag", redisImage, sourceImage]);
       const dockerfile = path.join(directory, "Dockerfile");
-      await writeFile(dockerfile, `FROM ${redisImage}\nLABEL org.opencontainers.image.revision=${revision}\nLABEL org.wiseeff.source.tree=${tree}\n`);
+      await writeFile(dockerfile, `FROM ${sourceImage}\nLABEL org.opencontainers.image.revision=${revision}\nLABEL org.wiseeff.source.tree=${tree}\n`);
       docker.command(["build", "--network=none", "-t", candidateTag, "-f", dockerfile, directory]);
       const candidateImage = docker.command(["image", "inspect", candidateTag, "--format", "{{.Id}}"] ).toString().trim();
       // App fixtures prove artifact/Compose identity only. They are not a built legacy application.
@@ -64,6 +65,8 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         minio: { image: "minio/minio:RELEASE.2024-12-18T13-15-44Z", environment: { MINIO_ROOT_USER: "synthetic", MINIO_ROOT_PASSWORD: secret }, command: ["server", "/data"], volumes: ["objects:/data"] },
         mc: { image: "minio/mc:RELEASE.2024-11-21T17-21-54Z", entrypoint: ["sh", "-c", "sleep 300"], environment: { MC_HOST_fixture: `http://synthetic:${secret}@minio:9000` } },
       }, volumes: { pg: {}, redis: {}, objects: {} }, networks: { default: { driver_opts: { "com.docker.network.bridge.enable_ip_masquerade": "false" } } } }), { mode: 0o600 });
+      expect(docker.command(["ps", "-aq", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim()).toBe("");
+      composeAttempted = true;
       compose("up", "-d", "--no-build", "--pull", "never");
       for (const service of ["api", "worker", "web", "postgres", "redis", "minio", "mc"]) {
         const short = compose("ps", "-q", service).toString().trim();
@@ -100,9 +103,21 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await expect(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, controller: opened.value, withOperationLock: withHostOperationLock })).rejects.toThrow("target-changed-after-plan");
       expect(JSON.parse(await readFile(path.join(directory, "journal.json"), "utf8")).entries).toEqual([]);
     } finally {
-      if (Object.keys(ids).length) {
-        for (const service of Object.keys(ids)) owned(service);
-        compose("down", "--volumes", "--remove-orphans");
+      if (composeAttempted) {
+        const remaining = docker.command(["ps", "-aq", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
+        for (const id of remaining) {
+          const info = JSON.parse(docker.command(["inspect", id]).toString())[0];
+          if (info.Config.Labels["com.docker.compose.project"] !== run || info.Config.Labels["com.docker.compose.project.config_files"] !== composeFile) throw new Error("cleanup-container-owner-mismatch");
+          docker.command(["rm", "-f", "-v", info.Id]);
+        }
+        for (const kind of ["volume", "network"]) {
+          const names = docker.command([kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
+          for (const name of names) {
+            const info = JSON.parse(docker.command([kind, "inspect", name]).toString())[0];
+            if (info.Labels?.["com.docker.compose.project"] !== run) throw new Error("cleanup-resource-owner-mismatch");
+            docker.command([kind, "rm", kind === "network" ? info.Id : info.Name]);
+          }
+        }
       }
       for (const reference of [sourceImage, candidateTag]) { try { docker.command(["image", "rm", reference]); } catch { /* Absent if setup failed before creation. */ } }
       if (worktree) {
