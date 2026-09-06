@@ -2,7 +2,11 @@
 
 > English: [English](../../../exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md)
 
-状态：**Active**。本文是待实施方案，不是修复完成报告、测试通过证明或生产发布批准。复核基线 `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6`（tree `d5acc28a00ecebeb014040c53cd32fe1d4c72780`）。GitHub 工作包：#802（程序）、#803（OP-01）、#804（OP-02）、#805（OP-03）、#806（OP-04）、#807（OP-05）、#808（OP-06）、#809（OP-07）、#810（OP-08）、#811（OP-09）。Scratch 分支从 `main` 拉出；实现智能体不得打开或合并 PR。OP-09 在没有明确人工授权前不得执行目标机 cutover、恢复、清理或流量切换。
+状态：**Active**。第 1–2 层（缺陷关闭 F1–F7 与产品集成 INT-01）已由 [#812](https://github.com/tzrea1-Q/WiseEff/pull/812) 合入 `origin/main`。第 3 层（发布 / INT-02 / OP-09）在没有明确人工授权前仍为 **blocked / not-run**。本文不是生产发布批准。OP-09 未执行前不要把本计划归档到 `completed/`。
+
+复核基线：`54815cdce5dd21d3d96587f0e52cc0f4faae9dd6`（tree `d5acc28a00ecebeb014040c53cd32fe1d4c72780`）。落地候选：`da52f6d5b7e328d0302cd3b2cbde0ca75db2373a`。合并提交：`35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`（2026-09-05T09:02:23Z）。Hosted：[run 33955890889](https://github.com/tzrea1-Q/WiseEff/actions/runs/33955890889)。必跑 job 成功：Detect changed paths、Build and test、Acceptance quality、Acceptance smoke、Merge bar。预期 skip：Target synthetic acceptance、Acceptance local non-HDC。
+
+GitHub 工作包：#802（程序，仍打开）；#803–#810（随 #812 关闭）；#811（OP-09，仍打开，需人工授权）。Scratch 分支从 `main` 拉出；实现智能体不得打开或合并 PR。OP-09 在没有明确人工授权前不得执行目标机 cutover、恢复、清理或流量切换。
 
 ## 文档控制
 
@@ -14,15 +18,27 @@
 | 复核基线 | `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6` |
 | 基线 Git tree | `d5acc28a00ecebeb014040c53cd32fe1d4c72780` |
 | 工作来源 | 本轮参数 Catalog 代码 Review 的 F1–F7，以及生产页面和发布集成的已知缺口 |
-| 文档性质 | 待实施方案，不是修复完成报告、测试通过证明或生产发布批准 |
+| 文档性质 | 实施计划。第 1–2 层已合入 `main`；第 3 层仍 blocked。不是测试通过证明或生产发布批准 |
 | 中文计划 | `docs/zh-CN/exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md` |
 | 英文配套 | `docs/exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md` |
 | GitHub 程序 Issue | #802 |
 | 工作包 Issues | #803–#811 |
 
-2026-09-05 再次读取主分支时，其提交仍为上述基线。本方案结合固定提交的源代码、既有接口与仓库规范制定；没有在本轮执行本地构建、真实 PostgreSQL 测试、浏览器测试或目标机操作。正文中“必须通过”“预期结果”均为验收要求，不表示已经执行。[S01] [S02]
+2026-09-05 计划编制时主分支仍为复核基线。同日 #812 将 F1–F7 与 INT-01 合入 `origin/main`（候选 `da52f6d5b`，合并 `35cbfb18e`）。目标机操作、P12–P15、public-release 与流量切换仍未执行，正文中这些项保持 blocked / not-run。[S01] [S02]
 
 本文中的 `OP-00` 至 `OP-09` 是实施工作包编号，已映射到 GitHub Issues #802–#811。`CATFIX-*` 仍是本方案的回归用例标识，**不是新分配的 PCAT 验收 ID**；浏览器验收继续使用现有 PCAT-UI 编号。
+
+### 进度（2026-09-05）
+
+| 层次 | 结果 | 证据 |
+|---|---|---|
+| 1. 缺陷关闭 F1–F7 | 已合入 `main` | CATFIX-AUTH / SNAP / POOL / QUERY / PROP / MATCH，以及 #812 |
+| 2. 产品集成 INT-01 | 已合入 `main` | `/parameter-admin/specs` 挂载 `CatalogOrganizationSurface`；PCAT-UI-01..15 无 `test.skip`；Hosted Acceptance quality |
+| 3. 发布 INT-02 / OP-09 | **blocked / not-run** | 没有目标预演、P12–P15、public-release、恢复演练或流量切换。发布合同仍是 #735 |
+
+允许记录：**代码修复已完成，目标发布仍 blocked。** 不允许把三个完成层次压成一个绿色状态。
+
+不关闭 OP-09、也不重开 F1–F7 的已知残留：`policyCount` 在 definition-keyed Policy 端口出现前仍为 `0`；列表读取仍是有界 N+1（CATFIX-QUERY-10）；`seedCompiledCatalogProjection` 在本计划之前已存在于 `main`。
 
 ---
 
@@ -761,6 +777,52 @@ F1–F7 和 INT-01 有对应证据；全部必跑用例实际执行；新生产�
 随后按合法 post-retirement runtime pin 进行 verify-only startup，在仍隔离公共流量和队列的条件下完成真实 API／浏览器验收。public-release 聚合报告及其独立批准满足后，才可恢复相应流量，并进入观察阶段。
 
 具体 P12、P13、P11b、P14a、P14b、P14c、P15 的参数和授权条件以既有 #735 合同及实际脚本为准；本文不发出这些目标操作命令，也不授权提前切换。
+
+### 15.6 OP-09 开工核对清单（not-run）
+
+在发布负责人勾选授权框并指名精确目标之前，不要执行 P12、P13、P11b、P14a/b/c、P15、恢复、清理或流量切换。本清单只用于开工核对。
+
+**候选身份（已确定；更换 SHA 必须重跑 Hosted，不得用后续提交顶替）：**
+
+| 项目 | 值 |
+|---|---|
+| 复核基线 | `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6` |
+| 修复候选 | `da52f6d5b7e328d0302cd3b2cbde0ca75db2373a` |
+| `origin/main` 合并 | `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391` |
+| Hosted 证据 | [run 33955890889](https://github.com/tzrea1-Q/WiseEff/actions/runs/33955890889) |
+| 发布合同 | #735（`scripts/run-self-hosted-release-gate.ts`、`ops/self-hosted/releases/**`） |
+
+**目标命令之前必须由人填写：**
+
+- [ ] 目标机标识（公开记录需脱敏），以及它是否与公共流量和队列隔离
+- [ ] 该主机上真实存在的库存模式（`fresh` 或 `populated`）；查询失败不得写成“已证明零库存”
+- [ ] 生产认证 provider、数据库角色、Catalog bundle 与 runtime pin
+- [ ] 恢复点范围（PostgreSQL、对象存储及元数据、Redis/队列/作业、部署配置）以及已经证明可还原的恢复
+- [ ] 各 purpose 的独立批准人：`pre-activation`、`post-retirement-runtime`、`isolated-candidate-acceptance`、`public-release`
+
+**既有 #735 目的链（不得另造简化流程）：**
+
+1. 隔离条件下的预激活验证与比较 → 独立的 `pre-activation` 批准
+2. 仅对该批准报告执行 P12 读切换（`activate-p12`）
+3. 服务与流量仍隔离时执行 P13 writer retirement（`retire-p13`）
+4. P11b：新建 attempt，完整重跑 V01–V17 + D01–D09；不得复用预激活报告字节或 checksum
+5. P14a：按 post-retirement runtime pin 做 verify-only startup；queue/proxy/public 仍隔离
+6. P14b：在精确 pin 上做隔离 API 与浏览器验收；第一笔业务 mutation 关闭仅 pointer 回退
+7. P14c：`public-release` 聚合三份前驱报告以及 target/recovery/observability；独立批准
+8. 获得该批准后才恢复相应流量，然后进入 P15 观察
+
+**本轮修复在真实目标上的额外验证点（§15.3）：**
+
+- 生产 Catalog 身份不能由 `x-wiseeff-user` 构造
+- 历史 A/B release 读取保持该 release 的 digest、head 与 predecessor 闭包
+- 真实写入后 Registration、Placement、usage、Proposal 可读；submit 保持同一 proposal id；accept 只写 Publication Intent
+- 退役 alias 不再被新识别
+- `/parameter-admin/specs` 是实际挂载的 CatalogPage，并在 `1440x900`、`768x1024`、`390x844` 可操作
+- 受保护消费者继续走既有比较门禁：Catalog/Governance、topology、项目参数、文件、Agent、日志、debugging、DTS reload、knowledge、modules、operations
+
+**立即停止：** 身份旁路、跨组织数据、混版快照、未解释差异、受保护引用无法查询、持续连接饥饿、或缺失恢复证据。不得靠放开权限、无限重试、把失败改成空结果或跳过 artifact 检查继续。
+
+OP-09 开工授权：本进度更新时 **尚未授予**。
 
 实际 target 只运行它真正的 fresh 或 populated 库存模式，但 pre-activation 与 post-P13 两次证据必须独立。实现测试则要覆盖 fresh/populated × pre/post 的全部组合。不得把没有查到数据或查询失败报告为“已证明零库存”。[S19]
 

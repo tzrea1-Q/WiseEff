@@ -2,11 +2,25 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md)
 
-Status: **Active**. This is an implementation plan, not a repair-complete report, a test-pass certificate, or a production-release approval. OP-01 (#803) is implemented on Scratch branch `fix/catalog-op-01-auth` and is not merged. OP-09 remains blocked without human authorization.
+Status: **Active**. Layers 1–2 (defect close F1–F7 and product integration INT-01) landed on `origin/main` via [#812](https://github.com/tzrea1-Q/WiseEff/pull/812). Layer 3 (release / INT-02 / OP-09) remains **blocked** without explicit human authorization. This plan is not a production-release approval. Do not archive it under `completed/` while OP-09 is unrun.
 
-Review baseline: `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6` (tree `d5acc28a00ecebeb014040c53cd32fe1d4c72780`). Local worktree at plan creation was clean and matched that SHA.
+Review baseline: `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6` (tree `d5acc28a00ecebeb014040c53cd32fe1d4c72780`).
 
-GitHub issues: program #802; OP-01 #803; OP-02 #804; OP-03 #805; OP-04 #806; OP-05 #807; OP-06 #808; OP-07 #809; OP-08 #810; OP-09 #811.
+Landed candidate: `da52f6d5b7e328d0302cd3b2cbde0ca75db2373a`. Merge commit: `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391` (2026-09-05T09:02:23Z). Hosted: [run 33955890889](https://github.com/tzrea1-Q/WiseEff/actions/runs/33955890889) (`pull_request` / candidate SHA). Required jobs success: Detect changed paths, Build and test, Acceptance quality, Acceptance smoke, Merge bar. Expected skips: Target synthetic acceptance, Acceptance local non-HDC.
+
+GitHub issues: program #802 (open); OP-01 #803 through OP-08 #810 (closed on the #812 merge); OP-09 #811 (open, human-authorized).
+
+## Progress (2026-09-05)
+
+| Layer | Result | Evidence |
+| --- | --- | --- |
+| 1. Defect close F1–F7 | Landed on `main` | CATFIX-AUTH, CATFIX-SNAP, CATFIX-POOL, CATFIX-QUERY, CATFIX-PROP, CATFIX-MATCH plus #812 |
+| 2. Product integration INT-01 | Landed on `main` | `CatalogOrganizationSurface` on `/parameter-admin/specs`; PCAT-UI-01..15 have no `test.skip`; Hosted Acceptance quality |
+| 3. Release INT-02 / OP-09 | **blocked / not-run** | No target preflight, P12–P15, public-release, recovery drill, or traffic switch. #735 remains the release contract. |
+
+Allowed status: **code repair complete, target release still blocked.** Not allowed: one green status for all three layers.
+
+Known residuals that do not close OP-09 and do not reopen F1–F7: `policyCount` stays `0` until a definition-keyed Policy port exists; list reads remain N+1-bounded (CATFIX-QUERY-10); `seedCompiledCatalogProjection` predates this plan on `main`.
 
 ## Goal
 
@@ -222,6 +236,52 @@ Browser viewports: `1440x900`, `768x1024`, `390x844`.
 ## OP-09 (#811) — target / release
 
 Follow existing #735. This package is not an agent-executable production cutover. Code repair may complete while target release remains blocked.
+
+### OP-09 preflight checklist (not-run)
+
+Do not execute P12, P13, P11b, P14a/b/c, P15, restore, cleanup, or traffic switch until a release owner fills the authorization boxes and names the exact target. This checklist is planning only.
+
+**Candidate identity (already known, do not substitute a later SHA without re-running Hosted):**
+
+| Item | Value |
+| --- | --- |
+| Review baseline | `54815cdce5dd21d3d96587f0e52cc0f4faae9dd6` |
+| Repair candidate | `da52f6d5b7e328d0302cd3b2cbde0ca75db2373a` |
+| `origin/main` merge | `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391` |
+| Hosted evidence | [run 33955890889](https://github.com/tzrea1-Q/WiseEff/actions/runs/33955890889) |
+| Release contract | #735 (`scripts/run-self-hosted-release-gate.ts`, `ops/self-hosted/releases/**`) |
+
+**Human must name before any target command:**
+
+- [ ] Target identifier (redacted in public notes) and whether it is isolated from public traffic and queues
+- [ ] Inventory mode actually present on that host (`fresh` or `populated`); do not report “zero inventory” from a failed query
+- [ ] Production auth provider, database roles, Catalog bundle, and runtime pin
+- [ ] Recovery-point scope (PostgreSQL, object store and metadata, Redis/queue/jobs, deploy config) and a restore that has already been proven
+- [ ] Release owner for each distinct purpose approval: `pre-activation`, `post-retirement-runtime`, `isolated-candidate-acceptance`, `public-release`
+
+**Purpose chain (existing #735 order; no simplified substitute):**
+
+1. Isolated pre-activation verification and comparison → distinct `pre-activation` approval
+2. P12 read switch (`activate-p12`) only against that approved pre-activation report
+3. P13 writer retirement (`retire-p13`) while services and traffic stay isolated
+4. P11b: new attempt, full V01–V17 + D01–D09; do not reuse pre-activation report bytes or checksums
+5. P14a verify-only startup on the post-retirement runtime pin; queue/proxy/public still isolated
+6. P14b isolated API and browser acceptance on the exact pin; first business mutation closes pointer-only rollback
+7. P14c `public-release` aggregate of the three predecessor reports plus target/recovery/observability; distinct approval
+8. Restore corresponding traffic only after that approval, then P15 observation
+
+**Repair-specific checks on the real target (from this plan §15.3):**
+
+- Production Catalog auth cannot be constructed from `x-wiseeff-user`
+- Historical A/B release reads keep that release’s digest, head, and predecessor closure
+- Registration, Placement, usage, and Proposal are readable after real writes; submit keeps the same proposal id; accept writes Publication Intent only
+- Retired aliases are not newly identified
+- `/parameter-admin/specs` is the live CatalogPage at `1440x900`, `768x1024`, and `390x844`
+- Protected consumers stay on the existing comparison gates: Catalog/Governance, topology, project parameters, files, Agent, logs, debugging, DTS reload, knowledge, modules, operations
+
+**Stop immediately on:** identity bypass, cross-org data, mixed-release snapshots, unexplained diffs, unqueryable protected references, sustained pool starvation, or missing recovery evidence. Do not continue by widening authz, infinite retry, empty-result conversion, or skipping artifact checks.
+
+Authorization to start OP-09: **not granted** as of this progress update.
 
 ## Schema and data repair
 
