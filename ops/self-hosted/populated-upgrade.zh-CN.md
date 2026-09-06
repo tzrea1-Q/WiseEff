@@ -117,16 +117,39 @@ Compose 必须支持 `!override`、`!reset`；版本不支持时失败，不能�
 构建元数据使用 `WISEEFF_SOURCE_SHA`、`WISEEFF_SOURCE_TREE`；handoff 还需对照
 固定 Git 对象和真实 image ID，标签本身不是可复现构建证明。
 
-新增 `handoff.ts` 绑定实测源 artifact、Compose 资源与三存储身份，在既有
-operation lock 内打开既有 controller journal。真实 Compose 回归的应用镜像为
-明确的身份 fixture，仅证明首次接管；停服或替换应用后的阶段化 resume、真实旧应用
-artifact 和完整报告链仍需集成。当前仍没有可执行的生产交接命令。
+新增 `handoff.ts` 绑定实测源／候选 artifact、Compose 资源、私有配置与三存储身份，
+使用既有 operation lock。真实 Compose 回归的应用镜像仍为身份 fixture；现在仅当
+已提交的 P2 证据允许时接受原有应用容器已停止的状态，仍拒绝替换容器和未知 journal
+结果。每次以新 nonce 与真实锁持有进程交互验证锁存活。这不证明真实旧应用启动、
+候选替换、Redis 停止后的恢复或完整报告链，仍没有可执行的生产交接命令。
 
 管理迁移CLI现在仅解析DATABASE_URL和XIAOZE_CHECKPOINTER，不要求运行期认证、
 provider或对象存储秘密。checkpoint模式仍默认memory；隔离管理阶段需要准备
 checkpoint时必须显式postgres。父已在专属新PG数据库用仅这些输入及production模式
 执行实际CLI：137项迁移、4张checkpoint表，exit 0。这仅证明管理阶段，不是populated
 转换，也不授权部署迁移。获批根工作流尚未接通，不得单独以生产URL调用它。
+
+受控管理函数还要求固定源描述、候选完整迁移清单、真实宿主锁、停写／恢复边界
+adapter，以及既有目标级 journal 中的持久 attempt。它核对全量旧 public 行投影及
+每个迁移 filename/checksum，固定管理连接 search_path，以管理身份准备 checkpoint。
+P4 消费前只读重算 receipt；普通 CLI 成功、表存在、传入一个摘要或未决 attempt 均
+不能替代它。部分成功／未知结果仍需显式 reconcile，终端组合根尚缺此接线。
+
+额外 PostgreSQL 16 Alpine 组件矩阵（不是部署升级）：机器为已独立核验的本地
+Docker Desktop 开发宿主；用户为开发者；目录为固定候选 checkout，已安装依赖。
+输入是已核验的开发 daemon ID；命令只新建并清理自有合成数据库、角色、容器、网络
+和卷，不停止已有服务、不接受生产 URL。所需镜像必须预先存在。执行前将独立核验
+的开发 daemon ID 放入私有 shell 变量 `UPG_DEVELOPMENT_DAEMON_ID`；不能把当前
+Docker context 自动视为隔离授权：
+
+```bash
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$UPG_DEVELOPMENT_DAEMON_ID" --suite bindings-pg16
+```
+
+预期：确有用例收集、退出 0、输出 `isolated-components-only`，并记录实际
+`postgres:16-alpine` image ID 与自有资源清理结果。错误 daemon、缺私有目标 receipt、
+setup 或测试失败均停止，不能记为 skip 或性能通过。独立的 `--suite bindings`
+继续使用 pgvector Catalog lane；新增矩阵不放宽原 lane 要求。
 
 开发机合成三存储恢复有真实入口。机器／用户／目录同开发测试；前置为 `scripts/rehearse-upgrade-recovery.ts` 列出的本地镜像和本地隔离 Docker endpoint，缺镜像会在创建容器前失败。仅接受合成模式，自建独立 PostgreSQL／Redis／MinIO 源与目标，写入临时数据，不接受外部 URL 或备份：
 
@@ -142,6 +165,11 @@ node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 高权限属性、ADMIN、外部角色边和秘密字段。v1包不得隐式升级，需从获授权源重新导出。
 `roleCapabilitiesVerified=true`仅覆盖声明的合成profile：继承读、显式SET ROLE、
 写入／提权拒绝，不证明全部应用或数据库全局权限已恢复。
+新增 v3 profile 要求源和目标事先具有同一明确配置的 bootstrap 身份，包括 OID 10
+的 `wiseeff`；恢复过程不创建、重命名或替换超级用户。两个 profile 均要求实测的
+PG16 Alpine 默认数据库编码、locale/provider 和设置；不支持的属性明确拒绝，
+不能静默丢失。测试秘密与包分开。实际 adapter 回归覆盖两个 bootstrap profile，
+旧合成 CLI 的历史结果不重新标为 v3 证据。
 
 ## 最终生产维护与确认点
 
@@ -161,4 +189,8 @@ node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 
 ## 独立阻塞与负责人
 
-发布集成owner：P12/P13归属决策、真实目标上下文、运行／公开门禁与固定入口交接。运行安全owner：能力清单、角色迁移与pool拆分、独立管理checkpoint、真实业务权限反例。恢复owner：备份接收、三存储与角色adapter、同边界及业务恢复。产品owner：#815权威关联或明确批准unavailable。构建操作员：企业CA、Docker／依赖信任和镜像来源。验收owner：完整消费方语义、浏览器与增长容量。数据owner：授权真实备份。生产操作员／审批者：维护批准。各项独立保留，不统一推给OP-09。
+父与已分配的实现智能体负责剩余发布、运行、恢复和验收接线；P12/P13 unavailable、
+终端组合根、完整消费方覆盖及浏览器／容量均是内部缺口。外部决策仅限冻结
+source-lock 变更、单独的 0140 能力提案和 #815 权威 Policy 关联或明确批准的
+unavailable 契约。外部环境输入是授权的可恢复备份、企业 CA／网络构建访问；生产
+操作及发布批准另列。这些条件不把所有剩余工作推给 OP-09，也不批准未完成的合成升级。

@@ -2,6 +2,75 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## 续工检查点，2026-09-07
+
+代码 `df644163e28d0aaa11733b9b08f398ac7d2429e4`，tree
+`4690333c6d62a9c613b344d9616c473c92bcc0e9`；后续报告提交仅改变既有六个
+双语计划／操作／证据文件。重新 fetch 的 origin/main 仍为
+`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。源部署保持
+`82344044b436a8dafecefbb85dfd724cecb05e3f`，历史 image ID 见下文，
+不替换成本地重建镜像。本检查点没有候选 PR、Hosted checkout/job、merge-ref、
+merge SHA 或生产操作。M1 因记录中的全量 scripts 失败仍为 Scratch；M2 未完成。
+组件成功不等于完整升级或批准。
+
+报告 `1190ba591` 后实现了：既有 journal 内目标级 Binding／管理持久 attempt、
+真实宿主锁存活验证、fsync 未知及跨 run 准入拒绝、原应用已停止时的 handoff 观察、
+完整旧 public 投影与不可变迁移清单、受控管理迁移／checkpoint、候选／run／plan
+固定的 P4 receipt 及 resume／no-op 重验、物理结构／权限连续性，以及两个 bootstrap
+profile 的 PG16／MinIO／AOF 独立包恢复。关键提交为 `b91c98a31`、`45e2d07cd`、
+`bbefbfc25`、`0a88f831b`、`273e0b26e`、`4f3f1485c`、`aa47072bc`、`a77e0ea6a`。
+
+| 实际执行（UTC+8） | 结果与边界 |
+| --- | --- |
+| `df644163e`，00:28:33，真实 PG16 Alpine 组件终端入口 | 9 文件，92 收集／通过，0 失败／跳过，71.88s，exit 0；旧 schema、canonical Binding 组件、P4、Archive 和结构测试 |
+| `df644163e`，00:28:29，runtime bootstrap 配置 | 10 文件，96 收集／通过，0 失败／跳过，9.57s，exit 0；含新建自有网络／卷上的 7 个真实受限登录／checkpoint 用例 |
+| `df644163e`，build | exit 0，保留 externalization／chunk 警告 |
+| `df644163e`，最终 CLI／gate／Compose | 63 收集／通过，0 失败／跳过，exit 0；含真实旧七行 gate 与新 CLI，不能当作完整旧 controller 成功 |
+| `df644163e`，boundary／contract／selfhost／docs | 均 exit 0；boundary 3509 全部匹配，0 unallowlisted／stale／growth／mismatch；docs 使用显式自有 PG receipt |
+| `0a88f831b` 加 source-test WIP，00:03:00，受控恢复 | 3 文件，42 收集／通过，0 失败／跳过，217.28s，exit 0；两个 bootstrap 身份、原 MinIO 版本、AOF、独立包恢复；恢复代码 blob 到最终候选未变 |
+| `273e0b26e` 加父集成 WIP，00:21:57，管理／controller journal | 4 文件，67 收集／通过，0 失败／跳过，2.75s，exit 0；后提交为 `4f3f1485c`，不重新标为该 SHA 执行 |
+| `aa47072bc`，00:23:32，系统授权扩展前的 PG16 矩阵 | 9 文件，89 收集／通过，0 失败／跳过，68.13s，exit 0 |
+| `aa47072bc` 加三项权限反例，00:25:48 | 3 失败、20 selector 过滤，exit 1：parameter SET、builtin EXECUTE、特权设置未改变 receipt |
+| 同工作修改修复后，00:26:11，后提交为 `a77e0ea6a` | 23 收集／通过，0 失败／跳过，1.04s，exit 0；真实 PostgreSQL，未改阈值 |
+| `27946d016` 加父 P4 WIP，00:20:06 | 1 失败、6 selector 过滤，exit 1：失效 P4 仍允许 resume |
+| 同 P4 测试，暂不应用输入克隆修复，00:21 | 1 失败、6 selector 过滤，exit 1：await 后调用方修改影响 P4 |
+| 同工作修改修复后，00:21 | 7 收集／通过，0 失败／跳过，exit 0；真实 S7／checkpoint／Archive 调度，receipt port 明确为合成组件端口，不是报告 |
+| `f5797479b` 加修正的 controller 反例，00:09:01 | 原代码 2 失败、15 selector 过滤；修复后 49 收集／通过，0 失败／跳过，2.64s；真实 journal／宿主锁，owner spy 只检查禁调 |
+
+失败保留：第一次恢复命令误选不存在的路径，收集 0 个用例（passWithNoTests 导致
+exit 0），不记通过；改为实际 storage 路径后得到 42 项结果。新 controller 测试
+曾错误地给非 Binding harness 请求 Binding scope，setup 失败；修正后才真实复现
+replay 准入问题。第一批结构测试 67 通过／2 失败，分别为 typed reason 接线不一致、
+controller 提前拒绝使旧的晚拒绝断言失效；下一批 PG16 为 88 通过／1 失败，原因是
+克隆缺省 Archive key 抢先抛错，掩盖要求的 typed 准入拒绝。`aa47072bc` 修复顺序，
+未放宽断言。Typecheck 也发现管理 journal 两处 union spread 错误，已在最终 build
+之前修复。
+
+9 月 6 日直接将 pgvector-only fixture 指向 Alpine 曾产生 7 个文件 setup 失败、
+7 个纯测试通过和 60 跳过，不是迁移失败或通过；随后增加独立自有 Alpine fixture，
+未放宽 Catalog lane。更早仅留工具会话输出的锁 Red/Green、部分迁移、源投影和
+恢复演进执行仍保留各自身份；缺失原始日志不重建成伪造 raw log。
+
+最终矩阵采用已独立核验 daemon 的 Docker Desktop、新建自有数据库／角色／卷／
+网络，PG16 `linux/arm64` image ID 为
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
+工具为 Node 22.22.3、npm 10.9.8、Vitest 4.1.5、TypeScript 5.9.3。核对旧 schema
+完整 126 个迁移文件及 0129–0139 的 11 个追加文件 checksum；0140 未进入候选。
+source／bundle／mapping／receipt pins 来自组件 fixture，不是生产或 runtime／
+public 报告 pin。临时资源按所有权核验后清理；公开包日志脱敏路径、凭据和宿主身份，
+附文件校验和。
+
+独立增量审查关闭了 search_path／源 schema、跨 run 准入、可变 P4 输入及系统权限
+连续性问题。这些是有界标准／规范／安全审查，不是整体 seal。P4 结构连续性不替代
+Release Verification；持续停写仍须由根流程真实 boundary 提供，不能传 boolean。
+
+剩余内部工作仍由父负责：完整终端交接与 P2/P3 组合、未知结果显式 reconcile、
+全部消费方转换／oracle、P12/P13 和新完整报告链、真实 API／worker pool 启动、
+浏览器／业务／增长验收。未跑 M2 完整 scripts／server／UI 或 Hosted。#815 仍无
+权威统计或分阶段 unavailable 的已接受契约；单独备份的 0140 提案新增两项治理
+EXECUTE 能力，未批准、未集成。授权真实备份及企业 CA／网络证据均缺失。
+生产维护条件未就绪，不交付生产升级命令。
+
 ## M1 续工记录，2026-09-06
 
 开发 base 仍为 `67d4a77325b6009b77c2373bd788298a6d022bcf`。

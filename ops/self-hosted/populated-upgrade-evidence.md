@@ -2,6 +2,89 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
+## Continuation checkpoint, 2026-09-07
+
+Code `df644163e28d0aaa11733b9b08f398ac7d2429e4`, tree
+`4690333c6d62a9c613b344d9616c473c92bcc0e9`; later report-only changes are
+limited to the existing six bilingual plan/operator/evidence files. Refreshed
+origin/main is still `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`.
+Source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`, with the
+supplied historical image ID recorded below, not the locally rebuilt image.
+No candidate PR, Hosted checkout/job, merge-ref, merge SHA or production operation
+exists at this checkpoint. M1 remains Scratch over its recorded full-scripts
+failure; M2 is incomplete. A component success is not a full upgrade or approval.
+
+Implemented since report `1190ba591`: durable target-scoped Binding and management
+attempts in the existing journal; actual host-lock liveness; fail-closed fsync and
+cross-run admission; stopped-source handoff observations; complete old public
+projection with immutable migration inventory; controlled management migrations
+and checkpoints; candidate/run/plan-bound P4 receipt consumption on resume/no-op;
+physical structure/privilege continuity; and package-only PG16/MinIO/AOF recovery
+for two bootstrap profiles. Key fixes are `b91c98a31`, `45e2d07cd`, `bbefbfc25`,
+`0a88f831b`, `273e0b26e`, `4f3f1485c`, `aa47072bc` and `a77e0ea6a`.
+
+| Actual execution (local time UTC+8) | Result and scope |
+| --- | --- |
+| `df644163e`, 00:28:33, real PG16 Alpine component terminal entry | 9 files, 92 collected/passed, 0 failed/skipped, 71.88s, exit 0; source schema, canonical Binding component, P4, Archive and structure tests |
+| `df644163e`, 00:28:29, runtime bootstrap configuration | 10 files, 96 collected/passed, 0 failed/skipped, 9.57s, exit 0; includes 7 real restricted-login/checkpoint cases on a new owned network/volume |
+| `df644163e`, build | exit 0; original externalization/chunk warnings retained |
+| `df644163e`, final CLI/gate/Compose | 63 collected/passed, 0 failed/skipped, exit 0; actual old seven-line gate/new CLI, not full old controller success |
+| `df644163e`, boundary / contract / selfhost / docs | all exit 0; 3509 boundary matches, no unallowlisted/stale/growth/mismatch; docs uses an explicit owned PG receipt |
+| `0a88f831b` plus source-test WIP, 00:03:00, controlled recovery | 3 files, 42 collected/passed, 0 failed/skipped, 217.28s, exit 0; both bootstrap identities, source MinIO version, AOF and package-only restore; recovery code blobs unchanged through final code |
+| `273e0b26e` plus parent integration WIP, 00:21:57, management/controller journals | 4 files, 67 collected/passed, 0 failed/skipped, 2.75s, exit 0; included in `4f3f1485c`, not relabeled as execution at that commit |
+| `aa47072bc`, 00:23:32, PG16 matrix before system-privilege extension | 9 files, 89 collected/passed, 0 failed/skipped, 68.13s, exit 0 |
+| `aa47072bc` plus 3 new privilege counterexamples, 00:25:48 | 3 failed, 20 selector-filtered, exit 1: parameter SET, builtin EXECUTE and privileged settings did not change the receipt |
+| Same working change after fix, 00:26:11, committed as `a77e0ea6a` | 23 collected/passed, 0 failed/skipped, 1.04s, exit 0; real PostgreSQL, unchanged thresholds |
+| `27946d016` plus parent P4 WIP, 00:20:06 | 1 failed, 6 selector-filtered, exit 1: expired P4 admitted resume |
+| Same P4 test, cloned-input fix temporarily omitted, 00:21 | 1 failed, 6 selector-filtered, exit 1: caller mutation affected P4 after an await |
+| Same working change after fixes, 00:21 | 7 collected/passed, 0 failed/skipped, exit 0; actual S7/checkpoint/Archive dispatch with an explicitly synthetic receipt port, not a report |
+| `f5797479b` plus corrected controller counterexamples, 00:09:01 | original code: 2 failed, 15 selector-filtered; fix: 49 collected/passed, 0 failed/skipped, 2.64s; real journal and host lock, owner spies only |
+
+Failures are retained rather than hidden: the first recovery invocation selected
+nonexistent paths and collected zero tests (exit 0 from passWithNoTests), so it is
+not a pass; the correct storage paths produced the 42-test result. New controller
+tests first failed fixture setup because they requested Binding scope for a
+non-Binding harness; corrected tests then reproduced actual replay admission.
+The first structure batch had 67 passed/2 failed (one typed-reason integration
+mismatch and one earlier controller refusal invalidating an old late-refusal
+assertion). The next PG16 batch had 88 passed/1 failed: cloning an absent Archive
+key preempted the required typed admission error. `aa47072bc` fixes the input
+ordering without weakening the assertion. Typecheck also found two union-spread
+errors in managementJournal, fixed before the final build.
+
+Earlier on 2026-09-06, directly routing the pgvector-only fixture to Alpine caused
+7 file setup failures, 7 pure tests passed and 60 skipped, not migration failure
+or a pass. The extra owned Alpine fixture was then implemented without relaxing
+the Catalog lane. Earlier tool-transcript-only executions (lock Red/Green,
+partial migration, source projection and recovery evolution) retain their own
+identities; missing original log files are not reconstructed as raw logs.
+
+The final matrix uses Docker Desktop with independently verified daemon identity,
+fresh owned databases/roles/volumes/networks and `linux/arm64` PG16 image ID
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`.
+Node 22.22.3, npm 10.9.8, Vitest 4.1.5, TypeScript 5.9.3 were used. The full old
+126-file migration inventory and 11-file 0129–0139 suffix are checksum checked;
+0140 remains outside the candidate. Source/bundle/mapping/receipt pins are
+generated by component fixtures and are not production or runtime/public report
+pins. Temporary test resources are removed only after ownership checks. Public
+delivery logs redact private paths/credentials/host identity and include hashes.
+
+Independent delta reviews closed the original search-path/source-schema findings,
+cross-run admission, mutable P4 input and system-privilege continuity findings.
+They are bounded Standards/Spec/security observations, not an overall seal.
+P4 structural continuity does not replace Release Verification; continued writer
+isolation must come from the root-owned real boundary, not a supplied boolean.
+
+Remaining internal work belongs to the parent: complete terminal handoff and
+P2/P3 composition, explicit unknown-outcome reconciliation, all consumer-family
+conversion/oracles, P12/P13 and fresh full report lineage, real API/worker pool
+startup plus browser/business/growth acceptance. No full M2 scripts/server/UI or
+Hosted batch ran. Policy #815 still has no accepted authoritative counting or
+staged unavailable contract. The separately backed-up 0140 proposal adds two
+governance EXECUTE capabilities and is not approved or integrated. Authorized
+real backup and enterprise CA/network evidence remain absent. Production
+maintenance is not ready; no production upgrade command is supplied.
+
 ## M1 continuation, 2026-09-06
 
 Development base remains `67d4a77325b6009b77c2373bd788298a6d022bcf`.

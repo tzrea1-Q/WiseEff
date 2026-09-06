@@ -60,15 +60,48 @@ phase-aware handoff, runtime/public state producers, and complete
 business/browser/capacity acceptance. These independent code tasks do not require
 a production backup. The full root milestone remains incomplete.
 
-Four decisions remain separate: a frozen source-lock performance amendment for
-M1; the separate 0140 proposal's two new governance EXECUTE grants; ownership of
-previously unavailable P12/P13 implementation; and #815 authoritative Policy
-counting versus an explicitly approved unavailable contract. None is assumed.
+Three decisions remain separate: a frozen source-lock performance amendment for
+M1; the separate 0140 proposal's two new governance EXECUTE grants; and #815
+authoritative Policy counting versus an explicitly approved unavailable contract.
+None is assumed. Implementing P12/P13 within the existing ownership is still the
+parent's internal work; an unavailable constant alone is not an external decision.
 The runtime proposal is backed up separately, not installed by this candidate.
 No PR, Hosted or production action is claimed. The terminal guide supplies tested
 component/inspection commands, not an invented full-upgrade command.
 
 ## Ownership and dependencies
+
+### Increment on 2026-09-07
+
+The parent continues implementation rather than treating missing production
+authorization as a coding blocker. Parent owns controller admission, S7 P4
+composition and its immutable preparation pins, documentation and actual test
+execution. Release lane owns the controlled migration/structure receipt;
+runtime lane independently reviews management and P4, and recovery lane reviews
+controller cross-run admission. No parallel PostgreSQL test cluster shares roles.
+
+New R3 threats: a live-looking but dead host lock; file/directory fsync uncertainty;
+another run's pending Binding/management attempt; caller mutation after an await;
+search_path redirection; a new table/column outside the frozen source; a different
+candidate borrowing a management receipt; physical schema/ACL drift despite an
+unchanged migration ledger; and resume skipping historical P4 applicability.
+Receipts describe observed preparation, never report approval. P4 pins bind the
+outer preparation run/plan and candidate SHA/tree without a circular S7 digest.
+
+Actual additional matrix uses a separately owned `postgres:16-alpine` cluster.
+The pgvector Catalog lane and its required setup remain unchanged. Recovery now
+has package-only real three-store tests for both PG16 bootstrap identities,
+original MinIO version, AOF and explicit unsupported database-property refusal.
+Precise batches, including setup failures and zero-collection mistakes, belong
+in the existing evidence pair; they are not combined across SHAs.
+
+Documentation impact: this plan and companion, existing operator and evidence
+pairs. Parent still owns the unfinished terminal composition, full source-family
+producers, P12/P13 implementation within frozen ownership, new report chain,
+runtime startup/pool integration and application/browser/capacity acceptance.
+These are internal implementation gaps. Real backup, enterprise CA/network,
+production authorization and the separately documented Policy/permission
+decisions are distinct external dependencies. Neither group closes M2 or OP-09.
 
 ### Increment at report `1190ba591`
 

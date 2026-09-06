@@ -127,12 +127,15 @@ old shared secret file. Build metadata uses `WISEEFF_SOURCE_SHA` and
 `WISEEFF_SOURCE_TREE`; handoff separately verifies these labels against fixed Git
 objects and the actual image ID. Labels alone are not reproducible-build evidence.
 
-The new `handoff.ts` binds the observed source artifact, Compose resources and
-store identities, and opens the existing controller journal under the existing
-operation lock. Its real Compose regression uses identity-fixture application
-images. It proves initial takeover only: phase-aware resume after stopping or
-replacing applications, actual old application artifacts and complete report
-lineage still require integration. There is no production handoff command yet.
+The new `handoff.ts` binds observed source/candidate artifacts, Compose resources,
+private configuration and store identities under the existing operation lock.
+Its real Compose regression uses identity-fixture application images. It now
+accepts the exact stopped old application containers only when committed P2
+evidence permits that process state; it still rejects replaced containers or
+unknown journal outcomes. Lock liveness uses a fresh nonce exchange with the
+actual lock holder. This is not full old-application startup, candidate
+replacement, stopped-Redis resume or a complete report lineage. There is no
+production handoff command yet.
 
 The management migration CLI now reads only `DATABASE_URL` and
 `XIAOZE_CHECKPOINTER`; it does not require runtime auth/provider/storage secrets.
@@ -142,6 +145,36 @@ the actual CLI with only these inputs and production mode on an owned fresh PG
 database: 137 migrations and four checkpoint tables, exit 0. This is management
 evidence, not populated conversion or permission to migrate a deployment. Do not
 invoke it on a production URL outside the missing approved root workflow.
+
+The controlled management function additionally requires a fixed source
+descriptor, candidate migration inventory, live host lock, real writer/recovery
+boundary adapter and durable attempt in the existing target-scoped journal.
+It preserves the complete old public row projection, checks every migration
+filename/checksum, fixes the management search path, and prepares PostgreSQL
+checkpoints administratively. Its receipt is recomputed read-only before P4;
+ordinary CLI success, table existence, a supplied digest or a pending attempt
+does not replace that receipt. Partial/unknown outcomes require explicit
+reconciliation, which is still missing from the terminal composition.
+
+Additional PostgreSQL 16 Alpine component matrix (not a deployment upgrade):
+machine: the independently verified local Docker Desktop development host;
+user: developer; directory: fixed candidate checkout with installed dependencies.
+Input is the previously verified development daemon ID. This creates and removes
+only owned synthetic databases, roles, containers, networks and volumes; it never
+stops existing services or accepts a production URL. The local images must already
+exist. Set the private shell variable `UPG_DEVELOPMENT_DAEMON_ID` to the
+independently verified development daemon ID before this command; do not derive
+authorization merely from the current Docker context:
+
+```bash
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$UPG_DEVELOPMENT_DAEMON_ID" --suite bindings-pg16
+```
+
+Expected: nonzero tests collected, exit 0 and an `isolated-components-only`
+summary with the actual `postgres:16-alpine` image ID and verified cleanup.
+Wrong daemon, missing private target receipt, setup or test failures stop; they
+are not skips or performance passes. The separate `--suite bindings` retains
+the required pgvector Catalog lane; this extra profile does not relax it.
 
 A bounded developer-only synthetic three-store restore creates its own PostgreSQL, Redis and MinIO source/target containers, retains PostgreSQL owner/ACL, verifies a restricted login, two different objects and their backup-derived metadata, and Redis AOF persistence. It exports a package, stops the source stores, then restores in a separate process consuming only the package and private target inputs. It accepts no external URL or production backup through this CLI. Prerequisites are the local images listed in `scripts/rehearse-upgrade-recovery.ts`, including the source MinIO version; missing images fail before container creation. From the reviewed development clone:
 
@@ -157,6 +190,13 @@ and secret fields are refused. Old v1 packages are not silently upgraded; re-exp
 from an authorized source. `roleCapabilitiesVerified=true` covers the declared
 synthetic profile's inherited read, explicit SET ROLE and denied writes/escalation;
 it does not prove all application or database-global privileges were restored.
+The additional v3 profile requires source and target to have the same explicitly
+provisioned bootstrap role, including `wiseeff` at OID 10, before restore. It
+never creates, renames or translates a superuser. Both profiles require the
+observed vanilla PG16 Alpine database encoding/locale/provider and settings;
+unsupported database properties are refused, not silently lost. Test input
+secrets remain separate from the package. The actual adapter regression covers
+both bootstrap profiles; the older synthetic CLI is not relabeled as v3 proof.
 
 Production backup/quiescence: **not executable under this candidate's contract**. First identify every writer, bind all storage identities, complete the owner/ACL strategy, private encryption/key custody, persistent Redis uses and same-boundary snapshot implementation. Existing `backup:drill`/`restore:drill` evidence helpers and `pg_restore --list` are not actual restore proof. Do not use old run `completed` or `recovery_point_verified` as new restore evidence.
 
@@ -178,4 +218,12 @@ No destructive production recovery command is supplied: the required target-boun
 
 ## Independent blockers and owners
 
-Release integration owner: P12/P13 ownership decision, real target context provider, runtime/public gate and controlled handoff. Runtime/security owner: capability inventory, separate pools/login roles, management-only migration/checkpoints, positive and adversarial business tests. Recovery owner: real backup intake, storage/roles adapters, same-boundary and business restore proof. Product owner: #815 authoritative Policy relation or explicitly accepted unavailable contract. Build operator: enterprise CA plus Docker/dependency trust and candidate image provenance. Acceptance owner: full consumer semantics, browser and growth capacity. Data owner: authorized real backup. Production operator/approvers: maintenance authorization. These remain distinct; none is silently moved to OP-09.
+The parent and assigned implementation agents own the unfinished release,
+runtime, recovery and acceptance integrations. P12/P13 unavailability, terminal
+composition, full consumer coverage and browser/capacity are internal gaps.
+External decisions are limited to the frozen source-lock change, the separate
+0140 capability proposal and #815 authoritative Policy relation or explicitly
+accepted unavailable contract. External environment inputs are an authorized
+recoverable backup and enterprise CA/network build access; production operation
+and release approvals remain separate. These do not move all remaining work to
+OP-09 or authorize an incomplete synthetic upgrade.

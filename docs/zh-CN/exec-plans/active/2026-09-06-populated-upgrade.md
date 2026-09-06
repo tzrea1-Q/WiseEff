@@ -62,12 +62,36 @@ producer／import组件50/50、最终兼容／门禁63/63及build通过证据；
 journal adapter／reconciliation、分阶段handoff、runtime／public状态生成链、
 完整业务／浏览器／容量仍由父协调者承担，缺真实备份不阻止这些独立开发。
 
-四个决策独立保留：M1冻结source-lock测试的性能修订；独立0140提案新增的两项
-governance EXECUTE；此前unavailable的P12/P13实现归属；#815权威Policy引用计数
-或明确批准的unavailable契约。没有默认批准。运行权限提案单独备份，未安装到本候选。
+三个决策独立保留：M1冻结source-lock测试的性能修订；独立0140提案新增的两项
+governance EXECUTE；#815权威Policy引用计数或明确批准的unavailable契约。
+没有默认批准。在既有 ownership 内实现 P12/P13 仍是父负责的内部工作，不能把
+unavailable 常量本身当作外部决策。运行权限提案单独备份，未安装到本候选。
 没有PR、Hosted或生产执行；手册提供已测试组件／检查命令，不编造根升级／生产命令。
 
 ## 文件所有权与依赖
+
+### 2026-09-07 增量
+
+父智能体继续实现，不把缺生产授权当作代码阻塞。父负责 controller 准入、S7 P4
+接线及固定准备 pins、文档和实际测试；release lane 负责受控迁移／结构 receipt，
+runtime lane 独立审查管理与 P4，recovery lane 独立审查 controller 跨 run 准入。
+真实 PostgreSQL 测试使用独立集群，不共享集群级角色。
+
+新增 R3 威胁：看似存活的失效宿主锁、文件／目录 fsync 结果未知、另一 run 未决的
+Binding／管理 attempt、await 后输入被修改、search_path 重定向、冻结后新增表／列、
+另一候选借用管理 receipt、ledger 未变但物理 schema／ACL 漂移、resume 跳过历史 P4
+适用性。receipt 只证明实测准备，不批准发布；P4 绑定外层准备 run／plan 和候选
+SHA／tree，避免与后生成的 S7 digest 循环依赖。
+
+新增真实矩阵使用独立自有 `postgres:16-alpine`；pgvector Catalog lane 及必需 setup
+保持原约束。恢复已加入两个 PG16 bootstrap 身份、原 MinIO 版本、AOF 和数据库属性
+不支持时拒绝的真实三存储包测试。精确批次（含 setup 失败、零收集误调用）记入既有
+双语证据，不能混加不同 SHA。
+
+文档影响：本计划及中文伴随、既有操作／证据双语文件。终端组合根、全部源消费方
+producer、既定 ownership 内的 P12/P13、完整新报告链、运行启动／pool、应用／浏览器
+和容量验收仍由父负责，是内部开发缺口。真实备份、企业 CA／网络、生产授权及单独
+记录的 Policy／权限决策是不同外部依赖；二者均不关闭 M2 或 OP-09。
 
 | 包 | 所有者与范围 | 依赖与成功条件 |
 | --- | --- | --- |
