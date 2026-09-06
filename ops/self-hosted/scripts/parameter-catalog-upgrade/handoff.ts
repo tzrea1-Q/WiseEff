@@ -281,6 +281,9 @@ export async function withHostOperationLock<T>(lockRoot: string, action: (lock: 
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,
   deps: HandoffObserver & { openController(binding: { runId: string; journalPath: string; operationLock: HostOperationLock }): CatalogUpgradeController; withOperationLock<T>(root: string, action: (lock: HostOperationLock) => Promise<T>): Promise<T> }) {
   plan = structuredClone(plan);
+  // Keep the action used for observation identical to the eventual dispatch.
+  // Domain input may hold live Pools; it is not serializable plan metadata.
+  command = Object.freeze({ action: command.action, input: command.input });
   const { digest, ...body } = plan;
   if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
   return deps.withOperationLock(plan.inputs.lockRoot, async operationLock => {
