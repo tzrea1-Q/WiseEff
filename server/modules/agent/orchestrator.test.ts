@@ -5,7 +5,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
 import type { AuthContext } from "../auth/types";
-import { createAgentSession } from "./repository";
+import { createAgentSession, updateAgentToolCall } from "./repository";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import { createAgentOrchestrator, type ApprovalBeginInput } from "./orchestrator";
 import type { AgentToolDefinition } from "./toolRegistry";
@@ -117,13 +117,14 @@ describe("agent orchestrator", () => {
   });
 
   it("a stale success transition preserves another terminal result without inventing failure audit", async () => {
-    const { db, tables } = createMemoryDb({ failToolUpdateStatuses: ["succeeded"] });
+    const { db, tables } = createMemoryDb();
     const registry = createRegistry(
       [createToolDefinition({ name: "perception.searchParameters", requiresApproval: false })],
       async () => {
         // Pure persistence-boundary test: represent a competing terminal writer.
-        tables.toolCalls[0].status = "rejected";
-        tables.toolCalls[0].error_message = "another terminal decision";
+        expect(await updateAgentToolCall(db, developmentAuthContext.organization.id, String(tables.toolCalls[0].id), {
+          status: "rejected", expectedStatus: "running", errorMessage: "another terminal decision"
+        })).toBe(true);
         return { summary: "Read exact pin", data: { parameters: [] }, citations: [] };
       }
     );
@@ -136,6 +137,41 @@ describe("agent orchestrator", () => {
     expect(registry.run).toHaveBeenCalledOnce();
     expect(tables.toolCalls[0]).toMatchObject({ status: "rejected", result: null, error_message: "another terminal decision" });
     expect(tables.audits.filter((audit) => audit.kind === "agent-tool")).toEqual([]);
+  });
+
+  it.each(["succeeded", "failed"] as const)("a %s winner cannot be overwritten by a same-status execution completion", async (status) => {
+    const { db, tables } = createMemoryDb();
+    let winner: Record<string, unknown> | undefined;
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.searchParameters", requiresApproval: false })],
+      async () => {
+        // Commit a competing winner through the real repository helper. The
+        // memory database applies its normal expected-status SQL guard.
+        expect(await updateAgentToolCall(db, developmentAuthContext.organization.id, String(tables.toolCalls[0].id), {
+          status, expectedStatus: "running",
+          ...(status === "succeeded" ? { result: { summary: "winner", data: { exact: { value: 1842 } }, citations: [] } }
+            : { errorMessage: "winner's durable refusal" })
+        })).toBe(true);
+        winner = structuredClone(tables.toolCalls[0]);
+        if (status === "failed") throw new Error("loser's different refusal");
+        return { summary: "loser", data: { exact: { value: 9999 } }, citations: [] };
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    let rejected: unknown;
+    try {
+      await orchestrator.recordToolRequest({
+        auth: developmentAuthContext, requestId: "same-status-terminal", sessionId,
+        request: { name: "perception.searchParameters", label: "Read exact pin", payload: { projectId: "aurora" } }
+      });
+    } catch (error) {
+      rejected = error;
+    }
+    expect.soft(rejected).toMatchObject({ code: "CONFLICT", message: `Agent tool call could not be marked ${status}.` });
+    expect(registry.run).toHaveBeenCalledOnce();
+    expect.soft(tables.toolCalls[0]).toEqual(winner);
+    expect.soft(tables.audits.filter((audit) => audit.kind === "agent-tool")).toEqual([]);
   });
 
   it("records Agent audit events with human initiator correlation", async () => {

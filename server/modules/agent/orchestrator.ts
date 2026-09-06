@@ -345,6 +345,7 @@ export function createAgentOrchestrator(options: {
       await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
           status: "failed",
+          expectedStatus: "running",
           errorMessage: errorMessage(error)
         });
         if (!failed) {
@@ -373,6 +374,7 @@ export function createAgentOrchestrator(options: {
     await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
       const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
         status: "succeeded",
+        expectedStatus: "running",
         result
       });
       if (!succeeded) {
