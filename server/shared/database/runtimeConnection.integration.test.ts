@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { chmod, lstat, mkdtemp, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
 import pg from "pg";
@@ -13,18 +15,111 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
   const password = randomBytes(24).toString("hex");
   let docker: ReturnType<typeof createIsolatedUpgradeDocker>;
   let id = "";
+  const label = "wiseeff.test";
+  const volumeName = `${name}-data`;
+  let networkId = "";
+  let networkCreated = "";
+  let volume: { name: string; created: string; mountpoint: string } | undefined;
+  let imageId = "";
+  let privateDirectory = "";
+  let privateDirectoryIdentity: { dev: number; ino: number } | undefined;
+  let privateFileIdentity: { dev: number; ino: number } | undefined;
   let port = "";
   let admin: pg.Client;
   const url = (role: string) => `postgres://${role}:${password}@127.0.0.1:${port}/postgres`;
+  const containerConsumers = (args: string[]) => docker.command(["ps", "-a", "--no-trunc", ...args, "--format", "{{.ID}}"])
+    .toString().trim().split("\n").filter(Boolean);
+  const inspectNetwork = (allowedContainers: string[]) => {
+    const actual = JSON.parse(docker.command(["network", "inspect", networkId]).toString())[0];
+    if (!/^[a-f0-9]{64}$/.test(networkId) || !Number.isFinite(Date.parse(networkCreated))
+      || actual?.Id !== networkId || actual.Name !== name || actual.Created !== networkCreated
+      || actual.Labels?.[label] !== name || actual.Driver !== "bridge" || actual.Internal !== false
+      || actual.Options?.["com.docker.network.bridge.enable_ip_masquerade"] !== "false"
+      || Object.keys(actual.Containers ?? {}).some(container => !allowedContainers.includes(container))
+      || containerConsumers(["--filter", `network=${networkId}`]).some(container => !allowedContainers.includes(container))) {
+      throw new Error("owned runtime network identity mismatch");
+    }
+  };
+  const inspectVolume = (allowedContainers: string[]) => {
+    const actual = JSON.parse(docker.command(["volume", "inspect", volumeName]).toString())[0];
+    if (!volume || !Number.isFinite(Date.parse(volume.created)) || typeof volume.mountpoint !== "string" || !path.posix.isAbsolute(volume.mountpoint)
+      || actual?.Name !== volume.name || actual.CreatedAt !== volume.created || actual.Mountpoint !== volume.mountpoint
+      || actual.Labels?.[label] !== name || actual.Driver !== "local" || actual.Scope !== "local"
+      || Object.keys(actual.Options ?? {}).length !== 0
+      || containerConsumers(["--filter", `volume=${volumeName}`]).some(container => !allowedContainers.includes(container))) {
+      throw new Error("owned runtime volume identity mismatch");
+    }
+  };
+  const inspectContainer = () => {
+    const actual = docker.assertOwned(id, label, name);
+    const networks = Object.values(actual.NetworkSettings?.Networks ?? {}) as { NetworkID: string }[];
+    if (actual.Name !== `/${name}` || actual.Image !== imageId || actual.HostConfig?.NetworkMode !== networkId
+      || networks.length !== 1 || networks[0].NetworkID !== networkId || actual.Mounts?.length !== 1
+      || actual.Mounts[0].Type !== "volume" || actual.Mounts[0].Name !== volumeName || actual.Mounts[0].Source !== volume?.mountpoint
+      || actual.Mounts[0].Destination !== "/var/lib/postgresql/data" || actual.Mounts[0].RW !== true) {
+      throw new Error("owned runtime container resources mismatch");
+    }
+    inspectNetwork([id]); inspectVolume([id]);
+    return actual;
+  };
+  const removePrivateConfiguration = async () => {
+    if (!privateDirectoryIdentity) return;
+    const directory = await lstat(privateDirectory);
+    if (!directory.isDirectory() || directory.dev !== privateDirectoryIdentity.dev || directory.ino !== privateDirectoryIdentity.ino
+      || (directory.mode & 0o777) !== 0o700 || directory.uid !== process.getuid?.()) throw new Error("runtime private directory identity mismatch");
+    const entries = await readdir(privateDirectory);
+    if (privateFileIdentity) {
+      const file = await lstat(path.join(privateDirectory, "postgres.env"));
+      if (!file.isFile() || file.nlink !== 1 || file.dev !== privateFileIdentity.dev || file.ino !== privateFileIdentity.ino
+        || (file.mode & 0o777) !== 0o600 || file.uid !== directory.uid || entries.length !== 1 || entries[0] !== "postgres.env") {
+        throw new Error("runtime private configuration identity mismatch");
+      }
+      await unlink(path.join(privateDirectory, "postgres.env"));
+    } else if (entries.length) throw new Error("runtime private configuration outcome unknown");
+    await rmdir(privateDirectory);
+  };
   beforeAll(async () => {
     docker = createIsolatedUpgradeDocker();
     const expected = process.env.UPG_RUNTIME_DOCKER_DAEMON_ID;
     if (docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${expected}|docker-desktop|Docker Desktop`) {
       throw new Error("explicit development daemon identity mismatch");
     }
-    id = docker.command(["run", "-d", "--name", name, "--label", `wiseeff.test=${name}`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", "postgres:16-alpine"]).toString().trim();
-    docker.assertOwned(id, "wiseeff.test", name);
-    port = docker.command(["inspect", "--format", '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}', id]).toString().trim();
+    // Refuse collisions before creation; a prefix or a local daemon is not an
+    // ownership proof. Every removal below rechecks the actual created resource.
+    if (docker.command(["ps", "-a", "--format", "{{.Names}}"] ).toString().trim().split("\n").includes(name)
+      || docker.command(["network", "ls", "--format", "{{.Name}}"] ).toString().trim().split("\n").includes(name)
+      || docker.command(["volume", "ls", "--format", "{{.Name}}"] ).toString().trim().split("\n").includes(volumeName)) {
+      throw new Error("runtime resource name collision");
+    }
+    imageId = JSON.parse(docker.command(["image", "inspect", "postgres:16-alpine"]).toString())[0]?.Id;
+    if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error("runtime source image identity missing");
+    privateDirectory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-runtime-private-"));
+    await chmod(privateDirectory, 0o700);
+    privateDirectoryIdentity = await lstat(privateDirectory);
+    const environmentFile = path.join(privateDirectory, "postgres.env");
+    await writeFile(environmentFile, `POSTGRES_PASSWORD=${password}\n`, { flag: "wx", mode: 0o600 });
+    privateFileIdentity = await lstat(environmentFile);
+    networkId = docker.command(["network", "create", "--driver", "bridge", "--label", `${label}=${name}`,
+      "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", name]).toString().trim();
+    networkCreated = JSON.parse(docker.command(["network", "inspect", networkId]).toString())[0]?.Created;
+    inspectNetwork([]);
+    if (docker.command(["volume", "create", "--driver", "local", "--label", `${label}=${name}`, volumeName]).toString().trim() !== volumeName) {
+      throw new Error("runtime volume creation outcome unknown");
+    }
+    const createdVolume = JSON.parse(docker.command(["volume", "inspect", volumeName]).toString())[0];
+    volume = { name: volumeName, created: createdVolume.CreatedAt, mountpoint: createdVolume.Mountpoint };
+    inspectVolume([]);
+    id = docker.command(["run", "-d", "--name", name, "--label", `${label}=${name}`, "--network", networkId,
+      "--mount", `type=volume,src=${volumeName},dst=/var/lib/postgresql/data`, "--env-file", environmentFile,
+      "-p", "127.0.0.1::5432", imageId]).toString().trim();
+    const actual = inspectContainer();
+    const bindings = actual.NetworkSettings.Ports?.["5432/tcp"];
+    if (!actual.State.Running || bindings?.length !== 1 || bindings[0].HostIp !== "127.0.0.1"
+      || Object.entries(actual.NetworkSettings.Ports).some(([key, value]) => key !== "5432/tcp" && Boolean(value))) {
+      throw new Error("runtime published endpoint mismatch");
+    }
+    port = bindings[0].HostPort;
+    if (!/^[1-9][0-9]*$/.test(port) || Number(port) > 65535) throw new Error("runtime published port invalid");
     for (let attempt = 0; attempt < 30; attempt++) {
       const client = new pg.Client({ connectionString: url("postgres") });
       try { await client.connect(); admin = client; break; }
@@ -43,8 +138,12 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       grant select on public.runtime_business to runtime;`);
   });
   afterAll(async () => {
-    await admin?.end();
-    if (id) { docker.assertOwned(id, "wiseeff.test", name); docker.command(["rm", "-f", "-v", id]); }
+    try {
+      await admin?.end();
+      if (id) { inspectContainer(); docker.command(["rm", "-f", id]); id = ""; }
+      if (volume) { inspectVolume([]); docker.command(["volume", "rm", volume.name]); volume = undefined; }
+      if (networkId) { inspectNetwork([]); docker.command(["network", "rm", networkId]); networkId = ""; }
+    } finally { await removePrivateConfiguration(); }
   });
   it("uses the actual restricted login pool for reads and rejects direct writes and elevation", async () => {
     const db = await openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production" });
