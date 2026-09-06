@@ -566,7 +566,7 @@ export const executeCutover = async (
   input = { ...input, plan: structuredClone(input.plan), graph: structuredClone(input.graph),
     bindingImportIntent: input.bindingImportIntent && structuredClone(input.bindingImportIntent),
     conversionManifest: input.conversionManifest && structuredClone(input.conversionManifest),
-    archiveEncryptionKey: Buffer.from(input.archiveEncryptionKey) };
+    archiveEncryptionKey: Buffer.isBuffer(input.archiveEncryptionKey) ? Buffer.from(input.archiveEncryptionKey) : input.archiveEncryptionKey };
   if (input.failBeforePhase) {
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
