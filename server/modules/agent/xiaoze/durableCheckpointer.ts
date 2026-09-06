@@ -110,6 +110,36 @@ export async function verifyPostgresCheckpointerTables(connectionString: string)
     if (JSON.stringify(ledger.rows.map((row) => row.v)) !== "[0,1,2,3,4]") {
       throw new Error("checkpoint schema mismatch");
     }
+    const expectedColumns: Record<string, readonly string[]> = {
+      checkpoint_migrations: ["v:integer:true"],
+      checkpoints: ["thread_id:text:true", "checkpoint_ns:text:true", "checkpoint_id:text:true", "parent_checkpoint_id:text:false", "type:text:false", "checkpoint:jsonb:true", "metadata:jsonb:true"],
+      checkpoint_blobs: ["thread_id:text:true", "checkpoint_ns:text:true", "channel:text:true", "version:text:true", "type:text:true", "blob:bytea:false"],
+      checkpoint_writes: ["thread_id:text:true", "checkpoint_ns:text:true", "checkpoint_id:text:true", "task_id:text:true", "idx:integer:true", "channel:text:true", "type:text:false", "blob:bytea:true"],
+    };
+    const expectedKeys: Record<string, readonly string[]> = {
+      checkpoint_migrations: ["v"], checkpoints: ["thread_id", "checkpoint_ns", "checkpoint_id"],
+      checkpoint_blobs: ["thread_id", "checkpoint_ns", "channel", "version"],
+      checkpoint_writes: ["thread_id", "checkpoint_ns", "checkpoint_id", "task_id", "idx"],
+    };
+    const columns = await client.query<{ relation: string; column_signature: string }>(`
+      select c.relname as relation, a.attname || ':' || pg_catalog.format_type(a.atttypid,a.atttypmod) || ':' || a.attnotnull::text as column_signature
+      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+      join pg_catalog.pg_attribute a on a.attrelid=c.oid
+      where n.nspname='public' and c.relkind='r' and c.relname=any($1::text[]) and a.attnum>0 and not a.attisdropped
+      order by c.relname,a.attnum`, [Object.keys(expectedColumns)]);
+    const keys = await client.query<{ relation: string; columns: string[] }>(`
+      select c.relname as relation, array_agg(a.attname::text order by k.ordinality) as columns
+      from pg_catalog.pg_constraint p join pg_catalog.pg_class c on c.oid=p.conrelid
+      join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+      cross join lateral unnest(p.conkey) with ordinality k(attnum,ordinality)
+      join pg_catalog.pg_attribute a on a.attrelid=c.oid and a.attnum=k.attnum
+      where n.nspname='public' and p.contype='p' and c.relname=any($1::text[]) group by c.relname`, [Object.keys(expectedKeys)]);
+    for (const [relation, expected] of Object.entries(expectedColumns)) {
+      if (JSON.stringify(columns.rows.filter((row) => row.relation === relation).map((row) => row.column_signature)) !== JSON.stringify(expected) ||
+          JSON.stringify(keys.rows.find((row) => row.relation === relation)?.columns) !== JSON.stringify(expectedKeys[relation])) {
+        throw new Error("checkpoint physical schema mismatch");
+      }
+    }
     await client.query("select thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata from public.checkpoints limit 0");
     await client.query("select thread_id, checkpoint_ns, channel, version, type, blob from public.checkpoint_blobs limit 0");
     await client.query("select thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob from public.checkpoint_writes limit 0");

@@ -298,18 +298,19 @@ const createReadPorts = (pool: pg.Pool | undefined, resolveAuth: CatalogApiAuthR
 const createGovernancePorts = (
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
+  commandPool: pg.Pool | undefined,
 ): CatalogGovernancePorts => {
-  const commands = pool
+  const commands = commandPool
     ? bindCatalogGovernanceCommands({
-        executeRegistration: (command) => executeRegistration(pool, command),
-        resolveReviewItem: (command) => resolveReviewItem(pool, command),
-        executeProposal: (command) => executeProposal(pool, command),
+        executeRegistration: (command) => executeRegistration(commandPool, command),
+        resolveReviewItem: (command) => resolveReviewItem(commandPool, command),
+        executeProposal: (command) => executeProposal(commandPool, command),
         listReviewQueue: (query) => {
-          const reader = createReviewQueueReader(pool);
+          const reader = createReviewQueueReader(pool ?? commandPool);
           return reader.list(query);
         },
         getReviewItem: (query) => {
-          const reader = createReviewQueueReader(pool);
+          const reader = createReviewQueueReader(pool ?? commandPool);
           return reader.get(query);
         },
       })
@@ -425,11 +426,18 @@ export const registerParameterCatalogApi = (
   router: WiseEffRouter,
   options: {
     readonly db?: Database;
+    readonly governanceDb?: Database;
+    readonly requireSeparateGovernancePool?: boolean;
     readonly resolveAuth: CatalogApiAuthResolver;
   },
 ): void => {
   const pool = getRootPostgresPool(options.db);
+  const governancePool = getRootPostgresPool(options.governanceDb);
+  if (options.requireSeparateGovernancePool && governancePool && governancePool === pool) {
+    throw new Error("PCAT-RUNTIME-GOVERNANCE-POOL-MUST-BE-SEPARATE");
+  }
   registerCatalogReadRoutes(router, createReadPorts(pool, options.resolveAuth));
-  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
+  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth,
+    governancePool ?? (options.requireSeparateGovernancePool ? undefined : pool)));
   registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
 };
