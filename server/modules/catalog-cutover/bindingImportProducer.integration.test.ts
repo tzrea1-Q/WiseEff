@@ -22,7 +22,8 @@ import { appendMappingVersion } from "./mapping";
 import { persistCheckpoint } from "./checkpoints";
 import { captureConversionSourceInventory, conversionManifestDigest, type ConversionManifest } from "./conversionManifest";
 import { assertBindingManagementLogin, captureBindingMappingPins, prepareBindingEvidenceArchives, produceBindingImportReceipt, readBindingDatabaseIdentity } from "./bindingImportProducer";
-import { planCutover } from "./orchestrator";
+import { executeCutover, planCutover } from "./orchestrator";
+import type { ExecuteCutoverInput } from "./interface";
 
 /** Real P8 producer + P9 consumer slice. P2/P3, public verifier and root controller are not mocked or claimed. */
 describe("S7 generated Binding receipt and same-transaction S6 import", () => {
@@ -148,6 +149,25 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     await admin.query("update public.project_parameter_binding_revisions set raw_value='changed' where id='value-3-1'");
     try { await expect(prepare()).rejects.toThrow("binding-p0-source-drift"); }
     finally { await admin.query("update public.project_parameter_binding_revisions set raw_value='raw-3-1' where id='value-3-1'"); }
+  });
+  it("refuses missing journal and unresolved attempts before any new phase or boundary action", async () => {
+    const unused = async (): Promise<never> => { throw new Error("unexpected phase or boundary action"); };
+    const input = { pool: admin, bindingManagementPool: management, bindingImportIntent: producer.intent,
+      bindingBoundary: { establish: unused, verify: unused, snapshot: unused },
+      plan: { planDigest: producer.planDigest }, graph: producer.graph,
+    } as unknown as ExecuteCutoverInput;
+    expect(await executeCutover(input)).toMatchObject({ ok: false, error: { detail: "binding-management-boundary-and-journal-required" } });
+    const before = await client.query("select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints");
+    await client.query("select pg_advisory_unlock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+    try {
+      for (const outcome of ["pending", "unknown"] as const) {
+        expect(await executeCutover({ ...input, bindingJournal: {
+          unresolved: async () => [{ attemptId: "synthetic-negative-attempt", runId, planDigest: producer.planDigest, phase: "P9", outcome }],
+          begin: unused, finish: unused,
+        } })).toMatchObject({ ok: false, error: { detail: "binding-unresolved-phase-attempt" } });
+      }
+      expect((await client.query("select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints")).rows).toEqual(before.rows);
+    } finally { await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))"); }
   });
   it("rejects missing, ambiguous and empty tip membership rather than choosing latest",async () => {
     expect((await readBindingTipProof(admin,"binding-1")).sourceRevisionId).toBe("value-1-1");
