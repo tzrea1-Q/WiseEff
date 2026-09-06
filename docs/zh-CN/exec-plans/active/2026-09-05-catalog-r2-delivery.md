@@ -158,6 +158,10 @@ Definition 写入路径冻结为 `server/modules/parameter-catalog-api/` 下的 
 
 Hosted run `34002589200`、job `101404079084` 实际 checkout 为 `78c9e131e1e0f958ba87e174967441913a2c3692`（`27bc39d…` 与 `b5ca461…` 的 merge-ref）。Script tests 为 1191 通过、1 失败、21 跳过，失败是 boundary inventory 用例；后续 backend／contract／boundary 步骤跳过。同一个本地 focused 命令在隔离 base `27bc39d…` 通过、在 `b5ca461…` 失败。CI-821-01 属于候选引入，不能归为无关基线失败。索引内的重定位提案保留不可变 inventory，要求明确批准恰好 23 对新旧字节位置及完整文件 hash；发布提案不等于批准或实施。
 
+#816 Definition 批量增量 `e3fbdfe87f6d42063ac411cf2d002cb06f5c4729` 已交接，集成为 `50439e8ed`。独立 Standards 对六文件增量给出限定 PASS。实现者记录了 42 条 focused、34 条相关回归和 build 通过；父协调者没有将其改写成集成候选执行。根批量测试现由父协调者独占扩充容量。执行前固定 profile：2／125／1000 个 Subject，每个两个 Definition；通过真实安装器发布两个版本，其中一个 Definition 修订改变，Binding 指针保留在第一版本；比较 current／pinned、1／25／100 行首页、后页、注册过滤及 Subject／Definition 详情，并发 1／4。每用例记录首次观测、一批预热、五批测量（5 或 20 个延迟样本）。沿用原连接池大小与每测试 30 秒预算，每 HTTP 尝试限定 10 秒。SQL 硬预算保留列表 4／5、详情 3／4，要求无未分类 SQL、混版、范围污染和批次结束后占用连接。延迟不虚构 SLO；OS／PG 冷缓存与连接等待毫秒数记 unavailable，记录实际耗时、内存及连接池计数。此 profile 通过 `WISEEFF_CATALOG_CAPACITY_PROFILE=1` 显式运行，不将默认测试集写成容量通过。
+
+#816 范围修复另冻结为已审查 `usage-scope-design.md`／`usage-scope-threat-standards.md` 交接中的八个路径（四个生产读／组合文件、三个现有测试和新增 `rootUsageScope.integration.test.ts`）。它从既有可信角色策略推导必需的 usage 项目范围，不改 Policy 能力或 SQL 预算。T5 已在隔离 Scratch 得到干净 Red：固定引用读取拒绝后，工具持久记录停留 running 且没有失败审计。经独立审查更正的矩阵保留既有可恢复对话完成语义（`STEP_FINISHED` failed 和失败答复后 `RUN_FINISHED` success），不将其视为工具成功。T5 生产修改仅限 `server/modules/agent/orchestrator.ts` 的执行 catch 及测试、现有真实 Agent 集成测试；实际工具错误必须事务提交 failed／审计，成功 CAS 过期不得覆盖终态。最终执行与审查仍待完成。
+
 ## 已验证的 Scratch 检查点：2026-09-06 Asia/Shanghai
 
 代码候选为 `b54a126b594effe5470f7df4c8b4d0458abc14c6`，tree 为 `c51651772664dfdc91e68673e67027a8dc3ed8be`。再次 fetch 后 accepted base 仍为 `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。后续纯报告提交不改变历史执行 SHA 的归属。本候选未 sealed、未 integration-ready、未 Hosted、未合并、未 attested。没有关闭 R2 issue；#813 仍是实际观察到的唯一开放 PR，其历史表述不能代替本轮证据。

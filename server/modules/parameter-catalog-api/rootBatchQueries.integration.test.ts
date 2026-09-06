@@ -19,6 +19,7 @@ import type { AuthContext } from "../auth/types";
 type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
 
 const subjectCount = Number(process.env.WISEEFF_CATALOG_BATCH_SUBJECTS ?? 125);
+const capacityProfile = process.env.WISEEFF_CATALOG_CAPACITY_PROFILE === "1";
 if (!Number.isSafeInteger(subjectCount) || subjectCount < 1 || subjectCount > 1000) {
   throw new Error("WISEEFF_CATALOG_BATCH_SUBJECTS must be an integer in 1..1000");
 }
@@ -67,6 +68,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
   let server: Server;
   let baseUrl: string;
   let releaseId: string;
+  let pinnedReleaseId: string;
   let measuring = false;
   let statements: { category: SqlClass; sql: string; batchIds?: readonly string[] }[] = [];
   const principal: AuthContext = {
@@ -98,6 +100,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const installed = await createCatalogInstaller(pool).installPublishedRelease({ mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: compiled.aggregateDigest });
     expect(installed.ok, JSON.stringify(installed)).toBe(true);
     releaseId = compiled.release.id;
+    pinnedReleaseId = releaseId;
     await pool.query("insert into public.organizations(id,name) values ('batch-org','Batch')");
     await pool.query("insert into public.users(id,organization_id,name,email,title,is_active) values ('batch-admin','batch-org','Batch admin','batch@example.test','Admin',true)");
     await pool.query("insert into public.user_role_bindings(id,user_id,organization_id,project_id,role_id) values ('batch-role','batch-admin','batch-org',null,'admin')");
@@ -122,6 +125,21 @@ describe("R2-BATCH root HTTP SQL budget", () => {
         if (!appended.ok) throw new Error(`value fixture failed: ${JSON.stringify(appended.error)}`);
         expectedTip = appended.value.currentTip;
       }
+    }
+    if (capacityProfile) {
+      const predecessor = bundle.releases[0]!;
+      const next = structuredClone(predecessor);
+      next.manifest.release = { ...next.manifest.release, id: "crel_batch_capacity_2", version: "1.1.0", sequence: 2,
+        publishedAt: "2026-09-02T00:00:00Z", predecessor: { id: compiled.release.id, digest: compiled.release.digest } };
+      const changed = next.documents.find((document) => document.kind === "definition" && document.content.id === "pdef_batch_0_0");
+      if (!changed || changed.kind !== "definition") throw new Error("capacity successor Definition missing");
+      changed.content.revision = { ...changed.content.revision, id: "drev_batch_0_0_2", number: 2, documentation: "Capacity successor revision; pinned bindings retain revision one." };
+      refreshReleaseSource(next);
+      const successor = { ...bundle, targetReleaseId: next.manifest.release.id, releases: [...bundle.releases, next] };
+      const nextCompiled = compileOrThrow(successor);
+      const advanced = await createCatalogInstaller(pool).installPublishedRelease({ mode: "advance", source: jsonCatalogReleaseSource(successor), expectedCurrent: pin, expectedTargetDigest: nextCompiled.aggregateDigest });
+      expect(advanced.ok, JSON.stringify(advanced)).toBe(true);
+      releaseId = nextCompiled.release.id;
     }
     server = createWiseEffServer({ db: root, auth: { mode: "production", verifier: { verify: async (authorization) => {
       if (authorization === "Bearer batch-other-token") return { ...principal, user: { ...principal.user, id: "batch-other-admin", organizationId: "batch-other" }, organization: { id: "batch-other", name: "Other" } };
@@ -264,4 +282,102 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(item.registration.status).toBe("unregistered");
     expect(item.usageSummary).toMatchObject({ projectCount: 0, currentValueCount: 0 });
   });
+
+  // Explicit opt-in measurement profile, executed separately from the default
+  // regression suite. It retains the normal 30s per-case budget and pool size.
+  if (capacityProfile) {
+    for (const snapshot of ["current", "pinned"] as const) {
+      for (const route of ["subjects", "definitions"] as const) {
+        const scenarios = [
+          ...[1, 25, 100].map((limit) => ({ name: `first-${limit}`, limit, detail: false, after: false, registered: false })),
+          { name: "next-1", limit: 1, detail: false, after: true, registered: false },
+          { name: "registered-25", limit: 25, detail: false, after: false, registered: true },
+          { name: "detail", limit: 1, detail: true, after: false, registered: false },
+        ];
+        for (const scenario of scenarios) {
+          it.each([1, 4])(`R2-CAP ${snapshot}/${route}/${scenario.name} concurrency %i`, async (concurrency) => {
+            const headers: Record<string, string> = { authorization: "Bearer batch-fixture-token" };
+            if (snapshot === "pinned") headers["X-WiseEff-Catalog-Release"] = pinnedReleaseId;
+            const expectedRelease = snapshot === "pinned" ? pinnedReleaseId : releaseId;
+            const definition = route === "definitions";
+            const detailId = definition ? "pdef_batch_0_0" : "csub_batch_000";
+            const query = new URLSearchParams({ limit: String(scenario.limit) });
+            if (snapshot === "pinned") query.set("catalogReleaseId", pinnedReleaseId);
+            if (scenario.registered) query.set("registration", "active");
+            if (scenario.after) {
+              const firstQuery = new URLSearchParams(query);
+              firstQuery.set("limit", "1");
+              const first = await fetch(`${baseUrl}/api/v2/catalog/${route}?${firstQuery}`, { headers });
+              const firstPage = await first.json();
+              expect(first.status).toBe(200);
+              expect(firstPage.nextCursor).toEqual(expect.any(String));
+              query.set("cursor", firstPage.nextCursor);
+            }
+            const endpoint = `/api/v2/catalog/${route}${scenario.detail ? `/${detailId}` : ""}?${query}`;
+            const expectedRows = scenario.detail ? 1 : scenario.registered ? definition ? 2 : 1
+              : Math.min(scenario.limit, subjectCount * (definition ? 2 : 1) - (scenario.after ? 1 : 0));
+            const businessBudget = (definition ? 5 : 4) - (scenario.detail ? 1 : 0);
+            const rounds: { phase: string; elapsedMs: number[]; counts: Record<string, number>; resources: ReturnType<typeof resources>; statements: typeof statements }[] = [];
+            async function batch(phase: string) {
+              statements = [];
+              measuring = true;
+              // Concurrent HTTP load is measured here; the production batch
+              // projection still issues the same fixed number of SQL queries.
+              const attempts = await Promise.allSettled(Array.from({ length: concurrency }, async () => {
+                const start = performance.now();
+                const response = await fetch(`${baseUrl}${endpoint}`, { headers, signal: AbortSignal.timeout(10_000) });
+                const body = await response.json();
+                expect(response.status, JSON.stringify(body)).toBe(200);
+                expect(response.headers.get("X-WiseEff-Catalog-Release")).toBe(expectedRelease);
+                if (!scenario.detail) expect(body.catalogReleaseId).toBe(expectedRelease);
+                const items = scenario.detail ? [body.item] : body.items;
+                expect(items).toHaveLength(expectedRows);
+                if (definition) {
+                  for (const item of items) {
+                    const populated = item.id === "pdef_batch_0_0";
+                    expect(item.usageSummary).toMatchObject({ projectCount: populated ? 2 : 0, currentValueCount: populated ? 2 : 0 });
+                    expect(item.currentRevision.id).toBe(populated && snapshot === "current" ? "drev_batch_0_0_2" : `drev_${item.id.slice("pdef_".length)}_1`);
+                  }
+                } else {
+                  expect(items.every((item: { membership: { catalogReleaseId: string } }) => item.membership.catalogReleaseId === expectedRelease)).toBe(true);
+                }
+                return performance.now() - start;
+              }));
+              measuring = false;
+              const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
+              const failed = attempts.filter((attempt) => attempt.status === "rejected");
+              if (failed.length > 0) {
+                console.info(JSON.stringify({ evidence: "R2-CAP-failure", snapshot, route, scenario, concurrency, phase, counts, statements }));
+                throw new AggregateError(failed.map((attempt) => attempt.reason), "Capacity requests failed");
+              }
+              const elapsedMs = attempts.flatMap((attempt) => attempt.status === "fulfilled" ? [attempt.value] : []);
+              expect(counts.business).toBe(businessBudget * concurrency);
+              expect(counts.other).toBe(0);
+              const state = resources();
+              expect(state.pool.waiting).toBe(0);
+              expect(state.pool.used).toBe(0);
+              rounds.push({ phase, elapsedMs, counts, resources: state, statements });
+            }
+            await batch("first-observed");
+            await batch("warmup");
+            for (let sample = 0; sample < 5; sample += 1) await batch("measured-warm");
+            const samples = rounds.filter((round) => round.phase === "measured-warm").flatMap((round) => round.elapsedMs).sort((a, b) => a - b);
+            const percentile = (fraction: number) => samples[Math.ceil(samples.length * fraction) - 1];
+            const report = { requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
+              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1 },
+              concurrency, sampleCount: samples.length, warmupRequests: concurrency, businessQueriesPerRequest: businessBudget,
+              p50Ms: percentile(0.5), p95Ms: percentile(0.95), latencySlo: "unavailable; observational baseline only",
+              coldCache: "unavailable; no OS/PostgreSQL cache reset; first-observed is not a cold-cache claim",
+              connectionWaitMs: "unavailable; pool waiting/used snapshots are recorded after every settled batch", rounds };
+            const evidenceDirectory = process.env.WISEEFF_CATALOG_SQL_EVIDENCE_DIR;
+            if (!evidenceDirectory) throw new Error("capacity profile requires an evidence directory");
+            await mkdir(evidenceDirectory, { recursive: true });
+            const filename = `capacity-${subjectCount}-${snapshot}-${route}-${scenario.name}-c${concurrency}.json`;
+            await writeFile(path.join(evidenceDirectory, filename), JSON.stringify(report, null, 2));
+            console.info(JSON.stringify({ ...report, rounds: undefined, artifact: filename }));
+          });
+        }
+      }
+    }
+  }
 });
