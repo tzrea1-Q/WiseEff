@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPostgresDatabase, getRootPostgresPool } from "../../shared/database/client";
 import { createRouter } from "../../shared/http/router";
+import type pg from "pg";
+import type { CatalogGovernancePorts } from "./governance/types";
 
-const capture = vi.hoisted(() => ({ governance: undefined as any }));
-const executeRegistration = vi.hoisted(() => vi.fn(async () => ({ ok: false, error: { kind: "catalog-drift" } })));
+const capture = vi.hoisted(() => ({ governance: undefined as CatalogGovernancePorts | undefined }));
+const executeRegistration = vi.hoisted(() => vi.fn(async (_pool: pg.Pool, _command: unknown) => ({ ok: false, error: { kind: "catalog-drift" } })));
 vi.mock("../parameter-governance/registration", () => ({ executeRegistration }));
-vi.mock("./governance/routes", () => ({ registerCatalogGovernanceRoutes: (_router: unknown, ports: unknown) => { capture.governance = ports; } }));
+vi.mock("./governance/routes", () => ({ registerCatalogGovernanceRoutes: (_router: unknown, ports: CatalogGovernancePorts) => { capture.governance = ports; } }));
 import { registerParameterCatalogApi } from "./productionWire";
 
 afterEach(() => vi.clearAllMocks());
@@ -21,17 +23,17 @@ describe("production Catalog command pool isolation", () => {
     const db = createPostgresDatabase("postgres://unused:unused@127.0.0.1:1/unused");
     try {
       registerParameterCatalogApi(createRouter(), { db, requireSeparateGovernancePool: true, resolveAuth: (() => undefined) as never });
-      expect((await capture.governance.executeRegistration({})).ok).toBe(false);
+      expect((await capture.governance!.executeRegistration({} as never)).ok).toBe(false);
       expect(executeRegistration).not.toHaveBeenCalled();
     } finally { await db.close(); }
   });
-  it("binds authenticated domain command execution to the dedicated pool", async () => {
+  it("binds domain command execution to the dedicated pool", async () => {
     const db = createPostgresDatabase("postgres://reader:unused@127.0.0.1:1/unused");
     const governanceDb = createPostgresDatabase("postgres://governance:unused@127.0.0.1:1/unused");
     try {
       registerParameterCatalogApi(createRouter(), { db, governanceDb, requireSeparateGovernancePool: true, resolveAuth: (() => undefined) as never });
       // Port binding delegates authorization/command validation to the owned domain seam.
-      await capture.governance.executeRegistration({});
+      await capture.governance!.executeRegistration({} as never);
       expect(executeRegistration.mock.calls[0]?.[0]).toBe(getRootPostgresPool(governanceDb));
       expect(executeRegistration.mock.calls[0]?.[0]).not.toBe(getRootPostgresPool(db));
     } finally { await Promise.all([db.close(), governanceDb.close()]); }
