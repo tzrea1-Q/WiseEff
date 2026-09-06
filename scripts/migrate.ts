@@ -20,7 +20,10 @@ export class ManagementMigrationError extends Error {
 /** Management configuration only. Runtime auth, S3, device and provider settings
  * are not migration prerequisites. Keep the shared env schema's memory default;
  * production checkpoint preparation requires an explicit postgres selection. */
-export function parseMigrationEnvironment(raw: NodeJS.ProcessEnv) {
+export function parseMigrationEnvironment(raw: NodeJS.ProcessEnv): {
+  connectionString: string;
+  mode: "memory" | "postgres";
+} {
   const connectionString = raw.DATABASE_URL?.trim();
   if (!connectionString) throw new ManagementMigrationError("database-url-required");
   const mode = raw.XIAOZE_CHECKPOINTER ?? "memory";
