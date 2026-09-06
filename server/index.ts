@@ -50,6 +50,14 @@ if (db && env.NODE_ENV === "production" && env.XIAOZE_CHECKPOINTER === "postgres
   try { await verifyPostgresCheckpointerTables(env.DATABASE_URL!); }
   catch (error) { await db.close(); throw error; }
 }
+const catalogGovernanceDb = env.CATALOG_GOVERNANCE_DATABASE_URL?.trim()
+  ? await openRuntimeDatabase({
+      connectionString: env.CATALOG_GOVERNANCE_DATABASE_URL,
+      nodeEnv: "production",
+      purpose: "catalog-governance-command",
+      databaseOptions: { tracing: defaultTracingBoundary },
+    }).catch(async (error) => { await db?.close(); throw error; })
+  : undefined;
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
@@ -177,6 +185,7 @@ if (db) {
 
 const server = createWiseEffServerFromEnv({
   db,
+  catalogGovernanceDb,
   objectStore,
   objectStoreHealth: objectStore,
   logAnalysisQueue: logAnalysisQueueRuntime?.queue,
@@ -217,7 +226,7 @@ async function shutdown() {
   ]);
 
   server.close(() => {
-    process.exit(0);
+    void Promise.all([db?.close(), catalogGovernanceDb?.close()]).then(() => process.exit(0));
   });
 }
 

@@ -81,6 +81,8 @@ type DeviceBridgeEnv = Pick<
 
 export type WiseEffServerOptions = {
   db?: Database;
+  /** Separate login used only by authenticated Catalog governance domain commands. */
+  catalogGovernanceDb?: Database;
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
   objectStore?: ObjectStore;
@@ -246,6 +248,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
+    governanceDb: options.catalogGovernanceDb,
+    requireSeparateGovernancePool: options.env?.NODE_ENV === "production",
     resolveAuth: authResolver
   });
 
@@ -457,6 +461,7 @@ function attachDeviceBridgeServer(
 export function createWiseEffServerFromEnv(
   options: {
     db?: Database;
+    catalogGovernanceDb?: Database;
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;

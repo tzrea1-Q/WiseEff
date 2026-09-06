@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { openRuntimeDatabase } from "./runtimeConnection";
 
 describe("runtime connection bootstrap", () => {
@@ -26,5 +28,17 @@ describe("runtime connection bootstrap", () => {
     await expect(openRuntimeDatabase({ connectionString: "secret", nodeEnv: "production" }, (() => db) as never))
       .rejects.toMatchObject({ message: "PCAT-RUNTIME-BOOTSTRAP-QUERY-FAILED" });
     expect(db.close).toHaveBeenCalledOnce();
+  });
+  it("never emits a credential-bearing constructor exception", async () => {
+    await expect(openRuntimeDatabase({ connectionString: "private credential", nodeEnv: "production" }, (() => { throw new Error("private credential"); }) as never))
+      .rejects.toMatchObject({ message: "PCAT-RUNTIME-BOOTSTRAP-QUERY-FAILED" });
+  });
+  it("the actual production API process rejects missing DATABASE_URL before fallback", () => {
+    const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve("server/index.ts")], {
+      encoding: "utf8", timeout: 20000, env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production" },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("DATABASE_URL is required in production");
+    expect(result.stdout).not.toContain("listening");
   });
 });

@@ -32,6 +32,9 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
     }
     if (!admin) throw new Error("owned development cluster unavailable");
     await admin.query(`create role runtime login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
+      create role parameter_governance_writer_role nologin nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
+      create role governance login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole inherit;
+      grant parameter_governance_writer_role to governance;
       create role elevated login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
       create role bridge nologin noinherit; create role forbidden nologin createdb;
       grant forbidden to bridge; grant bridge to elevated with inherit false;
@@ -57,6 +60,18 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       await expect(openRuntimeDatabase({ connectionString: url(role), nodeEnv: "production" }))
         .rejects.toMatchObject({ code: "PCAT-RUNTIME-PRIVILEGED-LOGIN" });
     }
+  });
+  it("requires a separate actual governance login and refuses it as the application pool", async () => {
+    await expect(openRuntimeDatabase({ connectionString: url("governance"), nodeEnv: "production" }))
+      .rejects.toMatchObject({ code: "PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL" });
+    await expect(openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production", purpose: "catalog-governance-command" }))
+      .rejects.toMatchObject({ code: "PCAT-RUNTIME-GOVERNANCE-CAPABILITY-MISSING" });
+    const db = await openRuntimeDatabase({ connectionString: url("governance"), nodeEnv: "production", purpose: "catalog-governance-command" });
+    try {
+      expect((await db.query("select session_user as login, current_user as effective")).rows)
+        .toEqual([{ login: "governance", effective: "governance" }]);
+      await expect(db.query("set role forbidden")).rejects.toMatchObject({ code: "42501" });
+    } finally { await db.close(); }
   });
   it.each(["server/index.ts", "server/modules/logs/workerRunner.ts"])("%s refuses privileged login before worker/server construction", (entry) => {
     const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve(entry)], {
@@ -91,5 +106,9 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
         .toEqual({ value: "synthetic checkpoint" });
     } finally { await handle.saver.end(); }
     expect((await admin.query("select v from public.checkpoint_migrations order by v")).rows).toEqual([0,1,2,3,4].map((v) => ({ v })));
+    await admin.query("alter table public.checkpoints alter column metadata drop default; alter table public.checkpoints alter column metadata type text using metadata::text");
+    await expect(verifyPostgresCheckpointerTables(url("runtime"))).rejects.toThrow("PCAT-RUNTIME-CHECKPOINT-SCHEMA-UNVERIFIED");
+    await admin.query("alter table public.checkpoints alter column metadata type jsonb using metadata::jsonb; alter table public.checkpoints alter column metadata set default '{}'::jsonb; alter table public.checkpoints drop constraint checkpoints_pkey");
+    await expect(verifyPostgresCheckpointerTables(url("runtime"))).rejects.toThrow("PCAT-RUNTIME-CHECKPOINT-SCHEMA-UNVERIFIED");
   });
 });
