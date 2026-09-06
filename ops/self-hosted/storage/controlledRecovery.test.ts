@@ -36,6 +36,23 @@ const boundary = () => ({
   verify: async () => {},
 });
 
+it("pins input identity before a caller-owned configuration can be changed during boundary acquisition", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-test-"));
+  const target = { ...sourceIdentity };
+  let opened = false;
+  try {
+    await expect(captureControlledRecovery({ directory, runId: "run", target }, {
+      observe: async () => target,
+      open: async () => { opened = true; throw new Error("unexpected changed-target export"); },
+    }, {
+      acquire: async () => { target.postgresIdentity = "other-database"; return { ...await boundary().acquire(), target }; },
+      verify: async () => {},
+    })).rejects.toThrow("controlled-recovery-boundary-mismatch");
+    expect(opened).toBe(false);
+    expect(await readdir(directory)).toEqual([]);
+  } finally { await rm(directory, { recursive: true }); }
+});
+
 it.each(["expired", "revoked-after-dump", "changed-after-objects"])("refuses %s without publishing a manifest, and releases source locks", async fault => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-test-"));
   let phase = "before"; let closed = false;

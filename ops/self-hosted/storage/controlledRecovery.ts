@@ -39,12 +39,14 @@ export async function captureControlledRecovery(
   source: ControlledRecoverySource,
   boundary: ControlledRecoveryBoundary,
 ) {
+  input = { ...input, target: Object.freeze({ ...input.target }) };
   let opened: Awaited<ReturnType<ControlledRecoverySource["open"]>> | undefined;
   try {
     const stat = await lstat(input.directory);
     if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o700 || (await readdir(input.directory)).length) recoveryRefuse("private-empty-directory-required");
     if (!/^[A-Za-z0-9_-]+$/.test(input.runId)) recoveryRefuse("run-invalid");
-    const receipt = await boundary.acquire({ runId: input.runId, target: input.target });
+    const issued = await boundary.acquire({ runId: input.runId, target: { ...input.target } });
+    const receipt = Object.freeze({ ...issued, target: Object.freeze({ ...issued.target }) });
     const check = async () => {
       const now = Date.now();
       if (receipt.runId !== input.runId || !sameRecoveryIdentity(receipt.target, input.target) || !/^[a-f0-9]{64}$/.test(receipt.digest)
@@ -91,6 +93,7 @@ export function createControlledRecoveryTarget(input: {
   target: RecoveryTargetIdentity; journalPath: string;
   authorize(binding: RecoveryRestoreBinding): Promise<void>;
 }, destination: ControlledRecoveryTarget): RecoveryPackageTarget {
+  input = { ...input, target: Object.freeze({ ...input.target }) };
   const check = async () => {
     if (!sameRecoveryIdentity(await destination.observe(), input.target)) recoveryRefuse("restore-target-drift");
   };

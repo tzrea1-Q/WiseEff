@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -30,6 +30,12 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     const wait = async (probe: () => Promise<unknown>) => {
       for (let attempt = 0; attempt < 40; attempt++) { try { await probe(); return; } catch { await setTimeout(100); } }
       throw new Error("owned-fixture-startup-failed");
+    };
+    const timed = async <T>(phase: string, action: () => Promise<T>): Promise<T> => {
+      const start = Date.now(); let passed = false;
+      console.info(JSON.stringify({ evidence: "owned-recovery-adapter", phase, state: "started" }));
+      try { const value = await action(); passed = true; return value; }
+      finally { console.info(JSON.stringify({ evidence: "owned-recovery-adapter", phase, state: passed ? "returned" : "failed", elapsedMs: Date.now() - start })); }
     };
     const setup = async (name: string) => {
       const networkId = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false",
@@ -72,7 +78,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       return { resources, secrets, mc, store: createHttpObjectStorageTransport({ endpoint: `http://${endpoint(objects.id, 9000)}`, accessKeyId: secrets.objectAccessKey, secretAccessKey: secrets.objectSecretKey }) };
     };
     try {
-      const source = await setup("source");
+      const source = await timed("setup-source", () => setup("source"));
       start(source.resources.redis.id);
       await wait(async () => exec(source.resources.redis.id, ["redis-cli", "PING"]));
       exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(`
@@ -94,31 +100,58 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       exec(source.resources.redis.id, ["redis-cli", "LPUSH", "bull:controlled:wait", "job-b", "job-a"]);
       exec(source.resources.redis.id, ["redis-cli", "HSET", "bull:controlled:meta", "paused", "1"]);
       stop(source.resources.redis.id);
-      const adapter = createDockerRecoverySource(source.resources, source.secrets);
+      const callerResources = structuredClone(source.resources);
+      const callerSecrets = structuredClone(source.secrets);
+      const adapter = createDockerRecoverySource(callerResources, callerSecrets);
+      // A caller's later object mutation must not retarget pg_dump/mc/AOF or
+      // change a credential. The completed capture exercises all these paths.
+      callerResources.postgres.id = source.resources.objects.id;
+      callerResources.objects.id = source.resources.postgres.id;
+      callerResources.redis.id = source.resources.objectClient.id;
+      callerResources.database = "wrong_database"; callerResources.bucket = "wrong-bucket";
+      callerSecrets.postgresPassword = "mutated"; callerSecrets.objectSecretKey = "mutated";
       const target = await adapter.observe();
-      const receipt = { runId, target, digest: "b".repeat(64), observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 120000).toISOString() };
+      const issued = new Map<string, string>();
       const boundaryPort = {
-        acquire: async () => receipt,
-        verify: async (value: typeof receipt) => { expect(value).toEqual(receipt); for (const writer of source.resources.writers) expect(inspect(writer.id).State.Running).toBe(false); },
+        acquire: async () => {
+          // Each independent attempt obtains a new observed boundary. Reusing a
+          // receipt issued before earlier fault scenarios is deliberately invalid.
+          const observed = await adapter.observe(); expect(observed).toEqual(target);
+          const observedAt = new Date().toISOString();
+          const proof = { runId, target: observed, observedAt, writers: source.resources.writers.map(w => w.id) };
+          const receipt = { runId, target: observed, digest: createHash("sha256").update(JSON.stringify(proof)).digest("hex"), observedAt,
+            expiresAt: new Date(Date.now() + 120000).toISOString() };
+          issued.set(receipt.digest, JSON.stringify(receipt)); return receipt;
+        },
+        verify: async (value: { digest: string }) => {
+          expect(JSON.stringify(value)).toBe(issued.get(value.digest));
+          const writers = JSON.parse(docker.command(["inspect", ...source.resources.writers.map(w => w.id)]).toString());
+          expect(writers).toHaveLength(3);
+          for (const writer of writers) expect(writer.State.Running).toBe(false);
+        },
       };
       const writer = new pg.Client({ connectionString: `postgres://postgres:${source.secrets.postgresPassword}@${endpoint(source.resources.postgres.id, 5432)}/postgres` });
       try {
         await writer.connect(); await writer.query("begin");
         await writer.query("update public.business set value=value where id=1");
-        await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("database-writer-boundary-unavailable");
+        await timed("capture-active-writer-refusal", async () => {
+          await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("database-writer-boundary-unavailable");
+        });
       } finally { await writer.query("rollback").catch(() => {}); await writer.end(); }
       exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "grant create on database postgres to reader"]);
       try {
-        await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("non-dump-capability-unsupported");
+        await timed("capture-extra-acl-refusal", async () => {
+          await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("non-dump-capability-unsupported");
+        });
       } finally {
         exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
       }
       // Synthetic principal is limited to this test's resource identities. Real
       // controller approvals are neither generated nor mocked as passed reports.
-      const captured = await captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort);
+      const captured = await timed("capture-package", () => captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort));
       expect(captured.status).toBe("captured-not-restored");
       for (const c of [source.resources.postgres, source.resources.objects, source.resources.objectClient]) stop(c.id);
-      const destination = await setup("destination");
+      const destination = await timed("setup-destination", () => setup("destination"));
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
       const childScript = `import { readFileSync } from 'node:fs';
@@ -126,15 +159,19 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         import { createControlledRecoveryTarget } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/controlledRecovery.ts"))};
         import { restoreRecoveryPackage } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/recoveryPackage.ts"))};
         const c=JSON.parse(readFileSync(0,'utf8'));
-        try { const io=createDockerRecoveryDestination(c.resources,c.secrets); const target=await io.observe();
+        try { const r=structuredClone(c.resources),s=structuredClone(c.secrets);
+          const io=createDockerRecoveryDestination(r,s);
+          r.postgres.id=c.resources.objects.id; r.objects.id=c.resources.postgres.id; r.redis.id=c.resources.objectClient.id;
+          r.database='wrong_database'; r.bucket='wrong-bucket'; s.postgresPassword='mutated'; s.objectSecretKey='mutated'; s.rolePasswords.reader='mutated';
+          const target=await io.observe();
           const port=createControlledRecoveryTarget({target,journalPath:c.journal,authorize:async binding=>{
             if(binding.runId!==c.runId||binding.packageDigest!==c.digest) throw new Error('fixture-approval-refused');
           }},io); await restoreRecoveryPackage(c.directory,c.digest,port); console.log('restored-package-only');
         } catch { console.log('restore-refused'); process.exitCode=1; }`;
-      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", childScript], {
+      const child = await timed("restore-package-child", async () => spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", childScript], {
         input: JSON.stringify({ resources: destination.resources, secrets: destination.secrets, runId, digest: captured.packageDigest, directory, journal: path.join(directory, "restore.json") }),
         encoding: "utf8", timeout: 90000, env: { PATH: process.env.PATH, HOME: os.homedir() },
-      });
+      }));
       expect(child.status, child.stdout).toBe(0);
       expect(child.stdout.trim()).toBe("restored-package-only");
       expect(child.stderr).not.toContain(destination.secrets.postgresPassword);
