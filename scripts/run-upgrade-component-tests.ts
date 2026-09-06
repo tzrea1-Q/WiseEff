@@ -12,6 +12,33 @@ const suites = {
   bindings: ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts"],
 } as const;
 
+/** The child owns its process group. Deadline/output limits cannot authorize a pass. */
+export function superviseComponentProcess(child: ReturnType<typeof spawn>, limits = { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 }) {
+  let output = ""; let bytes = 0; let stopped = false;
+  let escalation: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const signal = (name: NodeJS.Signals) => {
+    try { if (child.pid) process.kill(-child.pid, name); } catch { /* Already exited. */ }
+  };
+  const stop = () => {
+    if (stopped) return;
+    stopped = true; signal("SIGTERM");
+    escalation = globalThis.setTimeout(() => signal("SIGKILL"), limits.graceMs);
+  };
+  const deadline = globalThis.setTimeout(stop, limits.deadlineMs);
+  const append = (chunk: Buffer) => {
+    bytes += chunk.length;
+    if (bytes > limits.outputBytes) { stop(); return; }
+    output += chunk.toString();
+  };
+  child.stdout!.on("data", append); child.stderr!.on("data", append);
+  const wait = new Promise<{ exitCode: number; output: string }>((resolve, reject) => {
+    const clear = () => { globalThis.clearTimeout(deadline); if (escalation) globalThis.clearTimeout(escalation); };
+    child.once("error", error => { clear(); reject(error); });
+    child.once("close", code => { clear(); resolve({ exitCode: stopped ? 1 : code ?? 1, output }); });
+  });
+  return { stop, wait };
+}
+
 /** Developer component runner, never a deployment upgrade or release approval.
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
 export async function runUpgradeComponentTests(args: string[]) {
@@ -28,8 +55,9 @@ export async function runUpgradeComponentTests(args: string[]) {
   const password = randomBytes(24).toString("hex");
   const directory = await mkdtemp(path.join(os.tmpdir(), "upgrade-components-"));
   let id = ""; let net = ""; let child: ReturnType<typeof spawn> | undefined;
+  let supervisor: ReturnType<typeof superviseComponentProcess> | undefined;
   let interrupted = false;
-  const interrupt = () => { interrupted = true; child?.kill("SIGTERM"); };
+  const interrupt = () => { interrupted = true; supervisor?.stop(); };
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   let exitCode = 1;
   let stage = "network-create";
@@ -37,7 +65,7 @@ export async function runUpgradeComponentTests(args: string[]) {
     // Only PostgreSQL runs here. An internal Docker network does not publish
     // its port on Docker Desktop; this owned bridge publishes loopback only.
     // This is not an application egress-isolation environment.
-    net = docker.command(["network", "create", "--label", `${label}=${run}`, run]).toString().trim();
+    net = docker.command(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, run]).toString().trim();
     stage = "container-create";
     id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image.Id]).toString().trim();
     stage = "container-port-observation";
@@ -65,14 +93,12 @@ export async function runUpgradeComponentTests(args: string[]) {
     child = spawn(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", "vitest.upgrade-cutover.config.ts", ...selectors], {
       cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
         UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"], detached: true,
     });
-    let output = "";
-    child.stdout!.on("data", chunk => { output += chunk; });
-    child.stderr!.on("data", chunk => { output += chunk; });
-    const status = await new Promise<number | null>((resolve, reject) => { child!.once("close", resolve); child!.once("error", reject); });
+    supervisor = superviseComponentProcess(child);
+    const { exitCode: status, output } = await supervisor.wait;
     process.stdout.write(output.split(url).join("[REDACTED_TEST_URL]").split(password).join("[REDACTED]"));
-    exitCode = interrupted ? 1 : status ?? 1;
+    exitCode = interrupted ? 1 : status;
   } catch {
     console.error(`upgrade-component-stage-failed:${stage}`);
     exitCode = 1;
