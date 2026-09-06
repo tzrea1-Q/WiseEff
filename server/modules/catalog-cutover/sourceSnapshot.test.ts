@@ -45,7 +45,8 @@ describe("frozen old public projection across exact append-only migrations", () 
       insert into parameter_spec_versions(id,parameter_spec_id,version,display_name,description,value_shape,lifecycle)
         values ('frozen-spec-v1','frozen-spec',1,'Synthetic','Synthetic','{"kind":"string"}','draft');
       insert into parameter_modules(id,organization_id,name,path,depth,sort_order,description,scope)
-        values ('frozen-module','frozen-org','Synthetic','frozen-module',1,0,'','');
+        values ('frozen-module','frozen-org','Synthetic','frozen-module',1,0,'',''),
+          ('frozen-other-module','frozen-org','Other','frozen-other-module',1,1,'','');
       insert into project_parameter_bindings(id,organization_id,project_id,parameter_spec_id,module_id)
         values ('frozen-binding','frozen-org','frozen-project','frozen-spec','frozen-module');
       insert into project_parameter_binding_revisions(id,binding_id,config_revision_id,parameter_spec_version_id,typed_value,canonical_value,raw_value)
@@ -84,6 +85,12 @@ describe("frozen old public projection across exact append-only migrations", () 
     finally { await pool.query("update project_parameter_binding_revisions set typed_value='null' where id='frozen-v1'"); }
   });
 
+  it("refuses a changed Binding relationship even when all row counts stay equal", async () => {
+    await pool.query("update project_parameter_bindings set module_id='frozen-other-module' where id='frozen-binding'");
+    try { await expect(verify()).rejects.toThrow("source-snapshot-row-drift"); }
+    finally { await pool.query("update project_parameter_bindings set module_id='frozen-module' where id='frozen-binding'"); }
+  });
+
   it("rejects omission from the fixed descriptor", async () => {
     await expect(verifyFrozenSourceSnapshot({ pool, descriptor: { ...frozen, relations: frozen.relations.slice(1) },
       expectedDescriptorDigest: frozen.digest, candidateMigrationsDirectory: candidateDirectory })).rejects.toThrow("source-snapshot-descriptor-mismatch");
@@ -105,6 +112,13 @@ describe("frozen old public projection across exact append-only migrations", () 
     await writeFile(file, Buffer.concat([bytes, Buffer.from("\n-- candidate drift\n")]));
     try { await expect(verify()).rejects.toThrow("source-snapshot-candidate-inventory-drift"); }
     finally { await writeFile(file, bytes); }
+  });
+
+  it("rejects the specific unsafe historical migration without confusing other 0121 filenames", async () => {
+    expect(frozen.sourceMigrations.some(entry => entry.name.startsWith("0121_") && entry.name !== "0121_classify_nodename_driver_subjects.sql")).toBe(true);
+    await pool.query("insert into schema_migrations(name,checksum) values('0121_classify_nodename_driver_subjects.sql',$1)", ["a".repeat(64)]);
+    try { await expect(verify()).rejects.toThrow("source-snapshot-unsafe-historical-migration"); }
+    finally { await pool.query("delete from schema_migrations where name='0121_classify_nodename_driver_subjects.sql'"); }
   });
 
   it("rejects a missing original column or relation even when its rows were empty", async () => {
