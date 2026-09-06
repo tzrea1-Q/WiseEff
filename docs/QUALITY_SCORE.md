@@ -4,9 +4,19 @@
 
 Date: 2026-05-29
 
-This is a living quality dashboard for WiseEff. Update it when major features land, tests change materially, or a quality gap is closed.
+This dashboard retains historical assessments and coverage notes. The scores and old milestone run claims below were not recalculated or rerun in the 2026-09-06 documentation consolidation. Use [test design](design-docs/testing-strategy.md) for current scenario planning and the [verification matrix](developer/verification-matrix.md) for executable gates.
 
-## Current Scores
+## Source-Verified Corrections (2026-09-06)
+
+Source baseline: `67d4a77325b6009b77c2373bd788298a6d022bcf`; no new product test results.
+
+- [Catalog production composition](../server/modules/parameter-catalog-api/productionWire.ts) and its integration tests exist, including release pins, governance, project scope and batch-query budgets. Installation and target cutover remain separate evidence.
+- [Log kernel selection](../server/modules/logs/analyzer/analyzerFromEnv.ts) defaults to the bounded loop, with explicit single-shot configuration and marked rules fallback; real-log quality is a separate evaluation.
+- [PostgreSQL checkpointing](../server/modules/agent/xiaoze/durableCheckpointer.ts) and [cross-instance integration coverage](../server/modules/agent/xiaoze/durableCheckpointer.integration.test.ts) exist. The integration case uses a fake approval resolver; pair it with approval-chain coverage rather than treating it as end-to-end security proof.
+- The [node-debugging browser contract](../e2e/acceptance/debugging-simulator.acceptance.spec.ts) separates command execution from an alternate observed value. A different observation is not automatically a failed write.
+- Historical deferred OIDC, queue, object-store and OpenAPI statements below describe earlier milestones. Current implemented seams are mapped in the [technical document](design-docs/full-stack-architecture.md); their target validation is not established by this source review.
+
+## Historical Scores
 
 | Area | Score | Evidence | Main Gap |
 | --- | ---: | --- | --- |
@@ -21,36 +31,11 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 
 ## Required Verification Gates
 
-For code changes:
+The [verification matrix](developer/verification-matrix.md) owns commands, prerequisites, path-sensitive CI, Gate0, target evidence and documentation-only gates. The [test design](design-docs/testing-strategy.md) maps risks to existing suites and states what each result can prove. Follow those owners rather than maintaining another command inventory here.
 
-- Run targeted tests for touched modules.
-- Run `npm run build` for TypeScript, Vite, routing, shared type, or package changes.
-- Run `npm test` for frontend-impacting changes.
-- Run `npm run test:server` for backend-impacting changes.
-- Run `npm run test:e2e` for M1/M2 acceptance when `DATABASE_URL` and seed data are available.
-- Run `npm run test:m2` before landing M2 log-analysis MVP changes in a local or staging environment with PostgreSQL.
-- Run `npm run logs:eval` (CI-gated) after changing log-analysis prompts, kernels (`llmAnalyzer` / `agentLoop`), tools, prefilter, degradation, or eval scenarios; run `npm run logs:eval:quality` on prompt/model changes and pre-release (deterministic demo works offline). The quality baseline gate stays honestly inactive until expert-annotated `realLog` golden cases land (external dependency).
-- Run `npm run test:m3-5` before landing M3 debugging MVP changes in a local or staging environment with PostgreSQL.
-- Run `npm run test:m3-5` before treating the M1-M3 API-mode baseline as commercial-readiness complete in a local or staging environment with PostgreSQL.
-- Run `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts`, `xiaoze-action.acceptance.spec.ts`, and `xiaoze-planning.acceptance.spec.ts` before landing Xiaoze Agent changes in a local or staging environment with PostgreSQL.
-- Run `npm run smoke:m5` and `npm run test:m5` before treating the M5 pilot baseline as complete.
-- Run `npm run acceptance:gate0` for the authoritative owned-runtime local L2 baseline. Use `npm run acceptance:browser` directly only for focused/manual browser candidates, and run `npm run acceptance:evidence` when operation-evidence coverage changes. CI may upload Gate0 evidence only after `npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip` stops all identity-proven writers and publishes a zero-violation immutable ZIP; the live runs root is never an upload input.
-- Run `npm run acceptance:models` when workflow state transitions, permission contracts, or seeded API/domain fixtures change behind automated browser flows.
-- Run `npm run acceptance:ci` when GitHub Actions acceptance jobs, synthetic modes, or artifact archive paths change.
-- Run `npm run acceptance:quality` when accessibility, visual, or responsive quality-gate wiring changes.
-- Populated `/parameter-review` visual coverage may install `PRQ-8910` only on an ephemeral quality database. Both `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` and `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>` are required; the fixture command fails closed on a database-name mismatch or a pre-existing fixed-ID ownership collision. Target synthetic quality runs set neither variable, remain read-only, and planned-skip only that populated visual case while retaining the other visual routes and all accessibility/responsive coverage.
-- Run `npm run selfhost:check` when self-hosted runtime templates or docs change.
-- Run `npm run selfhost:smoke` against a live self-hosted target before claiming the M6.1 runtime is deployed.
-- Run `npm run capacity:gate` and `npm run selfhost:release-gate` when release, rollback, capacity, or self-hosted release evidence changes.
-- Run `npm run observability:check` when Prometheus, alert, dashboard, telemetry docs, or observability package scripts change.
-- Run `npm run restore:drill`, the real restore commands, `npm run backup:drill`, and `npm run backup:check` against isolated target restore infrastructure before claiming M6.3 target backup/restore readiness.
-- Run `npm run queue:check -- --base-url <target-url>` before claiming a self-hosted Redis/BullMQ queue target is ready.
-- Run `npm run acceptance:a11y`, `npm run acceptance:visual`, or `npm run acceptance:responsive` for UI-facing changes that affect semantics, layout, screenshots, or viewport usability.
-- Run `npm run ui:check` (CI-gated) for frontend changes that touch styling, tokens, z-index, shadows, motion, dialogs, or visible UI copy; per-rule counts must not exceed `scripts/ui-standards-baseline.json`, and when a count drops below its baseline, ratchet it down with `npm run ui:check -- --update-baseline` in the same change.
-- Run `npm run lint` (CI-gated) for changes under `src/`; error-level `jsx-a11y`/`react-hooks` rules block, warn-level rules carry the recorded burn-down stock in `eslint.config.js`.
-- Run `npm run docs:check` before completing non-trivial active plans.
-- Run `npm run test:scripts -- scripts/check-doc-governance.test.ts` when changing documentation governance automation, and `npm run test:scripts -- scripts/check-ui-standards.test.ts` when changing the UI standards gate.
-- Run `npm run test:scripts` for `scripts/**` or `ops/**` automation changes, and `npm run bridge:test` for `packages/**` device-bridge changes.
+## Historical Milestone Coverage
+
+The following milestone notes preserve earlier scope and residuals; they are not a fresh status inventory. Apply the source-verified corrections above before reusing them.
 
 ## M2 Coverage
 
@@ -60,7 +45,7 @@ Remaining M2 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; 
 
 ## M3 Coverage
 
-M3 is covered by backend debugging policy/schema/repository/service/route/simulator tests, frontend debugging DTO/runtime/page tests, and `e2e/debugging.api.spec.ts`. The E2E smoke detects `Aurora Simulator 1`, reads fast charge current as `3000`, writes `3100` with readback, verifies `Cycle count` cannot be written through the UI, writes the readback mismatch probe and expects mismatch text, rolls back the fast charge snapshot, verifies the value returns to `3000`, and checks debugging write/rollback audit events.
+M3 is covered by backend debugging policy/schema/repository/service/route/simulator tests, frontend debugging DTO/runtime/page tests, and `e2e/debugging.api.spec.ts`. The E2E smoke detects `Aurora Simulator 1`, reads fast charge current as `3000`, writes `3100` with readback, verifies `Cycle count` cannot be written through the UI, writes the alternate-readback probe and expects successful command execution with the observed value shown separately, rolls back the fast charge snapshot, verifies the value returns to `3000`, and checks debugging write/rollback audit events.
 
 Remaining M3 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the gateway is simulator-backed rather than real HDC; `/node-debugging` write snapshots are not yet promoted into `/debugging` rollback UI state; OpenAPI/client generation and catalog CRUD remain deferred. Device leases are service-backed in M3.5, Agent approval records are covered by Xiaoze acceptance specs, and real-device lab validation is still needed.
 
@@ -74,7 +59,7 @@ Remaining M3.5 risks: readiness checks still use local object storage rather tha
 
 Xiaoze is covered by AG-UI endpoint, LangGraph planning, tool registry, orchestrator approval-bridge, perception/action tool tests, frontend `XiaozeProvider`/`XiaozeApprovalCard` tests, and `e2e/acceptance/xiaoze-*.acceptance.spec.ts`. Negative tests cover approval-required mutating tools, stale approval state, inactive users, missing permissions, validation failures, and approval execution failure audit correlation.
 
-Remaining Xiaoze risks: local acceptance depends on an external PostgreSQL `DATABASE_URL`; deterministic mode covers the standard UI acceptance path; live LLM quality still needs target-environment evaluation with real `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` configuration; generated OpenAPI clients, prompt safety evaluation, durable Postgres checkpointing (TD-029), and target LLM outage drills remain deferred.
+Remaining Xiaoze risks: local acceptance depends on an external PostgreSQL `DATABASE_URL`; deterministic mode covers the standard UI acceptance path; live LLM quality still needs target-environment evaluation with real `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` configuration; generated OpenAPI clients, prompt safety evaluation, and target LLM outage drills require their separate evidence. Durable PostgreSQL checkpointing is implemented; see the source-verified correction above.
 
 ## M5 Coverage
 

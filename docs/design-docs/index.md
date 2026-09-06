@@ -4,7 +4,7 @@
 
 Design docs explain how WiseEff works and why major boundaries exist. Product requirements live in `../product-specs/`; execution plans live in `../exec-plans/`.
 
-Current baseline: M0-M5 productization work is merged. These docs should describe both implemented seams and remaining external pilot evidence, especially where production infrastructure still depends on staging/device-lab/cloud-provider setup.
+The [technical entry](full-stack-architecture.md) and [test-design entry](testing-strategy.md) were source-reviewed at `67d4a77325b6009b77c2373bd788298a6d022bcf` on 2026-09-06. They consolidate current system explanation and risk-based test design within the existing documentation set. Specialist documents retain their own subject ownership; historical designs are preserved. A locked contract describes intended invariants, not whether all or none of its implementation is present. Deployment/cutover and target evidence require separate verification.
 
 ## Core Operating Beliefs
 
@@ -16,12 +16,12 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Status | Document | Purpose |
 | --- | --- | --- |
 | Locked decision | [Parameter Catalog Verification, Upgrade, and Retirement Gates](parameter-catalog-verification-upgrade-retirement-gates.md) | One Release Verification seam, V01-V17 and D01-D09 release gates, API/browser acceptance, self-hosted recovery, observability, evidence hierarchy, and staged legacy retirement. |
-| Current | [Full-Stack Architecture](full-stack-architecture.md) | Recommended runtime architecture and module boundaries. |
+| Current | [Technical Compendium](full-stack-architecture.md) | Integrated Markdown: 13 chapters, 22 Mermaid diagrams, interfaces, domain relationships, sequences, concurrency, failure recovery and operations. |
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
-| Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; not current runtime behavior. |
+| Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; implementation status is established by the technical entry and current source, not this contract label. |
 | Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
 | Locked decision | [Parameter Catalog API and Legacy-Identifier Transition](parameter-catalog-api-transition.md) | Canonical `/api/v2/catalog/*` resources, permissions, DTO states, typed legacy-ID mapping, consumer migration, and bounded retirement rules. |
-| Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
+| Current | [Testing Strategy](testing-strategy.md) | Testing entry: risks, environment/data, 20 executable design scenarios, automation traceability and outcome rules. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
 | Implemented locally | [Self-Hosted One-Command Upgrade](2026-08-20-self-hosted-one-command-upgrade-design.md) | Source-checkout upgrade seam: immutable target, prebuild, quiescence, verified recovery point, full data-preserving restart, resume/recovery. Non-customer target rehearsal remains required evidence. |
 | Locked decision | [Parameter Catalog Cutover, Archive, and Rollback](parameter-catalog-cutover-archive-rollback.md) | P0-P16 populated-data maintenance workflow, typed legacy dispositions, mandatory P11 semantic dual-read comparison, Archive, recovery, and self-hosted ordering contract. |

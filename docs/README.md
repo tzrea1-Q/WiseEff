@@ -6,6 +6,15 @@ Date: 2026-05-25
 
 This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.md` are short maps; the durable product, architecture, design, quality, reliability, security, and execution knowledge lives here.
 
+## Technical and Test Reading Paths
+
+Use one maintained set of topic documents, with two entry points:
+
+- **Engineering handover:** [Technical Compendium](design-docs/full-stack-architecture.md): 13 integrated chapters and 22 editable Mermaid diagrams covering architecture, interfaces, workflows, consistency, security, setup and recovery. Specialist references provide further contract detail.
+- **Test design and execution planning:** [Testing Strategy and Design](design-docs/testing-strategy.md) → verification matrix → generated requirement/operation coverage → manual acceptance and run-specific evidence.
+
+The technical page owns system and code relationships; the testing page owns risk/scenario design. Existing specialist pages retain schemas, permissions, commands and operational procedures. Update those owners and their Chinese companions rather than making a second handbook. Historical designs and generated results retain their identity and are not current implementation or fresh execution proof.
+
 ## Reading Order
 
 For project demonstrations, use the [Chinese project introduction](presentations/project-introduction.zh-CN.md), with Mermaid diagrams and local application screenshots.
@@ -18,7 +27,7 @@ For project demonstrations, use the [Chinese project introduction](presentations
 6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, WSL validation, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
 7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
 8. [Plans](PLANS.md): how active and completed execution plans are managed.
-9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
+9. [Quality Score](QUALITY_SCORE.md): historical quality assessments, source-verified corrections, and links to current verification gates.
 10. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
 11. [Security](SECURITY.md): identity, RBAC, user permission design, audit, Agent tools, device safety, and data protection.
 

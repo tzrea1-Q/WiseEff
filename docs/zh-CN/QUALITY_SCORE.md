@@ -2,7 +2,17 @@
 
 > English: [English](../QUALITY_SCORE.md)
 
-这是 WiseEff 的活质量看板入口。完整评分表、验证门与覆盖说明以英文版为准；本页记录中文语境下的模块摘要与剩余缺口。
+本页保留历史质量评估与覆盖说明。2026-09-06 文档融合没有重新评分，也没有重新执行旧里程碑测试。当前场景规划见[测试设计](design-docs/testing-strategy.md)，精确命令与前置条件由[验证矩阵](developer/verification-matrix.md)唯一维护。下文历史缺口不能直接当作当前状态清单。
+
+## 源码核对修正（2026-09-06）
+
+源码基线：`67d4a77325b6009b77c2373bd788298a6d022bcf`；没有新增产品测试结果。
+
+- [目录生产组合](../../server/modules/parameter-catalog-api/productionWire.ts)及其集成测试已经存在，涉及版本固定、治理、项目范围和批量查询预算；安装及目标切换证据另行核对。
+- [日志内核选择](../../server/modules/logs/analyzer/analyzerFromEnv.ts)默认使用有界循环，保留显式单次配置和带标记的规则回退；真实日志质量独立评测。
+- [PostgreSQL 检查点](../../server/modules/agent/xiaoze/durableCheckpointer.ts)和[跨实例集成测试](../../server/modules/agent/xiaoze/durableCheckpointer.integration.test.ts)已经存在。该集成测试使用假的审批解析器，应搭配审批链测试，不能单独当作端到端安全证据。
+- [节点调试浏览器契约](../../e2e/acceptance/debugging-simulator.acceptance.spec.ts)分开呈现命令执行和不同的观测值，观测不同不自动等于写失败。
+- 旧里程碑把 OIDC、队列、对象存储和 OpenAPI 标为延期的文字属于历史描述。当前实现见[技术文档](design-docs/full-stack-architecture.md)，本次源码核查不证明目标验证完成。
 
 ## 使用方式
 
