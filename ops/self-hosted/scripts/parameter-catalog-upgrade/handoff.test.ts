@@ -214,6 +214,28 @@ it("holds the existing shared operation lock for the complete callback and refus
   } finally { release?.(); await rm(directory, { recursive: true, force: true }); }
 });
 
+it("refuses the next effect after the actual lock holder exits and finishes cleanup", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "handoff-lock-loss-"));
+  const effects: string[] = [];
+  try {
+    const outcome = withHostOperationLock(directory, async lock => {
+      const owner = await readFile(path.join(directory, ".operation.lock.owner"), "utf8")
+        .catch(() => readFile(path.join(directory, ".operation.lock.d", "owner"), "utf8"));
+      const pid = /^pid=([0-9]+)$/m.exec(owner)?.[1];
+      if (!pid || !owner.includes("operation=catalog-handoff\n")) throw new Error("fixture-lock-owner-unavailable");
+      effects.push("first-effect");
+      // Only terminate the holder created by this invocation in its unique directory.
+      process.kill(Number(pid), "SIGTERM");
+      await setTimeout(50);
+      await lock.assertHeld();
+      effects.push("must-not-run-next-effect");
+    }).then(() => "unexpected-success", error => error instanceof Error ? error.message : "unknown-error");
+    // A bounded observation also catches the old cleanup waiting for an exit already delivered.
+    expect(await Promise.race([outcome, setTimeout(2000, "cleanup-did-not-finish")])).toBe("handoff-lock-lost");
+    expect(effects).toEqual(["first-effect"]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 it("refuses a mismatched handoff digest before lock, controller or target work", async () => {
   await expect(executeHandoff({ digest: "changed" } as never, "expected", { action: "execute" }, {
     withOperationLock: async () => { throw new Error("must-not-lock"); },
