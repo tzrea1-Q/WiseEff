@@ -19,7 +19,7 @@ import { createLocalArchiveObjectStore } from "./archive";
 import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
 import { appendMappingVersion } from "./mapping";
 import { persistCheckpoint } from "./checkpoints";
-import { captureConversionSourceInventory, type ConversionManifest } from "./conversionManifest";
+import { captureConversionSourceInventory, conversionManifestDigest, type ConversionManifest } from "./conversionManifest";
 import { assertBindingManagementLogin, captureBindingMappingPins, prepareBindingEvidenceArchives, produceBindingImportReceipt, readBindingDatabaseIdentity } from "./bindingImportProducer";
 import { planCutover } from "./orchestrator";
 
@@ -128,7 +128,7 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     try { expect(await readBindingDatabaseIdentity(client)).toEqual(await readBindingDatabaseIdentity(adminClient)); } finally { adminClient.release(); }
     await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
     const p7Pins = await captureBindingMappingPins(client,runId,conversion);
-    await persistCheckpoint(client,{runId,phase:"P0",payload:{bindingImportIntent:intent,bindingImportIntentDigest:bindingImportDigest(intent),sourceInventoryFingerprint:conversion.sourceInventoryFingerprint}});
+    await persistCheckpoint(client,{runId,phase:"P0",payload:{bindingImportIntent:intent,bindingImportIntentDigest:bindingImportDigest(intent),sourceInventoryFingerprint:conversion.sourceInventoryFingerprint,conversionManifestDigest:conversionManifestDigest(conversion),bindingArchiveRetainUntil:"2035-01-01T00:00:00.000Z"}});
     await persistCheckpoint(client,{runId,phase:"P7",payload:{bindingMappingPins:p7Pins}});
     producer = {client,runId,planDigest,intent,graph:classificationGraph,classification:classification.value,conversion,bundle,p7Pins,
       archive:{objectStore:createLocalArchiveObjectStore(path.join(root,"objects")),encryptionKey:randomBytes(32)},operatorAuditRef:"synthetic-producer-operator",retainUntil:new Date("2035-01-01Z")};

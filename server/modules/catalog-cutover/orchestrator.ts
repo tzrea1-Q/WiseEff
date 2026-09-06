@@ -217,7 +217,7 @@ const runPhase = async (
         specCount: inventory.specs,
         classifierVersion: classified.value.classifierVersion,
         installer: installPublishedRelease.name,
-        ...(input.bindingImportIntent ? {sourceInventoryFingerprint:input.bindingImportIntent.sourceInventoryFingerprint,bindingImportIntent:input.bindingImportIntent,bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
+        ...(input.bindingImportIntent ? {sourceInventoryFingerprint:input.bindingImportIntent.sourceInventoryFingerprint,bindingImportIntent:input.bindingImportIntent,bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent),conversionManifestDigest:input.plan.conversionManifestDigest,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil} : {}),
       });
     }
     case "P1": {

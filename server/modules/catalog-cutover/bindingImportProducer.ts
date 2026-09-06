@@ -5,9 +5,10 @@ import { writeGuardedRegistration } from "../parameter-governance/registration/i
 import { bindingImportDigest, captureBindingImportSource, captureDefinitionBindingImportSource, type BindingImportEntry, type BindingImportManifest } from "../parameter-bindings/cutoverImport";
 import { captureBindingImportIntent, type BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
 import type { CatalogReleaseBundle } from "../catalog-kernel/compiler/types";
+import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { createArchiveAdapter, type ArchiveAdapterOptions } from "./archive";
-import type { ClassificationResult, FrozenP0Graph } from "./classifier";
-import type { ConversionManifest } from "./conversionManifest";
+import { fingerprintP0Graph, type ClassificationResult, type FrozenP0Graph } from "./classifier";
+import { conversionManifestDigest, type ConversionManifest } from "./conversionManifest";
 import { appendMappingVersion, readCurrentMappingHead, type MappingHead } from "./mapping";
 
 export class BindingProducerRefusal extends Error {}
@@ -63,6 +64,9 @@ type ProducerInput = {
 export type PreparedBindingArchives = ReadonlyMap<string,{archiveId:string;sourceChecksum:string}>;
 
 async function assertSourceAndMappingPins(input: ProducerInput): Promise<Map<string,MappingHead>> {
+  requireFact(fingerprintP0Graph(input.graph) === input.intent.sourceSnapshotFingerprint && input.classification.graphFingerprint === input.intent.sourceSnapshotFingerprint && input.conversion.sourceSnapshotFingerprint === input.intent.sourceSnapshotFingerprint && input.conversion.sourceInventoryFingerprint === input.intent.sourceInventoryFingerprint,"binding-producer-source-lineage-mismatch");
+  const compiled = compileCatalogRelease(input.bundle);
+  requireFact(compiled.ok && compiled.value.release.digest === input.conversion.targetCatalogReleaseDigest,"binding-producer-release-source-mismatch");
   const run = await input.client.query("select plan_digest,source_snapshot_fingerprint,current_phase,state from parameter_catalog.parameter_catalog_cutover_runs where id=$1",[input.runId]);
   requireFact(run.rowCount === 1 && run.rows[0].plan_digest === input.planDigest && run.rows[0].source_snapshot_fingerprint === input.intent.sourceSnapshotFingerprint && ["P7","P8"].includes(run.rows[0].current_phase) && run.rows[0].state === "running", "binding-producer-run-mismatch");
   const prepared = await input.client.query("select 1 from parameter_catalog.parameter_catalog_cutover_checkpoints where cutover_run_id=$1 and phase='P8'",[input.runId]);
@@ -71,6 +75,7 @@ async function assertSourceAndMappingPins(input: ProducerInput): Promise<Map<str
   const p0 = checkpoints.rows.find(row => row.phase === "P0")?.payload;
   const p7 = checkpoints.rows.find(row => row.phase === "P7")?.payload;
   requireFact(p0?.bindingImportIntent && Array.isArray(p7?.bindingMappingPins),"binding-producer-checkpoints-missing");
+  requireFact(p0.conversionManifestDigest === conversionManifestDigest(input.conversion) && p0.bindingArchiveRetainUntil === input.retainUntil.toISOString(),"binding-producer-plan-input-drift");
   requireFact(p0?.bindingImportIntentDigest === bindingImportDigest(input.intent) && bindingImportDigest(p0?.bindingImportIntent) === bindingImportDigest(input.intent), "binding-producer-P0-pin-mismatch");
   requireFact(bindingImportDigest(p7?.bindingMappingPins) === bindingImportDigest(input.p7Pins), "binding-producer-P7-pin-mismatch");
   const observed = await captureBindingImportIntent(input.client, input.intent);
