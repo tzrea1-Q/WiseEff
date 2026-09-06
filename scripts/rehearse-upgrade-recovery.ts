@@ -15,6 +15,7 @@ const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
 const label = "wiseeff.synthetic-recovery-run";
 const nonDumpFaults = {
   "database-acl": "grant create on database postgres to sentinel_reader",
+  "other-database-acl": "grant create on database template1 to sentinel_reader",
   "tablespace-acl": "grant create on tablespace pg_default to sentinel_reader",
   "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
   "builtin-function-acl": "revoke execute on function pg_catalog.pg_control_system() from public",
@@ -183,6 +184,7 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     const roles = `create role sentinel_owner nologin noinherit;
       create role sentinel_read_capability nologin noinherit;
       create role sentinel_explicit_capability nologin noinherit;
+      create role pgapp_recovery nologin noinherit;
       create role sentinel_reader login inherit password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;
       grant sentinel_read_capability to sentinel_reader with inherit true;
       grant sentinel_read_capability to sentinel_reader with set false;
@@ -226,24 +228,24 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     result.nonDumpCapabilitiesVerified = true;
     result.reason = "backup-failed";
     const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
-    const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname not like 'pg_%' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
+    const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname !~ '^pg_' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
     // This profile preserves only package-contained, non-administrative edges
     // granted by the controlled source bootstrap identity. No pg_* membership
     // or alternate grantor is silently discarded or reconstructed with more power.
     const unsupportedMembership = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_auth_members a
       join pg_roles member on member.oid=a.member join pg_roles granted on granted.oid=a.roleid
       join pg_roles grantor on grantor.oid=a.grantor
-      where (member.rolname not like 'pg_%' and member.rolname <> 'postgres'
-        or granted.rolname not like 'pg_%' and granted.rolname <> 'postgres')
+      where (member.rolname !~ '^pg_' and member.rolname <> 'postgres'
+        or granted.rolname !~ '^pg_' and granted.rolname <> 'postgres')
       and (a.admin_option or grantor.rolname <> 'postgres'
-        or member.rolname like 'pg_%' or member.rolname='postgres'
-        or granted.rolname like 'pg_%' or granted.rolname='postgres')`]).toString().trim();
-    const unsupportedRoleSettings = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_db_role_setting s join pg_roles r on r.oid=s.setrole where r.rolname not like 'pg_%' and r.rolname <> 'postgres'`]).toString().trim();
+        or member.rolname ~ '^pg_' or member.rolname='postgres'
+        or granted.rolname ~ '^pg_' or granted.rolname='postgres')`]).toString().trim();
+    const unsupportedRoleSettings = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_db_role_setting s join pg_roles r on r.oid=s.setrole where r.rolname !~ '^pg_' and r.rolname <> 'postgres'`]).toString().trim();
     if (unsupportedRoles !== "0" || unsupportedMembership !== "0" || unsupportedRoleSettings !== "0") throw new Error("role-manifest-capability-unsupported");
     const roleManifest = JSON.parse(execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select coalesce(json_agg(json_build_object('name',rolname,'login',rolcanlogin,'inherit',rolinherit,'members',
       (select coalesce(json_agg(json_build_object('name',member.rolname,'inherit',am.inherit_option,'set',am.set_option) order by member.rolname),'[]')
        from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid)) order by rolname),'[]')
-      from pg_roles r where rolname not like 'pg_%' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
+      from pg_roles r where rolname !~ '^pg_' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
     const listing = mc(sourceObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").map(line => JSON.parse(line));
     const objects = [];
     for (const entry of listing) {
@@ -320,6 +322,10 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
         { name: "sentinel_reader", login: true, inherit: true, privileged: false },
       ];
       if (JSON.stringify(attributes.rows) !== JSON.stringify(expectedAttributes)) throw new Error("restored-role-attributes-mismatch");
+      // pgapp is a legal user-role prefix; SQL LIKE 'pg_%' would silently omit
+      // it because underscore is a wildcard rather than a literal separator.
+      const nonReserved = await login.query("select rolcanlogin as login,rolinherit as inherit from pg_roles where rolname='pgapp_recovery'");
+      if (JSON.stringify(nonReserved.rows) !== JSON.stringify([{ login: false, inherit: false }])) throw new Error("restored-nonreserved-role-missing");
       const memberships = await login.query(`select granted.rolname as role, member.rolname as member,
         a.admin_option as admin, a.inherit_option as "inherit", a.set_option as "set"
         from pg_auth_members a join pg_roles granted on granted.oid=a.roleid join pg_roles member on member.oid=a.member

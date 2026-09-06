@@ -10,11 +10,15 @@ const LIMIT = 256 * 1024 * 1024;
  * does not carry these capabilities. Compare ACL entries as ordered multisets;
  * pg_init_privs records non-default initial grants, while acldefault supplies
  * PostgreSQL's own default for objects without an initial-privilege row.
+ * Other databases are never opened: shared catalog entries only detect package
+ * roles' explicit privileges/ownership that this single-database dump would omit.
  * A query error or unavailable baseline is a refusal, never an empty inventory.
  */
 export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = `
 with bootstrap as (
   select oid from pg_catalog.pg_roles where rolname='postgres'
+), package_roles as (
+  select oid from pg_catalog.pg_roles where rolname !~ '^pg_' and rolname<>'postgres'
 ), target_database as (
   select * from pg_catalog.pg_database where datname=pg_catalog.current_database()
 ), builtin_functions as (
@@ -47,8 +51,11 @@ with bootstrap as (
       order by grantor,grantee,privilege_type,is_grantable) from pg_catalog.aclexplode(expected)),'[]'::jsonb)
 )
 select json_build_object(
-  'databaseOwner',(select count(*) from target_database where datdba is distinct from (select oid from bootstrap)),
-  'databaseAcl',(select count(*) from changed_acls where kind='databaseAcl'),
+  'databaseOwner',(select count(*) from target_database where datdba is distinct from (select oid from bootstrap))
+    + (select count(*) from pg_catalog.pg_database where datname<>pg_catalog.current_database() and datdba in (select oid from package_roles)),
+  'databaseAcl',(select count(*) from changed_acls where kind='databaseAcl')
+    + (select count(*) from pg_catalog.pg_database database cross join lateral pg_catalog.aclexplode(database.datacl) acl
+       where database.datname<>pg_catalog.current_database() and (acl.grantee in (select oid from package_roles) or acl.grantor in (select oid from package_roles))),
   'tablespaceOwner',(select count(*) from pg_catalog.pg_tablespace where spcname not in ('pg_default','pg_global') or spcowner is distinct from (select oid from bootstrap)),
   'tablespaceAcl',(select count(*) from changed_acls where kind='tablespaceAcl'),
   'parameterAcl',(select count(*) from changed_acls where kind='parameterAcl'),
