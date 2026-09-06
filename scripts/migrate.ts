@@ -88,6 +88,19 @@ export type ManagementMigrationIntent = {
 export class ControlledManagementMigrationError extends Error {
   constructor(readonly code: string) { super(code); this.name = "ControlledManagementMigrationError"; }
 }
+async function assertManagementSearchPath(client: Pick<pg.PoolClient, "query">): Promise<void> {
+  const result = await client.query<{ valid: boolean }>(`select
+    pg_catalog.current_setting('search_path')='public, pg_temp'
+    and pg_catalog.current_schema()='public'
+    and (pg_catalog.current_schemas(true))[1]='pg_catalog' as valid`);
+  if (result.rows[0]?.valid !== true) throw new ControlledManagementMigrationError("management-migration-search-path-drift");
+}
+async function configureManagementSession(client: Pick<pg.PoolClient, "query">): Promise<void> {
+  // This must precede even the target-identity query. public is the creation
+  // namespace, implicit pg_catalog wins builtins, and temporary tables come last.
+  await client.query("select pg_catalog.set_config('search_path','public, pg_temp',false)");
+  await assertManagementSearchPath(client);
+}
 export type ManagementMigrationReceipt = {
   readonly version: "pcat-management-migration-receipt-v1";
   readonly intentDigest: string;
@@ -138,6 +151,7 @@ export async function verifyManagementMigrationReceipt(input: Pick<ControlledMig
   if (input.intent.checkpointMode === "postgres") {
     const client = await input.pool.connect();
     try {
+      await configureManagementSession(client);
       if (canonicalJson(await readBindingDatabaseIdentity(client)) !== canonicalJson(input.intent.target)) throw new ControlledManagementMigrationError("management-migration-target-mismatch");
       await verifyPostgresCheckpointerTablesOnClient(client);
     } finally { client.release(); }
@@ -188,6 +202,7 @@ export async function runControlledManagementMigrations(raw: NodeJS.ProcessEnv, 
   let failed = false;
   try {
     lock = await pool.connect();
+    await configureManagementSession(lock);
     if (canonicalJson(await readBindingDatabaseIdentity(lock)) !== canonicalJson(input.intent.target)) throw new ControlledManagementMigrationError("management-migration-target-mismatch");
     const acquired = await lock.query<{ held: boolean }>("select pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held");
     if (acquired.rows[0]?.held !== true) throw new ControlledManagementMigrationError("management-migration-target-locked");
@@ -195,6 +210,7 @@ export async function runControlledManagementMigrations(raw: NodeJS.ProcessEnv, 
     const assertEffectAllowed = async () => {
       await input.operationLock.assertHeld();
       await input.boundary.verify(structuredClone(input.intent));
+      await assertManagementSearchPath(lock!);
       const checked = await lock!.query<{ held: boolean }>(`select exists(select 1 from pg_catalog.pg_locks where pid=pg_backend_pid()
         and locktype='advisory' and granted and mode='ExclusiveLock' and objsubid=2
         and classid=hashtext('s7-orc-cutover-target')::oid and objid=hashtext(current_database())::oid) as held`);
@@ -223,7 +239,10 @@ export async function runControlledManagementMigrations(raw: NodeJS.ProcessEnv, 
       }),
       prepareCheckpoints: async () => {
         await assertEffectAllowed();
+        const configured = new WeakSet<pg.PoolClient>();
         return setupXiaozeCheckpointerTables({ mode: configuration.mode, pool, beforeWrite: async client => {
+          if (!configured.has(client)) { await configureManagementSession(client); configured.add(client); }
+          await assertManagementSearchPath(client);
           if (canonicalJson(await readBindingDatabaseIdentity(client)) !== canonicalJson(input.intent.target)) throw new ControlledManagementMigrationError("management-migration-target-mismatch");
           await assertEffectAllowed();
         } });

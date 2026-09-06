@@ -194,6 +194,10 @@ export async function inspectFrozenSourceSnapshotProgress(input: SnapshotVerific
       const applied = ledger.slice(body.sourceMigrations.length);
       if (applied.length > suffix.length || !equal(applied, suffix.slice(0, applied.length))) return refuse("migration-suffix-drift");
       const current = await readRelations(client); let verifiedRows = 0;
+      // Before the first appended migration, *all* source tables and columns
+      // must still match P0. Projection-only equality would hide a newly added
+      // table or a populated column before the management intent is recorded.
+      if (applied.length === 0 && !equal(current, body.relations.map(({ name, kind, columns }) => ({ name, kind, columns })))) return refuse("source-schema-drift");
       for (const relation of body.relations) {
         const target = current.find(row => row.name === relation.name);
         if (!target || target.kind !== relation.kind) return refuse("relation-drift");

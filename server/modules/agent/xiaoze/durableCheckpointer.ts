@@ -117,6 +117,10 @@ export async function verifyPostgresCheckpointerTables(connectionString: string)
  * The caller owns the connection and transaction lifetime. */
 export async function verifyPostgresCheckpointerTablesOnClient(client: Pick<pg.PoolClient, "query">): Promise<void> {
   try {
+    await client.query("select pg_catalog.set_config('search_path','public, pg_temp',false)");
+    const pathState = await client.query<{ valid: boolean }>(`select pg_catalog.current_setting('search_path')='public, pg_temp'
+      and pg_catalog.current_schema()='public' and (pg_catalog.current_schemas(true))[1]='pg_catalog' as valid`);
+    if (pathState.rows[0]?.valid !== true) throw new Error("checkpoint search path mismatch");
     const ledger = await client.query<{ v: number }>("select v from public.checkpoint_migrations order by v");
     // checkpoint-postgres 1.0.4 has exactly five schema migrations (0..4).
     if (JSON.stringify(ledger.rows.map((row) => row.v)) !== "[0,1,2,3,4]") {

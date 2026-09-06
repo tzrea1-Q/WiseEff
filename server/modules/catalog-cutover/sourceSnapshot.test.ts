@@ -128,11 +128,36 @@ describe("frozen old public projection across exact append-only migrations", () 
       await partialPool.query("insert into organizations(id,name) values ('partial-org','preserve this source row')");
       const descriptor = await captureFrozenSourceSnapshot({ pool: partialPool, sourceMigrationsDirectory: sourceDirectory, candidateMigrationsDirectory: candidateDirectory });
       const initialInput = { pool: partialPool, descriptor, expectedDescriptorDigest: descriptor.digest, candidateMigrationsDirectory: candidateDirectory };
+      const intent: ManagementMigrationIntent = { version: "pcat-management-migration-intent-v1", runId: "refuse-schema-drift",
+        preparationPlanDigest: sha256Prefixed("isolated schema-drift component preparation"), target: descriptor.target,
+        sourceSnapshotDigest: descriptor.digest, candidateInventoryDigest: descriptor.candidateInventoryDigest,
+        writeFenceReceiptDigest: sha256Prefixed("component writer-boundary fixture"), recoveryManifestDigest: sha256Prefixed("component recovery-boundary fixture"), checkpointMode: "memory" };
+      const operationRoot = path.join(directory, "partial-operation");
+      await mkdir(operationRoot, { mode: 0o700 });
+      const assertRefusedBeforeIntent = async () => {
+        let begins = 0;
+        await withHostOperationLock(operationRoot, async operationLock => {
+          await expect(runControlledManagementMigrations({ DATABASE_URL: partial.url }, {
+            ...initialInput, intent, operationLock, boundary: { verify: async () => {} },
+            journal: { begin: async () => { begins++; throw new Error("must not begin"); },
+              finish: async () => { throw new Error("must not finish"); }, unknown: async () => { throw new Error("must not mark unknown"); } },
+          })).rejects.toThrow("source-snapshot-source-schema-drift");
+        });
+        expect(begins).toBe(0);
+        expect((await partialPool.query("select name from public.schema_migrations order by name collate \"C\"")).rows.map(row => row.name))
+          .toEqual(descriptor.sourceMigrations.map(row => row.name));
+      };
       await partialPool.query("create table public.unfrozen_business(id text); insert into public.unfrozen_business values ('not captured')");
-      try { await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift"); }
+      try {
+        await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift");
+        await assertRefusedBeforeIntent();
+      }
       finally { await partialPool.query("drop table public.unfrozen_business"); }
       await partialPool.query("alter table public.organizations add column uncaptured text default 'not captured'");
-      try { await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift"); }
+      try {
+        await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift");
+        await assertRefusedBeforeIntent();
+      }
       finally { await partialPool.query("alter table public.organizations drop column uncaptured"); }
       const first = descriptor.migrationSuffix[0];
       expect(first).toBeDefined();
