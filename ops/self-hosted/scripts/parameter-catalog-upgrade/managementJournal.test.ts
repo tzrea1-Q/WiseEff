@@ -11,6 +11,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const pin = (character: string) => `sha256:${character.repeat(64)}`;
 const target = { systemIdentifier: "123", databaseOid: "45" };
 const intent = (runId: string) => ({ version: "pcat-management-migration-intent-v1" as const, runId,
+  candidateArtifactSha: "a".repeat(40), candidateArtifactTree: "b".repeat(40),
   preparationPlanDigest: pin("a"), target, sourceSnapshotDigest: pin("b"), candidateInventoryDigest: pin("c"),
   writeFenceReceiptDigest: pin("d"), recoveryManifestDigest: pin("e"), checkpointMode: "memory" as const });
 function fixture(options: { operationRoot?: string; runId?: string; target?: typeof target } = {}) {
@@ -27,6 +28,7 @@ function fixture(options: { operationRoot?: string; runId?: string; target?: typ
 const receiptOf = (command: ReturnType<typeof intent>) => ({ version: "pcat-management-migration-receipt-v1" as const,
   intentDigest: sha256Prefixed(canonicalJson(command)), sourceSnapshotDigest: command.sourceSnapshotDigest,
   candidateInventoryDigest: command.candidateInventoryDigest, verifiedRelations: 100, verifiedRows: 7,
+  installedStructureDigest: pin("f"),
   appliedSuffix: 11, checkpoint: { mode: "memory" as const, status: "skipped" as const } });
 
 it("requires a fresh receipt to verify the one durable management attempt without changing controller state", async () => {

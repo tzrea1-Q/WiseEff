@@ -86,6 +86,7 @@ const inputDigestFor = (
       bindingImportIntent: record?.bindingImportIntent ?? null,
       bindingArchiveRetainUntil: record?.bindingArchiveRetainUntil ?? null,
       managementMigrationReceiptDigest: record?.managementMigrationReceiptDigest ?? null,
+      managementPreparation: record?.managementPreparation ?? null,
     });
   }
   if (action === "execute") {
@@ -183,7 +184,9 @@ export const openCatalogUpgradeController = (
         if (management.status === "pending" || management.status === "unknown") return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "management migration requires explicit reconciliation");
         // The Binding adapter reads every run under the same target admission
         // lock, including management outcomes, before any owner or replay.
-        if (deps.bindingJournalScope && bindingJournal) await bindingJournal.unresolved(deps.bindingJournalScope.target);
+        if (deps.bindingJournalScope && bindingJournal && (await bindingJournal.unresolved(deps.bindingJournalScope.target)).length !== 0) {
+          return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "Binding phase requires explicit reconciliation");
+        }
       } catch { return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "target phase admission is unavailable"); }
       if (current.value.record.journalDigest !== journal.record.journalDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
       try { await deps.operationLock?.assertHeld(); }

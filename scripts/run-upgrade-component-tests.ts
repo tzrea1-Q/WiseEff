@@ -8,7 +8,7 @@ import { setTimeout } from "node:timers/promises";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts"];
+const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
 const suites = {
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles },

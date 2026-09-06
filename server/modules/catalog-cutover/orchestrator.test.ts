@@ -355,6 +355,61 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
     expect(unknown.error.code).toBe("PCAT-ORC-ACTIVATION-UNAVAILABLE");
   });
 
+  it("rechecks P4 admission on partial resume and completed replay before writing a run", async () => {
+    // This tests the real S7/checkpoint/Archive dispatch with a controlled port.
+    // The actual receipt/DDL verifier has separate real-PG sourceSnapshot tests;
+    // this callback supplies no release verification report or approval.
+    const isolated = await createDisposableParameterCatalogDatabase("s7p4resume");
+    const isolatedPool = new pg.Pool({ connectionString: isolated.url });
+    const source = new pg.Client({ connectionString: isolated.url });
+    await source.connect();
+    try {
+      await seedPopulatedCutover(source, graph);
+      const installed = await installPublishedRelease(isolatedPool, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: plan.targetCatalogReleaseDigest });
+      expect(installed.ok).toBe(true);
+      const preparation = { runId: "p4-preparation", planDigest: `sha256:${"a".repeat(64)}`,
+        candidateArtifactSha: plan.targetArtifactSha, candidateArtifactTree: "c".repeat(40) };
+      const request = { graph, targetArtifactSha: plan.targetArtifactSha, targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+        catalogReleaseSource: jsonCatalogReleaseSource(bundle), managementPreparation: preparation,
+        managementMigrationReceiptDigest: `sha256:${"d".repeat(64)}` };
+      expect(await planCutover({ ...request, targetArtifactSha: "e".repeat(40) }))
+        .toMatchObject({ ok: false, error: { detail: "management-preparation-pin-invalid" } });
+      const planned = await planCutover(request);
+      if (!planned.ok) throw new Error(planned.error.detail);
+      let applicable = true; let observations = 0;
+      const callerPlan = structuredClone(planned.value);
+      const controlled = { ...executeInput(), pool: isolatedPool, plan: planned.value,
+        archiveObjectStore: createLocalArchiveObjectStore(path.join(objectRoot, "p4-resume")),
+        managementMigrations: { verify: async (received: { receiptDigest: string; preparation: typeof preparation }) => {
+          observations++; expect(received.preparation).toEqual(preparation);
+          if (observations === 1) {
+            // The provider yields after the plan digest was checked. Caller
+            // mutation must never alter the candidate persisted after admission.
+            await Promise.resolve();
+            Object.assign(callerPlan, { targetArtifactSha: "e".repeat(40),
+              managementPreparation: { ...preparation, candidateArtifactTree: "f".repeat(40) } });
+          }
+          if (!applicable) throw new Error("fixture-receipt-no-longer-applicable");
+          return { receiptDigest: received.receiptDigest, sourceSnapshotDigest: `sha256:${"1".repeat(64)}`, candidateInventoryDigest: `sha256:${"2".repeat(64)}` };
+        } },
+      };
+      const checkpointRows = async () => (await source.query("select row_to_json(r)::text as r from parameter_catalog.parameter_catalog_cutover_runs r order by id")).rows;
+      expect(await executeCutover({ ...controlled, plan: callerPlan, failBeforePhase: "P5" })).toMatchObject({ ok: false, error: { code: "PCAT-ORC-CRASH" } });
+      expect((await source.query("select target_artifact_sha from parameter_catalog.parameter_catalog_cutover_runs")).rows)
+        .toEqual([{ target_artifact_sha: plan.targetArtifactSha }]);
+      const beforeResume = await checkpointRows(); const beforeCalls = observations;
+      applicable = false;
+      expect(await executeCutover(controlled)).toMatchObject({ ok: false, error: { detail: "management-migration-receipt-verification-failed" } });
+      expect(observations).toBe(beforeCalls + 1); expect(await checkpointRows()).toEqual(beforeResume);
+      applicable = true;
+      expect(await executeCutover(controlled)).toMatchObject({ ok: true, value: { state: "completed" } });
+      const beforeReplay = await checkpointRows(); const replayCalls = observations;
+      applicable = false;
+      expect(await executeCutover(controlled)).toMatchObject({ ok: false, error: { detail: "management-migration-receipt-verification-failed" } });
+      expect(observations).toBe(replayCalls + 1); expect(await checkpointRows()).toEqual(beforeReplay);
+    } finally { await source.end(); await isolatedPool.end(); await isolated.close(); }
+  });
+
   it("T6 empty catalog is not P0-P10 evidence", async () => {
     const empty = await planCutover({
       graph: { ...graph, identities: [] },

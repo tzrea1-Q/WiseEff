@@ -70,7 +70,15 @@ export type CutoverResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: CutoverFailure };
 
+export type ManagementPreparationPin = {
+  readonly runId: string;
+  readonly planDigest: string;
+  readonly candidateArtifactSha: string;
+  readonly candidateArtifactTree: string;
+};
+
 export type CutoverPlan = {
+  readonly managementPreparation?: ManagementPreparationPin;
   readonly managementMigrationReceiptDigest?: string;
   readonly bindingImportIntentDigest?: string;
   readonly bindingArchiveRetainUntil?: string;
@@ -103,6 +111,7 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  readonly managementPreparation?: ManagementPreparationPin;
   /** Receipt from the fixed preparation plan, generated before this S7 plan. */
   readonly managementMigrationReceiptDigest?: string;
   readonly bindingImportIntent?: BindingImportIntent;
@@ -119,7 +128,7 @@ export type ExecuteCutoverInput = {
   readonly managementMigrations?: {
     /** Root-owned: recompute the source/ledger/checkpoint receipt on the actual
      * target, and compare it with the committed existing controller journal. */
-    verify(input: { receiptDigest: string; target: DatabaseIdentity }): Promise<{
+    verify(input: { receiptDigest: string; target: DatabaseIdentity; preparation: ManagementPreparationPin }): Promise<{
       receiptDigest: string; sourceSnapshotDigest: string; candidateInventoryDigest: string;
     }>;
   };

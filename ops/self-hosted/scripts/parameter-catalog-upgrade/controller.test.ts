@@ -26,7 +26,9 @@ import type {
 import type { CutoverPorts, VerificationPorts } from "./actions";
 import { asPrepareVerificationCutover } from "./actions";
 import { openCatalogUpgradeController } from "./controller";
-import { journalBytes } from "./journal";
+import { journalBytes, openUpgradeJournal } from "./journal";
+import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
+import { withHostOperationLock } from "./handoff";
 import { THREAT_MATRIX } from "./threatMatrix";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -238,6 +240,47 @@ describe("S11-UPG threat matrix", () => {
 });
 
 describe("S11-UPG controller", () => {
+  it.each(["pending", "unknown"] as const)("rejects cross-run %s before planning, verification or replay", async outcome => {
+    const operationRoot = mkdtempSync(path.join(tmpdir(), "upg-controller-admission-"));
+    const target = { systemIdentifier: "123456789", databaseOid: "16384" };
+    await withHostOperationLock(operationRoot, async operationLock => {
+      const completed = createHarness();
+      const journalPath = bindingJournalPath({ operationRoot, target, runId: "completed" });
+      let opened = openCatalogUpgradeController({ journalPath, runId: "completed", cutover: completed.cutover,
+        verification: completed.verification, operationLock });
+      if (!opened.ok) throw new Error("fixture-open-failed");
+      for (const command of [{ action: "plan", input: planInput() }, { action: "execute", input: executeInput() },
+        { action: "prepareVerification", input: prepareInput() }]) {
+        const result = await opened.value.dispatch(command);
+        if (!result.ok) throw new Error(`fixture-${command.action}: ${result.error.code}: ${result.error.detail}`);
+      }
+      opened = openCatalogUpgradeController({ journalPath, runId: "completed", cutover: completed.cutover,
+        verification: completed.verification, operationLock, bindingJournalScope: { operationRoot, target } });
+      if (!opened.ok) throw new Error("fixture-reopen-failed");
+      const idle = createHarness();
+      const idlePath = bindingJournalPath({ operationRoot, target, runId: "idle" });
+      const idleController = openCatalogUpgradeController({ journalPath: idlePath, runId: "idle", cutover: idle.cutover,
+        verification: idle.verification, operationLock, bindingJournalScope: { operationRoot, target } });
+      if (!idleController.ok) throw new Error("fixture-open-failed");
+      const other = openUpgradeJournal({ journalPath: bindingJournalPath({ operationRoot, target, runId: "uncertain" }), runId: "uncertain" });
+      if (!other.ok) throw new Error("fixture-open-failed");
+      const adapter = createBindingCutoverJournal({ operationRoot, target, journal: other.value, assertEffectAllowed: operationLock.assertHeld });
+      const pin = `sha256:${"a".repeat(64)}`;
+      const attempt = await adapter.begin({ target, runId: "cutover_uncertain", planDigest: pin, phase: "P9", inputDigest: pin });
+      if (outcome === "unknown") await adapter.finish({ attempt, outcome });
+      const before = journalBytes(journalPath); const beforeIdle = journalBytes(idlePath);
+      const calls = [...completed.calls];
+      for (const command of [{ action: "prepareVerification", input: prepareInput() },
+        { action: "prepareVerification", input: { ...prepareInput(), purpose: "public-release" } },
+        { action: "runVerification", input: { planDigest: "sha256:vplan" } }]) {
+        expect(await opened.value.dispatch(command)).toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
+      }
+      expect(await idleController.value.dispatch({ action: "plan", input: planInput() }))
+        .toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
+      expect(completed.calls).toEqual(calls); expect(idle.calls).toEqual([]);
+      expect(journalBytes(journalPath)).toEqual(before); expect(journalBytes(idlePath)).toEqual(beforeIdle);
+    });
+  });
   it("does not reuse a prepared verification when another database pin is supplied", async () => {
     const harness = createHarness();
     const opened = openCatalogUpgradeController({ journalPath: journalPathFor("verification-input"), runId: "verification-input", cutover: harness.cutover, verification: harness.verification });

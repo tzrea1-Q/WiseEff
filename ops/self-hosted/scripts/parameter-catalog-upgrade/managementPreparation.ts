@@ -29,6 +29,9 @@ export function createManagementMigrationPreparation(input: {
     async verify(request) {
       const fixed = structuredClone(request);
       if (canonicalJson(fixed.target) !== canonicalJson(scope.target) || !/^sha256:[a-f0-9]{64}$/.test(fixed.receiptDigest)) throw new Error("management-preparation-target-mismatch");
+      if (canonicalJson(fixed.preparation) !== canonicalJson({ runId: context.intent.runId,
+        planDigest: context.intent.preparationPlanDigest, candidateArtifactSha: context.intent.candidateArtifactSha,
+        candidateArtifactTree: context.intent.candidateArtifactTree })) throw new Error("management-preparation-applicability-mismatch");
       await context.operationLock.assertHeld();
       const before = observeJournal();
       const state = readManagementMigrationAttempt(before);

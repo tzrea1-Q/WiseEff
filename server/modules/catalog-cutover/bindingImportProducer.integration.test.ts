@@ -303,13 +303,14 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
             verification: { prepareVerification: unused, runVerification: unused },
           });
           if (!controller.ok) throw new Error("fixture-controller-open-failed");
-          expect((await controller.value.dispatch({ action: "plan", input: realPlanInput })).ok).toBe(true);
+          expect(await controller.value.dispatch({ action: "plan", input: realPlanInput }))
+            .toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
           const result = await controller.value.dispatch({ action: "execute", input: {
             ...realPlanInput, plan: plan.value, pool: admin, bindingManagementPool: probeManagement,
             bindingBoundary: { prepare: unused, verify: unused },
             archiveObjectStore: producer.archive.objectStore, archiveEncryptionKey: producer.archive.encryptionKey,
           } });
-          expect(result).toMatchObject({ ok: false, error: { detail: "PCAT-ORC-RESUME-INVALIDATED: binding-unresolved-phase-attempt" } });
+          expect(result).toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
         }
       });
       expect((await client.query("select phase,checkpoint_digest from parameter_catalog.parameter_catalog_cutover_checkpoints order by phase")).rows).toEqual(before);

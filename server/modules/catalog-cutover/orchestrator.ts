@@ -94,6 +94,10 @@ const parseBundle = async (source: CatalogReleaseSource) => {
 export const planCutover = async (
   input: PlanCutoverInput,
 ): Promise<CutoverResult<CutoverPlan>> => {
+  input = { ...input, graph: structuredClone(input.graph),
+    managementPreparation: input.managementPreparation && structuredClone(input.managementPreparation),
+    bindingImportIntent: input.bindingImportIntent && structuredClone(input.bindingImportIntent),
+    conversionManifest: input.conversionManifest && structuredClone(input.conversionManifest) };
   if (!ARTIFACT_SHA.test(input.targetArtifactSha)) {
     return fail(
       "PCAT-ORC-INVALID-PLAN",
@@ -149,7 +153,15 @@ export const planCutover = async (
     return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-requires-release-source");
   }
   if (input.managementMigrationReceiptDigest !== undefined && !/^sha256:[a-f0-9]{64}$/.test(input.managementMigrationReceiptDigest)) return fail("PCAT-ORC-INVALID-PLAN", "management-migration-receipt-pin-invalid");
-  const managementPin = input.managementMigrationReceiptDigest ? { managementMigrationReceiptDigest: input.managementMigrationReceiptDigest } : {};
+  const preparation = input.managementPreparation;
+  if (!!input.managementMigrationReceiptDigest !== !!preparation || (preparation &&
+      (!/^[A-Za-z0-9_-]+$/.test(preparation.runId) || !/^sha256:[a-f0-9]{64}$/.test(preparation.planDigest) ||
+       preparation.candidateArtifactSha !== input.targetArtifactSha || !ARTIFACT_SHA.test(preparation.candidateArtifactTree)))) {
+    return fail("PCAT-ORC-INVALID-PLAN", "management-preparation-pin-invalid");
+  }
+  const managementPin = input.managementMigrationReceiptDigest ? {
+    managementMigrationReceiptDigest: input.managementMigrationReceiptDigest, managementPreparation: structuredClone(preparation!),
+  } : {};
   const sourceSnapshotFingerprint = fingerprintP0Graph(input.graph);
   const planDigest = sha256Prefixed(
     JSON.stringify({
@@ -276,9 +288,9 @@ const runPhase = async (
     case "P4": {
       if (input.bindingImportIntent || input.plan.managementMigrationReceiptDigest) {
         const receiptDigest = input.plan.managementMigrationReceiptDigest;
-        if (!receiptDigest || !input.managementMigrations) return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-unavailable");
+        if (!receiptDigest || !input.plan.managementPreparation || !input.managementMigrations) return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-unavailable");
         try {
-          const proof = await input.managementMigrations.verify({ receiptDigest, target: await readBindingDatabaseIdentity(client) });
+          const proof = await input.managementMigrations.verify({ receiptDigest, target: await readBindingDatabaseIdentity(client), preparation: input.plan.managementPreparation });
           if (proof.receiptDigest !== receiptDigest || ![proof.sourceSnapshotDigest, proof.candidateInventoryDigest].every(pin => /^sha256:[a-f0-9]{64}$/.test(pin))) return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-mismatch");
           return ok({ schemaExpanded: true, mode: "controlled-receipt-verified", ...proof });
         } catch { return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-verification-failed"); }
@@ -549,6 +561,12 @@ const withCutoverLock = async <T>(
 export const executeCutover = async (
   input: ExecuteCutoverInput,
 ): Promise<CutoverResult<CutoverRunSnapshot>> => {
+  // Fix serializable inputs before acquiring connections or invoking an async
+  // receipt provider. Keep database/storage ports as opaque capabilities.
+  input = { ...input, plan: structuredClone(input.plan), graph: structuredClone(input.graph),
+    bindingImportIntent: input.bindingImportIntent && structuredClone(input.bindingImportIntent),
+    conversionManifest: input.conversionManifest && structuredClone(input.conversionManifest),
+    archiveEncryptionKey: Buffer.from(input.archiveEncryptionKey) };
   if (input.failBeforePhase) {
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
@@ -576,9 +594,15 @@ export const executeCutover = async (
         if (sourceBindings.rows.length !== input.graph.bindings.length || !sourceBindings.rows.every(b => input.graph.bindings.some(g => g.id === b.id && g.organizationId === b.organization_id && g.parameterSpecId === b.parameter_spec_id && g.moduleId === b.module_id)) || sourceRevisions.rows.length !== input.graph.bindingRevisions.length || !sourceRevisions.rows.every(r => input.graph.bindingRevisions.some(g => g.id === r.id && g.bindingId === r.binding_id && g.parameterSpecVersionId === r.parameter_spec_version_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-graph-conservation");
       } catch (error) { return fail("PCAT-ORC-INVALID-PLAN",error instanceof BindingProducerRefusal || error instanceof BindingSourceRefusal ? error.message : "binding-management-preflight-query-failure"); }
     }
-    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil,managementMigrationReceiptDigest:input.plan.managementMigrationReceiptDigest });
+    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil,managementMigrationReceiptDigest:input.plan.managementMigrationReceiptDigest,managementPreparation:input.plan.managementPreparation });
     if (!replanned.ok) return replanned;
     if (replanned.value.planDigest !== input.plan.planDigest) return fail("PCAT-ORC-INVALID-PLAN", "conversion-plan-mismatch");
+    // A committed P4 checkpoint is historical evidence. Resume and completed
+    // replay must recompute its current applicability before any run write.
+    if (input.bindingImportIntent || input.plan.managementMigrationReceiptDigest) {
+      const prepared = await runPhase("P4", input, client, "pre-admission", { value: null });
+      if (!prepared.ok) return prepared;
+    }
     if (input.plan.conversionManifestDigest || input.conversionManifest) {
       if (!input.conversionManifest || input.plan.conversionManifestDigest !== conversionManifestDigest(input.conversionManifest)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-digest-mismatch");
       if ((sourceInventory ?? await captureConversionSourceInventory(client)) !== input.conversionManifest.sourceInventoryFingerprint) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-inventory-drift");

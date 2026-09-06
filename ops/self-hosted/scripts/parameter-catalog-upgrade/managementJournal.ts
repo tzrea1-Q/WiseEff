@@ -20,6 +20,7 @@ function fail(reason: string): never { throw new Error(`management-journal-${rea
 
 function validateIntent(intent: ManagementMigrationIntent): void {
   if (intent.version !== "pcat-management-migration-intent-v1" || !token(intent.runId) ||
+      !/^[a-f0-9]{40}$/.test(intent.candidateArtifactSha) || !/^[a-f0-9]{40}$/.test(intent.candidateArtifactTree) ||
       ![intent.preparationPlanDigest, intent.sourceSnapshotDigest, intent.candidateInventoryDigest, intent.writeFenceReceiptDigest, intent.recoveryManifestDigest].every(isDigest) ||
       !/^[0-9]+$/.test(intent.target?.systemIdentifier) || !/^[0-9]+$/.test(intent.target?.databaseOid) ||
       !["memory", "postgres"].includes(intent.checkpointMode)) fail("invalid-intent");
@@ -27,6 +28,7 @@ function validateIntent(intent: ManagementMigrationIntent): void {
 function validateReceipt(intent: ManagementMigrationIntent, receipt: ManagementMigrationReceipt): void {
   validateIntent(intent);
   if (receipt.version !== "pcat-management-migration-receipt-v1" || receipt.intentDigest !== digest(intent) ||
+      !isDigest(receipt.installedStructureDigest) ||
       receipt.sourceSnapshotDigest !== intent.sourceSnapshotDigest || receipt.candidateInventoryDigest !== intent.candidateInventoryDigest ||
       ![receipt.verifiedRelations, receipt.verifiedRows, receipt.appliedSuffix].every(count => Number.isSafeInteger(count) && count >= 0) ||
       receipt.verifiedRelations === 0 || receipt.checkpoint?.mode !== intent.checkpointMode ||

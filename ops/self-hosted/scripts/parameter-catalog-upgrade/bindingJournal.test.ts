@@ -27,6 +27,7 @@ describe("durable controller Binding phase journal", () => {
     const source = open("management");
     const management = createManagementMigrationJournal({ operationRoot, target, journal: source.journal, assertHeld: async () => undefined });
     await management.begin({ version: "pcat-management-migration-intent-v1", runId: "management", preparationPlanDigest: digest, target,
+      candidateArtifactSha: "a".repeat(40), candidateArtifactTree: "b".repeat(40),
       sourceSnapshotDigest: digest, candidateInventoryDigest: digest, writeFenceReceiptDigest: digest, recoveryManifestDigest: digest, checkpointMode: "memory" });
     await expect(open("binding").adapter.begin(intent)).rejects.toThrow("management-journal-unresolved");
   });
