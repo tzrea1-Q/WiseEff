@@ -21,7 +21,7 @@ Delivery risk R3: inventory identity. Parent owns exactly the existing checker a
 | Missing record, partial write or future file edit | No automatic approval or fallback | Integrity/exact-blob regressions / parent |
 | Direct and Hosted merge checkout | Identical mapping with unchanged ancestry contract | Local fixed-SHA check and actual CI job / parent |
 
-Documentation Impact Matrix: these plans register ownership/authorization/outcomes; bilingual governance explains the exact relocation contract; the evidence index/archive binds raw runs and reviews. No runtime/API/UI/schema or requirement-marker change. Documentation Update Gate: `npm run docs:check`. The inventory assertion, original fixture and trusted base 35cb remain unchanged. Independent review, local gates and Hosted are still pending; no pass is recorded in this preflight.
+Documentation Impact Matrix: these plans register ownership/authorization/outcomes; bilingual governance explains the exact relocation contract; the evidence index/archive binds raw runs and reviews. No runtime/API/UI/schema or requirement-marker change. Documentation Update Gate: `npm run docs:check`. The inventory assertion, original fixture and trusted base 35cb remain unchanged. At the original pre-execution registration, review/local gates/Hosted were pending; the outcome above supersedes that status, with only report-head Hosted still pending.
 
 
 ## Latest review-return evidence — 2026-09-06

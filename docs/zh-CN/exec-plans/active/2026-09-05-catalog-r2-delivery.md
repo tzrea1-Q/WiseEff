@@ -21,7 +21,7 @@ Hosted 前结果：代码候选 `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`，tre
 | 缺失记录、写入一半、后续文件变化 | 不自动批准、不降级兜底 | 完整性和 blob 反例／父协调者 |
 | 直接 checkout 与 Hosted merge checkout | 映射一致，祖先契约不变 | 固定 SHA 本地检查及实际 CI／父协调者 |
 
-Documentation Impact Matrix：双语计划记录所有权、授权与结果；双语治理说明精确重定位契约；证据索引／归档绑定原始执行与审查。无运行时代码、API、UI、schema 或需求 marker 变更。Documentation Update Gate 为 `npm run docs:check`。原 inventory 断言、原始 fixture 和 trusted base 35cb 不变。独立审查、本地门禁和 Hosted 尚待执行，本节不预写通过。
+Documentation Impact Matrix：双语计划记录所有权、授权与结果；双语治理说明精确重定位契约；证据索引／归档绑定原始执行与审查。无运行时代码、API、UI、schema 或需求 marker 变更。Documentation Update Gate 为 `npm run docs:check`。原 inventory 断言、原始 fixture 和 trusted base 35cb 不变。本段为执行前历史登记，当时独立审查、本地门禁与 Hosted 尚待执行；结果以上方更新为准，目前仅报告 head 的 Hosted 待执行。
 
 
 ## 最新审查返修证据 — 2026-09-06

@@ -683,26 +683,26 @@
   ],
   "archive": {
     "path": "docs/exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.zip",
-    "bytes": 368189,
-    "sha256": "38166dd2011fe91be237c1c930ccf2f1d44cf2a2c0a583b05ff5b5f90168a5b4",
+    "bytes": 368339,
+    "sha256": "96cc16aa86f0a330f2da703937ef7242324e5630998205791b2a4d9f0450bdce",
     "manifest": {
       "candidate": "97d5e5bc7d7bce154b4ab6d673ea612e678e4aed",
       "tree": "528b831ab20d40efbc892c1bb07b241d71b2720b",
       "files": [
         {
           "path": "README-en.txt",
-          "bytes": 608,
-          "sha256": "fcb7cba6bb43e3bf00cfcb082d9a7b33be370a2f6ce37b877fcf2214b3663faa"
+          "bytes": 741,
+          "sha256": "530e219260e5c6e87ae099f76b764954a115becabe027c55ff820cd42a184d8f"
         },
         {
           "path": "README-zh.txt",
-          "bytes": 548,
-          "sha256": "0ab94a40f61e5ca9f2b5181a4731ffaf60c5aca9dd07acbbbc2d3d7cb5a00fe4"
+          "bytes": 703,
+          "sha256": "9449d111b0afb3367b513777be59d38d21f743e15b46b6265ad213b07a9ccf33"
         },
         {
           "path": "artifact-safety.txt",
           "bytes": 370,
-          "sha256": "12298b61d10e00444741b14cc6692b48780fdc24a07c39236e6307fffd725d79"
+          "sha256": "6e31c4fb299d67dbd43fb574b0f17d9e2695a56bb7d10f3c3fa1859b46f2f3d7"
         },
         {
           "path": "candidate/ci-relocation-all-scripts.json",
