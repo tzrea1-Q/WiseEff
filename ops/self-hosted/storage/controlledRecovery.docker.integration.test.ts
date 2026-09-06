@@ -32,7 +32,8 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       throw new Error("owned-fixture-startup-failed");
     };
     const setup = async (name: string) => {
-      const networkId = docker.command(["network", "create", "--internal", "--label", `${label}=${runId}`, `controlled-${runId}-${name}`]).toString().trim();
+      const networkId = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false",
+        "--label", `${label}=${runId}`, `controlled-${runId}-${name}`]).toString().trim();
       networks.push(networkId);
       const secrets: DockerRecoverySecrets = { postgresPassword: randomBytes(24).toString("hex"), objectAccessKey: "controlled", objectSecretKey: randomBytes(24).toString("hex"), rolePasswords: { reader: randomBytes(24).toString("hex") } };
       const create = (image: string, args: string[], cmd: string[], destination?: string) => {

@@ -41,8 +41,10 @@ const ROLE_PROFILE_SQL = `select json_build_object(
 const tablesSql = "select format('%I.%I',n.nspname,c.relname) as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in ('r','p') and n.nspname not in ('pg_catalog','information_schema') and n.nspname !~ '^pg_toast' order by 1";
 const quote = (value: string) => pg.escapeLiteral(value);
 
-/** Deliberately limited to an explicitly owned internal Docker network. This is
- * not a production host selector. It never creates/stops/removes a resource. */
+/** Deliberately limited to the existing owned Docker bridge rehearsal profile:
+ * IP masquerade disabled, loopback published ports, exact members and volumes.
+ * This is not proof of complete application egress isolation or a production
+ * host selector. It never creates/stops/removes a resource. */
 function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecrets, sourceMode: boolean) {
   // Subsequent caller mutations cannot redefine which objects this adapter owns.
   resources = JSON.parse(JSON.stringify(resources)) as DockerRecoveryResources;
@@ -85,7 +87,8 @@ function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecre
   };
   const check = () => {
     const network = JSON.parse(docker.command(["network", "inspect", resources.networkId]).toString())[0];
-    if (network.Id !== resources.networkId || network.Internal !== true || network.Labels?.[OWNER_LABEL] !== resources.runId
+    if (network.Id !== resources.networkId || network.Driver !== "bridge" || network.Internal !== false
+      || network.Options?.["com.docker.network.bridge.enable_ip_masquerade"] !== "false" || network.Labels?.[OWNER_LABEL] !== resources.runId
       || Object.keys(network.Containers ?? {}).some(id => !all.some(c => c.id === id))) recoveryRefuse("network-not-isolated");
     const infos = all.map(inspect);
     for (const writer of resources.writers) if (inspect(writer).State.Running || inspect(writer).State.Restarting) recoveryRefuse("writer-still-running");
