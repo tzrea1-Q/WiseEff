@@ -26,7 +26,9 @@ export function assertOwnedUpgradeTestTarget(env: NodeJS.ProcessEnv = process.en
         !/^[a-f0-9]{64}$/.test(receipt.net) || receipt.url !== env.TEST_DATABASE_URL ||
         (env.DATABASE_URL && env.DATABASE_URL !== receipt.url)) throw new Error();
     const url = new URL(receipt.url);
-    if (!["postgres:", "postgresql:"].includes(url.protocol) || url.hostname !== "127.0.0.1" || !url.port || !url.pathname.slice(1)) throw new Error();
+    // pg-connection-string gives query host/port precedence over URL authority
+    // and can read sslkey/sslcert paths. This fixture needs no URI parameters.
+    if (!["postgres:", "postgresql:"].includes(url.protocol) || url.hostname !== "127.0.0.1" || !url.port || !/^\/[a-z0-9_]+$/.test(url.pathname) || url.search || url.hash) throw new Error();
     const docker = openDocker(env);
     if (receipt.daemonId !== docker.daemonId) throw new Error();
     const container = docker.assertOwned(receipt.id, receipt.label, receipt.run);
