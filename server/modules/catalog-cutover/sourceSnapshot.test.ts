@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog/database";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
-import { captureFrozenSourceSnapshot, verifyFrozenSourceSnapshot, type FrozenSourceSnapshot } from "./sourceSnapshot";
+import { captureFrozenSourceSnapshot, inspectFrozenSourceSnapshotProgress, verifyFrozenSourceSnapshot, type FrozenSourceSnapshot } from "./sourceSnapshot";
 
 // The parent runs this through vitest.upgrade-cutover.config.ts, which verifies
 // its explicit private target receipt before collecting any PostgreSQL suite.
@@ -61,8 +61,16 @@ describe("frozen old public projection across exact append-only migrations", () 
   });
 
   it("preserves the complete original projection while the actual candidate adds columns, tables and ledger entries", async () => {
+    const input = { pool, descriptor: frozen, expectedDescriptorDigest: frozen.digest, candidateMigrationsDirectory: candidateDirectory };
+    const progress = await inspectFrozenSourceSnapshotProgress(input);
+    expect(progress.appliedSuffix).toBe(0);
+    expect(progress.complete).toBe(false);
+    expect(progress.verifiedRelations).toBe(frozen.relations.length);
+    await pool.query("update organizations set name='changed-before-migration' where id='frozen-org'");
+    try { await expect(inspectFrozenSourceSnapshotProgress(input)).rejects.toThrow("source-snapshot-row-drift"); }
+    finally { await pool.query("update organizations set name='private-synthetic-value' where id='frozen-org'"); }
     await expect(verify()).rejects.toThrow("source-snapshot-migration-suffix-incomplete");
-    const applied = await applyMigrations(migrationDb, candidateDirectory);
+    const applied = await applyMigrations(migrationDb, candidateDirectory, { expectedInventory: [...frozen.sourceMigrations, ...frozen.migrationSuffix] });
     expect(applied).toEqual(frozen.migrationSuffix.map(entry => entry.name));
     const receipt = await verify();
     expect(receipt.sourceSnapshotDigest).toBe(frozen.digest);
