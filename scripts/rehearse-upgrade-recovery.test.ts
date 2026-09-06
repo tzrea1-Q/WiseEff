@@ -20,6 +20,16 @@ it("refuses external target and missing explicit synthetic mode before starting 
 });
 
 describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
+  it.each(["database-acl", "tablespace-acl", "parameter-acl", "builtin-function-acl"])("refuses non-dump %s before capture without correcting or deleting source state", fault => {
+    const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: ${JSON.stringify(fault)} })));`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
+    expect(child.status).toBe(0);
+    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: "non-dump-capability-unsupported",
+      backupExists: false, checksumVerified: false, restoreExecuted: false, businessVerified: false,
+      nonDumpCapabilitiesVerified: false, sourcePreservedBeforeCleanup: true, cleanupVerified: true });
+    expect(child.stdout.includes("postgres://")).toBe(false);
+  }, 100000);
+
   it.each(["stale-target-aof", "missing-object", "wrong-target"])("refuses %s before package restore and leaves traffic isolated", (fault) => {
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: ${JSON.stringify(fault)} })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
@@ -35,7 +45,7 @@ describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated t
     const evidence = JSON.parse(result.stdout);
     expect(evidence).toMatchObject({ status: "passed", evidence: "synthetic package only", releaseReady: false,
       fullBusinessVerification: false, backupExists: true, checksumVerified: true, restoreExecuted: true,
-      businessVerified: true, ownerAclVerified: true, roleCapabilitiesVerified: true, cleanupVerified: true, objectCount: 2,
+      businessVerified: true, ownerAclVerified: true, roleCapabilitiesVerified: true, nonDumpCapabilitiesVerified: true, cleanupVerified: true, objectCount: 2,
       sourceStoppedBeforeRestore: true, separateRestoreProcess: true, redisPersistence: "AOF" });
     expect(result.status).toBe(0);
     expect(evidence.manifestDigest).toMatch(/^[a-f0-9]{64}$/);

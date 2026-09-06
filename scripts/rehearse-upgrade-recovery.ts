@@ -8,11 +8,18 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
-import { captureRecoveryPackage, restoreRecoveryPackage, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
+import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, restoreRecoveryPackage, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
 
 const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const label = "wiseeff.synthetic-recovery-run";
+const nonDumpFaults = {
+  "database-acl": "grant create on database postgres to sentinel_reader",
+  "tablespace-acl": "grant create on tablespace pg_default to sentinel_reader",
+  "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
+  "builtin-function-acl": "revoke execute on function pg_catalog.pg_control_system() from public",
+} as const;
+type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | keyof typeof nonDumpFaults;
 
 type RestoreChild = {
   run: string; daemonId: string; directory: string; digest: string; password: string;
@@ -83,8 +90,8 @@ export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?:
 }
 
 /** No external targets, backups, image overrides, production configuration, or SQL inputs. */
-export async function rehearseSyntheticRecovery(options: { fault?: "stale-target-aof" | "missing-object" | "wrong-target" } = {}) {
-  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target"].includes(options.fault))) throw new Error("unknown-synthetic-fault");
+export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFault } = {}) {
+  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
   const run = randomBytes(12).toString("hex");
   const password = randomBytes(24).toString("hex");
   const targetPassword = randomBytes(24).toString("hex");
@@ -99,6 +106,7 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
     ownerAclVerified: false, roleCapabilitiesVerified: false, cleanupVerified: false, objectCount: 0,
     reason: "not-started", imageIdentities: {} as Record<string, string>, manifestDigest: "",
     sourceStoppedBeforeRestore: false, separateRestoreProcess: false, redisPersistence: "AOF", daemonIdentity: "",
+    nonDumpCapabilitiesVerified: false, sourcePreservedBeforeCleanup: false,
   };
   let directory: string | undefined;
   let interrupted = false;
@@ -198,6 +206,24 @@ export async function rehearseSyntheticRecovery(options: { fault?: "stale-target
     execute(sourceRedis, ["redis-cli", "LPUSH", "bull:synthetic:wait", "job-2", "job-1"]);
     execute(sourceRedis, ["redis-cli", "HSET", "bull:synthetic:meta", "paused", "1"]);
     // Only these seeded stores exist; no API, worker, proxy or external writer has this private network/credentials.
+    result.reason = "non-dump-capability-inventory-unavailable";
+    if (options.fault && Object.hasOwn(nonDumpFaults, options.fault)) {
+      execute(sourcePg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(nonDumpFaults[options.fault as keyof typeof nonDumpFaults]));
+    }
+    const readNonDumpInventory = () => JSON.parse(execute(sourcePg, ["psql", "-U", "postgres", "-Atc", RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL]).toString()) as unknown;
+    const nonDumpInventory = readNonDumpInventory();
+    if (hasUnsupportedNonDumpCapabilities(nonDumpInventory)) {
+      result.reason = "non-dump-capability-unsupported";
+      // Refusal performs no cleanup or corrective SQL. Only the fixture's final
+      // owned-resource cleanup disposes of this synthetic source after evidence.
+      const unchangedInventory = JSON.stringify(readNonDumpInventory()) === JSON.stringify(nonDumpInventory);
+      const unchangedRows = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", "select (select count(*) from public.sentinel where id=1 and value='synthetic-value') + (select count(*) from public.explicit_sentinel where id=2 and value='synthetic-explicit')"]).toString().trim() === "2";
+      const unchangedObjects = (await Promise.all(objectOracle.map(async object => Boolean(await sourceStore.head({ bucket, key: object.key })) && hash(await sourceStore.get({ bucket, key: object.key })) === hash(object.bytes)))).every(Boolean);
+      const unchangedQueue = execute(sourceRedis, ["redis-cli", "LRANGE", "bull:synthetic:wait", "0", "-1"]).toString().trim() === "job-1\njob-2" && execute(sourceRedis, ["redis-cli", "HGET", "bull:synthetic:meta", "paused"]).toString().trim() === "1";
+      result.sourcePreservedBeforeCleanup = unchangedInventory && unchangedRows && unchangedObjects && unchangedQueue;
+      throw new Error("non-dump-capability-unsupported");
+    }
+    result.nonDumpCapabilitiesVerified = true;
     result.reason = "backup-failed";
     const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
     const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname not like 'pg_%' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();

@@ -6,6 +6,65 @@ import { captureRecoveryPoint, verifyRecoveryPoint, type QuiescenceProof, type R
 
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const LIMIT = 256 * 1024 * 1024;
+/** Read-only PG16 vanilla/bootstrap-postgres profile. pg_dump without --create
+ * does not carry these capabilities. Compare ACL entries as ordered multisets;
+ * pg_init_privs records non-default initial grants, while acldefault supplies
+ * PostgreSQL's own default for objects without an initial-privilege row.
+ * A query error or unavailable baseline is a refusal, never an empty inventory.
+ */
+export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = `
+with bootstrap as (
+  select oid from pg_catalog.pg_roles where rolname='postgres'
+), target_database as (
+  select * from pg_catalog.pg_database where datname=pg_catalog.current_database()
+), builtin_functions as (
+  select routine.* from pg_catalog.pg_proc routine
+  join pg_catalog.pg_namespace namespace on namespace.oid=routine.pronamespace
+  where namespace.nspname='pg_catalog'
+), acl_inputs(kind,actual,expected) as (
+  select 'databaseAcl', coalesce(database.datacl,pg_catalog.acldefault('d',database.datdba)),
+    pg_catalog.acldefault('d',database.datdba) from target_database database
+  union all
+  select 'tablespaceAcl',coalesce(space.spcacl,pg_catalog.acldefault('t',space.spcowner)),
+    pg_catalog.acldefault('t',space.spcowner) from pg_catalog.pg_tablespace space
+  union all
+  select 'parameterAcl',coalesce(parameter.paracl,pg_catalog.acldefault('p',bootstrap.oid)),
+    coalesce(initial.initprivs,pg_catalog.acldefault('p',bootstrap.oid))
+    from pg_catalog.pg_parameter_acl parameter cross join bootstrap
+    left join pg_catalog.pg_init_privs initial on initial.objoid=parameter.oid
+      and initial.classoid='pg_catalog.pg_parameter_acl'::regclass and initial.objsubid=0 and initial.privtype='i'
+  union all
+  select 'builtinFunctionAcl',coalesce(routine.proacl,pg_catalog.acldefault('f',routine.proowner)),
+    coalesce(initial.initprivs,pg_catalog.acldefault('f',routine.proowner))
+    from builtin_functions routine left join pg_catalog.pg_init_privs initial on initial.objoid=routine.oid
+      and initial.classoid='pg_catalog.pg_proc'::regclass and initial.objsubid=0 and initial.privtype='i'
+), changed_acls as (
+  select kind from acl_inputs where
+    coalesce((select jsonb_agg(jsonb_build_array(grantor,grantee,privilege_type,is_grantable)
+      order by grantor,grantee,privilege_type,is_grantable) from pg_catalog.aclexplode(actual)),'[]'::jsonb)
+    is distinct from
+    coalesce((select jsonb_agg(jsonb_build_array(grantor,grantee,privilege_type,is_grantable)
+      order by grantor,grantee,privilege_type,is_grantable) from pg_catalog.aclexplode(expected)),'[]'::jsonb)
+)
+select json_build_object(
+  'databaseOwner',(select count(*) from target_database where datdba is distinct from (select oid from bootstrap)),
+  'databaseAcl',(select count(*) from changed_acls where kind='databaseAcl'),
+  'tablespaceOwner',(select count(*) from pg_catalog.pg_tablespace where spcname not in ('pg_default','pg_global') or spcowner is distinct from (select oid from bootstrap)),
+  'tablespaceAcl',(select count(*) from changed_acls where kind='tablespaceAcl'),
+  'parameterAcl',(select count(*) from changed_acls where kind='parameterAcl'),
+  'builtinFunctionOwner',(select count(*) from builtin_functions where proowner is distinct from (select oid from bootstrap)),
+  'builtinFunctionAcl',(select count(*) from changed_acls where kind='builtinFunctionAcl'),
+  'baselineUnavailable',case when (select count(*) from bootstrap)<>1 or (select count(*) from target_database)<>1
+    or pg_catalog.current_setting('server_version_num')::integer not between 160000 and 169999
+    or not exists(select 1 from builtin_functions where oid='pg_catalog.pg_control_system()'::regprocedure)
+    or not exists(select 1 from pg_catalog.pg_init_privs where classoid='pg_catalog.pg_proc'::regclass and privtype='i')
+    or exists(select 1 from builtin_functions where oid>=16384) then 1 else 0 end
+)`;
+export const hasUnsupportedNonDumpCapabilities = (value: unknown): boolean => {
+  const keys = ["databaseOwner", "databaseAcl", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join(",") !== [...keys].sort().join(",")) return true;
+  return Object.values(value).some(count => typeof count !== "number" || !Number.isSafeInteger(count) || count !== 0);
+};
 export type RecoveryRoleMembership = { name: string; inherit: boolean; set: boolean };
 // ADMIN OPTION and privileged role attributes are deliberately not representable.
 // Every inheritance flag is explicit: v1 packages must be re-exported, not guessed.
