@@ -1,0 +1,943 @@
+{
+  "createdAtUtc": "2026-09-06T12:29:24.356453+00:00",
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "head": "1190ba59192124007bf759297cce3d62a444e690",
+  "tree": "563c20ed74c8a393b521886a68ef8cf787fedf12",
+  "files": [
+    {
+      "path": ".dockerignore",
+      "mode": "100644",
+      "gitBlob": "5740037c8c6c245a732e480723ffc543c301e9dd",
+      "sha256": "e6136fb6b2ead77ab74c94ef5ff1abfbf3a54b5a8306992ef1e3a2ee785dc470",
+      "bytes": 431
+    },
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "gitBlob": "e26b3042befcbcace69c739962e4de973ee96ded",
+      "sha256": "f954857966ac7c74c16641ad3d5ce199dfcf8094f1e272d44c10ff4dbd57e05b",
+      "bytes": 11206
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "gitBlob": "b28794b47681b598410e4d138aa9119d99cd9ccb",
+      "sha256": "600ae95d0cb05e8735b739067ee7a2082557c5198e5e2376822913be5aa63c1b",
+      "bytes": 9129
+    },
+    {
+      "path": "ops/self-hosted/Dockerfile",
+      "mode": "100644",
+      "gitBlob": "f508ac1a74774e4f366256557ad1cf7a67889be4",
+      "sha256": "0758857462b706cb98bf40c1c6f1d1da3ad0aa7e1ad659dd1fa8a8e590fb4d89",
+      "bytes": 4558
+    },
+    {
+      "path": "ops/self-hosted/compose.catalog.yaml",
+      "mode": "100644",
+      "gitBlob": "43617bf9e01d53c73a60782592d010b80fa33bd2",
+      "sha256": "428dfe2bcfcdd544dd80ae0f9ea94a861f4c9865f166879664e95dc4fcee2412",
+      "bytes": 2463
+    },
+    {
+      "path": "ops/self-hosted/compose.yaml",
+      "mode": "100644",
+      "gitBlob": "de506348d48012bccc9ec57f00bd433d043144f9",
+      "sha256": "6e9fe2687102b071a2d02f83d4b6c5df803fdf6d5bb508ba3c862bd131e15ffe",
+      "bytes": 9881
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "mode": "100644",
+      "gitBlob": "69dcd944be30ad054c7a3e5f9f458bcd59a27e4d",
+      "sha256": "95afd8234d205a38acc2dded3eae576ba04dfeb40762b9c8ce5c9416aee920cc",
+      "bytes": 23440
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "mode": "100644",
+      "gitBlob": "392324a44c04f3304668604f9929cadbcdfec124",
+      "sha256": "bc5b3382411b45f9a17e0bce5c92ae13e2d5d51efff3d8c2bd3bd291fc761ede",
+      "bytes": 20050
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "mode": "100644",
+      "gitBlob": "27f1a771b3ca033bf2e6d285c290f27718ad6e93",
+      "sha256": "b985de61f797e2831a0e2fe26ae98d983e1344bd040a166d8b2cb127aa79e513",
+      "bytes": 15364
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "mode": "100644",
+      "gitBlob": "fc836cdbb8ee9ecc5ad7748360b67bec392598eb",
+      "sha256": "5c9b46193cc24bf838b74a0fa849c544fb585dda9e199b8ac341372138298136",
+      "bytes": 13257
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-lib.sh",
+      "mode": "100755",
+      "gitBlob": "36b5046e77a06fb6368daf06dd33493a57f52a99",
+      "sha256": "db6c774984e170d4a4dd3b7c5e8e31a519f8669b0ef78bd9e9d15cdd9aca832a",
+      "bytes": 12233
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-trust.test.ts",
+      "mode": "100644",
+      "gitBlob": "c7ff4a2bba1a16844b62a7a67b952863f5f3df56",
+      "sha256": "8ab0ed798757bff91c6e8e933592ad33a06ea13c723c89240d0645af2e71bcd3",
+      "bytes": 5912
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network.sh",
+      "mode": "100755",
+      "gitBlob": "67cfc64ecaf77074cebe5d9694e1d030a0c96c18",
+      "sha256": "b94ee3d00a7d47644f3e70991abc5f7bd36216f433ede041382f0eaee4135a23",
+      "bytes": 2108
+    },
+    {
+      "path": "ops/self-hosted/scripts/catalog-compose.test.ts",
+      "mode": "100644",
+      "gitBlob": "4ab7332e6e8c0e78bbf30b892b2d9c2c4b414f72",
+      "sha256": "65bc5c8d1190d708cf3f653c1bad75ab13a280aec3517cadf37c3a4d0cfd1542",
+      "bytes": 4552
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts",
+      "mode": "100644",
+      "gitBlob": "c92b44e7a5da3a28ddf561abdde59488540467a3",
+      "sha256": "480a30f2538510d00d6075f3d86830256ce1de43d07d5ea870ea153a326c35a3",
+      "bytes": 17570
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts",
+      "mode": "100644",
+      "gitBlob": "7b2d7d45b8709bfd4d377bc412eb1c9423e08bdc",
+      "sha256": "4aab8d5edc1995a25a383bdfd672a56620a94e325a9eca01658b94cccb5babdc",
+      "bytes": 15505
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-compatibility.test.ts",
+      "mode": "100644",
+      "gitBlob": "3c0ad8e7e4bf3515a8e46f88f65eb4d4f1ce2634",
+      "sha256": "15680cb7dd6ca6b7ee858840fc3114b77e645939876db83d79d08822908b2a7a",
+      "bytes": 3309
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-lib.sh",
+      "mode": "100755",
+      "gitBlob": "bc1e1cf57ee269638aa6a3e976b605b3a28c1838",
+      "sha256": "4b91949ceaa94cc8bed62c22e39bcc17c96ad1a4bacbc73382ac97653fd0ddad",
+      "bytes": 136827
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh",
+      "mode": "100755",
+      "gitBlob": "3533d19d71f843711407e63e85861a1a830a1ba4",
+      "sha256": "686bd604bf06b5b0aa07457b8082dc628cfdfb4cdbd6d4d4eb5bbae7267848ac",
+      "bytes": 32386
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh.test.ts",
+      "mode": "100644",
+      "gitBlob": "85d7fe111aad0127d9f8229e1f649fc39697ce86",
+      "sha256": "4e2cd688fe2155bfc7a30f84811d63f747a06e448299d35c2e36cba0e8f06f02",
+      "bytes": 188829
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.test.ts",
+      "mode": "100644",
+      "gitBlob": "0f0eb0db1641a873d746d7fb138c187f6b0381a3",
+      "sha256": "110555d73bc0e3bc7d5a0de725f889f097811dc849b43178a2435fda5496e4b3",
+      "bytes": 10479
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.ts",
+      "mode": "100644",
+      "gitBlob": "4fee94d7750a35a675fc3f9c7ab1a591c83a6461",
+      "sha256": "aa3d9e51f150b7ec253d082cfb5316822b402ebd6750af7def76042148962ebf",
+      "bytes": 18059
+    },
+    {
+      "path": "ops/self-hosted/upgrade.md",
+      "mode": "100644",
+      "gitBlob": "cd848130e7c1e2c39b4ad4234db747ab8929fbbf",
+      "sha256": "a1ad340ad44b78a8029c2d7813d8c170ffb399aeb4350b3096157b41971dde53",
+      "bytes": 27078
+    },
+    {
+      "path": "ops/self-hosted/upgrade.zh-CN.md",
+      "mode": "100644",
+      "gitBlob": "25f308025a594998cc1fe348109efb276e92c588",
+      "sha256": "dc8c9b1c2064c7600952608b510330a78c931962f628cc914a811b1b9f5a4cf9",
+      "bytes": 24181
+    },
+    {
+      "path": "package.json",
+      "mode": "100644",
+      "gitBlob": "97b47af50387235b0dc8aeb831f428bd7b403df5",
+      "sha256": "3f5a6a8c4f201afc89507290612743fd757f4d7011e4e59a4d32c31730a2c6cb",
+      "bytes": 9252
+    },
+    {
+      "path": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "mode": "100644",
+      "gitBlob": "2c63eda9352727cd18363892f02aab85d2e02d28",
+      "sha256": "38e07728c0593908e5e7f470bd9f08f8f31176a541d92eb7eed90e790082ea64",
+      "bytes": 39877
+    },
+    {
+      "path": "scripts/fixtures/upgrade-82344044-catalog-gate.sh",
+      "mode": "100644",
+      "gitBlob": "4c8b7cd3739cc21910e8cecc581b451311848979",
+      "sha256": "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232",
+      "bytes": 351
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "8a74c9f8028b70d53703a173593ed67818826a38",
+      "sha256": "2c708ec615d1baaa1d9c709ca4e840760bced319f88be882af7d2b6e290237e4",
+      "bytes": 8806
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.test.ts",
+      "mode": "100644",
+      "gitBlob": "049584927c90888a4d6dce1a90fed1c1b29de227",
+      "sha256": "1749afeccefc0e7daaa00913a98371b656643b152759ebf20b4c933f981b2a85",
+      "bytes": 2227
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.ts",
+      "mode": "100644",
+      "gitBlob": "da0a7f4a579a49acdeae806d1768a56cef87e163",
+      "sha256": "f6a346cd4c4eabc9fe8680e57c755de2310ad21e150a2b1e53b76622dbea412f",
+      "bytes": 6933
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.test.ts",
+      "mode": "100644",
+      "gitBlob": "a6c19a4ed720f342da465780f3b3fea78e0357f9",
+      "sha256": "c8da36ee7dfa0ef55958c352b6daa4c01f1e623db794c338d78964ff0ff6a738",
+      "bytes": 6514
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.ts",
+      "mode": "100644",
+      "gitBlob": "0daef545bfddf96f7494a504b28418f1880aad35",
+      "sha256": "31ea2292ef9c1aafb1b228f780a5b16884d3cb1ecf419664aaba6ddd7c291eb3",
+      "bytes": 5611
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.test.ts",
+      "mode": "100644",
+      "gitBlob": "b3294dfcb3b5b9912f48431df51d701741650cec",
+      "sha256": "287cbf271b40968780070cf16ff46c3b87a6822f2fe903ae7f5721f83c60bea9",
+      "bytes": 3924
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.ts",
+      "mode": "100644",
+      "gitBlob": "2713d43373bdd839ab2dd2a3f1b21fd59fd57715",
+      "sha256": "86e29d232f594088d78302add272b06d1a72f4255a2c6e86e82c1095656b2129",
+      "bytes": 3166
+    },
+    {
+      "path": "scripts/migrate.test.ts",
+      "mode": "100644",
+      "gitBlob": "748350336ec49db89b0fa0751fa878df1c80f3b0",
+      "sha256": "20896e766c42a417a86fa4fddb8f26d0eb34d29d89ec96d84c95bdd4aa0ae151",
+      "bytes": 5328
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "mode": "100644",
+      "gitBlob": "13d01458ec3af62105dc27705a1fe6dcd8d80d3f",
+      "sha256": "2946946d95ef36c91f5a0092870e03f4bbae53c9d8307dfacc8669f527efe81e",
+      "bytes": 3871
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "mode": "100644",
+      "gitBlob": "aa4e6ce4861f6659ebf2982a305e0409ccaf8d47",
+      "sha256": "045a6ea6a9e37afedce58d5548faf6fb35bab40f2af234efb8ca8efd8df6b319",
+      "bytes": 8418
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/shards/s12-ops.json",
+      "mode": "100644",
+      "gitBlob": "5873255fa8ef9b9a1db0724409b0da39aec36281",
+      "sha256": "faa252d4358ebd0ef934ccdd2c87c6bd2e53b69a0d507a4c795807dc05f08750",
+      "bytes": 298
+    },
+    {
+      "path": "scripts/reconcile-legacy-isolation.test.ts",
+      "mode": "100644",
+      "gitBlob": "8b63c706a0c7996e71a1719c84e4aaf4a69f6b72",
+      "sha256": "36d08023bfb562d4ef16c16c23b487ac4dfde2a1d80ea5e7e3568b6f4dbe7fa6",
+      "bytes": 1475
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.test.ts",
+      "mode": "100644",
+      "gitBlob": "12364f463a1978be127740f9409e5d73da136e3f",
+      "sha256": "962ba867b7e29b0d255a322ff681af56f6db882221ba72c3d2a3ca89bbe3d0a6",
+      "bytes": 2322
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.ts",
+      "mode": "100644",
+      "gitBlob": "60d253931ea9db550dd6fde9d60add31e9b4e375",
+      "sha256": "31a14c9c43adff343fe462e3adb4bdd04595459be126ba592cb0e76f50ce2da5",
+      "bytes": 6909
+    },
+    {
+      "path": "scripts/reconcile-upgrade-cli.test.ts",
+      "mode": "100644",
+      "gitBlob": "b660c652dfb6909e82fd4861778dc59efc856624",
+      "sha256": "5f1e951ef12a48e1e45e1dbe7593d00c896e2294576b0308f5b67f3b81bbed59",
+      "bytes": 2714
+    },
+    {
+      "path": "scripts/reconcile-upgrade-gate.test.ts",
+      "mode": "100644",
+      "gitBlob": "ad7e94b6a7105f0dd6b6844072ce728c3ba6565d",
+      "sha256": "b81e02a02296c9e92e9c6ac091e8d486ebc63645624549b6c3a895772b2b93b1",
+      "bytes": 986
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.test.ts",
+      "mode": "100644",
+      "gitBlob": "972af101a2110cfeac52492210369be082ea604f",
+      "sha256": "772014aeeba9bff491947a540d7cc38a61b3f100d7923076215473879228fb72",
+      "bytes": 4081
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.ts",
+      "mode": "100644",
+      "gitBlob": "9f7da4eeb6f9815595a83ba08cfcfaf5081a5ebb",
+      "sha256": "d4bb95f2c179618e5abd3df39c137de92074bb56c808e31642fc4b0661c98348",
+      "bytes": 30621
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.test.ts",
+      "mode": "100644",
+      "gitBlob": "3c80319555d809ad30c11935101abe2cbe02c244",
+      "sha256": "180696b17d76c8db361dc990097022a4f6b8b22291a0c9198b186f509b20bbb6",
+      "bytes": 21922
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.ts",
+      "mode": "100644",
+      "gitBlob": "6084d75b86a149f5507006f0e4935d2dcc0a036b",
+      "sha256": "a0335c381472c72673df792fd1965c26a7a2f4f0840828f97e141828bd34c510",
+      "bytes": 27333
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.test.ts",
+      "mode": "100644",
+      "gitBlob": "e527945cfff83d7e83506c2cf631207ec29a3e40",
+      "sha256": "78437e4890b9688fff9883a771d5247829b240f2d8e11297f5c5be8ad0510092",
+      "bytes": 2624
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.ts",
+      "mode": "100644",
+      "gitBlob": "ce7dc6777b54568460ff3e7327f6dd2a1439437f",
+      "sha256": "25c48b6db0cab9a5d89ba95283207a4dafe877d806ff92366f8cb0a03c371c57",
+      "bytes": 8023
+    },
+    {
+      "path": "scripts/upgrade-test-target.test.ts",
+      "mode": "100644",
+      "gitBlob": "503c2c94e5e5322c3f176361da352ab499a421c3",
+      "sha256": "76a57abc84477e4c716e53cc64bf5685d026cab1e8058c38a9cbc16d82207753",
+      "bytes": 3223
+    },
+    {
+      "path": "scripts/upgrade-test-target.ts",
+      "mode": "100644",
+      "gitBlob": "f5db7542892d5d9acd2717dad5438f49f539bd8d",
+      "sha256": "c6bea33c24cb3864d93fe10d4ead3ebd9b1759558f683f1eca2d8c7d190df816",
+      "bytes": 2627
+    },
+    {
+      "path": "server/app.ts",
+      "mode": "100644",
+      "gitBlob": "e74999d69ff25aca3a769fa0ed9e6f93cfb4ef85",
+      "sha256": "0d271e98b010723fe5fd2e3eb70eae36f228cc2114fc6b93e676cb61d6b4b2fc",
+      "bytes": 22059
+    },
+    {
+      "path": "server/config/env.ts",
+      "mode": "100644",
+      "gitBlob": "ae41869f32fe425c7e77d4c148e008f8c16b6725",
+      "sha256": "b7299880e9fd83994fe6a2696aaefc948a0bce4314a06e0cb4d69afd07dd740b",
+      "bytes": 9085
+    },
+    {
+      "path": "server/index.ts",
+      "mode": "100644",
+      "gitBlob": "55388b3b3154c7d0cf88acc5564ce4b7a9790029",
+      "sha256": "893f7b8a4a388befa6b50117c0caed2fb7ed4f1149451fd494eb006238ebac49",
+      "bytes": 11376
+    },
+    {
+      "path": "server/modules/agent/xiaoze/durableCheckpointer.ts",
+      "mode": "100644",
+      "gitBlob": "35f92fe6e87c3ef45c7aeb724dc435047db87449",
+      "sha256": "6d461c560b6d29223995a2552b6d3524a1290ce54e96891cc5d419c36b7f1e5b",
+      "bytes": 8640
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "6586900bcb4786f3d8b62dbd477d6882b96acba8",
+      "sha256": "18ee46d269a1a6f664c93983ce0eae4813c3d002d64903b16448b6ed27c8338f",
+      "bytes": 22610
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.test.ts",
+      "mode": "100644",
+      "gitBlob": "1bea8183b026a470afce87e0cab8dc9fe65a1799",
+      "sha256": "6a5f6e5ad09fa3d561a76aef592641ec5a7454abc0bc5b96dfe2527b80dc0ea9",
+      "bytes": 5560
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.ts",
+      "mode": "100644",
+      "gitBlob": "e9842bc5cac4039dc9d5c55aaeeaabca99af8ad6",
+      "sha256": "897e2c163df722ead9678fd52b398d698b4d0cc1e3443b32de25803b435b1f49",
+      "bytes": 20459
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/types.ts",
+      "mode": "100644",
+      "gitBlob": "7c3414acc8d2ca08debb22c739048cda3460196b",
+      "sha256": "5883beceecdd0a00708a6a5c34e01906215dbe320282fc8da3035458c1e9f655",
+      "bytes": 3897
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "93882dbbaa46523f99c7a139c86d0f8be2deb5f0",
+      "sha256": "c864944c87e1977b72c88892ffa6bc645340819e8e7beb96c42c59a902f2db3b",
+      "bytes": 28421
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.ts",
+      "mode": "100644",
+      "gitBlob": "ec78751d24f603d82285a143736b3745f9696c1f",
+      "sha256": "c28fe2c696c88f677bf5bcc0c0f6554f153f9bcd20f98f2c1058d44051868ed9",
+      "bytes": 18797
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "3230dc48e8be19605559979be5d8cfb47b69db09",
+      "sha256": "84cc84ba0c1c1ac7b321541ae3fb5784c100b08975ae1f851038db80828ac313",
+      "bytes": 12809
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.ts",
+      "mode": "100644",
+      "gitBlob": "4288aec0091db9dd0e9a54ce1426ca8dadafb56f",
+      "sha256": "b85e83899cd6b5dc6d1c2c746c8bed923119cc427cc716790276852ce72d822a",
+      "bytes": 9279
+    },
+    {
+      "path": "server/modules/catalog-cutover/interface.ts",
+      "mode": "100644",
+      "gitBlob": "20b6bc0151470989e50c577f301a97f47a6970e9",
+      "sha256": "bb63ad5abb583a46b95066fd2c0f1cc83d85b4355d1a9d9f49064bbf61bef0a8",
+      "bytes": 5912
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.ts",
+      "mode": "100644",
+      "gitBlob": "ec0477f248f76f4f97f3005015d02d3c4b27f744",
+      "sha256": "90cafca916331be713be86072d6bfb765618bc1f495bf3bd7a5e07402cc6c723",
+      "bytes": 42648
+    },
+    {
+      "path": "server/modules/logs/workerRunner.ts",
+      "mode": "100644",
+      "gitBlob": "c4728eb025cee2a0aeaa68a6a5e83b8fc2a2978e",
+      "sha256": "50f2aff9f27cf491168d1db1cbab36e292cea542bbe50e92bbf5e76c6e2bdd99",
+      "bytes": 8461
+    },
+    {
+      "path": "server/modules/parameter-bindings/binding/repositories.ts",
+      "mode": "100644",
+      "gitBlob": "504f9cfa619907db093d5188bf3726debe3950ff",
+      "sha256": "49151bdc174c6760d16647e1d59fbeee65bf9998cfc2973b01e5cdce9c5bf803",
+      "bytes": 6479
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.md",
+      "mode": "100644",
+      "gitBlob": "9a0ee9c3c4236ad7e919b21abdf5695316c6424e",
+      "sha256": "a69acf4a8f6f27f23880564efe944b28719b82d52665adba91cee9549ed80c19",
+      "bytes": 7570
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.zh-CN.md",
+      "mode": "100644",
+      "gitBlob": "7dea2d805f4ccbc9763d897e0a06a4711194971e",
+      "sha256": "c475983b57408e8011d92e8b8a5180c675e02f860a53ef32738fb96d3e960a12",
+      "bytes": 6708
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/import.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "e67b018b1b3c9471e9a81cb6fb9d9aafe9077c08",
+      "sha256": "d8d2834a92b756c71f7cb58f2bbc3fab62f64a9878fa4e2b5308a35c4a5c9734",
+      "bytes": 25473
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/index.ts",
+      "mode": "100644",
+      "gitBlob": "0aa6f25a9540e54d15dcc553aa7479f8d35828c4",
+      "sha256": "61321e8af03f219ad13c24b5cacdc9e1d326ca1feb8f0fee9b8673f5bba1b3f5",
+      "bytes": 25044
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/intent.ts",
+      "mode": "100644",
+      "gitBlob": "91f70e6151de1ec7ec03e2d68578e25171f64dc9",
+      "sha256": "3e9d13518f6182070ae323d3fe954934bd69cad5fa5ffcbf020590f1b09d7f2f",
+      "bytes": 6159
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/sourceBoundary.ts",
+      "mode": "100644",
+      "gitBlob": "5f7ee4bc8638bda4ada027bb23df4bc174ca5794",
+      "sha256": "fa45301ee610c246e7b0a132fefe43ef1a05d09c29a6d6bf5f1b03cb22c549a2",
+      "bytes": 4992
+    },
+    {
+      "path": "server/modules/parameter-bindings/values/repositories.ts",
+      "mode": "100644",
+      "gitBlob": "ac0475d10a1049708a39a6c8256cd898fc8e4634",
+      "sha256": "ec8c966e8b350b9fcf80cf8da51b99eacfc39050616cf21ec429ecd54672d67b",
+      "bytes": 8933
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.pools.test.ts",
+      "mode": "100644",
+      "gitBlob": "879f9a8b9e5e855fae052db7e74c2eed07d7961a",
+      "sha256": "77d05c277cd72b3a2975dfc8cf73de27bf6ec5c676185a6b9c37d5ab11d6812b",
+      "bytes": 2792
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.ts",
+      "mode": "100644",
+      "gitBlob": "da3619cb1b47376ac692586da8e67e5d4a91f57c",
+      "sha256": "96dd5d0d795510aea7a855513714e889326257edf824e8d13eb42f9849beec1a",
+      "bytes": 16207
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "53f4fb5873e85ea85a9f506af12aa7948d435088",
+      "sha256": "d81842f58d415472c712c711427d9a1d5a3206c096cdb0c698cbebb516d8e7ee",
+      "bytes": 8723
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.test.ts",
+      "mode": "100644",
+      "gitBlob": "3e913ab7cf44969832a41ad0591333c8d0576450",
+      "sha256": "09a5a39c1422f256a2c4d0daba8719deacee41160af4df6acb2e72ff476ffd7f",
+      "bytes": 2922
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.ts",
+      "mode": "100644",
+      "gitBlob": "1185447c839e41dd51b6fff7fc69547ddcd12f43",
+      "sha256": "aaa324b63d33712dfd1864603f186cacbf229066acd5bd59e5d48bcd61e3b854",
+      "bytes": 4437
+    },
+    {
+      "path": "vitest.runtime-bootstrap.config.ts",
+      "mode": "100644",
+      "gitBlob": "26f7f7e27e4634d03706cf39858ef18596f68f1e",
+      "sha256": "83c4a536bcb3fcbae8f70a70ed06dc6d92a6edbd244b939de9cc29bd99fede59",
+      "bytes": 707
+    },
+    {
+      "path": "vitest.upgrade-cutover.config.ts",
+      "mode": "100644",
+      "gitBlob": "fcd18889116af629274e4655bab4be7491a245fe",
+      "sha256": "d594a198a890875d88c16578d83318a3342a32b57cec609215093347b170bddc",
+      "bytes": 502
+    }
+  ],
+  "codeCandidate": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+  "codeTree": "abcaeb43726145608d0a80edd5b5cdc52724fbee",
+  "reportOnlyPaths": [
+    "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+    "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+    "ops/self-hosted/populated-upgrade-evidence.md",
+    "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+    "ops/self-hosted/populated-upgrade.md",
+    "ops/self-hosted/populated-upgrade.zh-CN.md"
+  ],
+  "sourceDeploymentSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "sourceDeploymentHistoricalImageId": "sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c",
+  "mode": "synthetic populated components; not full upgrade",
+  "target": "deidentified newly owned Docker Desktop PostgreSQL/MinIO/Redis resources",
+  "tools": {
+    "node": "22.22.3",
+    "npm": "10.9.8",
+    "vitest": "4.1.5",
+    "docker": "29.5.3"
+  },
+  "migrationInventory": "126 original schema files plus 11 suffix files 0129–0139; immutable full name/checksum validation in regressions; 0140 not integrated",
+  "releasePins": "Synthetic component fixture only; no target runtime/public report, approval or production pins",
+  "M1": "boundary/focused passed; Scratch, required full scripts 1301 pass / 1 fail / 5 skip",
+  "M2": "incomplete: root boundary/journal/reconciliation, P12/P13, approved runtime/public state and full business acceptance missing",
+  "realBackup": "not supplied/authorized; not run",
+  "enterpriseNetworkBuild": "not verified",
+  "Hosted": "no run or checkout",
+  "PR": "none; not integration-ready",
+  "production": "not authorized; not executed; not maintenance-ready",
+  "reviews": "bounded independent reviews; findings and corrections in evidence; no overall seal",
+  "evidence": [
+    {
+      "path": "evidence/m2-component-journal-green.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 50,
+      "originalSha256": "9f563142bc55652bbe339d1abedaf1981ed54dd6f7479a82be5d3f4f48a3a4af",
+      "deliveredSha256": "e7bcfbe30240530384783d520d2069994f1110cbe9a89cf648b4d1c0bddcb232",
+      "redacted": true,
+      "command": "node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id <verified-development-daemon> --suite bindings",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-component-journal-refusal.log",
+      "executionSha": "1635060c3ddb23b759ab0bfd2b971e09160d1c85",
+      "exitCode": 1,
+      "passed": 49,
+      "failed": 1,
+      "skipped": 0,
+      "collected": 50,
+      "originalSha256": "32f68d58483cf24017739d327964c6c9887aa613b76b4633fac18b496c904ac4",
+      "deliveredSha256": "13ff4cba5dc47228d0fa17e71d1f02ad932e534ff69242362be2e7ad0a440d3c",
+      "redacted": true,
+      "command": "node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id <verified-development-daemon> --suite bindings",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-component-final.log",
+      "executionSha": "198054e1b33ed5e0d44fd073d194d9ce62a400bc",
+      "exitCode": 0,
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 49,
+      "originalSha256": "397aaabc7ffba477da004a696066da0c68995f5dc5ff4f39819b040b2742fd45",
+      "deliveredSha256": "e76d6099a7a46833be0bb25c6ceb1c25e9170ae420f60c1e3049ad56f82a1b6e",
+      "redacted": true,
+      "command": "node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id <verified-development-daemon> --suite bindings",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-component-source-locks.log",
+      "executionSha": "17647b243eb4bf4a496181cf824df2e15afdff07",
+      "exitCode": 0,
+      "passed": 48,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 48,
+      "originalSha256": "c3cc076c329bf08a45fe048d46f8581a27e2e61e4ff4dfd3083aae46830ad0a8",
+      "deliveredSha256": "b67f840978141b0c111c4561883ae6e3191df5eed99b837fd91f31a1d5e142eb",
+      "redacted": true,
+      "command": "node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id <verified-development-daemon> --suite bindings",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-focused-final.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": 63,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 63,
+      "originalSha256": "b4cc2e6ac8c469cef87c600d6c6e9d00bcd8371c8109dcbd84c3564019b3bce8",
+      "deliveredSha256": "27701bddeb99b8ad4242c0f8b4d2395a76b4fb6244ad46142ed79c45f87e7dc7",
+      "redacted": true,
+      "command": "npm exec -- vitest run --config vitest.scripts.config.ts scripts/reconcile-upgrade-cli.test.ts scripts/reconcile-upgrade-gate.test.ts scripts/reconcile-legacy-isolation.test.ts scripts/run-self-hosted-release-gate.test.ts ops/self-hosted/scripts/upgrade-compatibility.test.ts ops/self-hosted/scripts/catalog-compose.test.ts --maxWorkers=1",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-boundary-final.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "deliveredSha256": "da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5",
+      "redacted": true,
+      "command": "npm run parameter-catalog-boundaries:check -- --trusted-base-sha 9b3ba7df7e21f5589684bc92c872da593ad4c246",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-contract-final.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "deliveredSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "redacted": true,
+      "command": "npm run contract:check",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-selfhost-final.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "deliveredSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "redacted": true,
+      "command": "npm run selfhost:check",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-docs-final-report.log",
+      "executionSha": "1190ba59192124007bf759297cce3d62a444e690",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "deliveredSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "redacted": true,
+      "command": "npm run docs:check (explicit owned PostgreSQL receipt; private URL supplied in child environment)",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-build-final-code.log",
+      "executionSha": "21f5aa4a8bdbb7208504396bce62796cf55875da",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "68e990c6d88c790fe55816c8a936a7fdc657d2c00014d207f5a3cf3a10d58b81",
+      "deliveredSha256": "a13011ef442587b5796ccec9654de1875a8543c274b3d2bfef15dcbb425b0f28",
+      "redacted": true,
+      "command": "npm run build",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-build-separated-projects.log",
+      "executionSha": "ce9915f23bfcdfc1efc540cabb0d7a0acbae59ef",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "dcd4a4e71aae259ed062958963dd07e8762404bd23cb7752baab4e6456a70f0e",
+      "deliveredSha256": "28edea1d6ae162082997e99f1dbaae10a98fa3bbec8ddc78c55acb0b5335de4f",
+      "redacted": true,
+      "command": "npm run build",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-build-producer-entry.log",
+      "executionSha": "4c60f1bcc2a7bc4fa3e2dc385f8937279e1b0f41",
+      "exitCode": 134,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "d5b82edb816efbf0e3e95dade738fdc09cce21e2bfd835c6fe8233f59b62717b",
+      "deliveredSha256": "7a6522ab200bc8834f7d48c801219bd70db6b7e47da44ebde85f41735e454c14",
+      "redacted": true,
+      "command": "npm run build",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-tsc-base-cold.log",
+      "executionSha": "7218a43dcd5402d52b5e57166b746d0c6409642f",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "deliveredSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redacted": true,
+      "command": "NODE_OPTIONS=--max-old-space-size=1024 node node_modules/typescript/bin/tsc -b --force",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-tsc-base-node-memory.log",
+      "executionSha": "7218a43dcd5402d52b5e57166b746d0c6409642f",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "1e1ca68c460bd8c38372d9ed5f044815db55edd9ede676ef682912e6ed3e6c6f",
+      "deliveredSha256": "1e1ca68c460bd8c38372d9ed5f044815db55edd9ede676ef682912e6ed3e6c6f",
+      "redacted": true,
+      "command": "NODE_OPTIONS=--max-old-space-size=1024 node node_modules/typescript/bin/tsc -p tsconfig.node.json --extendedDiagnostics",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-recovery-database-settings.log",
+      "executionSha": "b5c67723c918105039db2839a13898accea3bc0d",
+      "exitCode": 0,
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 35,
+      "originalSha256": "73ea2d83552488078a515741640d982ae86305852e19574187b0280fc080295e",
+      "deliveredSha256": "76c21e1d6e22576a0d9378bd39fae54099ccf4b2019dd9a496a466e59d4ee511",
+      "redacted": true,
+      "command": "UPG_RECOVERY_DOCKER_TEST=1 vitest run --config vitest.scripts.config.ts scripts/rehearse-upgrade-recovery.test.ts ops/self-hosted/storage/recoveryPackage.test.ts --maxWorkers=1",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-recovery-nondump.log",
+      "executionSha": "23e7540a7cd4c40eda16b7f996314c497ac724f9",
+      "exitCode": 0,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 34,
+      "originalSha256": "313975043af8b8497d927ab9a7ca018c36d5e1492e237f0cfa9e8e8e1dc136cc",
+      "deliveredSha256": "cdb29c7a708338bef20d8d9edaac7b8ab721db2df36e481b46802108227bdbe2",
+      "redacted": true,
+      "command": "UPG_RECOVERY_DOCKER_TEST=1 vitest run --config vitest.scripts.config.ts scripts/rehearse-upgrade-recovery.test.ts ops/self-hosted/storage/recoveryPackage.test.ts --maxWorkers=1",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-recovery-v2.log",
+      "executionSha": "cd2598d13fd93685045d7b2e4daaf9520aca8691",
+      "exitCode": 0,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 28,
+      "originalSha256": "c33e041c7cfdd1729178a08408b8ea800fe97a8bbf1d0b2e480ad06ad4afc2dd",
+      "deliveredSha256": "a30527311afca9cfe08daf4e91b1bbeee6fdf0bbb109657bc7b1aec08a2ed9ba",
+      "redacted": true,
+      "command": "UPG_RECOVERY_DOCKER_TEST=1 vitest run --config vitest.scripts.config.ts scripts/rehearse-upgrade-recovery.test.ts ops/self-hosted/storage/recoveryPackage.test.ts --maxWorkers=1",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-recovery-root-evidence.json",
+      "executionSha": "23e7540a7cd4c40eda16b7f996314c497ac724f9",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "85d5a7dd6bc8c6afbb5080ef169f4a4bd32e3f7aa2816a489c74a610916c6288",
+      "deliveredSha256": "c8dc47587286d076e1b6fd56eddab6fc0971897995771d69be7d5ce141410105",
+      "redacted": true,
+      "command": "node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-handoff-final.log",
+      "executionSha": "06ef19e2cab84cdfb375b00fe7fe28d286027db3",
+      "exitCode": 0,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 4,
+      "originalSha256": "9148ef32056788089e8ca5ec6f19f58fa4c5c03ba72a6e02e912be5536344150",
+      "deliveredSha256": "f3fb57e2f92774a412486288d91308c81f98c55d112bab759f867c18ceec0c98",
+      "redacted": true,
+      "command": null,
+      "commandEvidenceStatus": "exact invocation not retained in this package; bounded result only; see evidence limitations"
+    },
+    {
+      "path": "evidence/m2-handoff-production-mode.log",
+      "executionSha": "90f555b96100e4e8fc92ed36cc6cda68922ddb7a",
+      "exitCode": 0,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 4,
+      "originalSha256": "3c524a238870dacc28bed7a7abee2ea6cf785382e03372c2b8bdd2c5de69ed77",
+      "deliveredSha256": "bc14d494788db00e2e9e6d8b85f680f6036d168eef2e4349de4f21c640b50c83",
+      "redacted": true,
+      "command": null,
+      "commandEvidenceStatus": "exact invocation not retained in this package; bounded result only; see evidence limitations"
+    },
+    {
+      "path": "evidence/m2-management-cli-pg.log",
+      "executionSha": "9ce8db341253eb3bc20f418b0557e084438cb528",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "d1f11a36668afcbb7229d2022d9bbb8a5047854d7967a3d6fb98220f1b04b104",
+      "deliveredSha256": "d1f11a36668afcbb7229d2022d9bbb8a5047854d7967a3d6fb98220f1b04b104",
+      "redacted": true,
+      "command": "node --import <fixed-candidate-tsx> <fixed-candidate>/scripts/migrate.ts (empty working directory; production, private owned DATABASE_URL, XIAOZE_CHECKPOINTER=postgres)",
+      "commandEvidenceStatus": "recorded invocation; private inputs withheld"
+    },
+    {
+      "path": "evidence/m2-management-cli-unit.log",
+      "executionSha": "7695ace6f303452060d8ed155c7b79b8e753571e",
+      "exitCode": 0,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 14,
+      "originalSha256": "3e6b2ec5e48d45ebcc5aa2b396d2ef1d96b846c30f3cd71a3bfad77a2e03aeb7",
+      "deliveredSha256": "c5d5888a28b84369a9fe0fe6322a9253d498593275cd98c1138990d9add429c3",
+      "redacted": true,
+      "command": null,
+      "commandEvidenceStatus": "exact invocation not retained in this package; bounded result only; see evidence limitations"
+    },
+    {
+      "path": "evidence/m2-s6-final.log",
+      "executionSha": "6b817a48e41a2ae14355575f7a832e840531a018",
+      "exitCode": 0,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "collected": 12,
+      "originalSha256": "61c525b63f72bd91e02a54a188d8521dfbade98cd9fdc9a69ac7a627165170b4",
+      "deliveredSha256": "77b0c6385e89e3c23ff7d66147212a95d1e327ed60f498ab0519d0c33deffcf2",
+      "redacted": true,
+      "command": null,
+      "commandEvidenceStatus": "exact invocation not retained in this package; bounded result only; see evidence limitations"
+    },
+    {
+      "path": "evidence/old-source-trusted-build.log",
+      "executionSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+      "exitCode": 0,
+      "passed": null,
+      "failed": null,
+      "skipped": null,
+      "collected": null,
+      "originalSha256": "220821b090936a637118d9dbddf576c774827d74157c77ec8f3870fda5eca25e",
+      "deliveredSha256": "220821b090936a637118d9dbddf576c774827d74157c77ec8f3870fda5eca25e",
+      "redacted": true,
+      "command": null,
+      "commandEvidenceStatus": "exact invocation not retained in this package; bounded result only; see evidence limitations"
+    }
+  ]
+}

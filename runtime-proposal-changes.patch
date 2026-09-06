@@ -1,0 +1,731 @@
+diff --git a/docs/developer/catalog-runtime-read-capability.md b/docs/developer/catalog-runtime-read-capability.md
+new file mode 100644
+index 000000000..5c4ab385c
+--- /dev/null
++++ b/docs/developer/catalog-runtime-read-capability.md
+@@ -0,0 +1,26 @@
++# Catalog runtime read capability candidate
++
++Chinese: [中文](../zh-CN/developer/catalog-runtime-read-capability.md)
++
++This is an unapproved capability proposal for the populated-upgrade Scratch candidate. It is not a production migration command or evidence that the complete API/worker can run under these roles. Migration `0140_parameter_catalog_runtime_read_capability.sql` requires an explicit decision on the two governance-writer function grants below before an operational entry point may apply it. The immutable `0138` manifest remains unchanged.
++
++The existing `parameter_governance_writer_role` manifest permits only `assert_catalog_subject_active(text,text,text,text)`. That function returns `void`, validates a current release/subject, and holds the shared pointer lock. It cannot return a physical database identity or lock and return an organization-scoped destination module. Its placement trigger is not a callable query interface.
++
++The proposed additions to that writer are exactly:
++
++| Function EXECUTE | Return and purpose |
++| --- | --- |
++| `runtime_database_identity()` | Text containing the actual PostgreSQL system identifier and current database OID; pair the two real leased pool sessions before any business mutation. |
++| `lock_governance_destination_module(text,text)` | Matching module ID, organization ID, parent ID and kind, while holding `FOR SHARE` in the writer transaction. |
++
++These are additional capabilities, not an implementation already authorized by the old manifest. They do not grant Catalog SELECT/DML, public-table SELECT, migration/synchronizer membership, or trigger-function EXECUTE.
++
++The proposed separate `catalog_runtime_reader_role` has twelve immutable Catalog SELECT grants, schema USAGE, and EXECUTE on the identity function and exact Proposal-success replay function. Replay returns only `resultSnapshot`, for the six successful Proposal actions with `info` severity; refusal metadata is unavailable. All three new functions have the fixed owner `catalog_migration_owner`, fixed `pg_catalog` search path, qualified relations and no PUBLIC EXECUTE. No LOGIN or password is created.
++
++An existing cluster-global reader role must have safe attributes, no parent memberships, no current-database ownership and no explicit privileges beyond this manifest (non-grantable database CONNECT is allowed). Extra table/column DML, schema CREATE, function EXECUTE, default privileges and other object capabilities cause a typed refusal. Privileges in another database are neither adopted as target authority nor changed. A new database on the same cluster is supported when the existing role has no disallowed target-local capability. Ordinary retries validate checksums and use the existing migration ledger.
++
++Proposal commands keep the writer's shared pointer lock and use a separately leased reader session with explicit `READ COMMITTED READ ONLY`. Both sessions call the installed identity function; comparing URLs is insufficient. A mismatch or unavailable identity throws a static `ProposalReadTargetError` before business writes and does not write audit to an unverified target. Normal business refusals retain their durable refusal audit. Organization authorization remains in the authenticated domain adapter; a shared database login and an organization argument do not establish per-user database isolation.
++
++Management recovery must preserve database-local ACLs as well as role identities and memberships. In particular, `0140` revokes PUBLIC EXECUTE on `pg_catalog.pg_control_system()` in the managed database and grants only its protected owner access. Other system-function ACLs are unchanged. Do not assume a normal database dump restores this system-function ACL. A controlled capability receipt and management restore verification must preserve it, the new function owners/search paths/EXECUTE ACLs, and the lack of default-ACL expansion. Do not change another database or silently repair an existing overprivileged role.
++
++The bounded real-PostgreSQL tests live in `server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts`, run through `vitest.runtime-bootstrap.config.ts` with an explicitly verified development daemon identity. They own a disposable PostgreSQL 16 Alpine cluster and use two restricted login connections. Synthetic successful commands are not release-verification reports or production approvals. Test evidence belongs to the parent delivery record; pending grants, complete HTTP authorization, ordinary business permissions, runtime pin production, and the complete populated controller remain separate acceptance items.
+diff --git a/docs/zh-CN/developer/catalog-runtime-read-capability.md b/docs/zh-CN/developer/catalog-runtime-read-capability.md
+new file mode 100644
+index 000000000..4651bff41
+--- /dev/null
++++ b/docs/zh-CN/developer/catalog-runtime-read-capability.md
+@@ -0,0 +1,26 @@
++# Catalog 运行读能力候选
++
++English: [English](../../developer/catalog-runtime-read-capability.md)
++
++本文件描述 populated 升级 Scratch 候选中的待批准权限提案，不是生产迁移命令，也不证明整个 API／worker 已能使用这些角色运行。`0140_parameter_catalog_runtime_read_capability.sql` 中以下两项治理 writer 函数授权须先取得明确决策，运维入口才能执行该迁移。不可变的 `0138` manifest 保持原文。
++
++现有 `parameter_governance_writer_role` manifest 仅允许执行 `assert_catalog_subject_active(text,text,text,text)`。该函数返回 `void`，校验当前 release／Subject，并保持共享指针锁；它不能返回实际数据库身份，也没有组织／模块参数来锁定并返回目标模块。Placement 的 trigger 函数也不是可直接调用的查询接口。
++
++本次向治理 writer 提议增加的能力仅为：
++
++| 函数 EXECUTE | 返回和用途 |
++| --- | --- |
++| `runtime_database_identity()` | 返回实际 PostgreSQL system identifier 和当前数据库 OID 的文本，在业务写入前匹配两个真实连接池会话。 |
++| `lock_governance_destination_module(text,text)` | 返回匹配模块的 ID、组织 ID、父模块 ID、kind，并在 writer 事务中保持 `FOR SHARE` 行锁。 |
++
++这属于新增能力，不能声称已由旧 manifest 批准。它们不增加 Catalog SELECT／DML、public 表 SELECT、migration／synchronizer 成员资格或 trigger 函数 EXECUTE。
++
++独立的 `catalog_runtime_reader_role` 提案仅获得十二张不可变 Catalog 表的 SELECT、schema USAGE，以及身份函数和精确 Proposal 成功重放函数的 EXECUTE。重放只对六种成功 Proposal action、`info` severity 返回 `resultSnapshot`，不暴露拒绝审计 metadata。三个新函数均由固定的 `catalog_migration_owner` 拥有，固定 `pg_catalog` search path，使用限定关系名，并撤销 PUBLIC EXECUTE。迁移不创建 LOGIN 或密码。
++
++已有集群级 reader 角色必须属性安全、没有父角色成员关系、不拥有当前数据库对象，且没有 manifest 以外的显式权限；允许不可转授的数据库 CONNECT。额外表／列 DML、schema CREATE、函数 EXECUTE、默认权限和其他对象能力均明确拒绝。其他数据库的权限既不被当作当前目标的授权，也不被修改。若已有角色在当前新数据库没有不允许的本地能力，同集群新数据库仍可正常安装。常规重试核对 checksum 并使用现有 migration ledger。
++
++Proposal 命令保留 writer 的共享指针锁，独立租用 reader 会话并明确指定 `READ COMMITTED READ ONLY`。两个实际会话调用已安装的身份函数，不能仅比较 URL。身份不一致或不可用时，在业务写入前抛出静态 `ProposalReadTargetError`，不向未核验目标写审计。正常业务拒绝继续保留持久拒绝审计。组织授权仍由已认证的领域适配器执行，共享数据库登录加组织参数不构成数据库逐用户隔离。
++
++管理恢复除角色与成员关系外，还须保留数据库本地 ACL。`0140` 特别撤销受管数据库中 `pg_catalog.pg_control_system()` 的 PUBLIC EXECUTE，仅给受保护 owner 授权；其他系统函数 ACL 不变。不能假设普通数据库 dump 会恢复该系统函数 ACL。受控权限材料和管理恢复验证必须保留该 ACL、新函数的 owner／search path／EXECUTE ACL，以及没有扩大默认 ACL 的事实。不得修改其他数据库或静默修复已有过宽角色。
++
++真实 PostgreSQL 有界测试位于 `server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts`，通过 `vitest.runtime-bootstrap.config.ts` 使用显式核验的开发 daemon 身份运行。测试拥有可丢弃的 PostgreSQL 16 Alpine 集群，并使用两个受限登录连接。合成成功命令不等于 Release Verification 报告或生产批准。实际测试证据由父交付记录保存；待批准授权、完整 HTTP 授权、其他业务权限、运行 pin 生成和完整 populated controller 仍是独立验收项。
+diff --git a/server/migrations/0140_parameter_catalog_runtime_read_capability.sql b/server/migrations/0140_parameter_catalog_runtime_read_capability.sql
+new file mode 100644
+index 000000000..2138da004
+--- /dev/null
++++ b/server/migrations/0140_parameter_catalog_runtime_read_capability.sql
+@@ -0,0 +1,132 @@
++-- Management-only preparation for distinct runtime reader and governance logins.
++-- This grants no LOGIN, password, Catalog DML, writer membership, or owner membership.
++do $$
++declare
++  reader_oid oid;
++  target_database_oid oid;
++begin
++  select oid into reader_oid from pg_catalog.pg_roles where rolname='catalog_runtime_reader_role';
++  if reader_oid is null then
++    create role catalog_runtime_reader_role nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;
++    select oid into reader_oid from pg_catalog.pg_roles where rolname='catalog_runtime_reader_role';
++  end if;
++  select oid into target_database_oid from pg_catalog.pg_database where datname=pg_catalog.current_database();
++  if exists (select 1 from pg_catalog.pg_roles where oid=reader_oid
++      and (rolcanlogin or rolsuper or rolcreatedb or rolcreaterole or rolinherit or rolreplication or rolbypassrls))
++    or exists (select 1 from pg_catalog.pg_auth_members where member=reader_oid) then
++    raise exception using errcode='55000', message='PCAT_RUNTIME_READER_ROLE_UNSAFE';
++  end if;
++  -- Explicit ACLs and ownership in this database only. PUBLIC defaults are not
++  -- role-owned grants; pg_control_system's PUBLIC grant is narrowed below.
++  -- Never rewrite privileges belonging to the same role in another database.
++  if exists (
++    select 1 from pg_catalog.pg_class relation
++    cross join lateral pg_catalog.aclexplode(relation.relacl) acl
++    where acl.grantee=reader_oid and (
++      acl.privilege_type <> 'SELECT' or acl.is_grantable or relation.oid not in (
++        'parameter_catalog.catalog_releases'::regclass, 'parameter_catalog.catalog_subjects'::regclass,
++        'parameter_catalog.catalog_drivers'::regclass, 'parameter_catalog.catalog_node_types'::regclass,
++        'parameter_catalog.catalog_release_subjects'::regclass, 'parameter_catalog.catalog_subject_aliases'::regclass,
++        'parameter_catalog.catalog_release_subject_aliases'::regclass, 'parameter_catalog.parameter_definitions'::regclass,
++        'parameter_catalog.definition_revisions'::regclass, 'parameter_catalog.catalog_release_definition_heads'::regclass,
++        'parameter_catalog.catalog_materializations'::regclass, 'parameter_catalog.catalog_state'::regclass))
++  ) or exists (
++    select 1 from pg_catalog.pg_attribute attribute
++    cross join lateral pg_catalog.aclexplode(attribute.attacl) acl where acl.grantee=reader_oid
++  ) or exists (
++    select 1 from pg_catalog.pg_namespace namespace
++    cross join lateral pg_catalog.aclexplode(namespace.nspacl) acl
++    where acl.grantee=reader_oid and (namespace.nspname <> 'parameter_catalog' or acl.privilege_type <> 'USAGE' or acl.is_grantable)
++  ) or exists (
++    select 1 from pg_catalog.pg_database database
++    cross join lateral pg_catalog.aclexplode(database.datacl) acl
++    where database.oid=target_database_oid and acl.grantee=reader_oid
++      and (acl.privilege_type <> 'CONNECT' or acl.is_grantable)
++  ) or exists (
++    select 1 from pg_catalog.pg_proc routine
++    cross join lateral pg_catalog.aclexplode(routine.proacl) acl
++    where acl.grantee=reader_oid and (acl.is_grantable or routine.oid is distinct from pg_catalog.to_regprocedure('parameter_catalog.runtime_database_identity()')
++      and routine.oid is distinct from pg_catalog.to_regprocedure('parameter_catalog.read_proposal_success_audit(text,text,text,text)'))
++  ) or exists (
++    select 1 from pg_catalog.pg_default_acl defaults
++    cross join lateral pg_catalog.aclexplode(defaults.defaclacl) acl where acl.grantee=reader_oid
++  ) or exists (
++    select 1 from (
++      select typacl as acl from pg_catalog.pg_type
++      union all select lomacl from pg_catalog.pg_largeobject_metadata
++      union all select srvacl from pg_catalog.pg_foreign_server
++      union all select fdwacl from pg_catalog.pg_foreign_data_wrapper
++      union all select lanacl from pg_catalog.pg_language
++      union all select spcacl from pg_catalog.pg_tablespace
++      union all select paracl from pg_catalog.pg_parameter_acl
++    ) object_acl cross join lateral pg_catalog.aclexplode(object_acl.acl) acl
++    where acl.grantee=reader_oid
++  ) or exists (
++    select 1 from pg_catalog.pg_shdepend dependency
++    where dependency.refclassid='pg_catalog.pg_authid'::regclass and dependency.refobjid=reader_oid
++      and dependency.deptype='o' and (dependency.dbid=target_database_oid
++        or dependency.classid='pg_catalog.pg_database'::regclass and dependency.objid=target_database_oid)
++  ) then
++    raise exception using errcode='55000', message='PCAT_RUNTIME_READER_ACL_UNSAFE';
++  end if;
++end;
++$$;
++
++grant usage on schema parameter_catalog to catalog_runtime_reader_role;
++grant select on table
++  parameter_catalog.catalog_releases, parameter_catalog.catalog_subjects,
++  parameter_catalog.catalog_drivers, parameter_catalog.catalog_node_types,
++  parameter_catalog.catalog_release_subjects, parameter_catalog.catalog_subject_aliases,
++  parameter_catalog.catalog_release_subject_aliases, parameter_catalog.parameter_definitions,
++  parameter_catalog.definition_revisions, parameter_catalog.catalog_release_definition_heads,
++  parameter_catalog.catalog_materializations, parameter_catalog.catalog_state
++to catalog_runtime_reader_role;
++
++-- The system identifier is read by the protected owner, never directly by app logins.
++-- PostgreSQL 16 exposes this function to PUBLIC by default. This ACL change is
++-- local to the managed database; restore capability receipts must preserve it.
++revoke execute on function pg_catalog.pg_control_system() from public;
++grant execute on function pg_catalog.pg_control_system() to catalog_migration_owner;
++create function parameter_catalog.runtime_database_identity() returns text
++language sql stable security definer set search_path = pg_catalog
++as $$
++  select control.system_identifier::text || ':' || database.oid::text
++  from pg_catalog.pg_control_system() control cross join pg_catalog.pg_database database
++  where database.datname=pg_catalog.current_database()
++$$;
++alter function parameter_catalog.runtime_database_identity() owner to catalog_migration_owner;
++revoke all on function parameter_catalog.runtime_database_identity() from public;
++grant execute on function parameter_catalog.runtime_database_identity()
++  to catalog_runtime_reader_role, parameter_governance_writer_role;
++
++-- Exact replay lookup. Organization authorization remains with the authenticated
++-- domain adapter; this function does not claim a per-user PostgreSQL identity.
++create function parameter_catalog.read_proposal_success_audit(text,text,text,text) returns jsonb
++language sql stable security definer set search_path = pg_catalog
++as $$
++  select pg_catalog.jsonb_build_object('resultSnapshot', event.metadata->'resultSnapshot') from public.audit_events event
++  where event.organization_id=$1 and event.kind='definition-proposal'
++    and event.action=$2 and event.trace_id=$3 and event.target_id=$4
++    and event.severity='info'
++    and event.action in ('proposal-create-draft', 'proposal-submit-existing', 'proposal-submit',
++      'proposal-withdraw', 'proposal-accept', 'proposal-reject')
++    and pg_catalog.jsonb_typeof(event.metadata->'resultSnapshot')='object'
++  order by event.created_at asc limit 1
++$$;
++alter function parameter_catalog.read_proposal_success_audit(text,text,text,text) owner to catalog_migration_owner;
++revoke all on function parameter_catalog.read_proposal_success_audit(text,text,text,text) from public;
++grant execute on function parameter_catalog.read_proposal_success_audit(text,text,text,text) to catalog_runtime_reader_role;
++
++-- Keep the destination row lock in the governance writer transaction. The
++-- existing owner has the bounded SELECT/UPDATE needed for FOR SHARE (0138).
++create function parameter_catalog.lock_governance_destination_module(text,text)
++returns table(id text,organization_id text,parent_id text,kind text)
++language sql volatile security definer set search_path = pg_catalog
++as $$
++  select module.id, module.organization_id, module.parent_id, module.kind::text
++  from public.parameter_modules module where module.organization_id=$1 and module.id=$2
++  for share
++$$;
++alter function parameter_catalog.lock_governance_destination_module(text,text) owner to catalog_migration_owner;
++revoke all on function parameter_catalog.lock_governance_destination_module(text,text) from public;
++grant execute on function parameter_catalog.lock_governance_destination_module(text,text) to parameter_governance_writer_role;
+diff --git a/server/modules/parameter-catalog-api/productionWire.ts b/server/modules/parameter-catalog-api/productionWire.ts
+index da3619cb1..da40829c6 100644
+--- a/server/modules/parameter-catalog-api/productionWire.ts
++++ b/server/modules/parameter-catalog-api/productionWire.ts
+@@ -304,7 +304,7 @@ const createGovernancePorts = (
+     ? bindCatalogGovernanceCommands({
+         executeRegistration: (command) => executeRegistration(commandPool, command),
+         resolveReviewItem: (command) => resolveReviewItem(commandPool, command),
+-        executeProposal: (command) => executeProposal(commandPool, command),
++        executeProposal: (command) => executeProposal(commandPool, command, pool ? { readerPool: pool } : undefined),
+         listReviewQueue: (query) => {
+           const reader = createReviewQueueReader(pool ?? commandPool);
+           return reader.list(query);
+diff --git a/server/modules/parameter-governance/proposals/catalogReadPorts.ts b/server/modules/parameter-governance/proposals/catalogReadPorts.ts
+new file mode 100644
+index 000000000..d067b563e
+--- /dev/null
++++ b/server/modules/parameter-governance/proposals/catalogReadPorts.ts
+@@ -0,0 +1,60 @@
++import type pg from "pg";
++import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
++import { loadProjection } from "../../catalog-kernel/runtime/currentSnapshot";
++import { CatalogPageLimit, CatalogReleaseDigest, CatalogReleaseId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
++
++type Session = Pick<pg.PoolClient, "query">;
++export class ProposalReadTargetError extends Error {
++  constructor(readonly reason: "read-target-unavailable" | "read-target-mismatch") {
++    super(reason);
++    this.name = "ProposalReadTargetError";
++  }
++}
++export const readDatabaseIdentity = async (session: Session): Promise<string> => {
++  try {
++    const identity = (await session.query<{ identity: string }>("select parameter_catalog.runtime_database_identity() as identity")).rows[0]?.identity;
++    if (!identity || !/^\d+:\d+$/.test(identity)) throw new Error();
++    return identity;
++  } catch { throw new ProposalReadTargetError("read-target-unavailable"); }
++};
++
++/** One leased reader session, paired with the writer before any mutation. */
++export function createProposalCatalogReadPorts(reader: Session) {
++  const snapshots = new Map<string, Awaited<ReturnType<typeof loadProjection>>>();
++  const releasePin = async (releaseId: string): Promise<CatalogReleasePin | null> => {
++    const row = (await reader.query<{ release_digest: string }>("select release_digest from parameter_catalog.catalog_releases where id=$1", [releaseId])).rows[0];
++    return row ? { id: CatalogReleaseId(releaseId), digest: CatalogReleaseDigest(row.release_digest) } : null;
++  };
++  return {
++    async currentRelease(): Promise<CatalogReleasePin | null> {
++      const pointer = await readCurrentCatalogPointer(reader);
++      return pointer.kind === "installed" ? { id: pointer.current.id, digest: pointer.current.digest } : null;
++    },
++    releasePin,
++    async revisionInRelease(releaseId: string, revisionId: string) {
++      const pin = await releasePin(releaseId);
++      if (!pin) return null;
++      if (!snapshots.has(releaseId)) snapshots.set(releaseId, await loadProjection(reader, releaseId, "pinned", pin));
++      const snapshot = snapshots.get(releaseId)?.snapshot;
++      if (!snapshot) return null;
++      let after: Parameters<typeof snapshot.listDefinitions>[0]["page"]["after"] = { kind: "absent" };
++      do {
++        const page = snapshot.listDefinitions({ selection: { kind: "all" }, scope: { kind: "all" },
++          lifecycles: ["active", "deprecated", "retired"], propertyKey: { kind: "absent" }, search: { kind: "absent" },
++          page: { limit: CatalogPageLimit(200), after } });
++        if (page.status !== "found") throw new Error("proposal pinned definition inventory unavailable");
++        const definition = page.page.items.find((item) => item.selectedRevision.id === revisionId);
++        if (definition) return { id: revisionId, definitionId: definition.id };
++        after = page.page.next;
++      } while (after.kind !== "absent");
++      return null;
++    },
++    async successAudit(organizationId: string, action: string, fingerprint: string, targetId: string) {
++      return (await reader.query<{ metadata: { resultSnapshot?: unknown } | null }>(
++        "select parameter_catalog.read_proposal_success_audit($1,$2,$3,$4) as metadata",
++        [organizationId, action, fingerprint, targetId],
++      )).rows[0]?.metadata ?? null;
++    },
++  };
++}
++export type ProposalCatalogReadPorts = ReturnType<typeof createProposalCatalogReadPorts>;
+diff --git a/server/modules/parameter-governance/proposals/repositories.ts b/server/modules/parameter-governance/proposals/repositories.ts
+index 500ab8a1c..a09b667e6 100644
+--- a/server/modules/parameter-governance/proposals/repositories.ts
++++ b/server/modules/parameter-governance/proposals/repositories.ts
+@@ -1,4 +1,5 @@
+ import type pg from "pg";
++import type { ProposalCatalogReadPorts } from "./catalogReadPorts";
+ import { z } from "zod";
+ 
+ import {
+@@ -25,6 +26,7 @@ import type {
+ 
+ export type ProposalWriterClient = {
+   query: pg.PoolClient["query"];
++  readonly reads?: ProposalCatalogReadPorts;
+ };
+ 
+ export type IdempotencyRow = {
+@@ -162,6 +164,11 @@ export const lockAndLoadCurrentRelease = async (
+     previousTimeout,
+   ]);
+ 
++  if (client.reads) {
++    const pin = await client.reads.currentRelease();
++    return pin ? { ok: true, value: pin } : fail({ kind: "invalid-command", reason: "currentRelease" });
++  }
++
+   const result = await client.query<{ id: string; digest: string }>(
+     `select state.current_catalog_release_id as id, release.release_digest as digest
+        from parameter_catalog.catalog_state state
+@@ -184,6 +191,7 @@ export const loadReleasePin = async (
+   client: ProposalWriterClient,
+   releaseId: string,
+ ): Promise<CatalogReleasePin | null> => {
++  if (client.reads) return client.reads.releasePin(releaseId);
+   const result = await client.query<{ digest: string }>(
+     `select release_digest as digest
+        from parameter_catalog.catalog_releases
+@@ -235,6 +243,16 @@ export const assertRevisionVisibleInRelease = async (
+   revisionId: string,
+   expectedDefinitionId?: string | null,
+ ): Promise<Result<DefinitionRevisionRef, ProposalFailure>> => {
++  if (client.reads) {
++    const revision = await client.reads.revisionInRelease(releaseId, revisionId);
++    if (!revision) {
++      return fail({ kind: "invalid-command", reason: "baseDefinitionRevisionId" });
++    }
++    if (expectedDefinitionId != null && expectedDefinitionId !== revision.definitionId) {
++      return fail({ kind: "invalid-command", reason: "baseDefinitionId" });
++    }
++    return { ok: true, value: revision };
++  }
+   const revision = await loadDefinitionRevision(client, revisionId);
+   if (!revision) {
+     return fail({ kind: "invalid-command", reason: "baseDefinitionRevisionId" });
+@@ -306,7 +324,9 @@ export const loadSuccessAuditSnapshot = async (
+   fingerprint: string,
+   targetId: string,
+ ): Promise<ProposalResultSnapshot | null> => {
+-  const result = await client.query<{ metadata: { resultSnapshot?: unknown } }>(
++  const result = client.reads
++    ? { rows: [{ metadata: await client.reads.successAudit(organizationId, action, fingerprint, targetId) }] }
++    : await client.query<{ metadata: { resultSnapshot?: unknown } }>(
+     `select metadata
+        from public.audit_events
+       where organization_id = $1
+@@ -369,6 +389,16 @@ const proposalSnapshotSchema = z.object({
+ 
+ /** Immutable revision content and exact canonical revision ownership; never a current/latest join. */
+ export const loadProposalSnapshotContent = async (client: ProposalWriterClient, proposal: ProposalRow) => {
++  if (client.reads) {
++    const row = (await client.query<{ payload: import("./command").ProposalPayload }>(
++      "select payload from parameter_catalog.definition_proposal_revisions where proposal_id=$1 and id=$2",
++      [proposal.id, proposal.current_proposal_revision_id],
++    )).rows[0];
++    const revision = proposal.base_definition_revision_id === null ? null
++      : await client.reads.revisionInRelease(proposal.base_catalog_release_id, proposal.base_definition_revision_id);
++    if (!row || (proposal.base_definition_revision_id !== null && !revision)) throw new Error("Proposal immutable snapshot relation is unavailable");
++    return { requestedChange: row.payload, baseDefinitionId: revision?.definitionId ?? null, submittedByPersonId: proposal.author_principal_id };
++  }
+   const result = await client.query<{ payload: import("./command").ProposalPayload; definition_id: string | null }>(
+     `select revision.payload, definition_revision.definition_id
+        from parameter_catalog.definition_proposal_revisions revision
+diff --git a/server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts b/server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts
+new file mode 100644
+index 000000000..68a64f3a3
+--- /dev/null
++++ b/server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts
+@@ -0,0 +1,258 @@
++import { randomBytes } from "node:crypto";
++import { readFile } from "node:fs/promises";
++import path from "node:path";
++import { setTimeout } from "node:timers/promises";
++import pg from "pg";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
++import { createPostgresDatabase } from "../../../shared/database/client";
++import { applyMigrations } from "../../../shared/database/migrations";
++import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
++import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
++import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
++import { installPublishedRelease } from "../../catalog-kernel/install/installer";
++import { CatalogReleaseDigest, CatalogSubjectId, DefinitionProposalId, DefinitionRevisionId, ParameterDefinitionId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
++import { executeProposal } from "./service";
++import type { CreateDraftProposalCommand } from "./command";
++import { lockDestinationModule } from "../registration/repositories";
++import { withProposalUnitOfWork } from "./unitOfWork";
++import { CURRENT_POINTER_LOCK_KEY, lockAndLoadCurrentRelease } from "./repositories";
++import { executeRegistration } from "../registration/service";
++import type { RegisterSubjectCommand } from "../registration/command";
++
++describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("real isolated Catalog reader and governance logins", () => {
++  const name = `wiseeff-upg-proposals-${randomBytes(6).toString("hex")}`;
++  const password = randomBytes(24).toString("hex");
++  let docker: ReturnType<typeof createIsolatedUpgradeDocker>;
++  let id = "";
++  let port = "";
++  let admin: pg.Pool;
++  let writer: pg.Pool;
++  let reader: pg.Pool;
++  let wrongReader: pg.Pool;
++  let pin: CatalogReleasePin;
++  let unrelatedFunctionAcl: unknown;
++  let prepared = false;
++  const url = (role: string, database = "postgres") => `postgres://${role}:${password}@127.0.0.1:${port}/${database}`;
++  const command = (overrides: Partial<CreateDraftProposalCommand> = {}): CreateDraftProposalCommand => ({
++    kind: "create-draft", organizationId: "role-org-1", baseRelease: pin, currentRelease: pin,
++    baseDefinitionId: ParameterDefinitionId("pdef_acme_power_iin_max"),
++    baseDefinitionRevisionId: DefinitionRevisionId("drev_acme_power_iin_max_1"),
++    payload: { reason: "isolated proposed value" }, reason: "synthetic role regression", evidenceRefs: [],
++    idempotencyKey: randomBytes(12).toString("hex"), context: { actorKind: "org-admin", principalId: "isolated-author" }, ...overrides,
++  });
++  beforeAll(async () => {
++    docker = createIsolatedUpgradeDocker();
++    if (docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${process.env.UPG_RUNTIME_DOCKER_DAEMON_ID}|docker-desktop|Docker Desktop`) throw new Error("explicit development daemon identity mismatch");
++    id = docker.command(["run", "-d", "--name", name, "--label", `wiseeff.test=${name}`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", "postgres:16-alpine"]).toString().trim();
++    docker.assertOwned(id, "wiseeff.test", name);
++    console.info("Synthetic capability target", JSON.stringify({ daemonId: process.env.UPG_RUNTIME_DOCKER_DAEMON_ID,
++      containerId: id, postgresImageId: docker.command(["inspect", "--format", "{{.Image}}", id]).toString().trim(),
++      mode: "isolated-capability-proposal-evaluation", productionApproval: false }));
++    port = docker.command(["inspect", "--format", '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}', id]).toString().trim();
++    for (let attempt = 0; attempt < 30; attempt++) {
++      const client = new pg.Client({ connectionString: url("postgres") });
++      try { await client.connect(); await client.query("select 1"); await client.end(); break; }
++      catch { await client.end().catch(() => undefined); await setTimeout(200); }
++    }
++    admin = new pg.Pool({ connectionString: url("postgres") });
++    unrelatedFunctionAcl = (await admin.query("select proacl::text as acl from pg_proc where oid='pg_catalog.pg_postmaster_start_time()'::regprocedure")).rows[0].acl;
++    const prepare = async (database: string) => {
++      const db = createPostgresDatabase(url("postgres", database));
++      try { await applyMigrations(db, path.resolve("server/migrations")); }
++      finally { await db.close(); }
++    };
++    await prepare("postgres");
++    await admin.query("create database wrong_reader_database");
++    await prepare("wrong_reader_database");
++    await admin.query(`create role scoped_reader login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole inherit;
++      create role scoped_writer login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole inherit;
++      grant catalog_runtime_reader_role to scoped_reader;
++      grant parameter_governance_writer_role to scoped_writer;`);
++    reader = new pg.Pool({ connectionString: url("scoped_reader") });
++    writer = new pg.Pool({ connectionString: url("scoped_writer") });
++    wrongReader = new pg.Pool({ connectionString: url("scoped_reader", "wrong_reader_database") });
++    const complete = validCatalogReleaseBundle();
++    const first = complete.releases[0]!;
++    const bundle = { schemaVersion: complete.schemaVersion, targetReleaseId: first.manifest.release.id, releases: [first] };
++    const compiled = compileCatalogRelease(bundle);
++    if (!compiled.ok) throw new Error("owned Catalog fixture compilation failed");
++    pin = { id: compiled.value.model.releases[0]!.release.id, digest: compiled.value.model.releases[0]!.release.digest };
++    expect(await installPublishedRelease(admin, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: pin.digest })).toMatchObject({ ok: true });
++    await admin.query("insert into public.organizations(id,name) values ('role-org-1','Synthetic One'),('role-org-2','Synthetic Two')");
++    await admin.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin) values ('role-module','role-org-1','Synthetic module','role-module',1,'business','curated')");
++    await admin.query("insert into public.attribution_subjects(id,organization_id,subject_kind,display_name,source_key) values ('role-driver','role-org-1','driver-registration','Synthetic Driver','compatible:acme,power')");
++    await admin.query("insert into public.driver_registrations(attribution_subject_id,driver_nature,instance_cardinality) values ('role-driver','physical-device','multiple')");
++    await admin.query("insert into public.parameter_modules(id,organization_id,name,path,depth,kind,origin,attribution_subject_id) values ('role-driver-module','role-org-1','Synthetic driver','role-driver-module',1,'driver-group','curated','role-driver')");
++    prepared = true;
++  }, 60000);
++  afterAll(async () => {
++    await Promise.all([admin?.end(), writer?.end(), reader?.end(), wrongReader?.end()]);
++    if (id) {
++      docker.assertOwned(id, "wiseeff.test", name);
++      if (!prepared) console.warn("Owned PostgreSQL setup failed", docker.command(["inspect", "--format", "{{.State.Status}}|oom={{.State.OOMKilled}}|exit={{.State.ExitCode}}|restarts={{.RestartCount}}", id]).toString().trim());
++      docker.command(["rm", "-f", "-v", id]);
++    }
++  });
++  it("preserves writer/reader negative grants and fixed definer ownership/search_path", async () => {
++    expect((await reader.query("select session_user as login")).rows).toEqual([{ login: "scoped_reader" }]);
++    expect((await writer.query("select session_user as login")).rows).toEqual([{ login: "scoped_writer" }]);
++    await expect(writer.query("select * from parameter_catalog.catalog_state")).rejects.toMatchObject({ code: "42501" });
++    await expect(writer.query("select * from public.audit_events")).rejects.toMatchObject({ code: "42501" });
++    await expect(reader.query("delete from parameter_catalog.catalog_releases")).rejects.toMatchObject({ code: "42501" });
++    await expect(reader.query("create table public.forbidden_runtime_table(id text)")).rejects.toMatchObject({ code: "42501" });
++    expect((await reader.query("select rolsuper,rolbypassrls,rolcreatedb,rolcreaterole from pg_catalog.pg_roles where rolname=session_user")).rows).toEqual([{ rolsuper: false, rolbypassrls: false, rolcreatedb: false, rolcreaterole: false }]);
++    for (const role of ["catalog_migration_owner", "catalog_synchronizer_role", "parameter_governance_writer_role"]) {
++      await expect(reader.query(`set role ${role}`)).rejects.toMatchObject({ code: "42501" });
++    }
++    await expect(reader.query("select * from pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
++    await expect(writer.query("select parameter_catalog.read_proposal_success_audit('x','x','x','x')")).rejects.toMatchObject({ code: "42501" });
++    await expect(reader.query("select * from parameter_catalog.lock_governance_destination_module('role-org-1','role-module')")).rejects.toMatchObject({ code: "42501" });
++    expect((await admin.query("select proacl::text as acl from pg_proc where oid='pg_catalog.pg_postmaster_start_time()'::regprocedure")).rows[0].acl).toBe(unrelatedFunctionAcl);
++    expect((await admin.query("select has_function_privilege('catalog_migration_owner','pg_catalog.pg_control_system()','EXECUTE') as allowed")).rows).toEqual([{ allowed: true }]);
++    expect((await reader.query("select parameter_catalog.runtime_database_identity() as identity")).rows[0].identity).toMatch(/^\d+:\d+$/);
++    const functions = await admin.query("select p.proname,pg_get_userbyid(p.proowner) as owner,p.prosecdef,p.proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='parameter_catalog' and p.proname=any($1::text[]) order by p.proname", [["runtime_database_identity", "read_proposal_success_audit", "lock_governance_destination_module"]]);
++    expect(functions.rows).toHaveLength(3);
++    for (const fn of functions.rows) expect(fn).toMatchObject({ owner: "catalog_migration_owner", prosecdef: true, proconfig: ["search_path=pg_catalog"] });
++  });
++  it("commits and replays a real audited Proposal using two restricted login sessions", async () => {
++    const input = command();
++    const result = await executeProposal(writer, input, { readerPool: reader });
++    expect(result).toMatchObject({ ok: true, value: { status: "draft", baseDefinitionId: "pdef_acme_power_iin_max", requestedChange: input.payload } });
++    if (!result.ok) throw new Error("proposal failed");
++    expect(await executeProposal(writer, input, { readerPool: reader })).toMatchObject({ ok: true, value: { outcome: "replayed", proposalId: result.value.proposalId } });
++    expect((await admin.query("select count(*)::int as count from public.audit_events where target_id=$1 and action='proposal-create-draft'", [result.value.proposalId])).rows).toEqual([{ count: 1 }]);
++    const crossOrganization = await executeProposal(writer, { kind: "submit-existing", organizationId: "role-org-2", proposalId: DefinitionProposalId(result.value.proposalId), expectedEtag: 1, currentRelease: pin, idempotencyKey: randomBytes(12).toString("hex"), context: input.context }, { readerPool: reader });
++    expect(crossOrganization).toMatchObject({ ok: false, error: { kind: "proposal-not-found" } });
++    expect((await admin.query("select status from parameter_catalog.definition_proposals where id=$1", [result.value.proposalId])).rows).toEqual([{ status: "draft" }]);
++    expect((await admin.query("select count(*)::int as count from public.audit_events where organization_id='role-org-2' and action='proposal-submit-existing-refused' and target_id=$1", [result.value.proposalId])).rows).toEqual([{ count: 1 }]);
++    const refusal = (await admin.query("select trace_id from public.audit_events where organization_id='role-org-2' and action='proposal-submit-existing-refused' and target_id=$1", [result.value.proposalId])).rows[0];
++    expect((await reader.query("select parameter_catalog.read_proposal_success_audit($1,$2,$3,$4) as metadata", ["role-org-2", "proposal-submit-existing-refused", refusal.trace_id, result.value.proposalId])).rows).toEqual([{ metadata: null }]);
++    const audit = (await admin.query("select trace_id from public.audit_events where action='proposal-create-draft' and target_id=$1", [result.value.proposalId])).rows[0];
++    const visible = (await reader.query("select parameter_catalog.read_proposal_success_audit($1,$2,$3,$4) as metadata", ["role-org-1", "proposal-create-draft", audit.trace_id, result.value.proposalId])).rows[0].metadata;
++    expect(Object.keys(visible)).toEqual(["resultSnapshot"]);
++  });
++  it("rejects actual other-database reader and stale current pin without creating a proposal", async () => {
++    const before = (await admin.query("select count(*)::int as count from parameter_catalog.definition_proposals")).rows[0].count;
++    const auditBefore = (await admin.query("select count(*)::int as count from public.audit_events")).rows[0].count;
++    await expect(executeProposal(writer, command(), { readerPool: wrongReader })).rejects.toMatchObject({ name: "ProposalReadTargetError", reason: "read-target-mismatch" });
++    expect((await admin.query("select count(*)::int as count from public.audit_events")).rows[0].count).toBe(auditBefore);
++    const stale = { ...pin, digest: CatalogReleaseDigest(`sha256:${"0".repeat(64)}`) };
++    expect(await executeProposal(writer, command({ baseRelease: stale, currentRelease: stale }), { readerPool: reader })).toMatchObject({ ok: false });
++    expect((await admin.query("select count(*)::int as count from parameter_catalog.definition_proposals")).rows[0].count).toBe(before);
++  });
++  it("holds the scoped module row lock in the writer transaction without broad public SELECT", async () => {
++    await expect(writer.query("select * from public.parameter_modules")).rejects.toMatchObject({ code: "42501" });
++    const session = await writer.connect();
++    const competitor = await admin.connect();
++    try {
++      await session.query("begin");
++      expect(await lockDestinationModule(session, "role-org-2", "role-module")).toBeNull();
++      expect(await lockDestinationModule(session, "role-org-1", "role-module")).toMatchObject({ id: "role-module", organization_id: "role-org-1" });
++      await competitor.query("set lock_timeout='100ms'");
++      await expect(competitor.query("update public.parameter_modules set name='blocked mutation' where id='role-module'")).rejects.toMatchObject({ code: "55P03" });
++      await session.query("rollback");
++      await competitor.query("update public.parameter_modules set name='after lock release' where id='role-module'");
++    } finally {
++      await session.query("rollback");
++      await competitor.query("reset lock_timeout");
++      session.release(); competitor.release();
++    }
++  });
++  it("retains the shared current pointer lock across actual reader projection queries", async () => {
++    const competitor = await admin.connect();
++    try {
++      await competitor.query("begin");
++      await withProposalUnitOfWork(writer, async (session) => {
++        expect(await lockAndLoadCurrentRelease(session)).toEqual({ ok: true, value: pin });
++        expect((await competitor.query("select pg_try_advisory_xact_lock($1) as acquired", [CURRENT_POINTER_LOCK_KEY])).rows).toEqual([{ acquired: false }]);
++        return { ok: true, value: null };
++      }, reader);
++      expect((await competitor.query("select pg_try_advisory_xact_lock($1) as acquired", [CURRENT_POINTER_LOCK_KEY])).rows).toEqual([{ acquired: true }]);
++    } finally { await competitor.query("rollback"); competitor.release(); }
++  });
++  it("pins reader isolation despite a REPEATABLE READ login default", async () => {
++    await admin.query("alter role scoped_reader in database postgres set default_transaction_isolation to 'repeatable read'");
++    const configuredReader = new pg.Pool({ connectionString: url("scoped_reader") });
++    let leasedReader: pg.PoolClient | undefined;
++    configuredReader.on("acquire", (client) => { leasedReader = client; });
++    try {
++      expect((await configuredReader.query("show default_transaction_isolation")).rows).toEqual([{ default_transaction_isolation: "repeatable read" }]);
++      await withProposalUnitOfWork(writer, async () => {
++        expect((await leasedReader!.query("show transaction_isolation")).rows).toEqual([{ transaction_isolation: "read committed" }]);
++        expect((await leasedReader!.query("show transaction_read_only")).rows).toEqual([{ transaction_read_only: "on" }]);
++        return { ok: true, value: null };
++      }, configuredReader);
++    } finally {
++      await configuredReader.end();
++      await admin.query("alter role scoped_reader in database postgres reset default_transaction_isolation");
++    }
++  });
++  it("registers through the real guarded writer with scoped destination lookup and rejects another organization", async () => {
++    const input: RegisterSubjectCommand = {
++      kind: "register", organizationId: "role-org-1", subjectId: CatalogSubjectId("csub_acme_power"),
++      subjectKind: "driver", expectedRelease: pin, placement: { mode: "use-default" },
++      destinationModuleId: "role-driver-module", method: "explicit", proof: { reason: "isolated role regression" },
++      idempotencyKey: randomBytes(12).toString("hex"), context: { actorKind: "org-admin", principalId: "isolated-author" },
++    };
++    expect(await executeRegistration(writer, input)).toMatchObject({ ok: true, value: { organizationId: "role-org-1", moduleId: "role-driver-module", registrationStatus: "active" } });
++    expect(await executeRegistration(writer, { ...input, organizationId: "role-org-2", idempotencyKey: randomBytes(12).toString("hex") })).toMatchObject({ ok: false, error: { kind: "invalid-placement-parent" } });
++    expect((await admin.query("select count(*)::int as count from parameter_catalog.organization_subject_registrations where organization_id='role-org-2'")).rows).toEqual([{ count: 0 }]);
++  });
++  it("fails closed when the installed database identity capability is unavailable", async () => {
++    const before = (await admin.query("select count(*)::int as count from parameter_catalog.definition_proposals")).rows[0].count;
++    await admin.query("revoke execute on function parameter_catalog.runtime_database_identity() from catalog_runtime_reader_role");
++    try {
++      await expect(executeProposal(writer, command(), { readerPool: reader })).rejects.toMatchObject({ name: "ProposalReadTargetError", reason: "read-target-unavailable" });
++    } finally { await admin.query("grant execute on function parameter_catalog.runtime_database_identity() to catalog_runtime_reader_role"); }
++    expect((await admin.query("select count(*)::int as count from parameter_catalog.definition_proposals")).rows[0].count).toBe(before);
++  });
++  it("refuses to adopt a pre-existing reader role with extra ACLs and preserves those ACLs", async () => {
++    const migration = await readFile(path.resolve("server/migrations/0140_parameter_catalog_runtime_read_capability.sql"), "utf8");
++    const session = await admin.connect();
++    try {
++      await session.query("grant insert on parameter_catalog.catalog_releases to catalog_runtime_reader_role");
++      await session.query("begin");
++      await expect(session.query(migration)).rejects.toMatchObject({ code: "55000", message: "PCAT_RUNTIME_READER_ACL_UNSAFE" });
++      await session.query("rollback");
++      expect((await session.query("select has_table_privilege('catalog_runtime_reader_role','parameter_catalog.catalog_releases','INSERT') as allowed")).rows).toEqual([{ allowed: true }]);
++    } finally {
++      await session.query("rollback");
++      await session.query("revoke insert on parameter_catalog.catalog_releases from catalog_runtime_reader_role");
++      session.release();
++    }
++  });
++  it("rejects extra schema, function and ownership capabilities without silently repairing them", async () => {
++    const migration = await readFile(path.resolve("server/migrations/0140_parameter_catalog_runtime_read_capability.sql"), "utf8");
++    const cases = [
++      { grant: "grant create on schema public to catalog_runtime_reader_role", revoke: "revoke create on schema public from catalog_runtime_reader_role",
++        check: "select has_schema_privilege('catalog_runtime_reader_role','public','CREATE') as allowed" },
++      { grant: "grant execute on function parameter_catalog.lock_governance_destination_module(text,text) to catalog_runtime_reader_role",
++        revoke: "revoke execute on function parameter_catalog.lock_governance_destination_module(text,text) from catalog_runtime_reader_role",
++        check: "select has_function_privilege('catalog_runtime_reader_role','parameter_catalog.lock_governance_destination_module(text,text)','EXECUTE') as allowed" },
++      { grant: "create table public.owned_role_probe(id text); alter table public.owned_role_probe owner to catalog_runtime_reader_role",
++        revoke: "drop table public.owned_role_probe",
++        check: "select relowner='catalog_runtime_reader_role'::regrole as allowed from pg_class where oid='public.owned_role_probe'::regclass" },
++    ];
++    const session = await admin.connect();
++    try {
++      for (const probe of cases) {
++        await session.query(probe.grant);
++        try {
++          await session.query("begin");
++          await expect(session.query(migration)).rejects.toMatchObject({ code: "55000", message: "PCAT_RUNTIME_READER_ACL_UNSAFE" });
++          await session.query("rollback");
++          expect((await session.query(probe.check)).rows).toEqual([{ allowed: true }]);
++        } finally { await session.query("rollback"); await session.query(probe.revoke); }
++      }
++    } finally { session.release(); }
++  });
++  it("retries management migrations through the unchanged ledger without re-adopting the role", async () => {
++    const before = (await admin.query("select checksum from schema_migrations where name='0140_parameter_catalog_runtime_read_capability.sql'")).rows;
++    expect(before).toHaveLength(1);
++    const db = createPostgresDatabase(url("postgres"));
++    try { await applyMigrations(db, path.resolve("server/migrations")); }
++    finally { await db.close(); }
++    expect((await admin.query("select checksum from schema_migrations where name='0140_parameter_catalog_runtime_read_capability.sql'")).rows).toEqual(before);
++  });
++});
+diff --git a/server/modules/parameter-governance/proposals/service.ts b/server/modules/parameter-governance/proposals/service.ts
+index 605d4d6d9..d3540853b 100644
+--- a/server/modules/parameter-governance/proposals/service.ts
++++ b/server/modules/parameter-governance/proposals/service.ts
+@@ -18,6 +18,7 @@ export type ProposalService = {
+ export const executeProposal = async (
+   pool: pg.Pool,
+   command: ProposalCommand,
++  options?: { readonly readerPool: pg.Pool },
+ ): Promise<Result<ProposalResult, ProposalFailure>> => {
+   const validated = validateProposalCommand(command);
+   if (!validated.ok) {
+@@ -27,6 +28,7 @@ export const executeProposal = async (
+   try {
+     const result = await withProposalUnitOfWork(pool, (client) =>
+       writeProposal(client, validated.value),
++      options?.readerPool,
+     );
+     if (!result.ok) {
+       await writeRefusalAudit(pool, command, result.error);
+diff --git a/server/modules/parameter-governance/proposals/unitOfWork.ts b/server/modules/parameter-governance/proposals/unitOfWork.ts
+index 18d56926e..06a1b4ff0 100644
+--- a/server/modules/parameter-governance/proposals/unitOfWork.ts
++++ b/server/modules/parameter-governance/proposals/unitOfWork.ts
+@@ -1,19 +1,30 @@
+ import pg from "pg";
+ 
+ import type { Result } from "./result";
++import { createProposalCatalogReadPorts, ProposalReadTargetError, readDatabaseIdentity } from "./catalogReadPorts";
++import type { ProposalWriterClient } from "./repositories";
+ 
+-export type ProposalUnitOfWorkClient = pg.PoolClient;
++export type ProposalUnitOfWorkClient = ProposalWriterClient;
+ 
+ export const withProposalUnitOfWork = async <T, E>(
+   pool: pg.Pool,
+   work: (client: ProposalUnitOfWorkClient) => Promise<Result<T, E>>,
++  readerPool?: pg.Pool,
+ ): Promise<Result<T, E>> => {
+   const client = await pool.connect();
++  let reader: pg.PoolClient | undefined;
+   try {
+     await client.query("begin");
+     await client.query("set constraints all deferred");
+     try {
+-      const result = await work(client);
++      if (readerPool) {
++        reader = await readerPool.connect();
++        // READ COMMITTED deliberately observes an audit committed while the
++        // writer waited for an idempotency lock. All reads stay on this session.
++        await reader.query("begin isolation level read committed read only");
++        if (await readDatabaseIdentity(client) !== await readDatabaseIdentity(reader)) throw new ProposalReadTargetError("read-target-mismatch");
++      }
++      const result = await work(reader ? { query: client.query.bind(client), reads: createProposalCatalogReadPorts(reader) } : client);
+       if (!result.ok) {
+         await client.query("rollback");
+         return result;
+@@ -26,6 +37,7 @@ export const withProposalUnitOfWork = async <T, E>(
+       throw error;
+     }
+   } finally {
++    if (reader) { await reader.query("rollback").catch(() => undefined); reader.release(); }
+     client.release();
+   }
+ };
+diff --git a/server/modules/parameter-governance/registration/repositories.ts b/server/modules/parameter-governance/registration/repositories.ts
+index bc33ad813..4ccf38e40 100644
+--- a/server/modules/parameter-governance/registration/repositories.ts
++++ b/server/modules/parameter-governance/registration/repositories.ts
+@@ -225,9 +225,7 @@ export const lockDestinationModule = async (
+ ): Promise<DestinationModuleRow | null> => {
+   const result = await client.query<DestinationModuleRow>(
+     `select id, organization_id, parent_id, kind
+-     from public.parameter_modules
+-     where organization_id = $1 and id = $2
+-     for share`,
++     from parameter_catalog.lock_governance_destination_module($1,$2)`,
+     [organizationId, moduleId],
+   );
+   return result.rows[0] ?? null;
+diff --git a/vitest.runtime-bootstrap.config.ts b/vitest.runtime-bootstrap.config.ts
+index 0fc4855e8..9e03e7b79 100644
+--- a/vitest.runtime-bootstrap.config.ts
++++ b/vitest.runtime-bootstrap.config.ts
+@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
+ 
+ // Bootstrap tests own their PostgreSQL cluster. Do not load server globalSetup:
+ // it provisions migration fixtures from ambient TEST_DATABASE_URL/DATABASE_URL.
++// Select exact files when invoking this config. Archive/import integration tests
++// still require an explicitly provisioned isolated target; no bare suite run.
+ export default defineConfig({
+   test: {
+     environment: "node",
+@@ -11,6 +13,9 @@ export default defineConfig({
+       "server/modules/logs/workerRunner.test.ts",
+       "server/modules/parameter-catalog-api/productionWire*.test.ts",
+       "server/config/env.test.ts",
++      "server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts",
++      "server/modules/catalog-cutover/archive/*.test.ts",
++      "server/modules/parameter-bindings/cutoverImport/*.test.ts",
+     ],
+     testTimeout: 30000,
+     hookTimeout: 30000,

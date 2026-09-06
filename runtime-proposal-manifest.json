@@ -1,0 +1,101 @@
+{
+  "createdAtUtc": "2026-09-06T12:29:24.844914+00:00",
+  "base": "37d5b01f8c02a7d83509fbb922af9b44422fc9cf",
+  "head": "56a838eaae5883a2e1a721ff64a787b04295f4b9",
+  "tree": "3a7a324fbeeb8fda347f05a9143012dbd31493d5",
+  "files": [
+    {
+      "path": "docs/developer/catalog-runtime-read-capability.md",
+      "mode": "100644",
+      "gitBlob": "5c4ab385cdc9202cc68eff28066f0eff1db49598",
+      "sha256": "8cb54489ce08a50127e3cbd97bc02b971e042ff7f7d43f90e3f95fe29ae2b2e8",
+      "bytes": 4619
+    },
+    {
+      "path": "docs/zh-CN/developer/catalog-runtime-read-capability.md",
+      "mode": "100644",
+      "gitBlob": "4651bff41a604b86a990bba9f330c7373d5d0d02",
+      "sha256": "201dd483d13ea3269bb797d10e2efb7721c0d56eb2bf15bcc251ae1d104afff8",
+      "bytes": 4103
+    },
+    {
+      "path": "server/migrations/0140_parameter_catalog_runtime_read_capability.sql",
+      "mode": "100644",
+      "gitBlob": "2138da004e5848a515fc7bf72015ccced5f777be",
+      "sha256": "81115641f27d10b4c869244c8ece19fc41b2d2b77f595ab9fc7b25a4d9f84cd7",
+      "bytes": 8446
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.ts",
+      "mode": "100644",
+      "gitBlob": "da40829c6beefc6264d81da67fba0b5fa2392282",
+      "sha256": "17bc803daa7d27f02e61a77132cd18fbeeaecb8bbb7f4b5e6ce5b639a7df1e07",
+      "bytes": 16248
+    },
+    {
+      "path": "server/modules/parameter-governance/proposals/catalogReadPorts.ts",
+      "mode": "100644",
+      "gitBlob": "d067b563eeee9a793cea538d2c680c6d88dc2667",
+      "sha256": "9dd9aaa369d68007a3c1df8cfce1d84269029a344d711314f8eb3a13da823a36",
+      "bytes": 3475
+    },
+    {
+      "path": "server/modules/parameter-governance/proposals/repositories.ts",
+      "mode": "100644",
+      "gitBlob": "a09b667e6dcf10bd209d138a30584cae82acaa30",
+      "sha256": "b7eeb00731e1889ca221047413d6ef6feecb0fa843e28ca2f0613bb0942d7fc5",
+      "bytes": 19057
+    },
+    {
+      "path": "server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts",
+      "mode": "100644",
+      "gitBlob": "68a64f3a3f78dab3f171bb26331ed13465f333be",
+      "sha256": "89e99762d49a0cc373efa75d2eeefe5aeff2f1e8d3d8e649894faafe72c1e4f2",
+      "bytes": 22484
+    },
+    {
+      "path": "server/modules/parameter-governance/proposals/service.ts",
+      "mode": "100644",
+      "gitBlob": "d3540853beaca917a46f3b7901728101666b7450",
+      "sha256": "acffce3d811853b0bd2491d95b014f1ced9ca479946b2d998f13bc127e8f5706",
+      "bytes": 1811
+    },
+    {
+      "path": "server/modules/parameter-governance/proposals/unitOfWork.ts",
+      "mode": "100644",
+      "gitBlob": "06a1b4ff06b77d1f10c5de150ebd90b66d235d14",
+      "sha256": "1f42b7a272bdca15c6dabdd7f80aab6d793c0592afb24b2beb0a40c5f42eb7b3",
+      "bytes": 1731
+    },
+    {
+      "path": "server/modules/parameter-governance/registration/repositories.ts",
+      "mode": "100644",
+      "gitBlob": "4ccf38e40d6d6eb775e531bcefd94b87b355e08f",
+      "sha256": "ddf48612f3676479b0f471859eab70ee9cf4789d7009f6cb3a96ee568e8e1f4c",
+      "bytes": 7215
+    },
+    {
+      "path": "vitest.runtime-bootstrap.config.ts",
+      "mode": "100644",
+      "gitBlob": "9e03e7b79cc71852e85dd65ad03b0ecab8158b8f",
+      "sha256": "41a90eed73d1ae5fdc40400303f43214f9e58242b2bd05fdc6af9cbacd57c63a",
+      "bytes": 1006
+    }
+  ],
+  "status": "UNAPPROVED PROPOSAL; not part of executable candidate; no production execution",
+  "technicalExecutionSha": "cac99fba82ec4f6349afed4d27c7d642fd0064ff",
+  "technicalResult": "67 passed, 0 failed/skipped; 11 real PG cases; later config-only head not relabeled",
+  "warning": "The old proposal test config includes broad cutover selectors; use the current candidate owned-receipt guard instead. No added grants approved.",
+  "evidence": [
+    {
+      "path": "evidence/runtime-final-proposal.log",
+      "executionSha": "cac99fba82ec4f6349afed4d27c7d642fd0064ff",
+      "originalSha256": "e8a486f9b5ada6df84f8e805616a73a654b13c3712ce69ea517c2cafb69109f0",
+      "deliveredSha256": "e8a486f9b5ada6df84f8e805616a73a654b13c3712ce69ea517c2cafb69109f0",
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0,
+      "commandEvidenceStatus": "summary log retained; exact selector invocation not retained in this package; not approval"
+    }
+  ]
+}
