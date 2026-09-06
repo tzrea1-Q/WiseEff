@@ -53,8 +53,8 @@ export function readManagementMigrationAttempt(record: JournalRecord): Managemen
       if (state.status !== "pending" || state.attemptId !== attemptId || originalPlanDigest !== entry.planDigest) fail("attempt-conflict");
       if (status === "unknown") {
         if (entry.inputDigest !== state.intentDigest) fail("attempt-conflict");
-        state = { ...state, status: "unknown" };
-      } else state = { ...state, status: "committed", receiptDigest: entry.inputDigest };
+        state = { status: "unknown", attemptId, intentDigest: entry.inputDigest };
+      } else state = { status: "committed", attemptId, intentDigest: state.intentDigest, receiptDigest: entry.inputDigest };
     }
   }
   return state;

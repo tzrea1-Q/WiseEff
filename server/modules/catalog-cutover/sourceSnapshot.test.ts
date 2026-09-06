@@ -11,7 +11,8 @@ import { captureFrozenSourceSnapshot, inspectFrozenSourceSnapshotProgress, verif
 import { runControlledManagementMigrations, verifyControlledManagementMigrations, type ManagementMigrationIntent, type ManagementMigrationReceipt } from "../../../scripts/migrate";
 import { bindingJournalPath } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal";
 import { openUpgradeJournal, sha256Prefixed } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
-import { createManagementMigrationJournal, verifyCommittedManagementMigration } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal";
+import { createManagementMigrationJournal, readManagementMigrationAttempt, verifyCommittedManagementMigration } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal";
+import { createManagementMigrationPreparation } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/managementPreparation";
 import { withHostOperationLock } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 // The parent runs this through vitest.upgrade-cutover.config.ts, which verifies
@@ -103,6 +104,20 @@ describe("frozen old public projection across exact append-only migrations", () 
       recomputed = await verifyControlledManagementMigrations({ DATABASE_URL: shadowUrl.toString(), XIAOZE_CHECKPOINTER: "postgres" }, {
         ...input, intent, operationLock, boundary: { verify: async observed => { expect(observed).toEqual(intent); } },
       });
+      const state = readManagementMigrationAttempt(opened.value.record);
+      if (state.status !== "committed") throw new Error("fixture-management-receipt-not-committed");
+      const preparation = createManagementMigrationPreparation({
+        environment: { DATABASE_URL: shadowUrl.toString(), XIAOZE_CHECKPOINTER: "postgres" },
+        operationRoot, journalPath: opened.value.journalPath,
+        context: { ...input, intent, operationLock, boundary: { verify: async observed => { expect(observed).toEqual(intent); } } },
+      });
+      expect(await preparation.verify({ receiptDigest: state.receiptDigest, target: frozen.target })).toEqual({
+        receiptDigest: state.receiptDigest, sourceSnapshotDigest: frozen.digest, candidateInventoryDigest: frozen.candidateInventoryDigest,
+      });
+      await expect(preparation.verify({ receiptDigest: sha256Prefixed("another receipt"), target: frozen.target }))
+        .rejects.toThrow("management-preparation-receipt-unavailable");
+      await expect(preparation.verify({ receiptDigest: state.receiptDigest, target: { ...frozen.target, databaseOid: "0" } }))
+        .rejects.toThrow("management-preparation-target-mismatch");
     });
     expect(managementReceipt).toEqual(recomputed);
     expect(recomputed!.checkpoint).toEqual({ mode: "postgres", status: "verified" });
