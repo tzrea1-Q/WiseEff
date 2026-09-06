@@ -18,6 +18,7 @@ export type ProposalService = {
 export const executeProposal = async (
   pool: pg.Pool,
   command: ProposalCommand,
+  options?: { readonly readerPool: pg.Pool },
 ): Promise<Result<ProposalResult, ProposalFailure>> => {
   const validated = validateProposalCommand(command);
   if (!validated.ok) {
@@ -27,6 +28,7 @@ export const executeProposal = async (
   try {
     const result = await withProposalUnitOfWork(pool, (client) =>
       writeProposal(client, validated.value),
+      options?.readerPool,
     );
     if (!result.ok) {
       await writeRefusalAudit(pool, command, result.error);

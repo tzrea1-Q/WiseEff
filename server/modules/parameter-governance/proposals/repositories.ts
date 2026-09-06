@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { ProposalCatalogReadPorts } from "./catalogReadPorts";
 import { z } from "zod";
 
 import {
@@ -25,6 +26,7 @@ import type {
 
 export type ProposalWriterClient = {
   query: pg.PoolClient["query"];
+  readonly reads?: ProposalCatalogReadPorts;
 };
 
 export type IdempotencyRow = {
@@ -162,6 +164,11 @@ export const lockAndLoadCurrentRelease = async (
     previousTimeout,
   ]);
 
+  if (client.reads) {
+    const pin = await client.reads.currentRelease();
+    return pin ? { ok: true, value: pin } : fail({ kind: "invalid-command", reason: "currentRelease" });
+  }
+
   const result = await client.query<{ id: string; digest: string }>(
     `select state.current_catalog_release_id as id, release.release_digest as digest
        from parameter_catalog.catalog_state state
@@ -184,6 +191,7 @@ export const loadReleasePin = async (
   client: ProposalWriterClient,
   releaseId: string,
 ): Promise<CatalogReleasePin | null> => {
+  if (client.reads) return client.reads.releasePin(releaseId);
   const result = await client.query<{ digest: string }>(
     `select release_digest as digest
        from parameter_catalog.catalog_releases
@@ -235,6 +243,16 @@ export const assertRevisionVisibleInRelease = async (
   revisionId: string,
   expectedDefinitionId?: string | null,
 ): Promise<Result<DefinitionRevisionRef, ProposalFailure>> => {
+  if (client.reads) {
+    const revision = await client.reads.revisionInRelease(releaseId, revisionId);
+    if (!revision) {
+      return fail({ kind: "invalid-command", reason: "baseDefinitionRevisionId" });
+    }
+    if (expectedDefinitionId != null && expectedDefinitionId !== revision.definitionId) {
+      return fail({ kind: "invalid-command", reason: "baseDefinitionId" });
+    }
+    return { ok: true, value: revision };
+  }
   const revision = await loadDefinitionRevision(client, revisionId);
   if (!revision) {
     return fail({ kind: "invalid-command", reason: "baseDefinitionRevisionId" });
@@ -306,7 +324,9 @@ export const loadSuccessAuditSnapshot = async (
   fingerprint: string,
   targetId: string,
 ): Promise<ProposalResultSnapshot | null> => {
-  const result = await client.query<{ metadata: { resultSnapshot?: unknown } }>(
+  const result = client.reads
+    ? { rows: [{ metadata: await client.reads.successAudit(organizationId, action, fingerprint, targetId) }] }
+    : await client.query<{ metadata: { resultSnapshot?: unknown } }>(
     `select metadata
        from public.audit_events
       where organization_id = $1
@@ -369,6 +389,16 @@ const proposalSnapshotSchema = z.object({
 
 /** Immutable revision content and exact canonical revision ownership; never a current/latest join. */
 export const loadProposalSnapshotContent = async (client: ProposalWriterClient, proposal: ProposalRow) => {
+  if (client.reads) {
+    const row = (await client.query<{ payload: import("./command").ProposalPayload }>(
+      "select payload from parameter_catalog.definition_proposal_revisions where proposal_id=$1 and id=$2",
+      [proposal.id, proposal.current_proposal_revision_id],
+    )).rows[0];
+    const revision = proposal.base_definition_revision_id === null ? null
+      : await client.reads.revisionInRelease(proposal.base_catalog_release_id, proposal.base_definition_revision_id);
+    if (!row || (proposal.base_definition_revision_id !== null && !revision)) throw new Error("Proposal immutable snapshot relation is unavailable");
+    return { requestedChange: row.payload, baseDefinitionId: revision?.definitionId ?? null, submittedByPersonId: proposal.author_principal_id };
+  }
   const result = await client.query<{ payload: import("./command").ProposalPayload; definition_id: string | null }>(
     `select revision.payload, definition_revision.definition_id
        from parameter_catalog.definition_proposal_revisions revision

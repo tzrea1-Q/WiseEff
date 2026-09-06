@@ -225,9 +225,7 @@ export const lockDestinationModule = async (
 ): Promise<DestinationModuleRow | null> => {
   const result = await client.query<DestinationModuleRow>(
     `select id, organization_id, parent_id, kind
-     from public.parameter_modules
-     where organization_id = $1 and id = $2
-     for share`,
+     from parameter_catalog.lock_governance_destination_module($1,$2)`,
     [organizationId, moduleId],
   );
   return result.rows[0] ?? null;

@@ -304,7 +304,7 @@ const createGovernancePorts = (
     ? bindCatalogGovernanceCommands({
         executeRegistration: (command) => executeRegistration(commandPool, command),
         resolveReviewItem: (command) => resolveReviewItem(commandPool, command),
-        executeProposal: (command) => executeProposal(commandPool, command),
+        executeProposal: (command) => executeProposal(commandPool, command, pool ? { readerPool: pool } : undefined),
         listReviewQueue: (query) => {
           const reader = createReviewQueueReader(pool ?? commandPool);
           return reader.list(query);

@@ -11,6 +11,7 @@ export default defineConfig({
       "server/modules/logs/workerRunner.test.ts",
       "server/modules/parameter-catalog-api/productionWire*.test.ts",
       "server/config/env.test.ts",
+      "server/modules/parameter-governance/proposals/runtimeRoles.integration.test.ts",
     ],
     testTimeout: 30000,
     hookTimeout: 30000,
