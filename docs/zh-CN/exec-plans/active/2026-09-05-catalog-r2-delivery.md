@@ -152,6 +152,12 @@ Definition 写入路径冻结为 `server/modules/parameter-catalog-api/` 下的 
 
 审批输入修复在审查 head 之上的工作树执行：产品 mock Red 为 20 失败／32 通过，Green 为 52 通过；实际 API adapter／根 HTTP／PG 为 61 通过，均无跳过。后者确认后端已拒绝这些输入。原始日志及元数据位于 `work/catalog-r2/evidence/b5ca4614c55b8061b3358656371f7f3ac757be9b/review-input-{red,green,api-baseline}.{log,json}`。这些是工作树执行，不冒充提交后的证据。lane 820 doctor 与迁移 owner canary 已通过。
 
+父协调者另独占 `docs/exec-plans/evidence/2026-09-06-catalog-r2-review.json`，为本次返修提供可审阅的原始文本／元数据索引。它将嵌入选定且脱敏的执行日志，保留每次实际 SHA 和证据层级，排除私有 lane 凭据、runtime descriptor 和无关产物。较大的浏览器产物在实际发布前仍单独索引，不把本地路径写成 GitHub 已可下载。
+
+[返修证据索引](../../../exec-plans/evidence/2026-09-06-catalog-r2-review.json)现已包含输入回归原始日志、限定 Standards 报告和 CI 受控对照。精确输入修复候选 `2760e771b4e65b576c95097e8f6cfb422354b868`：根 HTTP／PG 61 通过，产品 mock 52 通过，相关前端目录 12 文件／134 通过，均无跳过。独立 Standards 为限定 PASS；最终独立 Spec 和集成审查仍待执行。此单文件证据目录的产物安全扫描为零违例。
+
+Hosted run `34002589200`、job `101404079084` 实际 checkout 为 `78c9e131e1e0f958ba87e174967441913a2c3692`（`27bc39d…` 与 `b5ca461…` 的 merge-ref）。Script tests 为 1191 通过、1 失败、21 跳过，失败是 boundary inventory 用例；后续 backend／contract／boundary 步骤跳过。同一个本地 focused 命令在隔离 base `27bc39d…` 通过、在 `b5ca461…` 失败。CI-821-01 属于候选引入，不能归为无关基线失败。索引内的重定位提案保留不可变 inventory，要求明确批准恰好 23 对新旧字节位置及完整文件 hash；发布提案不等于批准或实施。
+
 ## 已验证的 Scratch 检查点：2026-09-06 Asia/Shanghai
 
 代码候选为 `b54a126b594effe5470f7df4c8b4d0458abc14c6`，tree 为 `c51651772664dfdc91e68673e67027a8dc3ed8be`。再次 fetch 后 accepted base 仍为 `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。后续纯报告提交不改变历史执行 SHA 的归属。本候选未 sealed、未 integration-ready、未 Hosted、未合并、未 attested。没有关闭 R2 issue；#813 仍是实际观察到的唯一开放 PR，其历史表述不能代替本轮证据。

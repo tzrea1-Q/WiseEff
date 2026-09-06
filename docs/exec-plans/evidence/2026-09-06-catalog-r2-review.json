@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "status": "partial repair evidence; not a seal or completion attestation",
+  "reviewHead": "b5ca4614c55b8061b3358656371f7f3ac757be9b",
+  "inputRepairCandidate": "2760e771b4e65b576c95097e8f6cfb422354b868",
+  "runs": [
+    {
+      "finding": "PR821-P2-review-input",
+      "issues": [
+        817,
+        819
+      ],
+      "requirementIds": [
+        "R2-REV-04-accept-1..10",
+        "R2-REV-04-reject-1..10"
+      ],
+      "level": "pure-mock",
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "b5ca4614c55b8061b3358656371f7f3ac757be9b",
+        "trackedStatusAtStart": " M src/application/parameter-catalog/proposalContractVectors.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "b5ca4614c55b8061b3358656371f7f3ac757be9b",
+        "tree": "e3570b2c967e1671fd919abcee63c58fcc1123c3",
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "src/application/parameter-catalog/proposalContract.test.ts"
+        ],
+        "start": "2026-09-06T01:28:34.713624+00:00",
+        "end": "2026-09-06T01:28:36.230471+00:00",
+        "exit": 1,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "rawPath": "work/catalog-r2/evidence/b5ca4614c55b8061b3358656371f7f3ac757be9b/review-input-red.log",
+      "rawSha256": "a29611b186ccd123b188dc72c313fc948ff9895448fd2beb0065cfe2f0ba47c5",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test\n> NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts src/application/parameter-catalog/proposalContract.test.ts\n\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n ❯ src/application/parameter-catalog/proposalContract.test.ts (52 tests | 20 failed) 18ms\n     × R2-REV-04-accept-1: accept rejects empty without effects or reserving the key 9ms\n     × R2-REV-04-accept-2: accept rejects spaces only without effects or reserving the key 1ms\n     × R2-REV-04-accept-3: accept rejects leading whitespace without effects or reserving the key 0ms\n     × R2-REV-04-accept-4: accept rejects trailing whitespace without effects or reserving the key 0ms\n     × R2-REV-04-accept-5: accept rejects NUL without effects or reserving the key 0ms\n     × R2-REV-04-accept-6: accept rejects newline without effects or reserving the key 0ms\n     × R2-REV-04-accept-7: accept rejects C0 upper bound without effects or reserving the key 0ms\n     × R2-REV-04-accept-8: accept rejects DEL without effects or reserving the key 0ms\n     × R2-REV-04-accept-9: accept rejects C1 lower bound without effects or reserving the key 0ms\n     × R2-REV-04-accept-10: accept rejects C1 upper bound without effects or reserving the key 0ms\n     × R2-REV-04-reject-1: reject rejects empty without effects or reserving the key 0ms\n     × R2-REV-04-reject-2: reject rejects spaces only without effects or reserving the key 0ms\n     × R2-REV-04-reject-3: reject rejects leading whitespace without effects or reserving the key 0ms\n     × R2-REV-04-reject-4: reject rejects trailing whitespace without effects or reserving the key 0ms\n     × R2-REV-04-reject-5: reject rejects NUL without effects or reserving the key 0ms\n     × R2-REV-04-reject-6: reject rejects newline without effects or reserving the key 0ms\n     × R2-REV-04-reject-7: reject rejects C0 upper bound without effects or reserving the key 0ms\n     × R2-REV-04-reject-8: reject rejects DEL without effects or reserving the key 0ms\n     × R2-REV-04-reject-9: reject rejects C1 lower bound without effects or reserving the key 0ms\n     × R2-REV-04-reject-10: reject rejects C1 upper bound without effects or reserving the key 0ms\n\n⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-1: accept rejects empty without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-2: accept rejects spaces only without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-3: accept rejects leading whitespace without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-4: accept rejects trailing whitespace without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-5: accept rejects NUL without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-6: accept rejects newline without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-7: accept rejects C0 upper bound without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-8: accept rejects DEL without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-9: accept rejects C1 lower bound without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-accept-10: accept rejects C1 upper bound without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-1: reject rejects empty without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-2: reject rejects spaces only without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-3: reject rejects leading whitespace without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-4: reject rejects trailing whitespace without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-5: reject rejects NUL without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-6: reject rejects newline without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-7: reject rejects C0 upper bound without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-8: reject rejects DEL without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-9: reject rejects C1 lower bound without effects or reserving the key\n FAIL  src/application/parameter-catalog/proposalContract.test.ts > R2 Proposal shared operation vectors: product mock adapter > R2-REV-04-reject-10: reject rejects C1 upper bound without effects or reserving the key\nError: invalid review error code: undefined\n ❯ check src/application/parameter-catalog/proposalContractVectors.ts:15:25\n     13|\n     14| function check(condition: boolean, message: string): asserts condition…\n     15|   if (!condition) throw new Error(message);\n       |                         ^\n     16| }\n     17|\n ❯ equal src/application/parameter-catalog/proposalContractVectors.ts:21:3\n ❯ Object.run src/application/parameter-catalog/proposalContractVectors.ts:88:9\n ❯ src/application/parameter-catalog/proposalContract.test.ts:12:7\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/20]⎯\n\n\n Test Files  1 failed (1)\n      Tests  20 failed | 32 passed (52)\n   Start at  09:28:35\n   Duration  659ms (transform 106ms, setup 94ms, import 120ms, tests 18ms, environment 347ms)\n\n"
+    },
+    {
+      "finding": "PR821-P2-review-input",
+      "issues": [
+        817,
+        819
+      ],
+      "requirementIds": [
+        "R2-REV-04-accept-1..10",
+        "R2-REV-04-reject-1..10"
+      ],
+      "level": "root-HTTP/real-PG",
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "b5ca4614c55b8061b3358656371f7f3ac757be9b",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M src/application/parameter-catalog/proposalContractVectors.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "b5ca4614c55b8061b3358656371f7f3ac757be9b",
+        "tree": "e3570b2c967e1671fd919abcee63c58fcc1123c3",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts"
+        ],
+        "start": "2026-09-06T01:29:41.837940+00:00",
+        "end": "2026-09-06T01:29:46.035934+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "rawPath": "work/catalog-r2/evidence/b5ca4614c55b8061b3358656371f7f3ac757be9b/review-input-api-baseline.log",
+      "rawSha256": "547ab72ddfdf181061daf440bc630ce110b10caec670aed2d35bcf203a11065f",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test:server\n> NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts\n\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n\n Test Files  1 passed (1)\n      Tests  61 passed (61)\n   Start at  09:29:42\n   Duration  3.87s (transform 1.19s, setup 10ms, import 1.76s, tests 1.92s, environment 0ms)\n\n"
+    },
+    {
+      "finding": "PR821-P2-review-input",
+      "issues": [
+        817,
+        819
+      ],
+      "requirementIds": [
+        "R2-REV-04-accept-1..10",
+        "R2-REV-04-reject-1..10"
+      ],
+      "level": "root-HTTP/real-PG",
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "trackedStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "tree": "00b470e6c4bbe7d4d6a2805669fc2f1d9453af75",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts"
+        ],
+        "start": "2026-09-06T01:31:50.492553+00:00",
+        "end": "2026-09-06T01:31:54.523964+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "rawPath": "work/catalog-r2/evidence/2760e771b4e65b576c95097e8f6cfb422354b868/input-committed-api.log",
+      "rawSha256": "34d38b2952d0fb0c986be44a70732d5cc619765aeb92f89d554c7d35e5c087df",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test:server\n> NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts\n\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n\n Test Files  1 passed (1)\n      Tests  61 passed (61)\n   Start at  09:31:50\n   Duration  3.76s (transform 1.17s, setup 9ms, import 1.68s, tests 1.90s, environment 0ms)\n\n"
+    },
+    {
+      "finding": "PR821-P2-review-input",
+      "issues": [
+        817,
+        819
+      ],
+      "requirementIds": [
+        "R2-REV-04-accept-1..10",
+        "R2-REV-04-reject-1..10"
+      ],
+      "level": "pure-mock",
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "trackedStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "tree": "00b470e6c4bbe7d4d6a2805669fc2f1d9453af75",
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "src/application/parameter-catalog/proposalContract.test.ts"
+        ],
+        "start": "2026-09-06T01:31:51.627117+00:00",
+        "end": "2026-09-06T01:31:53.048468+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "rawPath": "work/catalog-r2/evidence/2760e771b4e65b576c95097e8f6cfb422354b868/input-committed-mock.log",
+      "rawSha256": "fb17d42b7919e9f95b08ff5b0493c504437eee9669fbaa92a8f0c562ab8f8b97",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test\n> NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts src/application/parameter-catalog/proposalContract.test.ts\n\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n\n Test Files  1 passed (1)\n      Tests  52 passed (52)\n   Start at  09:31:52\n   Duration  608ms (transform 104ms, setup 84ms, import 120ms, tests 17ms, environment 321ms)\n\n"
+    },
+    {
+      "finding": "PR821-P2-review-input",
+      "issues": [
+        817,
+        819
+      ],
+      "requirementIds": [
+        "R2-REV-04-accept-1..10",
+        "R2-REV-04-reject-1..10"
+      ],
+      "level": "pure-mock/component",
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "trackedStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "2760e771b4e65b576c95097e8f6cfb422354b868",
+        "tree": "00b470e6c4bbe7d4d6a2805669fc2f1d9453af75",
+        "command": [
+          "npm",
+          "test",
+          "--",
+          "src/application/parameter-catalog",
+          "src/features/parameter-catalog",
+          "src/features/parameter-catalog-governance"
+        ],
+        "start": "2026-09-06T01:35:19.239856+00:00",
+        "end": "2026-09-06T01:35:22.324532+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "rawPath": "work/catalog-r2/evidence/2760e771b4e65b576c95097e8f6cfb422354b868/input-frontend-regressions.log",
+      "rawSha256": "f093fcdba883d864276f5102b0d3ea4e1f306b91d6b0200963f98cdb4a84d042",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test\n> NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts src/application/parameter-catalog src/features/parameter-catalog src/features/parameter-catalog-governance\n\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n\n Test Files  12 passed (12)\n      Tests  134 passed (134)\n   Start at  09:35:19\n   Duration  2.31s (transform 2.03s, setup 1.42s, import 3.67s, tests 2.81s, environment 6.23s)\n\n"
+    }
+  ],
+  "reports": [
+    {
+      "path": "work/catalog-r2/reviews/ci-821-followup.md",
+      "sha256": "6af283292842d30815257ba1417e968b3f052cb8e210e7b7279bcd49e0eedb31",
+      "rawText": "# PR #821 CI follow-up — independent Standards diagnosis\n\nResult: **CI-821-01 / P1 delivery blocker, candidate-introduced boundary inventory mismatch. Not baseline-red or a Hosted flake.** No implementation or GitHub mutations were performed.\n\n## Exact execution identity\n\n- PR head: `b5ca4614c55b8061b3358656371f7f3ac757be9b`, tree `e3570b2c967e1671fd919abcee63c58fcc1123c3`.\n- Actual CI checkout: `refs/remotes/pull/821/merge`, commit `78c9e131e1e0f958ba87e174967441913a2c3692`, tree `07923949f36dc2e13b93e0f35afb4d356b2de799`.\n- Merge parents: base `27bc39d53235879afb579a86f6ee777a462e4204`, then PR head. GitHub commit/tree API independently confirms the log. Merge versus head differs only in four documentation files; all checker, test, fixture, and scanned code blobs are identical.\n- Run `34002589200`, Build and test job `101404079084`: Ubuntu 24.04.4, Node 22.23.2, npm 10.9.8; disposable Hosted pgvector service. Script tests ran `npm run test:scripts` from 2026-09-06 01:05:23 UTC to 01:06:27 UTC, exit 1.\n- 93 files: 92 passed, 1 failed. 1213 tests: 1191 passed, 1 failed, 21 skipped. Raw logs and jobs API agree. Frontend tests passed 438 files / 3354 tests. Subsequent boundary CLI, bridge, backend, contract, and log-eval steps were skipped. Merge-bar job `101405325489` failed explicitly because `build-and-test` failed; other green jobs do not override it.\n\n## Failure and cause\n\n`scripts/check-parameter-catalog-boundaries.test.ts:768`, case **locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base**, expects `report.status === passed` but receives `failed`. Direct execution of the actual checker reports 3513 violations, 3490 allowlisted, **23 unallowlisted plus 23 stale allowances**, zero metadata mismatch/growth.\n\nEvery unmatched/stale occurrence belongs to `server/modules/parameter-specs/propertyKeyCutover.integration.test.ts`. Candidate commit `e156215197f56f25cfb058ebde14c8506543646f` changes the DTS fixture at line 844: updates the existing charger rather than inserting a second identity. This valid fixture correction shifts later source occurrences by 216 bytes. The 23 old occurrences have an exact one-to-one match at this displacement; generic matching by SQL text alone is ambiguous because repeated statements exist. `scripts/check-parameter-catalog-boundaries.ts:341–367` deliberately binds on file, family, rule, byte range, token and evidence, so these relocated occurrences receive new IDs. Updating the expected count to 3513 does not fix identity matching.\n\nThis violates the exact inventory gate required by `docs/agents/catalog-launch-operating-rules.md` inventory/fingerprint section, and the no-unallowlisted/stale contract in `scripts/parameter-catalog-allowlist/deterministicOutput.ts`. The failure existed before PR submission and remains a candidate-owned integration blocker.\n\n## Controlled comparison\n\nOne focused comparison, identical command and local environment on both trees:\n\n```sh\nnpm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts -t 'locks the post-refresh'\n```\n\nEnvironment: macOS arm64, Node 22.22.3, npm 10.9.8, Vitest 4.1.5, shared installed dependency bytes. No database operations. This is a local static comparison, **not** a reproduction of the entire Ubuntu Hosted environment or full scripts suite.\n\n- Isolated detached base at `/Users/tzrea1/.codex/worktrees/catalog-r2-821-ci-base/WiseEff`: exact base above, tree `a3b399b393e5f30fd1efb5f367a3732a46157844`; start 2026-09-06 09:30:29 Asia/Shanghai, duration 14.37 seconds; exit 0, 1 passed / 23 filtered skips.\n- Existing head: start 09:30:43, duration 14.09 seconds; exit 1, same assertion, 1 failed / 23 filtered skips. Exact wall-clock completion timestamps were not captured separately.\n- Base tracked tree remains clean. Existing worktrees were preserved; the new isolated base worktree and dependency symlink remain available. No full-suite rerun or production operation was used.\n\n## Minimum disposition\n\nKeep the failure open. Do not rerun Hosted expecting a flake recovery, change trusted base, regenerate/grow the allowlist, weaken the assertion, or pad source to preserve offsets. Existing protocol has no approved relocation mechanism. Parent must obtain a bounded explicit relocation design approval, preserving the original trusted inventory and proving one-to-one unchanged occurrences, before implementing such a checker change; alternatively provide a correct fixture solution that satisfies the existing invariant without byte-padding tricks. Then run checker adversarial tests, the original inventory case, the explicit boundary command, and required exact-candidate gates before new Hosted evidence.\n\nRaw evidence: `ci-821-raw/build-job.log`, `run.json`, `job.json`, `merge-bar.log`, `merge-commit.json`, `merge-tree.json`, `head-tree.txt`, `merge-head-differences.json`, `head-boundary-report.json`, `relocation-candidates.json`, `base-focused.log`, `head-focused.log`. Git-over-SSH retrieval was unavailable; read-only GitHub commit/tree APIs supplied the merge object identity instead. Logs retain GitHub credential masking. No production or OP-09 action occurred.\n"
+    },
+    {
+      "path": "work/catalog-r2/reviews/standards-2760-input.md",
+      "sha256": "e693b3ea05a439d9bd636b2cb26aa33889b1b5fca464473c2809c86398b43ff3",
+      "rawText": "# Limited Standards review — Proposal review inputs\n\n**PASS, limited to `b5ca4614c55b8061b3358656371f7f3ac757be9b..2760e771b4e65b576c95097e8f6cfb422354b868`.** No new actionable finding in these four changed files. This is independent Standards and domain-validation review, not a new full Spec PASS or program seal.\n\n`mockAdapter.ts` applies its existing `proposalToken` predicate to schema-parsed accept `repositoryReference` and reject `reason`. This matches `server/modules/parameter-governance/proposals/command.ts:126–127,351–357`: nonempty, already trimmed, and free of C0/DEL/C1 controls. It preserves input bytes rather than silently normalizing them and introduces no new schema, backend dependency, privilege, or Catalog write. Existing session/scope/conditional-write checks remain in place. The invalid-input exception occurs before `commitProposal` and before `replayProposal` saves a result, so failed input does not reserve a successful idempotency key.\n\nThe 20 shared vectors cover both fields across empty, whitespace/padding, and control boundaries. They use an authorized non-author reviewer on a submitted object, compare the full object after refusal, check exact validation code/field/retryability, then reuse the same key and original ETag with corrected content, assert one version advancement and new ETag, and replay the saved result without extra effects. Actual API harness additionally compares persisted business/audit/dedupe evidence. The mock harness does not supply that optional database evidence; its assertions should continue to be reported as product-mock object/idempotency evidence, not database audit proof.\n\nInspected parent raw logs: product mock 52 passed; actual API/root HTTP/PG 61 passed. The plan correctly identifies these as pre-commit working-tree executions, not newly executed exact-commit evidence. Reviewer did not rerun them or access Spec review findings. Documentation additions retain explicit blocked boundary/final-gate status and separate Chinese/English files.\n\nNo meaningful new possible-smell finding in this small delta: reuse of the existing predicate avoids duplicated validation logic within mock; shared vectors keep the two adapters subject to the same input cases. Unrelated pre-existing error-precedence or mock capability limitations were not reclassified as repaired.\n\nStill blocked: CI-821-01 exact inventory mismatch; other incomplete #815–#820 gates; production/OP-09 remains outside authorization. No GitHub or production mutation by this reviewer.\n"
+    },
+    {
+      "path": "work/catalog-r2/reviews/boundary-relocation-proposal.md",
+      "sha256": "badcf1ad89b0eb0fc08512b61ac54485a3e871c42846d2a757a83e99c2663b08",
+      "rawText": "# Unapproved bounded relocation proposal for CI-821-01\n\nThis is a review proposal only. Existing checker remains failed; neither this document nor reviewer agreement authorizes implementation, rewriting inventory, or sealing. The launch protocol currently has no relocation exception.\n\n## Exact approval object\n\nApprove a single explicit occurrence-identity relocation for `server/modules/parameter-specs/propertyKeyCutover.integration.test.ts`, from blob `dd0168f369b615f45eeb1e5539557fb63967e1dd` at accepted base `27bc39d53235879afb579a86f6ee777a462e4204` to blob `1854772393388a8778b27594d2789b8635bfa3de` at candidate `b5ca4614c55b8061b3358656371f7f3ac757be9b`. Reason: the specific fixture correction in `e156215197f56f25cfb058ebde14c8506543646f` removes the duplicate charger identity while retaining the critical second-location test. Exactly 23 old IDs, 23 observed destination occurrences, displacement +216 bytes, and no new debt are eligible. Approval must include the full old/new source blob OIDs, original fixture SHA-256/trusted SHA, existing shard hashes, and the complete reviewed per-occurrence mapping; no wildcard, file-wide exception, inferred future mapping, or mutable head pointer.\n\nThe immutable S0-ID fixture and its original trusted base stay unchanged. Existing allowlist ID/rule/file/reason entries stay unchanged; the prior six genuine stale-debt deletions remain deleted. A small separately reviewed relocation record is the only new approval artifact. Freeze its schema and exact designated path before implementation. A proposed implementation path set is the existing checker, its existing tests, a dedicated relocation parser/validator and tests under `scripts/parameter-catalog-allowlist/`, a single explicit relocation JSON under its fixtures, and linked English/Chinese governance documentation. Parent must freeze exact filenames and ownership, not grant directory-wide edits.\n\n## Fail-closed rules\n\n1. Verify original fixture integrity and ancestry as today. Verify old and destination **whole-file** blob hashes exactly; source changes invalidate the record. Never fall back to text search when a hash or position fails.\n2. Each mapping supplies old ID plus old/new byte start/end and exact file/family/rule/token/evidence. Verify byte slices at both positions are identical and lengths unchanged. Bind the old ID only to that exact observed destination occurrence. Keep original identity/permission metadata; report current location separately if needed.\n3. Require a bijection: every old ID exists in both immutable inventory and current allowance, each is consumed once, each destination is consumed once, and every listed pair is actually needed. Unused, duplicate, deleted, wrong-rule, cross-file, or same-ID/multiple-target rows fail. Never match by evidence or normalized SQL alone: this file contains repeated statements.\n4. Reject new or changed token/evidence/slice, semantic normalization, altered allowance reasons, absent approvals, altered record hash, mappings to removed debt, or future blob versions. Counts alone are insufficient. All discoveries outside the 23 exact mappings flow through the unchanged normal comparison and can still fail.\n5. Record approval outside the implementation agent's self-assertion according to the repository's independent approval process. Trust the approved record only through a reviewed integrity anchor; a freely editable JSON cannot grant its own authority. Keep mandatory checks, immutable inventory and anti-growth ratchet intact.\n\n## Required adversarial proof before adoption\n\nReal approved +216 relocation passes with 3513 allowance matches and zero stale/new entries; original historical inventory remains 3519. Negative cases must reject changed source bytes, changed rule/token/evidence, changed source/destination hash, wrong/missing trusted ancestor, duplicate/omitted/reused mapping, cross-file mapping, deleted old occurrence, two identical SQL statements with swapped destinations, added occurrence, reinstated one of the six removed debts, changed approval integrity, and a future file edit after the approved relocation. Test the actual checker and existing inventory case in direct checkout and the actual Hosted merge topology. No relaxed timeout/allowlist or current-HEAD trusted base.\n\nThe required approval is a narrowly scoped change to the inventory identity contract and its verification seam. If that approval is unavailable, CI-821-01 remains blocked. Do not encode +216 as a general relocation heuristic or pad source to preserve offsets.\n"
+    },
+    {
+      "path": "work/catalog-r2/reviews/ci-821-raw/base-focused.log",
+      "level": "static local comparison",
+      "sha256": "cbf3b1f750a00a0bd9db650b6aa1617d076de0447eeee16b180252ecac9413d1",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test:scripts\n> tsx scripts/check-workspace-links.ts && vitest run --config vitest.scripts.config.ts scripts/check-parameter-catalog-boundaries.test.ts -t locks the post-refresh\n\nWorkspace package links are present.\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/catalog-r2-821-ci-base/WiseEff\n\n\n Test Files  1 passed (1)\n      Tests  1 passed | 23 skipped (24)\n   Start at  09:30:29\n   Duration  14.37s (transform 152ms, setup 0ms, import 315ms, tests 14.00s, environment 0ms)\n\n"
+    },
+    {
+      "path": "work/catalog-r2/reviews/ci-821-raw/head-focused.log",
+      "level": "static local comparison",
+      "sha256": "8309ec3d611f34d3f4c4d4eb65c40df6e21e3dc3401ce2cc4075912f2600a527",
+      "rawText": "\n> core-efficiency-prototype@0.1.0 test:scripts\n> tsx scripts/check-workspace-links.ts && vitest run --config vitest.scripts.config.ts scripts/check-parameter-catalog-boundaries.test.ts -t locks the post-refresh\n\nWorkspace package links are present.\n\n RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/4662/WiseEff\n\n ❯ scripts/check-parameter-catalog-boundaries.test.ts (24 tests | 1 failed | 23 skipped) 13736ms\n     × locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base 13735ms\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  scripts/check-parameter-catalog-boundaries.test.ts > parameter catalog boundary checker > locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base\nAssertionError: expected 'failed' to be 'passed' // Object.is equality\n\nExpected: \"passed\"\nReceived: \"failed\"\n\n ❯ scripts/check-parameter-catalog-boundaries.test.ts:768:29\n    766|         duplicateBaseIdOccurrences: 1_975,\n    767|       });\n    768|       expect(report.status).toBe(\"passed\");\n       |                             ^\n    769|       expect(report.summary).toEqual({\n    770|         violations: 3_513,\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  1 failed | 23 skipped (24)\n   Start at  09:30:43\n   Duration  14.09s (transform 140ms, setup 0ms, import 296ms, tests 13.74s, environment 0ms)\n\n"
+    }
+  ],
+  "hosted": {
+    "runUrl": "https://github.com/tzrea1-Q/WiseEff/actions/runs/34002589200",
+    "jobUrl": "https://github.com/tzrea1-Q/WiseEff/actions/runs/34002589200/job/101404079084",
+    "actualCheckout": "78c9e131e1e0f958ba87e174967441913a2c3692",
+    "conclusion": "failure",
+    "scriptTests": {
+      "passed": 1191,
+      "failed": 1,
+      "skipped": 21
+    },
+    "subsequentBackendContractBoundary": "skipped"
+  },
+  "productionActions": "none; OP-09 remains outside authorization"
+}
