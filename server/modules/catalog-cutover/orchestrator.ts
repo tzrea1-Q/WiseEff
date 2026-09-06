@@ -48,10 +48,12 @@ import {
   type PlanCutoverInput,
   type PreActivationPhase,
   type RecoverCutoverInput,
+  type BindingPhaseAttempt,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
 import { bindingImportDigest, importPreparedBindingHistory, verifyPreparedBindingHistory } from "../parameter-bindings/cutoverImport";
 import { captureBindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import { BindingSourceRefusal, openLockedBindingSource, type LockedBindingSource } from "../parameter-bindings/cutoverImport/sourceBoundary";
 import { assertBindingManagementLogin, BindingProducerRefusal, captureBindingMappingPins, prepareBindingEvidenceArchives, produceBindingImportReceipt, readBindingDatabaseIdentity, type BindingMappingPin } from "./bindingImportProducer";
 import { captureArchivedDefinitionGraph, captureConversionSourceInventory, conversionManifestDigest, definitionGraphMatchesSource, inspectConversionManifest } from "./conversionManifest";
 import {
@@ -203,6 +205,7 @@ const runPhase = async (
   client: pg.PoolClient,
   runId: string,
   classificationRef: { value: ClassificationResult | null },
+  sourceClient?: pg.PoolClient,
 ): Promise<CutoverResult<Readonly<Record<string, unknown>>>> => {
   switch (phase) {
     case "P0": {
@@ -453,7 +456,8 @@ const runPhase = async (
         const checkpoints = await loadCheckpoints(client,runId);
         const receipt = checkpoints.find(c => c.phase === "P8")?.payload.bindingImport;
         if (!receipt) return fail("PCAT-ORC-PHASE-FAILED","binding-P8-receipt-missing");
-        const imported = await importPreparedBindingHistory({client,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+        if (!sourceClient) return fail("PCAT-ORC-PHASE-FAILED","binding-source-management-connection-required");
+        const imported = await importPreparedBindingHistory({client,sourceClient,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
         if (!imported.ok) return fail("PCAT-ORC-PHASE-FAILED",imported.reason);
         const classified = classificationRef.value;
         if (!classified) return fail("PCAT-ORC-PHASE-FAILED","binding-P6-classification-missing");
@@ -484,7 +488,8 @@ const runPhase = async (
         const receipt = checkpoints.find(c => c.phase === "P8")?.payload.bindingImport;
         if (!receipt) return fail("PCAT-ORC-PHASE-FAILED","binding-P8-receipt-missing");
         // S6 re-reads every target value/history/tip and all source rows; no cardinality-only pass.
-        const verified = await importPreparedBindingHistory({client,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+        if (!sourceClient) return fail("PCAT-ORC-PHASE-FAILED","binding-source-management-connection-required");
+        const verified = await importPreparedBindingHistory({client,sourceClient,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
         if (!verified.ok || verified.status !== "already-imported") return fail("PCAT-ORC-PHASE-FAILED",verified.ok ? "binding-import-receipt-missing":verified.reason);
       }
       const residue = await countProducerResidue(client, runId);
@@ -535,7 +540,7 @@ export const executeCutover = async (
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
   }
-  if (input.bindingImportIntent && (!input.bindingManagementPool || !input.bindingBoundary)) return fail("PCAT-ORC-INVALID-PLAN","binding-management-and-real-boundary-required");
+  if (input.bindingImportIntent && (!input.bindingManagementPool || !input.bindingBoundary || !input.bindingJournal)) return fail("PCAT-ORC-INVALID-PLAN","binding-management-boundary-and-journal-required");
   return withCutoverLock(input.bindingImportIntent ? input.bindingManagementPool! : input.pool, async (client) => {
     let sourceInventory: string | undefined;
     if (input.bindingImportIntent) {
@@ -543,19 +548,20 @@ export const executeCutover = async (
         await assertBindingManagementLogin(client);
         await client.query("set role catalog_migration_owner");
         const target = await readBindingDatabaseIdentity(client);
+        if ((await input.bindingJournal!.unresolved(target)).length !== 0) return fail("PCAT-ORC-RESUME-INVALIDATED","binding-unresolved-phase-attempt");
         const source = await input.pool.connect();
         try {
           if (bindingImportDigest(await readBindingDatabaseIdentity(source)) !== bindingImportDigest(target)) return fail("PCAT-ORC-INVALID-PLAN","binding-management-target-mismatch");
           sourceInventory = await captureConversionSourceInventory(source);
+          const observed = await captureBindingImportIntent(source,input.bindingImportIntent);
+          if (bindingImportDigest(observed) !== bindingImportDigest(input.bindingImportIntent)) return fail("PCAT-ORC-INVALID-PLAN","binding-import-source-drift");
         } finally { source.release(); }
-        const observed = await captureBindingImportIntent(client,input.bindingImportIntent);
-        if (bindingImportDigest(observed) !== bindingImportDigest(input.bindingImportIntent)) return fail("PCAT-ORC-INVALID-PLAN","binding-import-source-drift");
         const sourceBindings = await client.query("select id,organization_id,parameter_spec_id,module_id from public.project_parameter_bindings order by id");
         const sourceRevisions = await client.query("select id,binding_id,parameter_spec_version_id from public.project_parameter_binding_revisions order by id");
         const identities = await client.query("select id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id from parameter_catalog.legacy_identities order by id");
         if (identities.rowCount !== input.graph.identities.length || !identities.rows.every(i => input.graph.identities.some(g => g.id === i.id && g.sourceSystem === i.source_system && g.sourceKind === i.source_kind && g.sourceId === i.source_id && g.ownerScopeKind === i.owner_scope_kind && g.ownerScopeId === i.owner_scope_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-identity-registry-drift");
         if (sourceBindings.rows.length !== input.graph.bindings.length || !sourceBindings.rows.every(b => input.graph.bindings.some(g => g.id === b.id && g.organizationId === b.organization_id && g.parameterSpecId === b.parameter_spec_id && g.moduleId === b.module_id)) || sourceRevisions.rows.length !== input.graph.bindingRevisions.length || !sourceRevisions.rows.every(r => input.graph.bindingRevisions.some(g => g.id === r.id && g.bindingId === r.binding_id && g.parameterSpecVersionId === r.parameter_spec_version_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-graph-conservation");
-      } catch (error) { return fail("PCAT-ORC-INVALID-PLAN",error instanceof BindingProducerRefusal ? error.message : "binding-management-preflight-query-failure"); }
+      } catch (error) { return fail("PCAT-ORC-INVALID-PLAN",error instanceof BindingProducerRefusal || error instanceof BindingSourceRefusal ? error.message : "binding-management-preflight-query-failure"); }
     }
     const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil });
     if (!replanned.ok) return replanned;
@@ -569,7 +575,15 @@ export const executeCutover = async (
     if (!populated.ok) return populated;
 
     const existing = await loadRunByPlanDigest(client, input.plan.planDigest);
-    const run = existing ?? (await insertPlannedRun(client, { runId: `cutover_${createHash("sha256").update(input.plan.planDigest).digest("hex").slice(0, 32)}`, plan: input.plan }));
+    const runId = existing?.id ?? `cutover_${createHash("sha256").update(input.plan.planDigest).digest("hex").slice(0, 32)}`;
+    const beginAttempt = async (phase:PreActivationPhase):Promise<BindingPhaseAttempt> => {
+      const attempt = await input.bindingJournal!.begin({target:await readBindingDatabaseIdentity(client),runId,planDigest:input.plan.planDigest,phase,inputDigest:bindingImportDigest({plan:input.plan,phase})});
+      if (!attempt.attemptId || attempt.runId !== runId || attempt.planDigest !== input.plan.planDigest || attempt.phase !== phase) throw new BindingProducerRefusal("binding-journal-attempt-mismatch");
+      return attempt;
+    };
+    // Persist intent before creating a new run. Interruption cannot erase its pending state.
+    let startupAttempt = input.bindingImportIntent && !existing ? await beginAttempt("P0") : undefined;
+    const run = existing ?? (await insertPlannedRun(client, { runId, plan: input.plan }));
     const priorCheckpoints = await loadCheckpoints(client, run.id);
     const resumed = priorCheckpoints.length > 0 || existing != null;
     if (run.state === "recovery-required") {
@@ -586,20 +600,23 @@ export const executeCutover = async (
         const receipt = priorCheckpoints.find(c => c.phase === "P2")?.payload.bindingBoundaryReceipt as import("./interface").BindingBoundaryReceipt | undefined;
         const bindingReceipt = priorCheckpoints.find(c => c.phase === "P8")?.payload.bindingImport;
         if (!receipt || !bindingReceipt || !input.bindingBoundary) return fail("PCAT-ORC-PHASE-FAILED","binding-completed-receipt-missing");
+        let source: LockedBindingSource | undefined;
         try {
           await input.bindingBoundary.verify(receipt);
+          source = await openLockedBindingSource(input.pool,client);
           await client.query("begin isolation level serializable");
-          const verified = await verifyPreparedBindingHistory({client,runId:run.id,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(bindingReceipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+          const verified = await verifyPreparedBindingHistory({client,sourceClient:source.client,runId:run.id,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(bindingReceipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
           await client.query("rollback");
           if (!verified.ok) return fail("PCAT-ORC-PHASE-FAILED",verified.reason);
         } catch { await client.query("rollback").catch(() => undefined); return fail("PCAT-ORC-PHASE-FAILED","binding-completed-verification-failed"); }
+        finally { await source?.close(); }
       }
       const live = await countLiveRuns(client, input.plan.planDigest);
       const snapshot = await snapshotFromRun(client, run, true);
       return ok({ ...snapshot, liveRun: live > 0 });
     }
 
-    await updateRunProgress(client, { runId: run.id, phase: run.current_phase as PreActivationPhase, state: "running" });
+    await updateRunProgress(client, { runId: run.id, phase: priorCheckpoints.at(-1)?.phase ?? "P0", state: "running" });
     const classificationRef: { value: ClassificationResult | null } = { value: null };
     if (priorCheckpoints.some((row) => row.phase === "P6")) {
       const classified = classifyFrozenP0Graph(input.graph);
@@ -618,7 +635,7 @@ export const executeCutover = async (
       if (input.failBeforePhase === phase) {
         await updateRunProgress(client, {
           runId: run.id,
-          phase: priorCheckpoints.at(-1)?.phase ?? "P0",
+          phase: (await loadCheckpoints(client,run.id)).at(-1)?.phase ?? "P0",
           state: "running",
         });
         return fail(
@@ -628,13 +645,22 @@ export const executeCutover = async (
       }
       const atomic = !!input.bindingImportIntent && ["P8","P9","P10"].includes(phase);
       let committing = false;
+      let source: LockedBindingSource | undefined;
+      let attempt: BindingPhaseAttempt | undefined;
+      let phaseStarted = false;
       try {
+      if (input.bindingImportIntent) {
+        attempt = startupAttempt ?? await beginAttempt(phase);
+        startupAttempt = undefined;
+      }
+      if (atomic) source = await openLockedBindingSource(input.pool,client);
+      phaseStarted = true;
       let payload: CutoverResult<Readonly<Record<string,unknown>>>;
       if (input.bindingImportIntent && phase === "P8") {
         const checkpoints = await loadCheckpoints(client,run.id);
         const pins = checkpoints.find(c => c.phase === "P7")?.payload.bindingMappingPins as BindingMappingPin[] | undefined;
         if (!pins || !classificationRef.value || !input.conversionManifest) return fail("PCAT-ORC-PHASE-FAILED","binding-P7-pins-missing");
-        const producer = {client,runId:run.id,planDigest:input.plan.planDigest,intent:input.bindingImportIntent,graph:input.graph,
+        const producer = {client,sourceClient:source!.client,runId:run.id,planDigest:input.plan.planDigest,intent:input.bindingImportIntent,graph:input.graph,
           classification:classificationRef.value,conversion:input.conversionManifest,bundle:await parseBundle(input.catalogReleaseSource),p7Pins:pins,
           archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey},operatorAuditRef:input.operatorAuditRef,
           retainUntil:new Date(input.plan.bindingArchiveRetainUntil!)};
@@ -643,13 +669,14 @@ export const executeCutover = async (
         payload = ok({bindingImport:await produceBindingImportReceipt(producer,archives)});
       } else {
         if (atomic) { await client.query("begin isolation level serializable"); await client.query("select pg_catalog.pg_current_xact_id()"); }
-        payload = await runPhase(phase, input, client, run.id, classificationRef);
+        payload = await runPhase(phase, input, client, run.id, classificationRef,source?.client);
       }
       if (!payload.ok) {
         if (atomic) await client.query("rollback");
+        if (attempt) await input.bindingJournal!.finish({attempt,outcome:atomic ? "failed":"unknown"});
         await updateRunProgress(client, {
           runId: run.id,
-          phase,
+          phase: (await loadCheckpoints(client,run.id)).at(-1)?.phase ?? "P0",
           state: payload.error.code === "PCAT-ORC-CLASSIFICATION-BLOCKED" ? "recovery-required" : "failed",
         });
         return payload;
@@ -661,7 +688,8 @@ export const executeCutover = async (
       });
       if (!checkpoint.ok) {
         if (atomic) await client.query("rollback");
-        await updateRunProgress(client, { runId: run.id, phase, state: "failed" });
+        if (attempt) await input.bindingJournal!.finish({attempt,outcome:atomic ? "failed":"unknown"});
+        await updateRunProgress(client, { runId: run.id, phase:(await loadCheckpoints(client,run.id)).at(-1)?.phase ?? "P0", state: "failed" });
         return checkpoint;
       }
       await updateRunProgress(client, {
@@ -670,11 +698,14 @@ export const executeCutover = async (
         state: phase === "P10" ? "completed" : "running",
       });
       if (atomic) { committing = true; await client.query("commit"); }
+      if (attempt) await input.bindingJournal!.finish({attempt,outcome:"committed"});
       } catch (error) {
         if (atomic) await client.query("rollback").catch(() => undefined);
+        // A pending intent remains durable even if recording this unknown outcome fails.
+        if (attempt) await input.bindingJournal!.finish({attempt,outcome:phaseStarted ? "unknown":"failed"}).catch(() => undefined);
         // No retry and no successful checkpoint inference after an uncertain COMMIT response.
-        return fail("PCAT-ORC-PHASE-FAILED",committing ? "binding-phase-commit-outcome-unknown" : error instanceof BindingProducerRefusal ? error.message : "binding-phase-query-failure");
-      }
+        return fail("PCAT-ORC-PHASE-FAILED",committing ? "binding-phase-commit-outcome-unknown" : error instanceof BindingProducerRefusal || error instanceof BindingSourceRefusal ? error.message : "binding-phase-query-failure");
+      } finally { await source?.close(); }
     }
 
     const finished = await loadRunById(client, run.id);

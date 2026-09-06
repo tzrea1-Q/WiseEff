@@ -117,6 +117,8 @@ export type ExecuteCutoverInput = {
   /** Controlled management login only; never the API/worker runtime pool. */
   readonly bindingManagementPool?: pg.Pool;
   readonly bindingBoundary?: BindingCutoverBoundary;
+  /** Adapter over the existing upgrade controller journal; no alternate journal store. */
+  readonly bindingJournal?: BindingCutoverJournal;
   readonly conversionManifest?: ConversionManifest;
   readonly pool: pg.Pool;
   readonly plan: CutoverPlan;
@@ -141,6 +143,20 @@ export type BindingBoundaryReceipt = {
 export type BindingCutoverBoundary = {
   prepare(input: { runId: string; plan: CutoverPlan; target: DatabaseIdentity }): Promise<BindingBoundaryReceipt>;
   verify(receipt: BindingBoundaryReceipt): Promise<void>;
+};
+
+export type BindingPhaseAttempt = {
+  readonly attemptId:string;
+  readonly runId:string;
+  readonly planDigest:string;
+  readonly phase:PreActivationPhase;
+};
+
+/** Pending/unknown outcomes require the existing controller's explicit reconciliation. */
+export type BindingCutoverJournal = {
+  unresolved(target:DatabaseIdentity):Promise<readonly (BindingPhaseAttempt & {outcome:"pending" | "unknown"})[]>;
+  begin(input:{target:DatabaseIdentity;runId:string;planDigest:string;phase:PreActivationPhase;inputDigest:string}):Promise<BindingPhaseAttempt>;
+  finish(input:{attempt:BindingPhaseAttempt;outcome:"committed" | "failed" | "unknown"}):Promise<void>;
 };
 
 export type InspectCutoverInput = {

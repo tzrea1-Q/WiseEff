@@ -8,6 +8,7 @@ import { insertBinding } from "../binding/repositories";
 import { digestProjectValuePayload, insertProjectValue } from "../values/repositories";
 import type { ProjectValueKind, ProjectValuePayload } from "../values/types";
 import { captureBindingImportIntent, type BindingImportIntent } from "./intent";
+import { BindingSourceRefusal, verifyLockedBindingSource } from "./sourceBoundary";
 
 export type BindingImportEntry = {
   readonly sourceBindingId: string;
@@ -111,6 +112,7 @@ export type BindingImportResult =
   | { ok: false; reason: string; typedCause?: string };
 
 type ImportRequest = {
+  sourceClient?: pg.PoolClient;
   runId: string;
   planDigest: string;
   manifestDigest: string;
@@ -149,7 +151,9 @@ async function importOnClient(client: pg.PoolClient, input: ImportRequest, contr
     } else {
       const intent = p0?.bindingImportIntent as BindingImportIntent | undefined;
       requireFact(intent && p0?.bindingImportIntentDigest === m.intentDigest && bindingImportDigest(intent) === m.intentDigest, "import-intent-pin-mismatch");
-      const observed = await captureBindingImportIntent(client,{sourceSnapshotFingerprint:m.sourceSnapshotFingerprint,sourceInventoryFingerprint:m.sourceInventoryFingerprint});
+      requireFact(input.sourceClient,"binding-source-management-connection-required");
+      await verifyLockedBindingSource(input.sourceClient!,client);
+      const observed = await captureBindingImportIntent(input.sourceClient!,{sourceSnapshotFingerprint:m.sourceSnapshotFingerprint,sourceInventoryFingerprint:m.sourceInventoryFingerprint});
       requireFact(bindingImportDigest(observed) === m.intentDigest, "import-intent-source-drift");
       requireFact(observed.bindings.length === m.bindings.length && observed.bindings.every(b => m.bindings.some(e => e.sourceBindingId === b.sourceBindingId && e.sourceChecksum === b.sourceChecksum && e.sourceTipRevisionId === b.sourceTipRevisionId)), "all-source-binding-conservation");
       requireFact(Array.isArray(m.mappingPins) && m.mappingPins.length > 0 && new Set(m.mappingPins.map(p => p.identityId)).size === m.mappingPins.length,"import-mapping-pins-required");
@@ -228,16 +232,16 @@ async function importOnClient(client: pg.PoolClient, input: ImportRequest, contr
     await client.query("release savepoint s6_binding_import_scope").catch(() => undefined);
     const typedCause = error instanceof ImportRefusal ? error.typedCause :
       error instanceof Error && "code" in error && typeof error.code === "string" && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined;
-    return {ok:false,reason:error instanceof ImportRefusal ? error.message : "management-import-query-failure",...(typedCause ? {typedCause}: {})};
+    return {ok:false,reason:error instanceof ImportRefusal || error instanceof BindingSourceRefusal ? error.message : "management-import-query-failure",...(typedCause ? {typedCause}: {})};
   }
 }
 
 /** Production P9 seam: consumes only a P8 v2 receipt on the controller's transaction. */
-export const importPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient}): Promise<BindingImportResult> =>
+export const importPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient;sourceClient:pg.PoolClient}): Promise<BindingImportResult> =>
   importOnClient(input.client,input,"prepared-v2");
 
 /** Completed S7 no-op still revalidates the source, mappings and all imported targets. */
-export const verifyPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient}): Promise<BindingImportResult> =>
+export const verifyPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient;sourceClient:pg.PoolClient}): Promise<BindingImportResult> =>
   importOnClient(input.client,input,"verify-v2");
 
 /** Retained historical receipt-consumer fixture seam. The production controller never calls it. */

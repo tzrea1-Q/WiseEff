@@ -4,6 +4,9 @@ import { CatalogReleaseDigest, CatalogReleaseId, CatalogSubjectId, type Contract
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
 import { bindingImportDigest, captureBindingImportSource, captureDefinitionBindingImportSource, type BindingImportEntry, type BindingImportManifest } from "../parameter-bindings/cutoverImport";
 import { captureBindingImportIntent, type BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import { verifyLockedBindingSource } from "../parameter-bindings/cutoverImport/sourceBoundary";
+export { readBindingDatabaseIdentity } from "../parameter-bindings/cutoverImport/sourceBoundary";
+export type { BindingDatabaseIdentity as DatabaseIdentity } from "../parameter-bindings/cutoverImport/sourceBoundary";
 import type { CatalogReleaseBundle } from "../catalog-kernel/compiler/types";
 import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { createArchiveAdapter, type ArchiveAdapterOptions } from "./archive";
@@ -13,15 +16,6 @@ import { appendMappingVersion, readCurrentMappingHead, type MappingHead } from "
 
 export class BindingProducerRefusal extends Error {}
 const requireFact = (condition: unknown, reason: string): void => { if (!condition) throw new BindingProducerRefusal(reason); };
-
-export type DatabaseIdentity = { systemIdentifier: string; databaseOid: string };
-/** Queries actual servers. Failure to read cluster identity is never replaced by URL comparison. */
-export async function readBindingDatabaseIdentity(client: pg.PoolClient): Promise<DatabaseIdentity> {
-  const result = await client.query<{ system_identifier: string; database_oid: string }>(`select s.system_identifier::text, d.oid::text as database_oid
-    from pg_catalog.pg_control_system() s cross join pg_catalog.pg_database d where d.datname=current_database()`);
-  requireFact(result.rowCount === 1, "binding-database-identity-unavailable");
-  return {systemIdentifier:result.rows[0].system_identifier,databaseOid:result.rows[0].database_oid};
-}
 
 export async function assertBindingManagementLogin(client: pg.PoolClient): Promise<void> {
   const result = await client.query<{ safe: boolean }>(`select not rolsuper and not rolbypassrls and not rolcreatedb and not rolcreaterole and not rolreplication and not rolinherit
@@ -48,6 +42,7 @@ export async function captureBindingMappingPins(client: pg.PoolClient, runId: st
 
 type ProducerInput = {
   client: pg.PoolClient;
+  sourceClient: pg.PoolClient;
   runId: string;
   planDigest: string;
   intent: BindingImportIntent;
@@ -64,6 +59,7 @@ type ProducerInput = {
 export type PreparedBindingArchives = ReadonlyMap<string,{archiveId:string;sourceChecksum:string}>;
 
 async function assertSourceAndMappingPins(input: ProducerInput): Promise<Map<string,MappingHead>> {
+  await verifyLockedBindingSource(input.sourceClient,input.client);
   requireFact(fingerprintP0Graph(input.graph) === input.intent.sourceSnapshotFingerprint && input.classification.graphFingerprint === input.intent.sourceSnapshotFingerprint && input.conversion.sourceSnapshotFingerprint === input.intent.sourceSnapshotFingerprint && input.conversion.sourceInventoryFingerprint === input.intent.sourceInventoryFingerprint,"binding-producer-source-lineage-mismatch");
   const compiled = compileCatalogRelease(input.bundle);
   requireFact(compiled.ok && compiled.value.release.digest === input.conversion.targetCatalogReleaseDigest,"binding-producer-release-source-mismatch");
@@ -78,7 +74,7 @@ async function assertSourceAndMappingPins(input: ProducerInput): Promise<Map<str
   requireFact(p0.conversionManifestDigest === conversionManifestDigest(input.conversion) && p0.bindingArchiveRetainUntil === input.retainUntil.toISOString(),"binding-producer-plan-input-drift");
   requireFact(p0?.bindingImportIntentDigest === bindingImportDigest(input.intent) && bindingImportDigest(p0?.bindingImportIntent) === bindingImportDigest(input.intent), "binding-producer-P0-pin-mismatch");
   requireFact(bindingImportDigest(p7?.bindingMappingPins) === bindingImportDigest(input.p7Pins), "binding-producer-P7-pin-mismatch");
-  const observed = await captureBindingImportIntent(input.client, input.intent);
+  const observed = await captureBindingImportIntent(input.sourceClient, input.intent);
   requireFact(bindingImportDigest(observed) === bindingImportDigest(input.intent), "binding-p0-source-drift");
   const current = await captureBindingMappingPins(input.client,input.runId,input.conversion);
   requireFact(bindingImportDigest(current) === bindingImportDigest(input.p7Pins), "binding-p7-mapping-drift");
@@ -102,11 +98,11 @@ export async function prepareBindingEvidenceArchives(input: ProducerInput): Prom
     const assignment = input.classification.assignments.find(a => a.identityId === identity[0].id);
     requireFact(assignment?.disposition === "mapped", "binding-definition-not-operational");
     if (!assignment) throw new BindingProducerRefusal("binding-definition-not-operational");
-    const definitionSource = await captureDefinitionBindingImportSource(input.client,specId);
+    const definitionSource = await captureDefinitionBindingImportSource(input.sourceClient,specId);
     const source = rootIds.includes(specId) ? {
       definition:definitionSource,
-      schemas:(await input.client.query("select to_jsonb(s) as row from public.driver_schemas s where parameter_spec_id=$1 order by id",[specId])).rows.map(row => row.row),
-      schemaVersions:(await input.client.query("select to_jsonb(v) as row from public.driver_schema_versions v join public.driver_schemas s on s.id=v.driver_schema_id where s.parameter_spec_id=$1 order by v.id",[specId])).rows.map(row => row.row),
+      schemas:(await input.sourceClient.query("select to_jsonb(s) as row from public.driver_schemas s where parameter_spec_id=$1 order by id",[specId])).rows.map(row => row.row),
+      schemaVersions:(await input.sourceClient.query("select to_jsonb(v) as row from public.driver_schema_versions v join public.driver_schemas s on s.id=v.driver_schema_id where s.parameter_spec_id=$1 order by v.id",[specId])).rows.map(row => row.row),
     } : definitionSource;
     const sourceChecksum = bindingImportDigest(source);
     requireFact(input.intent.bindings.filter(b => b.sourceSpecId === specId).every(b => b.definitionSourceChecksum === sourceChecksum), "binding-definition-source-drift");
@@ -144,7 +140,7 @@ export async function produceBindingImportReceipt(input: ProducerInput, archives
   requireFact(target, "binding-target-release-unavailable");
   const entries: BindingImportEntry[] = [];
   for (const planned of input.intent.bindings) {
-    const source = await captureBindingImportSource(input.client,planned.sourceBindingId);
+    const source = await captureBindingImportSource(input.sourceClient,planned.sourceBindingId);
     const definitionIdentity = input.graph.identities.filter(i => i.sourceKind === "parameter-spec" && i.sourceId === planned.sourceSpecId);
     requireFact(definitionIdentity.length === 1, "binding-definition-identity-not-unique");
     const identityId = definitionIdentity[0].id;
@@ -172,9 +168,9 @@ export async function produceBindingImportReceipt(input: ProducerInput, archives
     requireFact(subject.content.kind === "driver" && legacySpec?.attributionSubjectId, "binding-placement-producer-unavailable");
     const subjectRoots = input.classification.assignments.filter(a => a.rClass === "R2" && a.sourceKind === "parameter-spec" && input.graph.driverSchemas.some(s => s.parameterSpecId === a.sourceId && s.attributionSubjectId === legacySpec!.attributionSubjectId));
     requireFact(subjectRoots.length === 1 && heads.get(subjectRoots[0].identityId)?.version.targetKind === "catalog-subject" && heads.get(subjectRoots[0].identityId)?.version.targetId === subject.content.id, "binding-subject-source-map-mismatch");
-    const actualRoot = await input.client.query("select id from public.driver_schemas where parameter_spec_id=$1 and attribution_subject_id=$2",[subjectRoots[0].sourceId,legacySpec!.attributionSubjectId]);
+    const actualRoot = await input.sourceClient.query("select id from public.driver_schemas where parameter_spec_id=$1 and attribution_subject_id=$2",[subjectRoots[0].sourceId,legacySpec!.attributionSubjectId]);
     requireFact(actualRoot.rowCount === 1,"binding-subject-root-source-mismatch");
-    const placements = await input.client.query("select id from public.driver_registration_placements where organization_id=$1 and attribution_subject_id=$2 and driver_group_module_id=$3",[source.binding.organization_id,legacySpec!.attributionSubjectId,source.binding.module_id]);
+    const placements = await input.sourceClient.query("select id from public.driver_registration_placements where organization_id=$1 and attribution_subject_id=$2 and driver_group_module_id=$3",[source.binding.organization_id,legacySpec!.attributionSubjectId,source.binding.module_id]);
     requireFact(placements.rowCount === 1, "binding-source-placement-unproved");
     const registered = await writeGuardedRegistration(input.client,{kind:"register",organizationId:source.binding.organization_id,
       subjectId:CatalogSubjectId(subject.content.id),subjectKind:subject.content.kind,

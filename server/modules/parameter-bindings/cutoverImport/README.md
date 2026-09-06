@@ -11,6 +11,17 @@ BYPASSRLS, CREATEDB or CREATEROLE, with membership of the existing
 `catalog_migration_owner` capability. The import transaction assumes that role;
 no migration credential or capability is added to runtime pools.
 
+The frozen `0138_canonical_parameter_catalog_roles.sql` SELECT list deliberately
+does not grant this writer access to source files, file versions, config revision
+members or every source authority table. P0 and complete source proof use the
+separate source/installer management pool. For P8/P9/P10 that connection holds
+SHARE NOWAIT locks on the fixed old-source relation list until the canonical
+transaction finishes. Both modules query actual backend identity and granted
+locks; a connection parameter is not itself proof. Existing registration writes
+only canonical tables and reads the old module with SELECT FOR SHARE, which is
+compatible with those source table locks. Source DML/DDL conflicts fail instead
+of waiting or expanding the writer grants.
+
 The production P0 input is `s6-binding-import-intent-v1`: a deterministic,
 server-enumerated inventory of every old Binding and its complete Definition,
 source-authority and tip-proof digests. It contains no future run, Archive or
@@ -80,6 +91,16 @@ isolation and a three-store recovery manifest. It never consumes the older
 P2 booleans/P3 count dump. That deployment producer, full source-family coverage,
 P12/P13 and the full approval chain remain separate integration work. This
 module cannot authorize their omission.
+
+The Binding lane also requires an adapter to the existing upgrade controller
+journal. It durably records a phase attempt before work and records its outcome
+after commit. Any pending/unknown attempt for the real target blocks ordinary
+resume, including when PostgreSQL committed but its reply was lost. A process
+interruption leaves the intent pending. This module provides no reconciliation
+shortcut or second journal store; until the controller adapter and explicit
+reconciliation exist, the root Binding path is unavailable. Known failures keep
+`current_phase` at the latest committed checkpoint so retry does not reinterpret
+an in-flight P10 as a committed P10.
 
 The PostgreSQL integration fixture starts from the exact `82344044…` migration
 files and populates the old schema before applying the unchanged candidate

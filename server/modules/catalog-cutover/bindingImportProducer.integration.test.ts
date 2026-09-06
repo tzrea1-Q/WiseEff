@@ -14,6 +14,7 @@ import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { CatalogReleaseDigest, DefinitionRevisionId, ParameterBindingId, ParameterDefinitionId, CatalogSubjectId, SubjectRegistrationId, ProjectValueId } from "../parameter-catalog-contract/index";
 import { bindingImportDigest, importPreparedBindingHistory } from "../parameter-bindings/cutoverImport";
 import { captureBindingImportIntent, readBindingTipProof } from "../parameter-bindings/cutoverImport/intent";
+import { withLockedBindingSource } from "../parameter-bindings/cutoverImport/sourceBoundary";
 import { readProjectValueHistory } from "../parameter-bindings/values";
 import { createLocalArchiveObjectStore } from "./archive";
 import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
@@ -30,7 +31,10 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
   let management: pg.Pool;
   let client: pg.PoolClient;
   let root: string;
-  let producer: Parameters<typeof prepareBindingEvidenceArchives>[0];
+  type Producer = Parameters<typeof prepareBindingEvidenceArchives>[0];
+  let producer: Omit<Producer,"sourceClient">;
+  const withSource = <T>(body:(input:Producer)=>Promise<T>) => withLockedBindingSource(admin,client,sourceClient => body({...producer,sourceClient}));
+  const prepare = (overrides:Partial<Producer> = {}) => withSource(input => prepareBindingEvidenceArchives({...input,...overrides}));
   const role = `s7_binding_${randomUUID().replaceAll("-","")}`;
   const runId = `s7_binding_${randomUUID()}`;
   const fullBundle = validCatalogReleaseBundle();
@@ -140,18 +144,18 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     await database?.close(); if (root) await rm(root,{recursive:true,force:true});
   },120000);
   it("rejects omission of an entire second source Definition and post-P0 writes",async () => {
-    await expect(prepareBindingEvidenceArchives({...producer,intent:{...producer.intent,bindings:producer.intent.bindings.filter(b => b.sourceSpecId !== "spec-right")}})).rejects.toThrow("binding-producer-P0-pin-mismatch");
+    await expect(prepare({intent:{...producer.intent,bindings:producer.intent.bindings.filter(b => b.sourceSpecId !== "spec-right")}})).rejects.toThrow("binding-producer-P0-pin-mismatch");
     await admin.query("update public.project_parameter_binding_revisions set raw_value='changed' where id='value-3-1'");
-    try { await expect(prepareBindingEvidenceArchives(producer)).rejects.toThrow("binding-p0-source-drift"); }
+    try { await expect(prepare()).rejects.toThrow("binding-p0-source-drift"); }
     finally { await admin.query("update public.project_parameter_binding_revisions set raw_value='raw-3-1' where id='value-3-1'"); }
   });
   it("rejects missing, ambiguous and empty tip membership rather than choosing latest",async () => {
-    expect((await readBindingTipProof(client,"binding-1")).sourceRevisionId).toBe("value-1-1");
+    expect((await readBindingTipProof(admin,"binding-1")).sourceRevisionId).toBe("value-1-1");
     await admin.query("update public.project_parameter_files set current_version_id=null where id='file-1'");
-    try { await expect(readBindingTipProof(client,"binding-1")).rejects.toThrow("binding-tip-file-pointers-unproved"); }
+    try { await expect(readBindingTipProof(admin,"binding-1")).rejects.toThrow("binding-tip-file-pointers-unproved"); }
     finally { await admin.query("update public.project_parameter_files set current_version_id='file-1-v1' where id='file-1'"); }
     await admin.query("update public.dts_config_revision_members set file_version_id='file-1-v1' where id='member-1-2'");
-    try { await expect(readBindingTipProof(client,"binding-1")).rejects.toThrow("binding-tip-not-unique"); }
+    try { await expect(readBindingTipProof(admin,"binding-1")).rejects.toThrow("binding-tip-not-unique"); }
     finally { await admin.query("update public.dts_config_revision_members set file_version_id='file-1-v2' where id='member-1-2'"); }
     // Management does not have business-write privileges; use an isolated admin transaction for this source fault.
     const fault = await admin.connect();
@@ -163,17 +167,35 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     } finally { await fault.query("rollback"); fault.release(); }
   });
   it("rejects P7 mapping pin drift before Archive writes",async () => {
-    await expect(prepareBindingEvidenceArchives({...producer,p7Pins:producer.p7Pins.map((p,index) => index ? p:{...p,versionId:"wrong-version"})})).rejects.toThrow("binding-producer-P7-pin-mismatch");
+    await expect(prepare({p7Pins:producer.p7Pins.map((p,index) => index ? p:{...p,versionId:"wrong-version"})})).rejects.toThrow("binding-producer-P7-pin-mismatch");
     expect(await producer.archive.objectStore.listRefs()).toHaveLength(0);
     await client.query("begin");
     try {
       await client.query("select pg_catalog.pg_current_xact_id()");
       const pin = producer.p7Pins.find(p => p.identityId === "id-left")!;
       expect(await appendMappingVersion({client,cutoverRunId:runId,classification:producer.classification,identityId:pin.identityId,sourceChecksum:bindingImportDigest("changed source authority"),expectedHead:{versionId:pin.versionId,casVersion:pin.casVersion},outcome:{kind:"operational",targetKind:"parameter-definition",targetId:"pdef_acme_power_iin_max"}})).toMatchObject({ok:true});
-      await expect(prepareBindingEvidenceArchives(producer)).rejects.toThrow("binding-p7-mapping-drift");
+      await expect(prepare()).rejects.toThrow("binding-p7-mapping-drift");
     } finally { await client.query("rollback"); }
   });
-  it("produces the receipt from real mappings/Archive/domain registration, then imports and checkpoints on the same restricted transaction",async () => {
+  it("rejects an active source writer without waiting or granting source-file access to the canonical manager",async () => {
+    await expect(client.query("select id from public.project_parameter_files")).rejects.toMatchObject({code:"42501"});
+    const writer = await admin.connect();
+    try {
+      await writer.query("begin");
+      await writer.query("update public.project_parameter_files set enabled=enabled where id='file-1'");
+      await expect(prepare()).rejects.toMatchObject({code:"55P03"});
+    } finally { await writer.query("rollback"); writer.release(); }
+    expect(await producer.archive.objectStore.listRefs()).toHaveLength(0);
+  });
+  it("rejects an independent database as the source before trying to lock its tables",async () => {
+    const other = await createCheckedEmptyDatabase("s7wrongsource");
+    const otherPool = new pg.Pool({connectionString:other.url,max:1});
+    try {
+      await expect(withLockedBindingSource(otherPool,client,async () => { throw new Error("wrong source entered producer"); })).rejects.toThrow("binding-source-target-mismatch");
+      expect((await admin.query("select count(*)::int as n from parameter_catalog.project_parameter_bindings")).rows[0].n).toBe(0);
+    } finally { await otherPool.end(); await other.close(); }
+  });
+  it("produces the receipt from real mappings/Archive/domain registration, then imports and checkpoints on the same restricted transaction",async () => withSource(async producer => {
     const archives = await prepareBindingEvidenceArchives(producer);
     expect(archives.size).toBe(3);
     await client.query("begin isolation level serializable");
@@ -184,7 +206,7 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     expect(await persistCheckpoint(client,{runId,phase:"P8",payload:{bindingImport:receipt}})).toMatchObject({ok:true});
     await client.query("update parameter_catalog.parameter_catalog_cutover_runs set current_phase='P8' where id=$1",[runId]);
     await client.query("commit");
-    const command = {client,runId,planDigest:producer.planDigest,manifestDigest:bindingImportDigest(receipt),archive:producer.archive};
+    const command = {client,sourceClient:producer.sourceClient,runId,planDigest:producer.planDigest,manifestDigest:bindingImportDigest(receipt),archive:producer.archive};
     await client.query("begin isolation level serializable");
     expect(await importPreparedBindingHistory(command)).toMatchObject({ok:true,status:"imported",bindings:3,values:6});
     await client.query("rollback");
@@ -205,5 +227,5 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     await client.query("begin isolation level serializable");
     expect(await importPreparedBindingHistory(command)).toMatchObject({ok:true,status:"already-imported",values:6});
     await client.query("rollback");
-  });
+  }));
 });

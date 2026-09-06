@@ -13,7 +13,7 @@ import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { createLocalArchiveObjectStore } from "./archive";
 import { fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
 import { captureConversionSourceInventory, type ConversionManifest } from "./conversionManifest";
-import { executeCutover, planCutover } from "./orchestrator";
+import { executeCutover, inspectCutover, planCutover } from "./orchestrator";
 
 const digest = (value: ContractJsonValue) => `sha256:${createHash("sha256").update(serializeContract(value)).digest("hex")}`;
 const bundleWithTwoDefinitions = () => {
@@ -76,6 +76,7 @@ describe("S7 exact conversion identity producer, real PostgreSQL", () => {
     expect(planned.ok).toBe(true); if (!planned.ok) return;
     const input = { pool, plan: planned.value, graph, catalogReleaseSource: source, conversionManifest: manifest, archiveObjectStore: createLocalArchiveObjectStore(root), archiveEncryptionKey: randomBytes(32), operatorAuditRef: "synthetic-conversion-operator" };
     expect(await executeCutover({ ...input, failBeforePhase: "P8" })).toMatchObject({ ok: false, error: { code: "PCAT-ORC-CRASH" } });
+    expect(await inspectCutover({pool,planDigest:planned.value.planDigest})).toMatchObject({ok:true,value:{currentPhase:"P7"}});
     const result = await executeCutover(input);
     expect(result.ok).toBe(true); if (!result.ok) return;
     const rows = await client.query("select legacy_identity_id, target_id from parameter_catalog.legacy_mapping_versions where legacy_identity_id in ('lid-left','lid-right') order by legacy_identity_id");

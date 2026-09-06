@@ -9,6 +9,14 @@ Bindings API 导出。它不批准发布、不切换指针、不恢复队列，�
 CREATEDB 或 CREATEROLE，并且必须持有现有 `catalog_migration_owner` 能力角色的
 成员关系。导入事务切换到该管理角色；运行连接池不会获得管理凭据或导入能力。
 
+冻结的 `0138_canonical_parameter_catalog_roles.sql` SELECT 清单没有授予该 writer
+读取源文件、文件版本、config revision 成员以及全部源权威表的能力。P0 和完整
+源证明使用独立的源／installer 管理 pool。P8／P9／P10 期间，该连接按固定旧源
+表清单获取 SHARE NOWAIT 锁，并持有到 canonical 事务结束。两个模块都读取真实
+backend 身份和实际 granted locks，传入连接本身不是证明。现有注册命令只写
+canonical 表，对旧模块使用 SELECT FOR SHARE，与这些源表锁兼容。源 DML／DDL
+冲突直接失败，不延长等待，也不扩大 writer 授权。
+
 生产 P0 输入为 `s6-binding-import-intent-v1`：由服务端全量读取旧 Binding，固定
 完整 Definition、源权威关系和 tip 证明的摘要。它不包含后续才生成的 run、
 Archive 或 mapping ID。P8 根据真实 P7 mapping pin、加密证据和现有受保护注册
@@ -65,6 +73,14 @@ R 类。
 新 Binding lane 必须接入真实部署边界接口，执行停写隔离并生成三存储恢复清单，
 不会使用旧 P2 boolean 或 P3 行数 dump。该部署 producer、全部源 family 覆盖、
 P12／P13 和完整批准链仍是独立集成工作；本模块不能授权省略它们。
+
+Binding lane 还必须接入现有 upgrade controller 的 journal adapter，在阶段
+动作前持久化 attempt，提交后记录 outcome。真实目标上任何 pending／unknown
+attempt 都阻止普通 resume，包括 PostgreSQL 已提交但响应丢失的情况；进程中断
+保留 pending intent。本模块不提供 reconciliation 捷径，也不新增 journal
+存储。controller adapter 和显式 reconciliation 尚未接通时，根 Binding 路径
+保持 unavailable。已知失败的 `current_phase` 保持在最新已提交 checkpoint，
+避免将执行中的 P10 当作已提交 P10。
 
 PostgreSQL 集成 fixture 从 `82344044…` 的真实 migration 文件开始，先填充旧
 schema，再执行未修改的候选追加迁移。它调用真实 compiler、installer、注册
