@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, restoreRecoveryPackage, verifyRecoveryPackage, type RecoveryRole } from "./recoveryPackage";
+import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, restoreRecoveryPackage, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryRole } from "./recoveryPackage";
 
 it("requires a complete zero non-dump capability inventory and never treats absent or unknown counts as clear", () => {
   const clear = { databaseOwner: 0, databaseAcl: 0, databaseSettings: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
@@ -51,12 +51,70 @@ it.each(["same-store", "approval-refused"])("never invokes restore for %s", asyn
   } finally { await rm(directory, { recursive: true }); }
 });
 
-const fixture = async (directory: string, roles: RecoveryRole[] = [{ name: "owner", login: false, inherit: false, members: [] }]) => captureRecoveryPackage(directory, {
+const fixture = async (directory: string, roles: RecoveryRole[] = [{ name: "owner", login: false, inherit: false, members: [] }], bootstrap?: RecoveryBootstrapIdentity) => captureRecoveryPackage(directory, {
   runId: "restore_run", target: { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "redis" },
   quiescence: { status: "quiesced", writersFenced: true, queueDrained: true, proxyStopped: true, observedAt: new Date().toISOString() },
   postgres: Buffer.from("dump"), roles,
+  ...(bootstrap ? { bootstrap } : {}),
   objects: [{ key: "one", contentType: "application/json", metadata: { tenant: "two" }, bytes: Buffer.from("null") }],
   redis: { appendonly: true, files: [{ name: "appendonly.aof.manifest", bytes: Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n") }, { name: "appendonly.aof.1.incr.aof", bytes: Buffer.from("aof") }] },
+});
+
+it("authenticates a v3 pre-existing bootstrap identity without making it a restorable privileged role", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
+  const bootstrap: RecoveryBootstrapIdentity = { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 };
+  try {
+    const digest = await fixture(directory, undefined, bootstrap);
+    const backup = await verifyRecoveryPackage(directory, digest);
+    expect(backup.manifest.format).toBe("wiseeff-recovery-package-v3");
+    expect(backup.bootstrap).toEqual(bootstrap);
+    expect(backup.roles).toEqual([{ name: "owner", login: false, inherit: false, members: [] }]);
+    const events: string[] = [];
+    const result = await restoreRecoveryPackage(directory, digest, {
+      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      journalPath: path.join(directory, "journal"),
+      assertBootstrap: async value => { expect(value).toEqual(bootstrap); events.push("bootstrap"); },
+      authorize: async () => { events.push("authorize"); }, assertEmptyAndIsolated: async () => { events.push("empty"); },
+      restore: async value => { expect(value.bootstrap).toEqual(bootstrap); expect(value.postgres.toString()).toBe("dump"); events.push("restore"); },
+    });
+    expect(result.status).toBe("restore-executed-not-business-verified");
+    expect(events).toEqual(["bootstrap", "authorize", "empty", "empty", "restore"]);
+  } finally { await rm(directory, { recursive: true }); }
+});
+
+it.each(["unsupported", "mismatch"])("refuses v3 bootstrap %s before creating a journal or restoring", async fault => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
+  try {
+    const digest = await fixture(directory, undefined, { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 });
+    const events: string[] = [];
+    await expect(restoreRecoveryPackage(directory, digest, {
+      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      journalPath: path.join(directory, "journal"),
+      ...(fault === "mismatch" ? { assertBootstrap: async () => { throw new Error("bootstrap-mismatch"); } } : {}),
+      authorize: async () => { events.push("authorize"); }, assertEmptyAndIsolated: async () => { events.push("empty"); }, restore: async () => { events.push("restore"); },
+    })).rejects.toThrow(fault === "mismatch" ? "bootstrap-mismatch" : "recovery-bootstrap-target-unsupported");
+    expect(events).toEqual([]);
+    await expect(readFile(path.join(directory, "journal"))).rejects.toMatchObject({ code: "ENOENT" });
+  } finally { await rm(directory, { recursive: true }); }
+});
+
+it.each(["password-hash", "wrong-oid", "wrong-major", "extra-capability", "bootstrap-in-roles", "missing-bootstrap", "downgrade", "changed-name"])("rejects v3 bootstrap %s even with a matching outer digest", async fault => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
+  try {
+    await fixture(directory, undefined, { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 });
+    const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
+    if (fault === "password-hash") manifest.bootstrap.passwordHash = "never-exported";
+    if (fault === "wrong-oid") manifest.bootstrap.roleOid = "11";
+    if (fault === "wrong-major") manifest.bootstrap.postgresMajor = 17;
+    if (fault === "extra-capability") manifest.bootstrap.superuser = true;
+    if (fault === "bootstrap-in-roles") manifest.roles.push({ name: "wiseeff", login: true, inherit: true, members: [] });
+    if (fault === "missing-bootstrap") delete manifest.bootstrap;
+    if (fault === "downgrade") manifest.format = "wiseeff-recovery-package-v2";
+    if (fault === "changed-name") manifest.bootstrap.roleName = "other_owner";
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    await writeFile(path.join(directory, "manifest.json"), bytes);
+    await expect(verifyRecoveryPackage(directory, createHash("sha256").update(bytes).digest("hex"))).rejects.toThrow("recovery-package-invalid");
+  } finally { await rm(directory, { recursive: true }); }
 });
 
 it("preserves NOINHERIT roles and independent PG16 membership inherit/set flags in authenticated package bytes", async () => {

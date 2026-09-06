@@ -1,5 +1,5 @@
 import { lstat, readdir } from "node:fs/promises";
-import { captureRecoveryPackage, verifyRecoveryPackage, type RecoveryPackageInput, type RecoveryPackageTarget, type RecoveryRestoreBinding, type VerifiedRecoveryPackage } from "./recoveryPackage";
+import { captureRecoveryPackage, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryPackageInput, type RecoveryPackageTarget, type RecoveryRestoreBinding, type VerifiedRecoveryPackage } from "./recoveryPackage";
 import type { RecoveryTargetIdentity } from "./recoveryPoint";
 
 export type ControlledBoundaryReceipt = {
@@ -19,7 +19,7 @@ export type ControlledRecoverySource = {
   observe(): Promise<RecoveryTargetIdentity>;
   /** Acquires actual source locks; closes without resuming any writer. */
   open(): Promise<{
-    postgres(): Promise<Pick<RecoveryPackageInput, "postgres" | "roles">>;
+    postgres(): Promise<Pick<RecoveryPackageInput, "postgres" | "roles" | "bootstrap">>;
     objects(): Promise<RecoveryPackageInput["objects"]>;
     redis(): Promise<RecoveryPackageInput["redis"]>;
     close(): Promise<void>;
@@ -83,7 +83,8 @@ export async function captureControlledRecovery(
 export type ControlledRecoveryTarget = {
   observe(): Promise<RecoveryTargetIdentity>;
   assertEmptyAndIsolated(): Promise<void>;
-  restorePostgres(backup: Pick<VerifiedRecoveryPackage, "postgres" | "roles">): Promise<void>;
+  assertBootstrap?(bootstrap?: RecoveryBootstrapIdentity): Promise<void>;
+  restorePostgres(backup: Pick<VerifiedRecoveryPackage, "postgres" | "roles" | "bootstrap">): Promise<void>;
   restoreObjects(objects: VerifiedRecoveryPackage["objects"]): Promise<void>;
   restoreRedis(redis: VerifiedRecoveryPackage["redis"]): Promise<void>;
 };
@@ -99,11 +100,18 @@ export function createControlledRecoveryTarget(input: {
   };
   return {
     target: input.target, journalPath: input.journalPath,
+    async assertBootstrap(bootstrap) {
+      try {
+        await check();
+        if (destination.assertBootstrap) await destination.assertBootstrap(bootstrap);
+        else if (bootstrap) recoveryRefuse("restore-bootstrap-unsupported");
+      } catch (error) { throw safeFailure(error); }
+    },
     async authorize(binding) { try { await check(); await input.authorize(binding); } catch (error) { throw safeFailure(error); } },
     async assertEmptyAndIsolated() { try { await check(); await destination.assertEmptyAndIsolated(); } catch (error) { throw safeFailure(error); } },
     async restore(backup) {
       try {
-        await check(); await destination.restorePostgres({ postgres: backup.postgres, roles: backup.roles });
+        await check(); await destination.restorePostgres({ postgres: backup.postgres, roles: backup.roles, ...(backup.bootstrap ? { bootstrap: backup.bootstrap } : {}) });
         await check(); await destination.restoreObjects(backup.objects);
         await check(); await destination.restoreRedis(backup.redis);
         // Redis stays stopped: acceptance of a recovered queue is a separate action.

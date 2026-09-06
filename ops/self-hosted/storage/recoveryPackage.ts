@@ -16,11 +16,11 @@ const LIMIT = 256 * 1024 * 1024;
  * pg_roles. Reject settings affecting this database; do not guess or reset them.
  * A query error or unavailable baseline is a refusal, never an empty inventory.
  */
-export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = `
+const nonDumpInventorySql = (bootstrapPredicate: string, packageRolePredicate: string) => `
 with bootstrap as (
-  select oid from pg_catalog.pg_roles where rolname='postgres'
+  select oid from pg_catalog.pg_roles where ${bootstrapPredicate}
 ), package_roles as (
-  select oid from pg_catalog.pg_roles where rolname !~ '^pg_' and rolname<>'postgres'
+  select oid from pg_catalog.pg_roles where ${packageRolePredicate}
 ), target_database as (
   select * from pg_catalog.pg_database where datname=pg_catalog.current_database()
 ), builtin_functions as (
@@ -71,6 +71,10 @@ select json_build_object(
     or not exists(select 1 from pg_catalog.pg_init_privs where classoid='pg_catalog.pg_proc'::regclass and privtype='i')
     or exists(select 1 from builtin_functions where oid>=16384) then 1 else 0 end
 )`;
+// Keep the existing v2 query and its postgres-only semantics unchanged.
+export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = nonDumpInventorySql("rolname='postgres'", "rolname !~ '^pg_' and rolname<>'postgres'");
+/** $1/$2 come from an independently verified bootstrap OID/name, not SQL text. */
+export const RECOVERY_V3_NON_DUMP_CAPABILITY_INVENTORY_SQL = nonDumpInventorySql("oid=$1::oid and rolname=$2::text", "rolname !~ '^pg_' and oid<>$1::oid");
 export const hasUnsupportedNonDumpCapabilities = (value: unknown): boolean => {
   const keys = ["databaseOwner", "databaseAcl", "databaseSettings", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join(",") !== [...keys].sort().join(",")) return true;
@@ -80,24 +84,38 @@ export type RecoveryRoleMembership = { name: string; inherit: boolean; set: bool
 // ADMIN OPTION and privileged role attributes are deliberately not representable.
 // Every inheritance flag is explicit: v1 packages must be re-exported, not guessed.
 export type RecoveryRole = { name: string; login: boolean; inherit: boolean; members: RecoveryRoleMembership[] };
+/** Identity of the existing initdb administrator, never instructions to create
+ * one. Its password/hash and attributes are not transferable package material. */
+export type RecoveryBootstrapIdentity = { roleName: string; roleOid: "10"; postgresMajor: 16 };
 type ObjectBackup = { key: string; contentType: string; metadata: Record<string, string>; bytes: Buffer };
 type RedisBackup = { appendonly: true; files: { name: string; bytes: Buffer }[] };
 export type RecoveryPackageInput = {
   runId: string; target: RecoveryTargetIdentity; quiescence: QuiescenceProof;
   postgres: Buffer; roles: RecoveryRole[]; objects: ObjectBackup[]; redis: RedisBackup;
+  bootstrap?: RecoveryBootstrapIdentity;
 };
 type FileRef = { file: string; sha256: string; size: number };
 type Manifest = {
-  format: "wiseeff-recovery-package-v2"; recovery: RecoveryManifest;
+  format: "wiseeff-recovery-package-v2" | "wiseeff-recovery-package-v3"; recovery: RecoveryManifest;
+  bootstrap?: RecoveryBootstrapIdentity;
   postgres: FileRef; roles: RecoveryRole[];
   objects: (Omit<ObjectBackup, "bytes"> & FileRef)[];
   redis: { appendonly: true; files: ({ name: string } & FileRef)[] };
 };
 export type VerifiedRecoveryPackage = {
   digest: string; manifest: Manifest; postgres: Buffer; roles: RecoveryRole[]; objects: ObjectBackup[]; redis: RedisBackup;
+  bootstrap?: RecoveryBootstrapIdentity;
 };
 const invalid = () => new Error("recovery-package-invalid");
 const roleName = (name: unknown): name is string => typeof name === "string" && /^[a-z][a-z0-9_]{0,62}$/.test(name) && !name.startsWith("pg_") && name !== "postgres";
+const validateBootstrap = (value: RecoveryBootstrapIdentity) => {
+  if (!value || typeof value !== "object" || Object.keys(value).sort().join(",") !== "postgresMajor,roleName,roleOid"
+    || !(value.roleName === "postgres" || roleName(value.roleName)) || value.roleOid !== "10" || value.postgresMajor !== 16) throw invalid();
+};
+const validateBootstrapRoles = (bootstrap: RecoveryBootstrapIdentity, roles: RecoveryRole[]) => {
+  validateBootstrap(bootstrap);
+  if (roles.some(role => role.name === bootstrap.roleName || role.members.some(member => member.name === bootstrap.roleName))) throw invalid();
+};
 const validateRoles = (roles: RecoveryRole[]) => {
   if (!Array.isArray(roles) || roles.length > 1000 || roles.some(role => !role || !roleName(role.name) || typeof role.login !== "boolean" || typeof role.inherit !== "boolean" || !Array.isArray(role.members) || Object.keys(role).some(key => !["name", "login", "inherit", "members"].includes(key)))) throw invalid();
   const names = new Set(roles.map(role => role.name));
@@ -117,8 +135,8 @@ const validateRoles = (roles: RecoveryRole[]) => {
   };
   for (const role of roles) visit(role);
 };
-const storePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | "roles">, target: RecoveryTargetIdentity): StoreSnapshotPort[] => [
-  ["postgres", target.postgresIdentity, { dump: manifest.postgres, roles: manifest.roles }],
+const storePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | "roles" | "bootstrap">, target: RecoveryTargetIdentity): StoreSnapshotPort[] => [
+  ["postgres", target.postgresIdentity, { dump: manifest.postgres, roles: manifest.roles, ...(manifest.bootstrap ? { bootstrap: manifest.bootstrap } : {}) }],
   ["object-store", target.objectStoreIdentity, manifest.objects],
   ["redis", target.redisIdentity, manifest.redis],
 ].map(([kind, identity, value]) => ({ kind: kind as StoreSnapshotPort["kind"], declaredIdentity: identity as string,
@@ -129,6 +147,7 @@ const storePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | 
  */
 export async function captureRecoveryPackage(directory: string, input: RecoveryPackageInput): Promise<string> {
   validateRoles(input.roles);
+  if (input.bootstrap !== undefined) validateBootstrapRoles(input.bootstrap, input.roles);
   let index = 0; let size = 0;
   const payload = async (bytes: Buffer): Promise<FileRef> => {
     size += bytes.length;
@@ -142,11 +161,11 @@ export async function captureRecoveryPackage(directory: string, input: RecoveryP
   for (const object of input.objects) objects.push({ key: object.key, contentType: object.contentType, metadata: object.metadata, ...await payload(object.bytes) });
   const files = [];
   for (const file of input.redis.files) files.push({ name: file.name, ...await payload(file.bytes) });
-  const content = { postgres, roles: input.roles, objects, redis: { appendonly: true as const, files } };
+  const content = { postgres, roles: input.roles, objects, redis: { appendonly: true as const, files }, ...(input.bootstrap ? { bootstrap: { ...input.bootstrap } } : {}) };
   const capture = await captureRecoveryPoint({ runId: input.runId, target: input.target, quiescence: input.quiescence,
     maximumAgeMs: 24 * 60 * 60 * 1000, stores: storePorts(content, input.target) });
   if (!capture.ok) throw invalid();
-  const manifest: Manifest = { format: "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
+  const manifest: Manifest = { format: input.bootstrap ? "wiseeff-recovery-package-v3" : "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
   const bytes = Buffer.from(JSON.stringify(manifest));
   await writeFile(path.join(directory, "manifest.json"), bytes, { flag: "wx", mode: 0o600 });
   const digest = hash(bytes);
@@ -181,8 +200,10 @@ export async function verifyRecoveryPackage(directory: string, digest: string): 
     const bytes = await read("manifest.json", 2 * 1024 * 1024);
     if (!/^[a-f0-9]{64}$/.test(digest) || hash(bytes) !== digest) throw invalid();
     const manifest = JSON.parse(bytes.toString()) as Manifest;
-    if (manifest.format !== "wiseeff-recovery-package-v2" || manifest.redis.appendonly !== true) throw invalid();
+    if (!["wiseeff-recovery-package-v2", "wiseeff-recovery-package-v3"].includes(manifest.format) || manifest.redis.appendonly !== true) throw invalid();
     validateRoles(manifest.roles);
+    if (manifest.format === "wiseeff-recovery-package-v3") validateBootstrapRoles(manifest.bootstrap!, manifest.roles);
+    else if (manifest.bootstrap !== undefined) throw invalid();
     if (manifest.objects.length > 10000 || manifest.redis.files.length > 1000 || new Set(manifest.objects.map(o => o.key)).size !== manifest.objects.length) throw invalid();
     const seen = new Set<string>();
     const load = async (ref: FileRef) => {
@@ -219,7 +240,7 @@ export async function verifyRecoveryPackage(directory: string, digest: string): 
       quiescence: manifest.recovery.quiescence, maximumAgeMs: manifest.recovery.maximumAgeMs,
       now: () => new Date(manifest.recovery.capturedAt), stores: storePorts(manifest, manifest.recovery.target) });
     if (!regenerated.ok || regenerated.value.manifest.recoveryPointDigest !== manifest.recovery.recoveryPointDigest) throw invalid();
-    return { digest, manifest, postgres, roles: manifest.roles, objects, redis: { appendonly: true, files } };
+    return { digest, manifest, postgres, roles: manifest.roles, objects, redis: { appendonly: true, files }, ...(manifest.bootstrap ? { bootstrap: manifest.bootstrap } : {}) };
   } catch { throw invalid(); }
 }
 
@@ -229,6 +250,9 @@ export type RecoveryPackageTarget = {
   /** Provided by the controller's approval adapter. It must validate the exact binding,
    * principal and purpose; this storage module cannot mint an approval. */
   authorize(binding: RecoveryRestoreBinding): Promise<void>;
+  /** Mandatory for v3: inspect an already provisioned bootstrap before a journal
+   * or restore write. Missing support must not fall back to v2 behavior. */
+  assertBootstrap?(bootstrap?: RecoveryBootstrapIdentity): Promise<void>;
   assertEmptyAndIsolated(binding: RecoveryRestoreBinding): Promise<void>;
   /** The implementation receives ONLY verified package material and external secret
    * facilities in its closure, never a source connection or fixture oracle. */
@@ -239,6 +263,10 @@ export async function restoreRecoveryPackage(directory: string, digest: string, 
   const binding = { runId: backup.manifest.recovery.runId, packageDigest: digest, source: backup.manifest.recovery.target, target: target.target };
   for (const key of ["deploymentId", "postgresIdentity", "objectStoreIdentity", "redisIdentity"] as const) {
     if (!target.target[key] || target.target[key] === binding.source[key]) throw new Error("recovery-target-not-independent");
+  }
+  if (backup.bootstrap || target.assertBootstrap) {
+    if (!target.assertBootstrap) throw new Error("recovery-bootstrap-target-unsupported");
+    await target.assertBootstrap(backup.bootstrap);
   }
   await target.authorize(binding);
   await target.assertEmptyAndIsolated(binding);

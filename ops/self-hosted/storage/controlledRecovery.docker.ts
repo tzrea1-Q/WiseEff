@@ -6,7 +6,7 @@ import path from "node:path";
 import pg from "pg";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s3ObjectStore";
-import { hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryPackageInput, type RecoveryRole } from "./recoveryPackage";
+import { hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, RECOVERY_V3_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryBootstrapIdentity, type RecoveryPackageInput, type RecoveryRole } from "./recoveryPackage";
 import { recoveryRefuse, type ControlledRecoverySource, type ControlledRecoveryTarget } from "./controlledRecovery";
 
 const OWNER_LABEL = "wiseeff.controlled-recovery-run";
@@ -22,7 +22,8 @@ type ContainerObservation = {
 };
 type VolumeObservation = { Name: string; CreatedAt: string; Labels: Record<string, string>; Driver: string; Options: Record<string, string> | null };
 export type DockerRecoveryResources = {
-  profile: "owned-pg16-minio2024-redis7-v1";
+  profile: "owned-pg16-minio2024-redis7-v1" | "owned-pg16-minio2024-redis7-bootstrap-v3";
+  bootstrap?: RecoveryBootstrapIdentity;
   runId: string; deploymentId: string; daemonId: string; networkId: string;
   postgres: Container; objects: Container; redis: Container; objectClient: Container;
   writers: readonly (Container & { service: "api" | "worker" | "web" })[];
@@ -89,10 +90,35 @@ const copyInputs = (resources: DockerRecoveryResources, secrets: DockerRecoveryS
  * This is not proof of complete application egress isolation or a production
  * host selector. It never creates/stops/removes a resource. */
 function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecrets, sourceMode: boolean) {
-  if (resources.profile !== "owned-pg16-minio2024-redis7-v1" || !/^[a-f0-9]{24}$/.test(resources.runId)
+  const v3 = resources.profile === "owned-pg16-minio2024-redis7-bootstrap-v3";
+  if ((!v3 && resources.profile !== "owned-pg16-minio2024-redis7-v1") || !/^[a-f0-9]{24}$/.test(resources.runId)
     || !/^[a-z][a-z0-9_]{0,62}$/.test(resources.database) || !/^[a-z0-9][a-z0-9-]{2,62}$/.test(resources.bucket)
     || resources.writers.map(w => w.service).sort().join(",") !== "api,web,worker"
     || ![secrets.postgresPassword, secrets.objectAccessKey, secrets.objectSecretKey].every(s => typeof s === "string" && s.length > 0 && !s.includes("\0"))) recoveryRefuse("docker-profile-unsupported");
+  const bootstrap = resources.bootstrap;
+  if (v3 ? (!bootstrap || Object.keys(bootstrap).sort().join(",") !== "postgresMajor,roleName,roleOid"
+    || !/^[a-z][a-z0-9_]{0,62}$/.test(bootstrap.roleName) || bootstrap.roleName.startsWith("pg_") || bootstrap.roleOid !== "10" || bootstrap.postgresMajor !== 16)
+    : bootstrap !== undefined) recoveryRefuse("bootstrap-profile-unsupported");
+  const adminName = bootstrap?.roleName ?? "postgres";
+  const assertBootstrapIdentity = async (client: pg.Client | pg.PoolClient) => {
+    if (!v3) return;
+    // Verify the pre-existing initdb identity. No CREATE/ALTER ROLE or owner
+    // translation is authorized by this observation or by a package receipt.
+    const row = (await client.query(`select oid::text as oid,rolname as name from pg_roles
+      where oid=10 and rolname=session_user and rolname=current_user and rolsuper and rolbypassrls
+      and rolcreatedb and rolcreaterole and rolcanlogin and rolreplication and rolinherit
+      and rolconnlimit=-1 and rolvaliduntil is null and rolconfig is null
+      and current_setting('server_version_num')::integer between 160000 and 169999
+      and not exists(select 1 from pg_auth_members where member=10 or roleid=10)
+      and not exists(select 1 from pg_db_role_setting where setrole=10)`)).rows[0];
+    if (row?.oid !== bootstrap?.roleOid || row?.name !== bootstrap?.roleName) recoveryRefuse("bootstrap-identity-mismatch");
+  };
+  const inventory = async (client: pg.Client | pg.PoolClient) => {
+    await assertBootstrapIdentity(client);
+    const result = await client.query(v3 ? RECOVERY_V3_NON_DUMP_CAPABILITY_INVENTORY_SQL : RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL,
+      v3 ? [bootstrap!.roleOid, bootstrap!.roleName] : []);
+    return result.rows[0] ? Object.values(result.rows[0])[0] : undefined;
+  };
   const docker = createIsolatedUpgradeDocker();
   if (docker.daemonId !== resources.daemonId) recoveryRefuse("daemon-mismatch");
   let lockClient: pg.PoolClient | undefined;
@@ -177,9 +203,9 @@ function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecre
   };
   const exec = (container: Container, args: string[], input?: Buffer) => { registered(container); return execObserved(check(), container, args, input); };
   const db = async <T>(body: (client: pg.Client) => Promise<T>, observation = check()) => {
-    const client = new pg.Client({ ...endpoint(observation, resources.postgres, 5432), user: "postgres", password: secrets.postgresPassword, database: resources.database,
+    const client = new pg.Client({ ...endpoint(observation, resources.postgres, 5432), user: adminName, password: secrets.postgresPassword, database: resources.database,
       application_name: "controlled-recovery", connectionTimeoutMillis: 5000, query_timeout: 10000 });
-    try { await client.connect(); return await body(client); } finally { await client.end(); }
+    try { await client.connect(); await assertBootstrapIdentity(client); return await body(client); } finally { await client.end(); }
   };
   const mc = (args: string[], observation = check()) => {
     const networks = Object.values(observation.find(i => i.Id === resources.objects.id)!.NetworkSettings.Networks) as { IPAddress: string }[];
@@ -223,7 +249,7 @@ function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecre
     if (buckets.length !== 1 || buckets[0].status !== "success" || buckets[0].key !== `${resources.bucket}/`
       || !Number.isFinite(Date.parse(buckets[0].lastModified))) recoveryRefuse("bucket-inventory-unsupported");
     return { deploymentId: resources.deploymentId, hostFingerprint: docker.daemonId,
-      postgresIdentity: digest({ container: resources.postgres, ...postgres }),
+      postgresIdentity: digest({ container: resources.postgres, ...postgres, ...(bootstrap ? { bootstrap } : {}) }),
       objectStoreIdentity: digest({ container: resources.objects, deployment: info.info.deploymentID, bucket: resources.bucket, createdAt: buckets[0].lastModified, versioning: version.versioning }),
       redisIdentity: digest({ container: resources.redis, command: infos[2].Config.Cmd, startedAt: infos[2].State.StartedAt, finishedAt: infos[2].State.FinishedAt }) };
   };
@@ -250,14 +276,15 @@ function access(resources: DockerRecoveryResources, secrets: DockerRecoverySecre
       check(); return { appendonly: true as const, files };
     } finally { await rm(directory, { recursive: true, force: true }); }
   };
-  return { check, db, exec, mc, list, store, observe, redisFiles, docker, assertNoOtherSessions,
+  return { check, db, exec, mc, list, store, observe, redisFiles, docker, assertNoOtherSessions, inventory, adminName,
     setLock(client: pg.PoolClient | undefined, pid?: number) { lockClient = client; lockPid = pid; },
     async openSource() {
       if (lockClient) recoveryRefuse("source-already-open");
       const observation = check();
-      const pool = new pg.Pool({ ...endpoint(observation, resources.postgres, 5432), user: "postgres", password: secrets.postgresPassword, database: resources.database, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
+      const pool = new pg.Pool({ ...endpoint(observation, resources.postgres, 5432), user: adminName, password: secrets.postgresPassword, database: resources.database, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
       const client = await pool.connect();
       try {
+        await assertBootstrapIdentity(client);
         await assertNoOtherSessions(client);
         await client.query("begin isolation level repeatable read");
         const names = (await client.query(tablesSql)).rows.map(row => row.name as string);
@@ -288,12 +315,12 @@ export function createDockerRecoverySource(resources: DockerRecoveryResources, s
     return {
       async postgres() {
         io.check();
-        const inventory = (await locked.client.query(RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL)).rows[0];
-        if (hasUnsupportedNonDumpCapabilities(Object.values(inventory)[0])) recoveryRefuse("non-dump-capability-unsupported");
-        const profile = (await locked.client.query(ROLE_PROFILE_SQL)).rows[0].value;
+        if (hasUnsupportedNonDumpCapabilities(await io.inventory(locked.client))) recoveryRefuse("non-dump-capability-unsupported");
+        const profile = (await locked.client.query(resources.bootstrap ? ROLE_PROFILE_SQL.replaceAll("'postgres'", "$1::text") : ROLE_PROFILE_SQL,
+          resources.bootstrap ? [io.adminName] : [])).rows[0].value;
         if (profile.unsupportedRoles !== 0 || profile.unsupportedMembership !== 0 || profile.unsupportedSettings !== 0) recoveryRefuse("role-capability-unsupported");
-        const postgres = io.exec(resources.postgres, ["pg_dump", "-U", "postgres", "-d", resources.database, "--format=custom", `--snapshot=${locked.snapshot}`]);
-        return { postgres, roles: profile.roles as RecoveryRole[] };
+        const postgres = io.exec(resources.postgres, ["pg_dump", "-U", io.adminName, "-d", resources.database, "--format=custom", `--snapshot=${locked.snapshot}`]);
+        return { postgres, roles: profile.roles as RecoveryRole[], ...(resources.bootstrap ? { bootstrap: { ...resources.bootstrap } } : {}) };
       },
       async objects() {
         const before = io.list();
@@ -322,12 +349,20 @@ export function createDockerRecoveryDestination(resources: DockerRecoveryResourc
   const io = access(resources, secrets, false);
   return {
     observe: io.observe,
+    async assertBootstrap(bootstrap) {
+      if (!resources.bootstrap && !bootstrap) return;
+      if (!resources.bootstrap || !bootstrap || digest(bootstrap) !== digest(resources.bootstrap)) recoveryRefuse("restore-bootstrap-mismatch");
+      await io.db(async client => {
+        await io.assertNoOtherSessions(client);
+        if (hasUnsupportedNonDumpCapabilities(await io.inventory(client))) recoveryRefuse("restore-database-profile-unsupported");
+      });
+    },
     async assertEmptyAndIsolated() {
       await io.db(async client => {
         await io.assertNoOtherSessions(client);
-        const inventory = (await client.query(RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL)).rows[0];
-        if (hasUnsupportedNonDumpCapabilities(Object.values(inventory)[0])) recoveryRefuse("restore-database-profile-unsupported");
-        const empty = (await client.query(EMPTY_TARGET_SQL)).rows[0]?.inventory;
+        if (hasUnsupportedNonDumpCapabilities(await io.inventory(client))) recoveryRefuse("restore-database-profile-unsupported");
+        const empty = (await client.query(resources.bootstrap ? EMPTY_TARGET_SQL.replaceAll("'postgres'", "$1::text") : EMPTY_TARGET_SQL,
+          resources.bootstrap ? [io.adminName] : [])).rows[0]?.inventory;
         if (!empty || Object.values(empty).some(count => count !== 0)) recoveryRefuse("restore-database-not-empty");
       });
       if (io.list().length) recoveryRefuse("restore-bucket-not-empty");
@@ -338,6 +373,9 @@ export function createDockerRecoveryDestination(resources: DockerRecoveryResourc
       } finally { await rm(directory, { recursive: true, force: true }); }
     },
     async restorePostgres(backup) {
+      if (resources.bootstrap || backup.bootstrap) {
+        if (!resources.bootstrap || !backup.bootstrap || digest(resources.bootstrap) !== digest(backup.bootstrap)) recoveryRefuse("restore-bootstrap-mismatch");
+      }
       if (backup.roles.some(role => role.login && (!secrets.rolePasswords?.[role.name] || secrets.rolePasswords[role.name].includes("\0")))) recoveryRefuse("restore-role-secret-unavailable");
       await io.db(async client => {
         await client.query("begin");
@@ -359,7 +397,7 @@ export function createDockerRecoveryDestination(resources: DockerRecoveryResourc
           await client.query("commit");
         } catch { await client.query("rollback").catch(() => {}); recoveryRefuse("restore-role-outcome-unknown"); }
       });
-      io.exec(resources.postgres, ["pg_restore", "-U", "postgres", "-d", resources.database, "--exit-on-error"], backup.postgres);
+      io.exec(resources.postgres, ["pg_restore", "-U", io.adminName, "-d", resources.database, "--exit-on-error"], backup.postgres);
     },
     async restoreObjects(objects) {
       for (const object of objects) await io.store().put({ bucket: resources.bucket, ...object });

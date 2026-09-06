@@ -10,11 +10,11 @@ import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-d
 import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s3ObjectStore";
 import { captureControlledRecovery, createControlledRecoveryTarget } from "./controlledRecovery";
 import { createDockerRecoveryDestination, createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
-import { restoreRecoveryPackage } from "./recoveryPackage";
+import { restoreRecoveryPackage, verifyRecoveryPackage } from "./recoveryPackage";
 
 // Explicit opt-in uses only the owned Docker guard; no globalSetup or ambient DB URL.
 describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("controlled three-store Docker adapter", () => {
-  it("captures live owned stores and restores package-only in another process after the source is stopped", async () => {
+  it.each(["postgres", "wiseeff"])("captures live owned stores with %s bootstrap and restores package-only after source shutdown", async bootstrapName => {
     const docker = createIsolatedUpgradeDocker();
     const runId = randomBytes(12).toString("hex");
     const label = "wiseeff.controlled-recovery-run";
@@ -58,7 +58,9 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       // config, never in Docker argv, the backup directory or printed evidence.
       const postgresEnv = path.join(privateInputs, `${name}-postgres.env`);
       const objectsEnv = path.join(privateInputs, `${name}-objects.env`);
-      await writeFile(postgresEnv, `POSTGRES_PASSWORD=${secrets.postgresPassword}\n`, { flag: "wx", mode: 0o600 });
+      // This administrator is provisioned only in these new fixture containers.
+      // Its private credential is never supplied to the API/worker placeholders.
+      await writeFile(postgresEnv, `POSTGRES_USER=${bootstrapName}\nPOSTGRES_DB=postgres\nPOSTGRES_PASSWORD=${secrets.postgresPassword}\n`, { flag: "wx", mode: 0o600 });
       await writeFile(objectsEnv, `MINIO_ROOT_USER=${secrets.objectAccessKey}\nMINIO_ROOT_PASSWORD=${secrets.objectSecretKey}\n`, { flag: "wx", mode: 0o600 });
       const postgres = create(imageIds.postgres, ["-p", "127.0.0.1::5432", "--env-file", postgresEnv], [], "/var/lib/postgresql/data");
       const objects = create(imageIds.objects, ["-p", "127.0.0.1::9000", "--env-file", objectsEnv], ["server", "/data"], "/data");
@@ -67,7 +69,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const writers = (["api", "worker", "web"] as const).map(service => ({ ...create(imageIds.mc, ["--entrypoint", "/bin/sh"], ["-c", "exit 0"]), service }));
       for (const c of [postgres, objects, objectClient, ...writers]) start(c.id);
       for (const writer of writers) docker.command(["wait", writer.id]);
-      await wait(async () => exec(postgres.id, ["pg_isready", "-U", "postgres"]));
+      await wait(async () => exec(postgres.id, ["pg_isready", "-U", bootstrapName]));
       const mc = (args: string[]) => {
         const ip = (Object.values(inspect(objects.id).NetworkSettings.Networks) as { IPAddress: string }[])[0].IPAddress;
         const config = { version: "10", aliases: { fixture: { url: `http://${ip}:9000`, accessKey: secrets.objectAccessKey, secretKey: secrets.objectSecretKey, api: "S3v4", path: "auto" } } };
@@ -76,13 +78,17 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       await wait(async () => mc(["mb", "fixture/controlled-bucket"]));
       const resources: DockerRecoveryResources = { profile: "owned-pg16-minio2024-redis7-v1", runId, deploymentId: name, daemonId: docker.daemonId, networkId,
         postgres, objects, redis, objectClient, writers, database: "postgres", bucket: "controlled-bucket" };
+      if (bootstrapName === "wiseeff") {
+        resources.profile = "owned-pg16-minio2024-redis7-bootstrap-v3";
+        resources.bootstrap = { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 };
+      }
       return { resources, secrets, mc, store: createHttpObjectStorageTransport({ endpoint: `http://${endpoint(objects.id, 9000)}`, accessKeyId: secrets.objectAccessKey, secretAccessKey: secrets.objectSecretKey }) };
     };
     try {
       const source = await timed("setup-source", () => setup("source"));
       start(source.resources.redis.id);
       await wait(async () => exec(source.resources.redis.id, ["redis-cli", "PING"]));
-      exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(`
+      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1"], Buffer.from(`
         create role data_owner nologin noinherit;
         create role read_capability nologin noinherit;
         create role reader login inherit;
@@ -131,7 +137,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           for (const writer of writers) expect(writer.State.Running).toBe(false);
         },
       };
-      const writer = new pg.Client({ connectionString: `postgres://postgres:${source.secrets.postgresPassword}@${endpoint(source.resources.postgres.id, 5432)}/postgres` });
+      const writer = new pg.Client({ connectionString: `postgres://${bootstrapName}:${source.secrets.postgresPassword}@${endpoint(source.resources.postgres.id, 5432)}/postgres` });
       try {
         await writer.connect(); await writer.query("begin");
         await writer.query("update public.business set value=value where id=1");
@@ -139,24 +145,34 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("database-writer-boundary-unavailable");
         });
       } finally { await writer.query("rollback").catch(() => {}); await writer.end(); }
-      exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "grant create on database postgres to reader"]);
+      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-c", "grant create on database postgres to reader"]);
       try {
         await timed("capture-extra-acl-refusal", async () => {
           await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("non-dump-capability-unsupported");
         });
       } finally {
-        exec(source.resources.postgres.id, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
+        exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
       }
       // Synthetic principal is limited to this test's resource identities. Real
       // controller approvals are neither generated nor mocked as passed reports.
       const captured = await timed("capture-package", () => captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort));
       expect(captured.status).toBe("captured-not-restored");
+      const verified = await verifyRecoveryPackage(directory, captured.packageDigest);
+      expect(verified.manifest.format).toBe(bootstrapName === "postgres" ? "wiseeff-recovery-package-v2" : "wiseeff-recovery-package-v3");
+      expect(verified.bootstrap).toEqual(source.resources.bootstrap);
+      expect(verified.roles.map(role => role.name)).not.toContain(bootstrapName);
       for (const c of [source.resources.postgres, source.resources.objects, source.resources.objectClient]) stop(c.id);
       const destination = await timed("setup-destination", () => setup("destination"));
       const destinationIo = createDockerRecoveryDestination(destination.resources, destination.secrets);
       const destinationIdentity = await destinationIo.observe();
       const targetSql = (sql: string) => exec(destination.resources.postgres.id,
-        ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
+        ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
+      if (bootstrapName === "wiseeff") {
+        await expect(destinationIo.assertBootstrap!({ roleName: "postgres", roleOid: "10", postgresMajor: 16 })).rejects.toThrow("restore-bootstrap-mismatch");
+        await expect(destinationIo.assertBootstrap!()).rejects.toThrow("restore-bootstrap-mismatch");
+        expect(targetSql("select rolname from pg_roles where oid=10")).toBe("wiseeff");
+        expect(targetSql("select count(*) from pg_roles where rolname='postgres'")).toBe("0");
+      }
       const targetFaults = [
         { name: "function", create: "create function public.preexisting_fn() returns integer language sql as 'select 7'",
           read: "select public.preexisting_fn()", expected: "7", remove: "drop function public.preexisting_fn()" },
