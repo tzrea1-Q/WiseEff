@@ -12,6 +12,7 @@ import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { createCatalogKernel, jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract/index";
 import { createRegistrationService } from "../parameter-governance/registration/index";
+import { createEvidenceIngest } from "../parameter-governance/evidence/index";
 import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/index";
 import { appendProjectValue } from "../parameter-bindings/values/index";
 import type { AuthContext } from "../auth/types";
@@ -126,6 +127,12 @@ describe("R2-BATCH root HTTP SQL budget", () => {
         expectedTip = appended.value.currentTip;
       }
     }
+    const reviewInput = { organizationId: "batch-org", sourceIdentity: "batch-review-source", catalogReleaseId: pin.id,
+      matcherRevision: "batch-matcher", matcherOutput: { status: "unknown" as const },
+      evidence: { propertyKey: "batch_value_0", subjectId: "csub_batch_000" } };
+    const ingest = createEvidenceIngest(pool);
+    expect((await ingest.ingest(reviewInput)).ok).toBe(true);
+    expect((await ingest.ingest(reviewInput)).ok).toBe(true);
     if (capacityProfile) {
       const predecessor = bundle.releases[0]!;
       const next = structuredClone(predecessor);
@@ -283,6 +290,18 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(item.usageSummary).toMatchObject({ projectCount: 0, currentValueCount: 0 });
   });
 
+  it("R2-BATCH-07 duplicated review ingestion yields one review in list/detail and none across organizations", async () => {
+    for (const [authorization, expectedCount] of [["Bearer batch-fixture-token", 1], ["Bearer batch-other-token", 0]] as const) {
+      const headers = { authorization };
+      const list = await fetch(`${baseUrl}/api/v2/catalog/subjects?limit=1`, { headers });
+      expect(list.status).toBe(200);
+      expect((await list.json()).items[0]).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
+      const detail = await fetch(`${baseUrl}/api/v2/catalog/subjects/csub_batch_000`, { headers });
+      expect(detail.status).toBe(200);
+      expect((await detail.json()).item).toMatchObject({ id: "csub_batch_000", reviewCount: expectedCount });
+    }
+  });
+
   // Explicit opt-in measurement profile, executed separately from the default
   // regression suite. It retains the normal 30s per-case budget and pool size.
   if (capacityProfile) {
@@ -344,6 +363,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
                   }
                 } else {
                   expect(items.every((item: { membership: { catalogReleaseId: string } }) => item.membership.catalogReleaseId === expectedRelease)).toBe(true);
+                  for (const item of items) expect(item.reviewCount).toBe(item.id === "csub_batch_000" ? 1 : 0);
                 }
                 return performance.now() - start;
               }));
@@ -378,7 +398,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
             const samples = rounds.filter((round) => round.phase === "measured-warm").flatMap((round) => round.elapsedMs).sort((a, b) => a - b);
             const percentile = (fraction: number) => samples[Math.ceil(samples.length * fraction) - 1];
             const report = { status: "passed", requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
-              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1 },
+              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1, duplicateReviewIngestions: 2, reviewItems: 1 },
               concurrency, sampleCount: samples.length, warmupRequests: concurrency, businessQueriesPerRequest: businessBudget,
               p50Ms: percentile(0.5), p95Ms: percentile(0.95), latencySlo: "unavailable; observational baseline only",
               coldCache: "unavailable; no OS/PostgreSQL cache reset; first-observed is not a cold-cache claim",
