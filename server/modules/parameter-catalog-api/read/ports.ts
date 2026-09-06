@@ -1,5 +1,5 @@
 import type { GovernanceCatalogQueries } from "../../parameter-governance/queries";
-import type { UsageQueries } from "../../parameter-bindings/usage";
+import type { UsageProjectScope, UsageQueries } from "../../parameter-bindings/usage";
 import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
 
 import { mapPublicationFact } from "./dto";
@@ -29,6 +29,9 @@ const requirePrincipal = (principalId: string | undefined, operation: string): s
 
 /** Test-only unregistered Catalog projection. Must not be the production pool default. */
 export const unregisteredProjectionForTests: RegistrationProjectionPort = {
+  async projectSubjects({ subjectIds }) {
+    return new Map(subjectIds.map((id) => [id, { registration: { status: "unregistered" as const }, reviewCount: 0 }]));
+  },
   async projectSubject() {
     return {
       registration: { status: "unregistered" },
@@ -57,6 +60,9 @@ export const unregisteredProjection = unregisteredProjectionForTests;
 
 /** Test-only zero usage projection. Must not be the production pool default. */
 export const zeroUsageProjectionForTests: UsageProjectionPort = {
+  async summarizeMany({ definitionIds }) {
+    return new Map(definitionIds.map((id) => [id, { policyCount: 0, projectCount: 0, currentValueCount: 0 }]));
+  },
   async summarize() {
     return { policyCount: 0, projectCount: 0, currentValueCount: 0 };
   },
@@ -75,6 +81,9 @@ export const kernelOnlyTimelineComposer: TimelineComposerPort = {
 };
 
 export const unavailableRegistrationProjection: RegistrationProjectionPort = {
+  async projectSubjects() {
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubjects" });
+  },
   async projectSubject() {
     throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubject" });
   },
@@ -90,6 +99,9 @@ export const unavailableRegistrationProjection: RegistrationProjectionPort = {
 };
 
 export const unavailableUsageProjection: UsageProjectionPort = {
+  async summarizeMany() {
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+  },
   async summarize() {
     throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
   },
@@ -99,6 +111,23 @@ export function createRegistrationProjectionFromQueries(
   queries: GovernanceCatalogQueries,
 ): RegistrationProjectionPort {
   return {
+    async projectSubjects(input) {
+      const principalId = requirePrincipal(input.principalId, "projectSubjects");
+      const subjectIds = [...new Set(input.subjectIds)];
+      if (subjectIds.length === 0) return new Map();
+      const result = await queries.projectRegistrations({
+        organizationId: input.organizationId,
+        subjectIds,
+        authScope: { organizationId: input.organizationId, principalId },
+        observedRelease: fallbackPin(input),
+      });
+      if (!result.ok) throw new CatalogProjectionError(result.error);
+      const projections = new Map(result.value.projections.map((projection) => [projection.subjectId, projection]));
+      if (subjectIds.some((id) => !projections.has(id))) {
+        throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubjects" });
+      }
+      return projections;
+    },
     async projectSubject(input) {
       const principalId = requirePrincipal(input.principalId, "projectSubject");
       const result = await queries.projectRegistrations({
@@ -110,10 +139,11 @@ export function createRegistrationProjectionFromQueries(
       if (!result.ok) {
         throw new CatalogProjectionError(result.error);
       }
-      const projection = result.value.projections[0];
+      const projection = result.value.projections.find((item) => item.subjectId === input.subjectId);
+      if (!projection) throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectSubject" });
       return {
-        registration: projection?.registration ?? { status: "unregistered" },
-        reviewCount: projection?.reviewCount ?? 0,
+        registration: projection.registration,
+        reviewCount: projection.reviewCount,
       };
     },
     async projectDefinition(input) {
@@ -127,7 +157,9 @@ export function createRegistrationProjectionFromQueries(
       if (!result.ok) {
         throw new CatalogProjectionError(result.error);
       }
-      return result.value.projections[0]?.registration ?? { status: "unregistered" };
+      const projection = result.value.projections.find((item) => item.subjectId === input.subjectId);
+      if (!projection) throw new CatalogProjectionError({ kind: "query-unavailable", operation: "projectDefinition" });
+      return projection.registration;
     },
     async selectSubjectIds(input) {
       const principalId = requirePrincipal(input.principalId, "selectSubjectIds");
@@ -177,24 +209,40 @@ export function createRegistrationProjectionFromQueries(
 }
 
 export function createUsageProjectionFromQueries(queries: UsageQueries): UsageProjectionPort {
+  const summarizeMany: UsageProjectionPort["summarizeMany"] = async (input) => {
+    const principalId = requirePrincipal(input.principalId, "summarizeUsage");
+    const scope = input.projectScope;
+    if (!scope || (scope.kind !== "all" && scope.kind !== "only") ||
+      (scope.kind === "only" && (!Array.isArray(scope.ids) || scope.ids.some((id) => typeof id !== "string" || id.length === 0 || id.trim() !== id || /[\u0000-\u001F\u007F-\u009F]/u.test(id))))) {
+      throw new CatalogProjectionError({ kind: "invalid-query", reason: "projectScope" });
+    }
+    const projectScope: UsageProjectScope = scope.kind === "all" ? { kind: "all" } : { kind: "only", ids: [...new Set(scope.ids)] };
+    const definitionIds = [...new Set(input.definitionIds)];
+    if (definitionIds.length === 0) return new Map();
+    const result = await queries.summarize({
+      organizationId: input.organizationId,
+      definitionIds,
+      projectScope,
+      authScope: { organizationId: input.organizationId, principalId },
+    });
+    if (!result.ok) throw new CatalogProjectionError(result.error);
+    const summaries = new Map(result.value.summaries.map((summary) => [summary.definitionId, {
+      policyCount: summary.policyCount,
+      projectCount: summary.projectCount,
+      currentValueCount: summary.currentValueCount,
+    }]));
+    if (definitionIds.some((id) => !summaries.has(id))) {
+      throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+    }
+    return summaries;
+  };
   return {
+    summarizeMany,
     async summarize(input) {
-      const principalId = requirePrincipal(input.principalId, "summarizeUsage");
-      const result = await queries.summarize({
-        organizationId: input.organizationId,
-        definitionIds: [input.definitionId],
-        projectScope: { kind: "all" },
-        authScope: { organizationId: input.organizationId, principalId },
-      });
-      if (!result.ok) {
-        throw new CatalogProjectionError(result.error);
-      }
-      const summary = result.value.summaries[0];
-      return {
-        policyCount: summary?.policyCount ?? 0,
-        projectCount: summary?.projectCount ?? 0,
-        currentValueCount: summary?.currentValueCount ?? 0,
-      };
+      const summaries = await summarizeMany({ ...input, definitionIds: [input.definitionId] });
+      const summary = summaries.get(input.definitionId);
+      if (!summary) throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+      return summary;
     },
   };
 }

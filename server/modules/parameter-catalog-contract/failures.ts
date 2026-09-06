@@ -150,6 +150,7 @@ export const apiFailureReasons = freezeRegistry([
   "invalid-placement-parent",
   "observation-ambiguous",
   "proposal-stale",
+  "proposal-replay-unavailable",
   "proposal-self-approval-forbidden",
   "revision-conflict",
   "legacy-id-archived",

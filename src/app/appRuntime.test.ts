@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createAppRuntime, type AppRuntimeDeps } from "@/app/appRuntime";
 import { initialState } from "@/mockData";
 import { createMockRuntimeState } from "@/infrastructure/mock/mockState";
+import { readyCatalogDocument } from "@/application/parameter-catalog/fixtures";
 
 function deps(): AppRuntimeDeps {
   const mockParameterRuntime = createMockRuntimeState(initialState);
@@ -10,6 +11,19 @@ function deps(): AppRuntimeDeps {
 }
 
 describe("createAppRuntime", () => {
+  it("R2 Catalog API client honors the configured backend origin", async () => {
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:18781");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(readyCatalogDocument), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const runtime = createAppRuntime("api", deps());
+      await runtime.parameterCatalogRepository.getCatalog();
+      expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:18781/api/v2/catalog", expect.any(Object));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
   it("selects api adapters in api mode", () => {
     const runtime = createAppRuntime("api", deps());
 
@@ -77,5 +91,20 @@ describe("createAppRuntime", () => {
     const document = await runtime.parameterCatalogRepository.getCatalog();
     expect(document.item.catalogReleaseId).toBeTruthy();
     expect(typeof runtime.parameterCatalogGovernanceRepository.listReviewItems).toBe("function");
+  });
+
+  it("R2-PROP runtime uses current session identity and rechecks roles before replay", async () => {
+    const state = structuredClone(initialState);
+    const admin = state.users.find((user) => user.roleId === "admin");
+    if (!admin) throw new Error("test requires the independent admin fixture");
+    state.currentUserId = admin.id;
+    const runtime = createAppRuntime("mock", { getState: () => state, mockParameterRuntime: createMockRuntimeState(state) });
+    const release = (await runtime.parameterCatalogRepository.getCatalog()).item.catalogReleaseId;
+    const body = { base: { catalogReleaseId: release }, requestedChange: { kind: "new-definition" }, reason: "runtime session" };
+    const write = { catalogReleaseId: release, idempotencyKey: "runtime-proposal" };
+    const created = await runtime.parameterCatalogGovernanceRepository.createProposal(body, write);
+    expect(created.item.submittedByPersonId).toBe(admin.id);
+    admin.roleId = "guest";
+    await expect(runtime.parameterCatalogGovernanceRepository.createProposal(body, write)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

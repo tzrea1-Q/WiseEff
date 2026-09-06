@@ -25,23 +25,17 @@ import {
 import { createEvidenceIngest } from "../../../server/modules/parameter-governance/evidence";
 import { executeRegistration } from "../../../server/modules/parameter-governance/registration";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../server/shared/database/client";
-import {
-  assertCatalogLaneEvidenceUrl,
-  COMPOSE_APP_DATABASE,
-  COMPOSE_APP_PORT,
-  forbiddenCatalogLaneReason,
-  laneDatabaseName
-} from "../../../scripts/catalog-lane-env";
+import { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
 import { seedM0Foundation } from "../../../scripts/seed-m0";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast } from "./cast";
 import { seedAcceptanceRoleMatrix } from "./roleFixtures";
 
-export const CATALOG_ACCEPTANCE_ISSUE = 810;
-export const CATALOG_AGENT_USER = {
-  userId: "agt-catalog-acceptance",
-  name: "Catalog Agent",
-  email: "catalog.agent@chargelab.cn",
-  title: "WiseEff Agent"
+export { catalogLaneConnectionString } from "./catalogAcceptanceEnvironment";
+export const CATALOG_GUEST_USER = {
+  userId: "user-catalog-guest-acceptance",
+  name: "Catalog Guest",
+  email: "catalog.guest@chargelab.cn",
+  title: "Guest"
 } as const;
 export const CATALOG_ORG_B = { id: "org-catalog-b", name: "Catalog Org B" } as const;
 export const CATALOG_ORG_B_ADMIN = {
@@ -74,7 +68,7 @@ export type CatalogAcceptanceFixture = {
   chain: InstalledCatalogMatchChain;
   organizationId: string;
   organizationBId: string;
-  agentUserId: string;
+  guestUserId: string;
   chargerSubjectId: string;
   sensorSubjectId: string;
   powerSubjectId: string;
@@ -109,37 +103,6 @@ export type CatalogAcceptanceFixture = {
 
 let fixturePromise: Promise<CatalogAcceptanceFixture> | null = null;
 
-export function catalogLaneConnectionString(): string {
-  const connectionString = process.env.DATABASE_URL?.trim() || process.env.TEST_DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error(
-      "Catalog OP-08 acceptance requires DATABASE_URL (or TEST_DATABASE_URL) pointing at wiseeff_lane_810. Missing environment fails closed."
-    );
-  }
-  const forbidden = forbiddenCatalogLaneReason(connectionString);
-  if (forbidden) {
-    throw new Error(forbidden);
-  }
-  const url = assertCatalogLaneEvidenceUrl(connectionString);
-  const port = url.port === "" ? 5432 : Number(url.port);
-  if (port === COMPOSE_APP_PORT) {
-    throw new Error(
-      `Catalog OP-08 acceptance rejects the compose app port ${COMPOSE_APP_PORT}. Use the dedicated pgvector lane on 55438.`
-    );
-  }
-  const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
-  if (database === COMPOSE_APP_DATABASE) {
-    throw new Error(`Catalog OP-08 acceptance rejects shared database "${COMPOSE_APP_DATABASE}".`);
-  }
-  const expected = laneDatabaseName(CATALOG_ACCEPTANCE_ISSUE);
-  if (database !== expected) {
-    throw new Error(
-      `Catalog OP-08 acceptance requires ${expected} (issue 810). Received ${database || "(empty)"}.`
-    );
-  }
-  return connectionString;
-}
-
 export function ensureCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
   if (!fixturePromise) {
     fixturePromise = installCatalogAcceptanceFixture();
@@ -148,7 +111,7 @@ export function ensureCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
 }
 
 async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixture> {
-  const connectionString = catalogLaneConnectionString();
+  const connectionString = await catalogLaneConnectionString();
   const root = createPostgresDatabase(connectionString);
   const pool = getRootPostgresPool(root);
   if (!pool) {
@@ -179,7 +142,7 @@ async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
     chain,
     organizationId: ACCEPTANCE_ORGANIZATION.id,
     organizationBId: CATALOG_ORG_B.id,
-    agentUserId: CATALOG_AGENT_USER.userId,
+    guestUserId: CATALOG_GUEST_USER.userId,
     chargerSubjectId: CHARGER_SUBJECT_ID,
     sensorSubjectId: SENSOR_SUBJECT_ID,
     powerSubjectId: SUBJECT_ID,
@@ -242,6 +205,21 @@ function reconstructChain(
 }
 
 async function seedCatalogActors(pool: pg.Pool): Promise<void> {
+  // A dedicated platform-only reviewer keeps role-matrix assertions distinct
+  // from the demo user who holds both organization and platform roles.
+  const platform = acceptanceCast.platformOperator;
+  await pool.query(
+    `insert into public.users (id, organization_id, name, email, title, is_active)
+     values ($1, $2, $3, $4, $5, true)
+     on conflict (id) do update set organization_id = excluded.organization_id, is_active = true`,
+    [platform.userId, ACCEPTANCE_ORGANIZATION.id, platform.name, platform.email, platform.title]
+  );
+  await pool.query(
+    `insert into public.user_role_bindings (id, user_id, organization_id, project_id, role_id)
+     values ('urb-catalog-platform-only', $1, $2, null, 'platform-admin')
+     on conflict (id) do update set user_id = excluded.user_id, organization_id = excluded.organization_id, role_id = excluded.role_id`,
+    [platform.userId, ACCEPTANCE_ORGANIZATION.id]
+  );
   await pool.query(
     `insert into public.organizations (id, name) values ($1, $2)
      on conflict (id) do update set name = excluded.name`,
@@ -257,11 +235,11 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
        title = excluded.title,
        is_active = excluded.is_active`,
     [
-      CATALOG_AGENT_USER.userId,
+      CATALOG_GUEST_USER.userId,
       ACCEPTANCE_ORGANIZATION.id,
-      CATALOG_AGENT_USER.name,
-      CATALOG_AGENT_USER.email,
-      CATALOG_AGENT_USER.title,
+      CATALOG_GUEST_USER.name,
+      CATALOG_GUEST_USER.email,
+      CATALOG_GUEST_USER.title,
       CATALOG_ORG_B_ADMIN.userId,
       CATALOG_ORG_B.id,
       CATALOG_ORG_B_ADMIN.name,
@@ -272,15 +250,14 @@ async function seedCatalogActors(pool: pg.Pool): Promise<void> {
   await pool.query(
     `insert into public.user_role_bindings (id, user_id, organization_id, project_id, role_id)
      values
-       ('urb-op08-agent', $1, $2, null, 'guest'),
+       ('urb-op08-guest', $1, $2, null, 'guest'),
        ('urb-op08-org-b-admin', $3, $4, null, 'admin')
      on conflict (id) do update set
        user_id = excluded.user_id,
        organization_id = excluded.organization_id,
        role_id = excluded.role_id`,
-    [CATALOG_AGENT_USER.userId, ACCEPTANCE_ORGANIZATION.id, CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B.id]
+    [CATALOG_GUEST_USER.userId, ACCEPTANCE_ORGANIZATION.id, CATALOG_ORG_B_ADMIN.userId, CATALOG_ORG_B.id]
   );
-  void acceptanceCast;
   void X_REVISION_1;
 }
 

@@ -36,6 +36,13 @@ function toOpenApiMethod(method: string): OpenApiMethod {
 }
 
 describe("M5 OpenAPI contract", () => {
+  it("R2 Proposal 503 declares replay-unavailable without changing generic errors elsewhere", () => {
+    const document = buildOpenApiDocument();
+    const response = document.paths["/api/v2/catalog/definition-proposals"]!.post!.responses["503"];
+    expect(response).toMatchObject({ content: { "application/json": { schema: { $ref: "#/components/schemas/CatalogProposalUnavailableResponse" } } } });
+    expect(JSON.stringify(document.components.schemas.CatalogProposalUnavailableResponse)).toContain("proposal-replay-unavailable");
+    expect(document.paths["/api/v2/catalog"]!.get!.responses["503"]).toEqual({ $ref: "#/components/responses/ErrorResponse" });
+  });
   it("has schema metadata for every manifested route", () => {
     for (const route of routeManifest) {
       expect(schemaRegistry[route.id], route.id).toBeDefined();

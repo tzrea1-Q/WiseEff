@@ -1,0 +1,1306 @@
+{
+  "schemaVersion": 1,
+  "finding": "R2-ASYNC / review P2 inherited from b5ca4614",
+  "issues": [
+    816,
+    820,
+    814
+  ],
+  "reviewBase": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+  "codeCandidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+  "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+  "acceptedOriginMain": "27bc39d53235879afb579a86f6ee777a462e4204",
+  "trustedBoundaryBase": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+  "status": "bounded code repair verified and independently reviewed; Draft PR, no seal/merge/attestation/closure",
+  "productionChange": "Await all nine asynchronous read branches inside the typed CatalogProjectionError catch. Remove the old TypeError readiness fallback; unknown exceptions continue to sanitized root HTTP 500.",
+  "sourceFiles": [
+    "server/modules/parameter-catalog-api/read/handlers.ts",
+    "server/modules/parameter-catalog-api/read/handlers.test.ts",
+    "server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts"
+  ],
+  "expectedUnavailable": {
+    "status": 503,
+    "code": "SERVICE_UNAVAILABLE",
+    "message": "Catalog is not ready.",
+    "details": {
+      "reason": "catalog-not-ready",
+      "retryable": true
+    },
+    "retryAfter": "5",
+    "requestId": "preserved from X-Request-Id"
+  },
+  "regressions": [
+    {
+      "path": "server/modules/parameter-catalog-api/read/handlers.test.ts",
+      "cases": "R2-ASYNC dispatcher rejection contract",
+      "newCases": 20,
+      "layer": "actual adapter factories with controlled domain-query results; registered HTTP with pure snapshot/auth harness for unknown-error 500",
+      "coverage": "query-unavailable and necessary-result omission across Definition list, Subject Definitions and details; successful missing Map remains a separate existing case with strengthened full-response assertion; Error/TypeError retain sanitized 500"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts",
+      "cases": "R2-ASYNC root %s adapter rejection retains the complete contract for %s",
+      "newCases": 8,
+      "layer": "real-PG / full registered root-HTTP; existing production-mode verifier fixture and actual database role grants",
+      "coverage": "three usage and five registration routes; actual SELECT 1 / 0 on the owned disposable client, real domain mapping/production adapters, finally fault removal, recovered HTTP 200 and no retained/waiting connections"
+    }
+  ],
+  "counts": {
+    "finalRelevantServer": {
+      "files": 21,
+      "passed": 255,
+      "failed": 0,
+      "skipped": 0
+    },
+    "initialFocusedDevelopment": {
+      "files": 4,
+      "passed": 100
+    },
+    "firstRed": {
+      "failed": 1,
+      "filtered": 11,
+      "actual": "root HTTP 500 INTERNAL_ERROR empty details"
+    },
+    "unknownRed": {
+      "failed": 1,
+      "passed": 35,
+      "actual": "TypeError incorrectly resolved as 503 with old fallback"
+    }
+  },
+  "runs": [
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "tree": "a3fd0a300f8fe60976af4cbfc6524f51fa1ef2c1",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "start": "2026-09-06T04:15:22.948358+00:00",
+        "end": "2026-09-06T04:15:44.189886+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "development/async-read-build.log",
+      "sanitizedLogSha256": "a0deba0ae0eb5fed0cb12aa134b2396bb95ddfe467e07a7a3e99afa2e1e0e8a2"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "tree": "a3fd0a300f8fe60976af4cbfc6524f51fa1ef2c1",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts",
+          "-t",
+          "R2-ASYNC"
+        ],
+        "start": "2026-09-06T04:12:57.734428+00:00",
+        "end": "2026-09-06T04:13:02.012751+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "development/async-read-first-green.log",
+      "sanitizedLogSha256": "1ea446ec04e97b33d31fab817d00ef89c62e13435bb5fd2c4e407d22264989e4"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "tree": "a3fd0a300f8fe60976af4cbfc6524f51fa1ef2c1",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/read/handlers.test.ts",
+          "server/modules/parameter-catalog-api/read/ports.batch.test.ts",
+          "server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts",
+          "server/modules/parameter-catalog-api/rootUsageScope.integration.test.ts"
+        ],
+        "start": "2026-09-06T04:15:04.193881+00:00",
+        "end": "2026-09-06T04:15:09.540038+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "development/async-read-focused-green.log",
+      "sanitizedLogSha256": "92e964e22cc8364b003c1d025d5c1647e63e746b6e09e670c6c5fe01ebe21a7f"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "tree": "a3fd0a300f8fe60976af4cbfc6524f51fa1ef2c1",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts",
+          "-t",
+          "R2-ASYNC"
+        ],
+        "start": "2026-09-06T04:12:10.352844+00:00",
+        "end": "2026-09-06T04:12:14.816842+00:00",
+        "exit": 1,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "development/async-read-red.log",
+      "sanitizedLogSha256": "2acea4dee251dfb20cbc8fce3ac5871af13b113b7c3df2f292c4f0777ccf2f89"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "trackedStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "fullStatusAtStart": " M docs/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M docs/zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md\n M server/modules/parameter-catalog-api/read/handlers.test.ts\n M server/modules/parameter-catalog-api/read/handlers.ts\n M server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts\n",
+        "exactCommittedTree": false,
+        "checkout": "e4127eb99e51754cd80f866244033ffee6bd9f4c",
+        "tree": "a3fd0a300f8fe60976af4cbfc6524f51fa1ef2c1",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api/read/handlers.test.ts"
+        ],
+        "start": "2026-09-06T04:13:57.148413+00:00",
+        "end": "2026-09-06T04:13:57.899935+00:00",
+        "exit": 1,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "development/async-read-unknown-red.log",
+      "sanitizedLogSha256": "a87acf9fcc03747d788433bd0070288882db2aac7c0e7ca5f2b31c35bcd28f0d"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "acceptance:coverage"
+        ],
+        "start": "2026-09-06T04:22:15.630281+00:00",
+        "end": "2026-09-06T04:22:16.208212+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-acceptance-coverage.log",
+      "sanitizedLogSha256": "e4408ba93e5c6905d47df6e8b39646b51f1096d5507f0a59eb3aaf9fafa40b22"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "acceptance:models"
+        ],
+        "start": "2026-09-06T04:22:15.650339+00:00",
+        "end": "2026-09-06T04:22:16.266436+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-acceptance-models.log",
+      "sanitizedLogSha256": "449a497ab044c238861e74ddc749da32aeb495541a46066f6adbd09540282a54"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "acceptance:operations"
+        ],
+        "start": "2026-09-06T04:22:15.635043+00:00",
+        "end": "2026-09-06T04:22:16.233678+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-acceptance-operations.log",
+      "sanitizedLogSha256": "067481d4edbd4a2bf9b7ff9663b70e77e9e021c3a9dd070c584627ad9741f2c3"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "contract:check"
+        ],
+        "start": "2026-09-06T04:22:15.591842+00:00",
+        "end": "2026-09-06T04:22:16.321792+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-contract-check.log",
+      "sanitizedLogSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "docs:check"
+        ],
+        "start": "2026-09-06T04:22:15.592039+00:00",
+        "end": "2026-09-06T04:22:19.281150+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-docs-check.log",
+      "sanitizedLogSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "parameter-catalog-boundaries:check",
+          "--",
+          "--trusted-base-sha",
+          "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391"
+        ],
+        "start": "2026-09-06T04:21:21.446732+00:00",
+        "end": "2026-09-06T04:21:37.442636+00:00",
+        "exit": 1,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-final-boundary.log",
+      "sanitizedLogSha256": "3dc77d302181d20fd1bd2b6c102648b1549b3a2455e7e0d024b54e7a3e33c7e5"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "build"
+        ],
+        "start": "2026-09-06T04:17:07.850444+00:00",
+        "end": "2026-09-06T04:17:31.869406+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-final-build.log",
+      "sanitizedLogSha256": "88a24bf166fb99c79db8136585152316c3cdb90fbb141582bd02822e7bcf5646"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "test:server",
+          "--",
+          "server/modules/parameter-catalog-api",
+          "server/app.test.ts",
+          "server/modules/agent/xiaoze/catalogBoundary.integration.test.ts",
+          "--reporter=verbose"
+        ],
+        "start": "2026-09-06T04:17:07.850443+00:00",
+        "end": "2026-09-06T04:17:16.537845+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-final-server.log",
+      "sanitizedLogSha256": "2701327a6659dddbd6cd0238bbc180d18e1f53552514ff1c4dc736a82d3751fc"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "lint"
+        ],
+        "start": "2026-09-06T04:22:15.590107+00:00",
+        "end": "2026-09-06T04:22:17.656347+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-lint.log",
+      "sanitizedLogSha256": "43b0fcb1f024d85a020631fab3ea817a6b4bd3b2e46dbe8bfdd619e50c170cd5"
+    },
+    {
+      "metadata": {
+        "base": "35cbfb18e0504d6ccf16d2fc18c72a0d2da80391",
+        "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "trackedStatusAtStart": "",
+        "fullStatusAtStart": "",
+        "exactCommittedTree": true,
+        "checkout": "c3d592011d05109adb64bd295159e33ade9fd604",
+        "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+        "command": [
+          "npm",
+          "run",
+          "ui:check"
+        ],
+        "start": "2026-09-06T04:22:15.622379+00:00",
+        "end": "2026-09-06T04:22:17.002762+00:00",
+        "exit": 0,
+        "environment": "local isolated lane 820; no target or production operations",
+        "nonSecretEnvironmentOverrides": {
+          "TMPDIR": "/var/folders/g0/xlr8n0dd4kqg82b0h_z352z00000gn/T/"
+        },
+        "checkoutUnchanged": true
+      },
+      "archiveLog": "candidate/async-read-ui-check.log",
+      "sanitizedLogSha256": "0c583dea2b5c490c2f8d873cb62742882aea1b7448c5a9e5c1b7ee2bab6fab02"
+    }
+  ],
+  "archive": {
+    "path": "docs/exec-plans/evidence/2026-09-06-catalog-r2-async-evidence.zip",
+    "bytes": 5643787,
+    "sha256": "242fad755f05db456fcf6a31b3ae8fbbf08ebc0f391e33126847b05908e65cb5",
+    "manifest": {
+      "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+      "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+      "files": [
+        {
+          "path": "README-en.txt",
+          "bytes": 904,
+          "sha256": "ed5133daab4910e239dc627e362f1e6ce85b13c1779c56676505ec32ebe962be"
+        },
+        {
+          "path": "README-zh.txt",
+          "bytes": 722,
+          "sha256": "3d8de2a14559b0b2f7b5805d67a7227843a83b11c72c24103c7c7c4d11059e28"
+        },
+        {
+          "path": "browser/artifacts/browser/playwright-report/index.html",
+          "bytes": 611168,
+          "sha256": "0e8724e7824d2a8c0f286cd76ff04433da5fc3f116ce863127cfb9d7689edf3c"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/.last-run.json",
+          "bytes": 45,
+          "sha256": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-governan-608e0-gh-one-atomic-typed-command-Desktop-Chrome/pcat-ui-04-review.png",
+          "bytes": 133734,
+          "sha256": "78f9f76b20bd131d70b68443ca7ba503d05c3d8d680def4ee72eb72e96f68c01"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-governan-76ee8-n-explicit-Placement-choice-Desktop-Chrome/pcat-ui-07-register.png",
+          "bytes": 192460,
+          "sha256": "a152c0cb31dafbf00e8e22e4e214b7372a07aa4aac26e005864eb9ecc06bdac5"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-governan-b8dfb-urneys-with-role-boundaries-Desktop-Chrome/pcat-ui-15-journey.png",
+          "bytes": 159275,
+          "sha256": "09b2cabaf65e1b8babd901153f7005e2afaae430f14fb013193dd711fd56f1dd"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-083dc-ation-after-refresh-tablet--Desktop-Chrome/r2-real-conflict.png",
+          "bytes": 103148,
+          "sha256": "f42456fd1995fa60f3fd68b4e59a6ae38135f5efdffeaf8b6dfdad0344b1eb5b"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-22bc5-a-mock-governance-authority-Desktop-Chrome/pcat-ui-13-api.png",
+          "bytes": 177630,
+          "sha256": "7ff532accb57ecd76531fa115d71575b02d166634bcefef842ed028bc7ac89d9"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-22bc5-a-mock-governance-authority-Desktop-Chrome/pcat-ui-13-mock.png",
+          "bytes": 190098,
+          "sha256": "eec1e1a0369709405605149f5f739bf303442fba20a17b70be13717ff1ad9636"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-33033-tion-without-partial-writes-Desktop-Chrome/pcat-ui-10-conflict.png",
+          "bytes": 172946,
+          "sha256": "f80547eed7da95c1f834b21e4c128ddde76c51d495d295fa06ea5a0dd9d0bb1f"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-5f726-n-and-scope-hidden-outcomes-Desktop-Chrome/pcat-ui-11-legacy.png",
+          "bytes": 159280,
+          "sha256": "5169e7c7b3c37ec04c2ac626f4174dc03efa4dab716b202ee3879da0c6925311"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-64f0a-tion-after-refresh-desktop--Desktop-Chrome/r2-real-conflict.png",
+          "bytes": 215434,
+          "sha256": "e858b225bf2ec1e3ad2cf4049ecea20f48b175573d5c864825eb954508f04ec5"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-6c903--Proposal-browser-operation-Desktop-Chrome/r2-operation-trace-api.png",
+          "bytes": 146200,
+          "sha256": "cd5f0082381c039e2802f6f7cd1a6434d1c6067b8d9619ead069071885ca80aa"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-6c903--Proposal-browser-operation-Desktop-Chrome/r2-operation-trace-mock.png",
+          "bytes": 143128,
+          "sha256": "53fb14019b5b32f513b1753f094e460cae774649fd77c7e3f86da8b571a1dd1c"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-7c77c-fied-response-phase-failure-Desktop-Chrome/r2-response-phase-replay.png",
+          "bytes": 216592,
+          "sha256": "752f9ea5c5731e813e3c98536bf7c26fccf31b9e4c98c183b6fcc107c3f4e6f6"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-7ec14-ation-after-refresh-mobile--Desktop-Chrome/r2-real-conflict.png",
+          "bytes": 67631,
+          "sha256": "c4d3cf89c39015a0e13d5fbaa51a9490a32b12192f15bc865ade46bd457e65f2"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-b0430-erving-authorized-API-reads-Desktop-Chrome/pcat-ui-12-guest.png",
+          "bytes": 97892,
+          "sha256": "fe657b0f8cb371f43854f65768ca48178da1537b3a22a43300b4bb3097782863"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog-negative-ca49d-ing-the-historical-Proposal-Desktop-Chrome/r2-real-conflict.png",
+          "bytes": 215158,
+          "sha256": "dca5e8aa26cc0b648446190079275da5be5e7e7da44a36c8befc5ee8747ac7de"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-25ef9-fective-or-Governance-peers-Desktop-Chrome/pcat-ui-01-entry.png",
+          "bytes": 172302,
+          "sha256": "3c480671056b4a53e75c55be8c3d463f17ce8c4075b347773d59b40e381b56cb"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-2b946-ugh-reload-Back-and-Forward-Desktop-Chrome/pcat-ui-02-deep-link.png",
+          "bytes": 199824,
+          "sha256": "17b9c887c1dc18d4c487fba8af7b3ad170a6fe7ebe236ee9275623fdca5f6901"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-659f5--Registration-and-Placement-Desktop-Chrome/pcat-ui-03-detail.png",
+          "bytes": 199882,
+          "sha256": "4c9c38c1e3763f185c44452b675a3106dc1e4c3f6b35e80024423beb84dea63e"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-73b11-bles-prohibited-new-actions-Desktop-Chrome/pcat-ui-09-retired.png",
+          "bytes": 204459,
+          "sha256": "88b30d3df0892e8b12100bc8d9141382a8ba137ab73416c16acd60c0ad5ec1ad"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-a0e51-cts-with-authorized-history-Desktop-Chrome/pcat-ui-05-timeline.png",
+          "bytes": 199895,
+          "sha256": "2bd8af0a2101f692f75e480e4ade310da7e00ef08d49ef118a6e0d0d9c045882"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-adb32-nd-390x844-without-overflow-Desktop-Chrome/pcat-ui-14-desktop.png",
+          "bytes": 238102,
+          "sha256": "e52def632705d5b1f4c61e3e204017036ff5447e09080ebbfeaeea4da01c82b4"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-adb32-nd-390x844-without-overflow-Desktop-Chrome/pcat-ui-14-mobile.png",
+          "bytes": 30553,
+          "sha256": "605eee121213062284bf40efa2c0c64f9eabf71da1d951e3973cd276abdb3f02"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-adb32-nd-390x844-without-overflow-Desktop-Chrome/pcat-ui-14-tablet.png",
+          "bytes": 35839,
+          "sha256": "863bb809abaf966e256db0be2d7e86cf0d4da434137d1f5961dd3e1a888011d7"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ebc20-the-Catalog-Release-visible-Desktop-Chrome/pcat-ui-06-guest.png",
+          "bytes": 97977,
+          "sha256": "d1e19dbcab628a207a342c120a4858948ad206ec8b7f32d84ebc7be2819b584e"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ebc20-the-Catalog-Release-visible-Desktop-Chrome/pcat-ui-06-org-admin.png",
+          "bytes": 172119,
+          "sha256": "8f89bd63f16097bb054c416ccc9c678125491df2fbf796ef760e2b0684b1d49e"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ebc20-the-Catalog-Release-visible-Desktop-Chrome/pcat-ui-06-platform-admin.png",
+          "bytes": 166168,
+          "sha256": "b7ac190847f8e8784573327ac885bbc9dcdfc5b4886d07038efbd9963e167e7b"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ebc20-the-Catalog-Release-visible-Desktop-Chrome/pcat-ui-06-user.png",
+          "bytes": 101792,
+          "sha256": "61d628eddcde60e37f1d3880d9507fa9d09b58d0adfd6e7334fa27684c33193b"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ed99f-ew-work-and-no-filter-match-Desktop-Chrome/pcat-ui-08-filter.png",
+          "bytes": 194327,
+          "sha256": "7a7631808c96edf6eadb368f25242c2bbbf9126d8c7548e60fe2e9777fdbc1bf"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/parameter-catalog.acceptan-ed99f-ew-work-and-no-filter-match-Desktop-Chrome/pcat-ui-08-not-ready.png",
+          "bytes": 160605,
+          "sha256": "466b632f99f5562ad24c907bc15532ef196478c027eb91fc03ab7c9cd19e5435"
+        },
+        {
+          "path": "browser/artifacts/browser/test-results/results.json",
+          "bytes": 138970,
+          "sha256": "5967dff84776f53a214b702eb9f57b5830dd865c27bf1be7a7b9c582fbec9ef2"
+        },
+        {
+          "path": "browser/catalog-specs-meta.json",
+          "bytes": 572,
+          "sha256": "11becf70e4f01289604807482954f0dd17ec7f168fe09d5bbcbe5ce00951d71f"
+        },
+        {
+          "path": "browser/catalog-specs.log",
+          "bytes": 5287,
+          "sha256": "d9c27644accf8256c0e57b0217e091a8c8c32e0c9714514d6681bdd5f67805cd"
+        },
+        {
+          "path": "browser/nested-runtime-manifest.json",
+          "bytes": 13254,
+          "sha256": "364e5339968b19e46fdaeb7880f073c0b948e4ccf0b699edb2f34e63074cc946"
+        },
+        {
+          "path": "browser/runtime-operation-evidence-snapshot.json",
+          "bytes": 4355,
+          "sha256": "db35dfbfe5dfacb484070b5f2fdc09f6c4bef4060c2e99bd3d59a217f7cf7dd7"
+        },
+        {
+          "path": "candidate/async-read-acceptance-coverage.json",
+          "bytes": 704,
+          "sha256": "6a158af1a4ffac3a63f06d5e646873618334ef959485d77d5f512db5fff25e1c"
+        },
+        {
+          "path": "candidate/async-read-acceptance-coverage.log",
+          "bytes": 4206,
+          "sha256": "e4408ba93e5c6905d47df6e8b39646b51f1096d5507f0a59eb3aaf9fafa40b22"
+        },
+        {
+          "path": "candidate/async-read-acceptance-models.json",
+          "bytes": 702,
+          "sha256": "721ef03ca8ebee9c9128c22a4e70029a5bbf7cd091268ddfcd7589d822f36490"
+        },
+        {
+          "path": "candidate/async-read-acceptance-models.log",
+          "bytes": 785,
+          "sha256": "449a497ab044c238861e74ddc749da32aeb495541a46066f6adbd09540282a54"
+        },
+        {
+          "path": "candidate/async-read-acceptance-operations.json",
+          "bytes": 706,
+          "sha256": "6586b0a55c9d49ffe38346f0b4635860d269d0b7620dbbd88ab1f598b4cd2759"
+        },
+        {
+          "path": "candidate/async-read-acceptance-operations.log",
+          "bytes": 4524,
+          "sha256": "067481d4edbd4a2bf9b7ff9663b70e77e9e021c3a9dd070c584627ad9741f2c3"
+        },
+        {
+          "path": "candidate/async-read-contract-check.json",
+          "bytes": 699,
+          "sha256": "0d6700a10321a721da7d8c519e703becdda04b4e5ee9f8d88fc164e82f814d1c"
+        },
+        {
+          "path": "candidate/async-read-contract-check.log",
+          "bytes": 129,
+          "sha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981"
+        },
+        {
+          "path": "candidate/async-read-docs-check.json",
+          "bytes": 695,
+          "sha256": "087af22af4bae2944e8c8c21d017f2eda1de72eb80d3a47b3acb3c9c02ce11b1"
+        },
+        {
+          "path": "candidate/async-read-docs-check.log",
+          "bytes": 193,
+          "sha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747"
+        },
+        {
+          "path": "candidate/async-read-final-boundary.json",
+          "bytes": 803,
+          "sha256": "3f2f49efe17471a83f7d8606eb7edb354e9aede57e359b1e40e2cbe32042d714"
+        },
+        {
+          "path": "candidate/async-read-final-boundary.log",
+          "bytes": 2630769,
+          "sha256": "3dc77d302181d20fd1bd2b6c102648b1549b3a2455e7e0d024b54e7a3e33c7e5"
+        },
+        {
+          "path": "candidate/async-read-final-build.json",
+          "bytes": 690,
+          "sha256": "1def2203629448d2b04b343f9d52c758f713c525097d73be53d8cb75f69776c5"
+        },
+        {
+          "path": "candidate/async-read-final-build.log",
+          "bytes": 38469,
+          "sha256": "88a24bf166fb99c79db8136585152316c3cdb90fbb141582bd02822e7bcf5646"
+        },
+        {
+          "path": "candidate/async-read-final-server.json",
+          "bytes": 873,
+          "sha256": "2340f4fde0a5ae67071947f37162f4e2c0255ae1ec855cadbe1218c720ac8134"
+        },
+        {
+          "path": "candidate/async-read-final-server.log",
+          "bytes": 123428,
+          "sha256": "2701327a6659dddbd6cd0238bbc180d18e1f53552514ff1c4dc736a82d3751fc"
+        },
+        {
+          "path": "candidate/async-read-lint.json",
+          "bytes": 689,
+          "sha256": "eb5cc84ab5df27322c0c5ffd1c00073483dedfd52f41ddf859224dada0b44029"
+        },
+        {
+          "path": "candidate/async-read-lint.log",
+          "bytes": 346021,
+          "sha256": "43b0fcb1f024d85a020631fab3ea817a6b4bd3b2e46dbe8bfdd619e50c170cd5"
+        },
+        {
+          "path": "candidate/async-read-ui-check.json",
+          "bytes": 693,
+          "sha256": "b394aedabbb389022ded0ff0907b497fb0de5ff1da3130538028b6c38c66f8ae"
+        },
+        {
+          "path": "candidate/async-read-ui-check.log",
+          "bytes": 666,
+          "sha256": "0c583dea2b5c490c2f8d873cb62742882aea1b7448c5a9e5c1b7ee2bab6fab02"
+        },
+        {
+          "path": "candidate/playwright-cli/authenticated-open.txt",
+          "bytes": 231,
+          "sha256": "5e0e255e15188a689f780018677b07535fdcb9842ecbd7b5eb81ee65d51ad02e"
+        },
+        {
+          "path": "candidate/playwright-cli/authenticated-route.txt",
+          "bytes": 351,
+          "sha256": "8abe68ad6c2125ee8830345edc3824304a29c4f70ef10374d640531cc34e9057"
+        },
+        {
+          "path": "candidate/playwright-cli/authenticated-state.txt",
+          "bytes": 344,
+          "sha256": "09822d3c371e24bfeb546d2e7a5f7c67c3f40c0e935a7ffb344653d4b961f875"
+        },
+        {
+          "path": "candidate/playwright-cli/close.txt",
+          "bytes": 36,
+          "sha256": "550068aee6708b8c9604cdd152054f391951ee8a777fdb14b2c56a6520fe7237"
+        },
+        {
+          "path": "candidate/playwright-cli/commands.json",
+          "bytes": 9816,
+          "sha256": "f3a8652e5694e5d9730a2276713db021432de33fc1bc59ade43b4f304d3598cf"
+        },
+        {
+          "path": "candidate/playwright-cli/console-errors.txt",
+          "bytes": 94,
+          "sha256": "8b3fd6ce5329edb07abc01fc870fc386121e11de4b2b6cf650bbe3ca13f6261b"
+        },
+        {
+          "path": "candidate/playwright-cli/console-warnings.txt",
+          "bytes": 680,
+          "sha256": "3d7dd4d7700ebb02d09cc06a5e274a3e430fbf2362dcbe9fef2488685ad33a0b"
+        },
+        {
+          "path": "candidate/playwright-cli/current-network.txt",
+          "bytes": 41028,
+          "sha256": "8859de5936c38afa0d93c589c330a109c67d31af5147bca81db55391477c434c"
+        },
+        {
+          "path": "candidate/playwright-cli/current-snapshot.txt",
+          "bytes": 5204,
+          "sha256": "c027643419e804cda400b6beeb943a25d91ba9cae9764a100f5e454059d6c30d"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-dialog.png",
+          "bytes": 201764,
+          "sha256": "10ff0941636ab2a726785b91cbd75120979a19bb9885773480c2697cf49a7add"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-dialog.txt",
+          "bytes": 7929,
+          "sha256": "96f88c8032b7607c9648fec97fb80281923e238191ccc9f6e211660e1ae1f5ca"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-image.txt",
+          "bytes": 480,
+          "sha256": "28f56ea6a2efe8e5c51aa294676f2dc7e99552a0e89922dd93ec901b50d09ce3"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-initial.txt",
+          "bytes": 9878,
+          "sha256": "7bf820bc611e6ec7ee32e6d00514e4b74d99e40915aee4bd04da3fafaeefe937"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-interaction.txt",
+          "bytes": 614,
+          "sha256": "32077284b6a145a7d3df0c82ec16cff005b11859a6a9fb4054b4484e1f3c7fc5"
+        },
+        {
+          "path": "candidate/playwright-cli/desktop-resize.txt",
+          "bytes": 303,
+          "sha256": "43e5692dd36bf1304acf3f5a5436efa6e5c9e0b38bd059c2a68f7ae154149101"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-dialog.png",
+          "bytes": 67543,
+          "sha256": "6f864e4d48b2e4f533d307319fd69bd6d0ae4d15aa06f8ef677a7ea65b71d3d0"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-dialog.txt",
+          "bytes": 5204,
+          "sha256": "c027643419e804cda400b6beeb943a25d91ba9cae9764a100f5e454059d6c30d"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-image.txt",
+          "bytes": 477,
+          "sha256": "b92b9aef34dcdfff1f6b7761e950524a51e326316d475496459afbeab9ad54dc"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-interaction.txt",
+          "bytes": 740,
+          "sha256": "12c1672347745f21756d681996c139e2b2afeab41d9efbda6df6d06d3405a8bb"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-result-verification.txt",
+          "bytes": 483,
+          "sha256": "e93500077ba364c5934167f7edeee2cad83bb9e4218c8d5de751f7ce17d91e6c"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-result.txt",
+          "bytes": 5259,
+          "sha256": "1dfc581cd0905eaad11866ad2f93563b7cf35e698d2cbd708deb63e9c533c158"
+        },
+        {
+          "path": "candidate/playwright-cli/mobile-submit.txt",
+          "bytes": 750,
+          "sha256": "4fd3fab03538b55177273a5e97abd13e05d72b66f1ef9b9cf78c7ee500915c1e"
+        },
+        {
+          "path": "candidate/playwright-cli/network.txt",
+          "bytes": 41200,
+          "sha256": "5411955ee3affb1b225264b13af2fd1c3f311385a2cde3876f976d0c3622c5c6"
+        },
+        {
+          "path": "candidate/playwright-cli/runtime.json",
+          "bytes": 349,
+          "sha256": "eb92156ace6979cc8c59580f52bd5f5df508aecbf4d7620de4c5df0b048e66e4"
+        },
+        {
+          "path": "candidate/playwright-cli/summary.json",
+          "bytes": 982,
+          "sha256": "d3b69103c71077afdba26713c1a117e2242736515267dfb1027a9be78398e292"
+        },
+        {
+          "path": "candidate/playwright-cli/tablet-dialog.png",
+          "bytes": 125083,
+          "sha256": "642b9334ffb6aaedbeee6fd9e52e1e0614395001565ae74f97db96bc27885e19"
+        },
+        {
+          "path": "candidate/playwright-cli/tablet-dialog.txt",
+          "bytes": 5204,
+          "sha256": "1621fcde30aa767282356fc19b369831eb9410b6994f6c7dac055b91f2bff40a"
+        },
+        {
+          "path": "candidate/playwright-cli/tablet-image.txt",
+          "bytes": 477,
+          "sha256": "1544fa1e79d7f434907ad5eaecf44ee013705ef4539528e4103caaca4107f049"
+        },
+        {
+          "path": "candidate/playwright-cli/tablet-interaction.txt",
+          "bytes": 755,
+          "sha256": "1619eb881b53ebaff1299354e05b13566f6b85d10222a30e6332b63f9c7e4bc1"
+        },
+        {
+          "path": "candidate/subject-sql/definitions-1.json",
+          "bytes": 11617,
+          "sha256": "098c2fe55ee37d89f8f186713393e6acc30b71d5fe25ce1e097e8fa4fc6463c8"
+        },
+        {
+          "path": "candidate/subject-sql/definitions-100.json",
+          "bytes": 15611,
+          "sha256": "a6863661496259ed6ceb71a808d34f8a8c9869dbd2f41678905b56e1c3081e4c"
+        },
+        {
+          "path": "candidate/subject-sql/definitions-25.json",
+          "bytes": 12595,
+          "sha256": "7745dadf2e710ae909d10f366b842996c28f24412ec8bc607407b2d32d5f1354"
+        },
+        {
+          "path": "candidate/subject-sql/subjects-1.json",
+          "bytes": 10819,
+          "sha256": "42c8dfdca242bd38729c78223ac0c9c0056fd186e5f0db3a7f376f2ac5cf44db"
+        },
+        {
+          "path": "candidate/subject-sql/subjects-100.json",
+          "bytes": 13395,
+          "sha256": "aa0c34421c77fce76cb5745453ccaed5f7d6295e207984806db78adecb398525"
+        },
+        {
+          "path": "candidate/subject-sql/subjects-25.json",
+          "bytes": 11444,
+          "sha256": "dbee00eca99e66551556d11f2febc9a4425be418f3e505d1d0a20304f0c428f2"
+        },
+        {
+          "path": "development/async-read-build.json",
+          "bytes": 1345,
+          "sha256": "fc5bd65e50133d72dfa3211cce7c51768cc3b69a1a516d3fdc676b811576c66a"
+        },
+        {
+          "path": "development/async-read-build.log",
+          "bytes": 38469,
+          "sha256": "a0deba0ae0eb5fed0cb12aa134b2396bb95ddfe467e07a7a3e99afa2e1e0e8a2"
+        },
+        {
+          "path": "development/async-read-first-green.json",
+          "bytes": 1342,
+          "sha256": "e1b8223a43a02d378f8d55ff5c3667b15183e3d58247862e569e824677db0bbf"
+        },
+        {
+          "path": "development/async-read-first-green.log",
+          "bytes": 461,
+          "sha256": "1ea446ec04e97b33d31fab817d00ef89c62e13435bb5fd2c4e407d22264989e4"
+        },
+        {
+          "path": "development/async-read-focused-green.json",
+          "bytes": 1656,
+          "sha256": "60f84dfda983aab2b34480c90e1e54c9b8f2a49f63268efc548dcecc2b6738c1"
+        },
+        {
+          "path": "development/async-read-focused-green.log",
+          "bytes": 633,
+          "sha256": "92e964e22cc8364b003c1d025d5c1647e63e746b6e09e670c6c5fe01ebe21a7f"
+        },
+        {
+          "path": "development/async-read-red.json",
+          "bytes": 1226,
+          "sha256": "d20917e5ca8197538e838425c2f9d3a14b68ae245649ca4d09bb7b2db9fa61a1"
+        },
+        {
+          "path": "development/async-read-red.log",
+          "bytes": 1689,
+          "sha256": "2acea4dee251dfb20cbc8fce3ac5871af13b113b7c3df2f292c4f0777ccf2f89"
+        },
+        {
+          "path": "development/async-read-unknown-red.json",
+          "bytes": 1427,
+          "sha256": "5157418d36186d6483396a24bfc82deb14af8586874313e5457cc4449c5c2df4"
+        },
+        {
+          "path": "development/async-read-unknown-red.log",
+          "bytes": 1999,
+          "sha256": "a87acf9fcc03747d788433bd0070288882db2aac7c0e7ca5f2b31c35bcd28f0d"
+        },
+        {
+          "path": "hosted-34009795200/build-job.log",
+          "bytes": 797522,
+          "sha256": "c0445d5094caa710484829a6606e6f4529857e967654c83bef09f057f92e252c"
+        },
+        {
+          "path": "hosted-34009795200/build-job.log.request.json",
+          "bytes": 138,
+          "sha256": "c3562ed7ac51a6c3380255edc6827bdfbc30d093a37d20018e156125d66196c8"
+        },
+        {
+          "path": "hosted-34009795200/build-job.log.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "hosted-34009795200/checkout-commit.json",
+          "bytes": 2587,
+          "sha256": "db203fedd00cf53d3da91a5c319507c64a51b530d46986ff4299477dcb5b94e7"
+        },
+        {
+          "path": "hosted-34009795200/checkout-commit.json.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "hosted-34009795200/jobs.json",
+          "bytes": 17742,
+          "sha256": "e5cc3f63d74e20fc0ce031825ae6b75d74b489865e386c0fe598b164b0d836a6"
+        },
+        {
+          "path": "hosted-34009795200/jobs.json.request.json",
+          "bytes": 137,
+          "sha256": "58ec2a42f37a20613c65348bf2919606f6b8b6be0967f3b0ea107026aa5f3b8a"
+        },
+        {
+          "path": "hosted-34009795200/jobs.json.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "hosted-34009795200/merge-bar.log",
+          "bytes": 3505,
+          "sha256": "94c3b23d23edffc5f010f7b8460d68406e8d761b45e32c526395804a48a1cc18"
+        },
+        {
+          "path": "hosted-34009795200/merge-bar.log.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "hosted-34009795200/run.json",
+          "bytes": 12218,
+          "sha256": "c55639fa023951a37ef01ee39cf47aadb954b0b9441a18f0f9cfad8e25b87483"
+        },
+        {
+          "path": "hosted-34009795200/run.json.request.json",
+          "bytes": 132,
+          "sha256": "aeed429710d10a1351790b1b59ecce94d54f6fff6757280f805468e08a355fcc"
+        },
+        {
+          "path": "hosted-34009795200/run.json.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "hosted-34009795200/script-step-excerpt.log",
+          "bytes": 22845,
+          "sha256": "a4096037e689083082661eab5c7c95278f0929088525478856b4330e941b9ac3"
+        },
+        {
+          "path": "reproduce/cli-check.py.txt",
+          "bytes": 932,
+          "sha256": "a16290dc8b0ff1f94514e1f88ee1095347a298e2911dec3bf27f2e9d757f3ed8"
+        },
+        {
+          "path": "reproduce/cli-runtime.ts.txt",
+          "bytes": 2174,
+          "sha256": "eee5d1cc6b2694a24343b85e8ec6566c968463cc73c59100d410d5b527d87090"
+        },
+        {
+          "path": "reproduce/replay-async-cli.py.txt",
+          "bytes": 2402,
+          "sha256": "4d755ace4f7191b9b8f4030f658aa0b7deed121c2f0f7826032a978454eb3c6f"
+        },
+        {
+          "path": "reproduce/run-catalog-specs.ts.txt",
+          "bytes": 2753,
+          "sha256": "e1ded41b587dd4d238bee4280fdb62434b5562a756c270f405020cfad39abf3c"
+        },
+        {
+          "path": "reproduce/run-check.py.txt",
+          "bytes": 2015,
+          "sha256": "744b877253321e0f2c2d089406b116aa295d15fbcb661437ef082a9530891287"
+        },
+        {
+          "path": "reviews/async-read-red.patch.txt",
+          "bytes": 9735,
+          "sha256": "d7c5012e278d736438fa18ef1ceaca195593bbb4dd38d97aa51e308b1b2fe786"
+        },
+        {
+          "path": "reviews/async-read-spec-c3d.md",
+          "bytes": 2925,
+          "sha256": "e141b5389d6f91fd3b26ddfaf1f207afc7ca938069f7128557844794c9e26635"
+        },
+        {
+          "path": "reviews/async-read-standards-c3d.md",
+          "bytes": 3085,
+          "sha256": "fee88861d350c0490e4da702bad6be15d9ad9a18e1f4e6e98f1171cd406bcac4"
+        },
+        {
+          "path": "reviews/async-read-unknown-red.patch.txt",
+          "bytes": 16603,
+          "sha256": "f746eb408d57a5864ec8b9086c6863f63719402f71fb806241db0e55a11d9c3d"
+        },
+        {
+          "path": "reviews/ci-34009795200-actual.md",
+          "bytes": 3295,
+          "sha256": "c9ad13ea2a2618318e88612aabef53bd7cf2c1db6fe69e37372a403b2f5d1130"
+        }
+      ]
+    }
+  },
+  "limits": [
+    "No new full test:all or full server/front-end, broad Gate0 or 96-case capacity rerun is claimed for this bounded follow-up.",
+    "Prior be610 Gate0 failure and unsafe broad artifacts remain unchanged and excluded; this repair is not attribution for all Catalog/knowledge failures.",
+    "Policy fixed 0 and its unapproved capability/model decision remain blocked.",
+    "23 exact boundary relocations remain unapproved; no allowance/trusted-base/timeout/safety-limit change.",
+    "1000-Subject setup previously failed before measurement; no growth capacity sample.",
+    "Deterministic Agent provider evidence is not live-model or target/production acceptance."
+  ],
+  "sqlBudget": [
+    {
+      "path": "candidate/subject-sql/definitions-1.json",
+      "limit": 1,
+      "route": "definitions",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 5,
+        "transaction": 10,
+        "other": 0
+      },
+      "sha256": "098c2fe55ee37d89f8f186713393e6acc30b71d5fe25ce1e097e8fa4fc6463c8"
+    },
+    {
+      "path": "candidate/subject-sql/definitions-100.json",
+      "limit": 100,
+      "route": "definitions",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 5,
+        "transaction": 10,
+        "other": 0
+      },
+      "sha256": "a6863661496259ed6ceb71a808d34f8a8c9869dbd2f41678905b56e1c3081e4c"
+    },
+    {
+      "path": "candidate/subject-sql/definitions-25.json",
+      "limit": 25,
+      "route": "definitions",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 5,
+        "transaction": 10,
+        "other": 0
+      },
+      "sha256": "7745dadf2e710ae909d10f366b842996c28f24412ec8bc607407b2d32d5f1354"
+    },
+    {
+      "path": "candidate/subject-sql/subjects-1.json",
+      "limit": 1,
+      "route": "subjects",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 4,
+        "transaction": 8,
+        "other": 0
+      },
+      "sha256": "42c8dfdca242bd38729c78223ac0c9c0056fd186e5f0db3a7f376f2ac5cf44db"
+    },
+    {
+      "path": "candidate/subject-sql/subjects-100.json",
+      "limit": 100,
+      "route": "subjects",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 4,
+        "transaction": 8,
+        "other": 0
+      },
+      "sha256": "aa0c34421c77fce76cb5745453ccaed5f7d6295e207984806db78adecb398525"
+    },
+    {
+      "path": "candidate/subject-sql/subjects-25.json",
+      "limit": 25,
+      "route": "subjects",
+      "status": 200,
+      "actualCounts": {
+        "auth": 1,
+        "kernel": 15,
+        "business": 4,
+        "transaction": 8,
+        "other": 0
+      },
+      "sha256": "dbee00eca99e66551556d11f2febc9a4425be418f3e505d1d0a20304f0c428f2"
+    }
+  ],
+  "browser": {
+    "metadata": {
+      "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+      "tree": "8dc261d28748d86ead510f8c34c76da0d9d638e9",
+      "command": [
+        "npm",
+        "run",
+        "acceptance:e2e",
+        "--",
+        "e2e/acceptance/parameter-catalog.acceptance.spec.ts",
+        "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts",
+        "e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts",
+        "--project",
+        "Desktop Chrome"
+      ],
+      "start": "2026-09-06T04:18:49.365Z",
+      "end": "2026-09-06T04:20:38.017Z",
+      "exit": 0,
+      "layer": "browser-real / owned real PG / local non-HDC"
+    },
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "businessCases": 21,
+    "warmup": 1,
+    "log": "browser/catalog-specs.log"
+  },
+  "playwrightCli": {
+    "candidate": "c3d592011d05109adb64bd295159e33ade9fd604",
+    "url": "http://127.0.0.1:5173",
+    "route": "/parameter-admin/specs",
+    "viewports": [
+      "1440x900",
+      "768x1024",
+      "390x844"
+    ],
+    "interactions": "keyboard/modal focus, Escape/input preservation, checkbox explicit confirmation, one POST 201, scrolling, snapshots and screenshots",
+    "consoleErrors": 0,
+    "proposalPosts": [
+      "1163. [POST] http://127.0.0.1:55322/api/v2/catalog/definition-proposals => [201] Created"
+    ],
+    "commandLogicalErrors": 0,
+    "visualInspection": "Parent inspected desktop/tablet/mobile PNGs: no overlap, clipping, or horizontal overflow; keyboard/modal/scroll checks passed.",
+    "limits": "CLI scenario starts with the existing empty-list fixture; populated pages and actual conflict/parity are tested in the separately recorded three Catalog specs.",
+    "cleanup": "Owned CLI runtime stopped and disposable resources removed.",
+    "completedAt": "2026-09-06T04:23:16.441062+00:00"
+  },
+  "reviews": [
+    {
+      "path": "reviews/async-read-standards-c3d.md",
+      "content": "# Independent Standards — asynchronous Catalog read rejection\n\n**PASS for this bounded repair; no actionable finding.** Fixed diff: `git diff e4127eb99e51754cd80f866244033ffee6bd9f4c...c3d592011d05109adb64bd295159e33ade9fd604`. Sole commit: `c3d592011 fix(catalog): map asynchronous read projection failures at dispatcher`; head tree `8dc261d28748d86ead510f8c34c76da0d9d638e9`. Reviewed all five changed files. This is Standards only; no Spec results were consulted.\n\nSources: root AGENTS surgical-change/verification rules, ARCHITECTURE modular boundaries and structured errors, docs/SECURITY identity and safe response boundaries, CONTRIBUTING targeted gates, delivery protocol fixed-candidate review, and the complete code-review skill smell baseline. No directory AGENTS was found under server. Smells were treated as judgmental heuristics; none warrants an actionable finding here.\n\nAll nine dispatcher branches now await inside the existing projection-error boundary (`read/handlers.ts:653–669`). Rejected projection promises therefore reach the existing typed `CatalogProjectionError` mapper. Only that explicit error class is mapped; removing the blanket TypeError branch preserves unexpected defects for the outer HTTP server's generic 500. Neither raw defect details nor a misleading Retry-After/readiness reason escapes for unknown Error/TypeError. Authentication, scope resolution, Kernel loading, authorization-before-pagination and domain query composition are unchanged. No SQL, pool, cache, DTO, schema, write or audit authority is added.\n\nThe added 20 dispatcher/registered-HTTP cases exercise the actual usage/registration projection adapters with query-unavailable and independently empty successful results across Definition list, Subject Definition list, Definition detail and applicable Subject paths. Full 503 body, request ID and Retry-After are asserted; unexpected Error and TypeError must remain the original rejection and generic sanitized HTTP 500. Existing missing-Map assertion is strengthened, not weakened.\n\nEight real root-HTTP/PG cases inject division-by-zero solely through the disposable harness client, retain the real domain query/production adapter chain, assert exactly one injected query failure and the complete 503 response, then clear the fault in finally. A successful second request and zero settled pool used/waiting verify recovery/release. Existing fixed SQL budgets and empty-page no-projection assertions remain intact. Sequential test state does not leak fault activation to following cases.\n\nRead raw Red, unknown-TypeError Red and focused Green evidence. Green is 4 files / 100 passed at e4127 working-tree repair bytes, explicitly `exactCommittedTree: false`; it must not be relabeled a c3d execution. `git diff --check` passes for the fixed comparison. Parent owns exact-c3d final gates and evidence update; this review ran no tests and changed no tracked files. Existing Policy, boundary/approval, growth and broad Gate 0/artifact blockers remain independent; no seal, merge, closure, production or OP-09 approval follows.\n"
+    },
+    {
+      "path": "reviews/async-read-spec-c3d.md",
+      "content": "# Independent Spec review — asynchronous Catalog read rejection\n\n**PASS, limited to this repair. No findings.**\n\nReviewed `git diff e4127eb99e51754cd80f866244033ffee6bd9f4c...c3d592011d05109adb64bd295159e33ade9fd604`, sole commit `c3d592011`; verified tree `8dc261d28748d86ead510f8c34c76da0d9d638e9`. Scope: the user's P2 follow-up requiring established Catalog 503 semantics for asynchronous projection failures, preserving unknown-error 500 semantics and fixed SQL budgets. I did not implement this delta or read the Standards review. Earlier participation in batching is not presented as independent review of that earlier implementation.\n\n- `read/handlers.ts:650–677`: all nine dispatched promises are awaited inside the existing projection-error boundary. A rejected actual adapter now reaches `mapProjectionError`; authentication, scope, pagination, readiness and snapshot loading remain ordered as before. Removing the generic TypeError branch correctly prevents unrelated programming errors becoming retryable Catalog failures.\n- `read/handlers.test.ts:281–334`: actual registration/usage adapters consume separately supplied query-unavailable and successful-but-missing results. Definition lists, Subject Definition lists and details are covered; registration additionally covers Subject list/detail. Existing missing-Map assertions are strengthened to the full response. Expected status, code, message, reason, retryable, request ID and Retry-After are literal independent oracles. Ordinary Error/TypeError propagate; registered HTTP tests require sanitized 500, empty details and no Retry-After.\n- `rootBatchQueries.integration.test.ts:92–101,191–220`: eight root-HTTP paths traverse real queries/adapters. The narrowly matched read is replaced by actual PostgreSQL `select 1 / 0` only in the disposable harness. Each test requires exactly one injection, complete 503 semantics, finally disables the fault, then requires recovered 200 and no waiting/used pool connections. This is controlled real-PG error evidence, not a simulated network outage. No success assertions or SQL budgets were weakened.\n\nI inspected parent-produced exact-candidate evidence under `work/catalog-r2/evidence/c3d592011d05109adb64bd295159e33ade9fd604/`: final-server metadata records clean unchanged checkout/tree, exit 0, **21 files / 255 tests passed**, including all eight fault/recovery cases; build metadata records exit 0. Recorded 1/25/100 queries remain Definition business=5 and Subject business=4, other=0. Empty-page assertions retain one prefilter and no page projections. These are inspected execution records, not reviewer reruns; development-tree Red/Green records are not relabeled as committed evidence.\n\nThis PASS does not approve merge, boundary relocation, Policy behavior, capacity closure, broad Gate 0/artifact safety, or OP-09. No tracked files, GitHub state, or environment were changed by this review.\n"
+    },
+    {
+      "path": "reviews/ci-34009795200-actual.md",
+      "content": "# CI 34009795200 — independently retrieved actual failure\n\n**Result: FAILED at the boundary inventory script assertion.** This conclusion comes from this run's actual job log, not inferred from run 34002589200. Read-only run/jobs/direct-job-log endpoints all succeeded; no 404, archive fallback, CI rerun, source change, GitHub message or approval was performed.\n\n## Exact identity and execution\n\n- Run `34009795200`, attempt 1, `pull_request`, recorded head `e4127eb99e51754cd80f866244033ffee6bd9f4c`, completed with failure.\n- Build and test job `101423591856`, 2026-09-06T03:46:29Z–03:56:30Z, Ubuntu 24.04.4, Node 22.23.2.\n- Actual checkout: `refs/remotes/pull/821/merge` → **`b644bd4073fd0516b18f1a3e86c7198b7383aa77`**, tree **`02082c9d08cdb0d0c267169ff45e661655c70e8b`**. Checkout fetch/log lines and a separate GitHub Git-commit response agree. Parents are main `27bc39d53235879afb579a86f6ee777a462e4204` and PR head e4127eb99.\n- `npm run test:scripts` ran 03:55:22Z–03:56:27Z, exit 1; Vitest duration 64.44 seconds.\n\n## Observed assertion, not a green aggregate\n\nThe **only** failed test is `scripts/check-parameter-catalog-boundaries.test.ts:768:29`, **“locks the post-refresh owner-path inventory against the reviewed S0-ID trusted base”**: `report.status` was `failed`, expected `passed`.\n\nScript totals: **93 files: 92 passed / 1 failed; 1213 tests: 1191 passed / 1 failed / 21 skipped**. Frontend totals: **438 files / 3374 passed**. The jobs API agrees that subsequent dedicated boundary CLI, Device bridge, Backend, Contract and Log analysis eval steps were **skipped**. Their results cannot be inferred from the earlier successful build/lint or frontend step.\n\nDetect, Acceptance smoke and Acceptance quality jobs concluded success; local non-HDC and target-synthetic jobs were skipped. Merge bar `101424770322` explicitly failed because `build-and-test` failed. Their aggregate statuses do not replace missing backend or Catalog acceptance evidence.\n\nThe newly retrieved Hosted log exposes the failing inventory status, not the complete 23-pair checker report. The prior independently recorded 23 stale/new mismatch remains separate diagnostic evidence. Local Git comparison verifies be610→e412 changes only the two plans, evidence JSON and focused browser ZIP; it does not turn an unexecuted full checker on this Hosted merge into proof. No new baseline reproduction was requested or run.\n\n## Minimum disposition and retained evidence\n\nRetain the existing unresolved boundary/approval blocker; do not relabel this run as a transient 404 or unrelated CI failure, approve relocation, relax allowances, or rerun CI merely to seek a different result. Any eventual repair needs its own approved scope and exact-candidate validation.\n\nRaw files under `work/catalog-r2/reviews/ci-34009795200-raw/`: `run.json`, `jobs.json`, `build-job.log`, `script-step-excerpt.log`, `checkout-commit.json`, `merge-bar.log`, plus request status/stderr records. Original GitHub masking is preserved. Build log SHA-256: `1f5e4f37dafee7e8c237fdcf56a86c4dd25593d443bf678fdd9104bb9fe7cfe8`; a bounded token/Postgres-credential pattern scan found no unmasked matches. This is safe local retained evidence, not authorization to publish unrelated artifacts or perform production/OP-09 actions.\n"
+    }
+  ],
+  "boundary": {
+    "violations": 3513,
+    "allowlisted": 3490,
+    "unallowlisted": 23,
+    "staleAllowances": 23,
+    "metadataMismatches": 0,
+    "allowlistGrowth": 0
+  },
+  "artifactSafety": {
+    "sanitization": {
+      "filesScanned": 127,
+      "archivesScanned": 0,
+      "filesChanged": 4,
+      "replacements": 22
+    },
+    "filesScanned": 127,
+    "archivesScanned": 0,
+    "violationCount": 0,
+    "violations": []
+  }
+}

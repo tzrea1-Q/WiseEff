@@ -179,7 +179,9 @@ describe("acceptance operation matrix", () => {
       expectedIds.map((_, index) => ({
         coverage: "automated",
         acceptanceIds: [`PCAT-UI-${String(index + 1).padStart(2, "0")}`],
-        specFiles: [specFilesByIndex[index]],
+        specFiles: index === 11
+          ? [negativeSpec, "server/modules/agent/xiaoze/catalogBoundary.integration.test.ts"]
+          : [specFilesByIndex[index]],
         assertions: ["ui", "api", "db", "audit", "screenshot"],
         deferred: false
       }))

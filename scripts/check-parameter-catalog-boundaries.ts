@@ -29,6 +29,7 @@ import {
   type BoundaryFixtureIntegrity,
 } from "./parameter-catalog-allowlist/index";
 import { compareBoundaryInventory, formatBoundaryReport } from "./parameter-catalog-allowlist/deterministicOutput";
+import { applyReviewedExactRelocation } from "./parameter-catalog-allowlist/exactRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -335,7 +336,11 @@ export async function checkParameterCatalogBoundaries(
       );
     }
   }
-  return compareBoundaryInventory(violations, allowlist.entries, fixture.violations);
+  const relocated = await applyReviewedExactRelocation(repoRoot, fixture, allowlist.entries, violations);
+  return {
+    ...compareBoundaryInventory(relocated.violations, allowlist.entries, fixture.violations),
+    relocations: relocated.relocations,
+  };
 }
 
 function bindTrustedOccurrences(

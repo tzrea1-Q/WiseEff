@@ -19,6 +19,7 @@ type ProposalJoinRow = {
   author_principal_id: string;
   base_catalog_release_id: string;
   base_definition_revision_id: string | null;
+  base_definition_id: string | null;
   status: string;
   current_proposal_revision_id: string;
   etag_version: string;
@@ -35,6 +36,7 @@ const proposalSelect = `
     proposal.author_principal_id,
     proposal.base_catalog_release_id,
     proposal.base_definition_revision_id,
+    definition_revision.definition_id as base_definition_id,
     proposal.status,
     proposal.current_proposal_revision_id,
     proposal.etag_version::text as etag_version,
@@ -48,6 +50,8 @@ const proposalSelect = `
    and revision.id = proposal.current_proposal_revision_id
   left join parameter_catalog.catalog_publication_intents intent
     on intent.proposal_id = proposal.id
+  left join parameter_catalog.definition_revisions definition_revision
+    on definition_revision.id = proposal.base_definition_revision_id
 `;
 
 const requestedChangeFromPayload = (
@@ -89,7 +93,7 @@ const mapProposal = (
       etag: `${row.id}-v${version}`,
       base: {
         catalogReleaseId: row.base_catalog_release_id,
-        definitionId: null,
+        definitionId: row.base_definition_id,
         definitionRevisionId: row.base_definition_revision_id,
       },
       requestedChange: requestedChangeFromPayload(row.payload),

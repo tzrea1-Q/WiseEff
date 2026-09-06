@@ -5,7 +5,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
 import type { AuthContext } from "../auth/types";
-import { createAgentSession } from "./repository";
+import { createAgentSession, updateAgentToolCall } from "./repository";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import { createAgentOrchestrator, type ApprovalBeginInput } from "./orchestrator";
 import type { AgentToolDefinition } from "./toolRegistry";
@@ -92,6 +92,88 @@ async function createTestSession(db: Database) {
 }
 
 describe("agent orchestrator", () => {
+  it("records a domain CONFLICT as failed execution without changing the original error", async () => {
+    const { db, tables } = createMemoryDb();
+    // Deliberately reuse a transition error's message: origin, not message/code,
+    // determines whether an error belongs to tool execution or persistence.
+    const failure = new ApiError("CONFLICT", "Agent tool call could not be marked succeeded.", {
+      reason: "missing-current-value"
+    });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.searchParameters", requiresApproval: false })],
+      async () => { throw failure; }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    await expect(orchestrator.recordToolRequest({
+      auth: developmentAuthContext, requestId: "domain-conflict", sessionId,
+      request: { name: "perception.searchParameters", label: "Read exact pin", payload: { projectId: "aurora" } }
+    })).rejects.toBe(failure);
+    expect(tables.toolCalls).toHaveLength(1);
+    expect(tables.toolCalls[0]).toMatchObject({ status: "failed", result: null, error_message: failure.message });
+    expect(tables.audits.filter((audit) => audit.kind === "agent-tool")).toEqual([
+      expect.objectContaining({ action: "failed", actor_type: "agent", actor_user_id: developmentAuthContext.user.id })
+    ]);
+  });
+
+  it("a stale success transition preserves another terminal result without inventing failure audit", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.searchParameters", requiresApproval: false })],
+      async () => {
+        // Pure persistence-boundary test: represent a competing terminal writer.
+        expect(await updateAgentToolCall(db, developmentAuthContext.organization.id, String(tables.toolCalls[0].id), {
+          status: "rejected", expectedStatus: "running", errorMessage: "another terminal decision"
+        })).toBe(true);
+        return { summary: "Read exact pin", data: { parameters: [] }, citations: [] };
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    await expect(orchestrator.recordToolRequest({
+      auth: developmentAuthContext, requestId: "stale-success", sessionId,
+      request: { name: "perception.searchParameters", label: "Read exact pin", payload: { projectId: "aurora" } }
+    })).rejects.toMatchObject({ code: "CONFLICT", message: "Agent tool call could not be marked succeeded." });
+    expect(registry.run).toHaveBeenCalledOnce();
+    expect(tables.toolCalls[0]).toMatchObject({ status: "rejected", result: null, error_message: "another terminal decision" });
+    expect(tables.audits.filter((audit) => audit.kind === "agent-tool")).toEqual([]);
+  });
+
+  it.each(["succeeded", "failed"] as const)("a %s winner cannot be overwritten by a same-status execution completion", async (status) => {
+    const { db, tables } = createMemoryDb();
+    let winner: Record<string, unknown> | undefined;
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.searchParameters", requiresApproval: false })],
+      async () => {
+        // Commit a competing winner through the real repository helper. The
+        // memory database applies its normal expected-status SQL guard.
+        expect(await updateAgentToolCall(db, developmentAuthContext.organization.id, String(tables.toolCalls[0].id), {
+          status, expectedStatus: "running",
+          ...(status === "succeeded" ? { result: { summary: "winner", data: { exact: { value: 1842 } }, citations: [] } }
+            : { errorMessage: "winner's durable refusal" })
+        })).toBe(true);
+        winner = structuredClone(tables.toolCalls[0]);
+        if (status === "failed") throw new Error("loser's different refusal");
+        return { summary: "loser", data: { exact: { value: 9999 } }, citations: [] };
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    let rejected: unknown;
+    try {
+      await orchestrator.recordToolRequest({
+        auth: developmentAuthContext, requestId: "same-status-terminal", sessionId,
+        request: { name: "perception.searchParameters", label: "Read exact pin", payload: { projectId: "aurora" } }
+      });
+    } catch (error) {
+      rejected = error;
+    }
+    expect.soft(rejected).toMatchObject({ code: "CONFLICT", message: `Agent tool call could not be marked ${status}.` });
+    expect(registry.run).toHaveBeenCalledOnce();
+    expect.soft(tables.toolCalls[0]).toEqual(winner);
+    expect.soft(tables.audits.filter((audit) => audit.kind === "agent-tool")).toEqual([]);
+  });
+
   it("records Agent audit events with human initiator correlation", async () => {
     const { db, tables } = createMemoryDb();
     const registry = createRegistry(

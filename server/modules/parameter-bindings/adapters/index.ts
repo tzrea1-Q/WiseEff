@@ -10,6 +10,7 @@ import type {
 } from "./dto";
 
 export { readProtectedReference } from "./readAdapter";
+export { readProjectProtectedParameters, type ProjectProtectedParameter } from "./projectReadAdapter";
 export { writebackProtectedReference } from "./writebackAdapter";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";

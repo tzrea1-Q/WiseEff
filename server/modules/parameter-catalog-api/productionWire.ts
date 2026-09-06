@@ -1,6 +1,8 @@
 import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
+import { permissionsForRoles } from "../auth/policy";
+import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
@@ -102,14 +104,26 @@ const governanceActorKind = (auth: AuthContext): TrustedGovernanceActorKind => {
   return "org-member";
 };
 
+const catalogProjectScope = (auth: AuthContext): UsageProjectScope | null => {
+  if (!Array.isArray(auth.roles) || auth.roles.some((binding) => !binding ||
+    (binding.projectId !== null && (typeof binding.projectId !== "string" || binding.projectId.length === 0 || binding.projectId.trim() !== binding.projectId || /[\u0000-\u001F\u007F-\u009F]/u.test(binding.projectId))))) return null;
+  const eligible = auth.roles.filter((binding) => permissionsForRoles([binding.roleId]).includes("parameter:view"));
+  // Match existing parameter policy: explicit null is an organization grant;
+  // real admin/platform-admin bindings retain their established global scope.
+  if (eligible.some((binding) => binding.projectId === null || binding.roleId === "admin" || binding.roleId === "platform-admin")) return { kind: "all" };
+  return { kind: "only", ids: [...new Set(eligible.flatMap((binding) => binding.projectId === null ? [] : [binding.projectId]))] };
+};
+
 const catalogScope = (auth: AuthContext): TrustedCatalogScope => {
   const actorKind = catalogActorKind(auth);
+  const projectScope = catalogProjectScope(auth);
   return {
     principalId: auth.user.id,
     organizationId: auth.organization.id,
     actorKind,
-    canReadCatalog: canViewParameters(auth),
+    canReadCatalog: projectScope !== null && canViewParameters(auth),
     canRegister: actorKind === "org-admin",
+    projectScope: projectScope ?? { kind: "only", ids: [] },
     subjects: { kind: "all" },
     definitions: { kind: "all" },
   };

@@ -42,6 +42,7 @@ export const catalogApiFailureReasons = [
   "invalid-placement-parent",
   "observation-ambiguous",
   "proposal-stale",
+  "proposal-replay-unavailable",
   "proposal-self-approval-forbidden",
   "revision-conflict",
   "legacy-id-archived",
@@ -64,6 +65,7 @@ export const catalogFailureClientBehaviors = {
   "invalid-placement-parent": "keep-review-unresolved",
   "observation-ambiguous": "open-review-item",
   "proposal-stale": "rebase-proposal",
+  "proposal-replay-unavailable": "inspect-proposal-no-retry",
   "proposal-self-approval-forbidden": "require-other-platform-admin",
   "revision-conflict": "refresh-no-silent-retry",
   "legacy-id-archived": "historical-unavailable",
@@ -628,7 +630,20 @@ export const nodeEnablementDraftResponseSchema = itemEnvelopeSchema(
   catalogNodeEnablementDraftDtoSchema
 ).superRefine(rejectLegacySpecKeys);
 
+export const catalogProposalUnavailableResponseSchema = z.object({
+  error: z.object({
+    code: z.literal("SERVICE_UNAVAILABLE"),
+    message: z.string(),
+    requestId: z.string(),
+    details: z.union([
+      z.object({ reason: z.literal("catalog-not-ready"), retryable: z.literal(true) }).passthrough(),
+      z.object({ reason: z.literal("proposal-replay-unavailable"), retryable: z.literal(false) }).passthrough()
+    ])
+  })
+});
+
 export const parameterCatalogDtoSchemaCatalog = {
+  CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
   CatalogDocumentResponse: catalogDocumentResponseSchema,
   CatalogSubjectListResponse: catalogSubjectListResponseSchema,
   CatalogSubjectResponse: catalogSubjectResponseSchema,
@@ -1073,6 +1088,8 @@ const catalogWriteErrors = {
   "503": "ErrorResponse"
 } as const;
 
+const proposalWriteErrors = { ...catalogWriteErrors, "503": "CatalogProposalUnavailableResponse" } as const;
+
 export const parameterCatalogSchemaRegistry = {
   "catalog.get": {
     summary: "Get the current catalog readiness document",
@@ -1283,7 +1300,7 @@ export const parameterCatalogSchemaRegistry = {
     requestBody: "CatalogCreateProposalRequest",
     responseBody: "CatalogProposalResponse",
     successStatus: 201,
-    additionalResponses: catalogWriteErrors,
+    additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
@@ -1299,7 +1316,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogSubmitProposalRequest",
     responseBody: "CatalogProposalResponse",
-    additionalResponses: catalogWriteErrors,
+    additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
@@ -1308,7 +1325,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogWithdrawProposalRequest",
     responseBody: "CatalogProposalResponse",
-    additionalResponses: catalogWriteErrors,
+    additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
@@ -1317,7 +1334,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogAcceptProposalRequest",
     responseBody: "CatalogProposalResponse",
-    additionalResponses: catalogWriteErrors,
+    additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },
@@ -1326,7 +1343,7 @@ export const parameterCatalogSchemaRegistry = {
     tags: ["catalog"],
     requestBody: "CatalogRejectProposalRequest",
     responseBody: "CatalogProposalResponse",
-    additionalResponses: catalogWriteErrors,
+    additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   },

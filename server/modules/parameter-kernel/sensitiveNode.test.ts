@@ -326,6 +326,67 @@ describe("assertSensitiveNodeWriteAllowed", () => {
 });
 
 describe("assertTrustedSensitiveNodeWriteAllowed", () => {
+  it.each([
+    ["/power", "power"],
+    ["power", "power"],
+    ["/soc/left/power", "soc/left/power"],
+    ["/soc/right/power", "soc/right/power"],
+    ["/", ""]
+  ])("resolves the complete locked DTS locator %s as structural path %s", async (locator, structuralPath) => {
+    const query = vi.fn(async (sql: string, values?: readonly unknown[]) => {
+      expect(sql).not.toContain("f.current_version_id");
+      if (!sql.includes("dts_nodes n")) {
+        expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
+      }
+      expect(sql).toContain("n.node_path = any($5::text[])");
+      expect(sql).not.toMatch(/limit\s+1/i);
+      expect(sql).not.toMatch(/\bor\s+n\.node_path|\blike\b/i);
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", [structuralPath, `/${structuralPath}`]]);
+      return { rows: [{ node_id: "node-1", compatible: null }], rowCount: 1 };
+    });
+    await expect(resolveDtsNodeCompatible({ query }, {
+      organizationId: "org-1", projectId: "project-1", sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked", sourcePath: { kind: "node-locator", value: locator }
+    })).resolves.toBeNull();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["", "//power", "/power//child", "/power/", "/./power", "/power/..", ".", ".."])(
+    "rejects malformed locked node locator %j without a node lookup", async (locator) => {
+      const query = vi.fn(async (sql: string) => {
+        expect(sql).not.toContain("dts_nodes n");
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
+      });
+      await expect(resolveDtsNodeCompatible({ query }, {
+        organizationId: "org-1", projectId: "project-1", sourceFileName: "board.dts",
+        sourceFileVersionId: "version-locked", sourcePath: { kind: "node-locator", value: locator }
+      })).rejects.toMatchObject({ code: "CONFLICT", details: {
+        code: "parameter-sensitive-node-identity-mismatch"
+      } });
+    }
+  );
+
+  it.each([
+    ["org-other", "project-1", "board.dts", "version-locked"],
+    ["org-1", "project-other", "board.dts", "version-locked"],
+    ["org-1", "project-1", "other.dts", "version-locked"],
+    ["org-1", "project-1", "board.dts", "version-other"]
+  ])("rejects substituted locked source scope %s/%s/%s/%s", async (organizationId, projectId, sourceFileName, sourceFileVersionId) => {
+    const query = vi.fn(async (sql: string, values?: readonly unknown[]) => {
+      expect(sql).not.toContain("dts_nodes n");
+      expect(values).toEqual([organizationId, projectId, sourceFileName, sourceFileVersionId]);
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(resolveDtsNodeCompatible({ query }, {
+      organizationId, projectId, sourceFileName, sourceFileVersionId,
+      sourcePath: { kind: "node-locator", value: "/power" }
+    })).rejects.toMatchObject({ code: "CONFLICT", details: {
+      code: "parameter-sensitive-source-version-mismatch"
+    } });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves compatible only from the exact server-owned file version when provided", async () => {
     let call = 0;
     const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
@@ -338,9 +399,9 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
         expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked"]);
         return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
       }
-      expect(text).toContain("n.node_path = $5");
+      expect(text).toContain("n.node_path = any($5::text[])");
       expect(text).not.toContain("or n.node_path");
-      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", "amba/wdt@0"]);
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", ["amba/wdt@0", "/amba/wdt@0"]]);
       return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
     });
 
@@ -370,7 +431,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
     });
   });
 
-  it("fails closed when an exact node locator is absent instead of inheriting its parent", async () => {
+  it.each(["amba/wdt@0/missing", "/amba/wdt@0/missing"])("fails closed when exact node locator %s is absent instead of inheriting its parent", async (locator) => {
     let call = 0;
     const db: Queryable = {
       query: vi.fn(async () => {
@@ -386,7 +447,7 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
       projectId: "project-1",
       sourceFileName: "board.dts",
       sourceFileVersionId: "version-locked",
-      sourcePath: { kind: "node-locator", value: "amba/wdt@0/missing" }
+      sourcePath: { kind: "node-locator", value: locator }
     })).rejects.toMatchObject({
       code: "CONFLICT",
       details: expect.objectContaining({ code: "parameter-sensitive-node-identity-mismatch" })

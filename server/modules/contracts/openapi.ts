@@ -128,6 +128,9 @@ function buildSchemaPlaceholders() {
     for (const responseBody of Object.values(schema.additionalSuccessResponses ?? {})) {
       schemas[responseBody] = placeholder(responseBody);
     }
+    for (const responseBody of Object.values(schema.additionalResponses ?? {})) {
+      if (dtoSchemaCatalog[responseBody]) schemas[responseBody] = placeholder(responseBody);
+    }
   }
 
   return schemas;
@@ -203,7 +206,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           ? Object.fromEntries(
               Object.entries(schema.additionalResponses).map(([status, schemaName]) => [
                 status,
-                { $ref: `#/components/responses/${schemaName}` }
+                dtoSchemaCatalog[schemaName]
+                  ? { description: "Error response.", content: jsonContent(schemaName) }
+                  : { $ref: `#/components/responses/${schemaName}` }
               ])
             )
           : {}),

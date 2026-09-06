@@ -138,6 +138,14 @@ Every route below is a target contract, not current implementation evidence.
 | Project drafts | Existing binding and node-enablement draft paths | Retained product behavior; inputs resolve through canonical binding/definition identity. |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | Deployment-operator-only reconciliation and migration diagnostics; never linked from public DTOs. |
 
+### Proposal replay execution contract
+
+The R2 implementation keeps create as draft and submit as an in-place transition. The author must remain an authorized Organization Admin for submit/withdraw; a different authorized Platform Admin reviews. Authentication, object scope, current role and release checks still apply to retries. There is no promise that an old request can replay after authorization or release changes.
+
+For a currently authorized identical request, the command returns its saved first response before testing the object's now-advanced ETag. A new request must satisfy the current ETag and state. Successful new transitions change the opaque ETag; replay does not advance it. Idempotency is isolated by Organization, operation and target, and its fingerprint binds the principal and request semantics. Response DTOs and mock results are defensive snapshots, including the original proposal identity, base, content and publication intent. Accept never publishes a Catalog definition.
+
+An older committed request without a complete saved response returns `503 SERVICE_UNAVAILABLE` with reason `proposal-replay-unavailable`, `retryable: false`, and no `Retry-After`. It must not synthesize the original response from the mutable current proposal, advance state or replace the committed result. See the shared vectors in `src/application/parameter-catalog/proposalContractVectors.ts` and the real API adapter/HTTP/PostgreSQL harness in `server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts`. These are contract evidence; browser interaction, independent review and final delivery gates are tracked separately in the active R2 plan.
+
 ### Catalog Kernel read closure
 
 Canonical Catalog reads use only `CatalogRuntime` from the repaired issue #673 contract at `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb`. Current reads call `loadCurrentCatalog(expectedPin)`; historical reads call `loadPinnedCatalog(exactPin)`. The HTTP adapter validates wire syntax and maps tagged results. It cannot read Catalog tables, call a raw Catalog repository, interpret aliases or lifecycle, select a current revision, sort or post-filter a Kernel page, or fill a missing result from another Catalog source.
@@ -489,6 +497,7 @@ The target keeps the existing WiseEff error envelope and generic top-level codes
 | `observation-ambiguous` | 409 / `CONFLICT` | Caller tries to bind unresolved ambiguous evidence. | Open linked review item. |
 | `proposal-stale` | 409 / `CONFLICT` | Proposal base release/revision is no longer current. | Rebase as a new reviewed proposal revision. |
 | `proposal-self-approval-forbidden` | 403 / `FORBIDDEN` | Submitter attempts to accept their own proposal. | Require another Platform Admin. |
+| `proposal-replay-unavailable` | 503 / `SERVICE_UNAVAILABLE` | An old committed request lacks a complete saved first response. | Preserve the committed state; do not auto-retry or rebuild its response from current state. |
 | `revision-conflict` | 409 / `CONFLICT` | Review `If-Match` is missing/stale, the item is already resolved, or an idempotency key is reused with another fingerprint. | Refresh; never silently overwrite or repeat governance writes. |
 | `forbidden` | 403 / `FORBIDDEN` | Authenticated principal lacks action/scope. | Do not reveal out-of-scope data. |
 | `migration-diagnostics-not-public` | 404 / `NOT_FOUND` | Public caller probes an internal diagnostic route. | Treat as nonexistent. |

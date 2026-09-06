@@ -155,6 +155,23 @@ describe.skipIf(!databaseAvailable)("agent repository (behavior)", () => {
     expect((await getAgentToolCall(db, ORG_A, "tool-1"))?.status).toBe("succeeded");
   });
 
+  it.each(["succeeded", "failed"] as const)("a running CAS preserves the complete %s winner against a same-status overwrite", async (status) => {
+    await seedToolCall();
+    expect(await updateAgentToolCall(db, ORG_A, "tool-1", {
+      status, expectedStatus: "running",
+      ...(status === "succeeded" ? { result: { summary: "winner", data: { exact: { value: 1842 } }, citations: [] } }
+        : { errorMessage: "winner's durable refusal" })
+    })).toBe(true);
+    const before = await db.query("select to_jsonb(c) as snapshot from agent_tool_calls c where id = $1", ["tool-1"]);
+    expect(await updateAgentToolCall(db, ORG_A, "tool-1", {
+      status, expectedStatus: "running",
+      result: { summary: "loser", data: { exact: { value: 9999 } }, citations: [] },
+      errorMessage: "loser's different refusal"
+    })).toBe(false);
+    expect((await db.query("select to_jsonb(c) as snapshot from agent_tool_calls c where id = $1", ["tool-1"])).rows)
+      .toEqual(before.rows);
+  });
+
   it("lists tool calls for the session with the linked approval id", async () => {
     await seedToolCall("tool-1");
     await createAgentApproval(db, {

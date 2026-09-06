@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { z } from "zod";
 
 import {
   CatalogReleaseDigest,
@@ -319,16 +320,10 @@ export const loadSuccessAuditSnapshot = async (
   );
   const raw = result.rows[0]?.metadata?.resultSnapshot;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const snapshot = raw as ProposalResultSnapshot;
-  if (
-    typeof snapshot.proposalId !== "string" ||
-    typeof snapshot.proposalRevisionId !== "string" ||
-    typeof snapshot.revisionNumber !== "number" ||
-    typeof snapshot.status !== "string" ||
-    typeof snapshot.etagVersion !== "number"
-  ) {
-    return null;
-  }
+  const parsed = proposalSnapshotSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const snapshot = parsed.data;
+  if (snapshot.organizationId !== organizationId || snapshot.proposalId !== targetId) return null;
   return {
     proposalId: DefinitionProposalId(snapshot.proposalId),
     proposalRevisionId: DefinitionProposalRevisionId(snapshot.proposalRevisionId),
@@ -338,6 +333,9 @@ export const loadSuccessAuditSnapshot = async (
     organizationId: snapshot.organizationId,
     baseCatalogReleaseId: snapshot.baseCatalogReleaseId,
     baseDefinitionRevisionId: snapshot.baseDefinitionRevisionId,
+    baseDefinitionId: snapshot.baseDefinitionId,
+    requestedChange: snapshot.requestedChange,
+    submittedByPersonId: snapshot.submittedByPersonId,
     publicationIntent: snapshot.publicationIntent
       ? {
           id: PublicationIntentId(snapshot.publicationIntent.id),
@@ -347,6 +345,40 @@ export const loadSuccessAuditSnapshot = async (
         }
       : null,
   };
+};
+
+const snapshotToken = z.string().min(1).refine((value) => value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value));
+const snapshotJson: z.ZodType<import("../../parameter-catalog-contract/index").ContractJsonValue> = z.lazy(() => z.union([
+  z.string(), z.number().finite(), z.boolean(), z.null(), z.array(snapshotJson), z.record(z.string(), snapshotJson),
+]));
+const proposalSnapshotSchema = z.object({
+  proposalId: snapshotToken, proposalRevisionId: snapshotToken,
+  revisionNumber: z.number().int().positive(), status: z.enum(["draft", "submitted", "withdrawn", "accepted", "rejected"]),
+  etagVersion: z.number().int().positive(), organizationId: snapshotToken,
+  baseCatalogReleaseId: snapshotToken, baseDefinitionRevisionId: snapshotToken.nullable(),
+  baseDefinitionId: snapshotToken.nullable(), submittedByPersonId: snapshotToken,
+  requestedChange: z.record(z.string(), snapshotJson),
+  publicationIntent: z.object({ id: snapshotToken, repositoryReference: snapshotToken, reviewerPrincipalId: snapshotToken, successAuditRef: snapshotToken }).nullable(),
+}).superRefine((snapshot, context) => {
+  if ((snapshot.baseDefinitionId === null) !== (snapshot.baseDefinitionRevisionId === null)
+    || (snapshot.status === "accepted") !== (snapshot.publicationIntent !== null)
+    || snapshot.publicationIntent?.reviewerPrincipalId === snapshot.submittedByPersonId) {
+    context.addIssue({ code: "custom", message: "invalid proposal snapshot invariants" });
+  }
+});
+
+/** Immutable revision content and exact canonical revision ownership; never a current/latest join. */
+export const loadProposalSnapshotContent = async (client: ProposalWriterClient, proposal: ProposalRow) => {
+  const result = await client.query<{ payload: import("./command").ProposalPayload; definition_id: string | null }>(
+    `select revision.payload, definition_revision.definition_id
+       from parameter_catalog.definition_proposal_revisions revision
+       left join parameter_catalog.definition_revisions definition_revision on definition_revision.id = $3
+      where revision.proposal_id = $1 and revision.id = $2`,
+    [proposal.id, proposal.current_proposal_revision_id, proposal.base_definition_revision_id],
+  );
+  const row = result.rows[0];
+  if (!row || (proposal.base_definition_revision_id !== null && row.definition_id === null)) throw new Error("Proposal immutable snapshot relation is unavailable");
+  return { requestedChange: row.payload, baseDefinitionId: row.definition_id, submittedByPersonId: proposal.author_principal_id };
 };
 
 export const insertProposal = async (

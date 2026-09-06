@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { AddressInfo } from "node:net";
+import { createHttpServer } from "../../../shared/http/server";
+import { createRouter } from "../../../shared/http/router";
+import { registerCatalogReadRoutes } from "./routes";
 
 import type { CurrentCatalogSnapshot } from "../../catalog-kernel/interface";
 import {
@@ -18,7 +22,9 @@ import {
   ParameterDefinitionId,
 } from "../../parameter-catalog-contract/index";
 import { handleCatalogRead, matchCatalogReadRoute } from "./handlers";
-import { kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "./ports";
+import { createUsageProjectionFromQueries, createRegistrationProjectionFromQueries, kernelOnlyTimelineComposer, unregisteredProjection, zeroUsageProjection } from "./ports";
+import { createUsageQueries, USAGE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-bindings/usage";
+import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-governance/queries";
 import type {
   CatalogDocumentFacts,
   CatalogReadPorts,
@@ -109,6 +115,7 @@ const scope: TrustedCatalogScope = {
   organizationId: "org-s8-read",
   actorKind: "org-admin",
   canReadCatalog: true,
+  projectScope: { kind: "all" },
   canRegister: true,
   subjects: { kind: "all" },
   definitions: { kind: "all" },
@@ -124,6 +131,7 @@ function createHarness(options: {
   readonly snapshotCalls?: string[];
   readonly runtimeCalls?: string[];
   readonly listSubjectsItems?: Array<typeof subject>;
+  readonly listDefinitionsItems?: Array<typeof definition>;
   readonly getRevisionStatus?: "found" | "revision-unavailable";
   readonly loadError?: boolean;
   readonly fingerprint?: string;
@@ -167,7 +175,7 @@ function createHarness(options: {
     },
     listDefinitions: () => {
       snapshotCalls.push("listDefinitions");
-      return { status: "found" as const, scope: { kind: "all" as const }, page: page([definition]) };
+      return { status: "found" as const, scope: { kind: "all" as const }, page: page(options.listDefinitionsItems ?? [definition]) };
     },
     getDefinitionRevision: () => {
       snapshotCalls.push("getDefinitionRevision");
@@ -270,7 +278,107 @@ function get(path: string, init: Partial<CatalogReadRequest> = {}): CatalogReadR
   };
 }
 
+const unavailableResponse = {
+  status: 503,
+  body: { error: { code: "SERVICE_UNAVAILABLE", message: "Catalog is not ready.", details: { reason: "catalog-not-ready", retryable: true }, requestId: "req-s8-read" } },
+  headers: { "X-Request-Id": "req-s8-read", "Retry-After": "5" },
+};
+
+describe("R2-ASYNC dispatcher rejection contract", () => {
+  const definitionPaths = [
+    "/api/v2/catalog/definitions",
+    `/api/v2/catalog/subjects/${subject.id}/definitions`,
+    `/api/v2/catalog/definitions/${definition.id}`,
+  ];
+  for (const outcome of ["query-unavailable", "missing-result"] as const) {
+    it.each(definitionPaths)(`actual usage adapter ${outcome} maps the complete 503 response for %s`, async (path) => {
+      const { ports } = createHarness();
+      const queries = createUsageQueries({ query: vi.fn(async () => { throw new Error("unexpected SQL"); }) });
+      vi.spyOn(queries, "summarize").mockResolvedValue(outcome === "query-unavailable"
+        ? { ok: false, error: { kind: "query-unavailable", operation: "summarizeUsage" } }
+        : { ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [] } });
+      const response = await handleCatalogRead({ ...ports, usage: createUsageProjectionFromQueries(queries) }, get(path));
+      expect(response).toEqual(unavailableResponse);
+    });
+    it.each([...definitionPaths, "/api/v2/catalog/subjects", `/api/v2/catalog/subjects/${subject.id}`])(`actual registration adapter ${outcome} maps the complete 503 response for %s`, async (path) => {
+      const { ports } = createHarness();
+      const queries = createGovernanceCatalogQueries({ query: vi.fn(async () => { throw new Error("unexpected SQL"); }) });
+      vi.spyOn(queries, "projectRegistrations").mockResolvedValue(outcome === "query-unavailable"
+        ? { ok: false, error: { kind: "query-unavailable", operation: "projectRegistrations" } }
+        : { ok: true, value: { semantics: GOVERNANCE_CURRENT_PROJECTION_SEMANTICS, projections: [] } });
+      const response = await handleCatalogRead({ ...ports, registration: { ...ports.registration, ...createRegistrationProjectionFromQueries(queries), selectSubjectIds: ports.registration.selectSubjectIds, selectDefinitionIds: ports.registration.selectDefinitionIds } }, get(path));
+      expect(response).toEqual(unavailableResponse);
+    });
+  }
+  it.each([new Error("unexpected adapter defect"), new TypeError("unexpected adapter type defect")])("does not disguise unknown rejection %s as Catalog readiness", async (error) => {
+    const { ports } = createHarness();
+    await expect(handleCatalogRead({ ...ports, usage: { ...ports.usage, summarizeMany: async () => { throw error; } } }, get("/api/v2/catalog/definitions"))).rejects.toBe(error);
+  });
+  it.each([new Error("private defect details"), new TypeError("private type details")])("registered HTTP routes retain generic 500 for %s", async (error) => {
+    const { ports } = createHarness();
+    const router = createRouter();
+    registerCatalogReadRoutes(router, { ...ports, usage: { ...ports.usage, summarizeMany: async () => { throw error; } } });
+    const server = createHttpServer(router);
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v2/catalog/definitions`, { headers: { "x-request-id": "r2-unexpected" } });
+      expect(response.status).toBe(500);
+      expect(response.headers.get("retry-after")).toBeNull();
+      expect(response.headers.get("x-request-id")).toBe("r2-unexpected");
+      expect(await response.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: "Internal server error.", details: {}, requestId: "r2-unexpected" } });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+});
+
 describe("S8-READ nine canonical catalog read routes", () => {
+  it("R2-SCOPE forwards the same trusted project selection for list and detail", async () => {
+    const projectScope = { kind: "only" as const, ids: ["project-visible"] };
+    const { ports } = createHarness({ scope: { ...scope, projectScope } });
+    const summarizeMany = vi.fn(ports.usage.summarizeMany);
+    const summarize = vi.fn(ports.usage.summarize);
+    const scoped = { ...ports, usage: { ...ports.usage, summarizeMany, summarize } };
+    expect((await handleCatalogRead(scoped, get("/api/v2/catalog/definitions"))).status).toBe(200);
+    expect((await handleCatalogRead(scoped, get(`/api/v2/catalog/definitions/${definition.id}`))).status).toBe(200);
+    expect(summarizeMany).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectScope }));
+    expect(summarize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectScope }));
+  });
+  it("R2-BATCH deduplicates each projection kind after the Kernel page", async () => {
+    const other = { ...definition, id: ParameterDefinitionId("pdef_second") };
+    const { ports } = createHarness({ listDefinitionsItems: [definition, other, definition] });
+    const project = vi.fn(ports.registration.projectSubjects);
+    const summarize = vi.fn(ports.usage.summarizeMany);
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: project, projectDefinition: vi.fn(() => { throw new Error("single-row projection forbidden"); }) },
+      usage: { ...ports.usage, summarizeMany: summarize, summarize: vi.fn(() => { throw new Error("single-row usage forbidden"); }) },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response.status).toBe(200);
+    expect(project).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ subjectIds: [definition.subjectId], organizationId: scope.organizationId }));
+    expect(summarize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ definitionIds: [definition.id, other.id], organizationId: scope.organizationId }));
+  });
+
+  it.each(["registration", "usage"] as const)("R2-BATCH missing %s result rejects the entire page", async (missing) => {
+    const { ports } = createHarness();
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: missing === "registration" ? async () => new Map() : ports.registration.projectSubjects },
+      usage: { ...ports.usage, summarizeMany: missing === "usage" ? async () => new Map() : ports.usage.summarizeMany },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response).toEqual(unavailableResponse);
+  });
+
+  it("R2-BATCH an empty Definition page does not invoke either projection", async () => {
+    const { ports } = createHarness({ listDefinitionsItems: [] });
+    const project = vi.fn(ports.registration.projectSubjects);
+    const summarize = vi.fn(ports.usage.summarizeMany);
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: project },
+      usage: { ...ports.usage, summarizeMany: summarize },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response.status).toBe(200);
+    expect(project).not.toHaveBeenCalled();
+    expect(summarize).not.toHaveBeenCalled();
+  });
   it("matches the frozen S8-CON paths onto Kernel operations", () => {
     expect(matchCatalogReadRoute("/api/v2/catalog")?.id).toBe("catalog.get");
     expect(matchCatalogReadRoute("/api/v2/catalog/subjects")?.id).toBe("catalog.listSubjects");

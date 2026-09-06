@@ -76,7 +76,7 @@ describe("governance write algebra", () => {
     expect(canExecuteGovernanceAction("org-admin", "accept-proposal", ready)).toBe(false);
     expect(canExecuteGovernanceAction("platform-admin", "register-subject", unregistered)).toBe(false);
     expect(canExecuteGovernanceAction("platform-admin", "accept-proposal", ready)).toBe(true);
-    expect(canExecuteGovernanceAction("user", "create-proposal", ready)).toBe(true);
+    expect(canExecuteGovernanceAction("user", "create-proposal", ready)).toBe(false);
     expect(canExecuteGovernanceAction("user", "register-subject", unregistered)).toBe(false);
   });
 

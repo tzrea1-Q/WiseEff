@@ -5,6 +5,7 @@ import type {
   PublicationIntentId,
   Result as ContractResult,
 } from "../../parameter-catalog-contract/index";
+import type { ProposalPayload } from "./command";
 
 export type Result<T, E> = ContractResult<T, E>;
 
@@ -24,6 +25,9 @@ export type ProposalResultSnapshot = {
   readonly organizationId: string;
   readonly baseCatalogReleaseId: string;
   readonly baseDefinitionRevisionId: string | null;
+  readonly baseDefinitionId: string | null;
+  readonly requestedChange: ProposalPayload;
+  readonly submittedByPersonId: string;
   readonly publicationIntent: PublicationIntentResult | null;
 };
 

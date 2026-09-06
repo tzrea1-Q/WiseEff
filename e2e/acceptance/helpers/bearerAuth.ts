@@ -35,7 +35,7 @@ export function acceptanceUserIdForRole(roleId: AcceptanceRoleId) {
   return acceptanceUsersByRole[roleId].userId;
 }
 
-export function createBearerTokenForUser(userId: string, email: string, name: string) {
+export function createBearerTokenForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {
   const issuer = process.env.AUTH_TOKEN_ISSUER?.trim();
   const secret = process.env.AUTH_TOKEN_HMAC_SECRET?.trim();
   if (!issuer || !secret) {
@@ -46,7 +46,7 @@ export function createBearerTokenForUser(userId: string, email: string, name: st
     JSON.stringify({
       iss: issuer,
       sub: userId,
-      org: organizationId,
+      org: scopedOrganizationId,
       name,
       email,
       title: "Acceptance User",
@@ -62,8 +62,8 @@ export function createBearerTokenForUser(userId: string, email: string, name: st
   return `Bearer ${payload}.${signature}`;
 }
 
-export function authHeadersForUser(userId: string, email: string, name: string) {
-  const authorization = createBearerTokenForUser(userId, email, name);
+export function authHeadersForUser(userId: string, email: string, name: string, scopedOrganizationId = organizationId) {
+  const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
   // still load the intended user from the database.
   if (authorization) {
@@ -118,9 +118,10 @@ export async function signInBrowserAsUser(
   userId: string,
   email: string,
   name: string,
-  route = "/parameter-home"
+  route = "/parameter-home",
+  scopedOrganizationId = organizationId
 ) {
-  const authorization = createBearerTokenForUser(userId, email, name);
+  const authorization = createBearerTokenForUser(userId, email, name, scopedOrganizationId);
   if (!authorization) {
     throw new Error("AUTH_TOKEN_ISSUER and AUTH_TOKEN_HMAC_SECRET are required for acceptance browser sign-in.");
   }

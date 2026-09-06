@@ -138,6 +138,14 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 | Project drafts | 现有 binding 与 node-enablement draft paths | 保留产品行为；input 通过规范 binding/definition identity 解析。 |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | 仅 deployment operator 可用的 reconciliation 与迁移诊断；公共 DTO 不得链接。 |
 
+### Proposal 重放执行契约
+
+R2 实现保留 create 为 draft、submit 原位推进。作者执行 submit/withdraw 时仍须是合法 Organization Admin；另一名合法 Platform Admin 审核。重试继续检查认证、对象范围、当前角色和 release，不能承诺撤权或切换 release 后旧请求仍永久可重放。
+
+当前仍合法的相同请求，在检查对象已经推进的 ETag 前返回首次保存响应；新请求必须满足当前 ETag 和状态。新的成功迁移改变 opaque ETag，重放不推进版本。幂等记录按 Organization、操作和目标隔离，fingerprint 绑定 principal 与请求语义。DTO 和 mock 返回防御性快照，包含原 proposal 身份、base、content 和 publication intent；accept 不发布 Catalog Definition。
+
+旧 committed 请求若缺少完整首次响应快照，返回 `503 SERVICE_UNAVAILABLE`、reason `proposal-replay-unavailable`、`retryable: false`，不发 `Retry-After`。不能用当前可变 Proposal 拼出原响应、推进状态或替换 committed 结果。共用向量见 `src/application/parameter-catalog/proposalContractVectors.ts`，真实 API adapter/HTTP/PostgreSQL 执行见 `server/modules/parameter-catalog-api/governance/proposalAdapterParity.integration.test.ts`。这是契约层证据；浏览器交互、独立审查和最终交付门禁在本轮 active plan 单独记录。
+
 ### Catalog Kernel read 闭合
 
 Canonical Catalog read 只能使用修复后 issue #673 在 `b5bf52cc5e6afb8ff60b043ed6207d80dcfe8fcb` 固定的 `CatalogRuntime`。Current read 调用 `loadCurrentCatalog(expectedPin)`；historical read 调用 `loadPinnedCatalog(exactPin)`。HTTP adapter 只验证 wire syntax 并映射 tagged result。它不能读取 Catalog tables、调用 raw Catalog repository、解释 alias/lifecycle、选择 current revision、对 Kernel page 排序或 post-filter，也不能用另一个 Catalog source 填补 missing result。
@@ -489,6 +497,7 @@ Platform Admin 不等于 deployment Operator。公共 router 上探测 operator-
 | `observation-ambiguous` | 409 / `CONFLICT` | caller 尝试绑定 unresolved ambiguous evidence。 | 打开关联 review item。 |
 | `proposal-stale` | 409 / `CONFLICT` | proposal base release/revision 已过期。 | 作为新的 reviewed proposal revision rebase。 |
 | `proposal-self-approval-forbidden` | 403 / `FORBIDDEN` | submitter 尝试接受自己的 proposal。 | 需要另一名 Platform Admin。 |
+| `proposal-replay-unavailable` | 503 / `SERVICE_UNAVAILABLE` | 旧 committed 请求缺少完整首次响应。 | 保留已提交状态；不自动重试，不以当前状态拼接首次响应。 |
 | `revision-conflict` | 409 / `CONFLICT` | Review `If-Match` 缺失/过期、item 已 resolved，或同一 idempotency key 被用于不同 fingerprint。 | 刷新；不得静默覆盖或重复治理写入。 |
 | `forbidden` | 403 / `FORBIDDEN` | 已认证 principal 缺 action/scope。 | 不泄露 scope 外数据。 |
 | `migration-diagnostics-not-public` | 404 / `NOT_FOUND` | 公共 caller 探测内部诊断 route。 | 按不存在处理。 |

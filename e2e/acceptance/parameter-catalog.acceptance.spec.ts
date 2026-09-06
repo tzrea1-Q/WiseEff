@@ -227,20 +227,21 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-06-platform-admin");
 
-    await openCatalogAt(page, "agent");
-    await assertReleaseVisible();
+    await signInCatalogActor(page, "guest", CATALOG_PAGE_PATH);
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    await expect(catalogPage(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
-    const agentWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
-      actor: "agent",
+    const guestWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
+      actor: "guest",
       headers: {
         "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
-        "Idempotency-Key": `pcat-ui-06-agent:${Date.now()}`
+        "Idempotency-Key": `pcat-ui-06-guest:${Date.now()}`
       },
-      data: { subjectId: fixture.sensorSubjectId, placement: { mode: "use-default" }, reason: "agent must not register" }
+      data: { subjectId: fixture.sensorSubjectId, placement: { mode: "use-default" }, reason: "guest must not register" }
     });
-    expect(agentWrite.status).toBe(403);
-    await catalogScreenshot(page, testInfo, "pcat-ui-06-agent");
+    expect(guestWrite.status).toBe(403);
+    await catalogScreenshot(page, testInfo, "pcat-ui-06-guest");
   });
 
   test("distinguishes loading, error, no registrations, no definitions, no review work, and no filter match", async ({
@@ -291,7 +292,8 @@ test.describe("canonical parameter catalog page", () => {
     catalogMode = "live";
     await openCatalogAt(page, "org-b-admin");
     await waitForCatalogState(page, /ready|empty|unregistered/);
-    await expect(page.getByRole("list", { name: "主体列表" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "目录列表", exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "主体列表" })).toHaveCount(0);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"]).first()).toBeVisible();
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-review-work"]).first()).toBeVisible();
 

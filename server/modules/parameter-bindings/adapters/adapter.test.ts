@@ -262,7 +262,7 @@ describe("S6-WFA typed blocks before any store write", () => {
 describe("S6-WFA production Catalog isolation", () => {
   it("never selects or inserts Catalog structural rows and never falls back to parameterSpecId", () => {
     expect([...productionFiles].sort()).toEqual(
-      ["dto.ts", "index.ts", "readAdapter.ts", "threatMatrix.ts", "writebackAdapter.ts"].sort(),
+      ["dto.ts", "index.ts", "projectReadAdapter.ts", "readAdapter.ts", "threatMatrix.ts", "writebackAdapter.ts"].sort(),
     );
 
     const sources = productionFiles.map((file) => ({
@@ -280,12 +280,23 @@ describe("S6-WFA production Catalog isolation", () => {
       expect(source, file).not.toContain("stabilizeCanonicalBinding");
       expect(source, file).not.toContain("writeGuardedRegistration");
       expect(source, file).not.toContain("installPublishedRelease");
-      expect(source, file).not.toContain("from \"../binding/repositories\"");
+      // The Binding-owned discovery adapter may read exactly its own binding
+      // relation and import its row type. All Catalog structure remains closed.
+      let isolatedSource = source;
+      if (file === "projectReadAdapter.ts") {
+        const rowImport = 'import type { BindingRow } from "../binding/repositories";';
+        expect(source.split(rowImport), file).toHaveLength(2);
+        expect(source.match(/parameter_catalog\.project_parameter_bindings/g), file).toHaveLength(1);
+        expect(source, file).toMatch(/from parameter_catalog\.project_parameter_bindings\s+where organization_id = \$1 and project_id = \$2/);
+        expect(source, file).not.toMatch(/\b(insert\s+into|update|delete\s+from)\b/i);
+        isolatedSource = source.replace(rowImport, "").replace("parameter_catalog.project_parameter_bindings", "binding_owned_read");
+      }
+      expect(isolatedSource, file).not.toContain("from \"../binding/repositories\"");
       expect(source, file).not.toContain("from \"../values/repositories\"");
       for (const token of catalogStructuralTokens) {
         expect(source, `${file} must not mention ${token}`).not.toContain(token);
       }
-      expect(source, file).not.toMatch(/parameter_catalog\.[A-Za-z_][A-Za-z0-9_]*/);
+      expect(isolatedSource, file).not.toMatch(/parameter_catalog\.[A-Za-z_][A-Za-z0-9_]*/);
       expect(source, file).not.toMatch(
         /insert into\s+parameter_catalog\.catalog_releases|select[\s\S]{0,80}from\s+parameter_catalog\.catalog_releases/i,
       );

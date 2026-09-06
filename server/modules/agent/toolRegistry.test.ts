@@ -69,17 +69,22 @@ describe("agent tool registry", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN", details: { projectId: undefined } });
   });
 
-  it("allows global admin users to run without a project", async () => {
+  it("allows global admin authorization without a project but does not fabricate a trusted parameter read", async () => {
     const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const context = { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1" };
+    const payload = {};
+    const authorization = registry.authorize("perception.getProjectOverview", context, payload);
+    expect(authorization).toMatchObject({ name: "perception.getProjectOverview", context, payload });
 
     await expect(
       registry.run(
         "perception.getProjectOverview",
-        { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1" },
-        {}
+        context,
+        payload,
+        authorization
       )
-    ).resolves.toMatchObject({
-      summary: expect.stringMatching(/parameters/)
+    ).rejects.toMatchObject({
+      code: "INVALID_TRUSTED_INVOCATION_CONTEXT"
     });
   });
 });

@@ -16,18 +16,6 @@
   ],
   "entries": [
     {
-      "id": "S12-AGT:legacy-catalog-raw-read:0405dc0071e022c8:f57aebde98cdf753",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-AGT:legacy-catalog-raw-read:21fad2a68e2f326f:2164296871ee9ea2",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-AGT:legacy-catalog-raw-read:27b767148ec9073c:6a8f4686a686bb13",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/agent/tools/actionTools.integration.test.ts",
@@ -40,33 +28,9 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-AGT:legacy-catalog-raw-read:5000509a7f8018b1:58c7c4bf13f597b1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-AGT:legacy-catalog-raw-read:5000509a7f8018b1:d2e5c89defda8ec0",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-AGT:legacy-catalog-raw-read:5bf37116d8d0f8cc:aad792ec5f542337",
       "rule": "legacy-catalog-raw-read",
       "file": "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-AGT:legacy-catalog-raw-read:7a57eccb59431c79:9366eccb1c3f0485",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-AGT:legacy-catalog-raw-read:edef7118d9d3da45:8e6185b49a5cd20e",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/agent/tools/perceptionTools.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {

@@ -28,6 +28,7 @@ const scope: TrustedCatalogScope = {
   organizationId: "org-s8-read",
   actorKind: "org-admin",
   canReadCatalog: true,
+  projectScope: { kind: "all" },
   canRegister: true,
   subjects: { kind: "all" },
   definitions: { kind: "all" },
