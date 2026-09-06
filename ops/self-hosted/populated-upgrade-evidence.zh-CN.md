@@ -2,7 +2,50 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## 身份与状态
+## M1 续工记录，2026-09-06
+
+开发 base 仍为 `67d4a77325b6009b77c2373bd788298a6d022bcf`。
+M1 实现 `9453cf442b40fe1e90dc4ffb948e7b31898568eb` 删除两个无用旧 import
+以及只求值、未调用 verifier 的表达式。verification 模块没有必需初始化副作用；
+另一个无用 import 已被实际 CLI transform 擦除。两个旧模块仍留给实际调用方。
+仅删除四个已退休 S12-OPS allowance；历史3519项 fixture、trusted base、
+23对 relocation 均未改变，重新引入任一删除项都有永久拒绝反例。
+
+`ffc2404986918466c672450d9628834bdf899b18`，tree
+`e62f9239f4d1c207d2269951417915d87afce9fb`，补齐 relocation 回归的四项
+精确删除断言。独立完整 M1 Standards／Spec 在 `9453cf442` 通过，后续断言
+差异也经独立复核通过。范围仅保护性拦截，不是支持 populated 升级。
+本记录时尚未创建 PR、未执行 Hosted。
+
+| 实际执行 | 结果 |
+| --- | --- |
+| 继承 boundary Red | 1失败，23项被 selector 过滤 |
+| 退休模块加载 Red | 1失败，0跳过 |
+| `9453cf442` 完整 focused 集合 | 13文件，291通过，0失败／跳过，181.69秒 |
+| `9453cf442` build | exit 0，保留原构建警告 |
+| `9453cf442` boundary CLI | 3509匹配，未允许／陈旧／增长／metadata差异均0，23对relocation，exit 0 |
+| `9453cf442` 全量 scripts | 104文件，1299通过、3失败、5跳过，exit 1，452.82秒 |
+| `9453cf442` 加精确断言差异，有界 relocation/source-lock | 37通过，0失败／跳过，exit 0，69.40秒 |
+| `ffc240498` contract／selfhost | 均 exit 0 |
+| `ffc240498` 最终全量 scripts | 104文件，1301通过、1失败、5跳过，exit 1，356.29秒 |
+| `67d4a7732` 后 `ffc240498`，同一source-lock命令串行对照 | 各4通过，0失败／跳过，44.76秒／59.27秒，未改timeout |
+
+全量两项失败是旧3513／6数量断言，已按精确四项删除修复；另一项是 source-lock
+在原60秒限制下超时。候选较 base 约4865次 Git 子进程仅增加15次，不能据此
+把明显变慢归因于提交增长。该测试自身受源锁约束，本轮未改测试或 timeout。
+有界复跑通过不覆盖全量失败；最终全量批次仍在同一source-lock用例超时。
+M1因此仍为Scratch，不在必需命令失败时创建PR。再次全量执行前需单独处理
+runner／源锁性能决策，不再计划同样的反复重跑。5项跳过不记通过。
+下文原17项失败保留原执行：15项目标路由失败、两项超时，其中 setup 超时过滤了
+后续用例。当前正确路由的批次是新证据，不能重新标注旧批次。
+
+本轮专用 PG 为新建且核验归属的 Docker Desktop 集群，镜像
+`pgvector/pgvector:pg16`，数据库 `wiseeff_lane_734`，随机私有凭据并固定实际
+容器身份；未使用共享 Compose 应用数据库。旧 schema 回归另建独立
+`postgres:16-alpine` 容器。未连接生产机。日志目前仍是本地材料，须发布并核验
+真实可访问渠道；本地 ZIP 路径不等于附件。
+
+## 上轮身份与状态（历史）
 
 采集日期2026-09-06，仅独立开发环境。源部署仍是 `82344044b436a8dafecefbb85dfd724cecb05e3f`；用户提供的历史镜像 ID 为 `sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c`，不是 registry manifest，也不是本轮复核结果。最初开发 base 为 `1c9fa56e3eaca6e7984f35a097876772a6e4025d`；最终刷新 base 为 `67d4a77325b6009b77c2373bd788298a6d022bcf`，新增内容是纯文档 PR #822。
 
@@ -12,7 +55,7 @@
 | --- | --- |
 | UPG-01缺上下文拒绝 | 已实现，真实CLI反例已验证 |
 | 完整代码交付 | 未完成；仍有boundary回归和发布集成缺口 |
-| 合成populated | 原schema及有界值／历史迁移通过；完整语义预演未完成 |
+| 合成populated | 追加schema后旧Binding／revision行保留；尚未证明canonical业务转换 |
 | 真实备份副本 | 未运行；未提供备份，接收adapter也未完成 |
 | 实际恢复 | 已执行并验证合成三存储sentinel恢复；未证明完整业务／真实恢复 |
 | Hosted／PR | 未运行／未创建；仍为Scratch |

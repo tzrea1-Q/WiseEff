@@ -2,7 +2,60 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## Identity and status
+## M1 continuation, 2026-09-06
+
+Development base remains `67d4a77325b6009b77c2373bd788298a6d022bcf`.
+M1 implementation `9453cf442b40fe1e90dc4ffb948e7b31898568eb` removes two
+unused legacy imports and the expression that evaluated, but did not call, the
+verifier. The imported verification module has no required initialization effect;
+the other unused import was already erased by the CLI transform. Both legacy
+modules remain available to their actual consumers. Exactly four retired S12-OPS
+allowances were removed. The historical 3519-entry fixture, trusted base and all
+23 reviewed relocation pairs remain unchanged. Reintroducing any removed
+occurrence is a permanent negative test.
+
+`ffc2404986918466c672450d9628834bdf899b18` (tree
+`e62f9239f4d1c207d2269951417915d87afce9fb`) adds the corresponding exact
+four-ID deletion assertions to the relocation regression. Independent full M1
+Standards and Spec reviews passed at `9453cf442`; independent delta review passed
+for the later assertion change. This is protective interception, not populated
+upgrade support. No PR or Hosted execution has occurred at this recording point.
+
+| Exact execution | Result |
+| --- | --- |
+| Inherited boundary Red | 1 failed, 23 selector-filtered |
+| Retired module load Red | 1 failed, 0 skipped |
+| `9453cf442` full focused set | 13 files, 291 passed, 0 failed/skipped, 181.69s |
+| `9453cf442` build | exit 0; existing build warnings retained |
+| `9453cf442` boundary CLI | 3509 matched; 0 unallowlisted/stale/growth/mismatch; 23 relocations; exit 0 |
+| `9453cf442` full scripts | 104 files; 1299 passed, 3 failed, 5 skipped; exit 1; 452.82s |
+| `9453cf442` plus exact assertion delta, bounded relocation/source-lock | 37 passed, 0 failed/skipped; exit 0; 69.40s |
+| `ffc240498` contract / selfhost | both exit 0 |
+| `ffc240498` final full scripts | 104 files; 1301 passed, 1 failed, 5 skipped; exit 1; 356.29s |
+| `67d4a7732` then `ffc240498`, same source-lock command, serial comparison | each 4 passed, 0 failed/skipped; 44.76s / 59.27s; no timeout change |
+
+Two full-scripts failures were the old 3513/6 count assertions, fixed by the
+explicit four-ID delta. The other was source-lock timeout at the unchanged 60s
+limit. The candidate adds only 15 estimated Git subprocesses to about 4865 on
+base, so commit growth does not explain a large slowdown. The test itself is
+source-locked; neither it nor its timeout was changed. The passing bounded rerun
+does not rewrite the full batch. The final full batch still timed out in the
+same source-lock case. M1 therefore remains Scratch; no PR is opened over a
+failed required command. A separate runner/source-lock performance decision is
+needed before another full run; no more identical retries are planned. Five skips
+are not passes. Earlier 17 failures below remain their
+original execution: 15 target routing failures and two timeouts, including a setup
+timeout that filtered later tests. The correctly routed current full batch is
+separate evidence, not a relabeling of that run.
+
+The dedicated local PostgreSQL fixture used a newly owned Docker Desktop cluster,
+`pgvector/pgvector:pg16`, database `wiseeff_lane_734`, private random credentials
+and explicit container identity. It was not the shared Compose application DB.
+The original-schema regression separately owns `postgres:16-alpine` containers.
+No production host was contacted. Logs remain local pending an explicitly
+published, verified delivery channel; a local archive path is not an attachment.
+
+## Prior-round identity and status (historical)
 
 Collected 2026-09-06, local isolated development only. Source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`; supplied historical image ID is `sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c`, not a registry manifest or a newly verified image. Initial development base was `1c9fa56e3eaca6e7984f35a097876772a6e4025d`. Final refresh base is `67d4a77325b6009b77c2373bd788298a6d022bcf`; its advancement is documentation-only PR #822.
 
@@ -12,7 +65,7 @@ Code candidate: `b2c150d18bb6d7a8d8d5b45bcbf9f683fdafecbf`, tree `b8eb49d3a074e0
 | --- | --- |
 | UPG-01 missing-context refusal | Implemented and real CLI regression demonstrated |
 | Complete upgrade code delivery | Incomplete; boundary regression and release integrations remain |
-| Synthetic populated | Original schema and limited value/history migration passed; full semantic rehearsal not completed |
+| Synthetic populated | Schema additions preserved old Binding/revision rows; canonical business conversion was not demonstrated |
 | Authorized real backup rehearsal | Not run; no backup supplied and intake adapter incomplete |
 | Actual recovery | Synthetic three-store sentinel restore executed and verified; full business/real recovery unproven |
 | Hosted / PR | Not run / not opened; Scratch is not integration-ready |
