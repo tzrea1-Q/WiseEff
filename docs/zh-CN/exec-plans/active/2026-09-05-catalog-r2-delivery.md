@@ -2,6 +2,56 @@
 
 > English: [English](../../../exec-plans/active/2026-09-05-catalog-r2-delivery.md)
 
+
+## 最新审查返修证据 — 2026-09-06
+
+正式 Gate 0 在同一代码候选上自然结束：02:47:29.485Z–03:40:47.180Z，退出码 1；没有父协调者中断或 owner 超时。视觉 16 passed / 4 failed / 0 skipped；广域浏览器收集 193，104 passed / 59 failed / 30 skipped，失败清单共 63。产物收尾另触发既有 ZIP 条目数安全上限；未提升上限，这些广域产物未获准上传。所属 API/前端进程已停止；数据库、对象存储及取证 descriptor 按失败策略保留，状态为 cleanup-failed-retained。生成文件已恢复、git 保持干净。原始索引包含阶段结果、失败清单、收尾事实和 823 个产物哈希，不包含私有认证或 ownership 内容。有界只读排查通过源码对照确认旧调试弹窗选择器不匹配；Catalog 503 与知识库夹具 500 仍未归因，没有据此宣称主分支广域通过或 Gate 0 验收通过。
+
+父协调者另登记唯一新增产物路径 `docs/exec-plans/evidence/2026-09-06-catalog-r2-browser.zip`，用于随 PR 提供实际 focused Catalog 浏览器报告、截图、操作附件以及 CLI snapshot/screenshot、网络和 console 记录。包内有中英分离说明与逐文件哈希清单，排除私有认证及归属文件。下文“本地归档不等于 GitHub 上传”的限制仍适用于更大的开发与广域 Gate 0 证据包；此 focused 浏览器包作为仓库产物单独提供。
+
+本节更新此前检查点的当前状态，不改写历史执行记录。PR #813 已合并；本次重新 fetch 后的 `origin/main` 为 `27bc39d53235879afb579a86f6ee777a462e4204`。它补充历史状态文档，没有解决本轮反例。已接受的实现及边界基线仍为 `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。本次审查的代码候选为 `be610b7addcbe144fdfc0b07018d9be4e5db8f75`，tree 为 `5aa6f82e18070378f786e83d28af482fb388ec01`。后续文档或证据提交不改变各次执行所绑定的 SHA。PR #821 实际仍为打开的 Draft，尚未请求合并，也未 seal、合并、attest 或关闭 Issue。
+
+| Issue | 已实现 | 代码候选上的验证 | 已合并 | 已 attested | 阻塞或剩余工作 |
+| --- | --- | --- | --- | --- | --- |
+| #815 | 未替换 Policy 能力 | 没有 Policy 计数通过结论 | 否 | 否 | 尚无可证明的权威关联；暂拟 unavailable 方案仍未批准，固定 `policyCount=0` 仍存在。 |
+| #816 | Subject/Definition 页级批量、可信项目 scope、详情必要投影完整性 | 根 HTTP 1/25/100 行的业务 SQL 分别为 4/4/4 与 5/5/5；29 个批量/scope 用例；完整 server 测试 | 否 | 否 | Policy 契约仍阻塞完整 usage 验收；容量矩阵未完成。 |
+| #817 | 产品实际 mock 的 Accept/Reject 输入语义已对齐，保留既有生命周期和重放修复 | 20 个新增共享非法输入向量分别运行于真实 API 与产品 mock；完整 frontend/server 命令 | 否 | 否 | 最终交付门禁未收口；未另造测试专用 mock。 |
+| #818 | T5 依赖拒绝的持久化状态与终态 CAS 已修复 | 真实 Agent/PG、真实 repository CAS、完整 server 测试 | 否 | 否 | 仅为确定性 provider 执行证据，不代表 live-model 质量或生产验收。 |
+| #819 | 保留已有真实冲突、重确认和操作 parity 代码 | 三份 Catalog spec 共 21/21；另有一次独立 warmup；playwright-cli 三视口 | 否 | 否 | 完整集成仍依赖 #815 与 #820 门禁。 |
+| #820 | 精确原始索引、已审查的容量 profile、失败归属及未签署重定位申请包 | build/静态检查、96 个容量场景、分别执行的完整 frontend/server 命令 | 否 | 否 | 边界检查、原始 test:all 失败、增长规模初始化，以及实际 Gate 0/Hosted 结果见下文。 |
+
+### 最小改动与文件所有权交接
+
+`mockAdapter.ts` 对 reviewer 输入采用与领域相同的既有 token 判定：非空、无首尾空白、不含 C0/DEL/C1 控制字符。`proposalContractVectors.ts` 独立声明非法值，要求拒绝后状态、版本、Intent 和已提交重放结果均无变化，再验证修正输入后的同 key 成功及不可变重放。没有降低后端 DTO/领域契约。最初 Red 为 20 个 mock 失败；该次精确修复通过 mock 52 个、真实 API 61 个。这些较早计数仍绑定 `2760e771…`；下文完整 frontend/server 结果绑定最终代码候选。
+
+Definition 批量实现每页只消费一次既有公开 usage 聚合，按稳定 ID 去重，并拒绝必要投影缺项。另一个 scope finding 是真实缺陷：生产接线丢弃了项目范围角色，port 始终请求全部项目。修复后沿用既有可信角色策略推导 usage scope，并传给既有领域查询。全局角色保留原有权限；scope 缺失或畸形时拒绝。单项 Registration 投影改为按 ID 解析，必要结果缺失则拒绝。scope 交接 `9edf8932…` 集成为 `6a0a94b6…`。其中九处必需的兼容构造器，只在原本零 usage 或 not-ready 的适配器中补入空的受限 scope：agent、dts-reload、knowledge、logs、parameter-modules、parameter-specs、parameter-topology 的七个 `parameterCatalogComparisonContribution.ts`，以及 dts-reload/service.ts、release-verification/evidence/api/driver.ts。未执行任何目标 driver。没有引入新的 Policy 模型、schema、缓存、连接池扩容或逐行 SQL 循环。
+
+T5 交接 `7ac9e618…` 集成为 `9bfff65f…`。此前，真实依赖查询所见的 current value 或 pinned head 被拒绝时，tool call 会残留 running，且没有 failed audit。现在执行 catch 记录真实工具失败，完成状态的持久化仍留在该 catch 外。独立 Spec finding `SPEC-T5-01` 随后发现同终态覆盖问题：两个终态更新都增加 `expectedStatus: running`，从 `79ee0d86…` 集成为 `9df7fcf0…`。永久 pure 与真实 PG 回归保证已 succeeded/failed 的先完成者不被覆盖，也不新增重复审计。受控 RLS 角色为非 owner、NOBYPASSRLS；故障前后均证明真实合法读取，结束后移除角色及其 policy。未伪造 pointer、FK、trigger 或可信 invocation。既有可恢复对话的 `RUN_FINISHED` 与工具执行失败明确区分。本项唯一新增的文件所有权范围，是既有 agent/repository.integration.test.ts 中的真实 CAS 回归。
+
+根路由测量测试增加了真实重复 evidence ingest 和非零 review 投影断言。独立 `SPEC-CAP-01` 更正了两项测试/报告假设：证据属于 release A，因此经真实安装器推进后，current B 为 0、pinned A 为 1；一个 evidence row、零个持久化 ReviewItem，仍可产生一个未解决的 review 投影。setup 通过真实查询断言这些独立声明的夹具数量。最初 10 个容量失败用例和中间版本 metadata 均保留，不改写、不归因于生产。默认不推进 release 的回归仍要求同组织为 1、其他组织为 0。
+
+### 精确执行结果与证据边界
+
+在 `be610b7ad…` 上：完整 frontend 为 438 文件、3374 passed；另行执行的完整 server 为 502 文件、3895 passed，无 skipped；build、lint（仅 src）、contract、UI、docs、coverage、operations 和 model metadata 检查通过。`test:all` 本身在 frontend 之后失败：scripts 为 18 failed、1190 passed、5 skipped，该命令未继续到 bridge/server。其 15 个错误容器相关失败，在明确指定 lane 输出的 `wiseeff-g668-pg` 容器后，所在整个 81 用例文件通过。Restore（真实 PG，加内存 object/Redis store）及 source-lock，在候选和隔离 main 上的一次受控串行对照中分别为 13/13、4/4。该对照未确立原始失败原因，也不能把 `test:all` 改记为绿色。没有放宽 timeout、诊断、source lock 或断言。
+
+正式边界命令仍失败：3513 个 occurrence，3490 个 allowed，23 个 unallowlisted，23 个 stale，metadata mismatch 与 allowance growth 均为零。[原始证据索引](../../../exec-plans/evidence/2026-09-06-catalog-r2-review.json) 内嵌一份明确标记为**未批准**的精确 23 对申请，包含 old/new byte range、完整 metadata、整个文件的 blob hash、slice hash，以及不可变 fixture 和 shard hash。两位独立阅读者验证了一一对应关系，但没有批准改变信任契约。整个 DTS 夹具改动不是纯粹平移；只有逐项列出的 23 段未变字节可纳入该申请。checker、allowance 和不可变 inventory 均未修改。所需批准必须来自实现方之外，并严格限定该申请包；发布申请不等于批准。
+
+同一候选上的容量测量覆盖 2/125 个 Subject、每个 Subject 两个 Definition，current/pinned 的 1/25/100 首页、下一页、active-registration 过滤和详情；并发为 1/4，连接池上限为 10。96 个场景各有 first-observed、一批 warmup、五批正式测量（5 或 20 个样本），保留分类原始 SQL、实际进程内存和批次完成后的连接池快照。已测业务预算始终为列表 4/5、详情 3/4，批次完成后 used/waiting 均为 0。current 首页 limit 100、并发 4 的示例：2 个 Subject 时，Subject p50/p95 为 15.67/21.24 ms，Definition 为 16.92/19.79 ms；125 个 Subject 时分别为 66.04/73.39、86.87/93.19 ms。这些是观察值，不是 SLO。125 Subject 数据集为固定稀疏治理密度的合成库存，不声称代表生产分布。1000 Subject 初始化触发未修改的 30 秒 hook timeout：59 skipped，未产生容量 SQL，无法得出增长规模无挂起/无泄漏结论。真正冷缓存和连接等待时长仍为 unavailable。完整容量验收仍 blocked。
+
+三份 Catalog spec 在已核验 ownership 的 runtime 中通过 21/21，另有一次单独标识的 warmup（02:30:09.390Z–02:32:55.460Z）；成功执行后的清理已完成。此前两次 provision 在 endpoint ownership 核验阶段超时，尚未收集测试；已停止精确归属进程，失败数据库和证据保留。之后串行重跑通过，守卫和 timeout 未改；这不证明先前超时的原因。真实冲突、刷新无写、显式重确认、提交后响应阶段丢失、API/mock 操作 parity、角色/深链接及响应式用例，与拦截 409、guest 证据分别记录。
+
+playwright-cli 0.1.14 检查了 `http://127.0.0.1:5173/parameter-admin/specs?catalogReleaseId=crel_acme_6`，视口为 1440×900、768×1024、390×844；每个视口均有 snapshot/screenshot，以及键盘、焦点、取消、输入保留、确认和滚动检查。父协调者查看了三张弹层图片，未发现重叠、裁切或溢出。认证后的上下文为零 console error、两个既有 provider warning，以及一次真实 Proposal POST 201。认证前的 401 和一次 CLI listener 拼写错误导致的 timeout 单独保留；该拼写错误没有重发已提交写入，后续只读 UI/network 检查核实只有一个 draft。不能把超时的 helper 断言记为 pass。真实非空列表、详情和 timeline 验证位于 Catalog spec。归属 CLI 资源已完成清理。
+
+Gate 0 结果在原始索引中单独记录，仍是独立的必需门禁；任何 focused 结果都不能替代它。旧 Hosted `34002589200` 实际 checkout 的是 merge-ref `78c9e131…`，boundary inventory script test 失败，下游 backend/contract/boundary 步骤跳过。受控 main/head 对照确认该边界失败属于候选责任。新的 Hosted 结果必须按实际 PR head、checkout 和 job 记录，不能从旧的绿色 job 推断。
+
+### 审查、文档与停止边界
+
+Standards 已审查固定 review-head 到最终代码的差异。独立 Spec 按实现所有权拆分，避免实现者审查自己的代码：policy_preflight 负责 batch/scope 和容量证据，r2_spec 负责 Proposal/T5 和容量契约。两个审查维度对已修复部分给出有限范围的 PASS；`SPEC-T5-01`、`SPEC-CAP-01`、`CAP-STD-01` 已解决。各报告和原始执行仍独立绑定 SHA。整个程序没有最终 PASS、seal 或 attestation。
+
+本次返修的 Documentation Impact Matrix 处置：更新两份语言分离的计划和原始 JSON 索引；保留既有 requirements/operation ID 与生成的覆盖文档；DTO/OpenAPI/schema 未改，因此不运行生成器。architecture/product/security/runbook 沿用原有契约，因为本次修复恢复的是既有文档规定的批量、角色 scope、输入校验和工具状态语义。隔离 CAS 与兼容路径已在上文明确列出。源文件与可审阅的脱敏证据分别交付为保持目录结构的归档包，并附逐文件 hash。本地归档路径不等于已经上传 GitHub artifact。
+
+重跑应从精确代码候选出发，使用 lane 820 的 `catalog:lane:env -- provision/doctor --issue 820` 及其实际输出的私密 URL。沿用日志中的 focused/full 命令；容量 profile 显式设置 `WISEEFF_CATALOG_CAPACITY_PROFILE=1` 和 `WISEEFF_CATALOG_BATCH_SUBJECTS=2`，后者也可按场景取 `125` 或 `1000`，并继续披露 `-t R2-CAP` 的过滤结果。隔离 scripts 文件还需设置 `WAYFINDER_POSTGRES_CONTAINER=wiseeff-g668-pg`。边界检查始终使用可信基线 `35cbfb18…`。归档包含实际使用的 owned-browser/CLI wrapper，不含凭据。未执行或授权任何目标环境操作、OP-09/#811/#735、P12–P15、生产恢复/清理/数据修改或切流。
+
 ## 目标与真实基线
 
 完成 #815–#820 的代码及隔离非目标环境验收。禁止 OP-09/#811、#735 目标演练、P12–P15、生产数据修改、恢复、清理和切流；#668 冻结图不变。本轮没有确认实际合并审批，最多交付经过验证的候选/PR 待审批。这是用户授权的一轮工作，没有新建自动续行 Goal，也没有承诺截止时间；独立审查、集成和 Hosted 是不可省略的顺序阶段。
