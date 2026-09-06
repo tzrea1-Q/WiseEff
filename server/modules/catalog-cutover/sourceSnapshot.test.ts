@@ -80,9 +80,10 @@ describe("frozen old public projection across exact append-only migrations", () 
   });
 
   it("distinguishes SQL NULL from JSON null in an actual old Binding revision", async () => {
-    await pool.query("update project_parameter_binding_revisions set typed_value=null where id='frozen-v1'");
+    // typed_value is NOT NULL in the actual old schema; canonical_value is nullable.
+    await pool.query("update project_parameter_binding_revisions set canonical_value='null' where id='frozen-v1'");
     try { await expect(verify()).rejects.toThrow("source-snapshot-row-drift"); }
-    finally { await pool.query("update project_parameter_binding_revisions set typed_value='null' where id='frozen-v1'"); }
+    finally { await pool.query("update project_parameter_binding_revisions set canonical_value=null where id='frozen-v1'"); }
   });
 
   it("refuses a changed Binding relationship even when all row counts stay equal", async () => {
