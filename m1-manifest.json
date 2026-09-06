@@ -1,0 +1,239 @@
+{
+  "milestone": "M1 protective interception only",
+  "base": "67d4a77325b6009b77c2373bd788298a6d022bcf",
+  "reportHead": "a9a8858ab713cfca5bc605d35e04fbfd602acaa6",
+  "codeHead": "ffc2404986918466c672450d9628834bdf899b18",
+  "tree": "b5f0abae5f79048d7a438861cb870d524a883bd9",
+  "sourceDeploymentSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "production": "not authorized; not executed",
+  "PR": "not opened; full scripts source-lock timeout remains",
+  "files": [
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "gitBlob": "1a971f83b2389099d0b9fa27ce7ceb7c8265c2df",
+      "sha256": "de810491a5e4bc7ac4ae7531b7d14df4aae1803a18b2c2f3d34f784ad85cea79"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "gitBlob": "f48703961665d42c9bb6640ea4eabc1df2a0963d",
+      "sha256": "d605949a336b1d6c387c8fe40ed4f725c31483e242c07861ec45ceefefa98cd5"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "gitBlob": "255fd9324d76a95167709ba9f3d491a888660fb2",
+      "sha256": "134bbd0d3b3a61d654782fccd0ab117042ad54528e58f308b9aaf5c01def9551"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "gitBlob": "d70ef414ea9a228c9532546323a89ca65bdccf5d",
+      "sha256": "ad21ea7a20497538f26d4a296d6cee5364e0fe72c9f66b48bf4a614d56e24456"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "gitBlob": "268f52ab24999ee36d302d9b6ae0003d0f23d3df",
+      "sha256": "edb297902678d56a79d22dd1fe050c96ec69690dd8a8f9dcb94baef9893366ff"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "gitBlob": "49b555f83174ba0523385e13af0c56d9ffb50d2d",
+      "sha256": "3bc5eb44d7f065facbc420312937828b73a9db2b4b9f70ea390b6641e8b7740a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-lib.sh",
+      "gitBlob": "36b5046e77a06fb6368daf06dd33493a57f52a99",
+      "sha256": "db6c774984e170d4a4dd3b7c5e8e31a519f8669b0ef78bd9e9d15cdd9aca832a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-trust.test.ts",
+      "gitBlob": "c7ff4a2bba1a16844b62a7a67b952863f5f3df56",
+      "sha256": "8ab0ed798757bff91c6e8e933592ad33a06ea13c723c89240d0645af2e71bcd3"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network.sh",
+      "gitBlob": "67cfc64ecaf77074cebe5d9694e1d030a0c96c18",
+      "sha256": "b94ee3d00a7d47644f3e70991abc5f7bd36216f433ede041382f0eaee4135a23"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-compatibility.test.ts",
+      "gitBlob": "3c0ad8e7e4bf3515a8e46f88f65eb4d4f1ce2634",
+      "sha256": "15680cb7dd6ca6b7ee858840fc3114b77e645939876db83d79d08822908b2a7a"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-lib.sh",
+      "gitBlob": "bc1e1cf57ee269638aa6a3e976b605b3a28c1838",
+      "sha256": "4b91949ceaa94cc8bed62c22e39bcc17c96ad1a4bacbc73382ac97653fd0ddad"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh",
+      "gitBlob": "3533d19d71f843711407e63e85861a1a830a1ba4",
+      "sha256": "686bd604bf06b5b0aa07457b8082dc628cfdfb4cdbd6d4d4eb5bbae7267848ac"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh.test.ts",
+      "gitBlob": "85d7fe111aad0127d9f8229e1f649fc39697ce86",
+      "sha256": "4e2cd688fe2155bfc7a30f84811d63f747a06e448299d35c2e36cba0e8f06f02"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.md",
+      "gitBlob": "cd848130e7c1e2c39b4ad4234db747ab8929fbbf",
+      "sha256": "a1ad340ad44b78a8029c2d7813d8c170ffb399aeb4350b3096157b41971dde53"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.zh-CN.md",
+      "gitBlob": "25f308025a594998cc1fe348109efb276e92c588",
+      "sha256": "dc8c9b1c2064c7600952608b510330a78c931962f628cc914a811b1b9f5a4cf9"
+    },
+    {
+      "path": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "gitBlob": "2c63eda9352727cd18363892f02aab85d2e02d28",
+      "sha256": "38e07728c0593908e5e7f470bd9f08f8f31176a541d92eb7eed90e790082ea64"
+    },
+    {
+      "path": "scripts/fixtures/upgrade-82344044-catalog-gate.sh",
+      "gitBlob": "4c8b7cd3739cc21910e8cecc581b451311848979",
+      "sha256": "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.integration.test.ts",
+      "gitBlob": "8a74c9f8028b70d53703a173593ed67818826a38",
+      "sha256": "2c708ec615d1baaa1d9c709ca4e840760bced319f88be882af7d2b6e290237e4"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.test.ts",
+      "gitBlob": "049584927c90888a4d6dce1a90fed1c1b29de227",
+      "sha256": "1749afeccefc0e7daaa00913a98371b656643b152759ebf20b4c933f981b2a85"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.ts",
+      "gitBlob": "da0a7f4a579a49acdeae806d1768a56cef87e163",
+      "sha256": "f6a346cd4c4eabc9fe8680e57c755de2310ad21e150a2b1e53b76622dbea412f"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.test.ts",
+      "gitBlob": "a6c19a4ed720f342da465780f3b3fea78e0357f9",
+      "sha256": "c8da36ee7dfa0ef55958c352b6daa4c01f1e623db794c338d78964ff0ff6a738"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.ts",
+      "gitBlob": "0daef545bfddf96f7494a504b28418f1880aad35",
+      "sha256": "31ea2292ef9c1aafb1b228f780a5b16884d3cb1ecf419664aaba6ddd7c291eb3"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.test.ts",
+      "gitBlob": "b3294dfcb3b5b9912f48431df51d701741650cec",
+      "sha256": "287cbf271b40968780070cf16ff46c3b87a6822f2fe903ae7f5721f83c60bea9"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.ts",
+      "gitBlob": "2713d43373bdd839ab2dd2a3f1b21fd59fd57715",
+      "sha256": "86e29d232f594088d78302add272b06d1a72f4255a2c6e86e82c1095656b2129"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "gitBlob": "aa4e6ce4861f6659ebf2982a305e0409ccaf8d47",
+      "sha256": "045a6ea6a9e37afedce58d5548faf6fb35bab40f2af234efb8ca8efd8df6b319"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/shards/s12-ops.json",
+      "gitBlob": "5873255fa8ef9b9a1db0724409b0da39aec36281",
+      "sha256": "faa252d4358ebd0ef934ccdd2c87c6bd2e53b69a0d507a4c795807dc05f08750"
+    },
+    {
+      "path": "scripts/reconcile-legacy-isolation.test.ts",
+      "gitBlob": "8b63c706a0c7996e71a1719c84e4aaf4a69f6b72",
+      "sha256": "36d08023bfb562d4ef16c16c23b487ac4dfde2a1d80ea5e7e3568b6f4dbe7fa6"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.test.ts",
+      "gitBlob": "12364f463a1978be127740f9409e5d73da136e3f",
+      "sha256": "962ba867b7e29b0d255a322ff681af56f6db882221ba72c3d2a3ca89bbe3d0a6"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.ts",
+      "gitBlob": "60d253931ea9db550dd6fde9d60add31e9b4e375",
+      "sha256": "31a14c9c43adff343fe462e3adb4bdd04595459be126ba592cb0e76f50ce2da5"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-cli.test.ts",
+      "gitBlob": "b660c652dfb6909e82fd4861778dc59efc856624",
+      "sha256": "5f1e951ef12a48e1e45e1dbe7593d00c896e2294576b0308f5b67f3b81bbed59"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-gate.test.ts",
+      "gitBlob": "ad7e94b6a7105f0dd6b6844072ce728c3ba6565d",
+      "sha256": "b81e02a02296c9e92e9c6ac091e8d486ebc63645624549b6c3a895772b2b93b1"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.test.ts",
+      "gitBlob": "7ee3674c2655d5ae2df4c48b7a568775b784cade",
+      "sha256": "55ef44b125c14fb4835aa79114bfdbe03607ba63eafe9a0622bf3df0d594599f"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.ts",
+      "gitBlob": "83eaca16dcc5882b40b4c5516840f2c31b28455e",
+      "sha256": "26a274b57f92217cb7ba6afa4f771d879b210e13043c6595bef837bac710d1cb"
+    }
+  ],
+  "logs": [
+    {
+      "path": "m1-all-focused.log",
+      "originalSha256": "ddd3e1c14e03cd080b920546eb4264185b047e05dcfe62d3afe30db7a4ce4ec4",
+      "deliveredSha256": "6a019d9a8b4c2df6a53cd9ad15af442e29bfdb82dfee2fe19ed3504a49841b20",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-build.log",
+      "originalSha256": "d074a3ed0206792868739d9c28c89bcce39625c3f4b28404d0e73af2eac341b8",
+      "deliveredSha256": "ffda87834a36375aa3732e864a6a87f8bb490640336cf091944df0dcbb6d5598",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-scripts-full.log",
+      "originalSha256": "aacfb0d241969ac397e56d702e99fb67bfef14498e3f900ae1c7a03ca5346dea",
+      "deliveredSha256": "a32d78facae311a5d84cedf725dfa98821377c43e7685e06a69818f14ea37235",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-scripts-final.log",
+      "originalSha256": "f9c4f2ab3f6d973430fa49cccf9ec3bcacf3933571fc4d6c969c2643ad262d59",
+      "deliveredSha256": "e0efed345c198e0ae5cff1c57a4cd37f18fc21a87747e477cf21a8d764d07698",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-full-failures-recheck.log",
+      "originalSha256": "3d03d00c415cd416791ce06dbdef822f5c84d459f81d2d73ad2f6b32f9fe9d19",
+      "deliveredSha256": "c092f7fb2435268ba8a12f33ee6a2ce1e7a3159d9d1628788be609a9cca84048",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-lock-base-comparison.log",
+      "originalSha256": "e4d09add0a94a3f132bc655d6026267adcd27eeec5006e4ea048714833a9c0cf",
+      "deliveredSha256": "59a0e03e391711fb752d25402f665bd5c4df7b4596d16760b359d294d1bf44a0",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-lock-candidate-comparison.log",
+      "originalSha256": "1eccfc8a8ae62ff4f688e49f39fa26afe7d9cf19bcb21e97c08a12f91a8e031a",
+      "deliveredSha256": "54f59fa38e50d21bc236b105f97df42027a68bea1cd05ab5d37acd2bea045498",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-contract.log",
+      "originalSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "deliveredSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-selfhost.log",
+      "originalSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "deliveredSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "redaction": "development checkout paths only"
+    },
+    {
+      "path": "m1-docs.log",
+      "originalSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "deliveredSha256": "cc2218f2799dca5a4fa3e65b6ee25d6995e292d916e6c71856d827a79352d747",
+      "redaction": "development checkout paths only"
+    }
+  ]
+}

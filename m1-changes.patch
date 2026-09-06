@@ -1,0 +1,2227 @@
+diff --git a/docs/exec-plans/active/2026-09-06-populated-upgrade.md b/docs/exec-plans/active/2026-09-06-populated-upgrade.md
+new file mode 100644
+index 000000000..1a971f83b
+--- /dev/null
++++ b/docs/exec-plans/active/2026-09-06-populated-upgrade.md
+@@ -0,0 +1,70 @@
++# Populated self-hosted upgrade compatibility
++
++> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md)
++
++## Scope and state
++
++## Continuation: M1 and M2
++
++Fresh preflight confirms base `67d4a77325b6009b77c2373bd788298a6d022bcf`, inherited report head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`, clean candidate worktree. Source deployment is unchanged. M1 is independently reviewable interception; M2 requires a successful actual isolated upgrade and remains separate.
++
++Parent owns M1 CLI/debt shrink, fixed-entry handoff, shared upgrade/Compose/migrations, integration and delivery. `m2_release` owns the existing release-gate script and tests; `m2_runtime` owns runtime connection/startup files and tests; `m2_recovery` owns package restore adapters and synthetic recovery tests. Each works in isolated Scratch; parent integrates serially. No agent owns production actions or permission changes.
++
++Incremental threat review: preserve absent-diagnostic versus release refusal; remove only proven unused imports and four exact debt IDs, reject reintroduction, retain immutable fixture/relocation/base; bind handoff to artifact/daemon/project/storage identities before effects; produce reports from real state; runtime initialization precedes all queue effects and never repairs; restore consumes only a verified package with external secret inputs, binds the target and stops on partial/unknown outcomes. Package verification must resist file replacement, path traversal and stale Redis AOF. These augment the matrix below. First Red is the inherited boundary failure, then retired-module load rejection at the CLI diagnostic seam.
++
++Documentation impact: update this existing bilingual plan, existing bilingual operator/evidence documents, and module-owned runtime/recovery guidance together with executable paths. No duplicate status report. Focused checks own inner loops; final build/contracts/docs and independent reviews precede a milestone PR. Synthetic schema preservation is not canonical conversion; sentinel RDB restore is not AOF production-shape recovery.
++
++Current state: SCRATCH, incomplete. See the [execution evidence](../../../ops/self-hosted/populated-upgrade-evidence.md) for refreshed base/candidate, passing checks and unresolved boundary/release blockers. The following paragraph records the initial preflight.
++
++PREFLIGHT, R3. Source deployment stays `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is freshly fetched `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d` (no difference from the supplied main). Source counts and image identity are supplied historical observations, not rerun evidence. The local clean isolated worktree uses `codex/populated-upgrade-scratch`. No production access is authorized. Stop at a reviewed candidate/PR; do not merge, close historical issues, approve release, or operate production.
++
++## Ownership and dependencies
++
++| Package | Owner / paths | Dependencies / success |
++| --- | --- | --- |
++| A | Parent: this bilingual plan, final evidence and operator guide | Freeze threats before production edits; independent Spec challenge |
++| B | Parent: reconcile CLI/tests, upgrade.sh/upgrade-lib.sh and tests, new handoff helper | Real old invocation fails closed; diagnostic queries cannot authorize release |
++| C | Parent: release-verification integration and controller adapters | B, approved role/recovery contracts; unavailable frozen phases remain blocked |
++| D | Identity/recovery lane, initially read-only: runtime roots, database roles | Explicit parent handoff before edits; real restricted login proof |
++| E | Identity/recovery lane, initially read-only: storage/recovery | Isolated three-store evidence, never target proof |
++| F | Build lane: build-network-specific helpers/tests | Existing policy; synthetic trust evidence separate from corporate CA |
++| G | Parent: isolated rehearsal, documentation, delivery archive | A-F; authentic backup and production approval are external dependencies |
++
++Single writers: parent owns upgrade shell, Compose, runtime integration, migrations, generated docs and proof fingerprints. Other worktrees and inherited bytes are preserved. Development WIP 2 for shared schema; path-disjoint build work may proceed. Final Standards and Spec reviews run against one candidate. One final Hosted batch after integration readiness, no speculative broad reruns.
++
++## Threat matrix
++
++| Threat | Required observation / evidence owner |
++| --- | --- |
++| Missing args, absent/unapproved/blocked report; unknown CLI option | Nonzero typed refusal at real CLI, parent B |
++| Old source controller invokes new check | Actual source command cannot resume traffic on diagnostic success, parent B |
++| Cross candidate/target/release/mapping/source, stale purpose/attempt | Existing verifier rejects exact-input mismatch; no Bash verifier, parent B/C |
++| Pre-activation used for runtime/public release; forged approvals | Refusal at each action; distinct approval records, parent C |
++| apply/resume/recover-candidate/no-op bypass | All reachable release paths gated; old-service recovery distinct, parent B |
++| Missing/ordered phases, concurrent controller, unknown commit | Journal/lock refusal; no reset/guess, parent C |
++| Fresh with any old inventory; partial migration/checksum drift | Refuse false fresh; immutable historical SQL; retry evidence, parent G |
++| Runtime superuser/role inheritance/DEFINER escalation | Real limited logins and business/negative PG proof, D |
++| Wrong DB/host/Compose/volume/bucket/Redis or partial restore | Keep isolated; explicit bound recovery, E |
++| Candidate write/queue/public traffic followed by pointer rollback | Persistent refusal, E |
++| Untrusted/expired/wrong TLS chain; insecure readiness | Reject; trusted synthetic chain succeeds; no secret leakage, F |
++| Lost values/history/protected references or unknown Policy count | Full classification/consumer oracle, no count equivalence, G |
++| Lane pgvector assumed equivalent to source postgres:16-alpine | Separate extension compatibility evidence, G |
++
++## Test levels and stop points
++
++Red then focused Green at CLI/controller seams; real subprocess exit codes; real PostgreSQL migration/role tests; isolated Docker/Compose ordering; synthetic populated oracle; build/contract/boundary/selfhost/docs checks. Browser changes require playwright-cli desktop/tablet/mobile. Each run records exact SHA/tree, command, exit and collected/passed/failed/skipped separately. Setup failure is not zero-test success. A synthetic rehearsal, B authorized backup rehearsal and C production execution remain separate.
++
++External blockers: no authorized real backup, enterprise CA, or production maintenance authorization supplied. #815 still needs authoritative Policy association or approved unavailable contract. Frozen unavailable release phases are an integration blocker, not permission to forge implementation or approvals. Continue independent work while these remain blocked.
++
++## Documentation Impact Matrix
++
++| Change | English | Chinese | Gate |
++| --- | --- | --- | --- |
++| Scope/threats/evidence | This plan | Companion plan | docs:check |
++| Upgrade/diagnostic/handoff contract | ops/self-hosted/upgrade.md | ops/self-hosted/upgrade.zh-CN.md | CLI tests + docs:check |
++| Operator procedure | New populated-upgrade runbook | Chinese terminal procedure | Only tested real commands; unavailable steps explicit |
++| Build trust | Existing build-network documentation as needed | Matching companion | Trust tests |
++
++## Documentation Update Gate
++
++Update both language files in the same change; generators own generated artifacts. Run `npm run docs:check` before plan completion. This plan remains active until its independent deliverables and limitations are recorded; no production readiness inferred from code completion.
+diff --git a/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md b/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
+new file mode 100644
+index 000000000..f48703961
+--- /dev/null
++++ b/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
+@@ -0,0 +1,70 @@
++# 存量 self-hosted 升级兼容修复
++
++> English: [English](../../../exec-plans/active/2026-09-06-populated-upgrade.md)
++
++## 范围与状态
++
++## 续工：M1与M2
++
++新preflight确认base `67d4a77325b6009b77c2373bd788298a6d022bcf`、继承报告head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`，候选工作树干净。源部署不变。M1仅为可独立审阅的安全拦截；M2必须完成真实隔离升级成功链，二者分开。
++
++父智能体负责M1 CLI／债务删除、固定入口交接、共享upgrade／Compose／migration、集成及交付。`m2_release`负责既有release-gate脚本及测试；`m2_runtime`负责运行连接／启动文件及测试；`m2_recovery`负责备份包恢复adapter及合成恢复测试。各自独立Scratch，父智能体串行集成；无人获准生产操作或扩大权限。
++
++增量威胁审查：保留诊断absence与发布拒绝的区别；仅移除已证明无用的导入及四个精确债务ID，拒绝回引，保留冻结fixture／relocation／base；交接先绑定artifact／daemon／project／storage身份再产生效果；报告取真实状态；运行初始化先于所有队列效果且不修表；恢复只消费验证过的包及外部秘密输入，绑定目标，部分／未知结果停止。包验证须防文件替换、路径穿越及陈旧Redis AOF。此处补充下方矩阵。首个Red为继承boundary失败，随后在CLI诊断入口验证禁止加载退役模块。
++
++文档影响：继续更新本双语计划、既有双语操作／证据文档及模块所属运行／恢复说明，不新增重复状态报告。内循环只跑focused；里程碑PR前完成build／contract／docs及独立审查。schema追加后旧值保留不等于canonical转换，sentinel RDB恢复不等于AOF部署形态恢复。
++
++当前状态：SCRATCH，未完成。刷新后的base／候选、执行结果及boundary／发布阻塞见[执行证据](../../../../ops/self-hosted/populated-upgrade-evidence.zh-CN.md)。下段保留开工preflight记录。
++
++PREFLIGHT，风险 R3。源部署始终为 `82344044b436a8dafecefbb85dfd724cecb05e3f`；重新 fetch 的开发基线为 `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d`，与用户提供的 main 无差异。源计数和镜像身份仅为用户提供的历史观察。本地独立干净工作树使用 `codex/populated-upgrade-scratch`。本轮止于审阅候选／PR，不合并、不关闭历史单、不批准发布、不访问生产。
++
++## 文件所有权与依赖
++
++| 包 | 所有者与范围 | 依赖与成功条件 |
++| --- | --- | --- |
++| A | 父协调者：双语计划、证据、操作手册 | 实现前冻结威胁矩阵，独立 Spec 挑战 |
++| B | 父协调者：reconcile CLI、升级 shell、交接工具与测试 | 真实旧调用失败关闭；诊断不作为发布批准 |
++| C | 父协调者：verifier/controller 接线 | B、角色与恢复合同；保留 unavailable 边界 |
++| D | 身份／恢复 lane，先只读审计运行根与角色 | 编辑前明确交接；真实受限登录验证 |
++| E | 身份／恢复 lane，先只读审计恢复模块 | 隔离三存储证据，不充当目标证据 |
++| F | 构建 lane：build-network 专用工具与测试 | 复用现有策略，合成证书与企业 CA 分开 |
++| G | 父协调者：预演、文档、完整文件交付包 | A-F；真实备份和生产批准为外部依赖 |
++
++升级 shell、Compose、运行时组合根、migration、生成文档和 fingerprint 各由父协调者单一写入。保留其他工作树。共享 schema 开发 WIP 为 2；不重叠的构建工作可并行。固定候选后并行 Standards／Spec 审查；集成就绪后运行一次最终 Hosted，不反复跑广域测试。
++
++## 威胁矩阵
++
++| 威胁 | 必需观察／责任 |
++| --- | --- |
++| 缺参数、absent、未批准、blocked、未知参数 | 真实 CLI 非零 typed 拒绝，B |
++| 旧升级器调用新检查 | 不因诊断成功恢复流量，B |
++| 跨候选／目标／release／mapping／source、旧 purpose／attempt | 复用 verifier 精确核验，B/C |
++| 预激活批准借用于运行或公开发布、伪造批准 | 各动作独立拒绝，C |
++| apply/resume/recover-candidate/no-op 绕过 | 所有可达放流路径有门禁；旧服务恢复分开，B |
++| 缺阶段、乱序、并发、未知提交结果 | journal／锁拒绝，不重置或猜测，C |
++| 假 fresh、部分迁移成功、checksum 漂移 | 完整库存识别；历史 SQL 不变；重试证据，G |
++| 超级用户、继承／DEFINER 提权 | 真实受限登录正向与反向 PG，D |
++| 错数据库／主机／Compose／卷／桶／Redis、部分恢复 | 保持隔离，仅显式绑定恢复，E |
++| 写入／投递／公开流量之后指针回退 | 持久拒绝，E |
++| 不可信／过期／错误证书、insecure 就绪 | 拒绝；受信合成链成功且无秘密泄漏，F |
++| 值／历史／受保护引用丢失、未知 Policy 被算零 | 全量分类与独立 oracle，不用计数相等替代，G |
++| pgvector lane 被当成源数据库镜像兼容 | 单独扩展兼容证据，G |
++
++## 测试层次与停止边界
++
++先 Red 后 focused Green；真实子进程退出码、PG 迁移／角色、隔离 Compose 顺序、合成存量语义、build／contract／boundary／selfhost／docs。可见改动按 playwright-cli 三种视口验证。各次执行记录精确 SHA/tree、命令、退出码和收集／通过／失败／跳过，setup 失败不算零用例通过。A 合成、B 授权真实备份副本、C 生产分别记录。
++
++尚无授权真实备份、企业 CA 或生产窗口批准。#815 仍需权威关联或明确批准 unavailable 合同。冻结阶段若 unavailable，记录缺失集成，不伪造实现或批准；继续独立工作。
++
++## 文档影响矩阵
++
++| 改动 | 英文 | 中文 | 门禁 |
++| --- | --- | --- | --- |
++| 范围／威胁／证据 | 英文计划 | 本计划 | docs:check |
++| 升级／诊断／交接 | upgrade.md | upgrade.zh-CN.md | CLI 回归与 docs |
++| 运维步骤 | 新存量升级 runbook | 中文终端手册 | 仅引用真实测试入口；缺失步骤明确标记 |
++| 构建信任 | 现有构建文档按需更新 | 对应伴随文件 | 证书反例 |
++
++## 文档更新门禁
++
++双语同批更新，生成器更新生成产物。完成前运行 `npm run docs:check`；独立交付和限制记录完成前计划保持 active，代码完成不推出生产就绪。
+diff --git a/ops/self-hosted/populated-upgrade-evidence.md b/ops/self-hosted/populated-upgrade-evidence.md
+new file mode 100644
+index 000000000..255fd9324
+--- /dev/null
++++ b/ops/self-hosted/populated-upgrade-evidence.md
+@@ -0,0 +1,105 @@
++# Populated upgrade candidate evidence
++
++> Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
++
++## M1 continuation, 2026-09-06
++
++Development base remains `67d4a77325b6009b77c2373bd788298a6d022bcf`.
++M1 implementation `9453cf442b40fe1e90dc4ffb948e7b31898568eb` removes two
++unused legacy imports and the expression that evaluated, but did not call, the
++verifier. The imported verification module has no required initialization effect;
++the other unused import was already erased by the CLI transform. Both legacy
++modules remain available to their actual consumers. Exactly four retired S12-OPS
++allowances were removed. The historical 3519-entry fixture, trusted base and all
++23 reviewed relocation pairs remain unchanged. Reintroducing any removed
++occurrence is a permanent negative test.
++
++`ffc2404986918466c672450d9628834bdf899b18` (tree
++`e62f9239f4d1c207d2269951417915d87afce9fb`) adds the corresponding exact
++four-ID deletion assertions to the relocation regression. Independent full M1
++Standards and Spec reviews passed at `9453cf442`; independent delta review passed
++for the later assertion change. This is protective interception, not populated
++upgrade support. No PR or Hosted execution has occurred at this recording point.
++
++| Exact execution | Result |
++| --- | --- |
++| Inherited boundary Red | 1 failed, 23 selector-filtered |
++| Retired module load Red | 1 failed, 0 skipped |
++| `9453cf442` full focused set | 13 files, 291 passed, 0 failed/skipped, 181.69s |
++| `9453cf442` build | exit 0; existing build warnings retained |
++| `9453cf442` boundary CLI | 3509 matched; 0 unallowlisted/stale/growth/mismatch; 23 relocations; exit 0 |
++| `9453cf442` full scripts | 104 files; 1299 passed, 3 failed, 5 skipped; exit 1; 452.82s |
++| `9453cf442` plus exact assertion delta, bounded relocation/source-lock | 37 passed, 0 failed/skipped; exit 0; 69.40s |
++| `ffc240498` contract / selfhost | both exit 0 |
++| `ffc240498` final full scripts | 104 files; 1301 passed, 1 failed, 5 skipped; exit 1; 356.29s |
++| `67d4a7732` then `ffc240498`, same source-lock command, serial comparison | each 4 passed, 0 failed/skipped; 44.76s / 59.27s; no timeout change |
++
++Two full-scripts failures were the old 3513/6 count assertions, fixed by the
++explicit four-ID delta. The other was source-lock timeout at the unchanged 60s
++limit. The candidate adds only 15 estimated Git subprocesses to about 4865 on
++base, so commit growth does not explain a large slowdown. The test itself is
++source-locked; neither it nor its timeout was changed. The passing bounded rerun
++does not rewrite the full batch. The final full batch still timed out in the
++same source-lock case. M1 therefore remains Scratch; no PR is opened over a
++failed required command. A separate runner/source-lock performance decision is
++needed before another full run; no more identical retries are planned. Five skips
++are not passes. Earlier 17 failures below remain their
++original execution: 15 target routing failures and two timeouts, including a setup
++timeout that filtered later tests. The correctly routed current full batch is
++separate evidence, not a relabeling of that run.
++
++The dedicated local PostgreSQL fixture used a newly owned Docker Desktop cluster,
++`pgvector/pgvector:pg16`, database `wiseeff_lane_734`, private random credentials
++and explicit container identity. It was not the shared Compose application DB.
++The original-schema regression separately owns `postgres:16-alpine` containers.
++No production host was contacted. Logs remain local pending an explicitly
++published, verified delivery channel; a local archive path is not an attachment.
++
++## Prior-round identity and status (historical)
++
++Collected 2026-09-06, local isolated development only. Source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`; supplied historical image ID is `sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c`, not a registry manifest or a newly verified image. Initial development base was `1c9fa56e3eaca6e7984f35a097876772a6e4025d`. Final refresh base is `67d4a77325b6009b77c2373bd788298a6d022bcf`; its advancement is documentation-only PR #822.
++
++Code candidate: `b2c150d18bb6d7a8d8d5b45bcbf9f683fdafecbf`, tree `b8eb49d3a074e00196fb89c30ba4d1cae3677b3c`, branch `codex/populated-upgrade-candidate`. All 27 task blobs match the preserved earlier Scratch `d357a5e6538f4bac4d63ba782ce13f75fe1cf194`. This evidence document is a later report-only change, not a relabeling of executions. No CI checkout, merge-ref, final merge SHA, release bundle/pin, mapping/source freeze, or approved real target exists for this candidate.
++
++| Outcome | State |
++| --- | --- |
++| UPG-01 missing-context refusal | Implemented and real CLI regression demonstrated |
++| Complete upgrade code delivery | Incomplete; boundary regression and release integrations remain |
++| Synthetic populated | Schema additions preserved old Binding/revision rows; canonical business conversion was not demonstrated |
++| Authorized real backup rehearsal | Not run; no backup supplied and intake adapter incomplete |
++| Actual recovery | Synthetic three-store sentinel restore executed and verified; full business/real recovery unproven |
++| Hosted / PR | Not run / not opened; Scratch is not integration-ready |
++| Production maintenance readiness | No |
++| Production execution / approval | Not authorized, not executed |
++
++## Regressions and commands
++
++On initial base with a real isolated PostgreSQL fixture, `npm run parameter-definitions:check -- --catalog-only` returned exit 0 with typed `absent/missing`. On `8922b3884573bd5d7c3c3f2efce53f3f51d6b894` it returned exit 2 and `PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`; explicit `--verify --diagnostic --report-id missing` still returned typed absence with exit 0. The actual seven-line source controller gate fixture matches source Git bytes (SHA256 `29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232`). Its subprocess regression uses the real npm/CLI and a Docker transport adapter; it is not a full old-controller Compose proof. New ordinary-stack apply/no-op/resume/recover-candidate refuse unsupported canonical targets. A usable production handoff is still missing.
++
++Local tools: Node 22.22.3, npm 10.9.8, Vitest 4.1.5, Docker 29.5.3. New original-schema tests use isolated `postgres:16-alpine`; the dedicated verifier fixture uses pgvector PostgreSQL 16. Migration inventory is 126 original files plus 11 candidate suffix files 0129–0139, complete filename/checksum validation. This does not establish production extension compatibility or application startup readiness.
++
++| Exact code | Check | Result |
++| --- | --- | --- |
++| 8922b3884 | 11 focused script files, real Docker flags enabled | 266 passed, 0 failed/skipped; exit 0 |
++| 8922b3884 | Full scripts | 103 files: 99 passed/4 failed; 1306 tests: 1251 passed/17 failed/38 skipped; exit 1 |
++| d357a5e65 | CLI plus boundary after restoring inherited inventory | 42 tests: 41 passed/1 failed; exit 1; prior Scratch parent shrink rejected restoration |
++| 1c9fa56e3 and d357a5e65 separately | Serial exactRelocation/source-lock, original timeout limits | Each 37 passed, 0 failed/skipped; exit 0; 53.98s and 60.40s |
++| Same two SHAs separately | One real zero-inventory export/import/rollback selector with matched isolated URL/container | Each 1 passed, 80 selector-filtered; exit 0; other failed scenarios not rerun |
++| b2c150d18 | 12 focused files, both Docker flags, `--maxWorkers=1` | 290 collected: 289 passed/1 failed/0 skipped; exit 1; 83.94s |
++| b2c150d18 | Boundary CLI with trusted base 9b3ba7df7e21f5589684bc92c872da593ad4c246 | 3513 violations: 3512 matched, 1 unallowlisted/1 stale, 0 growth/mismatch; exit 1 |
++| b2c150d18 | npm run build | exit 0; existing Node externalization/chunk warnings retained |
++| d357a5e65 | contract:check / selfhost:check | Both passed |
++| 8922b3884 | docs:check with dedicated PostgreSQL | Governance and schema artifact passed |
++| 2e40a8b3d | Report and role server integration files | 31 passed, 0 failed/skipped; not a full server suite |
++
++The remaining boundary failure is this candidate's responsibility: the retained legacy verifier reference moved and no longer binds its frozen occurrence. No assertions, checker limits, or allowance IDs were changed to hide it. Original full-suite failures also include 15 database/container routing failures and two timeouts (33 tests skipped after setup timeout). Bounded same-environment comparisons support routing/load attribution but do not turn that full batch green. Full frontend/server suites, browser business acceptance, growth capacity, complete consumer oracle, enterprise-network image builds and Hosted were not run.
++
++Logs and exact full-file hashes are included in the local delivery archive, under `evidence/` and `manifest.json`. They retain their original execution SHAs; synthetic credentials and host paths are not production evidence. No private backup or business values are included.
++
++## Remaining work and ownership
++
++The [frozen relocation contract](../../docs/agents/catalog-boundary-relocation.md) explicitly forbids padding source to retain identities. Independent Standards review rejected that option. The minimal boundary decision is a separately reviewed exact mapping for this unchanged occurrence (full blobs, spans, raw bytes and adversarial coverage), or debt removal under its owning contract. The existing 23-pair authorization does not approve this new mapping.
++
++Parent implementation owner must resolve the occurrence regression without loosening the frozen boundary. Release integration owner must supply approved P12/P13 ownership, post-retirement full verification, runtime/public-release wiring and fixed-identity handoff. Runtime security owner must implement actual role/pool migration and business acceptance; the new inspector does not change credentials. Recovery owner must implement authorized backup intake, same-boundary snapshots and target-bound full restore. Product owner must resolve #815 authoritative Policy references or explicitly approve unavailable. Build operator must provide enterprise CA and actual trusted image provenance. Data owner must authorize a real backup. Acceptance owner must complete full semantics/browser/capacity. Production authorization remains separate.
++
++Independent Standards review passed the bounded code and verified all 27 refreshed blobs. Independent Spec review accepted only the bounded helpers and explicitly found the complete request unmet. The earlier Docker ambient-target P1 was fixed with pinned local endpoint/daemon identity checks. No overall seal, release approval, or OP-09 closure is claimed. Follow the [terminal guide](populated-upgrade.md); it deliberately provides no production upgrade command.
+diff --git a/ops/self-hosted/populated-upgrade-evidence.zh-CN.md b/ops/self-hosted/populated-upgrade-evidence.zh-CN.md
+new file mode 100644
+index 000000000..d70ef414e
+--- /dev/null
++++ b/ops/self-hosted/populated-upgrade-evidence.zh-CN.md
+@@ -0,0 +1,95 @@
++# 存量升级候选证据
++
++> English: [English](populated-upgrade-evidence.md)
++
++## M1 续工记录，2026-09-06
++
++开发 base 仍为 `67d4a77325b6009b77c2373bd788298a6d022bcf`。
++M1 实现 `9453cf442b40fe1e90dc4ffb948e7b31898568eb` 删除两个无用旧 import
++以及只求值、未调用 verifier 的表达式。verification 模块没有必需初始化副作用；
++另一个无用 import 已被实际 CLI transform 擦除。两个旧模块仍留给实际调用方。
++仅删除四个已退休 S12-OPS allowance；历史3519项 fixture、trusted base、
++23对 relocation 均未改变，重新引入任一删除项都有永久拒绝反例。
++
++`ffc2404986918466c672450d9628834bdf899b18`，tree
++`e62f9239f4d1c207d2269951417915d87afce9fb`，补齐 relocation 回归的四项
++精确删除断言。独立完整 M1 Standards／Spec 在 `9453cf442` 通过，后续断言
++差异也经独立复核通过。范围仅保护性拦截，不是支持 populated 升级。
++本记录时尚未创建 PR、未执行 Hosted。
++
++| 实际执行 | 结果 |
++| --- | --- |
++| 继承 boundary Red | 1失败，23项被 selector 过滤 |
++| 退休模块加载 Red | 1失败，0跳过 |
++| `9453cf442` 完整 focused 集合 | 13文件，291通过，0失败／跳过，181.69秒 |
++| `9453cf442` build | exit 0，保留原构建警告 |
++| `9453cf442` boundary CLI | 3509匹配，未允许／陈旧／增长／metadata差异均0，23对relocation，exit 0 |
++| `9453cf442` 全量 scripts | 104文件，1299通过、3失败、5跳过，exit 1，452.82秒 |
++| `9453cf442` 加精确断言差异，有界 relocation/source-lock | 37通过，0失败／跳过，exit 0，69.40秒 |
++| `ffc240498` contract／selfhost | 均 exit 0 |
++| `ffc240498` 最终全量 scripts | 104文件，1301通过、1失败、5跳过，exit 1，356.29秒 |
++| `67d4a7732` 后 `ffc240498`，同一source-lock命令串行对照 | 各4通过，0失败／跳过，44.76秒／59.27秒，未改timeout |
++
++全量两项失败是旧3513／6数量断言，已按精确四项删除修复；另一项是 source-lock
++在原60秒限制下超时。候选较 base 约4865次 Git 子进程仅增加15次，不能据此
++把明显变慢归因于提交增长。该测试自身受源锁约束，本轮未改测试或 timeout。
++有界复跑通过不覆盖全量失败；最终全量批次仍在同一source-lock用例超时。
++M1因此仍为Scratch，不在必需命令失败时创建PR。再次全量执行前需单独处理
++runner／源锁性能决策，不再计划同样的反复重跑。5项跳过不记通过。
++下文原17项失败保留原执行：15项目标路由失败、两项超时，其中 setup 超时过滤了
++后续用例。当前正确路由的批次是新证据，不能重新标注旧批次。
++
++本轮专用 PG 为新建且核验归属的 Docker Desktop 集群，镜像
++`pgvector/pgvector:pg16`，数据库 `wiseeff_lane_734`，随机私有凭据并固定实际
++容器身份；未使用共享 Compose 应用数据库。旧 schema 回归另建独立
++`postgres:16-alpine` 容器。未连接生产机。日志目前仍是本地材料，须发布并核验
++真实可访问渠道；本地 ZIP 路径不等于附件。
++
++## 上轮身份与状态（历史）
++
++采集日期2026-09-06，仅独立开发环境。源部署仍是 `82344044b436a8dafecefbb85dfd724cecb05e3f`；用户提供的历史镜像 ID 为 `sha256:be121540c40fbb35e774b48cefb29b7ddf27d1bb8aa0c050a17acca3b7dfbf6c`，不是 registry manifest，也不是本轮复核结果。最初开发 base 为 `1c9fa56e3eaca6e7984f35a097876772a6e4025d`；最终刷新 base 为 `67d4a77325b6009b77c2373bd788298a6d022bcf`，新增内容是纯文档 PR #822。
++
++代码候选 `b2c150d18bb6d7a8d8d5b45bcbf9f683fdafecbf`，tree `b8eb49d3a074e00196fb89c30ba4d1cae3677b3c`，分支 `codex/populated-upgrade-candidate`。27个任务文件与保留的原 Scratch `d357a5e6538f4bac4d63ba782ce13f75fe1cf194` 逐字节一致。本报告属于后续文档提交，不重新标注旧执行。候选没有 CI checkout、merge-ref、最终merge SHA、正式 bundle/runtime pin、mapping/source冻结或获批真实目标。
++
++| 交付状态 | 结论 |
++| --- | --- |
++| UPG-01缺上下文拒绝 | 已实现，真实CLI反例已验证 |
++| 完整代码交付 | 未完成；仍有boundary回归和发布集成缺口 |
++| 合成populated | 追加schema后旧Binding／revision行保留；尚未证明canonical业务转换 |
++| 真实备份副本 | 未运行；未提供备份，接收adapter也未完成 |
++| 实际恢复 | 已执行并验证合成三存储sentinel恢复；未证明完整业务／真实恢复 |
++| Hosted／PR | 未运行／未创建；仍为Scratch |
++| 申请生产维护窗口 | 不具备条件 |
++| 生产执行／批准 | 未授权、未执行 |
++
++## 反例与精确执行
++
++初始base在真实隔离PostgreSQL上运行 `npm run parameter-definitions:check -- --catalog-only`，返回 typed `absent/missing`，exit 0。`8922b3884573bd5d7c3c3f2efce53f3f51d6b894` 同命令返回 exit 2、`PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`；显式 `--verify --diagnostic --report-id missing` 仍允许诊断返回absence和exit 0。原版7行controller gate fixture与源Git字节一致，SHA256 `29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232`。其子进程回归调用真实npm/CLI，仅Docker传输由adapter代替，不能称完整旧controller／Compose预演。新普通stack入口对canonical目标拒绝apply/no-op/resume/recover-candidate；生产固定入口交接尚缺。
++
++工具：Node22.22.3、npm10.9.8、Vitest4.1.5、Docker29.5.3。原schema回归使用独立 `postgres:16-alpine`；verifier专属fixture为pgvector PostgreSQL16。迁移清单是126个源文件及0129–0139共11个候选后缀，核验完整filename/checksum。此结果不证明生产扩展／应用启动兼容。
++
++| 代码SHA | 检查 | 精确结果 |
++| --- | --- | --- |
++| 8922b3884 | 11文件focused，真实Docker开关开启 | 266通过，0失败／跳过，exit 0 |
++| 8922b3884 | 全量scripts | 103文件：99通过／4失败；1306测试：1251通过／17失败／38跳过；exit 1 |
++| d357a5e65 | 恢复继承库存后的CLI及boundary | 42测试：41通过／1失败；exit 1；前一Scratch缩减库存导致恢复被拒绝 |
++| 1c9fa56e3、d357a5e65分别运行 | 串行exactRelocation/source-lock，原timeout | 各37通过、0失败／跳过；exit 0；53.98s／60.40s |
++| 上述两个SHA分别运行 | URL/container一致的单个真实零库存导入导出回滚selector | 各1通过、80因selector过滤；exit 0；未复跑其他失败场景 |
++| b2c150d18 | 12文件focused，两个Docker开关，maxWorkers=1 | 收集290：289通过／1失败／0跳过；exit 1；83.94s |
++| b2c150d18 | boundary CLI，trusted base 9b3ba7df7e21f5589684bc92c872da593ad4c246 | 3513项：3512匹配、1未允许／1陈旧，0增长／metadata差异；exit 1 |
++| b2c150d18 | npm run build | exit 0；保留Node externalization／chunk警告 |
++| d357a5e65 | contract:check、selfhost:check | 均通过 |
++| 8922b3884 | 带专属PG的docs:check | governance及schema artifact通过 |
++| 2e40a8b3d | report及role两个server integration文件 | 31通过、0失败／跳过；非全量server |
++
++剩余boundary失败由本轮负责：保留的legacy verifier引用移动后不能绑定冻结occurrence。未修改断言、检查器上限或allowance ID来隐藏失败。原全量批次另有15个数据库／容器路由失败及两个超时，其中setup超时导致33项跳过。同环境有界对照支持路由／负载归因，但不能把原批次改成通过。全量frontend/server、浏览器业务验收、增长容量、完整consumer oracle、企业网络镜像构建和Hosted均未运行。
++
++日志和全文件校验和在本地交付包的 `evidence/`、`manifest.json`。保留原执行SHA；合成凭据／开发机路径不构成生产证据。包内不含私有备份或原始业务值。
++
++## 剩余工作与责任
++
++[冻结relocation契约](../../docs/agents/catalog-boundary-relocation.md)明确禁止通过padding源文件保留身份，独立Standards已否决该路径。最小boundary决策是独立审查这一未变引用的精确映射（完整blob、字节位置、原始切片及反例），或按归属契约移除旧债务。现有23对授权不能批准本次新映射。
++
++父实现者负责在不放宽冻结boundary的前提下修复occurrence回归。发布集成owner负责获批P12/P13归属、退休后完整复验、runtime/public门禁和固定身份交接。运行安全owner负责实际角色／pool迁移和业务验收；检查器不会切换凭据。恢复owner负责备份接收、同边界快照、目标绑定完整恢复。产品owner负责#815权威Policy引用或明确批准unavailable。构建操作员负责企业CA及真实受信镜像来源。数据owner负责真实备份授权。验收owner负责完整语义／浏览器／容量。生产批准另行处理。
++
++独立Standards通过了有界代码审查并验证27个刷新blob；独立Spec仅接受有界helper，明确完整需求未满足。此前Docker环境可指向远端的P1已通过固定本地endpoint／daemon身份检查修复。不宣称整体seal、发布批准或OP-09关闭。参见[终端手册](populated-upgrade.zh-CN.md)，当前不提供生产升级命令。
+diff --git a/ops/self-hosted/populated-upgrade.md b/ops/self-hosted/populated-upgrade.md
+new file mode 100644
+index 000000000..268f52ab2
+--- /dev/null
++++ b/ops/self-hosted/populated-upgrade.md
+@@ -0,0 +1,97 @@
++# Populated Catalog upgrade preparation
++
++> Chinese terminal guide: [Chinese](populated-upgrade.zh-CN.md)
++
++## Current execution contract
++
++This candidate closes the unbound diagnostic-as-gate failure and provides inspectors. It does **not** complete a populated release. No production maintenance command is available yet. The source baseline is `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is `1c9fa56e3eaca6e7984f35a097876772a6e4025d`. Supplied deployment counts/image identity are historical, not fresh inventory or backup proof. Do not copy private deployment paths, values or backups into repository evidence.
++
++| Entry | Actual boundary |
++| --- | --- |
++| Ordinary stack apply | Legacy stack lifecycle; canonical targets now refused before build/no-op |
++| Catalog apply fresh/populated | Frozen plan/execute/P11a only; no public service authorization |
++| Release Verification | Purpose, pins, report, approval and runtime-pin module; production startup integration missing |
++| P12/P13/P11b/P14/P15 | No approved complete executable integration in this candidate |
++
++## Developer commands
++
++Machine: isolated development host; user: developer; directory: reviewed candidate repository; prerequisites: locked dependencies, Git source object, Docker. These tests create their own synthetic database clusters and never accept production backup input. They do write disposable test storage; they do not stop the deployed service.
++
++```bash
++npm ci
++UPG_IDENTITY_DOCKER_TEST=1 npm run test:scripts -- scripts/inspect-upgrade-runtime-identity.test.ts
++npm run test:scripts -- scripts/inspect-populated-upgrade-source.test.ts scripts/inspect-populated-upgrade-source.integration.test.ts
++npm run test:scripts -- scripts/reconcile-upgrade-cli.test.ts ops/self-hosted/scripts/upgrade-compatibility.test.ts
++npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
++```
++
++Each test command must exit 0 with nonzero collection; setup failure or skip does not satisfy its real boundary. The source regression creates the old schema from 126 original migrations and applies the 11-file candidate suffix; its few synthetic values/history rows are a narrow oracle, not full consumer-family semantics or the real data copy.
++
++## Fixed-entry preparation without changing the deployment
++
++Use a separate reviewed clone on the administrative/development host. Fetch and pin the reviewed candidate commit there, verify its tree and the full-file delivery manifest, and install its locked dependencies there. Retain the old deployment checkout, each service image, Compose project and actual named-volume identities. Do not run `git pull`, checkout, dependency installation, or copy a new `.env` over the serving checkout.
++
++The new clone is currently an inspection workspace only. Do not run its default Compose: it has not been bound to the old deployment's project/volumes/bucket/Redis identity, and its HEAD must never be recorded as `previousSha` of the old running stack. An executable handoff that binds those identities is still a missing integration. No remote script download-and-execute procedure is supplied.
++
++## Production read-only collection
++
++Machine: deployment host; user: existing trusted deployment operator; directory: existing `ops/self-hosted`. Requires separate approval to perform collection. These commands do not stop services or change database contents. Keep results privately. Run the source's existing wrapper, not the unbound new clone.
++
++```bash
++git rev-parse HEAD
++./scripts/compose ps -q api worker web postgres redis
++./scripts/compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U wiseeff -d wiseeff <<'SQL'
++BEGIN READ ONLY;
++SELECT name, checksum FROM public.schema_migrations ORDER BY name;
++SELECT extname, extversion FROM pg_extension ORDER BY extname;
++SELECT count(*) AS revisions,
++       count(typed_value) AS typed_present,
++       count(canonical_value) AS canonical_present,
++       count(raw_value) AS raw_present
++FROM public.project_parameter_binding_revisions;
++ROLLBACK;
++SQL
++```
++
++Expected: complete ledger and aggregate-only value presence. SQL null and JSON null differ; these totals do not prove relationship preservation. Authentication failure, missing relation or checksum, or unavailable query is a stop, not zero. Do not change credentials or repair the ledger. Container IDs are private operational references; use filtered `docker inspect` for image IDs/Compose and mount identities, never export an unredacted full inspect containing environment secrets.
++
++From the reviewed administrative clone, the two new inspectors use a private `DATABASE_URL` supplied by the approved secret facility (never command-line credentials):
++
++```bash
++node --import tsx scripts/inspect-upgrade-runtime-identity.ts
++node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$UPGRADE_CANDIDATE_SHA"
++```
++
++`UPGRADE_CANDIDATE_SHA` must be the exact reviewed 40-character commit present in that clone. These are read-only queries but require separately authorized connectivity. The runtime inspector inventories a **new login**, not a claim about existing pools. `inventory-collected`, `inspected`, `authorization:none`, and `capabilityAuditComplete:false` do not authorize upgrade. Preserve nonzero results and review each typed reason. Source inventory covers all public/Catalog table counts, columns, complete ledger and extension availability; it is not a frozen P0 graph or full semantic fingerprint.
++
++## Authorized backup, rehearsal and maintenance
++
++A bounded developer-only synthetic three-store restore creates its own PostgreSQL, Redis and MinIO source/target containers, retains PostgreSQL owner/ACL, verifies a restricted login, object bytes/metadata/count and a restored Redis RDB key. It accepts no external URL or backup. Prerequisites are the local images listed in `scripts/rehearse-upgrade-recovery.ts`; missing images fail before container creation. From the reviewed development clone:
++
++```bash
++node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
++```
++
++Expected: exit 0, `evidence="synthetic sentinel only"`, separate backup/checksum/restore/behavior flags, `cleanupVerified=true`, `fullBusinessVerification=false`, `releaseReady=false`. Temporary backups are removed (`backupRetained=false`). This verifies synthetic sentinel recovery only, not production write freeze, full business semantics or real-backup intake. Failure stops with a sanitized stage; do not invent a production recovery command.
++
++Production backup/quiescence: **not executable under this candidate's contract**. First identify every writer, bind all storage identities, complete the owner/ACL strategy, private encryption/key custody, persistent Redis uses and same-boundary snapshot implementation. Existing `backup:drill`/`restore:drill` evidence helpers and `pg_restore --list` are not actual restore proof. Do not use old run `completed` or `recovery_point_verified` as new restore evidence.
++
++Authorized real-copy rehearsal: **blocked awaiting a controlled recoverable backup and real intake/restore adapters**. No production export is authorized by this document. Disable external email/webhook/device/model effects in an approved isolated environment. Record provider simulation separately from actual authentication/database/business behavior.
++
++Final maintenance: **not executable**. Before requesting a window the release owner must deliver and prove P2 freeze/drain, P3 same-boundary restore point, P4 independent management migration, frozen source/plan/Archive/mapping, P11a, approved P12, P13, new full V01-V17/D01-D09 attempt, approved runtime pin, verify-only API/worker/web startup, isolated acceptance, exact public-release report and distinct approvals, then P15 traffic. Missing stages cannot be supplied as SQL pasted into a terminal.
++
++## Failure and recovery selection
++
++| Failure point | Safe action |
++| --- | --- |
++| Inspector/input/trust refusal before writes | Stop; preserve output, fix reviewed input/config; no service change |
++| Old controller before migration | Its recorded old-stack recovery remains separate; inspect journal, do not guess |
++| Partial migration / unknown commit | Keep isolated; owner must classify exact checkpoint and restore eligibility; no automatic retry or journal reset |
++| Candidate accepted any business write/delivery/public traffic | Pointer-only rollback is ineligible; whole-state restore requires incident approval and exact target/run binding |
++| Partial DB/object/Redis/roles restore | Stop; no proxy/queue recovery until complete proof |
++
++No destructive production recovery command is supplied: the required target-bound three-store implementation is incomplete. Do not substitute image rollback, `--no-owner`, bucket mirroring with removal or Redis flushing. Preserve old images and recovery artifacts despite their historical insecure-build limitation.
++
++## Independent blockers and owners
++
++Release integration owner: P12/P13 ownership decision, real target context provider, runtime/public gate and controlled handoff. Runtime/security owner: capability inventory, separate pools/login roles, management-only migration/checkpoints, positive and adversarial business tests. Recovery owner: real backup intake, storage/roles adapters, same-boundary and business restore proof. Product owner: #815 authoritative Policy relation or explicitly accepted unavailable contract. Build operator: enterprise CA plus Docker/dependency trust and candidate image provenance. Acceptance owner: full consumer semantics, browser and growth capacity. Data owner: authorized real backup. Production operator/approvers: maintenance authorization. These remain distinct; none is silently moved to OP-09.
+diff --git a/ops/self-hosted/populated-upgrade.zh-CN.md b/ops/self-hosted/populated-upgrade.zh-CN.md
+new file mode 100644
+index 000000000..49b555f83
+--- /dev/null
++++ b/ops/self-hosted/populated-upgrade.zh-CN.md
+@@ -0,0 +1,101 @@
++# 存量 Catalog 升级终端准备手册
++
++> English: [English](populated-upgrade.md)
++
++## 当前可执行边界
++
++候选修复了“诊断成功被当作发布通过”，并提供只读检查工具；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；开发 base 为 `1c9fa56e3eaca6e7984f35a097876772a6e4025d`。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
++
++| 入口 | 实际做到哪里 |
++| --- | --- |
++| 普通 stack apply | 旧 stack 生命周期；canonical 目标在构建/no-op前拒绝 |
++| Catalog apply fresh/populated | 冻结 plan/execute/P11a；不授权对外服务 |
++| Release Verification | purpose/pins/report/approval/runtime pin 模块存在，实际启动尚未接线 |
++| P12/P13/P11b/P14/P15 | 当前候选没有完整可执行集成 |
++
++## 开发环境
++
++机器：独立开发机；用户：开发者；目录：审阅候选仓库。前置：Git 中有源版本对象、Docker 可用、锁定依赖。输入均为合成数据；测试自行创建独立数据库，会写临时测试存储，不停止部署服务。
++
++```bash
++npm ci
++UPG_IDENTITY_DOCKER_TEST=1 npm run test:scripts -- scripts/inspect-upgrade-runtime-identity.test.ts
++npm run test:scripts -- scripts/inspect-populated-upgrade-source.test.ts scripts/inspect-populated-upgrade-source.integration.test.ts
++npm run test:scripts -- scripts/reconcile-upgrade-cli.test.ts ops/self-hosted/scripts/upgrade-compatibility.test.ts
++npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
++```
++
++预期：非零用例收集、退出 0。setup失败或skip不能算真实边界通过。源回归用原版126份迁移建 schema，应用候选11份后缀；少量合成值／历史是有界 oracle，不是全量消费方语义，也不是用户真实数据副本。
++
++## 固定新入口准备：保留旧部署身份
++
++在独立管理／开发机准备审阅 clone，在那里 fetch 并固定候选 commit，核验 tree／完整文件包清单，并安装锁定依赖。保留旧部署 checkout、每个应用旧镜像、Compose project 和实际卷身份。不得先在正在服务的 checkout 执行 pull、checkout、安装依赖或覆盖 `.env`。
++
++新 clone 当前仅可用于检查。**不要运行它的默认 Compose**：还没有绑定旧部署 project／卷／桶／Redis，也不能把新 clone HEAD 记成旧运行服务的 previousSha。绑定这些身份的可执行交接仍是缺失集成，本手册不提供远程下载脚本后立即执行的步骤。
++
++## 生产只读采集
++
++机器：部署机；用户：现有可信部署操作员；目录：原来的 `ops/self-hosted`。前置：单独批准本次采集；输出保留在私有交接区域。以下命令不修改数据库或停止服务，使用原部署已有 wrapper，不能使用未绑定的新 clone。
++
++```bash
++git rev-parse HEAD
++./scripts/compose ps -q api worker web postgres redis
++./scripts/compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U wiseeff -d wiseeff <<'SQL'
++BEGIN READ ONLY;
++SELECT name, checksum FROM public.schema_migrations ORDER BY name;
++SELECT extname, extversion FROM pg_extension ORDER BY extname;
++SELECT count(*) AS revisions,
++       count(typed_value) AS typed_present,
++       count(canonical_value) AS canonical_present,
++       count(raw_value) AS raw_present
++FROM public.project_parameter_binding_revisions;
++ROLLBACK;
++SQL
++```
++
++预期：完整 ledger 和聚合值存在量。SQL null 与 JSON null 不同；总数不能证明关系保全。连接失败、缺表、缺 checksum 或不可查询时停止，不记为0，不修 ledger、不改凭据。容器 ID 是私有运维引用；镜像／Compose／mount 用过滤字段的 `docker inspect` 采集，不能导出包含环境秘密的完整 inspect。
++
++如已批准管理机连接，可在审阅 clone 使用秘密设施私下提供 `DATABASE_URL`，运行新工具；不要把连接串放在命令参数中：
++
++```bash
++node --import tsx scripts/inspect-upgrade-runtime-identity.ts
++node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$UPGRADE_CANDIDATE_SHA"
++```
++
++`UPGRADE_CANDIDATE_SHA` 必须是该 clone 中存在的、审阅记录给出的40位 commit。工具只读，但连接授权需单独取得。身份检查使用新登录，不代表旧 pool 已切换。`inventory-collected`、`inspected`、`authorization:none`、`capabilityAuditComplete:false` 都不批准升级。非零结果保留并逐项处理。源检查覆盖全部 public/Catalog 表计数、列、ledger、扩展能力，不生成正式 P0 graph 或完整语义指纹。
++
++## 授权后备份／停写
++
++**当前尚不可执行。** 恢复负责人必须先交付所有写入方清单、真实三存储身份、owner/ACL方案、私有加密／密钥保管、Redis全部持久用途和同边界快照实现。现有 `backup:drill`／`restore:drill` 声明性辅助工具、`pg_restore --list` 均不证明实际恢复。旧 run 的 completed 或 recovery_point_verified 不能作为这次恢复证据。这里不提供占位符破坏命令。
++
++## 隔离副本预演
++
++开发机合成三存储恢复有真实入口。机器／用户／目录同开发测试；前置为 `scripts/rehearse-upgrade-recovery.ts` 列出的本地镜像和本地隔离 Docker endpoint，缺镜像会在创建容器前失败。仅接受合成模式，自建独立 PostgreSQL／Redis／MinIO 源与目标，写入临时数据，不接受外部 URL 或备份：
++
++```bash
++node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
++```
++
++预期退出0，证据明确 `synthetic sentinel only`；分别记录备份存在／checksum／恢复执行／合成行为验证。检查 PostgreSQL owner/ACL 与受限登录、对象字节／metadata／数量、Redis RDB恢复键。`cleanupVerified=true` 只表示自建资源清理；临时备份不保留（`backupRetained=false`）。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。失败时保留脱敏阶段，不推导生产恢复命令。这不是全量旧业务或生产停写边界证明。
++
++真实数据副本：**blocked，尚无受控可恢复备份和完整接收／恢复 adapter**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
++
++## 最终生产维护与确认点
++
++**尚不可执行，暂不申请维护窗口。** 发布集成负责人需按冻结规范交付并验证：P2停写／排空→P3同边界恢复点→P4独立管理迁移→完整冻结清单/plan/Archive/mapping→P11a→获批P12→P13→新的完整V01–V17/D01–D09 attempt→获批runtime pin→verify-only启动API/worker/web→隔离验收→精确public-release报告与两类独立批准→P15放流。不得用手工建表、修改ledger或隐含SQL补缺失阶段。
++
++## 按失败阶段恢复
++
++| 失败点 | 操作与停止点 |
++| --- | --- |
++| 检查／参数／构建信任拒绝，尚未写入 | 保留输出，修正审阅输入；不变更服务 |
++| 旧controller尚未迁移 | 读取其journal记录，旧服务恢复与候选授权分开，不猜状态 |
++| 部分迁移／未知提交 | 保持隔离，由owner分类checkpoint和恢复资格，不重置journal、不自动重试 |
++| 候选已接受业务写／投递／公开流量 | 永久关闭pointer-only资格，仅可按事故批准进行完整恢复 |
++| DB／对象／Redis／角色部分恢复 | 停止，不恢复queue/proxy后再补数据 |
++
++生产破坏性恢复命令暂不提供：目标绑定的完整实现尚缺。禁止用仅回退镜像、`--no-owner`、带删除的桶mirror或Redis清空替代。保留旧镜像和恢复材料，并保留旧构建insecure事实。
++
++## 独立阻塞与负责人
++
++发布集成owner：P12/P13归属决策、真实目标上下文、运行／公开门禁与固定入口交接。运行安全owner：能力清单、角色迁移与pool拆分、独立管理checkpoint、真实业务权限反例。恢复owner：备份接收、三存储与角色adapter、同边界及业务恢复。产品owner：#815权威关联或明确批准unavailable。构建操作员：企业CA、Docker／依赖信任和镜像来源。验收owner：完整消费方语义、浏览器与增长容量。数据owner：授权真实备份。生产操作员／审批者：维护批准。各项独立保留，不统一推给OP-09。
+diff --git a/ops/self-hosted/scripts/build-network-lib.sh b/ops/self-hosted/scripts/build-network-lib.sh
+index db07ac378..36b5046e7 100755
+--- a/ops/self-hosted/scripts/build-network-lib.sh
++++ b/ops/self-hosted/scripts/build-network-lib.sh
+@@ -188,6 +188,33 @@ wiseeff_build_network_authorize_build() {
+   printf 'WARNING: TLS certificate verification is disabled for this image build only (%s).\n' "$operation" >&2
+ }
+ 
++# Configuration preflight only: callers must still verify the actual candidate
++# image provenance and target release approval. Never accepts the emergency ACK.
++wiseeff_build_network_require_verified() {
++  [ "${WISEEFF_BUILD_TLS_POLICY:-verify}" = "verify" ] || {
++    wiseeff_build_network_error "BUILD-TRUST-INSECURE: this upgrade requires verified build transport."
++    return $?
++  }
++  case "${WISEEFF_NPM_REGISTRY:-https://registry.npmjs.org}" in
++    https://*) ;;
++    *)
++      wiseeff_build_network_error "BUILD-TRUST-REGISTRY: this upgrade requires an HTTPS npm registry."
++      return $?
++      ;;
++  esac
++  if [ "${WISEEFF_BUILD_NETWORK_CA_STATUS:-not configured}" = "configured" ]; then
++    if grep -q -- 'PRIVATE KEY' "$WISEEFF_BUILD_CA_CERT_FILE"; then
++      wiseeff_build_network_error "BUILD-TRUST-CA: trust material must not contain a private key."
++      return $?
++    fi
++    if ! command -v openssl >/dev/null 2>&1 ||
++      ! openssl crl2pkcs7 -nocrl -certfile "$WISEEFF_BUILD_CA_CERT_FILE" -out /dev/null 2>/dev/null; then
++      wiseeff_build_network_error "BUILD-TRUST-CA: certificate parsing failed or openssl is unavailable."
++      return $?
++    fi
++  fi
++}
++
+ wiseeff_build_network_prepare() {
+   local compose_dir="$1"
+   local config_file="${2:-${WISEEFF_BUILD_NETWORK_FILE:-${compose_dir}/.build-network.env}}"
+diff --git a/ops/self-hosted/scripts/build-network-trust.test.ts b/ops/self-hosted/scripts/build-network-trust.test.ts
+new file mode 100644
+index 000000000..c7ff4a2bb
+--- /dev/null
++++ b/ops/self-hosted/scripts/build-network-trust.test.ts
+@@ -0,0 +1,98 @@
++import { spawn, spawnSync } from "node:child_process";
++import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { createServer } from "node:https";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++
++// Synthetic loopback TLS evidence only; this does not attest Docker daemon,
++// registry pulls, npm/apk/git/pip downloads or the real corporate trust chain.
++describe("verified build transport configuration and local TLS", () => {
++  const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-trust-"));
++  const key = join(directory, "synthetic.key");
++  const certificate = join(directory, "synthetic.pem");
++  const expired = join(directory, "expired.pem");
++  const env = { PATH: process.env.PATH, HOME: directory };
++  function openssl(args: string[]) {
++    const result = spawnSync("openssl", args, { encoding: "utf8", env });
++    expect(result.status, "synthetic certificate setup must succeed").toBe(0);
++  }
++  beforeAll(() => {
++    openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", key,
++      "-out", join(directory, "request.pem"), "-subj", "/CN=localhost"]);
++    writeFileSync(join(directory, "extensions"), "subjectAltName=DNS:localhost\nbasicConstraints=critical,CA:TRUE\n");
++    openssl(["x509", "-req", "-in", join(directory, "request.pem"), "-signkey", key,
++      "-out", certificate, "-days", "2", "-extfile", join(directory, "extensions")]);
++    writeFileSync(join(directory, "index"), "");
++    writeFileSync(join(directory, "serial"), "01\n");
++    writeFileSync(join(directory, "ca.conf"), `[ca]\ndefault_ca=local\n[local]\ndatabase=${directory}/index\nserial=${directory}/serial\nnew_certs_dir=${directory}\ndefault_md=sha256\npolicy=names\n[names]\ncommonName=supplied\n`);
++    openssl(["ca", "-batch", "-selfsign", "-config", join(directory, "ca.conf"), "-keyfile", key,
++      "-cert", certificate, "-in", join(directory, "request.pem"), "-out", expired,
++      "-startdate", "20000101000000Z", "-enddate", "20010101000000Z", "-extfile", join(directory, "extensions")]);
++  });
++  afterAll(() => rmSync(directory, { recursive: true, force: true }));
++
++  function preflight(lines: string[]) {
++    const config = join(directory, "config.env");
++    writeFileSync(config, `${lines.join("\n")}\n`, { mode: 0o600 });
++    return spawnSync("bash", ["ops/self-hosted/scripts/build-network.sh", "require-verified", "--config", config, "--json"],
++      { encoding: "utf8", env });
++  }
++  it("accepts parsed trust material without exposing proxy credentials", () => {
++    const result = preflight([`WISEEFF_BUILD_CA_CERT_FILE=${certificate}`, "HTTPS_PROXY=http://private-user:private-secret@proxy.invalid:8080"]);
++    expect(result.status).toBe(0);
++    expect(JSON.parse(result.stdout).buildTlsPolicy).toBe("verify");
++    expect(result.stdout + result.stderr).not.toMatch(/private-user|private-secret|BEGIN CERTIFICATE/);
++  });
++  it.each([
++    ["WISEEFF_BUILD_TLS_POLICY=insecure", "BUILD-TRUST-INSECURE"],
++    ["WISEEFF_NPM_REGISTRY=http://registry.invalid", "BUILD-TRUST-REGISTRY"],
++  ])("refuses %s", (setting, reason) => {
++    const result = preflight([setting]);
++    expect(result.status).toBe(10);
++    expect(result.stderr).toContain(reason);
++  });
++  it("rejects malformed certificates and key-bearing bundles without printing material", () => {
++    for (const contents of ["-----BEGIN CERTIFICATE-----\ninvalid-sensitive-content\n-----END CERTIFICATE-----\n",
++      readFileSync(certificate, "utf8") + readFileSync(key, "utf8")]) {
++      const bundle = join(directory, "invalid.pem");
++      writeFileSync(bundle, contents, { mode: 0o600 });
++      const result = preflight([`WISEEFF_BUILD_CA_CERT_FILE=${bundle}`]);
++      expect(result.status).toBe(10);
++      expect(result.stderr).toContain("BUILD-TRUST-CA");
++      expect(result.stdout + result.stderr).not.toMatch(/invalid-sensitive-content|BEGIN .*KEY|BEGIN CERTIFICATE/);
++    }
++  });
++
++  it.each([
++    ["trusted", true, false, "localhost", 0],
++    ["untrusted", false, false, "localhost", 1],
++    ["wrong hostname", true, false, "wrong.invalid", 1],
++    ["expired", true, true, "localhost", 1],
++  ])("real TLS connection: %s", async (_name, trust, useExpired, servername, expected) => {
++    const cert = useExpired ? expired : certificate;
++    const server = createServer({ key: readFileSync(key), cert: readFileSync(cert) }, (_req, response) => response.end("ok"));
++    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++    try {
++      const address = server.address();
++      if (!address || typeof address === "string") throw new Error("missing loopback server address");
++      const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
++        const child = spawn(process.execPath, ["-e", `
++          require('node:https').get({host:'127.0.0.1',port:${address.port},servername:${JSON.stringify(servername)},timeout:2000},
++            r=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:2));})
++            .on('timeout',function(){this.destroy();}).on('error',e=>{process.stderr.write(e.code);process.exit(1);});
++        `], { env: { ...env, ...(trust ? { NODE_EXTRA_CA_CERTS: cert } : {}) } });
++        let output = "";
++        child.stdout.on("data", (chunk) => { output += chunk; });
++        child.stderr.on("data", (chunk) => { output += chunk; });
++        child.on("error", reject);
++        child.on("close", (code) => resolve({ code, output }));
++      });
++      expect(result.code, result.output).toBe(expected);
++      if (useExpired) expect(result.output).toContain("CERT_HAS_EXPIRED");
++      if (servername === "wrong.invalid") expect(result.output).toContain("ERR_TLS_CERT_ALTNAME_INVALID");
++    } finally {
++      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
++    }
++  });
++});
+diff --git a/ops/self-hosted/scripts/build-network.sh b/ops/self-hosted/scripts/build-network.sh
+index 13e0e37a8..67cfc64ec 100755
+--- a/ops/self-hosted/scripts/build-network.sh
++++ b/ops/self-hosted/scripts/build-network.sh
+@@ -12,10 +12,13 @@ json="false"
+ 
+ usage() {
+   cat <<'EOF'
+-Usage: build-network.sh init|status [--config PATH] [--json]
++Usage: build-network.sh init|status|require-verified [--config PATH] [--json]
+ 
+ `init` creates a mode-0600 config without overwriting an existing file.
+ `status` loads only allowlisted data and prints a credential-free summary.
++`require-verified` rejects insecure policy, HTTP registry, or invalid/key-bearing
++CA material. This is configuration preflight, not proof of a successful trusted
++Docker pull/build or release approval; no network requests are made.
+ The default config is ops/self-hosted/.build-network.env; shell proxy variables
+ take precedence over empty or matching values in that file.
+ EOF
+@@ -23,7 +26,7 @@ EOF
+ 
+ while [ "$#" -gt 0 ]; do
+   case "$1" in
+-    init|status) action="$1"; shift ;;
++    init|status|require-verified) action="$1"; shift ;;
+     --config)
+       [ "$#" -ge 2 ] || { echo "--config requires a path." >&2; exit 2; }
+       config_file="$2"
+@@ -50,6 +53,9 @@ if [ "$action" = "init" ]; then
+ fi
+ 
+ wiseeff_build_network_prepare "$compose_dir" "$config_file"
++if [ "$action" = "require-verified" ]; then
++  wiseeff_build_network_require_verified
++fi
+ if [ "$json" = "true" ]; then
+   wiseeff_build_network_print_status json
+ else
+diff --git a/ops/self-hosted/scripts/upgrade-compatibility.test.ts b/ops/self-hosted/scripts/upgrade-compatibility.test.ts
+new file mode 100644
+index 000000000..3c0ad8e7e
+--- /dev/null
++++ b/ops/self-hosted/scripts/upgrade-compatibility.test.ts
+@@ -0,0 +1,66 @@
++import { spawnSync } from "node:child_process";
++import { describe, expect, it } from "vitest";
++
++function run(command: string) {
++  return spawnSync("bash", ["-c", `source ops/self-hosted/scripts/upgrade-lib.sh\n${command}`], { encoding: "utf8" });
++}
++
++describe("UPG-01 ordinary stack compatibility", () => {
++  it.each(["resume", "recover_candidate"])("refuses canonical %s before candidate mutation", (action) => {
++    const result = run(`
++      wiseeff_upgrade_reject_root_runtime() { :; }
++      wiseeff_upgrade_load_run() { :; }
++      wiseeff_upgrade_acquire_lock() { :; }
++      wiseeff_upgrade_release_lock() { :; }
++      wiseeff_upgrade_validate_env() { :; }
++      wiseeff_upgrade_git() { printf '100644 blob fixture\\tserver/modules/catalog-cutover/interface.ts\\n'; }
++      wiseeff_upgrade_state_read() {
++        case "$1" in
++          outcome) printf running;; phase|failed_phase) printf candidate-recovery-verifying;;
++          migration_started|recovery_point_verified) printf true;;
++        esac
++      }
++      wiseeff_upgrade_state_write() { echo UNAUTHORIZED-MUTATION; }
++      wiseeff_upgrade_compose() { echo UNAUTHORIZED-MUTATION; }
++      upgrade_run_id=fixture; upgrade_target_sha=fixture
++      upgrade_candidate_image_tag=fixture; upgrade_confirm=recover-candidate-fixture
++      wiseeff_upgrade_run_${action}
++    `);
++    expect(result.status).toBe(70);
++    expect(result.stderr).toContain("PCAT-UPG-STACK-CATALOG-UNSUPPORTED");
++    expect(result.stdout).not.toContain("UNAUTHORIZED-MUTATION");
++  });
++  it("fails closed if immutable target inspection fails", () => {
++    const result = run(`wiseeff_upgrade_git() { return 1; }; upgrade_target_sha=unknown; wiseeff_upgrade_require_supported_stack_target`);
++    expect(result.status).toBe(10);
++    expect(result.stderr).toContain("PCAT-UPG-TARGET-UNKNOWN");
++  });
++  it("keeps pre-migration old-stack restoration separate from candidate authorization", () => {
++    const result = run(`
++      wiseeff_upgrade_reject_root_runtime() { :; }; wiseeff_upgrade_load_run() { :; }
++      wiseeff_upgrade_acquire_lock() { :; }; wiseeff_upgrade_release_lock() { :; }
++      wiseeff_upgrade_validate_env() { :; }; wiseeff_upgrade_state_read() { printf false; }
++      wiseeff_upgrade_restore_old_stack_after_stop() { printf OLD-STACK-RESTORE; }
++      wiseeff_upgrade_run_resume
++    `);
++    expect(result.status).toBe(0);
++    expect(result.stdout).toBe("OLD-STACK-RESTORE");
++  });
++  it("refuses canonical same-SHA before no-op or downtime", () => {
++    const result = run(`
++      wiseeff_upgrade_acquire_lock() { :; }
++      wiseeff_upgrade_release_lock() { :; }
++      wiseeff_upgrade_preflight() { upgrade_previous_sha=abc; upgrade_target_sha=abc; }
++      wiseeff_upgrade_git() { printf '100644 blob fixture\\tserver/modules/catalog-cutover/interface.ts\\n'; }
++      wiseeff_upgrade_target_app_image_is_running() { return 0; }
++      wiseeff_upgrade_public_probe() { return 0; }
++      wiseeff_upgrade_init_run() { echo UNAUTHORIZED-MUTATION; }
++      upgrade_restart=false; upgrade_json=true
++      wiseeff_upgrade_run_apply
++    `);
++    expect(result.status).toBe(10);
++    expect(result.stderr).toContain("PCAT-UPG-STACK-CATALOG-UNSUPPORTED");
++    expect(result.stdout).not.toContain("noop");
++    expect(result.stdout).not.toContain("UNAUTHORIZED-MUTATION");
++  });
++});
+diff --git a/ops/self-hosted/scripts/upgrade-lib.sh b/ops/self-hosted/scripts/upgrade-lib.sh
+index b215fb049..bc1e1cf57 100755
+--- a/ops/self-hosted/scripts/upgrade-lib.sh
++++ b/ops/self-hosted/scripts/upgrade-lib.sh
+@@ -1985,6 +1985,7 @@ wiseeff_upgrade_run_recover_candidate() {
+     wiseeff_upgrade_die 2 "Candidate recovery requires --confirm recover-candidate-${upgrade_run_id}."
+     return $?
+   fi
++  wiseeff_upgrade_require_supported_stack_target || return 70
+ 
+   upgrade_recovery_queue_image_tag="$candidate_image"
+   wiseeff_upgrade_state_write recovery_started true
+@@ -2104,6 +2105,7 @@ wiseeff_upgrade_run_resume() {
+     wiseeff_upgrade_restore_old_stack_after_stop
+     return $?
+   fi
++  wiseeff_upgrade_require_supported_stack_target || return 70
+ 
+   [ -n "$upgrade_candidate_image_tag" ] || {
+     wiseeff_upgrade_die 70 "Candidate image identity is missing; manual recovery is required."
+@@ -2560,6 +2562,21 @@ wiseeff_upgrade_wait_public_probe() {
+   return 1
+ }
+ 
++# The ordinary stack controller predates Catalog's purpose-scoped release chain.
++# Detect this from the immutable target tree, including same-SHA attempts. This
++# is a compatibility refusal, not a replacement Release Verification decision.
++wiseeff_upgrade_require_supported_stack_target() {
++  local catalog_entry
++  if ! catalog_entry="$(wiseeff_upgrade_git ls-tree "$upgrade_target_sha" -- server/modules/catalog-cutover/interface.ts)"; then
++    wiseeff_upgrade_die 10 "PCAT-UPG-TARGET-UNKNOWN: immutable target inspection failed."
++    return $?
++  fi
++  if [ -n "$catalog_entry" ]; then
++    wiseeff_upgrade_die 10 "PCAT-UPG-STACK-CATALOG-UNSUPPORTED: ordinary stack apply cannot execute the approved Catalog activation/runtime/public-release chain. Keep the current service unchanged; use the reviewed populated upgrade procedure."
++    return $?
++  fi
++}
++
+ wiseeff_upgrade_run_apply() {
+   wiseeff_upgrade_acquire_lock
+   trap wiseeff_upgrade_release_lock EXIT
+@@ -2568,6 +2585,7 @@ wiseeff_upgrade_run_apply() {
+   if ! wiseeff_upgrade_preflight; then
+     return 10
+   fi
++  wiseeff_upgrade_require_supported_stack_target || return 10
+   if [ "$upgrade_previous_sha" = "$upgrade_target_sha" ] &&
+     [ "$upgrade_restart" != "true" ] &&
+     wiseeff_upgrade_target_app_image_is_running &&
+diff --git a/ops/self-hosted/scripts/upgrade.sh b/ops/self-hosted/scripts/upgrade.sh
+index cd45e79f5..3533d19d7 100755
+--- a/ops/self-hosted/scripts/upgrade.sh
++++ b/ops/self-hosted/scripts/upgrade.sh
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env bash
+ # WiseEff self-hosted upgrade entry. The implementation lives in upgrade-lib.sh
+-# so the launcher can be replaced safely when a target checkout changes.
++# Loaded functions remain at the entry version even when checkout changes.
++# Target commands must reject incompatible legacy controller invocations.
+ set -euo pipefail
+ 
+ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+diff --git a/ops/self-hosted/scripts/upgrade.sh.test.ts b/ops/self-hosted/scripts/upgrade.sh.test.ts
+index d02ed2510..85d7fe111 100644
+--- a/ops/self-hosted/scripts/upgrade.sh.test.ts
++++ b/ops/self-hosted/scripts/upgrade.sh.test.ts
+@@ -892,6 +892,8 @@ describe("upgrade.sh public interface", () => {
+       upgrade_json=false
+       wiseeff_upgrade_acquire_lock() { return 0; }
+       wiseeff_upgrade_release_lock() { return 0; }
++      # This legacy stack fixture predates the canonical Catalog target tree.
++      wiseeff_upgrade_git() { [ "$1" = "ls-tree" ]; }
+       wiseeff_upgrade_preflight() {
+         upgrade_previous_sha=target-sha
+         upgrade_target_sha=target-sha
+@@ -918,6 +920,8 @@ describe("upgrade.sh public interface", () => {
+       upgrade_json=false
+       wiseeff_upgrade_acquire_lock() { return 0; }
+       wiseeff_upgrade_release_lock() { return 0; }
++      # Canonical same-SHA refusal is covered separately; this target is legacy.
++      wiseeff_upgrade_git() { [ "$1" = "ls-tree" ]; }
+       wiseeff_upgrade_preflight() {
+         upgrade_previous_sha=target-sha
+         upgrade_target_sha=target-sha
+diff --git a/ops/self-hosted/upgrade.md b/ops/self-hosted/upgrade.md
+index 5712ff065..cd848130e 100644
+--- a/ops/self-hosted/upgrade.md
++++ b/ops/self-hosted/upgrade.md
+@@ -2,6 +2,22 @@
+ 
+ > Chinese: [Chinese](upgrade.zh-CN.md)
+ 
++## Canonical Catalog compatibility stop
++
++For a pre-canonical populated deployment, follow [Populated upgrade preparation](populated-upgrade.md). The ordinary stack controller cannot execute Catalog P12/P13, approved runtime startup and public release. It now refuses a canonical target before build/downtime, including same-SHA no-op, and refuses candidate resume/recovery. This is a compatibility stop, not a completed migration path. Catalog apply still ends at P11a; `applyCompleted=true` does not authorize startup or traffic.
++
++The source controller at `82344044b436a8dafecefbb85dfd724cecb05e3f` calls `npm run parameter-definitions:check -- --catalog-only`. New candidate commands refuse this unbound release check with exit 2 and `PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`. Checking out a target does not reload functions in the already-running old shell. Do not test this compatibility rejection on production: an old controller may reach it after downtime/migrations.
++
++Report diagnosis is explicitly separate:
++
++```bash
++npm run parameter-definitions:reconcile -- --verify --diagnostic --report-id missing
++```
++
++With a private configured database, absent returns typed `absent/missing` and exit 0 because the diagnostic query succeeded. Never substitute it for a release gate. Query failure exits nonzero with sanitized output. The check command does not accept report existence as authorization.
++
++`./scripts/build-network.sh require-verified --json` checks existing private build-network configuration and rejects insecure transport, HTTP registry and malformed/key-bearing trust material. It makes no network request and does not attest Docker pulls, dependency downloads, image provenance or enterprise CA compatibility. The emergency insecure channel remains available to existing callers; it cannot establish readiness for this upgrade.
++
+ `scripts/upgrade.sh` is the normal upgrade entry for an already running self-hosted checkout. It upgrades to one immutable Git commit, builds the candidate before downtime, pauses and drains application work, creates a verified recovery point, recreates every service against the existing volumes, waits for migrations and health gates, and records a durable journal.
+ 
+ The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
+@@ -98,6 +114,8 @@ The compatibility path accepts legacy deployments whose API, worker, and web con
+ 
+ ## First adoption
+ 
++The historical checkout procedure below applies only to legacy stack upgrades. It is not populated canonical migration preparation. For canonical migration preserve the source checkout, service images, Compose identity and volumes; the separate preparation procedure above remains blocked before execution until its missing integrations are reviewed.
++
+ Install the release containing this entry through the existing controlled procedure. Before the first real run, check the checkout and live stack:
+ 
+ ```bash
+diff --git a/ops/self-hosted/upgrade.zh-CN.md b/ops/self-hosted/upgrade.zh-CN.md
+index 5ed142a6d..25f308025 100644
+--- a/ops/self-hosted/upgrade.zh-CN.md
++++ b/ops/self-hosted/upgrade.zh-CN.md
+@@ -2,6 +2,22 @@
+ 
+ > English: [English](upgrade.md)
+ 
++## canonical Catalog 兼容停止点
++
++已有旧参数数据的部署先阅读[存量升级准备手册](populated-upgrade.zh-CN.md)。普通 stack controller 尚不能执行 Catalog P12/P13、获批运行启动与公开发布，现会在构建／停服前拒绝 canonical 目标（包括同 SHA/no-op），并拒绝候选 resume/recover-candidate。这是兼容停止，不是迁移路径完成。Catalog apply 仍止于 P11a；`applyCompleted=true` 不授权启动或开放流量。
++
++源 `82344044b436a8dafecefbb85dfd724cecb05e3f` 升级器调用 `npm run parameter-definitions:check -- --catalog-only`。新候选对此缺少受控目标上下文的发布检查返回退出码 2、`PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`。checkout 不会重载旧 shell 已加载的函数。不得在生产试验此拒绝：旧 controller 可能停服／迁移之后才到达它。
++
++报告诊断必须显式执行：
++
++```bash
++npm run parameter-definitions:reconcile -- --verify --diagnostic --report-id missing
++```
++
++配置私有数据库后，报告不存在会返回 typed `absent/missing` 和退出码 0，含义仅为查询成功。不得替换发布门禁。查询失败返回非零及脱敏诊断；check 命令不把报告存在当成发布授权。
++
++`./scripts/build-network.sh require-verified --json` 复用私有构建配置，拒绝 insecure、HTTP registry、非法证书或夹带私钥的 CA。它不发网络请求，不证明 Docker 拉取、依赖下载、镜像来源或企业 CA 兼容。既有紧急 insecure 通道保留，但不能证明本次升级就绪。
++
+ `scripts/upgrade.sh` 是已经运行的自托管 checkout 的标准升级入口。它把目标解析为唯一 Git commit，在停机前构建候选镜像，暂停并排空应用工作，创建并校验恢复点，基于原有 volume 重建全部服务，等待迁移与健康门禁完成，并写入可恢复的运行日志。
+ 
+ 宿主机只需要 Docker Engine 和 Compose，不需要 Node.js。命令会读取 `ops/self-hosted/.env`，但不会改写它、轮换密钥、写入种子数据、创建管理员，也不会删除 volume。实现不会调用 `compose down -v`、`volume rm` 或 `system prune`。
+diff --git a/scripts/check-parameter-catalog-boundaries.test.ts b/scripts/check-parameter-catalog-boundaries.test.ts
+index be2217b48..2c63eda93 100644
+--- a/scripts/check-parameter-catalog-boundaries.test.ts
++++ b/scripts/check-parameter-catalog-boundaries.test.ts
+@@ -19,7 +19,9 @@ import {
+   allowlistShardDirectory,
+   boundaryViolationFixturePath,
+   loadBoundaryViolationFixture,
++  loadAllowlistIndex,
+ } from "./parameter-catalog-allowlist/index";
++import { compareBoundaryInventory } from "./parameter-catalog-allowlist/deterministicOutput";
+ 
+ describe("parameter catalog boundary checker", () => {
+   it("freezes the exact 37 schema-qualified canonical relations", () => {
+@@ -770,13 +772,32 @@ describe("parameter catalog boundary checker", () => {
+       expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(23);
+       expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(23);
+       expect(report.summary).toEqual({
+-        violations: 3_513,
+-        allowlisted: 3_513,
++        violations: 3_509,
++        allowlisted: 3_509,
+         unallowlisted: 0,
+         staleAllowances: 0,
+         metadataMismatches: 0,
+         allowlistGrowth: 0,
+       });
++      // Reviewed M1 deletion: these exact four legacy dependencies no longer
++      // exist. Historical fixture identities remain immutable and cannot be
++      // reintroduced through a smaller numeric summary.
++      const removedIds = [
++        "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:a43f4f7a42918672",
++        "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:332be66199b7f0bb",
++        "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:866526a44b8818f5",
++        "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:435e4c1c7a8cc55e",
++      ];
++      const removed = fixture.violations.filter((entry) => removedIds.includes(entry.id));
++      expect(removed.map((entry) => entry.id).sort()).toEqual([...removedIds].sort());
++      const currentAllowances = await loadAllowlistIndex(repoRoot);
++      expect(currentAllowances.entries.filter((entry) => removedIds.includes(entry.id))).toEqual([]);
++      expect(report.violations.filter((entry) => removedIds.includes(entry.id))).toEqual([]);
++      const reintroduced = compareBoundaryInventory(
++        [...report.violations, ...removed], currentAllowances.entries, fixture.violations,
++      );
++      expect(reintroduced.status).toBe("failed");
++      expect(reintroduced.unallowlisted.map((entry) => entry.id).sort()).toEqual([...removedIds].sort());
+       expect(report.violations.map((violation) => violation.id)).toEqual(
+         [...report.violations.map((violation) => violation.id)].sort(),
+       );
+diff --git a/scripts/fixtures/upgrade-82344044-catalog-gate.sh b/scripts/fixtures/upgrade-82344044-catalog-gate.sh
+new file mode 100644
+index 000000000..4c8b7cd37
+--- /dev/null
++++ b/scripts/fixtures/upgrade-82344044-catalog-gate.sh
+@@ -0,0 +1,7 @@
++wiseeff_upgrade_verify_parameter_catalog() {
++  if wiseeff_upgrade_compose exec -T api npm run parameter-definitions:check -- --catalog-only; then
++    return 0
++  fi
++  wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-parameter-catalog "The canonical driver parameter catalog verification gate is blocked."
++  return 1
++}
+diff --git a/scripts/inspect-populated-upgrade-source.integration.test.ts b/scripts/inspect-populated-upgrade-source.integration.test.ts
+new file mode 100644
+index 000000000..8a74c9f80
+--- /dev/null
++++ b/scripts/inspect-populated-upgrade-source.integration.test.ts
+@@ -0,0 +1,115 @@
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { execFileSync } from "node:child_process";
++import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import { randomUUID } from "node:crypto";
++import os from "node:os";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++import pg from "pg";
++import { applyMigrations } from "../server/shared/database/migrations";
++import { createPostgresDatabase } from "../server/shared/database/client";
++import { gitMigrationInventory, inspectSource, SOURCE_SHA } from "./inspect-populated-upgrade-source";
++import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
++
++// No external database URL is accepted. This suite owns a newly created cluster,
++// including its cluster-global roles. No volume or host mount is used.
++describe("source SHA on a disposable postgres:16-alpine cluster", () => {
++  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
++  const name = `wiseeff-upg-source-${randomUUID().slice(0, 8)}`;
++  const password = randomUUID();
++  const source = gitMigrationInventory(root, SOURCE_SHA);
++  const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
++  const candidate = gitMigrationInventory(root, candidateSha);
++  let directory: string;
++  let client: pg.Client;
++  let database: ReturnType<typeof createPostgresDatabase>;
++  let connectionUrl: string;
++  let id = "";
++  let docker: ReturnType<typeof createIsolatedUpgradeDocker>;
++  beforeAll(async () => {
++    docker = createIsolatedUpgradeDocker();
++    directory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-source-migrations-"));
++    for (const migration of source) await writeFile(path.join(directory, migration.name), execFileSync("git", ["show", `${SOURCE_SHA}:server/migrations/${migration.name}`], { cwd: root }));
++    id = docker.command(["run", "-d", "--name", name, "--label", `wiseeff.test=${name}`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", "postgres:16-alpine"]).toString().trim();
++    docker.assertOwned(id, "wiseeff.test", name);
++    const port = docker.command(["port", id, "5432/tcp"]).toString().trim().split(":").at(-1);
++    const url = `postgres://postgres:${password}@127.0.0.1:${port}/postgres`;
++    connectionUrl = url;
++    for (let attempt = 0; ; attempt++) {
++      try { docker.assertOwned(id, "wiseeff.test", name); docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]); break; }
++      catch { if (attempt === 40) throw new Error("disposable-postgres-not-ready"); await new Promise((resolve) => setTimeout(resolve, 250)); }
++    }
++    database = createPostgresDatabase(url);
++    client = new pg.Client({ connectionString: url });
++    await client.connect();
++    await applyMigrations(database, directory);
++  }, 120_000);
++  afterAll(async () => {
++    await client?.end();
++    await database?.close();
++    if (id) { docker.assertOwned(id, "wiseeff.test", name); docker.command(["rm", "-f", "-v", id]); }
++    if (directory) await rm(directory, { recursive: true, force: true });
++  });
++  it("inspects actual old schema without exposing values; vector is unavailable", async () => {
++    await client.query("insert into organizations(id,name) values ('upg-synthetic-org','synthetic-secret-marker')");
++    await client.query(`
++      insert into projects(id,organization_id,name,code) values ('upg-project','upg-synthetic-org','Synthetic','UPG');
++      insert into dts_config_set(id,organization_id,project_id,name) values ('upg-config','upg-synthetic-org','upg-project','Synthetic');
++      insert into dts_config_revisions(id,organization_id,project_id,config_set_id,revision_number,status)
++        values ('upg-rev1','upg-synthetic-org','upg-project','upg-config',1,'draft'), ('upg-rev2','upg-synthetic-org','upg-project','upg-config',2,'draft');
++      insert into parameter_specs(id,organization_id,source_kind,specification_key) values ('upg-spec','upg-synthetic-org','manual','synthetic');
++      insert into parameter_spec_versions(id,parameter_spec_id,version,display_name,description,value_shape,lifecycle)
++        values ('upg-spec-v1','upg-spec',1,'Synthetic','Synthetic','{"kind":"string"}','draft');
++      insert into parameter_modules(id,organization_id,name,path,depth,sort_order,description,scope)
++        values ('upg-module','upg-synthetic-org','Synthetic','upg-module',1,0,'','');
++      insert into project_parameter_bindings(id,organization_id,project_id,parameter_spec_id,module_id)
++        values ('upg-binding','upg-synthetic-org','upg-project','upg-spec','upg-module');
++      insert into project_parameter_binding_revisions(id,binding_id,config_revision_id,parameter_spec_version_id,typed_value,canonical_value,raw_value)
++        values ('upg-binding-v1','upg-binding','upg-rev1','upg-spec-v1','null',null,null),
++          ('upg-binding-v2','upg-binding','upg-rev2','upg-spec-v1','"synthetic-secret-marker"','"synthetic-secret-marker"','synthetic-secret-marker');
++    `);
++    const result = await inspectSource(client, source, source);
++    expect(result.kind).toBe("inspected");
++    expect(result.mode).toBe("populated");
++    expect(result.valuePresence).toEqual({ typed_value: "2", canonical_value: "1", raw_value: "1" });
++    expect(result.inventory.find((entry) => entry.name === "project_parameter_bindings")?.count).toBe("1");
++    expect(result.inventory.find((entry) => entry.name === "project_parameter_binding_revisions")?.count).toBe("2");
++    expect(result.extensions.some((entry) => entry.name === "vector")).toBe(false);
++    expect(JSON.stringify(result)).not.toContain("synthetic-secret-marker");
++    expect(result.ledger).toEqual(source);
++    expect(await applyMigrations(database, directory)).toEqual([]);
++    const output = execFileSync(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), path.join(root, "scripts/inspect-populated-upgrade-source.ts"), "--candidate-sha", candidateSha], { cwd: root, env: { ...process.env, DATABASE_URL: connectionUrl }, encoding: "utf8" });
++    expect(JSON.parse(output)).toMatchObject({ kind: "inspected", authorization: "none", mode: "populated" });
++    expect(output).not.toContain(password);
++    expect(output).not.toContain("synthetic-secret-marker");
++  });
++  it("applies the exact candidate suffix while preserving synthetic legacy values", async () => {
++    for (const migration of candidate) await writeFile(path.join(directory, migration.name), execFileSync("git", ["show", `${candidateSha}:server/migrations/${migration.name}`], { cwd: root }));
++    expect(await applyMigrations(database, directory)).toEqual(candidate.filter((entry) => !source.some((old) => old.name === entry.name)).map((entry) => entry.name));
++    const result = await inspectSource(client, source, candidate);
++    expect(result.kind).toBe("inspected");
++    expect(result.mode).toBe("canonical-present-requires-separate-patch-inspection");
++    expect((await client.query("select typed_value,canonical_value,raw_value from public.project_parameter_binding_revisions order by id")).rows).toEqual([
++      { typed_value: null, canonical_value: null, raw_value: null },
++      { typed_value: "synthetic-secret-marker", canonical_value: "synthetic-secret-marker", raw_value: "synthetic-secret-marker" },
++    ]);
++    expect(await applyMigrations(database, directory)).toEqual([]);
++  });
++  it("keeps a committed migration before failure and retries only the failed suffix", async () => {
++    await writeFile(path.join(directory, "9998_upg_test.sql"), "create table upg_test_committed(id integer primary key); insert into upg_test_committed values (1);");
++    await writeFile(path.join(directory, "9999_upg_test.sql"), "select * from upg_test_missing_dependency;");
++    await expect(applyMigrations(database, directory)).rejects.toThrow();
++    expect((await client.query("select count(*)::int as count from upg_test_committed")).rows[0].count).toBe(1);
++    expect((await client.query("select name from schema_migrations where name like '999%' order by name")).rows).toEqual([{ name: "9998_upg_test.sql" }]);
++    await client.query("create table upg_test_missing_dependency(id integer)");
++    expect(await applyMigrations(database, directory)).toEqual(["9999_upg_test.sql"]);
++    expect((await client.query("select count(*)::int as count from upg_test_committed")).rows[0].count).toBe(1);
++  });
++  it("refuses checksum drift before another migration", async () => {
++    await client.query("update schema_migrations set checksum='corrupt' where name=$1", [source[0].name]);
++    await expect(applyMigrations(database, directory)).rejects.toThrow(/checksum/i);
++    const result = await inspectSource(client, source, source);
++    expect(result.kind).toBe("blocked");
++    expect(result.blockers).toContain(`checksum-drift:${source[0].name}`);
++  });
++});
+diff --git a/scripts/inspect-populated-upgrade-source.test.ts b/scripts/inspect-populated-upgrade-source.test.ts
+new file mode 100644
+index 000000000..049584927
+--- /dev/null
++++ b/scripts/inspect-populated-upgrade-source.test.ts
+@@ -0,0 +1,34 @@
++import { describe, expect, it } from "vitest";
++import { compareLedger, gitMigrationInventory, SOURCE_SHA } from "./inspect-populated-upgrade-source";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const source = [{ name: "0001.sql", checksum: "a" }];
++const candidate = [...source, { name: "0002.sql", checksum: "b" }, { name: "0003.sql", checksum: "c" }];
++describe("source inventory rejects guessed compatibility", () => {
++  it("lists the complete pending suffix and accepts a committed prefix", () => {
++    expect(compareLedger(source, candidate, source)).toEqual({ blockers: [], pending: candidate.slice(1) });
++    expect(compareLedger(source, candidate, candidate.slice(0, 2))).toEqual({ blockers: [], pending: candidate.slice(2) });
++  });
++  it.each([
++    [[{ name: "0001.sql", checksum: null }], "checksum-drift:0001.sql"],
++    [[{ name: "0001.sql", checksum: "wrong" }], "checksum-drift:0001.sql"],
++    [[...source, candidate[2]], "non-prefix-ledger"],
++    [[...source, { name: "unknown.sql", checksum: "a" }], "unknown-ledger-name:unknown.sql"],
++    [[...source, { name: "0121_classify_nodename_driver_subjects.sql", checksum: "a" }], "unsafe-historical-migration"],
++    [[], "source-migration-missing:0001.sql"],
++  ] as const)("rejects incompatible ledger %#", (ledger, reason) => {
++    expect(compareLedger(source, candidate, [...ledger])).toMatchObject({ blockers: expect.arrayContaining([reason]) });
++  });
++  it("never rewrites immutable source history", () => {
++    expect(compareLedger(source, [{ ...source[0], checksum: "changed" }], source).blockers).toContain("source-migration-mutated:0001.sql");
++  });
++  it("uses actual source git bytes and preserves legal 0121 identity", () => {
++    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
++    const actual = gitMigrationInventory(root, SOURCE_SHA);
++    expect(actual.at(-1)?.name).toBe("0128_repair_driver_placement_subject_cutover.sql");
++    expect(actual.some((entry) => entry.name.startsWith("0121_"))).toBe(true);
++    expect(actual.some((entry) => entry.name === "0121_classify_nodename_driver_subjects.sql")).toBe(false);
++    expect(compareLedger(actual, actual, actual).blockers).toEqual([]);
++  });
++});
+diff --git a/scripts/inspect-populated-upgrade-source.ts b/scripts/inspect-populated-upgrade-source.ts
+new file mode 100644
+index 000000000..da0a7f4a5
+--- /dev/null
++++ b/scripts/inspect-populated-upgrade-source.ts
+@@ -0,0 +1,90 @@
++import { createHash } from "node:crypto";
++import { execFileSync } from "node:child_process";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++import pg from "pg";
++
++export const SOURCE_SHA = "82344044b436a8dafecefbb85dfd724cecb05e3f";
++export type MigrationEntry = { name: string; checksum: string | null };
++const hash = (value: string) => createHash("sha256").update(value).digest("hex");
++const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
++
++export function gitMigrationInventory(root: string, revision: string): MigrationEntry[] {
++  if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error("exact-commit-required");
++  const names = execFileSync("git", ["ls-tree", "--name-only", `${revision}:server/migrations`], { cwd: root, encoding: "utf8" }).trim().split("\n").filter((name) => name.endsWith(".sql")).sort();
++  return names.map((name) => ({ name, checksum: hash(execFileSync("git", ["show", `${revision}:server/migrations/${name}`], { cwd: root, encoding: "utf8" })) }));
++}
++
++export function compareLedger(source: MigrationEntry[], candidate: MigrationEntry[], ledger: MigrationEntry[]) {
++  const blockers: string[] = [];
++  const actual = new Map(ledger.map((entry) => [entry.name, entry.checksum]));
++  const packaged = new Map(candidate.map((entry) => [entry.name, entry.checksum]));
++  if (actual.size !== ledger.length) blockers.push("duplicate-ledger-name");
++  for (const entry of source) {
++    if (packaged.get(entry.name) !== entry.checksum) blockers.push(`source-migration-mutated:${entry.name}`);
++    if (!actual.has(entry.name)) blockers.push(`source-migration-missing:${entry.name}`);
++  }
++  for (const entry of ledger) {
++    if (entry.name === "0121_classify_nodename_driver_subjects.sql") blockers.push("unsafe-historical-migration");
++    if (!packaged.has(entry.name)) blockers.push(`unknown-ledger-name:${entry.name}`);
++    else if (!entry.checksum || packaged.get(entry.name) !== entry.checksum) blockers.push(`checksum-drift:${entry.name}`);
++  }
++  const pending = candidate.filter((entry) => !actual.has(entry.name));
++  if (pending.some((entry) => ledger.some((applied) => applied.name > entry.name))) blockers.push("non-prefix-ledger");
++  return { blockers, pending };
++}
++
++/** Aggregate-only, one repeatable read snapshot. This does not authorize migration or prove semantics. */
++export async function inspectSource(client: pg.Client, source: MigrationEntry[], candidate: MigrationEntry[]) {
++  await client.query("begin isolation level repeatable read read only");
++  try {
++    await client.query("set local statement_timeout = '30s'");
++    // PostgreSQL errors rather than silently returning an RLS-filtered inventory.
++    await client.query("set local row_security = off");
++    const ledger = (await client.query<MigrationEntry>("select name, checksum from public.schema_migrations order by name")).rows;
++    const comparison = compareLedger(source, candidate, ledger);
++    const relations = (await client.query<{ schema: string; name: string }>("select n.nspname as schema, c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','parameter_catalog') and c.relkind in ('r','p') order by 1,2")).rows;
++    for (const name of ["parameter_specs", "parameter_spec_versions", "driver_schemas", "driver_schema_versions", "driver_registration_placements", "project_parameter_bindings", "project_parameter_binding_revisions", "parameter_spec_review_tasks", "dts_config_revisions", "project_parameter_files", "parameter_policy_targets"]) {
++      if (!relations.some((relation) => relation.schema === "public" && relation.name === name)) comparison.blockers.push(`source-relation-unavailable:${name}`);
++    }
++    const inventory = [];
++    for (const relation of relations) {
++      const count = (await client.query<{ count: string }>(`select count(*)::text as count from ${quote(relation.schema)}.${quote(relation.name)}`)).rows[0].count;
++      inventory.push({ ...relation, count });
++    }
++    const columns = (await client.query<{ table_schema: string; table_name: string; column_name: string; data_type: string }>("select table_schema,table_name,column_name,data_type from information_schema.columns where table_schema in ('public','parameter_catalog') order by table_schema,table_name,ordinal_position")).rows;
++    const valuePresence: Record<string, string> = {};
++    for (const name of ["typed_value", "canonical_value", "raw_value"]) {
++      if (columns.some((column) => column.table_schema === "public" && column.table_name === "project_parameter_binding_revisions" && column.column_name === name)) {
++        valuePresence[name] = (await client.query<{ count: string }>(`select count(*)::text as count from public.project_parameter_binding_revisions where ${quote(name)} is not null`)).rows[0].count;
++      } else comparison.blockers.push(`value-column-unavailable:${name}`);
++    }
++    const canonical = relations.some((relation) => relation.schema === "parameter_catalog");
++    const populated = inventory.some((relation) => relation.schema === "public" && relation.name !== "schema_migrations" && relation.count !== "0");
++    const extensions = (await client.query("select name, default_version, installed_version from pg_available_extensions order by name")).rows;
++    await client.query("commit");
++    return { kind: comparison.blockers.length ? "blocked" : "inspected", authorization: "none", inventoryScope: "all-public-and-parameter-catalog-tables", mode: canonical ? "canonical-present-requires-separate-patch-inspection" : populated ? "populated" : "empty-public-inventory", ledger, ...comparison, inventory, columns, valuePresence, extensions };
++  } catch {
++    await client.query("rollback");
++    throw new Error("source-inspection-query-failed");
++  }
++}
++
++async function main(args: string[]) {
++  if (args.length !== 2 || args[0] !== "--candidate-sha" || !/^[a-f0-9]{40}$/.test(args[1])) throw new Error("usage: --candidate-sha EXACT_SHA; private DATABASE_URL required");
++  if (!process.env.DATABASE_URL) throw new Error("private-database-url-required");
++  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
++  const source = gitMigrationInventory(root, SOURCE_SHA);
++  const candidate = gitMigrationInventory(root, args[1]);
++  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
++  try {
++    await client.connect();
++    const result = await inspectSource(client, source, candidate);
++    process.stdout.write(`${JSON.stringify({ sourceSha: SOURCE_SHA, candidateSha: args[1], ...result }, null, 2)}\n`);
++    process.exitCode = result.kind === "blocked" ? 2 : 0;
++  } finally { await client.end(); }
++}
++
++if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  main(process.argv.slice(2)).catch(() => { process.stderr.write("source-inspection-failed; verify private connection and exact candidate inputs\n"); process.exitCode = 1; });
++}
+diff --git a/scripts/inspect-upgrade-runtime-identity.test.ts b/scripts/inspect-upgrade-runtime-identity.test.ts
+new file mode 100644
+index 000000000..a6c19a4ed
+--- /dev/null
++++ b/scripts/inspect-upgrade-runtime-identity.test.ts
+@@ -0,0 +1,116 @@
++import { spawnSync } from "node:child_process";
++import { randomBytes } from "node:crypto";
++import path from "node:path";
++import { setTimeout } from "node:timers/promises";
++import pg from "pg";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { inspectRuntimeIdentity, runIdentityInspector } from "./inspect-upgrade-runtime-identity";
++import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
++
++describe("runtime identity CLI input", () => {
++  it("rejects missing connection and unknown flags before connecting", async () => {
++    expect((await runIdentityInspector([], {})).exitCode).toBe(2);
++    expect((await runIdentityInspector(["--apply"], { DATABASE_URL: "secret" })).exitCode).toBe(2);
++  });
++  it("sanitizes driver failures", async () => {
++    const result = await runIdentityInspector([], { DATABASE_URL: "invalid secret connection" });
++    expect(result).toEqual({ exitCode: 1, output: { status: "blocked", reason: "runtime-identity-query-failure" } });
++  });
++});
++
++// Explicit opt-in starts its own disposable cluster. Never consumes DATABASE_URL,
++// the shared Catalog lane, a production target, or an externally supplied cluster.
++describe.skipIf(process.env.UPG_IDENTITY_DOCKER_TEST !== "1")("real isolated PostgreSQL login inventory", () => {
++  const container = `wiseeff-upg-identity-${randomBytes(6).toString("hex")}`;
++  const password = randomBytes(24).toString("hex");
++  let admin: pg.Client | undefined;
++  let port = "";
++  let id = "";
++  let transport: ReturnType<typeof createIsolatedUpgradeDocker>;
++  const url = (role: string) => `postgres://${role}:${password}@127.0.0.1:${port}/postgres`;
++  function docker(args: string[]) {
++    return transport.command(args).toString().trim();
++  }
++  beforeAll(async () => {
++    transport = createIsolatedUpgradeDocker();
++    id = docker(["run", "-d", "--name", container, "--label", `wiseeff.test=${container}`,
++      "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", "postgres:16-alpine"]);
++    transport.assertOwned(id, "wiseeff.test", container);
++    port = docker(["inspect", "--format", '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}', id]);
++    for (let attempt = 0; attempt < 30; attempt++) {
++      const probe = new pg.Client({ connectionString: url("postgres") });
++      try { await probe.connect(); admin = probe; break; }
++      catch { await probe.end().catch(() => undefined); await setTimeout(200); }
++    }
++    if (!admin) throw new Error("isolated PostgreSQL startup failed");
++    await admin.query(`
++      create role restricted login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
++      create role inherited login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
++      create role bridge nologin noinherit;
++      create role dangerous nologin createdb;
++      grant dangerous to bridge;
++      grant bridge to inherited with inherit false;
++      create schema business;
++      create table business.items(id integer);
++      insert into business.items values (1);
++      grant usage on schema business to restricted;
++      grant select on business.items to restricted;
++    `);
++  }, 30000);
++  afterAll(async () => {
++    await admin?.end();
++    if (id) { transport.assertOwned(id, "wiseeff.test", container); docker(["rm", "-f", "-v", id]); }
++  });
++  it("uses a real restricted login with successful business SELECT and denied write/SET ROLE", async () => {
++    const login = new pg.Client({ connectionString: url("restricted") });
++    await login.connect();
++    try {
++      expect((await login.query("select * from business.items")).rows).toEqual([{ id: 1 }]);
++      await expect(login.query("insert into business.items values (2)")).rejects.toMatchObject({ code: "42501" });
++      await expect(login.query("set role dangerous")).rejects.toMatchObject({ code: "42501" });
++    } finally { await login.end(); }
++    const result = await inspectRuntimeIdentity(url("restricted"));
++    expect(result.status).toBe("inventory-collected");
++    expect(result.capabilityAuditComplete).toBe(false);
++    expect(result.releaseApproved).toBe(false);
++  });
++  it("detects recursive NOINHERIT/SET privilege paths", async () => {
++    const result = await inspectRuntimeIdentity(url("inherited"));
++    expect(result.inventory.reachable_roles).toBe(3);
++    expect(result.reasons).toContain("privileged-role-reachable");
++  });
++  it("rejects the actual superuser and returns a real nonzero CLI exit", async () => {
++    const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve("scripts/inspect-upgrade-runtime-identity.ts")], {
++      env: { ...process.env, DATABASE_URL: url("postgres") }, encoding: "utf8", timeout: 20000,
++    });
++    expect(result.status).toBe(1);
++    expect(JSON.parse(result.stdout).reasons).toContain("privileged-role-reachable");
++    expect(result.stdout + result.stderr).not.toContain(password);
++    expect(result.stdout).not.toContain(url("postgres"));
++  });
++  it("inventories owned objects and executable DEFINER without exposing names or function bodies", async () => {
++    await admin!.query(`
++      create table business.private_customer_name(id integer);
++      alter table business.private_customer_name owner to restricted;
++      create function business.private_customer_function() returns integer language sql security definer as 'select 1';
++      grant execute on function business.private_customer_function() to restricted;
++    `);
++    const result = await inspectRuntimeIdentity(url("restricted"));
++    expect(result.reasons).toContain("application-object-ownership");
++    expect(result.reasons).toContain("security-definer-review-required");
++    expect(result.inventory.definers_requiring_search_path_review).toBeGreaterThan(0);
++    expect(JSON.stringify(result)).not.toContain("private_customer");
++  });
++  it("detects Catalog DML and PUBLIC default ACL requiring capability review", async () => {
++    await admin!.query(`
++      create schema parameter_catalog;
++      create table parameter_catalog.example(id integer);
++      grant usage on schema parameter_catalog to restricted;
++      grant insert on parameter_catalog.example to restricted;
++      alter default privileges in schema business grant select on tables to public;
++    `);
++    const result = await inspectRuntimeIdentity(url("restricted"));
++    expect(result.reasons).toContain("catalog-write-capability-review-required");
++    expect(result.reasons).toContain("public-default-acl-review-required");
++  });
++});
+diff --git a/scripts/inspect-upgrade-runtime-identity.ts b/scripts/inspect-upgrade-runtime-identity.ts
+new file mode 100644
+index 000000000..0daef545b
+--- /dev/null
++++ b/scripts/inspect-upgrade-runtime-identity.ts
+@@ -0,0 +1,112 @@
++import { createHash } from "node:crypto";
++import { pathToFileURL } from "node:url";
++import pg from "pg";
++
++// This is a read-only inventory, never release approval or a complete capability audit.
++// Membership is deliberately conservative: even NOINHERIT edges are inventoried,
++// including SET-only reachability. An operator must review the real capability map.
++export const identityInventorySql = `
++with recursive reachable(oid) as (
++  select oid from pg_roles where rolname = session_user
++  union
++  select membership.roleid from pg_auth_members membership
++  join reachable on membership.member = reachable.oid
++), application_schemas as (
++  select oid from pg_namespace
++  where nspname not in ('pg_catalog', 'information_schema')
++    and nspname not like 'pg_toast%' and nspname not like 'pg_temp%'
++), definers as (
++  select p.* from pg_proc p join application_schemas s on s.oid = p.pronamespace
++  where p.prosecdef and exists (select 1 from reachable r where has_function_privilege(r.oid, p.oid, 'EXECUTE'))
++)
++select
++  session_user = current_user as same_identity,
++  (select count(*)::int from reachable) as reachable_roles,
++  (select count(*)::int from pg_roles r join reachable on reachable.oid = r.oid
++   where r.rolsuper or r.rolbypassrls or r.rolcreatedb or r.rolcreaterole or r.rolreplication) as privileged_roles,
++  (select count(*)::int from pg_roles r join reachable on reachable.oid = r.oid
++   where r.rolname in ('catalog_migration_owner', 'catalog_synchronizer_role')) as management_roles,
++  (select count(*)::int from pg_class c join application_schemas s on s.oid = c.relnamespace
++   where c.relowner in (select oid from reachable)) as owned_relations,
++  (select count(*)::int from pg_namespace n where n.oid in (select oid from application_schemas)
++   and n.nspowner in (select oid from reachable)) as owned_schemas,
++  (select count(*)::int from definers) as executable_definers,
++  (select count(*)::int from definers
++   where not coalesce(proconfig @> array['search_path=pg_catalog'], false)) as definers_requiring_search_path_review,
++  (select count(*)::int from pg_default_acl d, lateral aclexplode(d.defaclacl) a
++   where a.grantee = 0) as public_default_acl_entries,
++  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace
++   where n.nspname = 'parameter_catalog' and c.relkind in ('r','p')
++   and exists (select 1 from reachable r where has_table_privilege(r.oid,c.oid,'INSERT')
++        or has_table_privilege(r.oid,c.oid,'UPDATE') or has_table_privilege(r.oid,c.oid,'DELETE')
++        or has_table_privilege(r.oid,c.oid,'TRUNCATE'))) as catalog_writable_relations
++`;
++
++export type IdentityInventory = {
++  same_identity: boolean;
++  reachable_roles: number;
++  privileged_roles: number;
++  management_roles: number;
++  owned_relations: number;
++  owned_schemas: number;
++  executable_definers: number;
++  definers_requiring_search_path_review: number;
++  public_default_acl_entries: number;
++  catalog_writable_relations: number;
++};
++
++export function evaluateIdentityInventory(inventory: IdentityInventory) {
++  const reasons: string[] = [];
++  if (!inventory.same_identity) reasons.push("session-effective-identity-mismatch");
++  if (inventory.privileged_roles) reasons.push("privileged-role-reachable");
++  if (inventory.management_roles) reasons.push("catalog-management-role-reachable");
++  if (inventory.owned_relations || inventory.owned_schemas) reasons.push("application-object-ownership");
++  if (inventory.executable_definers) reasons.push("security-definer-review-required");
++  if (inventory.catalog_writable_relations) reasons.push("catalog-write-capability-review-required");
++  if (inventory.public_default_acl_entries) reasons.push("public-default-acl-review-required");
++  return {
++    schemaVersion: "upgrade-runtime-identity-v1",
++    status: reasons.length ? "blocked" : "inventory-collected",
++    releaseApproved: false,
++    capabilityAuditComplete: false,
++    reasons,
++    inventory,
++    receiptDigest: `sha256:${createHash("sha256").update(JSON.stringify(inventory)).digest("hex")}`,
++  };
++}
++
++export async function inspectRuntimeIdentity(connectionString: string) {
++  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 5000,
++    statement_timeout: 10000, application_name: "wiseeff-runtime-identity-inspector" });
++  let connected = false;
++  try {
++    await client.connect();
++    connected = true;
++    await client.query("begin read only");
++    const result = await client.query<IdentityInventory>(identityInventorySql);
++    if (!result.rows[0]) throw new Error("missing inventory");
++    return evaluateIdentityInventory(result.rows[0]);
++  } finally {
++    if (connected) await client.query("rollback").catch(() => undefined);
++    await client.end().catch(() => undefined);
++  }
++}
++
++export async function runIdentityInspector(args: string[], env: NodeJS.ProcessEnv = process.env) {
++  if (args.length || !env.DATABASE_URL?.trim()) {
++    return { exitCode: 2, output: { status: "blocked", reason: "database-url-required-and-no-arguments-accepted" } };
++  }
++  try {
++    const output = await inspectRuntimeIdentity(env.DATABASE_URL);
++    return { exitCode: output.status === "blocked" ? 1 : 0, output };
++  } catch {
++    // Driver errors may contain hostnames, usernames, SQL, or connection secrets.
++    return { exitCode: 1, output: { status: "blocked", reason: "runtime-identity-query-failure" } };
++  }
++}
++
++if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
++  const result = await runIdentityInspector(process.argv.slice(2));
++  console.log(JSON.stringify(result.output));
++  process.exitCode = result.exitCode;
++}
+diff --git a/scripts/isolated-upgrade-docker.test.ts b/scripts/isolated-upgrade-docker.test.ts
+new file mode 100644
+index 000000000..b3294dfcb
+--- /dev/null
++++ b/scripts/isolated-upgrade-docker.test.ts
+@@ -0,0 +1,65 @@
++import { describe, expect, it } from "vitest";
++import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
++
++const id = "a".repeat(64);
++function fixture(host = "unix:///var/run/docker.sock") {
++  const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
++  let daemon = "local-daemon";
++  let labels = { "wiseeff.test": "owned-run" };
++  const run = (args: string[], env: NodeJS.ProcessEnv) => {
++    calls.push({ args, env });
++    if (args[0] === "context") return Buffer.from(args[1] === "show" ? "selected" : JSON.stringify([{ Endpoints: { docker: { Host: host } } }]));
++    if (args[2] === "info") return Buffer.from(daemon);
++    if (args[2] === "inspect") return Buffer.from(JSON.stringify([{ Id: id, Config: { Labels: labels } }]));
++    return Buffer.from(id);
++  };
++  return { calls, run, changeDaemon: () => { daemon = "other-daemon"; }, changeLabels: () => { labels = { "wiseeff.test": "other-run" }; } };
++}
++describe("isolated upgrade Docker target boundary", () => {
++  it.each(["tcp://127.0.0.1:2375", "ssh://production", "unix:///unknown.sock"])("rejects ambient %s before any command", (host) => {
++    const fake = fixture();
++    expect(() => createIsolatedUpgradeDocker({ DOCKER_HOST: host, DOCKER_CONTEXT: "local" }, fake.run)).toThrow("local-endpoint-required");
++    expect(fake.calls).toEqual([]);
++  });
++  it.each(["tcp://remote:2375", "ssh://remote", "unix:///unknown.sock", ""])("rejects selected context %s without run/rm", (host) => {
++    const fake = fixture(host);
++    expect(() => createIsolatedUpgradeDocker({}, fake.run)).toThrow("local-endpoint-required");
++    expect(fake.calls.every(({ args }) => args[0] === "context")).toBe(true);
++  });
++  it("pins endpoint despite ambient context changes, with only minimal environment", () => {
++    const fake = fixture();
++    const env = { DOCKER_CONTEXT: "local", DOCKER_CONFIG: "/private/config", DATABASE_URL: "secret", PATH: "/usr/bin" };
++    const docker = createIsolatedUpgradeDocker(env, fake.run);
++    env.DOCKER_CONTEXT = "remote";
++    docker.command(["run", "sentinel"]);
++    const pinned = fake.calls.filter(({ args }) => args[0] !== "context");
++    expect(pinned.every(({ args }) => args[0] === "--host" && args[1] === "unix:///var/run/docker.sock")).toBe(true);
++    expect(pinned.every(({ env: child }) => Object.keys(child).sort().join() === "HOME,PATH")).toBe(true);
++    expect(JSON.stringify(fake.calls)).not.toContain("secret");
++  });
++  it("refuses daemon replacement before subsequent mutation", () => {
++    const fake = fixture();
++    const docker = createIsolatedUpgradeDocker({}, fake.run);
++    fake.changeDaemon();
++    expect(() => docker.command(["run", "sentinel"])).toThrow("identity-changed");
++    expect(fake.calls.some(({ args }) => args.includes("run"))).toBe(false);
++  });
++  it("binds cleanup to full container ID and label, never the name", () => {
++    const fake = fixture();
++    const docker = createIsolatedUpgradeDocker({}, fake.run);
++    expect(() => docker.assertOwned("name", "wiseeff.test", "owned-run")).toThrow("identity-invalid");
++    expect(() => docker.assertOwned("b".repeat(64), "wiseeff.test", "owned-run")).toThrow("ownership-mismatch");
++    docker.assertOwned(id, "wiseeff.test", "owned-run");
++    fake.changeLabels();
++    expect(() => { docker.assertOwned(id, "wiseeff.test", "owned-run"); docker.command(["rm", "-f", id]); }).toThrow("ownership-mismatch");
++    expect(fake.calls.some(({ args }) => args.includes("rm"))).toBe(false);
++  });
++  it("sanitizes transport failures including argv secrets", () => {
++    const fake = fixture();
++    const docker = createIsolatedUpgradeDocker({}, (args, env) => {
++      if (args.includes("run")) throw new Error("POSTGRES_PASSWORD=private-synthetic-password");
++      return fake.run(args, env);
++    });
++    expect(() => docker.command(["run", "-e", "POSTGRES_PASSWORD=private-synthetic-password"])).toThrow(/^isolated-docker-operation-failed$/);
++  });
++});
+diff --git a/scripts/isolated-upgrade-docker.ts b/scripts/isolated-upgrade-docker.ts
+new file mode 100644
+index 000000000..2713d4337
+--- /dev/null
++++ b/scripts/isolated-upgrade-docker.ts
+@@ -0,0 +1,58 @@
++import { spawnSync } from "node:child_process";
++import os from "node:os";
++import path from "node:path";
++
++type Runner = (args: string[], env: NodeJS.ProcessEnv, input?: Buffer) => Buffer;
++const runDocker: Runner = (args, env, input) => {
++  try {
++    const result = spawnSync("docker", args, { env, input, timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
++    if (result.status !== 0 || result.error) throw new Error();
++    return result.stdout;
++  } catch { throw new Error("isolated-docker-operation-failed"); }
++};
++
++/** Resolve configuration read-only, then pin every call to the same local daemon.
++ * Never inherits remote Docker endpoints, TLS credentials or application secrets.
++ */
++export function createIsolatedUpgradeDocker(environment: NodeJS.ProcessEnv = process.env, runner: Runner = runDocker) {
++  const env = { PATH: environment.PATH, HOME: os.homedir() };
++  const safeRun: Runner = (args, childEnv, input) => {
++    try { return runner(args, childEnv, input); }
++    catch { throw new Error("isolated-docker-operation-failed"); }
++  };
++  const approve = (host: string) => {
++    if (!["unix:///var/run/docker.sock", `unix://${path.join(os.homedir(), ".docker/run/docker.sock")}`].includes(host)) {
++      throw new Error("isolated-docker-local-endpoint-required");
++    }
++    return host;
++  };
++  // Reject even a shadowed remote DOCKER_HOST; no test switch can bypass this.
++  if (environment.DOCKER_HOST) approve(environment.DOCKER_HOST);
++  let host = environment.DOCKER_HOST;
++  if (environment.DOCKER_CONTEXT || !host) {
++    const contextEnv = { ...env, ...(environment.DOCKER_CONFIG ? { DOCKER_CONFIG: environment.DOCKER_CONFIG } : {}) };
++    const context = environment.DOCKER_CONTEXT || safeRun(["context", "show"], contextEnv).toString().trim();
++    if (!context || context.startsWith("-")) throw new Error("isolated-docker-context-invalid");
++    try {
++      const config = JSON.parse(safeRun(["context", "inspect", context], contextEnv).toString());
++      host = config[0]?.Endpoints?.docker?.Host;
++    } catch { throw new Error("isolated-docker-context-invalid"); }
++  }
++  const endpoint = approve(host ?? "");
++  const pinned = (args: string[], input?: Buffer) => safeRun(["--host", endpoint, ...args], env, input);
++  const daemonId = pinned(["info", "--format", "{{.ID}}"]).toString().trim();
++  if (!daemonId || /\s/.test(daemonId)) throw new Error("isolated-docker-daemon-identity-missing");
++  const command = (args: string[], input?: Buffer) => {
++    if (pinned(["info", "--format", "{{.ID}}"]).toString().trim() !== daemonId) throw new Error("isolated-docker-daemon-identity-changed");
++    return pinned(args, input);
++  };
++  const assertOwned = (id: string, label: string, run: string) => {
++    if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("isolated-docker-container-identity-invalid");
++    let info;
++    try { info = JSON.parse(command(["inspect", id]).toString())[0]; }
++    catch { throw new Error("isolated-docker-container-inspection-failed"); }
++    if (info?.Id !== id || info?.Config?.Labels?.[label] !== run) throw new Error("isolated-docker-container-ownership-mismatch");
++    return info;
++  };
++  return { command, assertOwned, daemonId };
++}
+diff --git a/scripts/parameter-catalog-allowlist/exactRelocation.test.ts b/scripts/parameter-catalog-allowlist/exactRelocation.test.ts
+index a2cc98e28..aa4e6ce48 100644
+--- a/scripts/parameter-catalog-allowlist/exactRelocation.test.ts
++++ b/scripts/parameter-catalog-allowlist/exactRelocation.test.ts
+@@ -40,7 +40,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
+     expect(result).toHaveLength(23);
+     expect(result[0]).toEqual(record.pairs[0]);
+     expect(fixture.violations).toHaveLength(3519);
+-    expect(allowlist.entries).toHaveLength(3513);
++    expect(allowlist.entries).toHaveLength(3509);
+   });
+ 
+   it.each([
+@@ -98,10 +98,19 @@ describe("exact reviewed Catalog occurrence relocation", () => {
+     expect(() => validateExactRelocation(record, altered)).toThrow();
+   });
+ 
+-  it("does not absorb unmapped new debt or restore any of the six removed allowances", () => {
++  it("does not absorb unmapped new debt or restore historical and retired CLI allowances", () => {
+     const ids = new Set(allowlist.entries.map((entry) => entry.id));
+     const removed = fixture.violations.filter((entry) => !ids.has(entry.id));
+-    expect(removed).toHaveLength(6);
++    const retiredCliIds = [
++      "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:a43f4f7a42918672",
++      "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:332be66199b7f0bb",
++      "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:866526a44b8818f5",
++      "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:435e4c1c7a8cc55e",
++    ];
++    expect(removed).toHaveLength(10);
++    expect(removed.filter((entry) => retiredCliIds.includes(entry.id)).map((entry) => entry.id).sort())
++      .toEqual([...retiredCliIds].sort());
++    expect(removed.filter((entry) => !retiredCliIds.includes(entry.id))).toHaveLength(6);
+     const unrelated = { ...record.pairs[0].new, id: `${record.pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
+     const pairs = validateExactRelocation(record, { ...input(), discovered: [...discovered, unrelated] });
+     const mapped = pairs.map((pair) => pair.old);
+diff --git a/scripts/parameter-catalog-allowlist/shards/s12-ops.json b/scripts/parameter-catalog-allowlist/shards/s12-ops.json
+index 208ece8da..5873255fa 100644
+--- a/scripts/parameter-catalog-allowlist/shards/s12-ops.json
++++ b/scripts/parameter-catalog-allowlist/shards/s12-ops.json
+@@ -7,30 +7,5 @@
+     "server/modules/operations/parameterCatalogComparisonContribution.ts",
+     "scripts/reconcile-parameter-definitions.test.ts"
+   ],
+-  "entries": [
+-    {
+-      "id": "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:a43f4f7a42918672",
+-      "rule": "legacy-catalog-module-import",
+-      "file": "scripts/reconcile-parameter-definitions.ts",
+-      "reason": "Consumer code still imports the legacy parameter-specs module."
+-    },
+-    {
+-      "id": "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:332be66199b7f0bb",
+-      "rule": "legacy-catalog-module-import",
+-      "file": "scripts/reconcile-parameter-definitions.ts",
+-      "reason": "Consumer code still imports the legacy parameter-specs module."
+-    },
+-    {
+-      "id": "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:866526a44b8818f5",
+-      "rule": "legacy-effective-governance-contract",
+-      "file": "scripts/reconcile-parameter-definitions.ts",
+-      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+-    },
+-    {
+-      "id": "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:435e4c1c7a8cc55e",
+-      "rule": "legacy-effective-governance-contract",
+-      "file": "scripts/reconcile-parameter-definitions.ts",
+-      "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract."
+-    }
+-  ]
++  "entries": []
+ }
+diff --git a/scripts/reconcile-legacy-isolation.test.ts b/scripts/reconcile-legacy-isolation.test.ts
+new file mode 100644
+index 000000000..8b63c706a
+--- /dev/null
++++ b/scripts/reconcile-legacy-isolation.test.ts
+@@ -0,0 +1,23 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++
++afterEach(() => vi.resetModules());
++
++describe("reconcile CLI uses the canonical diagnostic seam", () => {
++  it("reads typed absence without loading the retired verifier", async () => {
++    vi.doMock("../server/modules/parameter-specs/definitionVerification", () => {
++      throw new Error("retired verifier module must not load");
++    });
++    vi.doMock("../server/config/env", () => ({ loadServerEnv: () => ({ DATABASE_URL: "isolated-fixture" }) }));
++    const close = vi.fn();
++    vi.doMock("../server/shared/database/client", () => ({ createPostgresDatabase: () => ({ close }) }));
++    const read = vi.fn(async () => ({ status: "value", value: { kind: "absent", reason: "missing" } }));
++    vi.doMock("../server/modules/operations/parameterCatalogComparisonContribution", () => ({ readTypedVerificationReport: read }));
++    const { runReconcileParameterDefinitions } = await import("./reconcile-parameter-definitions");
++    const result = await runReconcileParameterDefinitions(["--verify", "--diagnostic", "--report-id", "missing"], {});
++    expect(result).toEqual({ exitCode: 0, body: { status: "value", value: { kind: "absent", reason: "missing" } } });
++    expect(read).toHaveBeenCalledOnce();
++    expect(close).toHaveBeenCalledOnce();
++    expect(await runReconcileParameterDefinitions(["--verify", "--catalog-only"], {})).toMatchObject({ exitCode: 2 });
++    expect(read).toHaveBeenCalledOnce();
++  });
++});
+diff --git a/scripts/reconcile-parameter-definitions.test.ts b/scripts/reconcile-parameter-definitions.test.ts
+index 12d981a21..12364f463 100644
+--- a/scripts/reconcile-parameter-definitions.test.ts
++++ b/scripts/reconcile-parameter-definitions.test.ts
+@@ -15,11 +15,11 @@ describe("reconcile-parameter-definitions CLI", () => {
+   });
+ 
+   it("maps --verify to a typed readReport command", () => {
+-    expect(parseReconcileCliCommand(["--verify", "--report-id", "vreport_1"])).toEqual({
++    expect(parseReconcileCliCommand(["--verify", "--diagnostic", "--report-id", "vreport_1"])).toEqual({
+       kind: "verify",
+       reportIdOrDigest: "vreport_1",
+     });
+-    expect(parseReconcileCliCommand(["--verify", "--catalog-only", "--run-id", "digest-1"])).toEqual({
++    expect(parseReconcileCliCommand(["--verify", "--diagnostic", "--run-id", "digest-1"])).toEqual({
+       kind: "verify",
+       reportIdOrDigest: "digest-1",
+     });
+diff --git a/scripts/reconcile-parameter-definitions.ts b/scripts/reconcile-parameter-definitions.ts
+index dc23619b5..60d253931 100644
+--- a/scripts/reconcile-parameter-definitions.ts
++++ b/scripts/reconcile-parameter-definitions.ts
+@@ -1,11 +1,6 @@
+ import "dotenv/config";
+ 
+ import { loadServerEnv } from "../server/config/env";
+-import {
+-  reconcileDriverParameterDefinitions,
+-  type DefinitionReconciliationMode,
+-} from "../server/modules/parameter-specs/definitionReconciliation";
+-import { verifyEffectiveDriverParameterDefinitions } from "../server/modules/parameter-specs/definitionVerification";
+ import { createPostgresDatabase } from "../server/shared/database/client";
+ import {
+   catalogLegacyGoneResult,
+@@ -25,6 +20,17 @@ export async function runReconcileParameterDefinitions(
+   env: NodeJS.ProcessEnv = process.env,
+ ): Promise<{ readonly exitCode: number; readonly body: unknown }> {
+   const command = parseReconcileCliCommand(argv);
++  if (command.kind === "release-gate-unavailable") {
++    return {
++      exitCode: 2,
++      body: {
++        kind: "blocked",
++        code: "PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE",
++        reason: "approved-current-target-context-unavailable",
++        message: "Report lookup cannot authorize an upgrade. The controlled runtime/public-release integration is unavailable; keep the candidate isolated.",
++      },
++    };
++  }
+   if (command.kind === "apply-gone") {
+     return {
+       exitCode: 2,
+@@ -36,14 +42,16 @@ export async function runReconcileParameterDefinitions(
+   const db = createPostgresDatabase(loaded.DATABASE_URL);
+   try {
+     if (command.kind === "verify") {
+-    const report = await verifyEffectiveDriverParameterDefinitions && await readTypedVerificationReport({
++    const report = await readTypedVerificationReport({
+       database: db,
+       reportIdOrDigest: command.reportIdOrDigest,
+     });
+       const observation = report as Awaited<ReturnType<typeof readTypedVerificationReport>>;
+       return {
+         exitCode: observation.status === "query-failure" ? 1 : 0,
+-        body: observation,
++        body: observation.status === "query-failure"
++          ? { status: observation.status, code: observation.code, detail: "verification-report-query-failed" }
++          : observation,
+       };
+     }
+     if (command.kind === "legacy") {
+@@ -74,6 +82,7 @@ export async function runReconcileParameterDefinitions(
+ }
+ 
+ export type ReconcileCliCommand =
++  | { readonly kind: "release-gate-unavailable" }
+   | { readonly kind: "inspect"; readonly runId?: string; readonly planDigest?: string; readonly phase?: string }
+   | { readonly kind: "verify"; readonly reportIdOrDigest: string }
+   | {
+@@ -90,6 +99,22 @@ function readOption(args: readonly string[], name: string): string | undefined {
+ }
+ 
+ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliCommand {
++  const flags = new Set(["--verify", "--catalog-only", "--diagnostic", "--dry-run", "--apply"]);
++  const options = new Set(["--report-id", "--run-id", "--plan-digest", "--phase", "--legacy-type", "--legacy-id", "--organization-id"]);
++  const seen = new Set<string>();
++  for (let index = 0; index < args.length; index += 1) {
++    const arg = args[index];
++    if ((!flags.has(arg) && !options.has(arg)) || seen.has(arg)) {
++      throw new Error("PCAT-UPG-INVALID-ARGUMENT: unknown or duplicate option.");
++    }
++    seen.add(arg);
++    if (options.has(arg)) {
++      const value = args[++index];
++      if (!value?.trim() || value.startsWith("--")) {
++        throw new Error("PCAT-UPG-INVALID-ARGUMENT: option requires a value.");
++      }
++    }
++  }
+   const verify = args.includes("--verify");
+   const catalogOnly = args.includes("--catalog-only");
+   const dryRun = args.includes("--dry-run");
+@@ -100,6 +125,14 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
+   if (catalogOnly && !verify) {
+     throw new Error("--catalog-only requires --verify.");
+   }
++  if (args.includes("--diagnostic") && (!verify || catalogOnly)) {
++    throw new Error("PCAT-UPG-INVALID-ARGUMENT: --diagnostic requires --verify and cannot authorize --catalog-only.");
++  }
++  // Old controllers use --verify --catalog-only without a trustworthy target
++  // context. Never infer one from a report or from caller-supplied assertions.
++  if (verify && !args.includes("--diagnostic")) {
++    return { kind: "release-gate-unavailable" };
++  }
+   if (apply) {
+     return { kind: "apply-gone" };
+   }
+@@ -118,7 +151,10 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
+   }
+   if (verify) {
+     const reportIdOrDigest =
+-      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim() || "missing";
++      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim();
++    if (!reportIdOrDigest || (args.includes("--report-id") && args.includes("--run-id"))) {
++      throw new Error("PCAT-UPG-INVALID-ARGUMENT: diagnostic lookup requires one report identifier.");
++    }
+     return { kind: "verify", reportIdOrDigest };
+   }
+   return {
+@@ -138,8 +174,8 @@ if (invokedDirectly) {
+       process.stdout.write(`${JSON.stringify(result.body, null, 2)}\n`);
+       process.exitCode = result.exitCode;
+     })
+-    .catch((error: unknown) => {
+-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
++    .catch(() => {
++      process.stderr.write(`${JSON.stringify({ kind: "blocked", code: "PCAT-UPG-CLI-FAILED", reason: "invalid-input-or-query-failure" })}\n`);
+       process.exitCode = 1;
+     });
+ }
+diff --git a/scripts/reconcile-upgrade-cli.test.ts b/scripts/reconcile-upgrade-cli.test.ts
+new file mode 100644
+index 000000000..b660c652d
+--- /dev/null
++++ b/scripts/reconcile-upgrade-cli.test.ts
+@@ -0,0 +1,53 @@
++import { spawnSync } from "node:child_process";
++import { readFileSync } from "node:fs";
++import { createHash } from "node:crypto";
++import { describe, expect, it } from "vitest";
++
++const fixture = readFileSync("scripts/fixtures/upgrade-82344044-catalog-gate.sh", "utf8");
++const cli = (args: string[]) => spawnSync(process.execPath,
++  ["--import", "tsx", "scripts/reconcile-parameter-definitions.ts", ...args],
++  { encoding: "utf8", env: { PATH: process.env.PATH, DATABASE_URL: "", DOTENV_CONFIG_PATH: "/dev/null" } });
++
++describe("UPG-01 actual process boundary", () => {
++  it.each([
++    ["--verify"], ["--verify", "--catalog-only"],
++    ["--verify", "--report-id", "absent"],
++    ["--verify", "--report-id", "unapproved"],
++    ["--verify", "--report-id", "pre-activation"],
++  ])("rejects unbound release input %j before connecting", (...args) => {
++    const result = cli(args);
++    expect(result.status).toBe(2);
++    expect(JSON.parse(result.stdout)).toMatchObject({ code: "PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE" });
++  });
++  it.each([
++    ["--unknown"], ["--verify", "--diagnostic"],
++    ["--verify", "--diagnostic", "--report-id"],
++    ["--verify", "--diagnostic", "--catalog-only"],
++    ["--verify", "--verify"],
++  ])("rejects malformed or ambiguous input %j", (...args) => {
++    expect(cli(args).status).not.toBe(0);
++  });
++  it("executes the exact old gate against the new npm command and never advances", () => {
++    // The transport adapter replaces only Docker exec; npm and the target CLI
++    // are real child processes. This is not a real Compose deployment test.
++    const result = spawnSync("bash", ["-c", `${fixture}
++      wiseeff_upgrade_compose() { shift 3; "$@"; }
++      wiseeff_upgrade_state_read() { printf 'validating-app'; }
++      wiseeff_upgrade_record_failure() { printf 'OLD-GATE-REFUSED\\n'; }
++      if wiseeff_upgrade_verify_parameter_catalog; then
++        printf 'QUEUE-OR-PROXY-RESUMED\\n'; exit 0
++      else exit 70; fi
++    `], { encoding: "utf8", env: { ...process.env, DATABASE_URL: "", DOTENV_CONFIG_PATH: "/dev/null" } });
++    expect(result.status).toBe(70);
++    expect(result.stdout).toContain("PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE");
++    expect(result.stdout).toContain("OLD-GATE-REFUSED");
++    expect(result.stdout).not.toContain("QUEUE-OR-PROXY-RESUMED");
++  });
++  it("preserves the independently extracted 82344044 source gate bytes", () => {
++    // Independently checked against git show 82344044...:ops/self-hosted/scripts/upgrade-lib.sh.
++    // Commit the excerpt so shallow CI does not silently skip source provenance.
++    expect(createHash("sha256").update(fixture).digest("hex")).toBe(
++      "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232",
++    );
++  });
++});
+diff --git a/scripts/reconcile-upgrade-gate.test.ts b/scripts/reconcile-upgrade-gate.test.ts
+new file mode 100644
+index 000000000..ad7e94b6a
+--- /dev/null
++++ b/scripts/reconcile-upgrade-gate.test.ts
+@@ -0,0 +1,21 @@
++import { describe, expect, it, vi } from "vitest";
++
++vi.mock("../server/config/env", () => ({ loadServerEnv: () => ({ DATABASE_URL: "fixture" }) }));
++vi.mock("../server/shared/database/client", () => ({
++  createPostgresDatabase: () => ({ close: async () => undefined }),
++}));
++vi.mock("../server/modules/operations/parameterCatalogComparisonContribution", () => ({
++  readTypedVerificationReport: async () => ({
++    status: "value", value: { kind: "absent", reason: "missing" },
++  }),
++}));
++
++import { runReconcileParameterDefinitions } from "./reconcile-parameter-definitions";
++
++describe("UPG-01 release authorization is not a diagnostic query", () => {
++  it("rejects the source controller invocation instead of releasing on absent report", async () => {
++    const result = await runReconcileParameterDefinitions(["--verify", "--catalog-only"], {});
++    expect(result.exitCode).not.toBe(0);
++    expect(result.body).toMatchObject({ code: "PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE" });
++  });
++});
+diff --git a/scripts/rehearse-upgrade-recovery.test.ts b/scripts/rehearse-upgrade-recovery.test.ts
+new file mode 100644
+index 000000000..7ee3674c2
+--- /dev/null
++++ b/scripts/rehearse-upgrade-recovery.test.ts
+@@ -0,0 +1,35 @@
++import { spawnSync } from "node:child_process";
++import path from "node:path";
++import { describe, expect, it } from "vitest";
++import { ownsRecoveryContainer } from "./rehearse-upgrade-recovery";
++
++it("requires exact created container identity and private run label for cleanup", () => {
++  const inspect = { Id: "created", Config: { Labels: { "wiseeff.synthetic-recovery-run": "this-run" } } };
++  expect(ownsRecoveryContainer(inspect, "created", "this-run")).toBe(true);
++  expect(ownsRecoveryContainer(inspect, "other", "this-run")).toBe(false);
++  expect(ownsRecoveryContainer(inspect, "created", "another-run")).toBe(false);
++  expect(ownsRecoveryContainer({ Id: "created" }, "created", "this-run")).toBe(false);
++});
++
++it("refuses external target and missing explicit synthetic mode before starting Docker", () => {
++  for (const args of [[], ["--synthetic-only", "--target", "forbidden-target"]]) {
++    const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve("scripts/rehearse-upgrade-recovery.ts"), ...args], { encoding: "utf8" });
++    expect(result.status).toBe(2);
++    expect(JSON.parse(result.stdout).status).toBe("blocked");
++  }
++});
++
++describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
++  it("backs up and restores separate PostgreSQL, MinIO and persisted Redis targets", () => {
++    const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve("scripts/rehearse-upgrade-recovery.ts"), "--synthetic-only"], {
++      encoding: "utf8", timeout: 90000,
++    });
++    const evidence = JSON.parse(result.stdout);
++    expect(evidence).toMatchObject({ status: "passed", evidence: "synthetic sentinel only", releaseReady: false,
++      fullBusinessVerification: false, backupExists: true, checksumVerified: true, restoreExecuted: true,
++      businessVerified: true, ownerAclVerified: true, cleanupVerified: true, objectCount: 1 });
++    expect(result.status).toBe(0);
++    expect(evidence.manifestDigest).toMatch(/^[a-f0-9]{64}$/);
++    expect(result.stdout).not.toContain("postgres://");
++  }, 100000);
++});
+diff --git a/scripts/rehearse-upgrade-recovery.ts b/scripts/rehearse-upgrade-recovery.ts
+new file mode 100644
+index 000000000..83eaca16d
+--- /dev/null
++++ b/scripts/rehearse-upgrade-recovery.ts
+@@ -0,0 +1,186 @@
++import { createHash, randomBytes } from "node:crypto";
++import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { setTimeout } from "node:timers/promises";
++import { pathToFileURL } from "node:url";
++import pg from "pg";
++import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
++import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
++
++const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2025-04-22T22-12-26Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
++const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
++const label = "wiseeff.synthetic-recovery-run";
++
++export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?: Record<string, string> } }, id: string, run: string) {
++  return inspect.Id === id && inspect.Config?.Labels?.[label] === run;
++}
++
++/** No external targets, backups, image overrides, production configuration, or SQL inputs. */
++export async function rehearseSyntheticRecovery() {
++  const run = randomBytes(12).toString("hex");
++  const password = randomBytes(24).toString("hex");
++  const ids: string[] = [];
++  const pinnedImages = new Map<string, string>();
++  const result = {
++    schemaVersion: "synthetic-three-store-recovery-v1", evidence: "synthetic sentinel only",
++    releaseReady: false, fullBusinessVerification: false, status: "blocked",
++    backupExists: false, backupRetained: false, checksumVerified: false, restoreExecuted: false, businessVerified: false,
++    ownerAclVerified: false, cleanupVerified: false, objectCount: 0,
++    reason: "not-started", imageIdentities: {} as Record<string, string>, manifestDigest: "",
++  };
++  let directory: string | undefined;
++  let interrupted = false;
++  let cleaning = false;
++  let transport: ReturnType<typeof createIsolatedUpgradeDocker>;
++  const onInterrupt = () => { interrupted = true; };
++  process.on("SIGINT", onInterrupt);
++  process.on("SIGTERM", onInterrupt);
++  const docker = (args: string[], input?: Buffer): Buffer => {
++    if (interrupted && !cleaning) throw new Error("synthetic-drill-interrupted");
++    return transport.command(args, input);
++  };
++  const owned = (id: string) => {
++    const info = JSON.parse(docker(["inspect", id]).toString())[0];
++    if (!ownsRecoveryContainer(info, id, run)) throw new Error("container-identity-mismatch");
++    return info;
++  };
++  const execute = (id: string, args: string[], input?: Buffer) => {
++    owned(id);
++    return docker(["exec", "-i", id, ...args], input);
++  };
++  const create = (image: string, port: string, extra: string[], command: string[]) => {
++    const id = docker(["create", "--label", `${label}=${run}`, "--name", `upg-recovery-${run}-${ids.length}`,
++      "-p", `127.0.0.1::${port}`, ...extra, pinnedImages.get(image)!, ...command]).toString().trim();
++    ids.push(id); owned(id); return id;
++  };
++  const start = (id: string) => { owned(id); docker(["start", id]); };
++  const endpoint = (id: string, port: string) => `127.0.0.1:${owned(id).NetworkSettings.Ports[`${port}/tcp`][0].HostPort}`;
++  const wait = async (probe: () => Promise<unknown>) => {
++    for (let attempt = 0; attempt < 40; attempt++) {
++      try { await probe(); return; } catch { await setTimeout(150); }
++    }
++    throw new Error("store-startup-failed");
++  };
++  try {
++    result.reason = "isolated-local-docker-required";
++    transport = createIsolatedUpgradeDocker();
++    result.reason = "required-local-image-unavailable";
++    for (const [kind, image] of Object.entries(images)) {
++      result.imageIdentities[kind] = docker(["image", "inspect", image, "--format", "{{.Id}} {{.Os}}/{{.Architecture}}"])
++        .toString().trim();
++      pinnedImages.set(image, result.imageIdentities[kind].split(" ")[0]!);
++    }
++    directory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-synthetic-recovery-"));
++    result.reason = "source-preparation-failed";
++    const sourcePg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${password}`], []);
++    const sourceRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "no", "--save", ""]);
++    const sourceObjects = create(images.objects, "9000", ["-e", "MINIO_ROOT_USER=synthetic", "-e", `MINIO_ROOT_PASSWORD=${password}`], ["server", "/data"]);
++    for (const id of ids) start(id);
++    await wait(async () => execute(sourcePg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
++    await wait(async () => execute(sourceRedis, ["redis-cli", "PING"]));
++    const storage = (id: string) => createHttpObjectStorageTransport({ endpoint: `http://${endpoint(id, "9000")}`,
++      accessKeyId: "synthetic", secretAccessKey: password });
++    const sourceStore = storage(sourceObjects);
++    const bucket = "synthetic-recovery";
++    const objectClient = create(images.objectClient, "9001", ["--entrypoint", "/bin/sh"], ["-c", "sleep 300"]);
++    start(objectClient);
++    const mc = (id: string, args: string[]) => {
++      const ip = owned(id).NetworkSettings.Networks.bridge?.IPAddress;
++      if (!ip) throw new Error("object-store-container-network-unavailable");
++      owned(objectClient);
++      return docker(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${password}@${ip}:9000`, objectClient, "mc", ...args]);
++    };
++    result.reason = "source-object-store-preparation-failed";
++    await wait(async () => mc(sourceObjects, ["mb", `synthetic/${bucket}`]));
++    result.reason = "source-synthetic-seed-failed";
++    const roles = `create role sentinel_owner nologin; create role sentinel_reader login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;`;
++    execute(sourcePg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles + `
++      create table public.sentinel(id integer primary key, value text not null);
++      alter table public.sentinel owner to sentinel_owner;
++      insert into public.sentinel values (1,'synthetic-value');
++      grant select on public.sentinel to sentinel_reader;
++    `));
++    const objectData = Buffer.from("synthetic object payload\n");
++    await sourceStore.put({ bucket, key: "sentinel", bytes: objectData, contentType: "text/plain", metadata: { synthetic: "true" } });
++    execute(sourceRedis, ["redis-cli", "SET", "synthetic:sentinel", "synthetic-redis-value"]);
++    // No application processes or external writers exist in this synthetic boundary.
++    result.reason = "backup-failed";
++    const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
++    await writeFile(path.join(directory, "postgres.dump"), dump, { mode: 0o600 });
++    execute(sourceRedis, ["redis-cli", "SAVE"]);
++    owned(sourceRedis); docker(["cp", `${sourceRedis}:/data/dump.rdb`, path.join(directory, "dump.rdb")]);
++    const objectBackup = await sourceStore.get({ bucket, key: "sentinel" });
++    if (mc(sourceObjects, ["ls", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").length !== 1) throw new Error("source-object-count-mismatch");
++    await writeFile(path.join(directory, "object.bin"), objectBackup, { mode: 0o600 });
++    const redisBackup = await readFile(path.join(directory, "dump.rdb"));
++    result.backupExists = true;
++    if (hash(objectBackup) !== hash(objectData)) throw new Error("object-checksum-mismatch");
++    for (const [name, bytes] of [["postgres.dump", dump], ["object.bin", objectBackup], ["dump.rdb", redisBackup]] as const) {
++      if (hash(await readFile(path.join(directory, name))) !== hash(bytes)) throw new Error("backup-checksum-mismatch");
++    }
++    result.manifestDigest = hash(Buffer.from(JSON.stringify([hash(dump), hash(objectBackup), hash(redisBackup)])));
++    result.checksumVerified = true;
++    result.reason = "restore-failed";
++    const targetPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${password}`], []);
++    const targetRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "no", "--save", ""]);
++    const targetObjects = create(images.objects, "9000", ["-e", "MINIO_ROOT_USER=synthetic", "-e", `MINIO_ROOT_PASSWORD=${password}`], ["server", "/data"]);
++    owned(targetRedis); docker(["cp", path.join(directory, "dump.rdb"), `${targetRedis}:/data/dump.rdb`]);
++    start(targetPg); start(targetRedis); start(targetObjects);
++    await wait(async () => execute(targetPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
++    execute(targetPg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles));
++    execute(targetPg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], dump);
++    const targetStore = storage(targetObjects);
++    await wait(async () => mc(targetObjects, ["mb", `synthetic/${bucket}`]));
++    await targetStore.put({ bucket, key: "sentinel", bytes: objectBackup, contentType: "text/plain", metadata: { synthetic: "true" } });
++    result.restoreExecuted = true;
++    result.reason = "restored-verification-failed";
++    const login = new pg.Client({ connectionString: `postgres://sentinel_reader:${password}@${endpoint(targetPg, "5432")}/postgres` });
++    await login.connect();
++    try {
++      const rows = await login.query("select * from public.sentinel order by id");
++      if (JSON.stringify(rows.rows) !== JSON.stringify([{ id: 1, value: "synthetic-value" }])) throw new Error("database-value-mismatch");
++      const acl = await login.query(`select pg_get_userbyid(relowner) = 'sentinel_owner' as owner_ok,
++        has_table_privilege(current_user,oid,'SELECT') as can_read,
++        has_table_privilege(current_user,oid,'INSERT') as can_write from pg_class where oid='public.sentinel'::regclass`);
++      if (JSON.stringify(acl.rows[0]) !== JSON.stringify({ owner_ok: true, can_read: true, can_write: false })) throw new Error("owner-acl-mismatch");
++      result.ownerAclVerified = true;
++    } finally { await login.end(); }
++    if (hash(await targetStore.get({ bucket, key: "sentinel" })) !== hash(objectData)) throw new Error("restored-object-mismatch");
++    const metadata = await targetStore.head({ bucket, key: "sentinel" });
++    if (!metadata || metadata.metadata?.synthetic !== "true") throw new Error("restored-object-metadata-mismatch");
++    const listing = mc(targetObjects, ["ls", "--json", `synthetic/${bucket}`]).toString();
++    result.objectCount = listing.trim().split("\n").filter(Boolean).length;
++    if (result.objectCount !== 1) throw new Error("object-count-mismatch");
++    await wait(async () => {
++      if (execute(targetRedis, ["redis-cli", "GET", "synthetic:sentinel"]).toString().trim() !== "synthetic-redis-value") throw new Error("redis-value-mismatch");
++    });
++    result.businessVerified = true; // Only the explicitly labeled synthetic sentinel behavior.
++    result.status = "passed"; result.reason = "synthetic-sentinels-restored";
++  } catch {
++    result.status = "blocked"; // Keep the static stage, never driver output or private material.
++  } finally {
++    cleaning = true;
++    let cleaned = true;
++    for (const id of [...ids].reverse()) {
++      try { owned(id); docker(["rm", "-f", "-v", id]); } catch { cleaned = false; }
++    }
++    if (directory) await rm(directory, { recursive: true, force: true });
++    result.cleanupVerified = cleaned;
++    if (!cleaned) { result.status = "blocked"; result.reason = "owned-resource-cleanup-failed"; }
++    if (interrupted) { result.status = "blocked"; result.reason = "synthetic-drill-interrupted"; }
++    process.off("SIGINT", onInterrupt);
++    process.off("SIGTERM", onInterrupt);
++  }
++  return result;
++}
++
++if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
++  if (process.argv.slice(2).join(" ") !== "--synthetic-only") {
++    console.log(JSON.stringify({ status: "blocked", reason: "explicit-synthetic-only-required-no-other-arguments" }));
++    process.exitCode = 2;
++  } else {
++    const result = await rehearseSyntheticRecovery();
++    console.log(JSON.stringify(result)); process.exitCode = result.status === "passed" ? 0 : 1;
++  }
++}
