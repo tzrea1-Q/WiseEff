@@ -6,10 +6,12 @@ import { createHash } from "node:crypto";
 import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, restoreRecoveryPackage, verifyRecoveryPackage, type RecoveryRole } from "./recoveryPackage";
 
 it("requires a complete zero non-dump capability inventory and never treats absent or unknown counts as clear", () => {
-  const clear = { databaseOwner: 0, databaseAcl: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
+  const clear = { databaseOwner: 0, databaseAcl: 0, databaseSettings: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
   expect(hasUnsupportedNonDumpCapabilities(clear)).toBe(false);
   for (const key of Object.keys(clear)) expect(hasUnsupportedNonDumpCapabilities({ ...clear, [key]: 1 })).toBe(true);
   for (const value of [null, {}, [], { ...clear, other: 0 }, { ...clear, databaseAcl: "0" }, { ...clear, baselineUnavailable: -1 }]) expect(hasUnsupportedNonDumpCapabilities(value)).toBe(true);
+  const { databaseSettings: _databaseSettings, ...oldInventory } = clear;
+  expect(hasUnsupportedNonDumpCapabilities(oldInventory)).toBe(true);
 });
 
 it("rejects a missing backup manifest without returning an empty successful package", async () => {

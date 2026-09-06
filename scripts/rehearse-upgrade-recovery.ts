@@ -15,6 +15,7 @@ const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
 const label = "wiseeff.synthetic-recovery-run";
 const nonDumpFaults = {
   "database-acl": "grant create on database postgres to sentinel_reader",
+  "database-settings": "alter database postgres set default_transaction_read_only=on",
   "other-database-acl": "grant create on database template1 to sentinel_reader",
   "tablespace-acl": "grant create on tablespace pg_default to sentinel_reader",
   "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
@@ -219,10 +220,12 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
       // Refusal performs no cleanup or corrective SQL. Only the fixture's final
       // owned-resource cleanup disposes of this synthetic source after evidence.
       const unchangedInventory = JSON.stringify(readNonDumpInventory()) === JSON.stringify(nonDumpInventory);
+      const unchangedDatabaseSetting = options.fault !== "database-settings" || execute(sourcePg,
+        ["psql", "-U", "postgres", "-Atc", "select pg_catalog.current_setting('default_transaction_read_only')"]).toString().trim() === "on";
       const unchangedRows = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", "select (select count(*) from public.sentinel where id=1 and value='synthetic-value') + (select count(*) from public.explicit_sentinel where id=2 and value='synthetic-explicit')"]).toString().trim() === "2";
       const unchangedObjects = (await Promise.all(objectOracle.map(async object => Boolean(await sourceStore.head({ bucket, key: object.key })) && hash(await sourceStore.get({ bucket, key: object.key })) === hash(object.bytes)))).every(Boolean);
       const unchangedQueue = execute(sourceRedis, ["redis-cli", "LRANGE", "bull:synthetic:wait", "0", "-1"]).toString().trim() === "job-1\njob-2" && execute(sourceRedis, ["redis-cli", "HGET", "bull:synthetic:meta", "paused"]).toString().trim() === "1";
-      result.sourcePreservedBeforeCleanup = unchangedInventory && unchangedRows && unchangedObjects && unchangedQueue;
+      result.sourcePreservedBeforeCleanup = unchangedInventory && unchangedDatabaseSetting && unchangedRows && unchangedObjects && unchangedQueue;
       throw new Error("non-dump-capability-unsupported");
     }
     result.nonDumpCapabilitiesVerified = true;

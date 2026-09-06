@@ -12,6 +12,8 @@ const LIMIT = 256 * 1024 * 1024;
  * PostgreSQL's own default for objects without an initial-privilege row.
  * Other databases are never opened: shared catalog entries only detect package
  * roles' explicit privileges/ownership that this single-database dump would omit.
+ * Database-wide settings have setrole=0, so they cannot be found by joining
+ * pg_roles. Reject settings affecting this database; do not guess or reset them.
  * A query error or unavailable baseline is a refusal, never an empty inventory.
  */
 export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = `
@@ -56,6 +58,8 @@ select json_build_object(
   'databaseAcl',(select count(*) from changed_acls where kind='databaseAcl')
     + (select count(*) from pg_catalog.pg_database database cross join lateral pg_catalog.aclexplode(database.datacl) acl
        where database.datname<>pg_catalog.current_database() and (acl.grantee in (select oid from package_roles) or acl.grantor in (select oid from package_roles))),
+  'databaseSettings',(select count(*) from pg_catalog.pg_db_role_setting
+    where setrole=0 and (setdatabase=0 or setdatabase in (select oid from target_database))),
   'tablespaceOwner',(select count(*) from pg_catalog.pg_tablespace where spcname not in ('pg_default','pg_global') or spcowner is distinct from (select oid from bootstrap)),
   'tablespaceAcl',(select count(*) from changed_acls where kind='tablespaceAcl'),
   'parameterAcl',(select count(*) from changed_acls where kind='parameterAcl'),
@@ -68,7 +72,7 @@ select json_build_object(
     or exists(select 1 from builtin_functions where oid>=16384) then 1 else 0 end
 )`;
 export const hasUnsupportedNonDumpCapabilities = (value: unknown): boolean => {
-  const keys = ["databaseOwner", "databaseAcl", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
+  const keys = ["databaseOwner", "databaseAcl", "databaseSettings", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join(",") !== [...keys].sort().join(",")) return true;
   return Object.values(value).some(count => typeof count !== "number" || !Number.isSafeInteger(count) || count !== 0);
 };

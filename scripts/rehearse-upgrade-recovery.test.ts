@@ -20,7 +20,7 @@ it("refuses external target and missing explicit synthetic mode before starting 
 });
 
 describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
-  it.each(["database-acl", "other-database-acl", "tablespace-acl", "parameter-acl", "builtin-function-acl"])("refuses non-dump %s before capture without correcting or deleting source state", fault => {
+  it.each(["database-acl", "database-settings", "other-database-acl", "tablespace-acl", "parameter-acl", "builtin-function-acl"])("refuses non-dump %s before capture without correcting or deleting source state", fault => {
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: ${JSON.stringify(fault)} })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
     expect(child.status).toBe(0);
