@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -97,12 +97,50 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         };
       } };
       const plan = await prepareHandoff(input, path.join(directory, "plan.json"), observer);
+      // Return only the typed reason on unexpected acceptance; never dump a plan
+      // containing private paths or live resource metadata into assertion output.
+      const refusal = async (operation: Promise<unknown>) => operation.then(() => "unexpected-success", error => error instanceof Error ? error.message : "unknown-error");
+      for (const [key, file] of Object.entries(roleFiles)) {
+        expect(plan.observation.privateConfigurations.runtime[key]).toEqual({ path: file, device: expect.any(String), inode: expect.any(String), digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) });
+      }
+      expect(JSON.stringify(plan)).not.toContain("ROLE_PURPOSE=");
       await mkdir(repositorySecretRoot, { recursive: true, mode: 0o700 });
-      const repositoryManagement = path.join(repositorySecretRoot, "management.env");
-      await writeFile(repositoryManagement, "DATABASE_URL=must-not-enter-image\n", { mode: 0o600 });
-      await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: repositoryManagement }), { mode: 0o600 });
-      await expect(inspectHandoff(input, observer)).rejects.toThrow("private-file-inside-build-checkout");
+      for (const basename of ["management.env", "custom-name"]) {
+        const repositoryManagement = path.join(repositorySecretRoot, basename);
+        await writeFile(repositoryManagement, "DATABASE_URL=must-not-enter-image\n", { mode: 0o600 });
+        await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: repositoryManagement }), { mode: 0o600 });
+        expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-private-file-inside-build-checkout");
+      }
+      const repositoryMain = path.join(repositorySecretRoot, "host-config");
+      await writeFile(repositoryMain, mainConfig(), { mode: 0o600 });
+      expect(await refusal(inspectHandoff({ ...input, privateConfigPath: repositoryMain }, observer))).toBe("handoff-private-file-inside-build-checkout");
+      const alias = path.join(privateRoot, "management-alias");
+      await symlink(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, alias);
+      await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: alias }), { mode: 0o600 });
+      expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-private-file-path-alias");
+      await rm(alias);
+      await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: roleFiles.WISEEFF_API_ENV_FILE }), { mode: 0o600 });
+      expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-private-file-alias");
       await writeFile(configFile, mainConfig(), { mode: 0o600 });
+      await link(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, alias);
+      expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-file-not-secure");
+      await rm(alias);
+      for (const mode of [0o644, 0o700]) {
+        await chmod(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, mode);
+        expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-file-not-secure");
+      }
+      await chmod(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, 0o600);
+      await writeFile(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, Buffer.alloc(1024 * 1024 + 1, 65));
+      expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-file-not-secure");
+      await writeFile(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, "ROLE_PURPOSE=WISEEFF_MANAGEMENT_ENV_FILE\n");
+      await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: "" }), { mode: 0o600 });
+      expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-runtime-config-path-required");
+      for (const script of ["#!/bin/sh\n", "DANGER=$(touch must-not-exist)\n", "source /private/config\n"]) {
+        await writeFile(configFile, `${mainConfig()}${script}`, { mode: 0o600 });
+        expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-private-config-not-data-only");
+      }
+      await writeFile(configFile, mainConfig(), { mode: 0o600 });
+      expect(await refusal(inspectHandoff({ ...input, candidate: { ...input.candidate, checkout: source } }, observer))).toBe("handoff-candidate-checkout-artifact-mismatch");
       expect(plan.observation.applications[0]?.imageReference).toBe(sourceImage);
       expect(git("-C", source, "rev-parse", "HEAD")).toBe(sourceSha);
       await expect(prepareHandoff(input, path.join(directory, "plan.json"), observer)).rejects.toThrow("plan-exists-or-unavailable");
@@ -112,6 +150,13 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         return opened.value;
       };
       expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
+      let controllerOpened = false;
+      for (const [key, file] of Object.entries(roleFiles)) {
+        await writeFile(file, `ROLE_PURPOSE=${key}\nCONFIGURATION_CHANGED=true\n`);
+        expect(await refusal(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController: () => { controllerOpened = true; throw new Error("must-not-open-controller"); }, withOperationLock: withHostOperationLock }))).toBe("handoff-target-changed-after-plan");
+        await writeFile(file, `ROLE_PURPOSE=${key}\n`);
+      }
+      expect(controllerOpened).toBe(false);
       await expect(inspectHandoff({ ...input, source: { ...input.source, project: "wrong-project" } }, observer)).rejects.toThrow("compose-container-mismatch");
       await expect(inspectHandoff({ ...input, source: { ...input.source, stores: input.source.stores.map(store => ({ ...store, volumeName: "wrong-volume" })) } }, observer)).rejects.toThrow("source-volume-mismatch");
       await writeFile(configFile, `${mainConfig()}CHANGED_CONFIGURATION=true\n`, { mode: 0o600 });
