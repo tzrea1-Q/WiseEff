@@ -1985,6 +1985,7 @@ wiseeff_upgrade_run_recover_candidate() {
     wiseeff_upgrade_die 2 "Candidate recovery requires --confirm recover-candidate-${upgrade_run_id}."
     return $?
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 70
 
   upgrade_recovery_queue_image_tag="$candidate_image"
   wiseeff_upgrade_state_write recovery_started true
@@ -2104,6 +2105,7 @@ wiseeff_upgrade_run_resume() {
     wiseeff_upgrade_restore_old_stack_after_stop
     return $?
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 70
 
   [ -n "$upgrade_candidate_image_tag" ] || {
     wiseeff_upgrade_die 70 "Candidate image identity is missing; manual recovery is required."
@@ -2560,6 +2562,21 @@ wiseeff_upgrade_wait_public_probe() {
   return 1
 }
 
+# The ordinary stack controller predates Catalog's purpose-scoped release chain.
+# Detect this from the immutable target tree, including same-SHA attempts. This
+# is a compatibility refusal, not a replacement Release Verification decision.
+wiseeff_upgrade_require_supported_stack_target() {
+  local catalog_entry
+  if ! catalog_entry="$(wiseeff_upgrade_git ls-tree "$upgrade_target_sha" -- server/modules/catalog-cutover/interface.ts)"; then
+    wiseeff_upgrade_die 10 "PCAT-UPG-TARGET-UNKNOWN: immutable target inspection failed."
+    return $?
+  fi
+  if [ -n "$catalog_entry" ]; then
+    wiseeff_upgrade_die 10 "PCAT-UPG-STACK-CATALOG-UNSUPPORTED: ordinary stack apply cannot execute the approved Catalog activation/runtime/public-release chain. Keep the current service unchanged; use the reviewed populated upgrade procedure."
+    return $?
+  fi
+}
+
 wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
@@ -2568,6 +2585,7 @@ wiseeff_upgrade_run_apply() {
   if ! wiseeff_upgrade_preflight; then
     return 10
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 10
   if [ "$upgrade_previous_sha" = "$upgrade_target_sha" ] &&
     [ "$upgrade_restart" != "true" ] &&
     wiseeff_upgrade_target_app_image_is_running &&

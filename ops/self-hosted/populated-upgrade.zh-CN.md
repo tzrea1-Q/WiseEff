@@ -1,0 +1,101 @@
+# 存量 Catalog 升级终端准备手册
+
+> English: [English](populated-upgrade.md)
+
+## 当前可执行边界
+
+候选修复了“诊断成功被当作发布通过”，并提供只读检查工具；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；开发 base 为 `1c9fa56e3eaca6e7984f35a097876772a6e4025d`。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
+
+| 入口 | 实际做到哪里 |
+| --- | --- |
+| 普通 stack apply | 旧 stack 生命周期；canonical 目标在构建/no-op前拒绝 |
+| Catalog apply fresh/populated | 冻结 plan/execute/P11a；不授权对外服务 |
+| Release Verification | purpose/pins/report/approval/runtime pin 模块存在，实际启动尚未接线 |
+| P12/P13/P11b/P14/P15 | 当前候选没有完整可执行集成 |
+
+## 开发环境
+
+机器：独立开发机；用户：开发者；目录：审阅候选仓库。前置：Git 中有源版本对象、Docker 可用、锁定依赖。输入均为合成数据；测试自行创建独立数据库，会写临时测试存储，不停止部署服务。
+
+```bash
+npm ci
+UPG_IDENTITY_DOCKER_TEST=1 npm run test:scripts -- scripts/inspect-upgrade-runtime-identity.test.ts
+npm run test:scripts -- scripts/inspect-populated-upgrade-source.test.ts scripts/inspect-populated-upgrade-source.integration.test.ts
+npm run test:scripts -- scripts/reconcile-upgrade-cli.test.ts ops/self-hosted/scripts/upgrade-compatibility.test.ts
+npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
+```
+
+预期：非零用例收集、退出 0。setup失败或skip不能算真实边界通过。源回归用原版126份迁移建 schema，应用候选11份后缀；少量合成值／历史是有界 oracle，不是全量消费方语义，也不是用户真实数据副本。
+
+## 固定新入口准备：保留旧部署身份
+
+在独立管理／开发机准备审阅 clone，在那里 fetch 并固定候选 commit，核验 tree／完整文件包清单，并安装锁定依赖。保留旧部署 checkout、每个应用旧镜像、Compose project 和实际卷身份。不得先在正在服务的 checkout 执行 pull、checkout、安装依赖或覆盖 `.env`。
+
+新 clone 当前仅可用于检查。**不要运行它的默认 Compose**：还没有绑定旧部署 project／卷／桶／Redis，也不能把新 clone HEAD 记成旧运行服务的 previousSha。绑定这些身份的可执行交接仍是缺失集成，本手册不提供远程下载脚本后立即执行的步骤。
+
+## 生产只读采集
+
+机器：部署机；用户：现有可信部署操作员；目录：原来的 `ops/self-hosted`。前置：单独批准本次采集；输出保留在私有交接区域。以下命令不修改数据库或停止服务，使用原部署已有 wrapper，不能使用未绑定的新 clone。
+
+```bash
+git rev-parse HEAD
+./scripts/compose ps -q api worker web postgres redis
+./scripts/compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U wiseeff -d wiseeff <<'SQL'
+BEGIN READ ONLY;
+SELECT name, checksum FROM public.schema_migrations ORDER BY name;
+SELECT extname, extversion FROM pg_extension ORDER BY extname;
+SELECT count(*) AS revisions,
+       count(typed_value) AS typed_present,
+       count(canonical_value) AS canonical_present,
+       count(raw_value) AS raw_present
+FROM public.project_parameter_binding_revisions;
+ROLLBACK;
+SQL
+```
+
+预期：完整 ledger 和聚合值存在量。SQL null 与 JSON null 不同；总数不能证明关系保全。连接失败、缺表、缺 checksum 或不可查询时停止，不记为0，不修 ledger、不改凭据。容器 ID 是私有运维引用；镜像／Compose／mount 用过滤字段的 `docker inspect` 采集，不能导出包含环境秘密的完整 inspect。
+
+如已批准管理机连接，可在审阅 clone 使用秘密设施私下提供 `DATABASE_URL`，运行新工具；不要把连接串放在命令参数中：
+
+```bash
+node --import tsx scripts/inspect-upgrade-runtime-identity.ts
+node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$UPGRADE_CANDIDATE_SHA"
+```
+
+`UPGRADE_CANDIDATE_SHA` 必须是该 clone 中存在的、审阅记录给出的40位 commit。工具只读，但连接授权需单独取得。身份检查使用新登录，不代表旧 pool 已切换。`inventory-collected`、`inspected`、`authorization:none`、`capabilityAuditComplete:false` 都不批准升级。非零结果保留并逐项处理。源检查覆盖全部 public/Catalog 表计数、列、ledger、扩展能力，不生成正式 P0 graph 或完整语义指纹。
+
+## 授权后备份／停写
+
+**当前尚不可执行。** 恢复负责人必须先交付所有写入方清单、真实三存储身份、owner/ACL方案、私有加密／密钥保管、Redis全部持久用途和同边界快照实现。现有 `backup:drill`／`restore:drill` 声明性辅助工具、`pg_restore --list` 均不证明实际恢复。旧 run 的 completed 或 recovery_point_verified 不能作为这次恢复证据。这里不提供占位符破坏命令。
+
+## 隔离副本预演
+
+开发机合成三存储恢复有真实入口。机器／用户／目录同开发测试；前置为 `scripts/rehearse-upgrade-recovery.ts` 列出的本地镜像和本地隔离 Docker endpoint，缺镜像会在创建容器前失败。仅接受合成模式，自建独立 PostgreSQL／Redis／MinIO 源与目标，写入临时数据，不接受外部 URL 或备份：
+
+```bash
+node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
+```
+
+预期退出0，证据明确 `synthetic sentinel only`；分别记录备份存在／checksum／恢复执行／合成行为验证。检查 PostgreSQL owner/ACL 与受限登录、对象字节／metadata／数量、Redis RDB恢复键。`cleanupVerified=true` 只表示自建资源清理；临时备份不保留（`backupRetained=false`）。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。失败时保留脱敏阶段，不推导生产恢复命令。这不是全量旧业务或生产停写边界证明。
+
+真实数据副本：**blocked，尚无受控可恢复备份和完整接收／恢复 adapter**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
+
+## 最终生产维护与确认点
+
+**尚不可执行，暂不申请维护窗口。** 发布集成负责人需按冻结规范交付并验证：P2停写／排空→P3同边界恢复点→P4独立管理迁移→完整冻结清单/plan/Archive/mapping→P11a→获批P12→P13→新的完整V01–V17/D01–D09 attempt→获批runtime pin→verify-only启动API/worker/web→隔离验收→精确public-release报告与两类独立批准→P15放流。不得用手工建表、修改ledger或隐含SQL补缺失阶段。
+
+## 按失败阶段恢复
+
+| 失败点 | 操作与停止点 |
+| --- | --- |
+| 检查／参数／构建信任拒绝，尚未写入 | 保留输出，修正审阅输入；不变更服务 |
+| 旧controller尚未迁移 | 读取其journal记录，旧服务恢复与候选授权分开，不猜状态 |
+| 部分迁移／未知提交 | 保持隔离，由owner分类checkpoint和恢复资格，不重置journal、不自动重试 |
+| 候选已接受业务写／投递／公开流量 | 永久关闭pointer-only资格，仅可按事故批准进行完整恢复 |
+| DB／对象／Redis／角色部分恢复 | 停止，不恢复queue/proxy后再补数据 |
+
+生产破坏性恢复命令暂不提供：目标绑定的完整实现尚缺。禁止用仅回退镜像、`--no-owner`、带删除的桶mirror或Redis清空替代。保留旧镜像和恢复材料，并保留旧构建insecure事实。
+
+## 独立阻塞与负责人
+
+发布集成owner：P12/P13归属决策、真实目标上下文、运行／公开门禁与固定入口交接。运行安全owner：能力清单、角色迁移与pool拆分、独立管理checkpoint、真实业务权限反例。恢复owner：备份接收、三存储与角色adapter、同边界及业务恢复。产品owner：#815权威关联或明确批准unavailable。构建操作员：企业CA、Docker／依赖信任和镜像来源。验收owner：完整消费方语义、浏览器与增长容量。数据owner：授权真实备份。生产操作员／审批者：维护批准。各项独立保留，不统一推给OP-09。
