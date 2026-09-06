@@ -75,6 +75,11 @@ describe("frozen old public projection across exact append-only migrations", () 
     try { await expect(inspectFrozenSourceSnapshotProgress(input)).rejects.toThrow("source-snapshot-row-drift"); }
     finally { await pool.query("update organizations set name='private-synthetic-value' where id='frozen-org'"); }
     await expect(verify()).rejects.toThrow("source-snapshot-migration-suffix-incomplete");
+    // A URL/session search_path must not redirect the real runner away from the
+    // public ledger that its frozen-source preflight verified.
+    await pool.query("create schema shadow; create table shadow.schema_migrations(name text primary key,checksum text,applied_at timestamptz default now())");
+    const shadowUrl = new URL(database.url);
+    shadowUrl.searchParams.set("options", "-c search_path=shadow,public");
     const operationRoot = path.join(directory, "operation");
     await mkdir(operationRoot, { mode: 0o700 });
     const intent: ManagementMigrationIntent = { version: "pcat-management-migration-intent-v1", runId: "frozen-management",
@@ -88,14 +93,14 @@ describe("frozen old public projection across exact append-only migrations", () 
     let recomputed: ManagementMigrationReceipt | undefined;
     await withHostOperationLock(operationRoot, async operationLock => {
       const journal = createManagementMigrationJournal({ operationRoot, target: frozen.target, journal: opened.value, assertHeld: operationLock.assertHeld });
-      managementReceipt = await runControlledManagementMigrations({ DATABASE_URL: database.url, XIAOZE_CHECKPOINTER: "postgres" }, {
+      managementReceipt = await runControlledManagementMigrations({ DATABASE_URL: shadowUrl.toString(), XIAOZE_CHECKPOINTER: "postgres" }, {
         ...input, intent, operationLock, journal,
         // This component proves the real migration/session/receipt boundary.
         // Real P2/P3 storage and writer producers are independently root-owned;
         // their deployment acceptance is not claimed by this port fixture.
         boundary: { verify: async observed => { expect(observed).toEqual(intent); } },
       });
-      recomputed = await verifyControlledManagementMigrations({ DATABASE_URL: database.url, XIAOZE_CHECKPOINTER: "postgres" }, {
+      recomputed = await verifyControlledManagementMigrations({ DATABASE_URL: shadowUrl.toString(), XIAOZE_CHECKPOINTER: "postgres" }, {
         ...input, intent, operationLock, boundary: { verify: async observed => { expect(observed).toEqual(intent); } },
       });
     });
@@ -103,6 +108,8 @@ describe("frozen old public projection across exact append-only migrations", () 
     expect(recomputed!.checkpoint).toEqual({ mode: "postgres", status: "verified" });
     expect(verifyCommittedManagementMigration(opened.value.record, intent, recomputed!).attemptId).toBeTruthy();
     expect(opened.value.record.planDigest).toBeNull();
+    expect((await pool.query("select count(*)::int as n from shadow.schema_migrations")).rows[0].n).toBe(0);
+    expect((await pool.query("select count(*)::int as n from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='shadow'")).rows[0].n).toBe(2);
     const receipt = await verify();
     expect(receipt.sourceSnapshotDigest).toBe(frozen.digest);
     expect(receipt.verifiedRelations).toBe(frozen.relations.length);
@@ -120,6 +127,13 @@ describe("frozen old public projection across exact append-only migrations", () 
       await applyMigrations(partialDb, sourceDirectory);
       await partialPool.query("insert into organizations(id,name) values ('partial-org','preserve this source row')");
       const descriptor = await captureFrozenSourceSnapshot({ pool: partialPool, sourceMigrationsDirectory: sourceDirectory, candidateMigrationsDirectory: candidateDirectory });
+      const initialInput = { pool: partialPool, descriptor, expectedDescriptorDigest: descriptor.digest, candidateMigrationsDirectory: candidateDirectory };
+      await partialPool.query("create table public.unfrozen_business(id text); insert into public.unfrozen_business values ('not captured')");
+      try { await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift"); }
+      finally { await partialPool.query("drop table public.unfrozen_business"); }
+      await partialPool.query("alter table public.organizations add column uncaptured text default 'not captured'");
+      try { await expect(inspectFrozenSourceSnapshotProgress(initialInput)).rejects.toThrow("source-snapshot-source-schema-drift"); }
+      finally { await partialPool.query("alter table public.organizations drop column uncaptured"); }
       const first = descriptor.migrationSuffix[0];
       expect(first).toBeDefined();
       await applyMigrations(partialDb, candidateDirectory, { through: first!.name });
