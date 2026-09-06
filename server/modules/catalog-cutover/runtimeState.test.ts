@@ -14,7 +14,7 @@ import { CatalogReleaseDigest } from "../parameter-catalog-contract/index";
 import { createStartupRuntimePin } from "../release-verification/report/index";
 import { reportPins } from "../release-verification/report/fixtures";
 import { readBindingDatabaseIdentity, type BindingDatabaseIdentity } from "../parameter-bindings/cutoverImport/sourceBoundary";
-import { observeCutoverRuntimeState } from "./runtimeState";
+import { observeCutoverRuntimeState, type RuntimeObservationBoundary } from "./runtimeState";
 
 // Only the parent's explicitly owned component cluster is acceptable. This file
 // has no ambient isTestDatabaseAvailable probe, fallback database or skip mode.
@@ -26,6 +26,32 @@ let migrations: { name: string; checksum: string }[];
 const login = `runtime_reports_${randomUUID().replaceAll("-", "")}`;
 let roleCreated = false;
 const input = () => ({ target, runId: "no-cutover-run", expectedMigrations: migrations });
+let lock: pg.PoolClient | undefined;
+let lockedNames: string[] = [];
+// This owned database fixture has no application/external writers. Real SHARE
+// locks fence its relations across the public Kernel's separate transaction.
+// This is not the production cross-storage controller boundary.
+const boundary: RuntimeObservationBoundary = {
+  async withLockedBoundary(body) {
+    lock = await source!.connect();
+    try {
+      await lock.query("begin");
+      lockedNames = (await lock.query("select format('%I.%I',n.nspname,c.relname) as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','parameter_catalog') and c.relkind in ('r','p') order by 1")).rows.map(row => row.name);
+      await lock.query(`lock table ${lockedNames.join(", ")} in share mode nowait`);
+      return await body();
+    } finally {
+      const current = lock; lock = undefined;
+      if (current) { let destroy = false; try { await current.query("rollback"); } catch { destroy = true; } current.release(destroy); }
+    }
+  },
+  async verify(expected) {
+    if (!lock || !lockedNames.length) throw new Error("fixture-maintenance-lock-missing");
+    expect(await readBindingDatabaseIdentity(lock)).toEqual(expected);
+    const row = (await lock.query("select count(distinct relation)::int as n from pg_locks where pid=pg_backend_pid() and granted and mode='ShareLock' and relation=any($1::regclass[])", [lockedNames])).rows[0];
+    if (row.n !== lockedNames.length) throw new Error("fixture-maintenance-lock-lost");
+  },
+};
+const observe = (pool = source!, selected = input()) => observeCutoverRuntimeState(pool, selected, boundary);
 
 beforeAll(async () => {
   assertOwnedUpgradeTestTarget();
@@ -53,7 +79,7 @@ afterAll(async () => {
 });
 
 it("observes newly created canonical schema without treating it as installed or runtime approved", async () => {
-  const observed = await observeCutoverRuntimeState(source!, input());
+  const observed = await observe();
   expect(observed.catalog).toBeNull();
   expect(observed.run).toBeNull();
   expect(observed.approvalState).toBe("not-produced");
@@ -61,13 +87,13 @@ it("observes newly created canonical schema without treating it as installed or 
   expect(observed.migrations).toEqual(migrations);
 });
 
-it("reads a real installed Kernel projection and the full independent ledger on one management snapshot", async () => {
+it("reads the public Kernel projection in its own transaction between stable management snapshots", async () => {
   const full = validCatalogReleaseBundle(); const release = full.releases[0].manifest.release;
   const bundle = { ...full, targetReleaseId: release.id, releases: [full.releases[0]] };
   const installed = await installPublishedRelease(source!, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle), expectedTargetDigest: CatalogReleaseDigest(release.digest) });
   expect(installed.ok).toBe(true);
-  const first = await observeCutoverRuntimeState(source!, input());
-  const second = await observeCutoverRuntimeState(source!, input());
+  const first = await observe();
+  const second = await observe();
   expect(first).toEqual(second);
   expect(first.catalog).toMatchObject({ releaseId: release.id, releaseDigest: release.digest });
   expect(first.catalog?.compiledFingerprint).toBe(first.catalog?.databaseFingerprint);
@@ -75,10 +101,11 @@ it("reads a real installed Kernel projection and the full independent ledger on 
 });
 
 it("rejects wrong target and packaged ledger drift without changing the real ledger", async () => {
-  await expect(observeCutoverRuntimeState(source!, { ...input(), target: { ...target, databaseOid: "0" } })).rejects.toThrow("target-mismatch");
-  await expect(observeCutoverRuntimeState(source!, { ...input(), expectedMigrations: migrations.slice(1) })).rejects.toThrow("migration-inventory-mismatch");
-  await expect(observeCutoverRuntimeState(source!, { ...input(), expectedMigrations: migrations.map((row,index) => index ? row : { ...row, checksum: "0".repeat(64) }) })).rejects.toThrow("migration-inventory-mismatch");
-  expect((await observeCutoverRuntimeState(source!, input())).migrations).toEqual(migrations);
+  // A real maintenance owner also rejects a different target before the observer.
+  await expect(observe(source!, { ...input(), target: { ...target, databaseOid: "0" } })).rejects.toThrow("maintenance-boundary-unavailable");
+  await expect(observe(source!, { ...input(), expectedMigrations: migrations.slice(1) })).rejects.toThrow("migration-inventory-mismatch");
+  await expect(observe(source!, { ...input(), expectedMigrations: migrations.map((row,index) => index ? row : { ...row, checksum: "0".repeat(64) }) })).rejects.toThrow("migration-inventory-mismatch");
+  expect((await observe()).migrations).toEqual(migrations);
 });
 
 it("uses a real NOINHERIT verifier login for report reads while refusing report writes and management role assumption", async () => {
@@ -105,7 +132,7 @@ it("uses a real NOINHERIT verifier login for report reads while refusing report 
 });
 
 it("does not borrow the report reader's connection for management inventory reads", async () => {
-  await expect(observeCutoverRuntimeState(reports!, input())).rejects.toThrow("query-failed");
+  await expect(observe(reports!)).rejects.toThrow("query-failed");
 });
 
 it("destroys the actual management session after an unknown rollback response without retrying rollback", async () => {
@@ -120,6 +147,18 @@ it("destroys the actual management session after an unknown rollback response wi
     return Reflect.get(owner, key);
   } });
   const pool = new Proxy(source!, { get(owner, key) { return key === "connect" ? async () => wrapped : Reflect.get(owner, key); } });
-  await expect(observeCutoverRuntimeState(pool, input())).rejects.toThrow("transaction-close-unknown");
+  await expect(observe(pool)).rejects.toThrow("transaction-close-unknown");
   expect(destroyed).toBe(true); expect(rollbacks).toBe(1);
+});
+
+it("requires a live maintenance boundary and refuses its loss before the public Kernel read", async () => {
+  await expect(observeCutoverRuntimeState(source!, input(), undefined as unknown as RuntimeObservationBoundary)).rejects.toThrow("maintenance-boundary-unavailable");
+  let observations = 0;
+  await expect(observeCutoverRuntimeState(source!, input(), {
+    withLockedBoundary: boundary.withLockedBoundary,
+    async verify(expected) {
+      if (++observations === 2) await lock!.query("rollback");
+      await boundary.verify(expected);
+    },
+  })).rejects.toThrow("maintenance-boundary-unavailable");
 });

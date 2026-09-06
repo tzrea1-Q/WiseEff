@@ -20,15 +20,20 @@ P10 checkpoint 都不是生产实现。缺失状态必须拒绝，不提供合�
 
 `catalog-cutover/runtimeState.ts` 完成该 producer 的一部分：读取真实集群标识／
 数据库 OID 和全量迁移 ledger，对照独立候选包中的 filename／checksum 清单，
-在同一个 REPEATABLE READ READ ONLY 会话内复用 Kernel `loadProjection`。
+调用正式 Kernel `loadCurrentCatalog` 接口，由 Kernel 自己管理读取事务。
 同时读取 run、checkpoint、当前 mapping head 和 Archive 记录。可能含私有
 引用的记录只输出摘要。结果始终明确 `approvalState: not-produced`；Catalog
 已安装或 P10 completed 不证明 P12／P13 或 runtime 批准。
 
 这些观察摘要不是新定义的 mapping epoch、Archive 备份摘要或完整
 `VerificationPins` producer。对象字节、Redis、宿主／Compose／镜像身份和
-恢复点仍须由各自真实 adapter 产生。可重复读事务保证数据库观察一致，但不能
-替代 controller 跨存储维护锁。
+恢复点仍须由各自真实 adapter 产生。每次 metadata 观察使用 REPEATABLE READ
+READ ONLY，Kernel 使用独立读取事务。必需的 `RuntimeObservationBoundary`
+必须在前后两次 metadata 观察和 Kernel 读取全过程隔离相关写入者。观察器在
+读取前后核验边界，比较全部观察事实／摘要及公开 snapshot pins；边界丢失或
+漂移就拒绝。结果相等不能替代真实停写证明，也不能忽略中途变更后又恢复的情况。
+调用者不向 Kernel 传入事务或 callback，不导入私有实现，不改变公开接口或
+冻结事务 ownership。
 
 ## 权限与所有权
 
@@ -39,8 +44,8 @@ P10 checkpoint 都不是生产实现。缺失状态必须拒绝，不提供合�
 | 后续 runtime Catalog reader | 已有 `0140` reader 提案 | 独立决策与接线，本分片没有授权 |
 
 `0138` 没有给 `catalog_migration_owner` 授予 `schema_migrations` SELECT，因此
-观察器明确使用源／installer pool，不偷偷添加授权。包括 Kernel 在内的观察
-事务只读；回滚结果未知时销毁连接。这不能证明管理登录适合运行时使用。
+观察器明确使用源／installer pool，不偷偷添加授权。观察事务和 Kernel 自管
+读取都只读；回滚结果未知时销毁连接。这不能证明管理登录适合运行时使用。
 
 本分片不修改 SQL 授权或角色属性。报告读取复用既有 `0139` 接口，不需要
 `0140` 提议的两项 governance writer EXECUTE；那两项仍未获批准。父协调者
@@ -61,14 +66,17 @@ evidence 的 `identity.ts` 要求 P12 `retired`。本分片不制造新的 P12 �
 | 缺报告、未批准、pre-pin、报告过期 | 现有投影负责判断，保留 typed absent 原因 |
 | 已建新表但尚未安装 release | 真实观察返回 `catalog: null`，不提供批准 |
 | 错数据库或候选迁移清单漂移 | 实际 backend 身份与完整独立 ledger 比对 |
+| Kernel／metadata 独立事务之间缺少停写或发生漂移 | 必需的真实边界、前后完整观察及 snapshot pins 比对 |
 | 查询不完整或回滚结果未知 | 静态拒绝；未知关闭销毁连接 |
 | 启动读取变成批准或切流 | 仅只读投影，接口不含动作方法 |
 
 `verifyStartup.test.ts` 是使用报告投影 stub 的 adapter 单测；正向用例不属于
 技术报告，也不是 M2 证据。`runtimeState.test.ts` 在任何数据库操作之前要求
 显式 owned-cluster receipt，没有 ambient 探测、数据库 fallback 或 skip 模式。
-它通过真实 migration／Kernel 安装验证观察，并使用真实 NOINHERIT verifier
-登录读取 absent 报告、拒绝报告 DML 和管理角色切换，不伪造 passed 报告。
+它通过真实 migration／Kernel 安装、数据库 SHARE 锁验证观察，拒绝实际锁丢失，
+并使用真实 NOINHERIT verifier 登录读取 absent 报告、拒绝报告 DML 和管理角色
+切换。fixture 的锁只覆盖其独占数据库，没有实现生产跨存储 controller，也不
+伪造 passed 报告。
 
 实现智能体没有执行测试、build、Docker 或数据库命令，全部执行由父协调者
 负责。执行前由父协调者在无 globalSetup 的合适 config 中仅纳入对应 selector；

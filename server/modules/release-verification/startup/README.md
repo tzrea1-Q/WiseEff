@@ -25,8 +25,8 @@ state must refuse; there is no default that returns a synthetic boundary.
 
 `catalog-cutover/runtimeState.ts` supplies one part of that producer. It reads the
 actual system identifier/database OID and complete migration ledger, matches the
-independent packaged filename/checksum inventory, and uses the existing Kernel
-`loadProjection` reader on the same REPEATABLE READ READ ONLY session. It also
+independent packaged filename/checksum inventory, and uses the public Kernel
+`loadCurrentCatalog` interface in its own transaction. It also
 captures run, checkpoint, current mapping-head and Archive-record observations.
 Only their digests leave the module where rows may contain private references.
 The observation's `approvalState` is always `not-produced`: installed Catalog
@@ -34,8 +34,15 @@ state and a completed P10 run do not establish P12/P13 or runtime approval.
 The observation digests are explicitly not a newly defined mapping epoch,
 Archive package digest or complete `VerificationPins` producer. Object bytes,
 Redis, host/Compose/artifact identity and the recovery point require their real
-owning adapters. REPEATABLE READ makes this database observation coherent; it
-does not replace the controller's cross-storage maintenance lock.
+owning adapters. Each metadata observation uses REPEATABLE READ READ ONLY;
+the Kernel owns a separate read transaction. The mandatory
+`RuntimeObservationBoundary` must fence relevant writers throughout both
+metadata observations and the Kernel call. The observer verifies that boundary
+before/after reads, compares all metadata facts/digests and all public snapshot
+pins, and refuses boundary loss or drift. Equality alone is not a substitute for
+the real fence (including an intervening change and reversal). No transaction or
+callback is passed into the Kernel, and no private Kernel implementation is
+imported. The public seam and frozen transaction ownership stay unchanged.
 
 ## Permissions and ownership
 
@@ -47,7 +54,7 @@ does not replace the controller's cross-storage maintenance lock.
 
 `0138` does not grant `catalog_migration_owner` SELECT on `schema_migrations`, so
 the observer deliberately uses the source/installer pool rather than silently
-granting that privilege. Its transaction is read-only, including Kernel reads.
+granting that privilege. Its transactions and the Kernel-owned read are read-only.
 Unknown rollback outcomes destroy the connection. This is not evidence that
 the management login is an acceptable runtime identity.
 
@@ -74,6 +81,7 @@ state or silently change either caller's acceptance contract.
 | Missing, unapproved, pre-pin, stale retained report | Existing projection; typed absence preserved |
 | Schema exists without installed release | Actual observation has `catalog: null`, no approval |
 | Different database or packaged migration drift | Real backend identity and complete independent ledger comparison |
+| Missing fence or drift across separate Kernel/metadata transactions | Mandatory live boundary, full before/after observations and snapshot pin match |
 | Partial query or unknown rollback | Static refusal; unknown close destroys session |
 | Startup reads become approval or traffic effects | Read-only projection and no effect methods |
 
@@ -81,9 +89,12 @@ state or silently change either caller's acceptance contract.
 projection. Its positive case is not a technical verification report or M2
 proof. `runtimeState.test.ts` requires the explicit owned-cluster receipt before
 any database operation; it has no ambient probe, database fallback or skip mode.
-It uses real migrations/Kernel installation for observation and a real
+It uses real migrations/Kernel installation and database SHARE locks for
+observation, rejects a lost real lock, and uses a real
 NOINHERIT verifier login to read an absent report and reject report DML and
-management role assumption. It does not create a fake passed report.
+management role assumption. The fixture fence covers only its owned database;
+it does not implement the cross-storage production controller. It does not
+create a fake passed report.
 
 The implementation agent did not execute tests, build, Docker or database
 commands. The parent owns all execution. Before execution, the parent must
