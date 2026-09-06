@@ -6,6 +6,7 @@ import { createDatabase, createPostgresDatabase, getRootPostgresPool, type Datab
 import { applyMigrations } from "../server/shared/database/migrations";
 import { setupXiaozeCheckpointerTables, verifyPostgresCheckpointerTablesOnClient } from "../server/modules/agent/xiaoze/durableCheckpointer";
 import { inspectFrozenSourceSnapshotProgress, SourceSnapshotError, verifyFrozenSourceSnapshot, type FrozenSourceSnapshot } from "../server/modules/catalog-cutover/sourceSnapshot";
+import { captureManagementStructureDigest } from "../server/modules/catalog-cutover/managementStructure";
 import { readBindingDatabaseIdentity } from "../server/modules/parameter-bindings/cutoverImport/sourceBoundary";
 import { canonicalJson, sha256Prefixed } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 
@@ -78,6 +79,9 @@ export type ManagementMigrationIntent = {
   readonly runId: string;
   /** Fixed outer preparation/handoff plan; the S7 plan does not exist yet. */
   readonly preparationPlanDigest: string;
+  /** Fixed checkout/artifact identity, in addition to the SQL byte inventory. */
+  readonly candidateArtifactSha: string;
+  readonly candidateArtifactTree: string;
   readonly target: FrozenSourceSnapshot["target"];
   readonly sourceSnapshotDigest: string;
   readonly candidateInventoryDigest: string;
@@ -109,6 +113,8 @@ export type ManagementMigrationReceipt = {
   readonly verifiedRelations: number;
   readonly verifiedRows: number;
   readonly appliedSuffix: number;
+  /** Actual post-management structure, checked again before activation at P4. */
+  readonly installedStructureDigest: string;
   readonly checkpoint: { readonly mode: "memory" | "postgres"; readonly status: "skipped" | "verified" };
 };
 export type ManagementMigrationAttempt = { readonly attemptId: string };
@@ -133,6 +139,7 @@ export type ControlledManagementVerificationInput = Omit<ControlledMigrationInpu
 function requireControlledPins(input: Pick<ControlledMigrationInput, "intent" | "descriptor" | "expectedDescriptorDigest">): void {
   const { intent, descriptor } = input;
   if (!intent || intent.version !== "pcat-management-migration-intent-v1" || !/^[A-Za-z0-9_-]+$/.test(intent.runId) ||
+      ![intent.candidateArtifactSha, intent.candidateArtifactTree].every(pin => typeof pin === "string" && /^[a-f0-9]{40}$/.test(pin)) ||
       !["memory", "postgres"].includes(intent.checkpointMode) ||
       [intent.preparationPlanDigest, intent.sourceSnapshotDigest, intent.candidateInventoryDigest, intent.writeFenceReceiptDigest, intent.recoveryManifestDigest].some(pin => !/^sha256:[a-f0-9]{64}$/.test(pin)) ||
       !descriptor || intent.sourceSnapshotDigest !== input.expectedDescriptorDigest || descriptor.digest !== input.expectedDescriptorDigest ||
@@ -148,15 +155,23 @@ export async function verifyManagementMigrationReceipt(input: Pick<ControlledMig
   input = { ...input, intent: structuredClone(input.intent), descriptor: structuredClone(input.descriptor) };
   requireControlledPins(input);
   const verified = await verifyFrozenSourceSnapshot(input);
-  if (input.intent.checkpointMode === "postgres") {
-    const client = await input.pool.connect();
-    try {
-      await configureManagementSession(client);
-      if (canonicalJson(await readBindingDatabaseIdentity(client)) !== canonicalJson(input.intent.target)) throw new ControlledManagementMigrationError("management-migration-target-mismatch");
-      await verifyPostgresCheckpointerTablesOnClient(client);
-    } finally { client.release(); }
+  const client = await input.pool.connect();
+  let installedStructureDigest: string;
+  let discard = false;
+  try {
+    await configureManagementSession(client);
+    if (canonicalJson(await readBindingDatabaseIdentity(client)) !== canonicalJson(input.intent.target)) throw new ControlledManagementMigrationError("management-migration-target-mismatch");
+    await client.query("begin isolation level repeatable read read only");
+    if (input.intent.checkpointMode === "postgres") await verifyPostgresCheckpointerTablesOnClient(client);
+    installedStructureDigest = await captureManagementStructureDigest({ client, target: input.intent.target });
+  } finally {
+    try { await client.query("rollback"); }
+    catch { discard = true; }
+    client.release(discard);
+    if (discard) throw new ControlledManagementMigrationError("management-migration-read-close-unknown");
   }
   return { version: "pcat-management-migration-receipt-v1", intentDigest: managementMigrationIntentDigest(input.intent), ...verified,
+    installedStructureDigest,
     checkpoint: { mode: input.intent.checkpointMode, status: input.intent.checkpointMode === "postgres" ? "verified" : "skipped" } };
 }
 
