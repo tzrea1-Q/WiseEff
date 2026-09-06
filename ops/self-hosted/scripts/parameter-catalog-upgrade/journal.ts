@@ -7,7 +7,8 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
-  readFileSync,
+  readSync,
+  realpathSync,
   renameSync,
   rmdirSync,
   unlinkSync,
@@ -153,11 +154,18 @@ const withDigest = (record: Omit<JournalRecord, "journalDigest">): JournalRecord
 // lock. A leftover lock is never guessed stale or removed by another process.
 class JournalDurabilityError extends Error {}
 const ensureDurableDirectory = (directory: string): void => {
-  if (existsSync(directory)) return;
+  if (existsSync(directory)) {
+    const physical = realpathSync(directory);
+    if (physical !== directory) return ensureDurableDirectory(physical);
+  }
   const parent = path.dirname(directory);
+  if (parent === directory) return;
   ensureDurableDirectory(parent);
-  try { mkdirSync(directory, { mode: 0o700 }); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  if (!existsSync(directory)) {
+    try { mkdirSync(directory, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  }
+  // Retry must repair an earlier failed parent fsync even if mkdir succeeded.
   const fd = openSync(parent, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try { fsyncSync(fd); } finally { closeSync(fd); }
 };
@@ -283,7 +291,15 @@ export const journalBytes = (journalPath: string): Buffer => {
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || stat.size > 16 * 1024 * 1024) throw new Error("unsafe-journal-file");
-    return readFileSync(fd);
+    const bytes = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset);
+      if (!count) throw new Error("journal-file-truncated");
+      offset += count;
+    }
+    if (fstatSync(fd).size !== stat.size) throw new Error("journal-file-changed");
+    return bytes;
   } finally { closeSync(fd); }
 };
 

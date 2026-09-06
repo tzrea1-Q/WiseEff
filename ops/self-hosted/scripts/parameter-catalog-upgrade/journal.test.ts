@@ -1,8 +1,17 @@
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const faults = vi.hoisted(() => ({ directoryInode: null as number | null }));
+vi.mock("node:fs", async importOriginal => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, fsyncSync(fd: number) {
+    if (faults.directoryInode === fs.fstatSync(fd).ino) throw Object.assign(new Error("synthetic-fsync-failure"), { code: "EIO" });
+    return fs.fsyncSync(fd);
+  } };
+});
 
 import {
   commitJournalTransition,
@@ -15,6 +24,18 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("does not treat a directory left by failed parent fsync as durable on retry", () => {
+    const parent = mkdtempSync(path.join(tmpdir(), "upg-directory-durability-"));
+    const directory = path.join(parent, "created", "child");
+    const journalPath = path.join(directory, "run.json");
+    faults.directoryInode = statSync(parent).ino;
+    try {
+      expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(false);
+      expect(existsSync(path.join(parent, "created"))).toBe(true);
+      expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(false);
+    } finally { faults.directoryInode = null; }
+    expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(true);
+  });
   it("rejects a stale handle instead of overwriting another committed transition", () => {
     const journalPath = tempJournal();
     const first = openUpgradeJournal({ journalPath, runId: "cas" });

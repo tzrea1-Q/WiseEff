@@ -85,7 +85,7 @@ const isControllerState = (value: string): value is ControllerState =>
 export const failClosed = (
   code: ControllerRefusalCode,
   detail: string,
-): ControllerResult<never> => ({
+): { readonly ok: false; readonly error: ControllerRefusal } => ({
   ok: false,
   error: { code, detail },
 });

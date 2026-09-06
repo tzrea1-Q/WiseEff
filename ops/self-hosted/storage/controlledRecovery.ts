@@ -26,7 +26,7 @@ export type ControlledRecoverySource = {
   }>;
 };
 export class ControlledRecoveryRefusal extends Error {}
-export const recoveryRefuse = (reason: string): never => { throw new ControlledRecoveryRefusal(`controlled-recovery-${reason}`); };
+export function recoveryRefuse(reason: string): never { throw new ControlledRecoveryRefusal(`controlled-recovery-${reason}`); }
 const identityKeys = ["deploymentId", "hostFingerprint", "postgresIdentity", "objectStoreIdentity", "redisIdentity"] as const;
 export const sameRecoveryIdentity = (left: RecoveryTargetIdentity, right: RecoveryTargetIdentity): boolean =>
   identityKeys.every(key => typeof left?.[key] === "string" && left[key].length > 0 && left[key] === right?.[key]);

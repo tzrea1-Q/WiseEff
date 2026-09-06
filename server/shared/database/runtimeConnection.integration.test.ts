@@ -61,6 +61,14 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
         .rejects.toMatchObject({ code: "PCAT-RUNTIME-PRIVILEGED-LOGIN" });
     }
   });
+  it("refuses a login able to assume the release verification writer role", async () => {
+    await admin.query("create role catalog_verification_writer_role nologin noinherit; grant catalog_verification_writer_role to runtime with inherit false");
+    try {
+      const outcome = await openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production" })
+        .then(async db => { await db.close(); return "allowed"; }, error => error.code);
+      expect(outcome).toBe("PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE");
+    } finally { await admin.query("revoke catalog_verification_writer_role from runtime; drop role catalog_verification_writer_role"); }
+  });
   it("requires a separate actual governance login and refuses it as the application pool", async () => {
     await expect(openRuntimeDatabase({ connectionString: url("governance"), nodeEnv: "production" }))
       .rejects.toMatchObject({ code: "PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL" });

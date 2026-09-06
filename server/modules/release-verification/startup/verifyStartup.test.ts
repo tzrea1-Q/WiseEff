@@ -23,7 +23,7 @@ const projection = (current: StartupBoundary) => ({ kind: "present", report: {
   pointerRollbackStatus: current.pointerRollbackStatus, evidenceRefs: [{ subject: current.subject }],
 } as ReleaseVerificationReport });
 const target = (observe: () => Promise<StartupBoundary>) => ({ observe, withLockedBoundary: async <T>(body: () => Promise<T>) => body() });
-beforeEach(() => reader.mockReset());
+beforeEach(() => { reader.mockReset(); });
 
 it("uses only the existing approved projection between two locked live observations", async () => {
   const current = boundary(); const order: string[] = [];

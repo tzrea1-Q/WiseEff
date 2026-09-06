@@ -19,7 +19,7 @@ select session_user = current_user as same_identity,
   (select count(*)::int from pg_catalog.pg_roles r join reachable on reachable.oid = r.oid
     where r.rolsuper or r.rolbypassrls or r.rolcreatedb or r.rolcreaterole or r.rolreplication) as privileged_roles,
   (select count(*)::int from pg_catalog.pg_roles r join reachable on reachable.oid = r.oid
-    where r.rolname in ('catalog_migration_owner', 'catalog_synchronizer_role')) as management_roles,
+    where r.rolname in ('catalog_migration_owner', 'catalog_synchronizer_role', 'catalog_verification_writer_role')) as management_roles,
   (select count(*)::int from pg_catalog.pg_roles r join reachable on reachable.oid = r.oid
     where r.rolname = 'parameter_governance_writer_role') as governance_roles,
   ((select count(*)::int from pg_catalog.pg_class c join application_schemas s on s.oid = c.relnamespace

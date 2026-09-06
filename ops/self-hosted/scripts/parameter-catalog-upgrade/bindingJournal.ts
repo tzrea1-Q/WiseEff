@@ -9,7 +9,7 @@ import {
 
 type Target = BindingPhaseEvent["target"];
 type Scope = { operationRoot: string; target: Target };
-const fail = (reason: string): never => { throw new Error(reason); };
+function fail(reason: string): never { throw new Error(reason); }
 const same = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right);
 function targetDirectory({ operationRoot, target }: Scope): string {
   if (!path.isAbsolute(operationRoot) || !/^[0-9]+$/.test(target.systemIdentifier) || !/^[0-9]+$/.test(target.databaseOid)) fail("binding-journal-invalid-scope");

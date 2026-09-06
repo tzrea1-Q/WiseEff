@@ -32,7 +32,7 @@ export type HandoffObserver = {
 };
 type HandoffObservation = Awaited<ReturnType<typeof observe>>;
 export type HandoffPlan = { format: "wiseeff-fixed-entry-handoff-v1"; inputs: HandoffInputs; observation: HandoffObservation; digest: string };
-const fail = (code: string): never => { throw new Error(`handoff-${code}`); };
+function fail(code: string): never { throw new Error(`handoff-${code}`); }
 const git = (checkout: string, ...args: string[]) => {
   const result = spawnSync("git", ["-C", checkout, ...args], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 });
   if (result.status !== 0) fail("git-observation-failed");
