@@ -74,6 +74,17 @@ export async function captureArchivedDefinitionGraph(client: CutoverQueryable, s
   return { sourcePayload: source.rows[0].source_payload, relationGraph: { sourceId, revisions: revisions.rows.map((row) => row.revision) } };
 }
 
+export async function definitionGraphMatchesSource(client: CutoverQueryable, graph: FrozenP0Graph): Promise<boolean> {
+  const specs = await client.query<{ record: unknown }>(`select jsonb_build_object('id', id, 'organizationId', organization_id, 'sourceKind', source_kind, 'specificationKey', specification_key, 'attributionSubjectId', attribution_subject_id, 'definitionLifecycle', definition_lifecycle, 'propertyKey', property_key) as record from public.parameter_specs order by id`);
+  const versions = await client.query<{ record: unknown }>(`select jsonb_build_object('id', id, 'parameterSpecId', parameter_spec_id, 'version', version, 'lifecycle', lifecycle, 'versionStatus', version_status) as record from public.parameter_spec_versions order by id`);
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+    if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",")}}`;
+    return JSON.stringify(value);
+  };
+  return canonical(specs.rows.map((row) => row.record)) === canonical([...graph.specs].sort((a, b) => a.id.localeCompare(b.id))) && canonical(versions.rows.map((row) => row.record)) === canonical([...graph.specVersions].sort((a, b) => a.id.localeCompare(b.id)));
+}
+
 export function inspectConversionManifest(input: {
   readonly graph: FrozenP0Graph;
   readonly targetCatalogReleaseDigest: string;

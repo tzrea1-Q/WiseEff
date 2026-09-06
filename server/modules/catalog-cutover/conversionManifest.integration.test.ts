@@ -108,6 +108,13 @@ describe("S7 exact conversion identity producer, real PostgreSQL", () => {
     await client.query("drop table public.synthetic_null_boundary");
     expect(await captureConversionSourceInventory(client)).toBe(manifest.sourceInventoryFingerprint);
   }, 60000);
+  it("rejects a rehashed classifier graph that does not describe the actual source rows", async () => {
+    const forged = { ...graph, specs: graph.specs.map((spec) => spec.id === "spec-left" ? { ...spec, specificationKey: "forged-before-plan" } : spec) };
+    const forgedManifest = { ...manifest, sourceSnapshotFingerprint: fingerprintP0Graph(forged) };
+    const planned = await planCutover({ graph: forged, targetArtifactSha: "a".repeat(40), targetCatalogReleaseDigest: manifest.targetCatalogReleaseDigest, catalogReleaseSource: source, conversionManifest: forgedManifest });
+    expect(planned.ok).toBe(true); if (!planned.ok) return;
+    expect(await executeCutover({ pool, plan: planned.value, graph: forged, catalogReleaseSource: source, conversionManifest: forgedManifest, archiveObjectStore: createLocalArchiveObjectStore(root), archiveEncryptionKey: randomBytes(32), operatorAuditRef: "synthetic-conversion-operator" })).toMatchObject({ ok: false, error: { detail: "conversion-source-graph-mismatch" } });
+  }, 60000);
   it("refuses changed source bytes before creating a new run", async () => {
     const planned = await planCutover({ graph, targetArtifactSha: "d".repeat(40), targetCatalogReleaseDigest: manifest.targetCatalogReleaseDigest, catalogReleaseSource: source, conversionManifest: manifest });
     expect(planned.ok).toBe(true); if (!planned.ok) return;

@@ -50,7 +50,7 @@ import {
   type RecoverCutoverInput,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
-import { captureArchivedDefinitionGraph, captureConversionSourceInventory, conversionManifestDigest, inspectConversionManifest } from "./conversionManifest";
+import { captureArchivedDefinitionGraph, captureConversionSourceInventory, conversionManifestDigest, definitionGraphMatchesSource, inspectConversionManifest } from "./conversionManifest";
 import {
   assertRecordedAction,
   captureInventoryDump,
@@ -453,6 +453,7 @@ export const executeCutover = async (
     if (input.plan.conversionManifestDigest || input.conversionManifest) {
       if (!input.conversionManifest || input.plan.conversionManifestDigest !== conversionManifestDigest(input.conversionManifest)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-digest-mismatch");
       if (await captureConversionSourceInventory(client) !== input.conversionManifest.sourceInventoryFingerprint) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-inventory-drift");
+      if (!await definitionGraphMatchesSource(client, input.graph)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-graph-mismatch");
     }
     const populated = await requirePopulated(client, input.graph);
     if (!populated.ok) return populated;
