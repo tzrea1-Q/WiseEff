@@ -7,6 +7,7 @@ import { appendCutoverEvent } from "../../catalog-cutover/checkpoints";
 import { insertBinding } from "../binding/repositories";
 import { digestProjectValuePayload, insertProjectValue } from "../values/repositories";
 import type { ProjectValueKind, ProjectValuePayload } from "../values/types";
+import { captureBindingImportIntent, type BindingImportIntent } from "./intent";
 
 export type BindingImportEntry = {
   readonly sourceBindingId: string;
@@ -25,7 +26,9 @@ export type BindingImportEntry = {
 };
 
 export type BindingImportManifest = {
-  readonly version: "s6-binding-import-v1";
+  readonly version: "s6-binding-import-v1" | "s6-binding-import-v2";
+  readonly intentDigest?: string;
+  readonly mappingPins?: readonly {identityId:string;versionId:string;casVersion:number}[];
   readonly runId: string;
   readonly planDigest: string;
   readonly sourceSnapshotFingerprint: string;
@@ -107,18 +110,17 @@ export type BindingImportResult =
   | { ok: true; status: "imported" | "already-imported"; manifestDigest: string; bindings: number; values: number }
   | { ok: false; reason: string; typedCause?: string };
 
-/** P0 pins the manifest; P8 supplies the same immutable artifact. This is not release approval. */
-export async function importLegacyBindingHistory(input: {
-  pool: pg.Pool;
+type ImportRequest = {
   runId: string;
   planDigest: string;
   manifestDigest: string;
   archive: Omit<ArchiveAdapterOptions, "client" | "failAfter">;
-}): Promise<BindingImportResult> {
-  const client = await input.pool.connect();
-  let committing = false;
+};
+
+/** Requires a real parent transaction: SAVEPOINT fails outside one. No lock-trust flag exists. */
+async function importOnClient(client: pg.PoolClient, input: ImportRequest, contract: "historical-v1" | "prepared-v2" | "verify-v2"): Promise<BindingImportResult> {
   try {
-    await client.query("begin isolation level serializable");
+    await client.query("savepoint s6_binding_import_scope");
     const login = await client.query<{ safe: boolean }>(`select (not rolsuper and not rolbypassrls and not rolcreatedb and not rolcreaterole and not rolreplication and not rolinherit
       and pg_has_role(session_user,'catalog_migration_owner','MEMBER')
       and not exists (select 1 from pg_roles inherited where pg_has_role(session_user,inherited.oid,'MEMBER')
@@ -132,18 +134,33 @@ export async function importLegacyBindingHistory(input: {
     requireFact(locked.rows[0]?.acquired, "cutover-target-lock-held");
     const run = await client.query<{ plan_digest: string; source_snapshot_fingerprint: string; target_catalog_release_digest: string; current_phase: string; state: string; pointer_rollback_closed_at: unknown }>("select plan_digest,source_snapshot_fingerprint,target_catalog_release_digest,current_phase,state,pointer_rollback_closed_at from parameter_catalog.parameter_catalog_cutover_runs where id=$1 for update", [input.runId]);
     const r = run.rows[0];
-    requireFact(r && r.plan_digest === input.planDigest && ["P8","P9"].includes(r.current_phase) && r.state === "running" && r.pointer_rollback_closed_at === null, "run-not-applicable");
+    requireFact(r && r.plan_digest === input.planDigest && (contract === "verify-v2" ? r.current_phase === "P10" && r.state === "completed" : ["P8","P9"].includes(r.current_phase) && r.state === "running") && r.pointer_rollback_closed_at === null, "run-not-applicable");
     const current = await client.query("select 1 from parameter_catalog.catalog_state s join parameter_catalog.catalog_releases r on r.id=s.current_catalog_release_id join parameter_catalog.catalog_materializations m on m.release_id=r.id where s.singleton and r.release_digest=$1",[r.target_catalog_release_digest]);
     requireFact(current.rowCount === 1, "target-release-drift");
     const checkpoints = await client.query<{ phase: string; payload: Record<string, unknown> }>("select phase,payload from parameter_catalog.parameter_catalog_cutover_checkpoints where cutover_run_id=$1 and phase in ('P0','P8')", [input.runId]);
     const p0 = checkpoints.rows.find(v => v.phase === "P0")?.payload;
     const manifest = checkpoints.rows.find(v => v.phase === "P8")?.payload.bindingImport as BindingImportManifest | undefined;
-    requireFact(manifest && p0?.bindingImportManifestDigest === input.manifestDigest && bindingImportDigest(manifest) === input.manifestDigest, "manifest-pin-mismatch");
+    requireFact(manifest && bindingImportDigest(manifest) === input.manifestDigest, "manifest-pin-mismatch");
     const m = manifest!;
-    requireFact(m.version === "s6-binding-import-v1" && m.runId === input.runId && m.planDigest === input.planDigest && m.sourceSnapshotFingerprint === r.source_snapshot_fingerprint && m.sourceInventoryFingerprint === p0?.sourceInventoryFingerprint, "manifest-lineage-mismatch");
+    requireFact(m.version === (contract === "historical-v1" ? "s6-binding-import-v1":"s6-binding-import-v2") && m.runId === input.runId && m.planDigest === input.planDigest && m.sourceSnapshotFingerprint === r.source_snapshot_fingerprint && m.sourceInventoryFingerprint === p0?.sourceInventoryFingerprint, "manifest-lineage-mismatch");
     requireFact(Array.isArray(m.bindings) && m.bindings.length > 0 && new Set(m.bindings.map(b => b.sourceBindingId)).size === m.bindings.length, "binding-conservation");
+    if (contract === "historical-v1") {
+      requireFact(p0?.bindingImportManifestDigest === input.manifestDigest, "manifest-pin-mismatch");
+    } else {
+      const intent = p0?.bindingImportIntent as BindingImportIntent | undefined;
+      requireFact(intent && p0?.bindingImportIntentDigest === m.intentDigest && bindingImportDigest(intent) === m.intentDigest, "import-intent-pin-mismatch");
+      const observed = await captureBindingImportIntent(client,{sourceSnapshotFingerprint:m.sourceSnapshotFingerprint,sourceInventoryFingerprint:m.sourceInventoryFingerprint});
+      requireFact(bindingImportDigest(observed) === m.intentDigest, "import-intent-source-drift");
+      requireFact(observed.bindings.length === m.bindings.length && observed.bindings.every(b => m.bindings.some(e => e.sourceBindingId === b.sourceBindingId && e.sourceChecksum === b.sourceChecksum && e.sourceTipRevisionId === b.sourceTipRevisionId)), "all-source-binding-conservation");
+      requireFact(Array.isArray(m.mappingPins) && m.mappingPins.length > 0 && new Set(m.mappingPins.map(p => p.identityId)).size === m.mappingPins.length,"import-mapping-pins-required");
+      for (const pin of m.mappingPins!) {
+        const current = await client.query("select 1 from parameter_catalog.legacy_mapping_heads h join parameter_catalog.legacy_mapping_versions v on v.id=h.current_version_id and v.legacy_identity_id=h.legacy_identity_id where h.legacy_identity_id=$1 and h.current_version_id=$2 and h.cas_version=$3 and v.cutover_run_id=$4",[pin.identityId,pin.versionId,pin.casVersion,input.runId]);
+        requireFact(current.rowCount === 1,"import-mapping-pin-drift");
+      }
+    }
     const done = await client.query<{ payload: Record<string, unknown> }>("select payload from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 and event_kind='s6-binding-import-completed'", [input.runId]);
     requireFact(done.rowCount === 0 || (done.rowCount === 1 && done.rows[0].payload.manifestDigest === input.manifestDigest), "import-receipt-conflict");
+    if (contract === "verify-v2") requireFact(done.rowCount === 1,"import-completion-receipt-required");
     let values = 0;
     const definitionGraphs = new Map<string, DefinitionBindingImportSource>();
     for (const entry of m.bindings) {
@@ -204,13 +221,38 @@ export async function importLegacyBindingHistory(input: {
     }
     if (done.rowCount === 0) await appendCutoverEvent(client,{runId:input.runId,phase:"P9",eventKind:"s6-binding-import-completed",payload:{manifestDigest:input.manifestDigest,bindings:m.bindings.length,values}});
     await client.query("set constraints all immediate");
-    committing = true;
-    await client.query("commit");
+    await client.query("release savepoint s6_binding_import_scope");
     return {ok:true,status:done.rowCount === 0 ? "imported":"already-imported",manifestDigest:input.manifestDigest,bindings:m.bindings.length,values};
   } catch (error) {
-    await client.query("rollback").catch(() => undefined);
+    await client.query("rollback to savepoint s6_binding_import_scope").catch(() => undefined);
+    await client.query("release savepoint s6_binding_import_scope").catch(() => undefined);
     const typedCause = error instanceof ImportRefusal ? error.typedCause :
       error instanceof Error && "code" in error && typeof error.code === "string" && /^[0-9A-Z]{5}$/.test(error.code) ? error.code : undefined;
-    return {ok:false,reason:committing ? "unknown-commit-outcome" : error instanceof ImportRefusal ? error.message : "management-import-query-failure",...(typedCause ? {typedCause}: {})};
+    return {ok:false,reason:error instanceof ImportRefusal ? error.message : "management-import-query-failure",...(typedCause ? {typedCause}: {})};
+  }
+}
+
+/** Production P9 seam: consumes only a P8 v2 receipt on the controller's transaction. */
+export const importPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient}): Promise<BindingImportResult> =>
+  importOnClient(input.client,input,"prepared-v2");
+
+/** Completed S7 no-op still revalidates the source, mappings and all imported targets. */
+export const verifyPreparedBindingHistory = (input: ImportRequest & {client:pg.PoolClient}): Promise<BindingImportResult> =>
+  importOnClient(input.client,input,"verify-v2");
+
+/** Retained historical receipt-consumer fixture seam. The production controller never calls it. */
+export async function importLegacyBindingHistory(input: ImportRequest & {pool:pg.Pool}): Promise<BindingImportResult> {
+  const client = await input.pool.connect();
+  let committing = false;
+  try {
+    await client.query("begin isolation level serializable");
+    const result = await importOnClient(client,input,"historical-v1");
+    if (!result.ok) { await client.query("rollback"); return result; }
+    committing = true;
+    await client.query("commit");
+    return result;
+  } catch {
+    await client.query("rollback").catch(() => undefined);
+    return {ok:false,reason:committing ? "unknown-commit-outcome":"management-import-query-failure"};
   } finally { client.release(); }
 }

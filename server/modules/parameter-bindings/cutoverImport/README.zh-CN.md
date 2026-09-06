@@ -9,12 +9,20 @@ Bindings API 导出。它不批准发布、不切换指针、不恢复队列，�
 CREATEDB 或 CREATEROLE，并且必须持有现有 `catalog_migration_owner` 能力角色的
 成员关系。导入事务切换到该管理角色；运行连接池不会获得管理凭据或导入能力。
 
-P0 必须固定完整 `s6-binding-import-v1` manifest 的摘要和源库存指纹，P8 必须
-持久化同一份 manifest。该凭据绑定 run、plan、源快照、明确的当前映射版本、
+生产 P0 输入为 `s6-binding-import-intent-v1`：由服务端全量读取旧 Binding，固定
+完整 Definition、源权威关系和 tip 证明的摘要。它不包含后续才生成的 run、
+Archive 或 mapping ID。P8 根据真实 P7 mapping pin、加密证据和现有受保护注册
+命令生成 `s6-binding-import-v2`。该凭据绑定 run、plan、源快照、当前映射版本、
 加密源证据、保留的历史 release head、原审计引用和明确的源 revision tip。
 导入器不会按名字、property key、时间、版本号或当前 Catalog head 猜身份和 tip。
-生成并审核这些 receipt 仍由 controller 负责。合成 receipt fixture 不属于
-Release Verification 报告或发布批准。
+历史 `s6-binding-import-v1` pool 入口仅保留早期 receipt 消费 fixture，生产
+controller 不使用该版本。合成 fixture 不属于 Release Verification 报告或批准。
+
+tip 证明读取全部文件的明确 `current_version_id`，要求恰好一个 config revision
+的文件／版本成员集合完全匹配，同时恰好一个 Binding revision 和逻辑节点
+revision 对应。空集合、缺失或多重匹配均拒绝。历史定义映射必须明确提供
+`retainedReleaseId`。Driver 注册沿真实 R2 root、DriverSchema 和同组织的旧
+Placement 证明调用领域命令；node-type 和其他未支持 family 仍拒绝，不修改 R 类。
 
 源读取包含旧 Binding、全部 revision、关联 DTS revision、定义 revision 和
 审计行的全部列，并记录 SQL NULL 标志，区分 SQL NULL 与 JSON null。
@@ -44,13 +52,24 @@ R 类。
 | 提交响应丢失 | 返回未知结果；显式重放重新核验持久状态 |
 | 重放时目标历史或审计变化 | 拒绝，不只相信完成事件 |
 | 同一目标存在并发 plan | 按目标加锁，不按 plan 分别加锁 |
+| 遗漏整个 Definition、文件指针或源权威关系变化 | 重建全量 intent，摘要变化即拒绝 |
+| installer 与管理 pool 指向不同目标 | 比较真实 PostgreSQL system identifier 与数据库 OID；查询失败拒绝 |
+| P7 到 P8 映射变化，或 P9 前任一固定正式映射变化 | 拒绝旧 checkpoint／receipt lineage |
 
-pool 入口独占事务和目标锁。controller 已在其他连接持有该锁时，不能递归调用
-这个入口。与 controller 共用事务的接线、全部源消费方覆盖、源 tip 权威来源和
-完整发布批准仍属于后续集成；本模块不能授权省略它们。不能为了进入这个入口，
-人为制造无法证明的源 manifest。
+`importPreparedBindingHistory` 要求 controller 的真实管理事务，并在同一连接
+重新获取目标锁，没有信任锁的 boolean。P9 导入与 checkpoint 一起提交。Archive
+准备独占事务，随后 P8 注册、证据映射 CAS 和 receipt checkpoint 一起提交。
+提交结果未知时停止且不重试；Archive 保留密文供检查。已完成 S7 的 no-op 仍需
+重新核验导入。controller 固定保留期限拥有者明确提供的日期，不发明生产默认期限。
+
+新 Binding lane 必须接入真实部署边界接口，执行停写隔离并生成三存储恢复清单，
+不会使用旧 P2 boolean 或 P3 行数 dump。该部署 producer、全部源 family 覆盖、
+P12／P13 和完整批准链仍是独立集成工作；本模块不能授权省略它们。
 
 PostgreSQL 集成 fixture 从 `82344044…` 的真实 migration 文件开始，先填充旧
 schema，再执行未修改的候选追加迁移。它调用真实 compiler、installer、注册
 writer、classifier、mapping writer 和加密 Archive。这个证据范围是 S6 导入，
 不等于完整应用升级、运行 pool 切换或生产预演。
+新增 S7 fixture 检验真实 P7 映射输出、P8 Archive／注册及 P9 同事务导入。此前
+阶段 checkpoint 明确属于合成切片准备，不构成 P2／P3 或根入口执行证据。
+测试文件存在本身不代表已经执行或通过。

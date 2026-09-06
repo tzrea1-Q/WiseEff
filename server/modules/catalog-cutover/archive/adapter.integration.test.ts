@@ -23,6 +23,7 @@ import type {
   ArchiveActor,
   ArchiveFailPoint,
   ArchiveObjectStore,
+  ArchiveQueryable,
   ArchiveProtectedReference,
   PersistArchiveCommand,
 } from "./types";
@@ -553,6 +554,24 @@ describe("immutable archive adapter", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =
     expect(restored.value.sourceGraph.sourcePayload).toMatchObject({
       token: PLAINTEXT_TOKEN,
     });
+  });
+
+  it("keeps committed ciphertext when the COMMIT response is lost", async () => {
+    const identity = await seedIdentity("R10");
+    const store = createLocalArchiveObjectStore(await mkdtemp(path.join(objectRoot,"unknown-commit-")));
+    const lostReply: ArchiveQueryable = {
+      async query<T extends pg.QueryResultRow>(sql: string, values?: readonly unknown[]) {
+        const result = await client.query<T>(sql,values ? [...values] : undefined);
+        if (sql === "commit") throw new Error("synthetic-lost-commit-response");
+        return result;
+      },
+    };
+    const result = await createArchiveAdapter({client:lostReply,objectStore:store,encryptionKey}).persistArchive(persistCommand(identity));
+    expect(result).toEqual({ok:false,error:{code:"PCAT-ARC-ATOMICITY",detail:"archive-commit-outcome-unknown"}});
+    const metadata = await client.query<{ id:string;encrypted_object_ref:string }>("select id,encrypted_object_ref from parameter_catalog.parameter_catalog_archives where legacy_identity_id=$1 and cutover_run_id=$2",[identity.identityId,identity.cutoverRunId]);
+    expect(metadata.rowCount).toBe(1);
+    expect(await store.listRefs()).toEqual([metadata.rows[0].encrypted_object_ref]);
+    expect(await adapterFor(store).restoreArchive({actor:OPERATOR,archiveId:metadata.rows[0].id})).toMatchObject({ok:true});
   });
 
   it("returns archiveId for a later mapping caller without importing S7-MAP", async () => {

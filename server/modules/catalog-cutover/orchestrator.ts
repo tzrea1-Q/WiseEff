@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import pg from "pg";
 
 import { compileCatalogRelease } from "../catalog-kernel/compiler/index";
-import type { CatalogReleaseSource } from "../catalog-kernel/interface";
+import { jsonCatalogReleaseSource, type CatalogReleaseSource } from "../catalog-kernel/interface";
 import { installPublishedRelease } from "../catalog-kernel/install/installer";
-import { CatalogReleaseDigest } from "../parameter-catalog-contract/index";
+import { CatalogReleaseDigest, CatalogReleaseId } from "../parameter-catalog-contract/index";
 import { createProtectedWorkflowAdapters } from "../parameter-bindings/adapters";
 import { stabilizeCanonicalBinding } from "../parameter-bindings/binding";
 import { appendProjectValue } from "../parameter-bindings/values";
@@ -50,6 +50,9 @@ import {
   type RecoverCutoverInput,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
+import { bindingImportDigest, importPreparedBindingHistory, verifyPreparedBindingHistory } from "../parameter-bindings/cutoverImport";
+import { captureBindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import { assertBindingManagementLogin, BindingProducerRefusal, captureBindingMappingPins, prepareBindingEvidenceArchives, produceBindingImportReceipt, readBindingDatabaseIdentity, type BindingMappingPin } from "./bindingImportProducer";
 import { captureArchivedDefinitionGraph, captureConversionSourceInventory, conversionManifestDigest, definitionGraphMatchesSource, inspectConversionManifest } from "./conversionManifest";
 import {
   assertRecordedAction,
@@ -108,8 +111,18 @@ export const planCutover = async (
   if (!classified.ok) {
     return fail("PCAT-ORC-INVALID-PLAN", classified.error.detail);
   }
-  if (input.graph.bindings.length || input.graph.bindingRevisions.length || input.graph.placements.length) {
+  if ((input.graph.bindings.length || input.graph.bindingRevisions.length || input.graph.placements.length) && !input.bindingImportIntent) {
     return fail("PCAT-ORC-INVALID-PLAN", "conversion-business-history-producer-unavailable");
+  }
+  if (input.bindingImportIntent) {
+    if (!input.bindingArchiveRetainUntil || Number.isNaN(Date.parse(input.bindingArchiveRetainUntil))) return fail("PCAT-ORC-INVALID-PLAN","binding-archive-retention-required");
+    if (input.graph.identities.some(i => !["parameter-spec","parameter-spec-version","project-parameter-binding","project-parameter-binding-revision"].includes(i.sourceKind))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-family-producer-unavailable");
+    const intent = input.bindingImportIntent;
+    if (intent.version !== "s6-binding-import-intent-v1" || !input.conversionManifest || intent.sourceSnapshotFingerprint !== fingerprintP0Graph(input.graph) || intent.sourceInventoryFingerprint !== input.conversionManifest.sourceInventoryFingerprint || intent.bindings.length === 0 || intent.bindings.length !== input.graph.bindings.length || new Set(intent.bindings.map(b => b.sourceBindingId)).size !== intent.bindings.length || !input.graph.bindings.every(b => intent.bindings.some(p => p.sourceBindingId === b.id && p.sourceSpecId === b.parameterSpecId))) return fail("PCAT-ORC-INVALID-PLAN", "binding-import-intent-conservation");
+    for (const [kind,records] of [["parameter-spec",input.graph.specs],["parameter-spec-version",input.graph.specVersions],["project-parameter-binding",input.graph.bindings],["project-parameter-binding-revision",input.graph.bindingRevisions]] as const) {
+      const identities = input.graph.identities.filter(i => i.sourceKind === kind);
+      if (identities.length !== records.length || !records.every(record => identities.filter(i => i.sourceId === record.id).length === 1)) return fail("PCAT-ORC-INVALID-PLAN","binding-source-identity-conservation");
+    }
   }
   if (!input.conversionManifest && classified.value.assignments.some((row) => row.disposition !== "archived")) {
     return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-required");
@@ -127,7 +140,7 @@ export const planCutover = async (
       );
     }
     if (input.conversionManifest) {
-      const problem = inspectConversionManifest({ graph: input.graph, targetCatalogReleaseDigest: input.targetCatalogReleaseDigest, bundle, manifest: input.conversionManifest });
+      const problem = inspectConversionManifest({ graph: input.graph, targetCatalogReleaseDigest: input.targetCatalogReleaseDigest, bundle, manifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent });
       if (problem) return fail("PCAT-ORC-INVALID-PLAN", problem);
     }
   } else if (input.conversionManifest) {
@@ -142,6 +155,8 @@ export const planCutover = async (
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
       ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
+      ...(input.bindingImportIntent ? {bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
+      ...(input.bindingImportIntent ? {bindingArchiveRetainUntil:input.bindingArchiveRetainUntil} : {}),
     }),
   );
   return ok({
@@ -152,6 +167,8 @@ export const planCutover = async (
     migrationContractVersion: MIGRATION_CONTRACT_VERSION,
     phases: PRE_ACTIVATION_PHASES,
     ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
+    ...(input.bindingImportIntent ? {bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
+    ...(input.bindingImportIntent ? {bindingArchiveRetainUntil:input.bindingArchiveRetainUntil} : {}),
   });
 };
 
@@ -200,6 +217,7 @@ const runPhase = async (
         specCount: inventory.specs,
         classifierVersion: classified.value.classifierVersion,
         installer: installPublishedRelease.name,
+        ...(input.bindingImportIntent ? {sourceInventoryFingerprint:input.bindingImportIntent.sourceInventoryFingerprint,bindingImportIntent:input.bindingImportIntent,bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
       });
     }
     case "P1": {
@@ -217,13 +235,29 @@ const runPhase = async (
         counts: compiled.value.counts,
       });
     }
-    case "P2":
+    case "P2": {
+      if (input.bindingImportIntent) {
+        if (!input.bindingBoundary) return fail("PCAT-ORC-PHASE-FAILED","binding-write-boundary-producer-unavailable");
+        const target = await readBindingDatabaseIdentity(client);
+        const receipt = await input.bindingBoundary.prepare({runId,plan:input.plan,target});
+        if (receipt.runId !== runId || receipt.planDigest !== input.plan.planDigest || bindingImportDigest(receipt.target) !== bindingImportDigest(target) || receipt.sourceInventoryFingerprint !== input.bindingImportIntent.sourceInventoryFingerprint || !/^sha256:[a-f0-9]{64}$/.test(receipt.writeFenceReceiptDigest) || !/^sha256:[a-f0-9]{64}$/.test(receipt.recoveryManifestDigest)) return fail("PCAT-ORC-PHASE-FAILED","binding-boundary-receipt-mismatch");
+        await input.bindingBoundary.verify(receipt);
+        return ok({bindingBoundaryReceipt:receipt});
+      }
       return ok({
         writersFenced: true,
         queuesDrained: true,
         publicProxyStopped: true,
       });
+    }
     case "P3": {
+      if (input.bindingImportIntent) {
+        const checkpoints = await loadCheckpoints(client,runId);
+        const receipt = checkpoints.find(c => c.phase === "P2")?.payload.bindingBoundaryReceipt as import("./interface").BindingBoundaryReceipt | undefined;
+        if (!receipt || !input.bindingBoundary) return fail("PCAT-ORC-PHASE-FAILED","binding-recovery-boundary-unavailable");
+        await input.bindingBoundary.verify(receipt);
+        return ok({bindingBoundaryReceipt:receipt,recoveryManifestDigest:receipt.recoveryManifestDigest});
+      }
       const dump = await captureInventoryDump(client);
       const runBoundToken = mintRunBoundToken();
       return ok({
@@ -247,6 +281,32 @@ const runPhase = async (
       return ok({ schemaExpanded: true, mode: "verified-noop" });
     }
     case "P5": {
+      if (input.bindingImportIntent) {
+        const bundle = await parseBundle(input.catalogReleaseSource);
+        const chain: typeof bundle.releases[number][] = [];
+        let node = bundle.releases.find(r => r.manifest.release.id === bundle.targetReleaseId);
+        while (node) {
+          if (chain.some(r => r.manifest.release.id === node!.manifest.release.id)) return fail("PCAT-ORC-PHASE-FAILED","binding-release-chain-cycle");
+          chain.unshift(node);
+          const previous = node.manifest.release.predecessor;
+          if (!previous) break;
+          node = bundle.releases.find(r => r.manifest.release.id === previous.id && r.manifest.release.digest === previous.digest);
+          if (!node) return fail("PCAT-ORC-PHASE-FAILED","binding-release-chain-incomplete");
+        }
+        const installedCurrent = await client.query<{id:string;digest:string}>("select r.id,r.release_digest as digest from parameter_catalog.catalog_state s join parameter_catalog.catalog_releases r on r.id=s.current_catalog_release_id where s.singleton");
+        let current = installedCurrent.rows[0];
+        const currentIndex = current ? chain.findIndex(r => r.manifest.release.id === current.id && r.manifest.release.digest === current.digest) : -1;
+        if (current && currentIndex < 0) return fail("PCAT-ORC-PHASE-FAILED","binding-release-installed-outside-chain");
+        for (let index = currentIndex+1; index < chain.length; index++) {
+          const target = chain[index].manifest.release;
+          const source = jsonCatalogReleaseSource({...bundle,targetReleaseId:target.id,releases:chain.slice(0,index+1)});
+          const installed = await installPublishedRelease(input.pool,current ? {mode:"advance",source,expectedTargetDigest:CatalogReleaseDigest(target.digest),expectedCurrent:{id:CatalogReleaseId(current.id),digest:CatalogReleaseDigest(current.digest)}} : {mode:"bootstrap",source,expectedTargetDigest:CatalogReleaseDigest(target.digest)});
+          if (!installed.ok) return fail("PCAT-ORC-PHASE-FAILED",installed.error.kind);
+          current = {id:installed.value.current.id,digest:installed.value.current.digest};
+        }
+        if (!current || current.digest !== input.plan.targetCatalogReleaseDigest) return fail("PCAT-ORC-PHASE-FAILED","binding-release-chain-target-mismatch");
+        return ok({currentId:current.id,currentDigest:current.digest,retainedReleaseIds:chain.map(r => r.manifest.release.id)});
+      }
       const installed = await installPublishedRelease(input.pool, {
         mode: "bootstrap",
         source: input.catalogReleaseSource,
@@ -308,6 +368,7 @@ const runPhase = async (
           );
         }
         if (disposition !== "archived") {
+          if (input.bindingImportIntent && ["project-parameter-binding","project-parameter-binding-revision"].includes(assignment.sourceKind)) continue;
           const mapping = input.conversionManifest?.mappings.find((row) => row.legacyIdentityId === assignment.identityId);
           if (!mapping) return fail("PCAT-ORC-PHASE-FAILED", "P7 requires an exact source-bound conversion identity");
           const mappedRow = await appendMappingVersion({
@@ -367,9 +428,11 @@ const runPhase = async (
         mapping: appendMappingVersion.name,
         archive: createArchiveAdapter.name,
         dispatched: mapped,
+        ...(input.bindingImportIntent && input.conversionManifest ? {bindingMappingPins:await captureBindingMappingPins(client,runId,input.conversionManifest)} : {}),
       });
     }
     case "P8": {
+      if (input.bindingImportIntent) return fail("PCAT-ORC-PHASE-FAILED","binding-P8-requires-controller-transaction");
       const classified = classificationRef.value;
       const reviewCount =
         classified?.assignments.filter(
@@ -386,6 +449,21 @@ const runPhase = async (
       });
     }
     case "P9": {
+      if (input.bindingImportIntent) {
+        const checkpoints = await loadCheckpoints(client,runId);
+        const receipt = checkpoints.find(c => c.phase === "P8")?.payload.bindingImport;
+        if (!receipt) return fail("PCAT-ORC-PHASE-FAILED","binding-P8-receipt-missing");
+        const imported = await importPreparedBindingHistory({client,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+        if (!imported.ok) return fail("PCAT-ORC-PHASE-FAILED",imported.reason);
+        const classified = classificationRef.value;
+        if (!classified) return fail("PCAT-ORC-PHASE-FAILED","binding-P6-classification-missing");
+        for (const assignment of classified.assignments.filter(a => ["project-parameter-binding","project-parameter-binding-revision"].includes(a.sourceKind))) {
+          if (assignment.disposition !== "mapped") return fail("PCAT-ORC-PHASE-FAILED","binding-primary-disposition-not-operational");
+          const mapped = await appendMappingVersion({client,cutoverRunId:runId,classification:classified,identityId:assignment.identityId,sourceChecksum:input.bindingImportIntent.bindingInventoryDigest,expectedHead:null,outcome:{kind:"operational",targetKind:assignment.sourceKind === "project-parameter-binding" ? "parameter-binding":"project-value",targetId:assignment.sourceId}});
+          if (!mapped.ok || mapped.value.status === "blocked") return fail("PCAT-ORC-PHASE-FAILED","binding-source-map-failed");
+        }
+        return ok({bindingImport:imported});
+      }
       const classified = classificationRef.value;
       const mappedCount =
         classified?.assignments.filter(
@@ -401,6 +479,14 @@ const runPhase = async (
       });
     }
     case "P10": {
+      if (input.bindingImportIntent) {
+        const checkpoints = await loadCheckpoints(client,runId);
+        const receipt = checkpoints.find(c => c.phase === "P8")?.payload.bindingImport;
+        if (!receipt) return fail("PCAT-ORC-PHASE-FAILED","binding-P8-receipt-missing");
+        // S6 re-reads every target value/history/tip and all source rows; no cardinality-only pass.
+        const verified = await importPreparedBindingHistory({client,runId,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(receipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+        if (!verified.ok || verified.status !== "already-imported") return fail("PCAT-ORC-PHASE-FAILED",verified.ok ? "binding-import-receipt-missing":verified.reason);
+      }
       const residue = await countProducerResidue(client, runId);
       if (residue.mappings === 0 || residue.archives === 0) {
         return fail(
@@ -435,7 +521,10 @@ const withCutoverLock = async <T>(
   } finally {
     try {
       if (acquired) await client.query("select pg_catalog.pg_advisory_unlock(hashtext('s7-orc-cutover-target'), hashtext(current_database()))");
-    } finally { client.release(); }
+    } finally {
+      await client.query("reset role").catch(() => undefined);
+      client.release();
+    }
   }
 };
 
@@ -446,13 +535,34 @@ export const executeCutover = async (
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
   }
-  return withCutoverLock(input.pool, async (client) => {
-    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest });
+  if (input.bindingImportIntent && (!input.bindingManagementPool || !input.bindingBoundary)) return fail("PCAT-ORC-INVALID-PLAN","binding-management-and-real-boundary-required");
+  return withCutoverLock(input.bindingImportIntent ? input.bindingManagementPool! : input.pool, async (client) => {
+    let sourceInventory: string | undefined;
+    if (input.bindingImportIntent) {
+      try {
+        await assertBindingManagementLogin(client);
+        await client.query("set role catalog_migration_owner");
+        const target = await readBindingDatabaseIdentity(client);
+        const source = await input.pool.connect();
+        try {
+          if (bindingImportDigest(await readBindingDatabaseIdentity(source)) !== bindingImportDigest(target)) return fail("PCAT-ORC-INVALID-PLAN","binding-management-target-mismatch");
+          sourceInventory = await captureConversionSourceInventory(source);
+        } finally { source.release(); }
+        const observed = await captureBindingImportIntent(client,input.bindingImportIntent);
+        if (bindingImportDigest(observed) !== bindingImportDigest(input.bindingImportIntent)) return fail("PCAT-ORC-INVALID-PLAN","binding-import-source-drift");
+        const sourceBindings = await client.query("select id,organization_id,parameter_spec_id,module_id from public.project_parameter_bindings order by id");
+        const sourceRevisions = await client.query("select id,binding_id,parameter_spec_version_id from public.project_parameter_binding_revisions order by id");
+        const identities = await client.query("select id,source_system,source_kind,owner_scope_kind,owner_scope_id,source_id from parameter_catalog.legacy_identities order by id");
+        if (identities.rowCount !== input.graph.identities.length || !identities.rows.every(i => input.graph.identities.some(g => g.id === i.id && g.sourceSystem === i.source_system && g.sourceKind === i.source_kind && g.sourceId === i.source_id && g.ownerScopeKind === i.owner_scope_kind && g.ownerScopeId === i.owner_scope_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-identity-registry-drift");
+        if (sourceBindings.rows.length !== input.graph.bindings.length || !sourceBindings.rows.every(b => input.graph.bindings.some(g => g.id === b.id && g.organizationId === b.organization_id && g.parameterSpecId === b.parameter_spec_id && g.moduleId === b.module_id)) || sourceRevisions.rows.length !== input.graph.bindingRevisions.length || !sourceRevisions.rows.every(r => input.graph.bindingRevisions.some(g => g.id === r.id && g.bindingId === r.binding_id && g.parameterSpecVersionId === r.parameter_spec_version_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-graph-conservation");
+      } catch (error) { return fail("PCAT-ORC-INVALID-PLAN",error instanceof BindingProducerRefusal ? error.message : "binding-management-preflight-query-failure"); }
+    }
+    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil });
     if (!replanned.ok) return replanned;
     if (replanned.value.planDigest !== input.plan.planDigest) return fail("PCAT-ORC-INVALID-PLAN", "conversion-plan-mismatch");
     if (input.plan.conversionManifestDigest || input.conversionManifest) {
       if (!input.conversionManifest || input.plan.conversionManifestDigest !== conversionManifestDigest(input.conversionManifest)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-digest-mismatch");
-      if (await captureConversionSourceInventory(client) !== input.conversionManifest.sourceInventoryFingerprint) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-inventory-drift");
+      if ((sourceInventory ?? await captureConversionSourceInventory(client)) !== input.conversionManifest.sourceInventoryFingerprint) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-inventory-drift");
       if (!await definitionGraphMatchesSource(client, input.graph)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-graph-mismatch");
     }
     const populated = await requirePopulated(client, input.graph);
@@ -472,6 +582,18 @@ export const executeCutover = async (
       run.state === "completed" &&
       priorCheckpoints.length === PRE_ACTIVATION_PHASES.length
     ) {
+      if (input.bindingImportIntent) {
+        const receipt = priorCheckpoints.find(c => c.phase === "P2")?.payload.bindingBoundaryReceipt as import("./interface").BindingBoundaryReceipt | undefined;
+        const bindingReceipt = priorCheckpoints.find(c => c.phase === "P8")?.payload.bindingImport;
+        if (!receipt || !bindingReceipt || !input.bindingBoundary) return fail("PCAT-ORC-PHASE-FAILED","binding-completed-receipt-missing");
+        try {
+          await input.bindingBoundary.verify(receipt);
+          await client.query("begin isolation level serializable");
+          const verified = await verifyPreparedBindingHistory({client,runId:run.id,planDigest:input.plan.planDigest,manifestDigest:bindingImportDigest(bindingReceipt),archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey}});
+          await client.query("rollback");
+          if (!verified.ok) return fail("PCAT-ORC-PHASE-FAILED",verified.reason);
+        } catch { await client.query("rollback").catch(() => undefined); return fail("PCAT-ORC-PHASE-FAILED","binding-completed-verification-failed"); }
+      }
       const live = await countLiveRuns(client, input.plan.planDigest);
       const snapshot = await snapshotFromRun(client, run, true);
       return ok({ ...snapshot, liveRun: live > 0 });
@@ -486,6 +608,13 @@ export const executeCutover = async (
 
     for (const phase of PRE_ACTIVATION_PHASES) {
       if (priorCheckpoints.some((row) => row.phase === phase)) continue;
+      if (input.bindingImportIntent && phase !== "P0" && phase !== "P1" && phase !== "P2") {
+        const checkpoints = await loadCheckpoints(client,run.id);
+        const receipt = checkpoints.find(c => c.phase === "P2")?.payload.bindingBoundaryReceipt as import("./interface").BindingBoundaryReceipt | undefined;
+        if (!receipt || !input.bindingBoundary) return fail("PCAT-ORC-PHASE-FAILED","binding-boundary-receipt-missing");
+        try { await input.bindingBoundary.verify(receipt); }
+        catch { return fail("PCAT-ORC-PHASE-FAILED","binding-write-boundary-drift"); }
+      }
       if (input.failBeforePhase === phase) {
         await updateRunProgress(client, {
           runId: run.id,
@@ -497,8 +626,27 @@ export const executeCutover = async (
           `Injected crash before ${phase}; inspect the last committed checkpoint and resume the same plan`,
         );
       }
-      const payload = await runPhase(phase, input, client, run.id, classificationRef);
+      const atomic = !!input.bindingImportIntent && ["P8","P9","P10"].includes(phase);
+      let committing = false;
+      try {
+      let payload: CutoverResult<Readonly<Record<string,unknown>>>;
+      if (input.bindingImportIntent && phase === "P8") {
+        const checkpoints = await loadCheckpoints(client,run.id);
+        const pins = checkpoints.find(c => c.phase === "P7")?.payload.bindingMappingPins as BindingMappingPin[] | undefined;
+        if (!pins || !classificationRef.value || !input.conversionManifest) return fail("PCAT-ORC-PHASE-FAILED","binding-P7-pins-missing");
+        const producer = {client,runId:run.id,planDigest:input.plan.planDigest,intent:input.bindingImportIntent,graph:input.graph,
+          classification:classificationRef.value,conversion:input.conversionManifest,bundle:await parseBundle(input.catalogReleaseSource),p7Pins:pins,
+          archive:{objectStore:input.archiveObjectStore,encryptionKey:input.archiveEncryptionKey},operatorAuditRef:input.operatorAuditRef,
+          retainUntil:new Date(input.plan.bindingArchiveRetainUntil!)};
+        const archives = await prepareBindingEvidenceArchives(producer);
+        await client.query("begin isolation level serializable");
+        payload = ok({bindingImport:await produceBindingImportReceipt(producer,archives)});
+      } else {
+        if (atomic) { await client.query("begin isolation level serializable"); await client.query("select pg_catalog.pg_current_xact_id()"); }
+        payload = await runPhase(phase, input, client, run.id, classificationRef);
+      }
       if (!payload.ok) {
+        if (atomic) await client.query("rollback");
         await updateRunProgress(client, {
           runId: run.id,
           phase,
@@ -512,6 +660,7 @@ export const executeCutover = async (
         payload: payload.value,
       });
       if (!checkpoint.ok) {
+        if (atomic) await client.query("rollback");
         await updateRunProgress(client, { runId: run.id, phase, state: "failed" });
         return checkpoint;
       }
@@ -520,6 +669,12 @@ export const executeCutover = async (
         phase,
         state: phase === "P10" ? "completed" : "running",
       });
+      if (atomic) { committing = true; await client.query("commit"); }
+      } catch (error) {
+        if (atomic) await client.query("rollback").catch(() => undefined);
+        // No retry and no successful checkpoint inference after an uncertain COMMIT response.
+        return fail("PCAT-ORC-PHASE-FAILED",committing ? "binding-phase-commit-outcome-unknown" : error instanceof BindingProducerRefusal ? error.message : "binding-phase-query-failure");
+      }
     }
 
     const finished = await loadRunById(client, run.id);

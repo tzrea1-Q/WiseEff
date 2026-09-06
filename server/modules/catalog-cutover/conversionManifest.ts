@@ -6,6 +6,7 @@ import type { MappingTargetKind } from "./mapping/types";
 import type { CutoverQueryable } from "./checkpoints";
 import type { ArchiveSourceGraph } from "./archive";
 import type { ContractJsonValue } from "../parameter-catalog-contract/index";
+import type { BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
 
 export const CONVERSION_MANIFEST_VERSION = "pcat-conversion-manifest-v1";
 
@@ -23,6 +24,8 @@ export type ConversionManifest = {
     readonly targetKind: Extract<MappingTargetKind, "parameter-definition" | "definition-revision" | "catalog-subject">;
     readonly targetId: string;
     readonly targetSourceDigest: string;
+    /** Explicit retained release for historical revision pins; never inferred from latest. */
+    readonly retainedReleaseId?: string;
   }[];
 };
 
@@ -90,25 +93,30 @@ export function inspectConversionManifest(input: {
   readonly targetCatalogReleaseDigest: string;
   readonly bundle: CatalogReleaseBundle;
   readonly manifest: ConversionManifest;
+  readonly bindingImportIntent?: BindingImportIntent;
 }): string | null {
   const { manifest, graph, bundle } = input;
   if (manifest.version !== CONVERSION_MANIFEST_VERSION || !/^sha256:[a-f0-9]{64}$/.test(manifest.sourceInventoryFingerprint) || manifest.sourceSnapshotFingerprint !== fingerprintP0Graph(graph) || manifest.targetCatalogReleaseDigest !== input.targetCatalogReleaseDigest) return "conversion-manifest-pin-mismatch";
   const classification = classifyFrozenP0Graph(graph);
   if (!classification.ok) return "conversion-classification-unavailable";
   if (classification.value.assignments.some((assignment) => ["blocked", "review-evidence", "definition-proposal"].includes(assignment.disposition))) return "conversion-disposition-producer-unavailable";
-  if (graph.bindings.length || graph.bindingRevisions.length || graph.placements.length) return "conversion-business-history-producer-unavailable";
-  const expected = classification.value.assignments.filter((assignment) => assignment.disposition === "mapped");
+  if ((graph.bindings.length || graph.bindingRevisions.length || graph.placements.length) && !input.bindingImportIntent) return "conversion-business-history-producer-unavailable";
+  const businessKinds = new Set(["project-parameter-binding","project-parameter-binding-revision"]);
+  const expected = classification.value.assignments.filter((assignment) => assignment.disposition === "mapped" && !(input.bindingImportIntent && businessKinds.has(assignment.sourceKind)));
   if (manifest.mappings.length !== expected.length || new Set(manifest.mappings.map((mapping) => mapping.legacyIdentityId)).size !== manifest.mappings.length) return "conversion-mapping-conservation";
   const target = bundle.releases.find((release) => release.manifest.release.id === bundle.targetReleaseId);
   if (!target) return "conversion-release-unavailable";
   for (const mapping of manifest.mappings) {
     const identity = graph.identities.find((row) => row.id === mapping.legacyIdentityId);
     if (!identity || !expected.some((row) => row.identityId === mapping.legacyIdentityId)) return "conversion-identity-unavailable";
-    const expectedKind = identity.sourceKind === "parameter-spec" ? "parameter-definition"
+    const assignment = expected.find(row => row.identityId === identity.id);
+    const expectedKind = assignment?.rClass === "R2" && ["parameter-spec","driver-schema"].includes(identity.sourceKind) ? "catalog-subject"
+      : identity.sourceKind === "parameter-spec" ? "parameter-definition"
       : identity.sourceKind === "parameter-spec-version" ? "definition-revision"
       : identity.sourceKind === "parameter-subject" ? "catalog-subject" : null;
     if (!expectedKind || mapping.targetKind !== expectedKind) return "conversion-source-kind-unavailable";
-    const document = target.documents.find((doc) => mapping.targetKind === "catalog-subject"
+    const retained = mapping.targetKind === "definition-revision" && mapping.retainedReleaseId ? bundle.releases.find(r => r.manifest.release.id === mapping.retainedReleaseId) : target;
+    const document = retained?.documents.find((doc) => mapping.targetKind === "catalog-subject"
       ? doc.kind === "subject" && doc.content.id === mapping.targetId
       : doc.kind === "definition" && (mapping.targetKind === "parameter-definition" ? doc.content.id : doc.content.revision.id) === mapping.targetId);
     if (!document || document.source.digest !== mapping.targetSourceDigest) return "conversion-target-authority-mismatch";

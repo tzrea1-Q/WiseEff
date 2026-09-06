@@ -4,6 +4,8 @@ import type { CatalogReleaseSource } from "../catalog-kernel/interface";
 import type { FrozenP0Graph } from "./classifier";
 import type { ArchiveObjectStore } from "./archive";
 import type { ConversionManifest } from "./conversionManifest";
+import type { BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import type { DatabaseIdentity } from "./bindingImportProducer";
 
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
@@ -69,6 +71,8 @@ export type CutoverResult<T> =
   | { readonly ok: false; readonly error: CutoverFailure };
 
 export type CutoverPlan = {
+  readonly bindingImportIntentDigest?: string;
+  readonly bindingArchiveRetainUntil?: string;
   readonly conversionManifestDigest?: string;
   readonly planDigest: string;
   readonly sourceSnapshotFingerprint: string;
@@ -98,6 +102,9 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  readonly bindingImportIntent?: BindingImportIntent;
+  /** Explicit retention-owner input. No production retention period is invented by the controller. */
+  readonly bindingArchiveRetainUntil?: string;
   readonly conversionManifest?: ConversionManifest;
   readonly graph: FrozenP0Graph;
   readonly targetArtifactSha: string;
@@ -106,6 +113,10 @@ export type PlanCutoverInput = {
 };
 
 export type ExecuteCutoverInput = {
+  readonly bindingImportIntent?: BindingImportIntent;
+  /** Controlled management login only; never the API/worker runtime pool. */
+  readonly bindingManagementPool?: pg.Pool;
+  readonly bindingBoundary?: BindingCutoverBoundary;
   readonly conversionManifest?: ConversionManifest;
   readonly pool: pg.Pool;
   readonly plan: CutoverPlan;
@@ -115,6 +126,21 @@ export type ExecuteCutoverInput = {
   readonly archiveEncryptionKey: Buffer;
   readonly operatorAuditRef: string;
   readonly failBeforePhase?: PreActivationPhase;
+};
+
+export type BindingBoundaryReceipt = {
+  readonly runId: string;
+  readonly planDigest: string;
+  readonly target: DatabaseIdentity;
+  readonly sourceInventoryFingerprint: string;
+  readonly writeFenceReceiptDigest: string;
+  readonly recoveryManifestDigest: string;
+};
+
+/** Implemented by the deployment boundary owner using real writer isolation and three-store recovery. */
+export type BindingCutoverBoundary = {
+  prepare(input: { runId: string; plan: CutoverPlan; target: DatabaseIdentity }): Promise<BindingBoundaryReceipt>;
+  verify(receipt: BindingBoundaryReceipt): Promise<void>;
 };
 
 export type InspectCutoverInput = {

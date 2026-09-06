@@ -262,6 +262,7 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
     }
 
     let objectWritten = false;
+    let committing = false;
     await client.query("begin");
     try {
       await client.query("select pg_catalog.pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
@@ -357,6 +358,7 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
           currentRow.catalog_release_id === command.catalogReleaseId
         ) {
           const present = await objectStore.exists(currentRow.encrypted_object_ref);
+          committing = true;
           await client.query("commit");
           if (!present) {
             return persistFail("PCAT-ARC-ATOMICITY", "committed archive metadata is missing its encrypted object");
@@ -418,6 +420,7 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
 
       maybeInject(options.failAfter, "before-commit");
 
+      committing = true;
       await client.query("commit");
       const success: PersistArchiveSuccess = {
         status: "archived",
@@ -429,6 +432,9 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
       return { ok: true, value: success };
     } catch (error) {
       await client.query("rollback").catch(() => undefined);
+      // The server may have committed before the response was lost. Keep ciphertext;
+      // deleting it here could destroy a committed Archive. Inspect before recovery.
+      if (committing) return persistFail("PCAT-ARC-ATOMICITY", "archive-commit-outcome-unknown");
       if (objectWritten) {
         await objectStore.remove(encryptedObjectRef).catch(() => undefined);
       }
