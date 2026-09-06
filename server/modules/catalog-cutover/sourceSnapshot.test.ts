@@ -27,6 +27,7 @@ describe("frozen old public projection across exact append-only migrations", () 
   let frozen: FrozenSourceSnapshot;
   const sourceSha = "82344044b436a8dafecefbb85dfd724cecb05e3f";
   const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const candidateTree = execFileSync("git", ["rev-parse", `${candidateSha}^{tree}`], { encoding: "utf8" }).trim();
   const verify = () => verifyFrozenSourceSnapshot({ pool, descriptor: frozen,
     expectedDescriptorDigest: frozen.digest, candidateMigrationsDirectory: candidateDirectory });
   beforeAll(async () => {
@@ -84,6 +85,7 @@ describe("frozen old public projection across exact append-only migrations", () 
     const operationRoot = path.join(directory, "operation");
     await mkdir(operationRoot, { mode: 0o700 });
     const intent: ManagementMigrationIntent = { version: "pcat-management-migration-intent-v1", runId: "frozen-management",
+      candidateArtifactSha: candidateSha, candidateArtifactTree: candidateTree,
       preparationPlanDigest: sha256Prefixed("isolated component preparation"), target: frozen.target,
       sourceSnapshotDigest: frozen.digest, candidateInventoryDigest: frozen.candidateInventoryDigest,
       writeFenceReceiptDigest: sha256Prefixed("component fixture has no application writers"),
@@ -111,16 +113,31 @@ describe("frozen old public projection across exact append-only migrations", () 
         operationRoot, journalPath: opened.value.journalPath,
         context: { ...input, intent, operationLock, boundary: { verify: async observed => { expect(observed).toEqual(intent); } } },
       });
-      expect(await preparation.verify({ receiptDigest: state.receiptDigest, target: frozen.target })).toEqual({
+      const preparationPin = { runId: intent.runId, planDigest: intent.preparationPlanDigest,
+        candidateArtifactSha: candidateSha, candidateArtifactTree: candidateTree };
+      expect(await preparation.verify({ receiptDigest: state.receiptDigest, target: frozen.target, preparation: preparationPin })).toEqual({
         receiptDigest: state.receiptDigest, sourceSnapshotDigest: frozen.digest, candidateInventoryDigest: frozen.candidateInventoryDigest,
       });
-      await expect(preparation.verify({ receiptDigest: sha256Prefixed("another receipt"), target: frozen.target }))
+      await expect(preparation.verify({ receiptDigest: sha256Prefixed("another receipt"), target: frozen.target, preparation: preparationPin }))
         .rejects.toThrow("management-preparation-receipt-unavailable");
-      await expect(preparation.verify({ receiptDigest: state.receiptDigest, target: { ...frozen.target, databaseOid: "0" } }))
+      await expect(preparation.verify({ receiptDigest: state.receiptDigest, target: { ...frozen.target, databaseOid: "0" }, preparation: preparationPin }))
         .rejects.toThrow("management-preparation-target-mismatch");
+      for (const changed of [{ candidateArtifactSha: "a".repeat(40) }, { candidateArtifactTree: "b".repeat(40) },
+        { runId: "other-preparation-run" }, { planDigest: sha256Prefixed("other preparation") }]) {
+        await expect(preparation.verify({ receiptDigest: state.receiptDigest, target: frozen.target, preparation: { ...preparationPin, ...changed } }))
+          .rejects.toThrow("management-preparation-applicability-mismatch");
+      }
+      // Changing canonical structure must invalidate the old committed receipt
+      // even though public rows, source projection and migration ledger are equal.
+      await pool.query("alter table parameter_catalog.catalog_state add column unapproved_structure text");
+      try {
+        await expect(preparation.verify({ receiptDigest: state.receiptDigest, target: frozen.target, preparation: preparationPin }))
+          .rejects.toThrow("management-journal-receipt-mismatch");
+      } finally { await pool.query("alter table parameter_catalog.catalog_state drop column unapproved_structure"); }
     });
     expect(managementReceipt).toEqual(recomputed);
     expect(recomputed!.checkpoint).toEqual({ mode: "postgres", status: "verified" });
+    expect(recomputed!.installedStructureDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(verifyCommittedManagementMigration(opened.value.record, intent, recomputed!).attemptId).toBeTruthy();
     expect(opened.value.record.planDigest).toBeNull();
     expect((await pool.query("select count(*)::int as n from shadow.schema_migrations")).rows[0].n).toBe(0);
@@ -144,6 +161,7 @@ describe("frozen old public projection across exact append-only migrations", () 
       const descriptor = await captureFrozenSourceSnapshot({ pool: partialPool, sourceMigrationsDirectory: sourceDirectory, candidateMigrationsDirectory: candidateDirectory });
       const initialInput = { pool: partialPool, descriptor, expectedDescriptorDigest: descriptor.digest, candidateMigrationsDirectory: candidateDirectory };
       const intent: ManagementMigrationIntent = { version: "pcat-management-migration-intent-v1", runId: "refuse-schema-drift",
+        candidateArtifactSha: candidateSha, candidateArtifactTree: candidateTree,
         preparationPlanDigest: sha256Prefixed("isolated schema-drift component preparation"), target: descriptor.target,
         sourceSnapshotDigest: descriptor.digest, candidateInventoryDigest: descriptor.candidateInventoryDigest,
         writeFenceReceiptDigest: sha256Prefixed("component writer-boundary fixture"), recoveryManifestDigest: sha256Prefixed("component recovery-boundary fixture"), checkpointMode: "memory" };

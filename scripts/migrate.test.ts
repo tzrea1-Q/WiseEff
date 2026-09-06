@@ -26,6 +26,21 @@ function fixture() {
 }
 
 describe("minimal management migration environment", () => {
+  it.each(["candidateArtifactSha", "candidateArtifactTree"])("refuses missing candidate identity %s before lock or database", async missing => {
+    const pin = `sha256:${"a".repeat(64)}`;
+    const target = { systemIdentifier: "1", databaseOid: "1" };
+    const intent: Record<string, unknown> = { version: "pcat-management-migration-intent-v1", runId: "candidate-pin",
+      preparationPlanDigest: pin, target, candidateArtifactSha: "b".repeat(40), candidateArtifactTree: "c".repeat(40),
+      sourceSnapshotDigest: pin, candidateInventoryDigest: pin, writeFenceReceiptDigest: pin, recoveryManifestDigest: pin, checkpointMode: "memory" };
+    delete intent[missing];
+    const assertHeld = vi.fn(async () => { throw new Error("must not acquire"); });
+    const input = { intent, descriptor: { digest: pin, candidateInventoryDigest: pin, target }, expectedDescriptorDigest: pin,
+      candidateMigrationsDirectory: "/unused", operationLock: { assertHeld }, boundary: { verify: async () => {} },
+      journal: { begin: async () => ({ attemptId: "unused" }), finish: async () => {}, unknown: async () => {} } };
+    await expect(runControlledManagementMigrations({ DATABASE_URL: syntheticUrl }, input as unknown as Parameters<typeof runControlledManagementMigrations>[1]))
+      .rejects.toThrow("management-migration-pins-invalid");
+    expect(assertHeld).not.toHaveBeenCalled();
+  });
   it("refuses controlled migration without live lock, boundary and journal context before opening a database", async () => {
     await expect(runControlledManagementMigrations({ DATABASE_URL: syntheticUrl }, undefined as unknown as Parameters<typeof runControlledManagementMigrations>[1]))
       .rejects.toThrow("management-migration-context-required");
