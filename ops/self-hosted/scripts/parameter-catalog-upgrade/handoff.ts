@@ -1,6 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, readFile, realpath } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CatalogUpgradeController, ControllerCommand } from "./controller";
@@ -36,15 +38,21 @@ const git = (checkout: string, ...args: string[]) => {
   return result.stdout.trim();
 };
 const sha = (value: string) => /^[a-f0-9]{40}$/.test(value);
-const digestFile = async (filename: string, maximum: number, privateFile = false) => {
+const bytesDigest = (bytes: Buffer) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+const readBoundedFile = async (filename: string, maximum: number, privateFile = false) => {
   const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => fail("file-unavailable"));
   try {
     const stat = await file.stat();
     if (!stat.isFile() || stat.nlink !== 1 || stat.size > maximum || (privateFile && (stat.mode & 0o077) !== 0)) fail("file-not-secure");
     const data = Buffer.alloc(stat.size + 1);
-    const result = await file.read(data, 0, data.length, 0);
-    if (result.bytesRead !== stat.size) fail("file-changed");
-    return sha256Prefixed(data.subarray(0, result.bytesRead).toString("base64"));
+    let length = 0;
+    while (length < data.length) {
+      const next = await file.read(data, length, data.length - length, length);
+      if (!next.bytesRead) break;
+      length += next.bytesRead;
+    }
+    if (length !== stat.size) fail("file-changed");
+    return data.subarray(0, length);
   } finally { await file.close(); }
 };
 const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
@@ -59,13 +67,17 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   if (sourceRoot === entryRoot || git(sourceRoot, "rev-parse", "HEAD") !== input.source.sha || git(sourceRoot, "status", "--porcelain", "--untracked-files=no")) fail("source-checkout-artifact-mismatch");
   const composeFile = await realpath(input.source.composeFile);
   if (!composeFile.startsWith(`${sourceRoot}${path.sep}`)) fail("compose-outside-source-checkout");
-  const privateConfigDigest = await digestFile(input.privateConfigPath, 1024 * 1024, true);
-  const config = await readFile(input.privateConfigPath, "utf8");
-  if (await digestFile(input.privateConfigPath, 1024 * 1024, true) !== privateConfigDigest) fail("private-config-changed");
+  const privateBytes = await readBoundedFile(input.privateConfigPath, 1024 * 1024, true);
+  const privateConfigDigest = bytesDigest(privateBytes);
+  const config = privateBytes.toString("utf8");
   const declaredLock = config.split(/\r?\n/).filter(line => line.startsWith("WISEEFF_OPERATION_LOCK_DIR="));
   if (declaredLock.length > 1) fail("duplicate-lock-configuration");
   const expectedLock = declaredLock.length ? declaredLock[0]!.slice("WISEEFF_OPERATION_LOCK_DIR=".length) : path.join(sourceRoot, "ops/self-hosted/.state");
   if (!path.isAbsolute(expectedLock) || path.resolve(input.lockRoot) !== expectedLock || !path.isAbsolute(input.journalPath) || !path.resolve(input.journalPath).startsWith(`${expectedLock}${path.sep}`)) fail("lock-or-journal-binding-mismatch");
+  for (let current = path.resolve(input.journalPath); current !== path.dirname(expectedLock); current = path.dirname(current)) {
+    const stat = await lstat(current).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (stat?.isSymbolicLink()) fail("journal-path-symlink");
+  }
   if (git(entryRoot, "rev-parse", `${input.candidate.sha}^{tree}`) !== input.candidate.tree) fail("candidate-tree-mismatch");
   const imageInfo = JSON.parse(deps.docker.command(["image", "inspect", input.candidate.imageId]).toString())[0];
   if (imageInfo.Id !== input.candidate.imageId || !/^sha256:[a-f0-9]{64}$/.test(input.candidate.imageId)) fail("candidate-image-mismatch");
@@ -93,8 +105,8 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   });
   const identities = await deps.observeDataIdentity(input);
   if (Object.keys(identities).sort().join(",") !== "objectStore,postgres,redis" || Object.values(identities).some(value => typeof value !== "string" || !value)) fail("data-identity-unavailable");
-  return { daemonId: deps.docker.daemonId, sourceRoot, composeFile, applications, stores, identities,
-    privateConfigDigest, composeDigest: await digestFile(composeFile, 1024 * 1024),
+  return { daemonId: deps.docker.daemonId, hostFingerprint: bytesDigest(Buffer.from(`${os.hostname()}\0${os.platform()}\0${os.arch()}`)), sourceRoot, composeFile, applications, stores, identities,
+    privateConfigDigest, composeDigest: bytesDigest(await readBoundedFile(composeFile, 1024 * 1024)),
     candidateImage: { id: imageInfo.Id as string, platform: `${imageInfo.Os}/${imageInfo.Architecture}` } };
 };
 
