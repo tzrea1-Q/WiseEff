@@ -5,15 +5,27 @@
 
 ## 最新审查返修证据 — 2026-09-06
 
-### 后续发现：读取异步拒绝映射——进行中
+### 后续发现：读取异步拒绝映射——已修复并完成独立审查
 
 本次审查基线为 `e4127eb99e51754cd80f866244033ffee6bd9f4c`；重新 fetch 后 main 仍为 `27bc39d53235879afb579a86f6ee777a462e4204`。分发器在投影错误 catch 内直接返回异步子处理器，实际投影拒绝会逃出并成为通用 HTTP 500；该写法已存在于 b5ca4614，不归为新引入的批量回归。协议风险为 R2：有界 HTTP 错误契约修复，不改变权限或 schema。
 
-父协调者唯一写入范围为 `server/modules/parameter-catalog-api/` 下的 `read/handlers.ts`、`read/handlers.test.ts`、`rootBatchQueries.integration.test.ts`，本中英计划及 `docs/exec-plans/evidence/2026-09-06-catalog-r2-async-read.json`。其他实现路径只读。已确认测试接口为分发器→实际投影适配器，以及正式根 HTTP→真实 PostgreSQL，在一次性测试库的既有 harness 中受控拒绝查询。独立声明 Definition 列表、Subject 下 Definition 列表、详情的完整 503 body/request ID/Retry-After；成功但缺项 Map 与 Promise 拒绝分开；普通 Error/TypeError 不得伪装为 readiness 失败。保留 1/25/100 预算及空页不投影断言。此时不记录未执行的通过结论。
+父协调者唯一写入范围为 `server/modules/parameter-catalog-api/` 下的 `read/handlers.ts`、`read/handlers.test.ts`、`rootBatchQueries.integration.test.ts`，本中英计划及 `docs/exec-plans/evidence/2026-09-06-catalog-r2-async-read.json`。其他实现路径只读。已确认测试接口为分发器→实际投影适配器，以及正式根 HTTP→真实 PostgreSQL，在一次性测试库的既有 harness 中受控拒绝查询。独立声明 Definition 列表、Subject 下 Definition 列表、详情的完整 503 body/request ID/Retry-After；成功但缺项 Map 与 Promise 拒绝分开；普通 Error/TypeError 不得伪装为 readiness 失败。保留 1/25/100 预算及空页不投影断言。以上为执行前登记，实际完成结果见下文。
 
 Documentation Impact Matrix：更新两份 active 计划与新增原始执行/审查索引；DTO/OpenAPI、产品、安全和生成覆盖契约不变，保留原 requirement ID。Standards/Spec 按固定 base/head 独立审查，由父协调者更新 Draft PR #821。Policy 决策、boundary 重定位审批、广域 Gate 0/产物安全失败和增长容量仍独立阻塞；不合并、不关单、不执行 OP-09、目标或生产操作。
 
-正式 Gate 0 在同一代码候选上自然结束：02:47:29.485Z–03:40:47.180Z，退出码 1；没有父协调者中断或 owner 超时。视觉 16 passed / 4 failed / 0 skipped；广域浏览器收集 193，104 passed / 59 failed / 30 skipped，失败清单共 63。产物收尾另触发既有 ZIP 条目数安全上限；未提升上限，这些广域产物未获准上传。所属 API/前端进程已停止；数据库、对象存储及取证 descriptor 按失败策略保留，状态为 cleanup-failed-retained。生成文件已恢复、git 保持干净。原始索引包含阶段结果、失败清单、收尾事实和 823 个产物哈希，不包含私有认证或 ownership 内容。有界只读排查通过源码对照确认旧调试弹窗选择器不匹配；Catalog 503 与知识库夹具 500 仍未归因，没有据此宣称主分支广域通过或 Gate 0 验收通过。
+代码候选为 `c3d592011d05109adb64bd295159e33ade9fd604`，tree `8dc261d28748d86ead510f8c34c76da0d9d638e9`：九个异步分发分支在现有 typed projection catch 内 await；删除原 TypeError 兜底，使未知程序错误继续走根 HTTP 脱敏 500。首次真实 PG/根 HTTP Red 得到 500、空 details；第二次 Red 证明保留 TypeError 兜底会把未知拒绝误转为 503。两份原始 Red 均标为未提交开发树证据，不冒充精确 commit 执行。最初四文件 focused Green 为 100/100。独立 Standards 与 Spec 对 e4127→c3d 分别返回限定 PASS，无 finding。
+
+干净 c3d 候选上，Catalog API、根 app 及真实 Agent 边界共 21 文件、255 用例通过，零跳过。新增 20 个适配器/注册 HTTP 用例和 8 个真实 PG 故障用例，区分成功缺项、typed Promise 拒绝、完整 503 headers/body 与未知错误 500。一次性 harness 的真实 PG client 执行只读除零故障；领域查询、生产适配器、认证和路由真实运行。每次 finally 解除故障，再验证正常读取及 used/waiting 连接为 0。重新测得根 HTTP 1/25/100 行 Subject 业务 SQL 4/4/4、Definition 5/5/5，空页只有预过滤。build、lint（仅 src）、contract、UI、docs（含 pgvector schema）、coverage、operations、models 通过。本次是增量返修，不替代历史全量套件、容量或 Gate 0 结果。
+
+同候选三份 Catalog spec 于 04:18:49.365Z–04:20:38.017Z 通过 21 个业务用例及单列 1 个 warmup，零跳过，所属 runtime 成功清理。playwright-cli 0.1.14 随后在真实本地 API 的 `/parameter-admin/specs` 检查 1440×900、768×1024、390×844：每个视口 snapshot/screenshot、Tab/弹层焦点、Escape/输入保留、显式确认、唯一 POST 201 及滚动。父协调者检视三张图片，无重叠、裁切或横向溢出；认证后 console error 为 0，存在两条原有 provider warning，本次无 CLI 逻辑失败。旧响应监听路径错误已在本地回放 helper 更正，没有重试失败写入。CLI 空列表夹具与 spec 的非空页面、真实冲突/parity 证据分开，CLI 一次性资源已移除。
+
+c3d 上新执行的 boundary 仍失败：3513 occurrences、23 unallowlisted、23 stale，metadata mismatch/allowance growth 均 0，trusted base 仍为 35cb，未批准或实施重定位。另已独立取得 run 34009795200 的实际 Build job 101423591856 日志：checkout merge-ref `b644bd4073fd0516b18f1a3e86c7198b7383aa77`，tree `02082c9d08cdb0d0c267169ff45e661655c70e8b`，parents 为 27bc/e4127。唯一 Script failure 为第 768 行 boundary inventory：1191 passed / 1 failed / 21 skipped；下游 boundary CLI、bridge、backend、contract skipped。此结论来自本次实际日志，不套用旧 run。此次代码修复不能解释所有历史 Catalog/知识库浏览器失败，未声称广域重跑或基线刷新通过。
+
+父协调者另登记生成产物 `docs/exec-plans/evidence/2026-09-06-catalog-r2-async-evidence.zip`，保留本候选 focused 原始日志、浏览器/CLI 产物与独立审查，附中英分离说明及逐文件哈希。排除认证、ownership 文件和此前安全检查失败的广域 Gate 0 原始包；be610 的旧浏览器 ZIP/索引保持历史原样。[本次精简索引](../../../exec-plans/evidence/2026-09-06-catalog-r2-async-read.json)记录实际命令、时间、退出码、计数及产物映射；[本次原始证据包](../../../exec-plans/evidence/2026-09-06-catalog-r2-async-evidence.zip)随 PR 提供可检视内容。c3d 之后仅报告变更不重标执行 SHA。PR 仍 Draft；#814–#820 开放，未合并、未 attest。
+
+### 此前返修检查点——be610 / e4127（历史）
+
+以下记录保留原 SHA 的执行事实，不替代上方 c3d 异步返修的当前记录。正式 Gate 0 在 be610 代码候选上自然结束：02:47:29.485Z–03:40:47.180Z，退出码 1；没有父协调者中断或 owner 超时。视觉 16 passed / 4 failed / 0 skipped；广域浏览器收集 193，104 passed / 59 failed / 30 skipped，失败清单共 63。产物收尾另触发既有 ZIP 条目数安全上限；未提升上限，这些广域产物未获准上传。所属 API/前端进程已停止；数据库、对象存储及取证 descriptor 按失败策略保留，状态为 cleanup-failed-retained。生成文件已恢复、git 保持干净。原始索引包含阶段结果、失败清单、收尾事实和 823 个产物哈希，不包含私有认证或 ownership 内容。有界只读排查通过源码对照确认旧调试弹窗选择器不匹配；Catalog 503 与知识库夹具 500 仍未归因，没有据此宣称主分支广域通过或 Gate 0 验收通过。
 
 父协调者另登记唯一新增产物路径 `docs/exec-plans/evidence/2026-09-06-catalog-r2-browser.zip`，用于随 PR 提供实际 focused Catalog 浏览器报告、截图、操作附件以及 CLI snapshot/screenshot、网络和 console 记录。包内有中英分离说明与逐文件哈希清单，排除私有认证及归属文件。下文“本地归档不等于 GitHub 上传”的限制仍适用于更大的开发与广域 Gate 0 证据包；此 focused 浏览器包作为仓库产物单独提供。
 
