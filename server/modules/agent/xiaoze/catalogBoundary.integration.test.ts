@@ -67,6 +67,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   let advertisedTools: string[] = [];
   let providerUrl: string;
   let objectStoreRoot: string;
+  let localPassword: string;
 
   const runAgent = async (
     input: {
@@ -110,8 +111,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const calls = await pool.query<{
       id: string;
       status: string;
+      error_message: string | null;
       result: { data: { parameters: Array<Record<string, unknown>> } } | null;
-    }>("select id, status, result from agent_tool_calls where session_id = $1 order by created_at", [threadId]);
+    }>("select id, status, result, error_message from agent_tool_calls where session_id = $1 order by created_at", [threadId]);
     const audit = await pool.query<{ actor_type: string; actor_user_id: string; action: string }>(
       "select actor_type, actor_user_id, action from audit_events where target_id = any($1::text[]) and kind = 'agent-tool' order by created_at",
       [calls.rows.map((call) => call.id)]
@@ -189,6 +191,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [ADMIN_B, ORG_B]
     );
     const password = randomUUID();
+    localPassword = password;
     await pool.query(
       "insert into user_password_credentials (user_id, username, password_hash) values ($1, 'r2-818-admin', $2)",
       [ADMIN, await hashLocalAccountPassword(password)]
@@ -509,6 +512,209 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       await pool.query(`drop owned by ${role}`);
       await pool.query(`drop role ${role}`);
     }
+  });
+
+  // These cases run serially in this suite's owned disposable database. Only
+  // SELECT visibility changes; the real pointer, history, FK and triggers stay intact.
+  it.each([
+    { name: "T5-M R2-AGT-06: an existing current value hidden from the dependency is a durable Agent refusal", table: "project_parameter_values" },
+    { name: "T5-D R2-AGT-02 R2-AGT-06: an exact pinned head hidden from the dependency is a durable Agent refusal", table: "catalog_release_definition_heads" }
+  ])("$name", async ({ name, table }) => {
+    const pool = getRootPostgresPool(root)!;
+    const role = `r2_818_t5_${randomUUID().replaceAll("-", "")}`;
+    const policy = `t5_${randomUUID().replaceAll("-", "")}`;
+    let restrictedRoot: RootDatabase | undefined;
+    let restrictedServer: Server | undefined;
+    let roleCreated = false;
+    let rlsEnabled = false;
+    let policyCreated = false;
+    const errors: unknown[] = [];
+    const ddl = async (format: string, ...values: string[]) => {
+      const placeholders = values.map((_, index) => `$${index + 2}::text`).join(", ");
+      const result = await pool.query<{ statement: string }>(
+        `select format($1::text, ${placeholders}) as statement`, [format, ...values]
+      );
+      // The generated DDL can contain a temporary password; never log it.
+      await pool.query(result.rows[0]!.statement);
+    };
+    const schemaState = async () => (await pool.query(`select
+      (select jsonb_agg(jsonb_build_object('table', c.relname, 'rls', c.relrowsecurity,
+        'force', c.relforcerowsecurity, 'owner', c.relowner) order by c.relname)
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'parameter_catalog' and c.relname in
+         ('project_parameter_values', 'catalog_release_definition_heads')) as relations,
+      (select jsonb_agg(to_jsonb(p) order by p.policyname) from pg_policies p
+       where p.schemaname = 'parameter_catalog' and p.tablename in
+         ('project_parameter_values', 'catalog_release_definition_heads')) as policies,
+      (select jsonb_agg(jsonb_build_object('oid', c.oid, 'validated', c.convalidated,
+         'definition', pg_get_constraintdef(c.oid)) order by c.oid)
+       from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+       where n.nspname = 'parameter_catalog') as constraints,
+      (select jsonb_agg(jsonb_build_object('oid', t.oid, 'enabled', t.tgenabled,
+         'definition', pg_get_triggerdef(t.oid)) order by t.oid)
+       from pg_trigger t join pg_class c on c.oid = t.tgrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'parameter_catalog') as triggers`)).rows[0];
+    const catalogState = async () => (await pool.query(`select
+      (select jsonb_agg(to_jsonb(r) order by id) from parameter_catalog.catalog_releases r) as releases,
+      (select jsonb_agg(to_jsonb(m) order by release_id) from parameter_catalog.catalog_materializations m) as materializations,
+      (select jsonb_agg(to_jsonb(h) order by release_id, definition_id)
+         from parameter_catalog.catalog_release_definition_heads h) as heads,
+      (select jsonb_agg(to_jsonb(s)) from parameter_catalog.catalog_state s) as state`)).rows[0];
+    const beforeSchema = await schemaState();
+    expect(beforeSchema?.relations).toHaveLength(2);
+    expect(beforeSchema?.relations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ table, rls: false, force: false })
+    ]));
+    expect(beforeSchema?.policies).toBeNull();
+    const beforeBusiness = await businessState();
+    const beforeCatalog = await catalogState();
+    const restoreVisibility = async () => {
+      if (policyCreated) {
+        await ddl("drop policy %I on parameter_catalog.%I", policy, table);
+        policyCreated = false;
+      }
+      if (rlsEnabled) {
+        await ddl("alter table parameter_catalog.%I disable row level security", table);
+        rlsEnabled = false;
+      }
+    };
+    try {
+      const password = randomUUID();
+      await ddl("create role %I login nosuperuser nocreatedb nocreaterole noinherit nobypassrls password %L", role, password);
+      roleCreated = true;
+      expect((await pool.query("select current_database() as name")).rows).toEqual([{ name: database.name }]);
+      await ddl("grant connect on database %I to %I", database.name, role);
+      await ddl("grant usage on schema public, parameter_catalog to %I", role);
+      await ddl("grant select on all tables in schema parameter_catalog to %I", role);
+      await ddl(`grant select on public.users, public.organizations, public.user_role_bindings,
+        public.user_password_credentials, public.auth_sessions, public.projects,
+        public.agent_sessions, public.agent_messages, public.agent_tool_calls,
+        public.agent_approvals, public.audit_events to %I`, role);
+      // The real failure-terminal thread persistence also updates its session.
+      await ddl("grant update on public.users, public.agent_sessions to %I", role);
+      await ddl("grant insert, update on public.auth_sessions, public.agent_tool_calls to %I", role);
+      await ddl("grant insert on public.agent_sessions, public.agent_messages, public.audit_events to %I", role);
+      const roleUrl = new URL(database.url);
+      roleUrl.username = role;
+      roleUrl.password = password;
+      roleUrl.searchParams.delete("options");
+      restrictedRoot = createPostgresDatabase(roleUrl.toString());
+      expect((await restrictedRoot.query(`select current_user as current, session_user as session,
+        current_database() as database`)).rows).toEqual([{ current: role, session: role, database: database.name }]);
+      expect((await pool.query(`select rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+        rolinherit, rolbypassrls from pg_roles where rolname = $1`, [role])).rows).toEqual([
+        { rolcanlogin: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolinherit: false, rolbypassrls: false }
+      ]);
+      expect((await pool.query(`select 1 from pg_auth_members m join pg_roles r on r.oid = m.member
+        where r.rolname = $1`, [role])).rows).toEqual([]);
+      expect((await pool.query(`select 1 from pg_class c join pg_roles r on r.oid = c.relowner
+        where r.rolname = $1`, [role])).rows).toEqual([]);
+      restrictedServer = createWiseEffServer({
+        db: restrictedRoot,
+        auth: { mode: "production" },
+        localAuthService: createLocalAuthService(restrictedRoot),
+        env: {
+          XIAOZE_CHECKPOINTER: "memory",
+          XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
+          XIAOZE_LLM_CONFIG: {
+            source: "canonical",
+            config: { model: "r2-818-deterministic", apiBaseUrl: `${providerUrl}/v1`, apiKey: "isolated-test-provider" },
+            diagnostics: []
+          }
+        }
+      });
+      const runtimeUrl = await listen(restrictedServer);
+      const loginResponse = await fetch(`${runtimeUrl}/api/v1/auth/login`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "r2-818-admin", password: localPassword })
+      });
+      expect(loginResponse.status).toBe(200);
+      const login = await loginResponse.json();
+      expect(login.auth.user.id).toBe(ADMIN);
+      const assertPositive = async () => {
+        const result = await runAgent({ runtimeUrl, token: login.token, projectId: PROJECT });
+        expect(result.calls.map((call) => call.status), result.events).toEqual(["succeeded"]);
+        expect(result.calls[0]?.result?.data.parameters).toEqual([expect.objectContaining({
+          id: bindingId, current_value: "1842", pin_status: "canonical-pin",
+          pin: expect.objectContaining({ definitionId: X_DEFINITION_ID, definitionRevisionId: X_REVISION_1,
+            currentValueId, catalogRelease: expect.objectContaining({ id: pinnedReleaseId }) })
+        })]);
+        expect(result.audit).toEqual([{ actor_type: "agent", actor_user_id: ADMIN, action: "succeeded" }]);
+      };
+      await assertPositive();
+      const where = table === "project_parameter_values" ? "id = $1" : "release_id = $1 and definition_id = $2";
+      const parameters = table === "project_parameter_values" ? [currentValueId] : [pinnedReleaseId, X_DEFINITION_ID];
+      const countSql = `select count(*)::int as count from parameter_catalog.${table} where ${where}`;
+      const totalSql = `select count(*)::int as count from parameter_catalog.${table}`;
+      expect((await pool.query(countSql, parameters)).rows).toEqual([{ count: 1 }]);
+      expect((await restrictedRoot.query(countSql, parameters)).rows).toEqual([{ count: 1 }]);
+      const total = (await pool.query<{ count: number }>(totalSql)).rows[0]!.count;
+      await ddl("alter table parameter_catalog.%I enable row level security", table);
+      rlsEnabled = true;
+      if (table === "project_parameter_values") {
+        await ddl("create policy %I on parameter_catalog.%I for select to %I using (id <> %L)", policy, table, role, currentValueId);
+      } else {
+        await ddl("create policy %I on parameter_catalog.%I for select to %I using (not (release_id = %L and definition_id = %L))",
+          policy, table, role, pinnedReleaseId, X_DEFINITION_ID);
+      }
+      policyCreated = true;
+      expect((await pool.query(countSql, parameters)).rows).toEqual([{ count: 1 }]);
+      expect((await restrictedRoot.query(countSql, parameters)).rows).toEqual([{ count: 0 }]);
+      expect((await restrictedRoot.query(totalSql)).rows).toEqual([{ count: total - 1 }]);
+      expect((await restrictedRoot.query("select current_value_id from parameter_catalog.project_parameter_bindings where id = $1", [bindingId])).rows)
+        .toEqual([{ current_value_id: currentValueId }]);
+      const actual = await runAgent({ runtimeUrl, token: login.token, projectId: PROJECT });
+      // Recoverable ApiErrors finish the conversation, not the business read.
+      // Preserve the existing endpoint contract while requiring failed tool evidence.
+      const frames = actual.events.split("\n").filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)));
+      expect.soft(frames.filter((frame) => frame.type === "STEP_FINISHED")).toEqual([
+        expect.objectContaining({ metadata: expect.objectContaining({ status: "failed" }) })
+      ]);
+      expect.soft(actual.events).toContain("Configured parameter cannot be read at its exact pin.");
+      expect.soft(actual.events).toContain("操作未能完成");
+      expect.soft(frames.filter((frame) => frame.type === "RUN_FINISHED")).toEqual([
+        expect.objectContaining({ outcome: { type: "success" } })
+      ]);
+      expect.soft(actual.events).not.toContain('"type":"TOOL_CALL_RESULT"');
+      expect.soft(actual.calls).toHaveLength(1);
+      expect.soft(actual.calls[0]?.status).toBe("failed");
+      expect.soft(actual.calls[0]?.result).toBeNull();
+      expect.soft(actual.calls[0]?.error_message).toEqual(expect.any(String));
+      expect.soft(actual.calls[0]?.error_message?.length ?? 0).toBeGreaterThan(0);
+      expect.soft(actual.audit).toEqual([{ actor_type: "agent", actor_user_id: ADMIN, action: "failed" }]);
+      expect.soft(await businessState()).toEqual(beforeBusiness);
+      expect.soft(await catalogState()).toEqual(beforeCatalog);
+      console.info("T5 real-PG observation", JSON.stringify({ name, database: database.name, role,
+        calls: actual.calls.map(({ status, result, error_message }) => ({ status, result, error_message })), audit: actual.audit }));
+      await restoreVisibility();
+      expect(await schemaState()).toEqual(beforeSchema);
+      await assertPositive();
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      // Attempt every cleanup; retain primary and teardown failures independently.
+      const cleanup = async (action: () => Promise<unknown>) => { try { await action(); } catch (error) { errors.push(error); } };
+      await cleanup(() => close(restrictedServer));
+      await cleanup(async () => { await restrictedRoot?.close(); });
+      await cleanup(restoreVisibility);
+      await cleanup(async () => { expect(await schemaState()).toEqual(beforeSchema); });
+      await cleanup(async () => { expect(await businessState()).toEqual(beforeBusiness); });
+      await cleanup(async () => { expect(await catalogState()).toEqual(beforeCatalog); });
+      if (roleCreated) {
+        await cleanup(async () => {
+          expect((await pool.query("select 1 from pg_stat_activity where usename = $1", [role])).rows).toEqual([]);
+          expect((await pool.query(`select 1 from pg_class c join pg_roles r on r.oid = c.relowner
+            where r.rolname = $1`, [role])).rows).toEqual([]);
+          await ddl("drop owned by %I", role);
+          await ddl("drop role %I", role);
+          expect((await pool.query("select 1 from pg_roles where rolname = $1", [role])).rows).toEqual([]);
+        });
+      }
+      console.info("T5 cleanup", JSON.stringify({ name, database: database.name, role, cleanupErrors: errors.length }));
+    }
+    if (errors.length) throw new AggregateError(errors, `${name}: request/setup or cleanup failed`);
   });
 
   const pendingBindingAction = () =>

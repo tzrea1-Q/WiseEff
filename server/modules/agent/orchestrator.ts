@@ -337,36 +337,10 @@ export function createAgentOrchestrator(options: {
     if (!running) {
       throw staleTransition("Agent tool call could not be started.", { toolCallId: toolCall.id });
     }
+    let result: AgentToolResult;
     try {
-      const result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
-      // Result transition and audit commit together (ADR-0027); the "running"
-      // transition above deliberately stays outside so it is visible during execution.
-      await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
-        const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
-          status: "succeeded",
-          result
-        });
-        if (!succeeded) {
-          throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
-        }
-        await audit({
-          context: input,
-          invocation: executionContext.invocation!,
-          projectId: executionContext.projectId,
-          kind: "agent-tool",
-          action: "succeeded",
-          targetType: "agent_tool_call",
-          targetId: toolCall.id,
-          metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
-        }, asAuditTx(tx));
-        return { result: undefined, audit: null };
-      });
-      recordAgentToolResultMetric("succeeded", toolCall);
-      return result;
+      result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
     } catch (error) {
-      if (error instanceof ApiError && error.code === "CONFLICT") {
-        throw error;
-      }
       // Failure transition and audit commit together, then the error propagates.
       await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
@@ -392,6 +366,32 @@ export function createAgentOrchestrator(options: {
       recordAgentToolResultMetric("failed", toolCall);
       throw error;
     }
+    // Only tool execution errors belong to the failure path above. A stale
+    // success transition or audit failure must not become a second terminal write.
+    // Result transition and audit commit together (ADR-0027); "running" remains
+    // visible outside this transaction during execution.
+    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+      const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+        status: "succeeded",
+        result
+      });
+      if (!succeeded) {
+        throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
+      }
+      await audit({
+        context: input,
+        invocation: executionContext.invocation!,
+        projectId: executionContext.projectId,
+        kind: "agent-tool",
+        action: "succeeded",
+        targetType: "agent_tool_call",
+        targetId: toolCall.id,
+        metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
+      }, asAuditTx(tx));
+      return { result: undefined, audit: null };
+    });
+    recordAgentToolResultMetric("succeeded", toolCall);
+    return result;
   }
 
   async function recordToolRequest(
