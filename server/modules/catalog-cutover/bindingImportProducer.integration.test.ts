@@ -23,7 +23,11 @@ import { persistCheckpoint } from "./checkpoints";
 import { captureConversionSourceInventory, conversionManifestDigest, type ConversionManifest } from "./conversionManifest";
 import { assertBindingManagementLogin, captureBindingMappingPins, prepareBindingEvidenceArchives, produceBindingImportReceipt, readBindingDatabaseIdentity } from "./bindingImportProducer";
 import { executeCutover, planCutover } from "./orchestrator";
-import type { ExecuteCutoverInput } from "./interface";
+import type { ExecuteCutoverInput, PlanCutoverInput } from "./interface";
+import { bindingJournalPath, createBindingCutoverJournal } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal";
+import { openUpgradeJournal } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
+import { openCatalogUpgradeController } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/controller";
+import { withHostOperationLock } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 /** Real P8 producer + P9 consumer slice. P2/P3, public verifier and root controller are not mocked or claimed. */
 describe("S7 generated Binding receipt and same-transaction S6 import", () => {
@@ -32,6 +36,7 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
   let management: pg.Pool;
   let client: pg.PoolClient;
   let root: string;
+  let realPlanInput: PlanCutoverInput;
   type Producer = Parameters<typeof prepareBindingEvidenceArchives>[0];
   let producer: Omit<Producer,"sourceClient">;
   const withSource = <T>(body:(input:Producer)=>Promise<T>) => withLockedBindingSource(admin,client,sourceClient => body({...producer,sourceClient}));
@@ -114,7 +119,8 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     const conversion: ConversionManifest = {version:"pcat-conversion-manifest-v1",sourceSnapshotFingerprint:fingerprintP0Graph(classificationGraph),sourceInventoryFingerprint:await captureConversionSourceInventory(admin),targetCatalogReleaseDigest:release.digest,
       mappings:classificationGraph.identities.filter(i => ["parameter-spec","parameter-spec-version"].includes(i.sourceKind)).map(i => ({legacyIdentityId:i.id,targetKind:i.id === "id-root" ? "catalog-subject":i.sourceKind === "parameter-spec" ? "parameter-definition":"definition-revision",targetId:i.id === "id-root" ? "csub_acme_power":i.sourceKind === "parameter-spec" ? "pdef_acme_power_iin_max":"drev_acme_power_iin_max_1",targetSourceDigest:bundle.releases[0].manifest.files[0].digest,...(i.sourceKind === "parameter-spec-version" ? {retainedReleaseId:release.id}: {})}))};
     const intent = await captureBindingImportIntent(admin,conversion);
-    const planned = await planCutover({graph:classificationGraph,conversionManifest:conversion,bindingImportIntent:intent,bindingArchiveRetainUntil:"2035-01-01T00:00:00.000Z",targetArtifactSha:"e".repeat(40),targetCatalogReleaseDigest:release.digest,catalogReleaseSource:jsonCatalogReleaseSource(bundle)});
+    realPlanInput = {graph:classificationGraph,conversionManifest:conversion,bindingImportIntent:intent,bindingArchiveRetainUntil:"2035-01-01T00:00:00.000Z",targetArtifactSha:"e".repeat(40),targetCatalogReleaseDigest:release.digest,catalogReleaseSource:jsonCatalogReleaseSource(bundle)};
+    const planned = await planCutover(realPlanInput);
     if (!planned.ok) throw new Error(planned.error.detail);
     const planDigest = planned.value.planDigest;
     await admin.query("insert into parameter_catalog.parameter_catalog_cutover_runs(id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state) values($1,$2,$3,$4,'s7-producer-slice',$5,'P7','running')",[runId,conversion.sourceSnapshotFingerprint,"e".repeat(40),release.digest,planDigest]);
@@ -256,6 +262,12 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     expect(await importPreparedBindingHistory(command)).toMatchObject({ok:true,status:"imported",bindings:3,values:6});
     await client.query("rollback");
     expect((await admin.query("select count(*)::int as n from parameter_catalog.project_parameter_bindings")).rows[0].n).toBe(0);
+    const target = await readBindingDatabaseIdentity(client);
+    const journal = openUpgradeJournal({ journalPath: bindingJournalPath({ operationRoot: root, target, runId: "lost-phase-response" }), runId: "lost-phase-response" });
+    if (!journal.ok) throw new Error("phase-journal-open-failed");
+    // Deliberately lose the filesystem outcome after the real P9 COMMIT below.
+    // This is a component fault, not a successful full controller upgrade.
+    await createBindingCutoverJournal({ operationRoot: root, target, journal: journal.value }).begin({ target, runId, planDigest: producer.planDigest, phase: "P9", inputDigest: command.manifestDigest });
     await client.query("begin isolation level serializable");
     expect(await importPreparedBindingHistory(command)).toMatchObject({ok:true,status:"imported",bindings:3,values:6});
     for (const assignment of producer.classification.assignments.filter(a => ["project-parameter-binding","project-parameter-binding-revision"].includes(a.sourceKind))) {
@@ -273,4 +285,35 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
     expect(await importPreparedBindingHistory(command)).toMatchObject({ok:true,status:"already-imported",values:6});
     await client.query("rollback");
   }));
+  it("real controller refuses original and new runs after P9 COMMIT loses its journal outcome", async () => {
+    const target = await readBindingDatabaseIdentity(client);
+    const probeManagement = new pg.Pool({ ...management.options, max: 1 });
+    const unused = async (): Promise<never> => { throw new Error("unexpected-post-unknown-effect"); };
+    const plan = await planCutover(realPlanInput);
+    if (!plan.ok) throw new Error("fixture-plan-failed");
+    const before = (await client.query("select phase,checkpoint_digest from parameter_catalog.parameter_catalog_cutover_checkpoints order by phase")).rows;
+    await client.query("select pg_advisory_unlock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+    try {
+      await withHostOperationLock(root, async operationLock => {
+        for (const upgradeRun of ["lost-phase-response", "new-run-cannot-escape"]) {
+          const controller = openCatalogUpgradeController({
+            journalPath: bindingJournalPath({ operationRoot: root, target, runId: upgradeRun }), runId: upgradeRun,
+            operationLock, bindingJournalScope: { operationRoot: root, target },
+            cutover: { plan: planCutover, execute: executeCutover, inspect: unused, recover: unused },
+            verification: { prepareVerification: unused, runVerification: unused },
+          });
+          if (!controller.ok) throw new Error("fixture-controller-open-failed");
+          expect((await controller.value.dispatch({ action: "plan", input: realPlanInput })).ok).toBe(true);
+          const result = await controller.value.dispatch({ action: "execute", input: {
+            ...realPlanInput, plan: plan.value, pool: admin, bindingManagementPool: probeManagement,
+            bindingBoundary: { prepare: unused, verify: unused },
+            archiveObjectStore: producer.archive.objectStore, archiveEncryptionKey: producer.archive.encryptionKey,
+          } });
+          expect(result).toMatchObject({ ok: false, error: { detail: "PCAT-ORC-RESUME-INVALIDATED: binding-unresolved-phase-attempt" } });
+        }
+      });
+      expect((await client.query("select phase,checkpoint_digest from parameter_catalog.parameter_catalog_cutover_checkpoints order by phase")).rows).toEqual(before);
+      expect((await client.query("select count(*)::int as n from parameter_catalog.project_parameter_values")).rows[0].n).toBe(6);
+    } finally { await probeManagement.end(); await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))"); }
+  });
 });

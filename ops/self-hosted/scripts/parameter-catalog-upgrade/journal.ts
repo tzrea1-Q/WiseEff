@@ -1,15 +1,20 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
+  rmdirSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import type { BindingPhaseAttempt } from "../../../../server/modules/catalog-cutover/interface";
 
 import {
   failClosed,
@@ -49,6 +54,12 @@ export const sha256Prefixed = (value: string): string =>
 
 export type JournalOutcome = "committed" | "crashed";
 
+export type BindingPhaseEvent = BindingPhaseAttempt & {
+  readonly target: { readonly systemIdentifier: string; readonly databaseOid: string };
+  readonly inputDigest: string;
+  readonly outcome: "pending" | "committed" | "failed" | "unknown";
+};
+
 export type JournalEntry = {
   readonly seq: number;
   readonly at: string;
@@ -60,6 +71,7 @@ export type JournalEntry = {
   readonly outcome: JournalOutcome;
   readonly planDigest: string | null;
   readonly lastFailureCode: string | null;
+  readonly bindingPhase?: BindingPhaseEvent;
 };
 
 export type JournalRecord = {
@@ -108,6 +120,7 @@ export type JournalTransitionDraft = {
   readonly verificationAttemptDigest?: string | null;
   readonly outcome?: JournalOutcome;
   readonly lastFailureCode?: string | null;
+  readonly bindingPhase?: BindingPhaseEvent;
 };
 
 export type JournalCommit = {
@@ -136,18 +149,41 @@ const withDigest = (record: Omit<JournalRecord, "journalDigest">): JournalRecord
   journalDigest: digestRecord(record),
 });
 
+// This short filesystem critical section supplements the deployment operation
+// lock. A leftover lock is never guessed stale or removed by another process.
+class JournalDurabilityError extends Error {}
+const ensureDurableDirectory = (directory: string): void => {
+  if (existsSync(directory)) return;
+  const parent = path.dirname(directory);
+  ensureDurableDirectory(parent);
+  try { mkdirSync(directory, { mode: 0o700 }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const fd = openSync(parent, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try { fsyncSync(fd); } finally { closeSync(fd); }
+};
+export const withJournalWriteLock = <T>(journalPath: string, action: () => T): T => {
+  ensureDurableDirectory(path.dirname(journalPath));
+  const lockPath = `${journalPath}.write-lock`;
+  mkdirSync(lockPath, { mode: 0o700 });
+  let uncertain = false;
+  try { return action(); }
+  catch (error) { uncertain = error instanceof JournalDurabilityError; throw error; }
+  finally { if (!uncertain) rmdirSync(lockPath); }
+};
+
 const persist = (journalPath: string, record: JournalRecord): void => {
-  mkdirSync(path.dirname(journalPath), { recursive: true, mode: 0o700 });
-  const tempPath = `${journalPath}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-    flag: "w",
-  });
-  const fd = openSync(tempPath, "r+");
-  fsyncSync(fd);
-  closeSync(fd);
-  renameSync(tempPath, journalPath);
+  const tempPath = `${journalPath}.${randomUUID()}.tmp`;
+  const fd = openSync(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    fsyncSync(fd);
+  } finally { closeSync(fd); }
+  try {
+    renameSync(tempPath, journalPath);
+    const directory = openSync(path.dirname(journalPath), constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  } catch { throw new JournalDurabilityError("journal-durability-unknown"); }
+  finally { if (existsSync(tempPath)) unlinkSync(tempPath); }
 };
 
 const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
@@ -172,6 +208,25 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal digest or entries are missing");
   }
   const candidate = value as JournalRecord;
+  for (const [index, entry] of candidate.entries.entries()) {
+    if (!entry || entry.seq !== index + 1 || typeof entry.action !== "string" ||
+        typeof entry.inputDigest !== "string" || !["committed", "crashed"].includes(entry.outcome) ||
+        !parseControllerState(entry.fromState).ok || !parseControllerState(entry.toState).ok ||
+        entry.fromState !== (index === 0 ? "idle" : candidate.entries[index - 1].toState)) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal entry sequence is invalid");
+    }
+    const phase = entry.bindingPhase;
+    if (phase && (!/^P(?:[0-9]|10)$/.test(phase.phase) || !RUN_ID.test(phase.runId) ||
+        !RUN_ID.test(phase.attemptId) || !/^sha256:[a-f0-9]{64}$/.test(phase.planDigest) ||
+        !/^sha256:[a-f0-9]{64}$/.test(phase.inputDigest) ||
+        !/^[0-9]+$/.test(phase.target?.systemIdentifier) || !/^[0-9]+$/.test(phase.target?.databaseOid) ||
+        !["pending", "committed", "failed", "unknown"].includes(phase.outcome))) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal phase event is invalid");
+    }
+    if (entry.action.startsWith("binding-phase-") !== Boolean(phase)) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal phase event is missing or misplaced");
+    }
+  }
   const expected = digestRecord({
     schemaVersion: candidate.schemaVersion,
     runId: candidate.runId,
@@ -223,7 +278,14 @@ const requireRunId = (runId: string): ControllerResult<string> => {
   return { ok: true, value: runId };
 };
 
-export const journalBytes = (journalPath: string): Buffer => readFileSync(journalPath);
+export const journalBytes = (journalPath: string): Buffer => {
+  const fd = openSync(journalPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || stat.size > 16 * 1024 * 1024) throw new Error("unsafe-journal-file");
+    return readFileSync(fd);
+  } finally { closeSync(fd); }
+};
 
 export const loadUpgradeJournal = (input: {
   readonly journalPath: string;
@@ -238,11 +300,13 @@ export const loadUpgradeJournal = (input: {
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(input.journalPath, "utf8"));
+    parsed = JSON.parse(journalBytes(input.journalPath).toString("utf8"));
   } catch {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal is not valid JSON");
   }
-  const record = parseRecord(parsed);
+  let record: ControllerResult<JournalRecord>;
+  try { record = parseRecord(parsed); }
+  catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal payload is invalid"); }
   if (!record.ok) {
     return record;
   }
@@ -266,8 +330,13 @@ export const openUpgradeJournal = (input: {
   }
   const now = input.now ? input.now() : new Date();
   const record = idleRecord(runId.value, now);
-  persist(input.journalPath, record);
-  return { ok: true, value: wrap(input.journalPath, record) };
+  try {
+    return withJournalWriteLock(input.journalPath, () => {
+      if (existsSync(input.journalPath)) return loadUpgradeJournal(input);
+      persist(input.journalPath, record);
+      return { ok: true, value: wrap(input.journalPath, record) };
+    });
+  } catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal creation failed or writer lock occupied"); }
 };
 
 const isReplay = (record: JournalRecord, draft: JournalTransitionDraft): boolean =>
@@ -295,6 +364,23 @@ export const commitJournalTransition = (
   draft: JournalTransitionDraft,
   now: () => Date = () => new Date(),
 ): ControllerResult<JournalCommit> => {
+  try {
+    return withJournalWriteLock(journal.journalPath, () => {
+      const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId });
+      if (!current.ok) return current;
+      if (current.value.record.journalDigest !== journal.record.journalDigest) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
+      }
+      return appendTransition(journal, draft, now);
+    });
+  } catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal commit unavailable; outcome must be inspected"); }
+};
+
+const appendTransition = (
+  journal: UpgradeJournal,
+  draft: JournalTransitionDraft,
+  now: () => Date,
+): ControllerResult<JournalCommit> => {
   if (isReplay(journal.record, draft)) {
     return { ok: true, value: { snapshot: snapshotOf(journal.record), replayed: true } };
   }
@@ -310,6 +396,7 @@ export const commitJournalTransition = (
     outcome: draft.outcome ?? "committed",
     planDigest: draft.planDigest ?? journal.record.planDigest,
     lastFailureCode: draft.lastFailureCode ?? null,
+    ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
   };
   const record = withDigest({
     schemaVersion: journal.record.schemaVersion,

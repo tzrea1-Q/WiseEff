@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,6 +15,25 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("rejects a stale handle instead of overwriting another committed transition", () => {
+    const journalPath = tempJournal();
+    const first = openUpgradeJournal({ journalPath, runId: "cas" });
+    const stale = openUpgradeJournal({ journalPath, runId: "cas" });
+    if (!first.ok || !stale.ok) throw new Error("fixture-open-failed");
+    expect(commitJournalTransition(first.value, { action: "plan", inputDigest: "plan", toState: "planned", nextAction: "execute" }).ok).toBe(true);
+    const before = journalBytes(journalPath);
+    expect(commitJournalTransition(stale.value, { action: "execute", inputDigest: "other", toState: "executing", nextAction: "inspect" }).ok).toBe(false);
+    expect(journalBytes(journalPath)).toEqual(before);
+  });
+
+  it("refuses a journal symlink before reading or replacing its target", () => {
+    const journalPath = tempJournal();
+    const original = openUpgradeJournal({ journalPath, runId: "link" });
+    expect(original.ok).toBe(true);
+    const link = `${journalPath}.link`;
+    symlinkSync(journalPath, link);
+    expect(loadUpgradeJournal({ journalPath: link, runId: "link" }).ok).toBe(false);
+  });
   it("T1 commits a legal transition and replays it without rewriting bytes", () => {
     const journalPath = tempJournal();
     const opened = openUpgradeJournal({ journalPath, runId: "run-legal" });

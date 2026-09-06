@@ -67,19 +67,21 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>;
 };
 
-const collectKeys = (value: unknown, found: string[]): void => {
+const collectKeys = (value: unknown, found: string[], seen = new WeakSet<object>()): void => {
   if (typeof value !== "object" || value === null) {
     return;
   }
+  if (seen.has(value)) return;
+  seen.add(value);
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectKeys(item, found);
+      collectKeys(item, found, seen);
     }
     return;
   }
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     found.push(key);
-    collectKeys(child, found);
+    collectKeys(child, found, seen);
   }
 };
 

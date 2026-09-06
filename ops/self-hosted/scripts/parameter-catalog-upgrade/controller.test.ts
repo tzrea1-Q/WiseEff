@@ -225,6 +225,31 @@ describe("S11-UPG threat matrix", () => {
 });
 
 describe("S11-UPG controller", () => {
+  it("does not reuse a prepared verification when another database pin is supplied", async () => {
+    const harness = createHarness();
+    const opened = openCatalogUpgradeController({ journalPath: journalPathFor("verification-input"), runId: "verification-input", cutover: harness.cutover, verification: harness.verification });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    await opened.value.dispatch({ action: "plan", input: planInput() });
+    await opened.value.dispatch({ action: "execute", input: executeInput() });
+    await opened.value.dispatch({ action: "prepareVerification", input: prepareInput() });
+    const input = prepareInput();
+    const result = await opened.value.dispatch({ action: "prepareVerification", input: { ...input, pins: { ...input.pins, database: { ...input.pins.database, targetIdentity: "different-database" } } } });
+    expect(result).toMatchObject({ ok: true, value: { replayed: false } });
+    expect(harness.calls.filter(call => call === "prepareVerification")).toHaveLength(2);
+  });
+  it("rechecks Cutover admission before returning a historical committed execute", async () => {
+    let invocations = 0;
+    const harness = createHarness({ execute: async () => ++invocations === 1 ? ok(completedSnapshot()) : {
+      ok: false, error: { code: "PCAT-ORC-RESUME-INVALIDATED", detail: "binding-unresolved-phase-attempt" },
+    } });
+    const opened = openCatalogUpgradeController({ journalPath: journalPathFor("replay-admission"), runId: "replay-admission", cutover: harness.cutover, verification: harness.verification });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    await opened.value.dispatch({ action: "plan", input: planInput() });
+    expect((await opened.value.dispatch({ action: "execute", input: executeInput() })).ok).toBe(true);
+    const replay = await opened.value.dispatch({ action: "execute", input: executeInput() });
+    expect(replay.ok).toBe(false);
+    expect(invocations).toBe(2);
+  });
   it("T1 legal plan then execute is idempotent and does not rewrite the journal", async () => {
     const harness = createHarness();
     const journalPath = journalPathFor("legal");
@@ -266,8 +291,10 @@ describe("S11-UPG controller", () => {
     if (!replayExecute.ok) return;
     expect(replayExecute.value.replayed).toBe(true);
     expect(journalBytes(journalPath).equals(committed)).toBe(true);
-    expect(harness.calls.filter((name) => name === "plan")).toHaveLength(1);
-    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(1);
+    expect(harness.calls.filter((name) => name === "plan")).toHaveLength(2);
+    // Replay still invokes the existing Cutover admission/verification path;
+    // idempotence means no additional journal transition or domain mutation.
+    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(2);
   });
 
   it("T2 refuses an illegal action and leaves journal bytes unchanged", async () => {
