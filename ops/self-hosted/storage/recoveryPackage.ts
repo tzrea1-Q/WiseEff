@@ -15,6 +15,12 @@ const LIMIT = 256 * 1024 * 1024;
  * Database-wide settings have setrole=0, so they cannot be found by joining
  * pg_roles. Reject settings affecting this database; do not guess or reset them.
  * A query error or unavailable baseline is a refusal, never an empty inventory.
+ * Database creation attributes are not in a dump without --create. Both current
+ * package adapters support ONLY the explicitly observed PG16-alpine defaults:
+ * UTF8 / en_US.utf8 / libc / no ICU or collation-version metadata. Different
+ * locale, encoding, provider, connection or template settings are unsupported;
+ * this query never normalizes them. Supporting variable properties will require
+ * an authenticated package contract and exact target comparison.
  */
 const nonDumpInventorySql = (bootstrapPredicate: string, packageRolePredicate: string) => `
 with bootstrap as (
@@ -60,6 +66,10 @@ select json_build_object(
        where database.datname<>pg_catalog.current_database() and (acl.grantee in (select oid from package_roles) or acl.grantor in (select oid from package_roles))),
   'databaseSettings',(select count(*) from pg_catalog.pg_db_role_setting
     where setrole=0 and (setdatabase=0 or setdatabase in (select oid from target_database))),
+  'databaseProperties',(select count(*) from target_database where encoding<>6
+    or datcollate<>'en_US.utf8' or datctype<>'en_US.utf8' or datlocprovider<>'c'
+    or daticulocale is not null or daticurules is not null or datcollversion is not null
+    or datconnlimit<>-1 or not datallowconn or datistemplate),
   'tablespaceOwner',(select count(*) from pg_catalog.pg_tablespace where spcname not in ('pg_default','pg_global') or spcowner is distinct from (select oid from bootstrap)),
   'tablespaceAcl',(select count(*) from changed_acls where kind='tablespaceAcl'),
   'parameterAcl',(select count(*) from changed_acls where kind='parameterAcl'),
@@ -71,12 +81,13 @@ select json_build_object(
     or not exists(select 1 from pg_catalog.pg_init_privs where classoid='pg_catalog.pg_proc'::regclass and privtype='i')
     or exists(select 1 from builtin_functions where oid>=16384) then 1 else 0 end
 )`;
-// Keep the existing v2 query and its postgres-only semantics unchanged.
+// v2 remains postgres-only; the explicit database-attribute refusal applies to
+// both profiles because neither format promises to recreate those attributes.
 export const RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL = nonDumpInventorySql("rolname='postgres'", "rolname !~ '^pg_' and rolname<>'postgres'");
 /** $1/$2 come from an independently verified bootstrap OID/name, not SQL text. */
 export const RECOVERY_V3_NON_DUMP_CAPABILITY_INVENTORY_SQL = nonDumpInventorySql("oid=$1::oid and rolname=$2::text", "rolname !~ '^pg_' and oid<>$1::oid");
 export const hasUnsupportedNonDumpCapabilities = (value: unknown): boolean => {
-  const keys = ["databaseOwner", "databaseAcl", "databaseSettings", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
+  const keys = ["databaseOwner", "databaseAcl", "databaseSettings", "databaseProperties", "tablespaceOwner", "tablespaceAcl", "parameterAcl", "builtinFunctionOwner", "builtinFunctionAcl", "baselineUnavailable"];
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join(",") !== [...keys].sort().join(",")) return true;
   return Object.values(value).some(count => typeof count !== "number" || !Number.isSafeInteger(count) || count !== 0);
 };

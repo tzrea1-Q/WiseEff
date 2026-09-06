@@ -153,6 +153,18 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       } finally {
         exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
       }
+      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "alter database postgres connection limit 5"]);
+      try {
+        await timed("capture-database-properties-refusal", async () => {
+          await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("non-dump-capability-unsupported");
+          expect(exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-At", "-c",
+            "select datconnlimit from pg_database where datname=current_database()"] ).toString().trim()).toBe("5");
+        });
+      } finally {
+        // The source capture does not repair the unsupported setting. Only this
+        // disposable fixture explicitly restores its own injected fault.
+        exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "alter database postgres connection limit -1"]);
+      }
       // Synthetic principal is limited to this test's resource identities. Real
       // controller approvals are neither generated nor mocked as passed reports.
       const captured = await timed("capture-package", () => captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort));

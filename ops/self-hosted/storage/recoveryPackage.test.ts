@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, restoreRecoveryPackage, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryRole } from "./recoveryPackage";
 
 it("requires a complete zero non-dump capability inventory and never treats absent or unknown counts as clear", () => {
-  const clear = { databaseOwner: 0, databaseAcl: 0, databaseSettings: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
+  const clear = { databaseOwner: 0, databaseAcl: 0, databaseSettings: 0, databaseProperties: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
   expect(hasUnsupportedNonDumpCapabilities(clear)).toBe(false);
   for (const key of Object.keys(clear)) expect(hasUnsupportedNonDumpCapabilities({ ...clear, [key]: 1 })).toBe(true);
   for (const value of [null, {}, [], { ...clear, other: 0 }, { ...clear, databaseAcl: "0" }, { ...clear, baselineUnavailable: -1 }]) expect(hasUnsupportedNonDumpCapabilities(value)).toBe(true);
