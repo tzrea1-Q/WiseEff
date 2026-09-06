@@ -15,6 +15,8 @@ const suites = {
 /** The child owns its process group. Deadline/output limits cannot authorize a pass. */
 export function superviseComponentProcess(child: ReturnType<typeof spawn>, limits = { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 }) {
   let output = ""; let bytes = 0; let stopped = false;
+  let closed = false; let killed = false; let status: number | null = null;
+  let finish = () => {};
   let escalation: ReturnType<typeof globalThis.setTimeout> | undefined;
   const signal = (name: NodeJS.Signals) => {
     try { if (child.pid) process.kill(-child.pid, name); } catch { /* Already exited. */ }
@@ -22,7 +24,7 @@ export function superviseComponentProcess(child: ReturnType<typeof spawn>, limit
   const stop = () => {
     if (stopped) return;
     stopped = true; signal("SIGTERM");
-    escalation = globalThis.setTimeout(() => signal("SIGKILL"), limits.graceMs);
+    escalation = globalThis.setTimeout(() => { signal("SIGKILL"); killed = true; finish(); }, limits.graceMs);
   };
   const deadline = globalThis.setTimeout(stop, limits.deadlineMs);
   const append = (chunk: Buffer) => {
@@ -34,7 +36,13 @@ export function superviseComponentProcess(child: ReturnType<typeof spawn>, limit
   const wait = new Promise<{ exitCode: number; output: string }>((resolve, reject) => {
     const clear = () => { globalThis.clearTimeout(deadline); if (escalation) globalThis.clearTimeout(escalation); };
     child.once("error", error => { clear(); reject(error); });
-    child.once("close", code => { clear(); resolve({ exitCode: stopped ? 1 : code ?? 1, output }); });
+    finish = () => {
+      // A terminated leader may leave children with closed stdio in its group.
+      // Do not cancel escalation until the whole group has received SIGKILL.
+      if (!closed || (stopped && !killed)) return;
+      clear(); resolve({ exitCode: stopped ? 1 : status ?? 1, output });
+    };
+    child.once("close", code => { closed = true; status = code; finish(); });
   });
   return { stop, wait };
 }
