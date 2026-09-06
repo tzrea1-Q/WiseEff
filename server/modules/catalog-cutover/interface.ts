@@ -3,6 +3,7 @@ import type pg from "pg";
 import type { CatalogReleaseSource } from "../catalog-kernel/interface";
 import type { FrozenP0Graph } from "./classifier";
 import type { ArchiveObjectStore } from "./archive";
+import type { ConversionManifest } from "./conversionManifest";
 
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
@@ -68,6 +69,7 @@ export type CutoverResult<T> =
   | { readonly ok: false; readonly error: CutoverFailure };
 
 export type CutoverPlan = {
+  readonly conversionManifestDigest?: string;
   readonly planDigest: string;
   readonly sourceSnapshotFingerprint: string;
   readonly targetArtifactSha: string;
@@ -96,6 +98,7 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  readonly conversionManifest?: ConversionManifest;
   readonly graph: FrozenP0Graph;
   readonly targetArtifactSha: string;
   readonly targetCatalogReleaseDigest: string;
@@ -103,6 +106,7 @@ export type PlanCutoverInput = {
 };
 
 export type ExecuteCutoverInput = {
+  readonly conversionManifest?: ConversionManifest;
   readonly pool: pg.Pool;
   readonly plan: CutoverPlan;
   readonly graph: FrozenP0Graph;

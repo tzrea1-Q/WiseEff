@@ -50,6 +50,7 @@ import {
   type RecoverCutoverInput,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
+import { captureArchivedDefinitionGraph, captureConversionSourceInventory, conversionManifestDigest, inspectConversionManifest } from "./conversionManifest";
 import {
   assertRecordedAction,
   captureInventoryDump,
@@ -107,6 +108,12 @@ export const planCutover = async (
   if (!classified.ok) {
     return fail("PCAT-ORC-INVALID-PLAN", classified.error.detail);
   }
+  if (input.graph.bindings.length || input.graph.bindingRevisions.length || input.graph.placements.length) {
+    return fail("PCAT-ORC-INVALID-PLAN", "conversion-business-history-producer-unavailable");
+  }
+  if (!input.conversionManifest && classified.value.assignments.some((row) => row.disposition !== "archived")) {
+    return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-required");
+  }
   if (input.catalogReleaseSource) {
     const bundle = await parseBundle(input.catalogReleaseSource);
     const compiled = compileCatalogRelease(bundle);
@@ -119,6 +126,12 @@ export const planCutover = async (
         "targetCatalogReleaseDigest does not match the compiled Catalog Release",
       );
     }
+    if (input.conversionManifest) {
+      const problem = inspectConversionManifest({ graph: input.graph, targetCatalogReleaseDigest: input.targetCatalogReleaseDigest, bundle, manifest: input.conversionManifest });
+      if (problem) return fail("PCAT-ORC-INVALID-PLAN", problem);
+    }
+  } else if (input.conversionManifest) {
+    return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-requires-release-source");
   }
   const sourceSnapshotFingerprint = fingerprintP0Graph(input.graph);
   const planDigest = sha256Prefixed(
@@ -128,6 +141,7 @@ export const planCutover = async (
       targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
+      ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
     }),
   );
   return ok({
@@ -137,6 +151,7 @@ export const planCutover = async (
     targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
     migrationContractVersion: MIGRATION_CONTRACT_VERSION,
     phases: PRE_ACTIVATION_PHASES,
+    ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
   });
 };
 
@@ -293,20 +308,8 @@ const runPhase = async (
           );
         }
         if (disposition !== "archived") {
-          const head = await client.query<{ definition_id: string }>(
-            `
-            select definition_id
-              from parameter_catalog.catalog_release_definition_heads
-             where release_id = $1
-             order by definition_id
-             limit 1
-            `,
-            [releaseId],
-          );
-          const definitionId = head.rows[0]?.definition_id;
-          if (!definitionId) {
-            return fail("PCAT-ORC-PHASE-FAILED", "P7 mapped disposition requires a Catalog definition head");
-          }
+          const mapping = input.conversionManifest?.mappings.find((row) => row.legacyIdentityId === assignment.identityId);
+          if (!mapping) return fail("PCAT-ORC-PHASE-FAILED", "P7 requires an exact source-bound conversion identity");
           const mappedRow = await appendMappingVersion({
             client,
             cutoverRunId: runId,
@@ -316,8 +319,8 @@ const runPhase = async (
             expectedHead: null,
             outcome: {
               kind: "operational",
-              targetKind: "parameter-definition",
-              targetId: definitionId,
+              targetKind: mapping.targetKind,
+              targetId: mapping.targetId,
             },
           });
           if (!mappedRow.ok) {
@@ -326,6 +329,8 @@ const runPhase = async (
           mapped.push(`${assignment.identityId}:${disposition}`);
           continue;
         }
+        const sourceGraph = assignment.sourceKind === "parameter-spec" ? await captureArchivedDefinitionGraph(client, assignment.sourceId) : null;
+        if (!sourceGraph) return fail("PCAT-ORC-PHASE-FAILED", "archive-source-family-unavailable");
         const archived = await adapter.persistArchive({
           actor: { role: "cutover-operator", auditRef: input.operatorAuditRef },
           legacyIdentityId: assignment.identityId,
@@ -333,16 +338,7 @@ const runPhase = async (
           ownerScopeId: assignment.ownerScopeId,
           rClass: assignment.rClass,
           reason: `cutover-${disposition}-${assignment.rClass}`,
-          sourceGraph: {
-            sourcePayload: {
-              kind: "legacy-row",
-              cls: assignment.rClass,
-              disposition,
-            },
-            relationGraph: {
-              edges: [],
-            },
-          },
+          sourceGraph,
           protectedReferences: [{ kind: "legacy-identity", id: assignment.identityId }],
           cutoverRunId: runId,
           catalogReleaseId: releaseId,
@@ -427,24 +423,19 @@ const runPhase = async (
 
 const withCutoverLock = async <T>(
   pool: pg.Pool,
-  planDigest: string,
-  body: (client: pg.PoolClient) => Promise<T>,
-): Promise<T> => {
+  body: (client: pg.PoolClient) => Promise<CutoverResult<T>>,
+): Promise<CutoverResult<T>> => {
   const client = await pool.connect();
+  let acquired = false;
   try {
-    await client.query("select pg_catalog.pg_advisory_lock(hashtext($1), hashtext($2))", [
-      "s7-orc-cutover",
-      planDigest,
-    ]);
+    const lock = await client.query<{ acquired: boolean }>("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'), hashtext(current_database())) as acquired");
+    acquired = lock.rows[0]?.acquired === true;
+    if (!acquired) return fail("PCAT-ORC-PHASE-FAILED", "cutover-target-lock-held");
     return await body(client);
   } finally {
-    await client
-      .query("select pg_catalog.pg_advisory_unlock(hashtext($1), hashtext($2))", [
-        "s7-orc-cutover",
-        planDigest,
-      ])
-      .catch(() => undefined);
-    client.release();
+    try {
+      if (acquired) await client.query("select pg_catalog.pg_advisory_unlock(hashtext('s7-orc-cutover-target'), hashtext(current_database()))");
+    } finally { client.release(); }
   }
 };
 
@@ -455,7 +446,14 @@ export const executeCutover = async (
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
   }
-  return withCutoverLock(input.pool, input.plan.planDigest, async (client) => {
+  return withCutoverLock(input.pool, async (client) => {
+    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest });
+    if (!replanned.ok) return replanned;
+    if (replanned.value.planDigest !== input.plan.planDigest) return fail("PCAT-ORC-INVALID-PLAN", "conversion-plan-mismatch");
+    if (input.plan.conversionManifestDigest || input.conversionManifest) {
+      if (!input.conversionManifest || input.plan.conversionManifestDigest !== conversionManifestDigest(input.conversionManifest)) return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-digest-mismatch");
+      if (await captureConversionSourceInventory(client) !== input.conversionManifest.sourceInventoryFingerprint) return fail("PCAT-ORC-INVALID-PLAN", "conversion-source-inventory-drift");
+    }
     const populated = await requirePopulated(client, input.graph);
     if (!populated.ok) return populated;
 
@@ -552,7 +550,7 @@ export const recoverCutover = async (
   const preview = await loadRunById(input.pool, input.runId);
   if (!preview) return fail("PCAT-ORC-NOT-FOUND", "Cutover run was not found");
 
-  return withCutoverLock(input.pool, preview.plan_digest, async (client) => {
+  return withCutoverLock(input.pool, async (client) => {
     const run = await loadRunById(client, input.runId);
     if (!run) return fail("PCAT-ORC-NOT-FOUND", "Cutover run was not found");
     const snapshot = await snapshotFromRun(client, run, false);
