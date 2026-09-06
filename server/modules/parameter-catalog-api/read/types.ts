@@ -6,6 +6,7 @@ import type {
   PropertyKey,
 } from "../../catalog-kernel/interface";
 import type { parameterCatalogKernelReadByRouteId } from "../../contracts/dtoSchemas/parameterCatalog";
+import type { UsageProjectScope } from "../../parameter-bindings/usage";
 import type {
   CatalogCursor,
   CatalogReleasePin,
@@ -43,6 +44,7 @@ export type TrustedCatalogScope = {
   readonly actorKind: TrustedCatalogActorKind;
   readonly canReadCatalog: boolean;
   readonly canRegister: boolean;
+  readonly projectScope: UsageProjectScope;
   readonly subjects: CatalogIdSelection<CatalogSubjectId>;
   readonly definitions: CatalogIdSelection<ParameterDefinitionId>;
 };
@@ -138,11 +140,13 @@ export type UsageProjectionPort = {
     readonly organizationId: string;
     readonly definitionIds: readonly ParameterDefinitionId[];
     readonly principalId?: string;
+    readonly projectScope: UsageProjectScope;
   }): Promise<ReadonlyMap<ParameterDefinitionId, CatalogUsageSummary>>;
   summarize(input: {
     readonly organizationId: string;
     readonly definitionId: ParameterDefinitionId;
     readonly principalId?: string;
+    readonly projectScope: UsageProjectScope;
   }): Promise<CatalogUsageSummary>;
 };
 

@@ -236,6 +236,7 @@ function createReadPorts(pool: pg.Pool, organizationId: string): CatalogReadPort
     organizationId,
     actorKind: "platform-admin" as const,
     canReadCatalog: true,
+    projectScope: { kind: "only" as const, ids: [] },
     canRegister: true,
     subjects: { kind: "all" as const },
     definitions: { kind: "all" as const },

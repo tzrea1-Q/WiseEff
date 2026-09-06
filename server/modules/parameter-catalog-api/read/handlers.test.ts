@@ -109,6 +109,7 @@ const scope: TrustedCatalogScope = {
   organizationId: "org-s8-read",
   actorKind: "org-admin",
   canReadCatalog: true,
+  projectScope: { kind: "all" },
   canRegister: true,
   subjects: { kind: "all" },
   definitions: { kind: "all" },
@@ -272,6 +273,17 @@ function get(path: string, init: Partial<CatalogReadRequest> = {}): CatalogReadR
 }
 
 describe("S8-READ nine canonical catalog read routes", () => {
+  it("R2-SCOPE forwards the same trusted project selection for list and detail", async () => {
+    const projectScope = { kind: "only" as const, ids: ["project-visible"] };
+    const { ports } = createHarness({ scope: { ...scope, projectScope } });
+    const summarizeMany = vi.fn(ports.usage.summarizeMany);
+    const summarize = vi.fn(ports.usage.summarize);
+    const scoped = { ...ports, usage: { ...ports.usage, summarizeMany, summarize } };
+    expect((await handleCatalogRead(scoped, get("/api/v2/catalog/definitions"))).status).toBe(200);
+    expect((await handleCatalogRead(scoped, get(`/api/v2/catalog/definitions/${definition.id}`))).status).toBe(200);
+    expect(summarizeMany).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectScope }));
+    expect(summarize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectScope }));
+  });
   it("R2-BATCH deduplicates each projection kind after the Kernel page", async () => {
     const other = { ...definition, id: ParameterDefinitionId("pdef_second") };
     const { ports } = createHarness({ listDefinitionsItems: [definition, other, definition] });

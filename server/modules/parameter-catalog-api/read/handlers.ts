@@ -426,6 +426,7 @@ async function handleListDefinitions(
   const summaries = page.items.length === 0 ? new Map() : await ports.usage.summarizeMany({
     organizationId: scope.organizationId,
     principalId: scope.principalId,
+    projectScope: scope.projectScope,
     definitionIds: [...new Set(page.items.map((definition) => definition.id))],
   });
   const items = [];
@@ -489,6 +490,7 @@ async function handleGetDefinition(
   const usage = await ports.usage.summarize({
     organizationId: scope.organizationId,
     principalId: scope.principalId,
+    projectScope: scope.projectScope,
     definitionId: definition.id,
   });
   const mapped = mapCatalogDefinition(snapshot, definition, registration, usage);

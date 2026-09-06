@@ -81,6 +81,7 @@ const catalogScope = (
   organizationId: options.organizationId,
   actorKind,
   canReadCatalog: canRead,
+  projectScope: { kind: "only", ids: [] },
   canRegister: actorKind === "org-admin",
   subjects: { kind: "all" },
   definitions: { kind: "all" },
