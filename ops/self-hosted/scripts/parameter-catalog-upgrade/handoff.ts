@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import os from "node:os";
@@ -168,35 +168,102 @@ export async function prepareHandoff(input: HandoffInputs, planFile: string, dep
   return plan;
 }
 
-/** Uses the same shell lock as ordinary setup/upgrade, holding its process alive until
- * the callback completes. Root dispatchers that already hold this lock pass their own
- * withOperationLock wrapper instead; they must not acquire the same lock twice. */
-export async function withHostOperationLock<T>(lockRoot: string, action: () => Promise<T>): Promise<T> {
-  const script = 'source "$1"; wiseeff_operation_lock_acquire "$2" "Catalog handoff lock occupied" "catalog-handoff" || exit $?; trap wiseeff_operation_lock_release EXIT; printf "LOCKED\\n"; read -r release';
+export type HostOperationLock = {
+  /** Await immediately before each effect, with no intervening asynchronous work.
+   * Loss cannot cancel an effect already sent; its outcome must remain pending/unknown
+   * in the controller journal until the existing recovery path resolves it.
+   */
+  assertHeld(): Promise<void>;
+};
+
+/** Uses the same shell lock as ordinary setup/upgrade. The callback must await
+ * assertHeld before each effect; racing the callback against exit cannot cancel it.
+ * An outer root already holding the lock forwards this handle instead of relocking.
+ */
+export async function withHostOperationLock<T>(lockRoot: string, action: (lock: HostOperationLock) => Promise<T>): Promise<T> {
+  const script = 'source "$1"; wiseeff_operation_lock_acquire "$2" "Catalog handoff lock occupied" "catalog-handoff" || exit $?; trap wiseeff_operation_lock_release EXIT; printf "LOCKED\\n"; while read -r command token; do case "$command" in probe) printf "HELD %s\\n" "$token" ;; release) exit 0 ;; *) exit 76 ;; esac; done';
   const child = spawn("bash", ["-c", script, "handoff-lock", fileURLToPath(new URL("../operation-lock.sh", import.meta.url)), lockRoot], {
     env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["pipe", "pipe", "pipe"],
   });
-  await new Promise<void>((resolve, reject) => {
-    let output = "";
-    child.stdout.on("data", chunk => { output += chunk; if (output.includes("LOCKED\n")) resolve(); });
-    child.once("error", () => reject(new Error("handoff-lock-unavailable")));
-    child.once("exit", () => reject(new Error("handoff-lock-unavailable")));
+  let active = true; let acquired = false; let lost = false; let ended = false;
+  let readyResolve!: () => void; let readyReject!: (error: Error) => void;
+  let exitResolve!: () => void;
+  const exited = new Promise<void>(resolve => { exitResolve = resolve; });
+  const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
+  const probes = new Map<string, { resolve(): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  const lose = () => {
+    lost = true;
+    if (!acquired) readyReject(new Error("handoff-lock-unavailable"));
+    for (const probe of probes.values()) { clearTimeout(probe.timer); probe.reject(new Error("handoff-lock-lost")); }
+    probes.clear();
+  };
+  const end = () => { ended = true; lose(); exitResolve(); };
+  child.once("error", end);
+  child.once("exit", end);
+  child.stdin.on("error", lose);
+  child.stderr.resume();
+  let output = "";
+  child.stdout.on("data", chunk => {
+    output += chunk.toString();
+    if (output.length > 8192) { lose(); child.kill(); return; }
+    let newline: number;
+    while ((newline = output.indexOf("\n")) !== -1) {
+      const line = output.slice(0, newline); output = output.slice(newline + 1);
+      if (!acquired && !lost && line === "Recovered a proven-stale WiseEff fallback host lock.") continue;
+      if (line === "LOCKED" && !acquired && !lost) { acquired = true; readyResolve(); continue; }
+      const probe = line.startsWith("HELD ") ? probes.get(line.slice(5)) : undefined;
+      if (!probe || !active || lost) { lose(); child.kill(); return; }
+      probes.delete(line.slice(5)); clearTimeout(probe.timer); probe.resolve();
+    }
   });
-  try { return await action(); }
+  const acquisitionTimer = setTimeout(() => { lose(); child.kill(); }, 5000);
+  const lock: HostOperationLock = Object.freeze({
+    async assertHeld() {
+      if (!active || !acquired || lost || ended || child.exitCode !== null || child.signalCode !== null) throw new Error("handoff-lock-lost");
+      // A fresh acknowledgment proves this exact holder still owns its lock. A PID
+      // liveness check alone can observe a recycled process or delayed exit event.
+      const token = randomUUID();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { lose(); child.kill(); }, 5000);
+        probes.set(token, { resolve, reject, timer });
+        child.stdin.write(`probe ${token}\n`, error => { if (error) lose(); });
+      });
+      if (!active || lost || ended || child.exitCode !== null || child.signalCode !== null) throw new Error("handoff-lock-lost");
+    },
+  });
+  try {
+    await ready;
+    clearTimeout(acquisitionTimer);
+    await lock.assertHeld();
+    const result = await action(lock);
+    await lock.assertHeld();
+    return result;
+  }
   finally {
-    await new Promise<void>(resolve => { child.once("exit", () => resolve()); child.stdin.end("release\n"); });
+    clearTimeout(acquisitionTimer);
+    active = false;
+    lose();
+    if (!ended) child.stdin.end("release\n");
+    const shutdownTimer = setTimeout(() => { if (!ended) child.kill("SIGKILL"); }, 1000);
+    try { await exited; } finally { clearTimeout(shutdownTimer); }
   }
 }
 
 /** No second controller or journal: dispatches the actual existing controller only
  * after immutable source/config/store pins are re-observed under the host lock. */
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,
-  deps: HandoffObserver & { openController(binding: { runId: string; journalPath: string }): CatalogUpgradeController; withOperationLock<T>(root: string, action: () => Promise<T>): Promise<T> }) {
+  deps: HandoffObserver & { openController(binding: { runId: string; journalPath: string; operationLock: HostOperationLock }): CatalogUpgradeController; withOperationLock<T>(root: string, action: (lock: HostOperationLock) => Promise<T>): Promise<T> }) {
   const { digest, ...body } = plan;
   if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
-  return deps.withOperationLock(plan.inputs.lockRoot, async () => {
+  return deps.withOperationLock(plan.inputs.lockRoot, async operationLock => {
+    await operationLock.assertHeld();
     const observed = await inspectHandoff(plan.inputs, deps);
     if (canonicalJson(observed) !== canonicalJson(plan.observation)) fail("target-changed-after-plan");
-    return deps.openController({ runId: plan.inputs.runId, journalPath: plan.inputs.journalPath }).dispatch(command);
+    await operationLock.assertHeld();
+    const controller = deps.openController({ runId: plan.inputs.runId, journalPath: plan.inputs.journalPath, operationLock });
+    await operationLock.assertHeld();
+    const result = await controller.dispatch(command);
+    await operationLock.assertHeld();
+    return result;
   });
 }

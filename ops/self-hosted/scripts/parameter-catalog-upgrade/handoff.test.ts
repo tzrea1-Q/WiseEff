@@ -7,7 +7,7 @@ import { setTimeout } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { openCatalogUpgradeController } from "./controller";
-import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, type HandoffInputs } from "./handoff";
+import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, type HandoffInputs, type HostOperationLock } from "./handoff";
 
 it("refuses an unbound daemon before observing any deployment resource", async () => {
   let observed = false;
@@ -205,13 +205,32 @@ it("holds the existing shared operation lock for the complete callback and refus
   const started = new Promise<void>(resolve => { entered = resolve; });
   const barrier = new Promise<void>(resolve => { release = resolve; });
   try {
-    const first = withHostOperationLock(directory, async () => { entered(); await barrier; return "done"; });
+    const first = withHostOperationLock(directory, async lock => {
+      await Promise.all([lock.assertHeld(), lock.assertHeld()]);
+      entered(); await barrier;
+      await lock.assertHeld();
+      return "done";
+    });
     await started;
     await expect(withHostOperationLock(directory, async () => "must-not-enter")).rejects.toThrow("handoff-lock-unavailable");
     release();
     expect(await first).toBe("done");
     expect(await withHostOperationLock(directory, async () => "next")).toBe("next");
   } finally { release?.(); await rm(directory, { recursive: true, force: true }); }
+});
+
+it("invalidates a released lock handle even when a new holder acquires the same path", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "handoff-lock-expired-"));
+  let previous!: HostOperationLock;
+  try {
+    await withHostOperationLock(directory, async lock => { previous = lock; await lock.assertHeld(); });
+    await withHostOperationLock(directory, async current => {
+      await current.assertHeld();
+      await expect(previous.assertHeld()).rejects.toThrow("handoff-lock-lost");
+    });
+    await expect(withHostOperationLock(directory, async () => { throw new Error("effect-refused"); })).rejects.toThrow("effect-refused");
+    expect(await withHostOperationLock(directory, async lock => { await lock.assertHeld(); return "reacquired"; })).toBe("reacquired");
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 it("refuses the next effect after the actual lock holder exits and finishes cleanup", async () => {
