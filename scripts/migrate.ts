@@ -132,6 +132,7 @@ function requireControlledPins(input: Pick<ControlledMigrationInput, "intent" | 
  * journal receipt. A matching result alone is not an approval or pending-attempt
  * reconciliation; those remain controller responsibilities. */
 export async function verifyManagementMigrationReceipt(input: Pick<ControlledMigrationInput, "intent" | "descriptor" | "expectedDescriptorDigest" | "candidateMigrationsDirectory"> & { pool: pg.Pool }): Promise<ManagementMigrationReceipt> {
+  input = { ...input, intent: structuredClone(input.intent), descriptor: structuredClone(input.descriptor) };
   requireControlledPins(input);
   const verified = await verifyFrozenSourceSnapshot(input);
   if (input.intent.checkpointMode === "postgres") {
@@ -213,7 +214,7 @@ export async function runControlledManagementMigrations(raw: NodeJS.ProcessEnv, 
       const result = await lock!.query(sql, values);
       return { rows: result.rows as Row[], rowCount: result.rowCount };
     } });
-    await runManagementMigrations(raw, {
+    await runManagementMigrations({ DATABASE_URL: configuration.connectionString, XIAOZE_CHECKPOINTER: configuration.mode }, {
       // The outer scope keeps this real, identity-checked pool and lock alive
       // through receipt verification. The ordinary runner still owns sequencing.
       open: () => ({ ...sessionDatabase, close: async () => undefined }),
