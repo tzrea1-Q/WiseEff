@@ -1,12 +1,124 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as reportModule from "../server/modules/release-verification/report/index";
+import { validPrepare } from "../server/modules/release-verification/report/fixtures";
+import type { Database } from "../server/shared/database/client";
+import type { ReleaseVerificationReport } from "../server/modules/release-verification/core";
 import {
   buildConfiguredCommandResults,
   buildReleaseGateEvidence,
   evaluateReleaseGate,
   parseReleaseGateArgs,
   requiredReleaseGateCommands,
+  runCatalogReleaseAction,
+  type CatalogReleaseBoundary,
+  type CatalogReleaseTarget,
   type ReleaseGateInput
 } from "./run-self-hosted-release-gate";
+
+describe("Catalog release invocation adapter (not complete gate execution evidence)", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const boundary = (): CatalogReleaseBoundary => {
+    const prepare = validPrepare();
+    return { ...prepare.lineage, p12State: "not-started", pins: prepare.pins, subject: prepare.subject };
+  };
+  const fixture = () => {
+    const current = boundary();
+    const db: Database = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })), transaction: async (body) => body(db) };
+    const target: CatalogReleaseTarget = {
+      withExclusiveBoundary: vi.fn(async (body) => body()), observeBoundary: vi.fn(async () => current),
+      activateP12: vi.fn(), startCandidate: vi.fn(), releasePublic: vi.fn(),
+    };
+    return { db, target, current, action: "activate-p12", reportDigest: "sha256:unit-approved-report" };
+  };
+  it("real Report service returns absent without invoking activation", async () => {
+    const options = fixture();
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "absent" });
+    expect(options.db.query).toHaveBeenCalled();
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it("real Report service preserves unapproved instead of trusting a stored passed decision", async () => {
+    const options = fixture();
+    vi.mocked(options.db.query).mockResolvedValueOnce({ rows: [{ purpose: "pre-activation", decision: "passed", digest: options.reportDigest }], rowCount: 1 });
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "unapproved" });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it.each(["", "resume", "retire-p13", "apply", "--diagnostic"])("rejects unknown action %s before querying or locking", async (action) => {
+    const options = fixture();
+    expect(await runCatalogReleaseAction({ ...options, action })).toEqual({ ok: false, reason: "unknown-action" });
+    expect(options.target.withExclusiveBoundary).not.toHaveBeenCalled();
+    expect(options.db.query).not.toHaveBeenCalled();
+  });
+  it("rejects missing report before acquiring target resources", async () => {
+    const options = fixture();
+    expect(await runCatalogReleaseAction({ ...options, reportDigest: " " })).toEqual({ ok: false, reason: "missing-report" });
+    expect(options.target.withExclusiveBoundary).not.toHaveBeenCalled();
+  });
+  it("real runtime reader refuses pre-pin rather than using a pre-activation report", async () => {
+    const options = fixture();
+    expect(await runCatalogReleaseAction({ ...options, action: "start-candidate" })).toEqual({ ok: false, reason: "pre-pin" });
+    expect(options.target.startCandidate).not.toHaveBeenCalled();
+  });
+  const reportStub = (options: ReturnType<typeof fixture>, changes: Partial<ReleaseVerificationReport> = {}) => {
+    // This is adapter dispatch coverage only. It never prepares gates, inserts a report,
+    // or represents a synthetic all-gates-passed report as release evidence.
+    const report = {
+      digest: options.reportDigest, purpose: "pre-activation", decision: "passed",
+      pins: options.current.pins, phaseSnapshot: options.current.phaseSnapshot,
+      predecessorReportDigests: [], pointerRollbackStatus: "open",
+      evidenceRefs: [{ subject: options.current.subject }], ...changes,
+    } as ReleaseVerificationReport;
+    vi.spyOn(reportModule, "createVerificationReportService").mockReturnValue({
+      readReport: vi.fn(async () => ({ kind: "present", report })),
+      readApprovedRuntimePin: vi.fn(async () => ({ kind: "present", report })),
+    } as unknown as reportModule.VerificationReportService);
+  };
+  it("invokes only the purpose effect under its target lock after two equal observations", async () => {
+    const options = fixture(); reportStub(options);
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: true, action: "activate-p12", reportDigest: options.reportDigest });
+    expect(options.target.observeBoundary).toHaveBeenCalledTimes(2);
+    expect(options.target.activateP12).toHaveBeenCalledOnce();
+    expect(options.target.startCandidate).not.toHaveBeenCalled();
+    expect(options.target.releasePublic).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["purpose", { purpose: "public-release" }, "wrong-purpose"],
+    ["decision", { decision: "blocked" }, "wrong-purpose"],
+    ["phase", { phaseSnapshot: "other-phase" }, "boundary-mismatch"],
+    ["report", { digest: "other-digest" }, "boundary-mismatch"],
+    ["lineage", { predecessorReportDigests: ["another-run"] }, "boundary-mismatch"],
+    ["rollback", { pointerRollbackStatus: "closed" }, "boundary-mismatch"],
+    ["empty subject evidence", { evidenceRefs: [] }, "boundary-mismatch"],
+  ] as const)("rejects wrong %s before effects", async (_name, changes, reason) => {
+    const options = fixture(); reportStub(options, changes as Partial<ReleaseVerificationReport>);
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it("rejects live target drift after report read", async () => {
+    const options = fixture(); reportStub(options);
+    vi.mocked(options.target.observeBoundary).mockResolvedValueOnce(options.current).mockResolvedValueOnce({ ...options.current, phaseSnapshot: "changed" });
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "boundary-mismatch" });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it.each(["artifact", "database", "catalog", "mappingArchive", "cutover", "target", "recovery"] as const)("rejects another %s pin before effect", async (family) => {
+    const options = fixture();
+    reportStub(options, { pins: { ...options.current.pins, [family]: { ...options.current.pins[family], unexpected: "another-run" } } });
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "boundary-mismatch" });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it("rejects report evidence from another deployment subject", async () => {
+    const options = fixture();
+    reportStub(options, { evidenceRefs: [{ subject: { ...options.current.subject, targetId: "another-target" } }] as ReleaseVerificationReport["evidenceRefs"] });
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "boundary-mismatch" });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+  });
+  it("preserves unknown outcome after an effect loses its commit acknowledgement", async () => {
+    const options = fixture(); reportStub(options);
+    vi.mocked(options.target.activateP12).mockRejectedValue(new Error("private credentials never leave this exception"));
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "unknown-outcome" });
+    expect(options.target.activateP12).toHaveBeenCalledOnce();
+    expect(options.target.releasePublic).not.toHaveBeenCalled();
+  });
+});
 
 const baseInput: ReleaseGateInput = {
   metadata: {
