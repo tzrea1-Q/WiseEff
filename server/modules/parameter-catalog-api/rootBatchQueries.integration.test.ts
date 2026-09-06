@@ -291,7 +291,9 @@ describe("R2-BATCH root HTTP SQL budget", () => {
   });
 
   it("R2-BATCH-07 duplicated review ingestion yields one review in list/detail and none across organizations", async () => {
-    for (const [authorization, expectedCount] of [["Bearer batch-fixture-token", 1], ["Bearer batch-other-token", 0]] as const) {
+    // Evidence belongs to release one; the capacity-only advance selects a
+    // different current release without migrating that evidence.
+    for (const [authorization, expectedCount] of [["Bearer batch-fixture-token", capacityProfile ? 0 : 1], ["Bearer batch-other-token", 0]] as const) {
       const headers = { authorization };
       const list = await fetch(`${baseUrl}/api/v2/catalog/subjects?limit=1`, { headers });
       expect(list.status).toBe(200);
@@ -363,7 +365,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
                   }
                 } else {
                   expect(items.every((item: { membership: { catalogReleaseId: string } }) => item.membership.catalogReleaseId === expectedRelease)).toBe(true);
-                  for (const item of items) expect(item.reviewCount).toBe(item.id === "csub_batch_000" ? 1 : 0);
+                  for (const item of items) expect(item.reviewCount).toBe(item.id === "csub_batch_000" && snapshot === "pinned" ? 1 : 0);
                 }
                 return performance.now() - start;
               }));
@@ -398,7 +400,8 @@ describe("R2-BATCH root HTTP SQL budget", () => {
             const samples = rounds.filter((round) => round.phase === "measured-warm").flatMap((round) => round.elapsedMs).sort((a, b) => a - b);
             const percentile = (fraction: number) => samples[Math.ceil(samples.length * fraction) - 1];
             const report = { status: "passed", requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
-              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1, duplicateReviewIngestions: 2, reviewItems: 1 },
+              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1, duplicateReviewIngestions: 2, reviewItems: 1,
+                reviewEvidenceReleaseId: pinnedReleaseId, currentReviewCount: 0, pinnedReviewCount: 1 },
               concurrency, sampleCount: samples.length, warmupRequests: concurrency, businessQueriesPerRequest: businessBudget,
               p50Ms: percentile(0.5), p95Ms: percentile(0.95), latencySlo: "unavailable; observational baseline only",
               coldCache: "unavailable; no OS/PostgreSQL cache reset; first-observed is not a cold-cache claim",
