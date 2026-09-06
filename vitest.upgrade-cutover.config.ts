@@ -1,0 +1,15 @@
+import { defineConfig } from "vitest/config";
+import { assertOwnedUpgradeTestTarget } from "./scripts/upgrade-test-target";
+
+// Run before test collection or any migration harness. Never provisions a target.
+assertOwnedUpgradeTestTarget();
+export default defineConfig({ test: {
+  environment: "node",
+  include: [
+    "server/modules/catalog-cutover/**/*.test.ts",
+    "server/modules/parameter-bindings/cutoverImport/*.test.ts",
+  ],
+  testTimeout: 30000,
+  hookTimeout: 30000,
+  maxWorkers: 1,
+} });
