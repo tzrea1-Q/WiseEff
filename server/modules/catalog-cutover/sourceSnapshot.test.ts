@@ -8,6 +8,11 @@ import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../..
 import { createPostgresDatabase } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { captureFrozenSourceSnapshot, inspectFrozenSourceSnapshotProgress, verifyFrozenSourceSnapshot, type FrozenSourceSnapshot } from "./sourceSnapshot";
+import { runControlledManagementMigrations, verifyControlledManagementMigrations, type ManagementMigrationIntent, type ManagementMigrationReceipt } from "../../../scripts/migrate";
+import { bindingJournalPath } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal";
+import { openUpgradeJournal, sha256Prefixed } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
+import { createManagementMigrationJournal, verifyCommittedManagementMigration } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal";
+import { withHostOperationLock } from "../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 // The parent runs this through vitest.upgrade-cutover.config.ts, which verifies
 // its explicit private target receipt before collecting any PostgreSQL suite.
@@ -70,8 +75,34 @@ describe("frozen old public projection across exact append-only migrations", () 
     try { await expect(inspectFrozenSourceSnapshotProgress(input)).rejects.toThrow("source-snapshot-row-drift"); }
     finally { await pool.query("update organizations set name='private-synthetic-value' where id='frozen-org'"); }
     await expect(verify()).rejects.toThrow("source-snapshot-migration-suffix-incomplete");
-    const applied = await applyMigrations(migrationDb, candidateDirectory, { expectedInventory: [...frozen.sourceMigrations, ...frozen.migrationSuffix] });
-    expect(applied).toEqual(frozen.migrationSuffix.map(entry => entry.name));
+    const operationRoot = path.join(directory, "operation");
+    await mkdir(operationRoot, { mode: 0o700 });
+    const intent: ManagementMigrationIntent = { version: "pcat-management-migration-intent-v1", runId: "frozen-management",
+      preparationPlanDigest: sha256Prefixed("isolated component preparation"), target: frozen.target,
+      sourceSnapshotDigest: frozen.digest, candidateInventoryDigest: frozen.candidateInventoryDigest,
+      writeFenceReceiptDigest: sha256Prefixed("component fixture has no application writers"),
+      recoveryManifestDigest: sha256Prefixed("boundary port is isolated in this component test"), checkpointMode: "postgres" };
+    const opened = openUpgradeJournal({ runId: intent.runId, journalPath: bindingJournalPath({ operationRoot, target: frozen.target, runId: intent.runId }) });
+    if (!opened.ok) throw new Error("fixture-journal-open-failed");
+    let managementReceipt: ManagementMigrationReceipt | undefined;
+    let recomputed: ManagementMigrationReceipt | undefined;
+    await withHostOperationLock(operationRoot, async operationLock => {
+      const journal = createManagementMigrationJournal({ operationRoot, target: frozen.target, journal: opened.value, assertHeld: operationLock.assertHeld });
+      managementReceipt = await runControlledManagementMigrations({ DATABASE_URL: database.url, XIAOZE_CHECKPOINTER: "postgres" }, {
+        ...input, intent, operationLock, journal,
+        // This component proves the real migration/session/receipt boundary.
+        // Real P2/P3 storage and writer producers are independently root-owned;
+        // their deployment acceptance is not claimed by this port fixture.
+        boundary: { verify: async observed => { expect(observed).toEqual(intent); } },
+      });
+      recomputed = await verifyControlledManagementMigrations({ DATABASE_URL: database.url, XIAOZE_CHECKPOINTER: "postgres" }, {
+        ...input, intent, operationLock, boundary: { verify: async observed => { expect(observed).toEqual(intent); } },
+      });
+    });
+    expect(managementReceipt).toEqual(recomputed);
+    expect(recomputed!.checkpoint).toEqual({ mode: "postgres", status: "verified" });
+    expect(verifyCommittedManagementMigration(opened.value.record, intent, recomputed!).attemptId).toBeTruthy();
+    expect(opened.value.record.planDigest).toBeNull();
     const receipt = await verify();
     expect(receipt.sourceSnapshotDigest).toBe(frozen.digest);
     expect(receipt.verifiedRelations).toBe(frozen.relations.length);
@@ -79,6 +110,25 @@ describe("frozen old public projection across exact append-only migrations", () 
     expect(JSON.stringify([frozen, receipt])).not.toContain("private-synthetic-value");
     expect(await applyMigrations(migrationDb, candidateDirectory)).toEqual([]);
     expect(await verify()).toEqual(receipt);
+  });
+
+  it("inspects a known committed suffix prefix while full completion remains refused", async () => {
+    const partial = await createCheckedEmptyDatabase("frozenpartial");
+    const partialDb = createPostgresDatabase(partial.url);
+    const partialPool = new pg.Pool({ connectionString: partial.url });
+    try {
+      await applyMigrations(partialDb, sourceDirectory);
+      await partialPool.query("insert into organizations(id,name) values ('partial-org','preserve this source row')");
+      const descriptor = await captureFrozenSourceSnapshot({ pool: partialPool, sourceMigrationsDirectory: sourceDirectory, candidateMigrationsDirectory: candidateDirectory });
+      const first = descriptor.migrationSuffix[0];
+      expect(first).toBeDefined();
+      await applyMigrations(partialDb, candidateDirectory, { through: first!.name });
+      const partialInput = { pool: partialPool, descriptor, expectedDescriptorDigest: descriptor.digest, candidateMigrationsDirectory: candidateDirectory };
+      expect(await inspectFrozenSourceSnapshotProgress(partialInput)).toMatchObject({ appliedSuffix: 1, complete: false });
+      await expect(verifyFrozenSourceSnapshot(partialInput)).rejects.toThrow("source-snapshot-migration-suffix-incomplete");
+      await partialPool.query("update organizations set name='changed after partial migration' where id='partial-org'");
+      await expect(inspectFrozenSourceSnapshotProgress(partialInput)).rejects.toThrow("source-snapshot-row-drift");
+    } finally { await partialPool.end(); await partialDb.close(); await partial.close(); }
   });
 
   it("refuses business value drift without returning its value", async () => {

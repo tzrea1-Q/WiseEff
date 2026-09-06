@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "../server/shared/database/client";
-import { parseMigrationEnvironment, runManagementMigrations } from "./migrate";
+import { parseMigrationEnvironment, runManagementMigrations, runControlledManagementMigrations } from "./migrate";
 
 const syntheticUrl = "postgres://synthetic:private-test-value@invalid.invalid/synthetic";
 function fixture() {
@@ -26,6 +26,10 @@ function fixture() {
 }
 
 describe("minimal management migration environment", () => {
+  it("refuses controlled migration without live lock, boundary and journal context before opening a database", async () => {
+    await expect(runControlledManagementMigrations({ DATABASE_URL: syntheticUrl }, undefined as unknown as Parameters<typeof runControlledManagementMigrations>[1]))
+      .rejects.toThrow("management-migration-context-required");
+  });
   it("requires only the management connection and retains the memory checkpoint default", () => {
     expect(parseMigrationEnvironment({ DATABASE_URL: syntheticUrl, NODE_ENV: "production" }))
       .toEqual({ connectionString: syntheticUrl, mode: "memory" });
@@ -91,6 +95,21 @@ describe("minimal management migration environment", () => {
         expect(result.stderr).toMatch(/Management migration failed: (database-url-required|checkpoint-mode-invalid)/);
         expect(result.stderr).not.toContain("private-test-value");
         expect(result.stderr).not.toContain("invalid-secret-mode");
+      }
+    } finally { await rm(cwd, { recursive: true, force: true }); }
+  });
+  it("rejects actual CLI unknown/controlled-looking flags before any connection", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "wiseeff-migration-cli-flags-"));
+    try {
+      for (const flag of ["--controlled", "--diagnostic", "--unknown-private-value"]) {
+        const result = spawnSync(process.execPath, ["--import", createRequire(import.meta.url).resolve("tsx"), path.resolve("scripts/migrate.ts"), flag], {
+          cwd, env: { PATH: process.env.PATH, DATABASE_URL: syntheticUrl, NODE_ENV: "production" }, encoding: "utf8", timeout: 10000,
+        });
+        expect(result.status).toBe(2);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain("migration-arguments-invalid");
+        expect(result.stderr).not.toContain("private-test-value");
+        expect(result.stderr).not.toContain(flag);
       }
     } finally { await rm(cwd, { recursive: true, force: true }); }
   });

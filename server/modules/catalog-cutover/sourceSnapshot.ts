@@ -169,9 +169,17 @@ export async function captureFrozenSourceSnapshot(input: {
   }
 }
 
-export async function verifyFrozenSourceSnapshot(input: {
+type SnapshotVerificationInput = {
   pool: pg.Pool; descriptor: FrozenSourceSnapshot; expectedDescriptorDigest: string; candidateMigrationsDirectory: string;
-}): Promise<{ sourceSnapshotDigest: string; candidateInventoryDigest: string; verifiedRelations: number; verifiedRows: number; appliedSuffix: number }> {
+};
+export type FrozenSourceProgress = {
+  sourceSnapshotDigest: string; candidateInventoryDigest: string; verifiedRelations: number;
+  verifiedRows: number; appliedSuffix: number; complete: boolean;
+};
+
+/** Read-only inspection is not migration authorization or a completion receipt.
+ * It preserves the original descriptor while known suffix files are incomplete. */
+export async function inspectFrozenSourceSnapshotProgress(input: SnapshotVerificationInput): Promise<FrozenSourceProgress> {
   try {
     const { digest: recordedDigest, ...body } = structuredClone(input.descriptor);
     if (body.version !== VERSION || recordedDigest !== input.expectedDescriptorDigest || digest(body) !== input.expectedDescriptorDigest) return refuse("descriptor-mismatch");
@@ -184,8 +192,7 @@ export async function verifyFrozenSourceSnapshot(input: {
       const ledger = await readLedger(client);
       if (!equal(ledger.slice(0, body.sourceMigrations.length), body.sourceMigrations)) return refuse("migration-prefix-drift");
       const applied = ledger.slice(body.sourceMigrations.length);
-      if (applied.length < suffix.length && equal(applied, suffix.slice(0, applied.length))) return refuse("migration-suffix-incomplete");
-      if (!equal(applied, suffix)) return refuse("migration-suffix-drift");
+      if (applied.length > suffix.length || !equal(applied, suffix.slice(0, applied.length))) return refuse("migration-suffix-drift");
       const current = await readRelations(client); let verifiedRows = 0;
       for (const relation of body.relations) {
         const target = current.find(row => row.name === relation.name);
@@ -197,10 +204,16 @@ export async function verifyFrozenSourceSnapshot(input: {
         if (!Number.isSafeInteger(verifiedRows)) return refuse("row-count-out-of-range");
       }
       return { sourceSnapshotDigest: recordedDigest, candidateInventoryDigest: body.candidateInventoryDigest,
-        verifiedRelations: body.relations.length, verifiedRows, appliedSuffix: suffix.length };
+        verifiedRelations: body.relations.length, verifiedRows, appliedSuffix: applied.length, complete: applied.length === suffix.length };
     });
   } catch (error) {
     if (error instanceof SourceSnapshotError) throw error;
     throw new SourceSnapshotError("verification-unavailable");
   }
+}
+
+export async function verifyFrozenSourceSnapshot(input: SnapshotVerificationInput): Promise<Omit<FrozenSourceProgress, "complete">> {
+  const { complete, ...receipt } = await inspectFrozenSourceSnapshotProgress(input);
+  if (!complete) return refuse("migration-suffix-incomplete");
+  return receipt;
 }

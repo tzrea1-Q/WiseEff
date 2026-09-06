@@ -105,6 +105,18 @@ export async function verifyPostgresCheckpointerTables(connectionString: string)
   try {
     await client.connect();
     await client.query("begin read only");
+    await verifyPostgresCheckpointerTablesOnClient(client);
+  } catch {
+    throw new Error("PCAT-RUNTIME-CHECKPOINT-SCHEMA-UNVERIFIED");
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+/** Shared physical verifier for an already identity-checked management session.
+ * The caller owns the connection and transaction lifetime. */
+export async function verifyPostgresCheckpointerTablesOnClient(client: Pick<pg.PoolClient, "query">): Promise<void> {
+  try {
     const ledger = await client.query<{ v: number }>("select v from public.checkpoint_migrations order by v");
     // checkpoint-postgres 1.0.4 has exactly five schema migrations (0..4).
     if (JSON.stringify(ledger.rows.map((row) => row.v)) !== "[0,1,2,3,4]") {
@@ -145,8 +157,6 @@ export async function verifyPostgresCheckpointerTables(connectionString: string)
     await client.query("select thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob from public.checkpoint_writes limit 0");
   } catch {
     throw new Error("PCAT-RUNTIME-CHECKPOINT-SCHEMA-UNVERIFIED");
-  } finally {
-    await client.end().catch(() => undefined);
   }
 }
 
@@ -174,13 +184,44 @@ export async function closeSharedPostgresCheckpointerSaversForTests(): Promise<v
 export async function setupXiaozeCheckpointerTables(options: {
   mode: "memory" | "postgres";
   connectionString?: string;
+  /** Controlled management only. Caller retains the checked pool lifetime. */
+  pool?: pg.Pool;
+  /** Management entry validates the real setup connection and its live fences
+   * before each library SQL statement. Never supplied by runtime startup. */
+  beforeWrite?: (client: pg.PoolClient) => Promise<void>;
 }): Promise<{ status: "skipped" | "ensured" }> {
-  if (options.mode !== "postgres" || !options.connectionString?.trim()) {
+  if (options.mode !== "postgres" || (!options.pool && !options.connectionString?.trim())) {
     return { status: "skipped" };
   }
 
+  if (options.pool) {
+    // The locked library's setup() uses await pool.connect(), query(), release().
+    // Keep its real connections and schema writer; wrap only to enforce the
+    // management boundary before each statement, including later migrations.
+    const checkedPool = options.beforeWrite ? new Proxy(options.pool, {
+      get(pool, key) {
+        if (key !== "connect") return Reflect.get(pool, key);
+        return async () => {
+          const client = await pool.connect();
+          return new Proxy(client, {
+            get(connection, property) {
+              if (property === "query") return async (sql: string, values?: unknown[]) => {
+                await options.beforeWrite!(connection);
+                return connection.query(sql, values);
+              };
+              const value = Reflect.get(connection, property);
+              return typeof value === "function" ? value.bind(connection) : value;
+            },
+          });
+        };
+      },
+    }) : options.pool;
+    await new PostgresSaver(checkedPool).setup();
+    return { status: "ensured" };
+  }
+
   // Explicit management runner owns setup; never reuse a runtime verify-only handle.
-  const handle = createPostgresCheckpointerSaver({ connectionString: options.connectionString.trim(), setupMode: "migrate" });
+  const handle = createPostgresCheckpointerSaver({ connectionString: options.connectionString!.trim(), setupMode: "migrate" });
   try { await handle.ensureSetup(); }
   finally { await handle.saver.end(); }
   return { status: "ensured" };
