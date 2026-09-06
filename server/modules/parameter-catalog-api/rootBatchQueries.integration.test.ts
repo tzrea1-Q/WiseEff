@@ -296,6 +296,10 @@ describe("R2-BATCH root HTTP SQL budget", () => {
         ];
         for (const scenario of scenarios) {
           it.each([1, 4])(`R2-CAP ${snapshot}/${route}/${scenario.name} concurrency %i`, async (concurrency) => {
+            const evidenceDirectory = process.env.WISEEFF_CATALOG_SQL_EVIDENCE_DIR;
+            if (!evidenceDirectory) throw new Error("capacity profile requires an evidence directory");
+            await mkdir(evidenceDirectory, { recursive: true });
+            const filename = `capacity-${subjectCount}-${snapshot}-${route}-${scenario.name}-c${concurrency}.json`;
             const headers: Record<string, string> = { authorization: "Bearer batch-fixture-token" };
             if (snapshot === "pinned") headers["X-WiseEff-Catalog-Release"] = pinnedReleaseId;
             const expectedRelease = snapshot === "pinned" ? pinnedReleaseId : releaseId;
@@ -346,33 +350,39 @@ describe("R2-BATCH root HTTP SQL budget", () => {
               measuring = false;
               const counts = Object.fromEntries(["auth", "kernel", "business", "transaction", "other"].map((category) => [category, statements.filter((entry) => entry.category === category).length]));
               const failed = attempts.filter((attempt) => attempt.status === "rejected");
-              if (failed.length > 0) {
-                console.info(JSON.stringify({ evidence: "R2-CAP-failure", snapshot, route, scenario, concurrency, phase, counts, statements }));
-                throw new AggregateError(failed.map((attempt) => attempt.reason), "Capacity requests failed");
-              }
               const elapsedMs = attempts.flatMap((attempt) => attempt.status === "fulfilled" ? [attempt.value] : []);
-              expect(counts.business).toBe(businessBudget * concurrency);
-              expect(counts.other).toBe(0);
               const state = resources();
-              expect(state.pool.waiting).toBe(0);
-              expect(state.pool.used).toBe(0);
               rounds.push({ phase, elapsedMs, counts, resources: state, statements });
+              // Persist before assertions so HTTP, SQL-budget and pool failures
+              // all retain the observed batch and every earlier measurement.
+              const partial = { requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
+                concurrency, businessQueriesPerRequest: businessBudget, rounds };
+              await writeFile(path.join(evidenceDirectory!, filename), JSON.stringify({ ...partial, status: "running" }, null, 2));
+              try {
+                if (failed.length > 0) throw new AggregateError(failed.map((attempt) => attempt.reason), "Capacity requests failed");
+                expect(counts.business).toBe(businessBudget * concurrency);
+                expect(counts.other).toBe(0);
+                expect(state.pool.waiting).toBe(0);
+                expect(state.pool.used).toBe(0);
+              } catch (error) {
+                const failure = { ...partial, status: "failed", error: error instanceof Error ? error.message : String(error),
+                  requestErrors: failed.map((attempt) => attempt.reason instanceof Error ? attempt.reason.message : String(attempt.reason)) };
+                await writeFile(path.join(evidenceDirectory!, filename), JSON.stringify(failure, null, 2));
+                console.info(JSON.stringify({ evidence: "R2-CAP-failure", ...failure }));
+                throw error;
+              }
             }
             await batch("first-observed");
             await batch("warmup");
             for (let sample = 0; sample < 5; sample += 1) await batch("measured-warm");
             const samples = rounds.filter((round) => round.phase === "measured-warm").flatMap((round) => round.elapsedMs).sort((a, b) => a - b);
             const percentile = (fraction: number) => samples[Math.ceil(samples.length * fraction) - 1];
-            const report = { requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
+            const report = { status: "passed", requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
               fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1 },
               concurrency, sampleCount: samples.length, warmupRequests: concurrency, businessQueriesPerRequest: businessBudget,
               p50Ms: percentile(0.5), p95Ms: percentile(0.95), latencySlo: "unavailable; observational baseline only",
               coldCache: "unavailable; no OS/PostgreSQL cache reset; first-observed is not a cold-cache claim",
               connectionWaitMs: "unavailable; pool waiting/used snapshots are recorded after every settled batch", rounds };
-            const evidenceDirectory = process.env.WISEEFF_CATALOG_SQL_EVIDENCE_DIR;
-            if (!evidenceDirectory) throw new Error("capacity profile requires an evidence directory");
-            await mkdir(evidenceDirectory, { recursive: true });
-            const filename = `capacity-${subjectCount}-${snapshot}-${route}-${scenario.name}-c${concurrency}.json`;
             await writeFile(path.join(evidenceDirectory, filename), JSON.stringify(report, null, 2));
             console.info(JSON.stringify({ ...report, rounds: undefined, artifact: filename }));
           });
