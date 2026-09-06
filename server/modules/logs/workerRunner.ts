@@ -4,7 +4,7 @@ import { resolveKnowledgeEmbeddingClient } from "../knowledge/indexing/embedding
 import { createMetricsRegistry, type MetricsRegistry } from "../../observability/metrics";
 import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { openRuntimeDatabase } from "../../shared/database/runtimeConnection";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
 import type { LogAnalysisAdapter } from "./analyzer";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
@@ -167,7 +167,11 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   const env = loadServerEnv(raw);
   validateLogWorkerConfig(env);
 
-  const db = createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary });
+  const db = await openRuntimeDatabase({
+    connectionString: env.DATABASE_URL!,
+    nodeEnv: env.NODE_ENV,
+    databaseOptions: { tracing: defaultTracingBoundary },
+  });
   await resolveParameterIdentityMode(db);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });

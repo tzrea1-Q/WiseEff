@@ -26,7 +26,8 @@ import { startNotificationOutboxWorkerLoop } from "./modules/notifications/outbo
 import { createMetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
-import { createPostgresDatabase } from "./shared/database/client";
+import { openRuntimeDatabase } from "./shared/database/runtimeConnection";
+import { verifyPostgresCheckpointerTables } from "./modules/agent/xiaoze/durableCheckpointer";
 import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
@@ -39,7 +40,16 @@ for (const diagnostic of env.XIAOZE_LLM_CONFIG.diagnostics) {
     `[xiaoze-llm-config] ${diagnostic.code}: ${diagnostic.key} -> ${diagnostic.canonicalKey}`
   );
 }
-const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
+// Await the actual login before constructing any queue, worker, or server.
+const db = env.DATABASE_URL ? await openRuntimeDatabase({
+  connectionString: env.DATABASE_URL,
+  nodeEnv: env.NODE_ENV,
+  databaseOptions: { tracing: defaultTracingBoundary },
+}) : undefined;
+if (db && env.NODE_ENV === "production" && env.XIAOZE_CHECKPOINTER === "postgres") {
+  try { await verifyPostgresCheckpointerTables(env.DATABASE_URL!); }
+  catch (error) { await db.close(); throw error; }
+}
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
@@ -215,7 +225,7 @@ process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
 async function start() {
-  if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
+  if (env.NODE_ENV !== "production" && db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
     try {
       const cutover = await ensureLocalPostCutoverIdentity(db);
       if (cutover.status === "already-complete") {
@@ -234,7 +244,7 @@ async function start() {
     console.log(`[parameter-identity] mode: ${identityMode}`);
   }
 
-  if (db) {
+  if (db && env.NODE_ENV !== "production") {
     try {
       const vectorEnsure = await ensureKnowledgeVectorColumn(db);
       if (vectorEnsure.outcome === "installed") {

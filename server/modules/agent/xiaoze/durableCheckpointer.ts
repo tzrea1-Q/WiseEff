@@ -1,5 +1,6 @@
 import type { BaseCheckpointSaver, CheckpointTuple } from "@langchain/langgraph-checkpoint";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import pg from "pg";
 
 const DEFAULT_INTERRUPT_DURABILITY_TIMEOUT_MS = 2000;
 const DEFAULT_INTERRUPT_DURABILITY_POLL_MS = 10;
@@ -75,6 +76,7 @@ let interruptDurabilityProbe: PostgresCheckpointerHandle | undefined;
 
 export function createPostgresCheckpointerSaver(options: {
   connectionString: string;
+  setupMode?: "migrate" | "verify-only";
 }): PostgresCheckpointerHandle {
   const saver = PostgresSaver.fromConnString(options.connectionString);
   let hasSetup = false;
@@ -87,13 +89,35 @@ export function createPostgresCheckpointerSaver(options: {
         return;
       }
       if (!setupPromise) {
-        setupPromise = saver.setup().then(() => {
+        const mode = options.setupMode ?? (process.env.NODE_ENV === "production" ? "verify-only" : "migrate");
+        setupPromise = (mode === "verify-only" ? verifyPostgresCheckpointerTables(options.connectionString) : saver.setup()).then(() => {
           hasSetup = true;
         });
       }
       await setupPromise;
     }
   };
+}
+
+/** Read-only compatibility check for the locked checkpoint-postgres schema. */
+export async function verifyPostgresCheckpointerTables(connectionString: string): Promise<void> {
+  const client = new pg.Client({ connectionString });
+  try {
+    await client.connect();
+    await client.query("begin read only");
+    const ledger = await client.query<{ v: number }>("select v from public.checkpoint_migrations order by v");
+    // checkpoint-postgres 1.0.4 has exactly five schema migrations (0..4).
+    if (JSON.stringify(ledger.rows.map((row) => row.v)) !== "[0,1,2,3,4]") {
+      throw new Error("checkpoint schema mismatch");
+    }
+    await client.query("select thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata from public.checkpoints limit 0");
+    await client.query("select thread_id, checkpoint_ns, channel, version, type, blob from public.checkpoint_blobs limit 0");
+    await client.query("select thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob from public.checkpoint_writes limit 0");
+  } catch {
+    throw new Error("PCAT-RUNTIME-CHECKPOINT-SCHEMA-UNVERIFIED");
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 }
 
 export function getSharedPostgresCheckpointerSaver(connectionString: string): PostgresCheckpointerHandle {
@@ -125,7 +149,9 @@ export async function setupXiaozeCheckpointerTables(options: {
     return { status: "skipped" };
   }
 
-  const handle = getSharedPostgresCheckpointerSaver(options.connectionString.trim());
-  await handle.ensureSetup();
+  // Explicit management runner owns setup; never reuse a runtime verify-only handle.
+  const handle = createPostgresCheckpointerSaver({ connectionString: options.connectionString.trim(), setupMode: "migrate" });
+  try { await handle.ensureSetup(); }
+  finally { await handle.saver.end(); }
   return { status: "ensured" };
 }
