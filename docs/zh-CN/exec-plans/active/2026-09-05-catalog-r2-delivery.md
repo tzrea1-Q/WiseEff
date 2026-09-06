@@ -2,6 +2,23 @@
 
 > English: [English](../../../exec-plans/active/2026-09-05-catalog-r2-delivery.md)
 
+## CI 修复就绪审查 — 2026-09-06
+
+用户在得知精确 23 对阻塞后要求“修复ci报错”，授权本项限定实现，不包含 Policy 范围变化、合并、关单或生产操作。基线为 `e2b305d026a0e90cbed32bb8e851de279aae09f1`。run 34011746179 实际 checkout 为 `d0adfb52afa2751740873daa1c4b35ff78f751c9`：脚本 1191 通过、1 失败、21 跳过，下游 boundary/backend/contract 跳过。旧未批准方案保留为历史证据。
+
+交付风险 R3：清单身份。父协调者独占现有 checker 及其测试、新增 `scripts/parameter-catalog-allowlist/exactRelocation.ts` 与 `exactRelocation.test.ts`、`scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json`、这两份计划、新增 `docs/agents/catalog-boundary-relocation.md` 与 `docs/zh-CN/agents/catalog-boundary-relocation.md`，以及最终 `docs/exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.json` / `.zip`。其他路径只读，尤其原始清单、11 份 allowance、SQL 夹具、扫描规则和 workflow。Standards/Spec 在实现前独立质询下表，并在固定候选审查后才固化完整记录的摘要锚点。
+
+| 威胁／初始状态 | 必须观察到的结果 | 测试边界／负责人 |
+| --- | --- | --- |
+| 精确已审查 blob 和 23 对不变字节片段 | 仅精确目标继承原 ID；匹配 3513，原清单 3519 | 真实 checker inventory／父协调者 |
+| 记录、blob、片段、rule、token、evidence、file 或基线变更 | 拒绝，不按文本搜索或推算位移 | 精确重定位验证器／父协调者 |
+| 重复、缺项、未使用、交换目标、已绑定源、已删除 allowance | 拒绝非一一对应，六条已删除债务不恢复 | 验证器及现有反增长测试／父协调者 |
+| 映射外新增债务，未知、浅历史或非祖先基线 | 原扫描、比较和祖先校验继续拒绝 | checker 公开入口／父协调者 |
+| 缺失记录、写入一半、后续文件变化 | 不自动批准、不降级兜底 | 完整性和 blob 反例／父协调者 |
+| 直接 checkout 与 Hosted merge checkout | 映射一致，祖先契约不变 | 固定 SHA 本地检查及实际 CI／父协调者 |
+
+Documentation Impact Matrix：双语计划记录所有权、授权与结果；双语治理说明精确重定位契约；证据索引／归档绑定原始执行与审查。无运行时代码、API、UI、schema 或需求 marker 变更。Documentation Update Gate 为 `npm run docs:check`。原 inventory 断言、原始 fixture 和 trusted base 35cb 不变。独立审查、本地门禁和 Hosted 尚待执行，本节不预写通过。
+
 
 ## 最新审查返修证据 — 2026-09-06
 

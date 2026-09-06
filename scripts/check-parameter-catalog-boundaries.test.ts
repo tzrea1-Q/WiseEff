@@ -766,6 +766,9 @@ describe("parameter catalog boundary checker", () => {
         duplicateBaseIdOccurrences: 1_975,
       });
       expect(report.status).toBe("passed");
+      expect(report.relocations).toHaveLength(23);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(23);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(23);
       expect(report.summary).toEqual({
         violations: 3_513,
         allowlisted: 3_513,

@@ -2,6 +2,23 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md)
 
+## CI repair preflight — 2026-09-06
+
+The user requested the CI repair after the exact 23-pair blocker was reported. This authorizes this bounded implementation, not Policy scope changes, merge, Issue closure or production operations. Baseline: `e2b305d026a0e90cbed32bb8e851de279aae09f1`. Run 34011746179 checked out `d0adfb52afa2751740873daa1c4b35ff78f751c9`: script tests 1191 passed, 1 failed, 21 skipped; downstream boundary/backend/contract skipped. Earlier unapproved proposals remain historical evidence.
+
+Delivery risk R3: inventory identity. Parent owns exactly the existing checker and its test; new `scripts/parameter-catalog-allowlist/exactRelocation.ts` and `exactRelocation.test.ts`; new `scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json`; these two plans; new `docs/agents/catalog-boundary-relocation.md` and `docs/zh-CN/agents/catalog-boundary-relocation.md`; eventual `docs/exec-plans/evidence/2026-09-06-catalog-r2-ci-relocation.json` and `.zip`. All other paths are read-only, especially the original inventory, eleven shards, SQL fixture, scanner rules and workflows. Independent Standards/Spec challenge this matrix before implementation and review the same candidate before the integrity anchor is materialized.
+
+| Threat / initial state | Required observation | Test seam / owner |
+| --- | --- | --- |
+| Exact reviewed blobs and 23 unchanged byte slices | Only exact destinations inherit existing IDs; 3513 matched, original fixture 3519 | Real checker inventory / parent |
+| Changed record, blobs, slice, rule, token, evidence, file or trusted base | Fail closed; no text search or inferred displacement | Exact relocation validator / parent |
+| Duplicate, omitted, unused or swapped destination; already-bound source; deleted allowance | Reject non-bijection; six removed debts remain removed | Validator plus existing anti-growth tests / parent |
+| New debt outside mapping; unknown, shallow or non-ancestor base | Existing scanner, comparison and ancestry reject | Checker public entry / parent |
+| Missing record, partial write or future file edit | No automatic approval or fallback | Integrity/exact-blob regressions / parent |
+| Direct and Hosted merge checkout | Identical mapping with unchanged ancestry contract | Local fixed-SHA check and actual CI job / parent |
+
+Documentation Impact Matrix: these plans register ownership/authorization/outcomes; bilingual governance explains the exact relocation contract; the evidence index/archive binds raw runs and reviews. No runtime/API/UI/schema or requirement-marker change. Documentation Update Gate: `npm run docs:check`. The inventory assertion, original fixture and trusted base 35cb remain unchanged. Independent review, local gates and Hosted are still pending; no pass is recorded in this preflight.
+
 
 ## Latest review-return evidence — 2026-09-06
 
