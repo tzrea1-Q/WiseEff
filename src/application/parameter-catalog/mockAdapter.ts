@@ -667,7 +667,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async acceptProposal(proposalId, body, context) {
       return transitionProposal(proposalId, body, context, "acceptProposal", (parsed, proposal) => {
-        catalogAcceptProposalRequestSchema.parse(parsed);
+        const request = catalogAcceptProposalRequestSchema.parse(parsed);
+        if (!proposalToken(request.repositoryReference)) invalidProposal("repositoryReference");
         const session = proposalSession();
         if (session.personId === proposal.submittedByPersonId) {
           throw catalogApiFailure("proposal-self-approval-forbidden");
@@ -682,7 +683,8 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async rejectProposal(proposalId, body, context) {
       return transitionProposal(proposalId, body, context, "rejectProposal", (parsed, proposal) => {
-        catalogRejectProposalRequestSchema.parse(parsed);
+        const request = catalogRejectProposalRequestSchema.parse(parsed);
+        if (!proposalToken(request.reason)) invalidProposal("reason");
         if (proposalSession().personId === proposal.submittedByPersonId) throw catalogApiFailure("proposal-self-approval-forbidden");
         if (proposal.status !== "submitted") throw catalogApiFailure("revision-conflict");
         return commitProposal(proposal, { status: "rejected" });

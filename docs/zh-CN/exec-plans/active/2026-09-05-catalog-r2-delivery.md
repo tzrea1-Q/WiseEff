@@ -140,6 +140,18 @@ focused 使用当前 package.json 中真实路径和实际 issue lane。完整�
 
 完成前逐条记录 Update/Review 的改动路径或明确无变化依据。中英分离双向链接；coverage/OpenAPI 使用实际生成器并检查 diff。`npm run docs:check` 必须通过。R2 必需证据未齐保持 active；OP-09 独立待授权。向用户提供保留目录结构的完整修改代码文件包和路径清单，排除凭据及无关文件。
 
+## PR #821 审查返修：2026-09-06
+
+外部审查固定 head `b5ca4614c55b8061b3358656371f7f3ac757be9b`、base `27bc39d53235879afb579a86f6ee777a462e4204`。实际发现 PR #821 不是 Draft，现已恢复 Draft。用户要求继续返修，没有授权合并或关闭 Issue。下方检查点属于历史记录，其中 #817 的实现状态不包含本次新确认的审批输入缺口。
+
+父协调者独占 `src/application/parameter-catalog/mockAdapter.ts`、`src/application/parameter-catalog/proposalContractVectors.ts` 和两份交付计划。此项 R2 输入修复复用现有与领域等价的 token 校验，不修改 DTO schema，不弱化服务端校验。`R2-REV-04-accept-*`、`R2-REV-04-reject-*` 分别通过产品 mock 和实际 API adapter／根 HTTP／PG 执行。初始状态为 submitted，当前 release 与 ETag、新幂等键、同组织非作者平台审核人。空串、空白、首尾空白及 C0／DEL／C1 控制字符必须返回含字段与 `retryable=false` 的 `VALIDATION_FAILED`；状态、版本、ETag、Intent 和成功审计／去重均不变。修正输入后原 key 应成功一次，并重放不可变首次结果。父协调者负责执行证据，独立审查者检查最终固定比较范围。
+
+Definition 批量可以在不虚构 Policy 能力契约的前提下继续；#815 仍需实质决策。独立只读任务分别检查 T5 补证可行性及失败 Hosted job／checkout，归因必须以实际结果为准。boundary 重定位和最终门禁仍保留失败或未运行状态，直到新证据证明通过。本节不预写通过结论。文档影响：更新两份计划及 PR 证据；此项输入修复不改变架构、API schema、产品范围或生产 runbook。
+
+Definition 写入路径冻结为 `server/modules/parameter-catalog-api/` 下的 `read/types.ts`、`read/ports.ts`、`read/handlers.ts`、`read/ports.batch.test.ts`、`read/handlers.test.ts` 和 `rootBatchQueries.integration.test.ts`。`productionWire.ts` 和 usage 语义只读。执行前业务 SQL 预算为：Subject 非空页 4 次，Definition 非空页 5 次，空页 1 次（仅前置过滤）；投影查询不随行数增长，不加缓存或连接池。受限项目范围作为独立反例调查，不默认记通过。
+
+审批输入修复在审查 head 之上的工作树执行：产品 mock Red 为 20 失败／32 通过，Green 为 52 通过；实际 API adapter／根 HTTP／PG 为 61 通过，均无跳过。后者确认后端已拒绝这些输入。原始日志及元数据位于 `work/catalog-r2/evidence/b5ca4614c55b8061b3358656371f7f3ac757be9b/review-input-{red,green,api-baseline}.{log,json}`。这些是工作树执行，不冒充提交后的证据。lane 820 doctor 与迁移 owner canary 已通过。
+
 ## 已验证的 Scratch 检查点：2026-09-06 Asia/Shanghai
 
 代码候选为 `b54a126b594effe5470f7df4c8b4d0458abc14c6`，tree 为 `c51651772664dfdc91e68673e67027a8dc3ed8be`。再次 fetch 后 accepted base 仍为 `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。后续纯报告提交不改变历史执行 SHA 的归属。本候选未 sealed、未 integration-ready、未 Hosted、未合并、未 attested。没有关闭 R2 issue；#813 仍是实际观察到的唯一开放 PR，其历史表述不能代替本轮证据。

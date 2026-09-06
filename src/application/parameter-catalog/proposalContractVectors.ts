@@ -54,6 +54,54 @@ const create = (h: ProposalContractHarness, key: string) => h.governance.createP
 });
 
 export const proposalContractVectors = [
+  ...(["accept", "reject"] as const).flatMap((operation) => [
+    { name: "empty", value: "" },
+    { name: "spaces only", value: "   " },
+    { name: "leading whitespace", value: " padded" },
+    { name: "trailing whitespace", value: "padded " },
+    { name: "NUL", value: "bad\u0000value" },
+    { name: "newline", value: "bad\nvalue" },
+    { name: "C0 upper bound", value: "bad\u001fvalue" },
+    { name: "DEL", value: "bad\u007fvalue" },
+    { name: "C1 lower bound", value: "bad\u0080value" },
+    { name: "C1 upper bound", value: "bad\u009fvalue" },
+  ].map((invalid, index) => ({
+    id: `R2-REV-04-${operation}-${index + 1}`,
+    name: `${operation} rejects ${invalid.name} without effects or reserving the key`,
+    async run(h: ProposalContractHarness) {
+      check(Boolean(h.setActor), "actor-switch harness is required");
+      const key = `review-input-${operation}-${index}`;
+      const draft = await create(h, `${key}-create`);
+      const submitted = await h.governance.submitProposal(draft.item.id, {}, context(h, `${key}-submit`, draft.item.etag));
+      await h.setActor!("reviewer");
+      const write = context(h, key, submitted.item.etag);
+      const before = await h.governance.getProposal(draft.item.id);
+      const evidence = await h.businessEvidence?.();
+      const review = (value: string) => operation === "accept"
+        ? h.governance.acceptProposal(draft.item.id, { repositoryReference: value }, write)
+        : h.governance.rejectProposal(draft.item.id, { reason: value }, write);
+      try {
+        await review(invalid.value);
+        throw new Error("invalid review unexpectedly succeeded");
+      } catch (error) {
+        const failure = error as { code?: string; details?: { field?: string; retryable?: boolean } };
+        equal(failure.code, "VALIDATION_FAILED", "invalid review error code");
+        equal(failure.details?.field, operation === "accept" ? "repositoryReference" : "reason", "invalid review field");
+        equal(failure.details?.retryable, false, "invalid review is not retryable");
+      }
+      equal(await h.governance.getProposal(draft.item.id), before, "invalid review preserves status, content, version, ETag and intent reference");
+      if (h.businessEvidence) equal(await h.businessEvidence(), evidence, "invalid review has no business, success audit or committed dedupe effects");
+      const valid = operation === "accept" ? "refs/heads/review-input" : "Requires a documented correction";
+      const corrected = await review(valid);
+      equal(corrected.item.status, operation === "accept" ? "accepted" : "rejected", "corrected original key succeeds");
+      equal(corrected.item.version, submitted.item.version + 1, "only the valid review advances version once");
+      check(corrected.item.etag !== submitted.item.etag, "valid review produces a new ETag");
+      check(operation === "accept" ? Boolean(corrected.item.publicationIntentRef) : !corrected.item.publicationIntentRef, "only accept produces an intent reference");
+      const committedEvidence = await h.businessEvidence?.();
+      equal(await review(valid), corrected, "corrected request replays original ETag and first snapshot");
+      if (h.businessEvidence) equal(await h.businessEvidence(), committedEvidence, "valid replay has no additional effects");
+    }
+  }))),
   ...[
     { name: "body release differs from the current header", edit: (body: CatalogCreateProposalRequest) => { body.base.catalogReleaseId = "crel_not_installed"; }, code: "CONFLICT", reason: "proposal-stale" },
     { name: "Definition lacks revision", edit: (body: CatalogCreateProposalRequest) => { delete body.base.definitionRevisionId; }, code: "VALIDATION_FAILED", field: "base.definitionRevisionId" },
