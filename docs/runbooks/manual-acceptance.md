@@ -357,6 +357,8 @@ Manual review is still required for ambiguous visual judgment, real HDC safety a
 
 ## Browser Workflow Acceptance
 
+Risk cases and source-to-test mapping are maintained in [Testing Strategy and Design](../design-docs/testing-strategy.md); this section owns the ordinary human journey. At the 2026-09-06 source baseline, the current members entry is `/organization/members`; `/user-permissions` is a legacy alias. Use current workbench controls and fixture identities instead of assuming older table/dialog layouts.
+
 Prefer the automated browser acceptance command first, then use the in-app browser or another Chromium browser for any remaining manual judgment. Capture screenshots or notes for each failed item.
 
 ### A. Shell, Navigation, And Access
@@ -370,9 +372,9 @@ Open:
 Checklist:
 
 - [ ] Homepage loads without blank areas or visible runtime errors.
-- [ ] Side navigation exposes platform overview, parameter management, debugging, and log analysis groups.
+- [ ] Side navigation follows `VISIBLE_WORKFLOWS` (currently parameter management and debugging, plus platform utilities); log and knowledge routes remain accessible by authorized deep links.
 - [ ] Project selector and role context are visible where expected.
-- [ ] Navigation to `/parameters`, `/parameter-review`, `/parameter-admin`, `/logs`, `/log-admin`, `/debugging`, `/node-debugging`, `/debugging-admin`, and `/user-permissions` works.
+- [ ] Navigation to `/parameters`, `/parameter-review`, `/parameter-admin`, `/logs`, `/log-admin`, `/debugging`, `/node-debugging`, `/debugging-admin`, and `/organization/members` works.
 - [ ] Pages that the current role cannot access show a controlled no-entry state rather than a crash.
 
 Pass criteria:
@@ -593,7 +595,7 @@ Pass criteria:
 Open:
 
 ```text
-/user-permissions
+/organization/members
 ```
 
 Checklist:

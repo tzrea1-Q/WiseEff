@@ -21,6 +21,10 @@
 
 本地 preflight 在 `deviceGateway` 是唯一 blocker 时可以返回 `non_hdc_local`。只有在 preflight 启用本地 runtime（`startRuntime` 未禁用）、连接到由 `isLocalHttpUrl` 证明为本地的 API base URL，且 readiness 响应通过 `gates.xiaozeLlm` 精确证明 deterministic Xiaoze（`ok=false`、`status=blocked`、message 必须是 `Deterministic Xiaoze mode is not acceptable for pilot readiness.`）时，才可以把 `deviceGateway` 加 `xiaozeLlm` 接受为 `non_hdc_local`；`backups` 仅可作为既有的本地非客户证据 blocker 与这两个 blocker 同时存在。API 可能已经监听并被复用；不要求 preflight 必须亲自启动它。该例外不会清除任何 blocker，target 和 full-pilot 模式仍保持严格。
 
+## 当前流程与测试设计
+
+风险用例及源码到测试的对应关系由[测试策略与设计](../design-docs/testing-strategy.md)维护，本手册负责常规人工流程。2026-09-06 源码基线中的人员管理入口为 `/organization/members`，`/user-permissions` 是旧别名。导航遵循 `VISIBLE_WORKFLOWS`，当前展示参数管理、调试及平台公共入口；日志和知识库保留授权深链接。使用当前工作台控件和测试数据身份，不假定旧表格或弹窗布局仍适用。常规 A–H 操作清单见[完整人工流程](../../runbooks/manual-acceptance.md#browser-workflow-acceptance)，本轮新增的全部 20 个风险设计用例均有中文版本。
+
 ## 补充验收流程
 
 ### 小泽悬浮窗交互

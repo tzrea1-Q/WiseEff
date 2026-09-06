@@ -1,304 +1,249 @@
-# WiseEff 测试策略
+# WiseEff 测试策略与设计
 
 > English: [English](../../design-docs/testing-strategy.md)
 
-日期：2026-05-25
+核对日期：2026-09-06。源码基线：`67d4a77325b6009b77c2373bd788298a6d022bcf`。
+本页是已实现产品的测试设计入口，与[技术文档](full-stack-architecture.md)配套。下列设计用例在**本次文档任务中均未执行**。链接到测试文件只说明核查了相关自动化源码，不代表完整覆盖或执行通过。
 
-## 1. 测试目标
+## 内容归属与追踪
 
-WiseEff 需要从“原型测试”升级为“产品质量门禁”。测试体系必须覆盖领域规则、API 合同、关键 UI 流程、权限边界、异步任务、Agent 工具治理和设备网关。
+| 问题 | 唯一负责位置 |
+| --- | --- |
+| 应当满足什么行为？ | [产品规格](../product-specs/index.md)、[领域模型](domain-model.md)、[API 契约](api-contract.md)、[安全规则](../SECURITY.md) |
+| 应测试哪些风险、场景和断言？ | 本页 |
+| 使用什么命令、依赖和门禁？ | [验证矩阵](../developer/verification-matrix.md) |
+| 已有哪些需求和操作 ID？ | [需求覆盖映射](../developer/browser-acceptance-coverage-map.md)、[操作覆盖矩阵](../developer/user-operation-coverage-matrix.md) |
+| 覆盖如何生成？ | [operationMatrix.ts](../../../e2e/acceptance/operationMatrix.ts)、其引用的验收测试及覆盖脚本 |
+| 人如何执行常规验收流程？ | [人工验收手册](../runbooks/manual-acceptance.md) |
+| 证据记录在哪里？ | 验证矩阵定义的逐次运行产物；历史质量看板不是新证据 |
 
-## 2. 测试分层
+下文 `TDES-*` 仅标识文档设计场景，不新增验收操作 ID，也不改变 `automated/manual/conditional/future` 覆盖状态。补自动化时先对应既有需求和操作；需要新增操作时修改权威源码并运行生成器，不手改生成的操作矩阵。
 
-| 层级 | 目标 | 工具方向 |
+## 范围、风险与分层
+
+覆盖参数工作台、评审、目录、文件，日志上传、分析、管理，节点调试、DTS 重载、设备桥，身份和组织治理、小泽、知识库、反馈、通知、审计、应用壳与运维。未来退役、数据切换里程碑及目标发布签署仍是有条件的流程，不能由源码存在推导。
+
+| 优先级 | 风险与对应设计 | 最低有效证据 |
 | --- | --- | --- |
-| 领域单元测试 | 纯函数、状态机、权限规则、数据派生 | Vitest |
-| 组件测试 | 页面和组件交互、无障碍、边界状态 | Testing Library |
-| API 集成测试 | 后端路由、数据库、事务、错误模型 | 后端测试框架 + 测试数据库 |
-| 契约测试 | OpenAPI、DTO、前后端类型一致 | schema 校验 |
-| 状态模型测试 | 工作流状态转移、权限可见性、审计不变量 | fast-check + Vitest |
-| E2E 测试 | 登录、参数提交、审阅、日志上传、设备调试 | Playwright |
-| 任务测试 | worker、重试、失败、幂等 | 队列测试环境 |
-| Agent 测试 | 工具权限、审批、输出结构 | 模型 mock + golden cases |
-| 设备测试 | 网关读写、错误、回读、模拟器 | 设备模拟器 |
-| 安全测试 | RBAC、越权、审计、输入校验 | 自动化安全用例 |
-
-## 3. 前端测试
-
-保留现有测试资产，并在 API 化时做以下调整：
-
-- 页面测试不直接依赖 `initialState`，改用端口 mock。
-- 保留领域派生逻辑的纯单元测试。
-- 对权限隐藏和禁用状态保持覆盖。
-- 对表格筛选、排序、分页、弹窗、键盘操作保留覆盖。
-- 对生产模式禁用 mock runtime 增加测试。
-- 样式合同通过 `src/test/cssAssertions.ts` 结构化查询 selector、at-rule
-  和 declaration，不对 raw CSS 文本格式做匹配。error 级 ESLint 规则
-  `wiseeff/no-raw-css-text-assertions` 禁止 CSS 文件读取结果直接使用
-  `toMatch`/`toContain`，但不影响无关源码合同测试。渲染行为和最终视觉
-  结果继续由 Testing Library 与 Playwright 质量门禁负责。
+| P0 | 跨组织或角色越权、不安全或重复写入、过期合入、未经授权的 Agent/设备动作、数据丢失：AUTH、PARAM、CAT、DBG、AGENT、OPS | 负向与正向对照；涉及事务时检查 API/领域状态及真实 PostgreSQL；核对审计和外部副作用 |
+| P1 | 核心流程中断、误导性分析、内容或通知缺失：FILE、LOG、KB、FEEDBACK、NOTIF | 成功、失败及恢复流程；持久结果与用户可见状态 |
+| P2 | 较低风险的呈现与入口发现 | 组件与浏览器质量检查；隐藏权限问题或阻断核心操作时提高优先级 |
 
-关键命令：
+已有操作的优先级仍以操作矩阵为准。本页优先级用于选择验证深度，不构成发布豁免。
+
+| 层级 | 目的 | 现有工具 |
+| --- | --- | --- |
+| 领域与策略 | 类型、规范化、状态转移、权限 | Vitest |
+| 组件与运行时 | 加载、错误、空态、项目切换、端口一致性 | Testing Library / Vitest |
+| API 与数据库 | HTTP 契约、角色范围、锁、幂等、保留策略 | 服务端 Vitest 与真实 PostgreSQL |
+| 契约与状态模型 | DTO/OpenAPI 漂移、状态不变量 | 契约脚本、fast-check |
+| worker 与模型行为 | 租约、重试、降级、预算、引用真实性 | worker 测试、确定性日志评测 |
+| 浏览器 | 真实角色流程、API/UI 联动、持久结果 | Playwright 验收 |
+| 质量 | 无障碍、视觉一致性、响应式可用性 | 既有无障碍、视觉与响应式门禁 |
+| 设备与目标运维 | 物理效果、恢复、升级、容量、OIDC/模型质量 | 模拟器验证本地流程；目标或实验室证据单独记录 |
 
-```bash
-npm test
-npm run build
-```
+## 环境与测试数据
 
-## 4. 后端测试
+精确准备步骤见[本地开发](../developer/local-development.md)和验证矩阵，本页不复制第二份环境变量清单。
 
-后端每个模块至少包含：
+1. 执行前记录源码 SHA、工作区是否干净、命令与筛选条件、运行模式、数据库身份、迁移状态、浏览器尺寸及确定性或在线配置。
+2. 使用隔离的 API 测试运行时、明确归属的 PostgreSQL 数据库与对象前缀。目录数据库证据须具备 pgvector，并遵循[目录专用环境规则](../agents/catalog-launch-operating-rules.md)中的实际角色要求，不能使用共享应用库。前置条件缺失记为阻塞或明确跳过，不能算通过。
+3. 准备两个组织，同一组织内两个项目、另一组织一个项目。按场景分别使用编辑者、硬件评审者、软件评审者、合入者、组织管理员、平台评审者、只读及停用身份。有效权限来自数据库绑定，不能用一个管理员会话替代角色链。
+4. 数据使用逐次运行的唯一前缀。变更前记录项目、候选、定义、发布版本、审批 ID、基线及预期行数。复用所链接测试中的数据构造器，核对唯一身份，不选“第一条”碰运气。
+5. 日志复用 `test-fixtures/logs/charging-foldback.log` 和 `unsupported.bin`；DTS、目录、知识库、设备桥复用对应测试的数据。数值边界以选定数据的范围和类型定义为准，不能假设任意数值对真机安全。
+6. 确定性模型和模拟器不产生在线模型或硬件就绪结论。真实设备写入、目标恢复和升级演练须满足对应手册前置条件，并使用已授权的隔离实验室或非客户目标。
+7. 每个用例通过测试清理器或领域操作撤销自身变更；测试组结束后由运行时所有者清理自身临时资源。失败时先保留证据和资源身份，不能只凭数据库名像临时库就删除。
 
-- service 单元测试。
-- repository 集成测试。
-- controller/API 集成测试。
-- 权限负向测试。
-- 审计写入测试。
+## 本设计的覆盖地图
 
-参数管理必须测试：
+中列 ID 是既有示例，不是完整等价关系。具体断言和运行条件以链接源码及生成矩阵为准。
 
-- 重复未完成变更请求被拒绝。
-- 高风险参数缺少审阅不能合入。
-- 过期版本合入返回 `CONFLICT`。
-- 合入成功写入历史和审计。
-- 有效驱动参数目录由 `server/modules/parameter-specs/effectiveDefinition.test.ts` 与
-  `effectiveDefinition.integration.test.ts` 覆盖：只从组织优先级/平台回退中选出一个唯一的
-  活跃版本；草稿、已废弃、缺少归属或重复候选必须进入治理结果。
-- PostgreSQL 数据修复由 `definitionReconciliation.integration.test.ts` 和
-  `definitionVerification.ts` 覆盖；`populatedUpgrade.integration.test.ts` 从真实 pre-`0127`
-  存量 PostgreSQL 图开始，先证明旧生效视图为空且门禁阻断，再通过公开 migration runner 应用至 `0128`，
-  验证规范放置、保留的 draft 证据、同 key 自动模块主体切换、binding 归位及 curated 失败关闭。先运行
-  `npm run parameter-definitions:reconcile -- --dry-run`，确认后再 `--apply`，最后运行
-  `npm run parameter-definitions:check`；未知/歧义证据只能保留为审核证据，不能创建已识别
-  binding，校验报告未 ready 时发布门禁必须失败关闭。
+| 能力与设计 | 既有操作或源码契约 | 相关自动化入口 |
+| --- | --- | --- |
+| 参数编辑与评审；TDES-PARAM-01/02 | `PARAM-HAPPY-001`、`PARAM-ASSIGNEE-001`；语义工作流集成 | [参数](../../../e2e/acceptance/parameters.acceptance.spec.ts)、[负向](../../../e2e/acceptance/parameters-negative.acceptance.spec.ts)、[拓扑](../../../e2e/acceptance/parameter-topology.acceptance.spec.ts)、[PostgreSQL 工作流](../../../server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts) |
+| 文件、导入、配置；TDES-FILE-01 | `PARAM-ADMIN-002`、`PROJ-CONFIG-REVISION-GATE-001` | [导入向导](../../../e2e/acceptance/parameter-import-wizard.acceptance.spec.ts)、[参数文件](../../../e2e/acceptance/parameter-files.acceptance.spec.ts)、[版本门禁](../../../e2e/acceptance/config-set-revision-gate.acceptance.spec.ts) |
+| 目录；TDES-CAT-01/02/03 | 生产组合、根 HTTP 使用范围及 SQL 预算契约 | [组合](../../../server/modules/parameter-catalog-api/productionComposition.integration.test.ts)、[范围](../../../server/modules/parameter-catalog-api/rootUsageScope.integration.test.ts)、[批量查询](../../../server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts)、[目录浏览器](../../../e2e/acceptance/parameter-catalog.acceptance.spec.ts)、[负向浏览器](../../../e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts) |
+| 日志；TDES-LOG-01/02/03 | 人工流程 D、worker 与评测契约 | [日志验收](../../../e2e/acceptance/log-analysis.acceptance.spec.ts)、[worker](../../../server/modules/logs/worker.test.ts)、[评测](../../../server/modules/logs/eval/)、[黄金语料](../../../eval-cases/logs/README.md) |
+| 调试与重载；TDES-DBG-01/02 | `DEBUG-SIM-001`、`DTS-RELOAD-DEPLOY-001`、`DTS-RELOAD-DEPLOY-HW-001` | [模拟器](../../../e2e/acceptance/debugging-simulator.acceptance.spec.ts)、[重载](../../../e2e/acceptance/dts-reload-deploy.acceptance.spec.ts)、[ADB 设计](2026-06-21-adb-real-device-full-chain-test-design.md) |
+| 身份与保留；TDES-AUTH-01/02 | `AUTH-RUNTIME-001`、`PERM-USER-MGMT-001` | [认证](../../../e2e/acceptance/auth-runtime.acceptance.spec.ts)、[权限矩阵](../../../e2e/acceptance/permissions-matrix.acceptance.spec.ts)、[删除](../../../server/modules/users/deletion.integration.test.ts) |
+| 小泽；TDES-AGENT-01/02 | 工具审批与检查点契约 | [动作](../../../e2e/acceptance/xiaoze-action.acceptance.spec.ts)、[编排](../../../server/modules/agent/orchestrator.test.ts)、[检查点](../../../server/modules/agent/xiaoze/durableCheckpointer.integration.test.ts) |
+| 知识库；TDES-KB-01 | `KB-READ-001`、`KB-EDIT-001`、`KB-INDEX-001` | [知识库浏览器](../../../e2e/acceptance/knowledge.acceptance.spec.ts)、[知识服务](../../../server/modules/knowledge/service.test.ts) |
+| 反馈与通知；TDES-FEEDBACK-01、TDES-NOTIF-01 | `PFB-SUBMIT-001`、`PFB-ADMIN-001`、`PFB-AUTHZ-001`、`NOTIF-INBOX-001`、`NOTIF-READ-001` | [反馈](../../../e2e/acceptance/product-feedback.acceptance.spec.ts)、[通知](../../../e2e/acceptance/notifications.acceptance.spec.ts) |
+| 应用壳与质量；TDES-UI-01 | `SHELL-DIAG-001`；质量门禁 | [应用壳](../../../e2e/acceptance/shell-navigation.acceptance.spec.ts)、[UI 检查清单](../developer/ui-quality-checklist.md) |
+| 运维；TDES-OPS-01 | 恢复与就绪契约、有条件的目标演练 | [升级回归](../../../ops/self-hosted/scripts/upgrade.sh.test.ts)、[人工验收](../runbooks/manual-acceptance.md)、[验证矩阵](../developer/verification-matrix.md) |
 
-可信参数执行身份另有 PostgreSQL 注销保留门禁。迁移
-`0136_parameter_execution_principal_deleted_marker.sql` 只向八类保留治理行加入无身份值、服务端拥有的
-`initiator_principal_deleted` 标记（binding revision 上同样固定为 false）。瞬态
-`parameter_drafts` 继续属于账号自有的 `ON DELETE CASCADE` 状态，不增加该标记。真实
-`deleteUser` 操作必须让所有保留行的可问责用户外键及派生 `userId` 都是 NULL，同时保留
-`initiator_type = 'agent'` 以及非空 session/tool-call/approval 关联，并删除该用户未提交的 draft；不得存在 tombstone、snapshot、哈希或替代用户 id。
-标记只能由嵌套外键 `SET NULL` 转换设置，直接 insert/update/改写 initiator 必须由 PostgreSQL
-以 `23514` 拒绝。migration 测试覆盖完整 User/Agent/System/legacy 判别联合，拒绝空白 Agent
-关联及混合 metadata，并证明全新数据库升级失败会回滚。领域读取统一使用
-`trustedDomainAttributionFromRow`，永不恢复已删除 principal id；公共 DTO 与通知保持粗粒度展示投影，
-不暴露标记或内部 correlation。`docs/exec-plans/active/2026-08-28-user-account-deletion.md` 中的注销合同仍是权威规范。
+## 可执行核心与风险用例
 
-日志分析必须测试：
+每个用例按预期逐项记录实际结果，以及适用的 API 状态与错误码、数据库谓词与行数、审计关联和产物。所有用例共同遵循前述环境、清理及证据规则。浏览器按当前数据和测试源码中的路由、标签执行；服务故障注入仅在隔离测试框架内进行，不针对共享服务。
 
-- 不支持文件失败。
-- 任务失败可重试。
-- 阶段进度顺序正确。
-- 证据行号与原始日志绑定。
+### TDES-PARAM-01 — 类型化变更与真实角色评审（P0）
 
-调试平台必须测试：
+- **准备：** 专属项目、可编辑绑定、已知基线与候选版本，以及分别指定的评审人。
+- **步骤：** 使用当前工作台执行人工流程 B；保存值和原因、选择合法负责人、提交；分别以硬件评审、软件评审和合入身份操作，刷新项目并检查历史。
+- **预期：** 每次转移检查真实角色；提交保留精确草稿、绑定、候选和动作身份；候选合入值及审计持久化，原基线不可变。涉及文件写回时检查文件结果和重新解析后的值。
+- **清理：** 使用验收数据清理器移除所属请求、候选和项目，不改写共享历史。
 
-- 只读节点写入被拒绝。
-- 设备离线写入被拒绝。
-- 高风险写入缺少确认被拒绝。
-- 回读不一致返回明确结果。
+### TDES-PARAM-02 — 过期候选与项目隔离（P0）
 
-## 5. E2E 场景
+- **准备：** 两个项目、会话 A 中可编辑候选及其初始状态和版本。
+- **步骤：** 加载 A 并延迟响应，切换到 B 后释放 A 的响应；另开会话修改候选，再用旧视图提交或合入；强制发送候选身份被替换的请求。
+- **预期：** B 不接收 A 的草稿、值和负责人；过期或变化的身份按端点冲突契约拒绝，不静默选择替代候选，不发生部分合入或写回。
+- **清理：** 释放延迟请求，使用数据清理器移除所属草稿和候选。
 
-MVP 必须覆盖：
+### TDES-FILE-01 — 导入校验与版本冲突（P1）
 
-1. 参数变更闭环：登录、进入参数页、筛选、创建草稿、提交、审阅、合入、查看历史和审计。
-2. 参数权限边界：Guest 不能提交，普通用户不能审阅，Committer 不能进入 Admin。
-3. 日志分析闭环：上传支持文件、查看进度、查看证据、关联参数。
-4. 日志失败路径：上传不支持文件、查看失败原因、重新上传。
-5. 设备调试闭环：检测模拟设备、读取节点、写入、回读、查看调试历史。
-6. Agent 审批边界：Agent 可以生成写操作申请，但不能绕过批准。
+- **准备：** 专属配置集、已知源版本、有效 DTS/JSON 文件及格式错误或非法值变体。
+- **步骤：** 分别预览，检查错误和映射；取消后核对未发生业务应用；在所属测试环境应用有效文件，改变源版本，再尝试激活或写回旧候选。
+- **预期：** 预览不修改当前项目值或文件，但可保留预览记录；无效数据不能应用，有效路径保留预期语法与值形状；过期激活或写回受阻并保留输入供复核。
+- **清理：** 通过文件测试清理所属预览、导入记录、文件版本和配置集。向导浏览器测试覆盖预览，不能单独证明全部应用与冲突断言。
 
-M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
+### TDES-CAT-01 — 发布版本、授权范围与真实空态（P0）
 
-永久注销用户新增真实 PostgreSQL 合约门禁：所有指向 `users(id)` 的外键必须明确分类为账号自有数据的 `ON DELETE CASCADE`，或历史保留数据的可空 `ON DELETE SET NULL`。聚焦浏览器操作 `PERM-USER-MGMT-001` 必须在 API 模式执行，并证明二次确认、HTTP `204`、成功后才移除列表行、历史引用置空后的兼容展示、无 PII 的注销审计，以及非管理员拒绝。Mock 模式的多视口检查只属于界面证据，不能替代 API/数据库门禁。
+- **准备：** 已安装版本的目录集成数据、同组织项目受限用户、组织范围读者及第二组织，记录发布 ID 与摘要。
+- **步骤：** 在当前及固定版本读取列表、详情、历史；刷新深链接并前进后退；请求另一项目使用量，刷新数据库角色后重试；分别制造未注册、无定义、筛选无结果和投影不可用。
+- **预期：** 身份与发布摘要始终匹配；范围来自当前数据库授权。明确空范围为真实零值，不可用数据为错误或未就绪，不能伪装零使用量；不泄漏跨组织事实。
+- **清理：** 使用目录测试的专属运行时和数据库清理。
 
-证据级 artifact 不得放在 Playwright 会清空的 `outputDir`。完整 browser runner 在 `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>/{records,artifacts}` 创建同一运行目录，仅当干净 source 的完整 Playwright 与 operation evidence 均通过时，才原子发布 `latest-full.json`。Record 必须携带相同 `runId` 与 `sourceCommit`；`npm run acceptance:evidence` 拒绝混合身份和缺失 artifact。直接聚焦的 `acceptance:e2e` 使用未发布 focused 目录，不能覆盖或删除最近完整运行证据。
+### TDES-CAT-02 — 提案冲突、重试与独立评审（P0）
 
-调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复、HDC/ADB binding 管理，以及复杂值元数据编辑。
+- **准备：** 组织提案者、另一位有权限的平台评审者、捕获的基线和 ETag、唯一幂等键；使用提案集成及浏览器数据。
+- **步骤：** 创建草稿、提交、评审；重复同一请求，再用相同键改变内容；尝试自审、过期 ETag 或基线及跨组织访问；按测试注入提交后的响应阶段失败并重试；刷新冲突输入后明确重新确认。
+- **预期：** 相同请求返回原提交结果，不重复写入；指纹变化产生冲突。拒绝过期、越权及自审；接受只记录发布意图，不直接修改目录定义；界面保留冲突输入并要求重新确认。
+- **清理：** 只清理所属提案和治理数据。具体入口见[提案工作流](../../../server/modules/parameter-governance/proposals/workflow.integration.test.ts)和[治理浏览器](../../../e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts)。
 
-多层级模块树由 `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` 中的 `MOD-TREE-PARAM-001/002`、`MOD-TREE-DEBUG-001`、`MOD-TREE-AUTHZ-001` 覆盖（嵌套创建、子树筛选、移动/循环守卫、authz、非空删除 409）。
+### TDES-CAT-03 — 分页与投影失败预算（P1）
 
-模块归属（compatible 队列、归类预览/应用、按 kind 分级的树、重要性继承）由 `e2e/acceptance/parameter-topology.acceptance.spec.ts` 中的 `MOD-ATTR-QUEUE-001`、`MOD-ATTR-CLASSIFY-001`、`MOD-ATTR-BULK-001`、`MOD-ATTR-TREE-001`、`MOD-ATTR-IMPORTANCE-001` 覆盖（见 `docs/exec-plans/completed/2026-07-27-module-attribution-redesign.md`）。
+- **准备：** 根 HTTP 批量查询数据、其声明的规模及 SQL 计数器，固定目录发布版本。
+- **步骤：** 执行非空与空页、分页前注册过滤、非法页大小，并注入使用量和注册投影失败。
+- **预期：** 严格使用测试声明的语句预算；业务查询不随行数逐条增长，不混入跨组织投影，不在失败后静默回退。查询次数与延迟分开记录。
+- **清理：** 停止测试服务并关闭、清理所属数据库。本地查询预算检查不等于目标容量通过。
 
-模拟器调试由 `e2e/acceptance/debugging-simulator.acceptance.spec.ts` 中的 `DEBUG-SIM-001` 覆盖，包含复杂 JSON 写入路径，并在 `node_operations` 中记录 `valueKind`、digest 和 preview 元数据，同时避免在 operation evidence 中泄露完整 payload。
+### TDES-LOG-01 — 上传、证据与归档（P1）
 
-定向单元测试覆盖 `server/modules/debugging/valueCodec.test.ts`、gateway 保真测试、管理端/运行时 UI 测试，以及 legacy 标量默认值的 DTO mapper 测试。
+- **准备：** 专属日志域、支持及不支持的文件，API worker 正常运行。
+- **步骤：** 执行人工流程 D：上传、询问充电降流原因、观察阶段、打开引用行、反馈、归档并刷新；再上传不支持的文件。
+- **预期：** 有效输入形成可追踪真实行的报告，来源与降级标签准确；不支持的输入明确失败。归档改变默认列表，并保留授权历史访问。
+- **清理：** 用日志清理器清理所属记录、任务、反馈和对象键。
 
-质量与验收 Playwright 配置（`playwright.quality.config.ts`、`playwright.acceptance.config.ts`）在产品用例之前运行 `runtime-warmup` 依赖项目。webServer 报告 ready 后，预热通过 `page.goto` 加载 SPA 入口，使 Vite 首次编译不计入首条 a11y/视觉/响应式或验收用例；产品用例超时未放宽。
+### TDES-LOG-02 — 引用真实性、工具合法性与降级（P1）
 
-`/parameter-review` 的 populated 视觉用例使用证据专属测试数据，不属于通用 seed。隔离 runner 必须同时设置 `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` 与 `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`；seed/cleanup 脚本在任何写入前校验实际数据库名和固定 ID 的精确归属。Target synthetic 不设置这两个变量，只 planned-skip 这一条依赖写入的视觉用例，因此保持目标库只读；其余视觉路由和全部 a11y/响应式用例仍运行。必须展示的易变值（例如组织创建时间）应在测试读取接缝规范化，不得用截图遮罩隐藏。
+- **准备：** 行为评测的脚本模型，分别覆盖 `loop` 与 `single-shot`。
+- **步骤：** 制造供应方不可用、畸形输出、不存在的引用行、非法工具或参数、证据不足及步骤或 token 预算耗尽。
+- **预期：** 不虚构引用，不执行写工具；重试有界，回退显示原因与来源，按契约限制提前收敛的置信度；测试框架负向对照能识别已知错误行为。
+- **清理：** 重置模型注入和配置，清理所属评测产物。`logs:eval` 是行为证据，质量评测须另用标注语料及其基线规则。
 
-提交到仓库的 Linux 视觉快照只有在从 GitHub Actions `Acceptance quality` runner 工件逐图接纳后，才是合并权威。该 runner 正是 PR 上执行门禁的环境，包含 production/HMAC seed 身份和其安装的中文字体栈。仓库兼容的本地 MCR Playwright arm64 容器仍可用于 Linux 预检，但当其渲染结果与已审查的 GitHub runner 工件不同时，不得用容器截图替换已提交的 Linux 基线。只能在原始分辨率逐图审查后接纳精确失败图片，禁止批量更新快照。
+### TDES-LOG-03 — 任务重投与过期租约（P0）
 
-M5.11 之后，浏览器质量门禁还包括无障碍、视觉回归和响应式可用性检查。脚本入口包括 `npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual` 和 `npm run acceptance:responsive`，分别覆盖脚本/spec wiring、WCAG A/AA 扫描、稳定区域截图和 desktop/tablet/mobile overflow/usable state。这些门禁补充 A-H browser acceptance，不替代 operation evidence 或人工视觉判断。
+- **准备：** 隔离任务及 worker 数据，明确租约和终态谓词。
+- **步骤：** 重复投递相同任务，制造处理失败与重试，令租约到期后重新认领，再让旧 worker 尝试更新进度或完成。
+- **预期：** 数据库认领和租约规则控制写入，旧 worker 不能覆盖当前结果；终态、重试及死信证据符合 worker 契约，分发成功不能算处理成功。
+- **清理：** 先停测试 worker，再清理所属任务与对象；持久 Redis 行为需要独立队列门禁。
 
-M5.9 在浏览器验收背后新增确定性的状态模型门禁：
+### TDES-DBG-01 — 安全写入、不同观测值与回滚（P0）
 
-```bash
-npm run acceptance:models
-```
+- **准备：** 模拟器数据，记录可写值、只读节点及不同回读值探针。
+- **步骤：** 执行人工流程 E；读取 `3000`、写入 `3100`、检查快照和观测；探针写 `2` 后观测 `1`；从 UI 与强制 API 尝试只读或无权限写入，再通过支持的入口恢复初始快照。
+- **预期：** 观测值不同不改变命令执行成功；拒绝路径不产生设备副作用；快照、操作、审计可追踪，恢复后回到基线。回滚仅能经 API 验证时如实记录，不声称 UI 已覆盖。
+- **清理：** 恢复所属模拟器状态并清理测试记录。示例数值只适用于模拟器，不适用于任意真机。
 
-该命令使用固定 seed 的 `fast-check` 模型测试覆盖参数审批、日志任务、调试会话和权限可见性。它不替代 Playwright；它先在 API/domain 层检查“乱点、乱提交、回头操作”仍满足不变量，例如未授权角色不能写入、终态请求不能再次合入或拒绝、回滚必须基于有效快照、生产写入必须有审计、UI 可见权限不能强于 API eligibility。模型失败时必须输出 seed、path 和最小复现步骤，便于把问题再转化成更具体的单元、API 或浏览器用例。
+### TDES-DBG-02 — 重载预检与真实设备证据边界（P0）
 
-Current M2 acceptance command:
+- **准备：** 专属重载数据、固定 DTS 工具链、假桥及基线摘要；真机变体另需实验室就绪。
+- **步骤：** 分别令编译、能力、确认或权限前置条件失败，核对未部署；再部署有效数据，检查快照、内核证据和观测状态，执行残留与基线恢复流程。
+- **预期：** 预检失败不能写设备；缺少行为证明保持不可验证；部署不修改参数库；恢复失败保留准确残留与结果。敏感和 Agent 路径遵循当前可信策略。
+- **清理：** 完成所属恢复后再拆除测试环境，保留失败设备与运行证据；假桥、真实 HDC 与 ADB 分别记录。
 
-```bash
-DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m2
-```
+### TDES-AUTH-01 — 组织、激活与角色约束（P0）
 
-`npm run test:m2` runs `npm run test:all`, `npm run build`, and `npm run test:e2e`. The M2 Playwright smoke in `e2e/log-analysis.api.spec.ts` runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m2` in `beforeAll`, then uses `test-fixtures/logs/charging-foldback.log` and `test-fixtures/logs/unsupported.bin`.
+- **准备：** 两个组织、项目角色和停用账号；本地认证数据，或明确选择 OIDC 目标变体。
+- **步骤：** 打开允许和禁止路由，直接调用禁止的 API，替换为其他组织资源 ID；停用用户或修改数据库角色后重试。OIDC 使用身份门禁覆盖错误签发者、受众、过期和签名。
+- **预期：** 服务端拒绝且不泄漏范围内数据；后续请求反映数据库角色和激活状态；令牌声明本身不授予管理权。记录各端点约定的 401、403 或资源隐藏行为。
+- **清理：** 只恢复测试角色和激活状态，本地 HMAC 或开发身份不能证明部署的 OIDC。
 
-The smoke proves the supported upload reaches `Complete`, the conclusion/evidence mention thermal foldback, raw line 3 or 4 highlights from the evidence card, helpful feedback audits, admin archive hides the log from default `/logs`, and unsupported upload creates a readable `Failed` record.
+### TDES-AUTH-02 — 账号删除与历史保留（P0）
 
-Current M3 acceptance command:
+- **准备：** 真实 PostgreSQL 删除数据，包含账号所属状态、保留历史及非自身目标；记录行数与可空引用。
+- **步骤：** 拒绝非管理员、自删和无权删除平台管理员的操作；管理员删除合法目标，检查响应与界面，并查询全部外键类别。
+- **预期：** 成功 API 返回 `204`；账号所属行级联删除，历史保留并清空身份引用；可信溯源契约要求的 Agent 关联保留；删除审计不包含多余个人信息。失败尝试不改状态。
+- **清理：** 拆除所属数据库，不以重建真实已删除账号作为测试清理。
 
-```bash
-DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff DEBUG_DEVICE_GATEWAY_MODE=simulator OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m3-5
-```
+### TDES-AGENT-01 — 审批必需且执行前重验（P0）
 
-`npm run test:m3-5` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/debugging.api.spec.ts`. The M3 Playwright smoke runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m3` in `beforeAll`, then uses the built-in simulator fixture exposed as `Aurora Simulator 1`.
+- **准备：** 确定性小泽数据，包含读工具、需审批的变更和持久化前状态。
+- **步骤：** 执行授权范围内读取；请求变更并拒绝，检查业务未变；创建新审批，在批准前改变范围、参数或用户权限，再经真实端点批准或重放。
+- **预期：** 审批前不写业务；拒绝、过期或越权审批不能写；修改参数需重验，重放不能重复副作用；审计保留 Agent 溯源和关联，不改标成人类。
+- **清理：** 结束或取消所属待审批记录，清理测试会话及业务数据，不产生在线模型结论。
 
-The smoke proves the simulator target is detected, fast charge current reads `3000`, writing `3100` succeeds with readback, `Cycle count` is not writable from the UI, `Readback mismatch probe` reports mismatch text, rollback returns fast charge current to `3000`, and debugging write/rollback audit events exist. If `/debugging` has no enabled rollback card for an API write snapshot, the test records that UI-state gap and verifies rollback through the backend API rather than faking the UI path.
+### TDES-AGENT-02 — 持久中断与隔离恢复（P0）
 
-当前 Xiaoze acceptance 命令：
+- **准备：** 专用 PostgreSQL 检查点数据库，唯一组织、用户和会话身份。
+- **步骤：** 执行链接的持久检查点集成用例：中断规划 Agent，建立新的存储及 Agent 实例，在同命名空间恢复；另用不同用户、组织或撤销后的权限测试端点鉴权。
+- **预期：** 已提交中断可跨实例读取；恢复仍服从端点当前授权。该检查点测试使用假的审批解析器，只证明持久化与恢复机制，必须结合 TDES-AGENT-01 才能讨论完整生产审批链。
+- **清理：** 关闭存储连接池，只清理所属检查点数据库；缺少数据库配置记为跳过或阻塞。
 
-```bash
-DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store XIAOZE_DETERMINISTIC=true npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
-npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
-```
+### TDES-KB-01 — 发布、范围与检索降级（P1）
 
-离线验收不需要 live provider；live 目标环境验证必须显式配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`。
+- **准备：** 专属草稿、已发布、已归档条目及第二组织；索引数据和嵌入不可用变体。
+- **步骤：** 创建、修订、发布，搜索并打开引用，归档后重试；尝试跨组织访问，使用现有框架验证纯文本回退和索引重试。
+- **预期：** 检索仅暴露授权的已发布版本及有效引用；草稿和归档内容不经搜索泄漏；回退明确，不制造语义结果。
+- **清理：** 使用知识库数据清理器处理所属版本、分块、链接和对象键。
 
-Xiaoze 测试覆盖 AG-UI endpoint、read-only `perception.*` tools、mutating action approval/resume、LangGraph planning/checkpoint，以及 orchestrator approval 边界。负面测试应覆盖 `APPROVAL_REQUIRED`、`INVALID_APPROVAL_STATE`、`FORBIDDEN`、`VALIDATION_FAILED`、错误 session approval、inactive user、missing permissions 和 tool execution failures。
+### TDES-FEEDBACK-01 — 提交与管理员处理（P1）
 
-### 日志分析两层评测
+- **准备：** 普通成员及管理员会话、唯一反馈标记和允许的图片。
+- **步骤：** 从侧边栏提交带附件反馈、刷新，以管理员处理并关闭，再用普通成员强制调用管理 API。
+- **预期：** 内容及附件关联持久化，状态变化可追踪，非管理员在 UI/API 均不能处理反馈。
+- **清理：** 只清理测试所属反馈、备注和附件对象。
 
-日志分析在常规测试之外带一套两层 AI 评测：
+### TDES-NOTIF-01 — 收件箱范围与已读持久化（P1）
 
-- **行为层评测**（`npm run logs:eval`，CI 门禁，零 API 成本）：确定性脚本化模型驱动真实内核——P1 单发分析器加 P2 有界 agent 循环（经 `scriptedModel.ts` 脚本化「工具调用序列+最终结论」）。场景钉住接地、诚实降级标注、工具调用合法性（非法名/参数被拒且纠正）、步数/预算收敛（置信度封顶）、证据不足时诚实拒答。meta 自检证明 harness 能判负已知坏行为（幻觉引用、静默降级、过度自信的提前收敛、静默接受非法工具）。报告：`docs/generated/log-analysis-eval.{json,md}`。
-- **效果层评测**（`npm run logs:eval:quality`，提示词/模型变更与发布前运行）：对金标准案例集（`eval-cases/logs/`，loader 校验的 `log.txt` + `case.yaml`）跑当前内核。确定性指标（证据行重叠命中/漏引/多引、幻觉率、拒答恰当率）在进程内计算；根因正确性走 rubric judge 接缝——真模型模式用 `LOG_ANALYSIS_JUDGE_*` LLM-as-judge，离线用确定性可脚本化桩。只有 `realLog: true` 案例计入基线门禁（`eval-cases/logs/baseline.json`，容差在报告中声明）；合成案例只记录格式覆盖。报告：`docs/generated/log-analysis-quality.{json,md}`。
+- **准备：** 两名用户的专属通知及初始未读数。
+- **步骤：** 打开面板、进入允许的深链接、标记已读或全部已读并刷新，尝试经 API 访问另一用户通知。
+- **预期：** 仅暴露授权收件箱，未读数和已读状态持久化，目标页面重新执行自身授权。链接的浏览器测试只是起点，缺少的跨用户断言需在服务/API 层确认。
+- **清理：** 删除所属通知数据，不恢复或修改无关用户已读状态。
 
-提示词变更需递增 `LOG_ANALYSIS_PROMPT_VERSION` / `LOG_ANALYSIS_LOOP_PROMPT_VERSION` 并保持 `logs:eval` 常绿；金标准集标注与脱敏规则见 `eval-cases/logs/README.zh-CN.md`。
+### TDES-UI-01 — 核心导航与各状态可用性（P1）
 
-## 6. 契约测试
+- **准备：** API 角色，以及受影响页面的加载、错误、空态和有数据状态。
+- **步骤：** 在 `1440x900`、`768x1024`、`390x844` 下导航、刷新与深链接、搜索筛选、开关弹窗、键盘聚焦、提交及错误恢复；收集快照和截图，检查控制台与网络。
+- **预期：** 无意外横向溢出、操作遮挡、文字不可读或输入丢失；加载、禁止访问、错误及空态可以区分，仅允许预期负向 API 响应。
+- **清理：** 重置测试拦截和浏览器会话。详细标准复用 UI 清单及质量门禁。
 
-每次 API 合同变更必须：
+### TDES-OPS-01 — 就绪、恢复与发布证据（P0）
 
-- 更新 OpenAPI schema。
-- 更新前端 DTO 映射。
-- 运行 schema 兼容检查。
-- 检查错误码、分页结构和字段命名一致性。
+- **准备：** 选择本地故障注入框架，或已授权的隔离目标演练；记录源码及部署版本、恢复点与资源归属。
+- **步骤：** 注入必要依赖故障，对比存活与就绪结果，再恢复依赖；升级、备份、恢复、回滚按既有手册在选定环境执行，核对数据库与对象一致性。
+- **预期：** 存活不能掩盖依赖和就绪失败；失败升级或恢复不标成功；候选或恢复状态满足手册不变量；目标容量使用声明的工作负载、指标及现有阈值。
+- **清理：** 遵循阶段恢复及资源归属规则。本地脚本不能关闭目标 OIDC、Redis、存储、硬件、模型或发布门禁。
 
-前后端类型不应通过手写重复定义长期分叉。M1 后建议把合同放入共享 `contracts` 包或使用 OpenAPI 生成客户端类型。
+## 边界与非功能覆盖
 
-## 7. 性能与可靠性测试
+值、文件和 API 变化按合法、空、畸形、缺失、重复、超大输入划分，范围和形状边界取自权威 schema。列表覆盖零、一、多页、分页前筛选、不透明 ID、过期游标或版本及跨范围数据。写入覆盖重复请求、幂等指纹变化、并发状态变化及提交前后失败。
 
-关键指标：
+容量标准来自[可靠性目标](../RELIABILITY.md)和目标容量门禁，记录数据规模、并发、持续时间、延迟分位数与错误；不能把本地计时说成已测 SLA。无障碍、视觉和响应式补充业务断言；设备超时、离线、不支持观测及模型预算失败都须保留可处理的结果。
 
-- 参数列表 1000 条内 P95 小于 800ms。
-- 日志上传 100MB 以内有进度反馈。
-- 日志分析任务失败可重试且不重复创建结果。
-- 设备写入超时有明确错误。
-- Agent 工具调用失败不破坏会话。
+## 执行选择与结果判定
 
-测试方式：
+精确命令以验证矩阵为准。实现阶段按上表选择聚焦测试，到对应集成阶段再扩大验证。纯文档修改执行 `npm run docs:check` 和 `git diff --check`。本次文档交付不跑产品测试、不修改测试数据、不生成验收证据。
 
-- API 压测覆盖列表、搜索和审计查询。
-- worker 压测覆盖日志任务并发。
-- 设备网关模拟超时、断连、stderr 和回读不一致。
-## 8. M5.12 CI And Synthetic Evidence
+接受一轮测试结果前：
 
-M5.12 在确定性浏览器门禁之上增加 CI 与目标合成证据归档。合入门槛是 **L1**，不是全量本机非 HDC：
+- 必须收集并执行要求的用例；必需测试被跳过或收集为零，会阻断对应通过声明。
+- 分别报告通过、失败、跳过、阻塞和未运行，说明选定测试实际覆盖了哪些设计断言。
+- 保存 SHA、运行身份、命令、角色、路由、环境、断言、预期与实际、脱敏 API/数据库/审计摘要和产物路径。
+- 聚焦与全量运行分开，部分证据不能覆盖 `latest-full.json`；全量本地验收及资源、产物安全由 Gate0 管理。
+- 缺陷记录包含复现、预期与实际、设计及操作 ID、严重程度、环境和证据；修复后复验受影响检查，不把历史通过改称新证据。
+- 自动化存在但无新结果，本次仍记为未运行。硬件、在线模型质量、专家日志标注、目标 OIDC、恢复、容量及未自动化断言均明确列为验证依赖，不能据此断言缺少实现。
 
-- 每个 PR 都会启动 `ci.yml`（只用 job 级 `if:` 跳过）。`detect` 分类 diff，并总是跑 `docs:check`。
-- 产品 / workflow PR 跑 `build-and-test` 和 `@ci-smoke`（`npm run acceptance:smoke`）。UI 或产品路径再跑一次 `acceptance:quality-run`。
-- 文档-only PR 只跑 `detect` + `docs:check` + 哨兵 `Merge bar`。
-- L2 事件把 `acceptance-quality`（一次 `acceptance:quality-run`）和 `acceptance-local-non-hdc` 拆成兄弟 job，跑在 `push` 到 `main`、夜间定时、标签 `full-acceptance`、以及 `workflow_dispatch` 的 `local-non-hdc`。本机浏览器 job 先跑 `npm run acceptance:models`，再跑权威入口 `npm run acceptance:gate0`。Gate0 在 provision 前校验钉扎 DTS 工具链，独占一个全新 PostgreSQL 数据库、run-scoped 对象根、精确 loopback API/frontend 进程，并把同一份不含秘密的 descriptor 交给 visual 与 full browser。每个 Gate0 phase 与 nested runtime 只接收 OS 启动所需 allowlist 加本轮精确 owned 变量；宿主任意设置、凭据 helper、CI 身份 token 与通用 secret key 都不继承。Playwright config 与原先直接加载 dotenv 的 27 个 acceptance spec 共用一个 loader：descriptor 必须先校验；不带 descriptor 的 nested worker 使用显式 owned flag；两种 owned 路径都不读取工作树 `.env`，而直接/人工 runner 仍显式加载所选 env file。60 分钟硬 owner 时限覆盖 provision 和 finalize，operation deadline 会把最后 5 分钟从 prerequisite、provision 和 phase 中统一预留给收尾。CI 为每个 Gate0 前置步骤以及 Gate0 后的每个步骤（包括条件式/always-run 收尾）设置独立 timeout，并把全部 Gate0 后 timeout 计入下限；150 分钟平台总预算必须严格大于当前可证明的 146 分钟下限（平台 5 + 前置 71 + owner 60 + 扫描 5 + 上传 5）。Playwright output/report、snapshot、preflight 与生成证据都写入 runRoot；operation evidence 指向 owned runRoot 下真实 report/output，并哈希不可变 runtime snapshot，而不是仍会记录 phase/cleanup 状态的 descriptor。Playwright 非预期结果只停止嵌套 child 进程，DB/object 取证证据留在原子清单中；瞬时停止失败保持 parent 可重试。失败保留精确取证资源，只有成功才删除独占数据库与对象根。root 与 nested 本轮生成凭据通过带 token 认证的 loopback registry 注册；registry 在返回或回复 HTTP 204 前先原子发布加密 exact values，不写 nested manifest。CI 上传前 Gate0 先封存 registry，再由递归脱敏与扫描读取持久化集合（包括 ZIP trace 内条目），所以 owner 死亡后的新 CI 进程仍有同一 fail-closed 上下文，且不会返回含秘密的名称或值。旧的 `npm run acceptance:browser -- --mode local-non-hdc` 仍是直接/人工 runner，不是权威 owned-runtime L2 门禁。
+## 专项与历史参考
 
-Gate0 会在 provision 之前启动 root 精确 secret registry，并在返回或回复 HTTP 204 前，把生成的数据库 URL、HMAC、bearer 与每次 nested 注册以 AES-256-GCM 密文原子持久化。0600 key 放在上传根之外，因此 ACK 后即使 owner 遭 `SIGKILL`，新 CI 进程仍能按 exact opaque secret 脱敏并 fail-closed 二扫；0 violation 后才删除密文与 key。root 和 nested API/frontend 清理都使用 manifest 中同一份 OS process-start identity，TERM/KILL 每次发信号前即时重读并比对。nested object-store 在首次 mkdir 前原子登记精确 provisioning intent，创建窗口崩溃后 parent finalizer 仍能枚举。nested lock recovery 另有 PID/token/process-identity/age claim：live recovery owner 不会被偷取，dead/expired recovery 与 reclaimer 崩溃残留 link 可精确回收。nested disposable 启动失败一律记为 `failed-retained`；未验证归属的同名数据库绝不 drop。CI 预算解析不依赖 YAML step 的首键，所有 Gate0 后条件式/finalizer timeout 都会进入预算下限。
+样式契约通过 [cssAssertions.ts](../../../src/test/cssAssertions.ts) 结构化查询，不匹配 CSS 文本格式；渲染行为由组件和浏览器门禁负责。
 
-手动 `workflow_dispatch` 可选择 `target-non-hdc` 或 `full-pilot`。这些运行使用 `--no-start-runtime`、目标前端/API URL、GitHub Secrets，并上传 Playwright/证据产物。`full-pilot` 永远不是默认 PR 门，且只在具备外部 HDC、backup/restore、rollback、object-store、worker 和 live Agent 证据时有效。smoke 走 focused 证据命名空间，不得发布 `latest-full.json`。
+日志评测分确定性行为层（`npm run logs:eval`）和质量层（`npm run logs:eval:quality`）；后者基线仅统计符合条件的 `realLog: true` 标注样本，合成样本展示格式和框架行为。提示词或模型变更遵循[语料规则](../../../eval-cases/logs/README.md)。
 
-## 9. M5 Release Operations
+账号删除必须保留[账号删除计划](../exec-plans/active/2026-08-28-user-account-deletion.md)定义的可信溯源；迁移约束及禁止身份重建的精确谓词由 PostgreSQL 测试负责。
 
-M5 adds the release smoke and pilot gate on top of the existing API-mode checks:
-
-```bash
-npm run smoke:m5
-npm run test:m5
-```
-
-`npm run smoke:m5` checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API base URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs. `npm run test:m5` is the intended end-to-end pilot baseline, but it still depends on PostgreSQL and any external backup, device-lab, or staging evidence that is not fully simulated in-repo.
-
-## 9.1 M6.1 Self-Hosted Runtime Gates
-
-M6.1 adds deployment-shape tests rather than product workflow tests:
-
-```bash
-npm run test:scripts -- ops/self-hosted/scripts/check-self-hosted-config.test.ts ops/self-hosted/scripts/run-self-hosted-smoke.test.ts
-npm run selfhost:check
-npm run selfhost:smoke -- --base-url <target-url>
-```
-
-`selfhost:check` validates the compose services, self-hosted env template, Caddy routing, and package script wiring. `selfhost:smoke` probes a running self-hosted target and writes redacted evidence. It can accept `--allow-only-blocked=deviceGateway` only for non-HDC staging.
-
-## 9.2 M6.2 Identity And User Governance Gates
-
-M6.2 adds OIDC verifier, frontend token-provider, user-governance API, and user-permission browser evidence gates:
-
-```bash
-npm run test:server -- server/modules/auth/oidcVerifier.test.ts server/modules/users/service.test.ts server/modules/users/routes.test.ts server/config/env.test.ts server/modules/contracts/openapi.test.ts
-npm test -- src/infrastructure/auth/oidcAuthProvider.test.ts src/infrastructure/http/userGovernanceClient.test.ts src/UserPermissionsPage.test.tsx src/App.test.tsx
-npm run acceptance:browser
-npm run acceptance:evidence
-```
-
-Local non-HDC evidence can use the deterministic HMAC smoke token. Target self-hosted identity evidence must use real OIDC access tokens and must include discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and redacted user-governance mutation evidence before TD-020 closes.
-
-## 9.3 M6.3 Backup And Restore Gates
-
-M6.3 adds reliability evidence gates for self-hosted PostgreSQL and S3-compatible object storage:
-
-```bash
-npm run restore:drill
-npm run backup:drill
-npm run backup:check
-```
-
-`restore:drill` checks restore target safety before any restore command runs. `backup:drill` writes redacted JSON/Markdown evidence for provider, environment, database backup/restore, object-store backup/restore, checksum validation, sampled log references, command exit statuses, and queue status. `backup:check` validates the generated evidence shape, redaction status, failed command exit codes, unsafe restore targets, missing object references, and conditional Redis status.
-
-Local evidence proves the scripts and safety gates. Target readiness requires the same gates after a real isolated restore in a non-customer or pilot target environment.
-
-## 9.4 M6.5 Observability Gates
-
-M6.5 adds local observability configuration and runtime checks:
-
-```bash
-npm run test:scripts -- scripts/check-observability-config.test.ts
-npm run test:server -- server/observability server/app.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts
-npm run observability:check
-```
-
-`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, log-analysis terminal job duration/failure-reason counters, Xiaoze LLM readiness gauges, device gateway operation counters, structured log redaction, correlation metadata, tracing export failure isolation, HTTP route-template spans, Agent approval/tool metrics, and debugging gateway detect/read/write/rollback spans. Target Prometheus scrape, trace collector export, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
-
-## 9.5 M6.6 Release, Rollback, And Capacity Gates
-
-M6.6 adds release-operation tests and evidence writers rather than new product workflow tests:
-
-```bash
-npm run test:scripts -- scripts/run-self-hosted-release-gate.test.ts scripts/run-capacity-gate.test.ts
-npm run identity:check
-npm run rollback:rehearsal
-npm run capacity:gate -- --target-url <target-url>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
-```
-
-`capacity:gate` verifies target URL handling, threshold evaluation, auth-token redaction, k6 command construction, and evidence output. Without observed target metrics, it must stay failed or pending. After a real target run, operators can pass observed p95 latency, error rate, throughput, CPU, memory, database connections, queue backlog, and object-store probe status as CLI inputs.
-
-`rollback:rehearsal` records stop-writes, queue drain, artifact rollback, optional database/object-store restore, and post-rollback smoke status in `docs/generated/m6-rollback-rehearsal-evidence.md`. It proves evidence shape locally; it proves rollback readiness only when the steps were executed on a non-customer self-hosted target and linked from the release record.
-
-`selfhost:release-gate` verifies release metadata, command-gate wiring, identity/backup/rollback/capacity/synthetic/queue/observability evidence paths, dependency statuses, and explicit HDC scope. It can verify local script configuration, but release readiness requires target OIDC evidence from `npm run identity:check` plus target evidence from backup/restore, rollback rehearsal, queue drain/pause/resume, observability snapshots, capacity, and target synthetic acceptance. Local HMAC smoke or static bearer injection must not be treated as M6.2 identity readiness. Rollback, capacity, target synthetic, queue, and observability dependencies cannot be marked `passed` without the matching evidence path in the release record.
+下列拓扑轮次保留历史测试理由和数据计数，不代表当前发布状态，也不是切换共享数据库的指令。实现背景见已完成的[第四轮](../exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md)、[第五轮](../exec-plans/completed/2026-07-16-parameter-topology-round5-review-blockers.md)和[第六轮](../exec-plans/completed/2026-07-16-parameter-topology-round6-review-blockers.md)计划；当前执行选择以上述验证矩阵为准。
 
 ## 参数拓扑（第四轮）
 
@@ -367,7 +312,3 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | test:all 稳定性 | App API runtime 隔离、dashboard fixture 唯一命名空间、每个事务 PG client 的 FIFO 查询 | 默认 `npm run test:all` 无需临时 worker 覆盖或全局提高 timeout |
 
 不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。拓扑 spec 自主管理 `wiseeff_acceptance_disposable_*` 数据库，并在破坏性清理前校验 test marker。独立的干净快照演练完成前，TD-042 仍保持开放。
-
-## 10. Documentation Governance
-
-Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.
