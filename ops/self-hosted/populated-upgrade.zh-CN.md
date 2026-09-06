@@ -4,7 +4,7 @@
 
 ## 当前可执行边界
 
-候选修复了“诊断成功被当作发布通过”，并提供只读检查工具；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；开发 base 为 `1c9fa56e3eaca6e7984f35a097876772a6e4025d`。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
+候选提供保护性拦截、有界canonical转换和恢复adapter；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；当前集成base为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，早期base和执行保留在证据记录中。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
 
 | 入口 | 实际做到哪里 |
 | --- | --- |
@@ -26,6 +26,28 @@ npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
 ```
 
 预期：非零用例收集、退出 0。setup失败或skip不能算真实边界通过。源回归用原版126份迁移建 schema，应用候选11份后缀；少量合成值／历史是有界 oracle，不是全量消费方语义，也不是用户真实数据副本。
+
+### 可重复的 Binding 组件测试
+
+机器／用户／目录：独立Docker Desktop开发机、开发者、固定候选checkout。
+前置：锁定依赖、Git中的源对象、受信本地 `pgvector/pgvector:pg16` 镜像。
+先独立核对宿主与daemon，再从已核验身份记录设置 `UPG_EXPECTED_DAEMON_ID`；
+不能自动把当前响应的daemon当作批准目标。入口不接收部署URL或备份。
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?必须设置已核验的开发daemon身份}"
+env -i PATH="$PATH" HOME="$HOME" node --import tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite bindings
+```
+
+命令创建新的owned PostgreSQL、私有凭据、网络和receipt，并清理这些精确资源；
+不停止应用。预期：非零收集、exit 0、`scope=isolated-components-only`、
+`cleanupVerified=true`、`releaseApproved=false`。setup、测试、身份或清理失败
+均非零停止；保留输出，不重置部署journal或删除无关资源。套件从旧schema构造
+合成Binding，经真实P8/P9模块转换；早期P0/P7仍是有界夹具准备，不是完整
+controller／报告链。pgvector镜像不证明生产 `postgres:16-alpine` 兼容。
+这条命令不是M2完整升级入口。
 
 ## 固定新入口准备：保留旧部署身份
 
@@ -86,8 +108,11 @@ node --import tsx scripts/inspect-populated-upgrade-source.ts --candidate-sha "$
 npx vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/catalog-compose.test.ts
 ```
 
-预期一项通过：API/worker/web/proxy 不含管理秘密，worker 不含治理凭据，
-缺少 API 私有配置时拒绝，管理服务仅属于显式 profile。失败即停止集成。
+预期两项通过：API/worker/web/proxy 不含管理秘密，worker 不含治理凭据，
+缺少 API 私有配置时拒绝，管理服务仅属于显式 profile。数据卷／网络为明确命名的
+external 资源，候选镜像不允许隐式 build／pull；名称本身仍不证明真实目标身份。失败即停止集成。
+API／worker的NODE_ENV固定为production，私有env中的development／test不能覆盖；
+handoff还拒绝冲突值、空值和带引号值，未设置时使用Compose固定值。
 Compose 必须支持 `!override`、`!reset`；版本不支持时失败，不能退回合并旧共享秘密文件。
 构建元数据使用 `WISEEFF_SOURCE_SHA`、`WISEEFF_SOURCE_TREE`；handoff 还需对照
 固定 Git 对象和真实 image ID，标签本身不是可复现构建证明。
@@ -97,15 +122,26 @@ operation lock 内打开既有 controller journal。真实 Compose 回归的应�
 明确的身份 fixture，仅证明首次接管；停服或替换应用后的阶段化 resume、真实旧应用
 artifact 和完整报告链仍需集成。当前仍没有可执行的生产交接命令。
 
+管理迁移CLI现在仅解析DATABASE_URL和XIAOZE_CHECKPOINTER，不要求运行期认证、
+provider或对象存储秘密。checkpoint模式仍默认memory；隔离管理阶段需要准备
+checkpoint时必须显式postgres。父已在专属新PG数据库用仅这些输入及production模式
+执行实际CLI：137项迁移、4张checkpoint表，exit 0。这仅证明管理阶段，不是populated
+转换，也不授权部署迁移。获批根工作流尚未接通，不得单独以生产URL调用它。
+
 开发机合成三存储恢复有真实入口。机器／用户／目录同开发测试；前置为 `scripts/rehearse-upgrade-recovery.ts` 列出的本地镜像和本地隔离 Docker endpoint，缺镜像会在创建容器前失败。仅接受合成模式，自建独立 PostgreSQL／Redis／MinIO 源与目标，写入临时数据，不接受外部 URL 或备份：
 
 ```bash
 node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 ```
 
-预期退出0，证据明确 `synthetic sentinel only`；分别记录备份存在／checksum／恢复执行／合成行为验证。检查 PostgreSQL owner/ACL 与受限登录、对象字节／metadata／数量、Redis RDB恢复键。`cleanupVerified=true` 只表示自建资源清理；临时备份不保留（`backupRetained=false`）。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。失败时保留脱敏阶段，不推导生产恢复命令。这不是全量旧业务或生产停写边界证明。
+预期退出0，证据明确 `synthetic package only`；分别记录备份存在／checksum／恢复执行／合成行为验证。导出后停止源三存储，独立子进程仅消费包与私有目标输入，核对 `sourceStoppedBeforeRestore=true`、`separateRestoreProcess=true`。检查 PostgreSQL owner/ACL 与受限登录、两个不同对象及来自备份的 metadata、Redis AOF（`redisPersistence="AOF"`）。队列形状的 Redis 键仍不是实际 Bull worker 业务验收。`cleanupVerified=true` 只表示自建资源清理；临时备份不保留（`backupRetained=false`）。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。adapter 已支持有界接收校验并拒绝目标旧 AOF；256 MiB 内存限制、未加密私有包不构成生产加密／密钥管理方案。失败时保留脱敏阶段，不推导生产恢复命令。
 
-真实数据副本：**blocked，尚无受控可恢复备份和完整接收／恢复 adapter**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
+真实数据副本：**blocked，尚无受控可恢复备份，生产加密、角色策略及完整业务恢复仍需集成**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
+
+包v2显式保存角色INHERIT及PG16成员关系每条边的INHERIT／SET选项，拒绝未知字段、
+高权限属性、ADMIN、外部角色边和秘密字段。v1包不得隐式升级，需从获授权源重新导出。
+`roleCapabilitiesVerified=true`仅覆盖声明的合成profile：继承读、显式SET ROLE、
+写入／提权拒绝，不证明全部应用或数据库全局权限已恢复。
 
 ## 最终生产维护与确认点
 

@@ -4,7 +4,7 @@
 
 ## Current execution contract
 
-This candidate closes the unbound diagnostic-as-gate failure and provides inspectors. It does **not** complete a populated release. No production maintenance command is available yet. The source baseline is `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is `1c9fa56e3eaca6e7984f35a097876772a6e4025d`. Supplied deployment counts/image identity are historical, not fresh inventory or backup proof. Do not copy private deployment paths, values or backups into repository evidence.
+This candidate provides protective interception, bounded canonical conversion and recovery adapters. It does **not** complete a populated release. No production maintenance command is available yet. The source baseline is `82344044b436a8dafecefbb85dfd724cecb05e3f`; current integration base is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. Earlier bases and executions remain in the evidence record. Supplied deployment counts/image identity are historical, not fresh inventory or backup proof. Do not copy private deployment paths, values or backups into repository evidence.
 
 | Entry | Actual boundary |
 | --- | --- |
@@ -26,6 +26,33 @@ npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
 ```
 
 Each test command must exit 0 with nonzero collection; setup failure or skip does not satisfy its real boundary. The source regression creates the old schema from 126 original migrations and applies the 11-file candidate suffix; its few synthetic values/history rows are a narrow oracle, not full consumer-family semantics or the real data copy.
+
+### Reproducible Binding component tests
+
+Machine/user/directory: isolated Docker Desktop development host, developer,
+fixed candidate checkout. Prerequisites: locked dependencies, source Git object,
+trusted local `pgvector/pgvector:pg16` image. Independently verify the host/daemon
+and set `UPG_EXPECTED_DAEMON_ID` from its approved identity record; do not derive
+approval automatically from whichever daemon answers. No deployment URL or backup
+is accepted.
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?approved development daemon identity required}"
+env -i PATH="$PATH" HOME="$HOME" node --import tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite bindings
+```
+
+The command creates a fresh owned PostgreSQL cluster, private credential, network
+and receipt, and cleans up those exact resources. It does not stop an application.
+Expected: nonzero collection, exit 0, `scope=isolated-components-only`,
+`cleanupVerified=true`, `releaseApproved=false`. Any setup/test/identity/cleanup
+failure stops with nonzero status; retain the output and do not reset deployment
+journals or remove unrelated resources. The suite reconstructs old schema and
+converts synthetic Bindings through real P8/P9 modules. Its early P0/P7 preparation
+is a bounded fixture, not the full controller/report chain. The pgvector image
+does not prove production `postgres:16-alpine` compatibility. This is not the M2
+upgrade entry.
 
 ## Fixed-entry preparation without changing the deployment
 
@@ -87,9 +114,14 @@ and does not start or stop containers:
 npx vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/catalog-compose.test.ts
 ```
 
-Expected: one passing test; management secrets absent from API/worker/web/proxy,
+Expected: two passing tests; management secrets absent from API/worker/web/proxy,
 governance credentials absent from worker, missing API file rejected, management
-service isolated in its explicit profile. Failure stops integration. Compose must
+service isolated in its explicit profile. API/worker `NODE_ENV` is fixed to
+production even if a private env file requests development or test. Handoff
+additionally rejects conflicting, empty or quoted values; omission uses the fixed
+Compose value. Data volumes and network are explicitly
+named external resources; candidate images cannot be implicitly built or pulled.
+Their names alone still do not establish target identity. Failure stops integration. Compose must
 support `!override` and `!reset`; unsupported versions fail rather than merge the
 old shared secret file. Build metadata uses `WISEEFF_SOURCE_SHA` and
 `WISEEFF_SOURCE_TREE`; handoff separately verifies these labels against fixed Git
@@ -102,17 +134,33 @@ images. It proves initial takeover only: phase-aware resume after stopping or
 replacing applications, actual old application artifacts and complete report
 lineage still require integration. There is no production handoff command yet.
 
-A bounded developer-only synthetic three-store restore creates its own PostgreSQL, Redis and MinIO source/target containers, retains PostgreSQL owner/ACL, verifies a restricted login, object bytes/metadata/count and a restored Redis RDB key. It accepts no external URL or backup. Prerequisites are the local images listed in `scripts/rehearse-upgrade-recovery.ts`; missing images fail before container creation. From the reviewed development clone:
+The management migration CLI now reads only `DATABASE_URL` and
+`XIAOZE_CHECKPOINTER`; it does not require runtime auth/provider/storage secrets.
+Checkpoint mode defaults to `memory` as before. The isolated management stage must
+explicitly select `postgres` when preparing checkpoint tables. A parent test ran
+the actual CLI with only these inputs and production mode on an owned fresh PG
+database: 137 migrations and four checkpoint tables, exit 0. This is management
+evidence, not populated conversion or permission to migrate a deployment. Do not
+invoke it on a production URL outside the missing approved root workflow.
+
+A bounded developer-only synthetic three-store restore creates its own PostgreSQL, Redis and MinIO source/target containers, retains PostgreSQL owner/ACL, verifies a restricted login, two different objects and their backup-derived metadata, and Redis AOF persistence. It exports a package, stops the source stores, then restores in a separate process consuming only the package and private target inputs. It accepts no external URL or production backup through this CLI. Prerequisites are the local images listed in `scripts/rehearse-upgrade-recovery.ts`, including the source MinIO version; missing images fail before container creation. From the reviewed development clone:
 
 ```bash
 node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 ```
 
-Expected: exit 0, `evidence="synthetic sentinel only"`, separate backup/checksum/restore/behavior flags, `cleanupVerified=true`, `fullBusinessVerification=false`, `releaseReady=false`. Temporary backups are removed (`backupRetained=false`). This verifies synthetic sentinel recovery only, not production write freeze, full business semantics or real-backup intake. Failure stops with a sanitized stage; do not invent a production recovery command.
+Expected: exit 0, `evidence="synthetic package only"`, separate backup/checksum/restore/behavior flags, `sourceStoppedBeforeRestore=true`, `separateRestoreProcess=true`, `redisPersistence="AOF"`, `cleanupVerified=true`, `fullBusinessVerification=false`, `releaseReady=false`. Temporary backups are removed (`backupRetained=false`). Queue-shaped Redis keys are not an actual Bull worker business test. The bounded package adapter supports validated intake and refuses existing target AOF, but its 256 MiB in-memory limit and unencrypted private package are not a production encryption/key-custody solution. Failure stops with a sanitized stage; do not invent a production recovery command.
+
+Package v2 records role INHERIT and each PostgreSQL 16 membership's INHERIT/SET
+options explicitly. Unknown flags, privileged attributes, ADMIN, external edges
+and secret fields are refused. Old v1 packages are not silently upgraded; re-export
+from an authorized source. `roleCapabilitiesVerified=true` covers the declared
+synthetic profile's inherited read, explicit SET ROLE and denied writes/escalation;
+it does not prove all application or database-global privileges were restored.
 
 Production backup/quiescence: **not executable under this candidate's contract**. First identify every writer, bind all storage identities, complete the owner/ACL strategy, private encryption/key custody, persistent Redis uses and same-boundary snapshot implementation. Existing `backup:drill`/`restore:drill` evidence helpers and `pg_restore --list` are not actual restore proof. Do not use old run `completed` or `recovery_point_verified` as new restore evidence.
 
-Authorized real-copy rehearsal: **blocked awaiting a controlled recoverable backup and real intake/restore adapters**. No production export is authorized by this document. Disable external email/webhook/device/model effects in an approved isolated environment. Record provider simulation separately from actual authentication/database/business behavior.
+Authorized real-copy rehearsal: **blocked awaiting a controlled recoverable backup and production-capable encryption, role policy and full business restore integration**. No production export is authorized by this document. Disable external email/webhook/device/model effects in an approved isolated environment. Record provider simulation separately from actual authentication/database/business behavior.
 
 Final maintenance: **not executable**. Before requesting a window the release owner must deliver and prove P2 freeze/drain, P3 same-boundary restore point, P4 independent management migration, frozen source/plan/Archive/mapping, P11a, approved P12, P13, new full V01-V17/D01-D09 attempt, approved runtime pin, verify-only API/worker/web startup, isolated acceptance, exact public-release report and distinct approvals, then P15 traffic. Missing stages cannot be supplied as SQL pasted into a terminal.
 

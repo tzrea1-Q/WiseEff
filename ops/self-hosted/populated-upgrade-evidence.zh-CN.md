@@ -42,8 +42,137 @@ runner／源锁性能决策，不再计划同样的反复重跑。5项跳过不�
 本轮专用 PG 为新建且核验归属的 Docker Desktop 集群，镜像
 `pgvector/pgvector:pg16`，数据库 `wiseeff_lane_734`，随机私有凭据并固定实际
 容器身份；未使用共享 Compose 应用数据库。旧 schema 回归另建独立
-`postgres:16-alpine` 容器。未连接生产机。日志目前仍是本地材料，须发布并核验
-真实可访问渠道；本地 ZIP 路径不等于附件。
+`postgres:16-alpine` 容器。未连接生产机。M1全文包现已发布到
+[交付备份分支](https://github.com/tzrea1-Q/WiseEff/blob/codex/populated-upgrade-delivery-20260906/m1-full-files.zip)，
+含报告head `a9a8858ab713cfca5bc605d35e04fbfd602acaa6` 的全部33个修改文件、
+diff、manifest和选定日志。上传后重新下载验证，SHA256为
+`43d254419c11d1aa0cec79fadbd06ec4ac8cd549aaa4cbba53721515b78d010c`。
+这是源码／证据备份，不是发布镜像或PR批准。
+
+## M2 续工记录，2026-09-06
+
+最终代码候选为 `21f5aa4a8bdbb7208504396bce62796cf55875da`，tree为
+`abcaeb43726145608d0a80edd5b5cdc52724fbee`。后续报告提交只改六份既有双语
+计划／手册／证据文件。当前集成base为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
+本检查点GitHub查询没有候选PR或分支Actions run；没有CI checkout、merge-ref
+或merge SHA。M2全量scripts／server、API／浏览器及容量验收仍未运行。
+M1全量scripts失败单独保留在上表。
+
+父集成沿用相同开发base。下表保留实际执行时的代码身份；cherry-pick和后续报告提交
+不会把旧执行重新标成集成head执行。
+
+后续origin/main推进至`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，仅含纯文档
+PR #823。父以`7218a43dcd5402d52b5e57166b746d0c6409642f`追加合并；原base与
+先前测试身份不变。
+
+| 精确代码／边界 | 实际结果 |
+| --- | --- |
+| `fa7ee0bc6c7e94e26c9d34663b1f4cc9e8c277d2`，build | exit 0，保留原externalization／chunk警告 |
+| 同head，boundary CLI及原trusted base | exit 0，3509匹配；未允许／陈旧／增长／metadata差异均0 |
+| `6b817a48e41a2ae14355575f7a832e840531a018`，S6收据消费端＋Archive | 父执行19:06:43，2文件12通过、0失败／跳过，2.93秒；含5项真实隔离PG用例 |
+| `06ef19e2cab84cdfb375b00fe7fe28d286027db3`，handoff | 父执行19:07:42，4通过、0失败／跳过，30.99秒；此前3通过／1超时批次仍独立保留 |
+| `1173071bd` 加NODE_ENV反例，修复前 | 1通过／1失败，私有API env将实际NODE_ENV覆盖为development |
+| 同工作差异修复后，纳入`90f555b96` | 真实Compose config，2通过、0失败／跳过，不代表应用启动 |
+| `90f555b96`，交接拒绝冲突运行模式 | 父执行19:13:02，4通过、0失败／跳过，37.62秒 |
+| 未批准的独立runtime提案`cac99fba82ec4f6349afed4d27c7d642fd0064ff` | 技术评估8文件67通过、0失败／跳过，含11项真实PG；后续仅配置提交`56a838eaa`未重跑整批 |
+| `cd2598d13`，恢复包v2＋真实三存储 | 2文件28通过、0失败／跳过，71.70秒；原MinIO版本、AOF、独立恢复进程、角色继承和三项恢复故障 |
+| `7695ace6f`，管理CLI回归 | 14通过、0失败／跳过，749ms，含真实CLI输入拒绝 |
+| `9ce8db341`，专属新PG上的实际管理CLI | exit 0；137项迁移、4张checkpoint表，production模式且无运行期秘密 |
+| `7695ace6f` 加配置防护，提交`1fda481ea`前 | S6＋Archive 12通过、0失败／跳过；缺receipt的CLI在收集前exit 1 |
+| `9ce8db341`，测试目标URI反例 | 2通过、0失败／跳过；query host／port／sslkey及hash在Docker调用前拒绝 |
+| `9ce8db341`，boundary | exit 0，3509匹配，未允许／陈旧／增长／metadata差异均0 |
+| `7218a43dc`，窄类型修复并接入最新main后的build | exit 0，保留原chunk／externalization警告；之前类型错误已解决 |
+| `23e7540a7`，dump外权限恢复回归 | 2文件34通过、0失败／跳过，99.69秒；五项权限故障在自建fixture清理前验证源仍保留 |
+| `b5c67723c`，数据库级设置恢复拒绝 | 2文件35通过、0失败／跳过，117.42秒；拒绝后新连接仍受原设置约束 |
+| `42b906033` 加后提交为 `b5c67723c` 的runner修改 | 3文件25通过、0失败／跳过，828毫秒；CLI、receipt、migration和真实子进程终止，本批不使用Docker |
+| `e73d48419` 加组件runner | 6文件42通过、4失败、0跳过，8.78秒；四项producer用例因真实受限源表权限失败 |
+| `4c60f1bcc`，原build | exit 134，TypeScript的1 GiB heap耗尽 |
+| 固定 `7218a43dc` 与 `42b906033` 加runner，串行冷 `tsc -b --force` | 同为1 GiB上限：base exit 0、候选exit 134；分别检查Node项目均exit 0，内存报告938938K／941585K |
+| `ce9915f23`，分项目进程build | exit 0；保留原两个TypeScript项目和Vite、每进程原heap上限及已有Vite警告 |
+| `17647b243`，真实组件终端入口 | 6文件48通过、0失败／跳过，8.99秒；源pool分离后的真实producer与受限导入 |
+| `198054e1b`，加入未知源回滚 | 6文件49通过、0失败／跳过，8.70秒；注入响应丢失后销毁真实连接 |
+| `1635060c3`，journal准入反例 | 49通过、1测试超时、0跳过；测试持有单槽pool连接又请求另一连接 |
+| `21f5aa4a8`，journal准入使用独立受限登录会话 | 6文件50通过、0失败／跳过，8.53秒；缺journal、pending、unknown均在阶段动作前停止，未改timeout |
+| `21f5aa4a8`，最终代码build | exit 0，保留既有Vite警告 |
+| `21f5aa4a8`，最终CLI／门禁／Compose集 | 6文件63通过、0失败／跳过，3.05秒；包含真实旧gate／新CLI子进程 |
+| `21f5aa4a8`，boundary／contract／selfhost | 均exit 0；3509匹配，unallowlisted／stale／growth／mismatch均为0 |
+
+组件runner前三次因Docker Desktop未发布internal network端口而在收集前失败，
+保留为失败。现使用独立owned bridge、仅发布loopback并禁用IP masquerading。
+其中只运行PostgreSQL，不证明应用外联隔离。未知suite（包括继承的对象属性名）
+在Docker调用前拒绝；执行有15分钟上限、TERM/KILL升级和8 MiB原始输出上限。
+清理前核对精确资源归属。
+
+独立审查发现数据库级设置不在dump或角色清单中。`42b906033`在导出前拒绝
+这些设置和缺失统计字段，不RESET或猜测恢复方式。恢复仍限于声明的PostgreSQL 16、
+bootstrap `postgres` 合成形态，不能冒充完整业务或生产`wiseeff`角色恢复。
+另一次 `23e7540a7` 真实终端执行返回源已停止、AOF、仅消费包的恢复及清理证据，
+同时明确 `fullBusinessVerification=false`、`releaseReady=false`。
+
+`9ce8db341` 的Node typecheck发现管理parser返回的checkpoint模式类型被扩宽；
+`842010159`补充明确窄类型。先前真实CLI保留实际执行SHA，不隐藏这项类型失败，
+也不归给base。两次探索调用使用不存在的配置名／错误flag，均以usage／configuration
+错误停止，没有收集测试或访问数据库。
+
+S6测试使用真实旧schema，将共用Definition的两个项目转换为canonical Binding，
+保留4个值ID／时间及独立显式tip，并通过现有领域reader读取revision历史。
+加密源Archive保留JSON null与SQL null的区别；SQL-null项目值当前明确拒绝，
+不猜值。这是管理收据消费端的canonical转换，已超出“旧表保留”。但其P0/P8收据
+仍是合成管理fixture，不是完整producer或发布批准链。实际producer必须先固定P0源意图，
+后生成P7 mapping／Archive随机ID，再绑定P8收据，不能反向补写P0。
+
+后续producer已实现这段有界生成链：确定性的完整Binding意图、真实P7 head、
+加密Definition证据、实际自动registration、v2收据生成，再同事务执行S6导入／checkpoint。
+三个跨项目合成Binding共用两个Definition，保留六个值并独立断言tip／历史。
+源读取使用独立受控管理连接及21张表的真实SHARE锁；canonical写入仍用受限
+管理登录，冻结grants未变。这超出了保留public旧行，但早期P0/P7仍为夹具准备，
+不是完整根入口或verifier报告链。其他消费方、SQL-null值转换、HTTP／浏览器及
+运行身份下的完整业务仍未覆盖。
+
+独立审查发现的阶段倒写及未知提交准入已在消费端修复。controller journal的
+pending／unknown会拒绝普通execute，缺journal／boundary adapter在写前拒绝。
+具体root adapter和显式reconciliation仍缺失。源回滚响应丢失时销毁连接，不再归还pool。
+这些审查与反例不能证明一次P0–P16成功运行。
+
+handoff使用真实PG／MinIO／Redis身份，执行现有controller的inspect、宿主锁、私有文件
+descriptor和漂移拒绝；应用容器明确是身份测试桩。没有证明完整旧应用controller、
+候选启动成功或停服后的分阶段resume。
+
+运行身份提案位于[独立备份分支](https://github.com/tzrea1-Q/WiseEff/tree/codex/populated-upgrade-runtime-proposal)。
+它没有向governance writer授予宽泛Catalog／audit SELECT，但两项新增writer EXECUTE
+仍扩展0138冻结manifest，尚未批准。可执行集成候选中没有0140迁移。
+真实生产启动callback仍缺当前目标runtime pin状态producer；普通业务角色覆盖、
+隔离API／浏览器、容量仍未完成，开发责任保留在父任务。
+
+### 重建的旧源镜像
+
+父任务从干净旧源SHA `82344044b436a8dafecefbb85dfd724cecb05e3f`、tree
+`6dd92c36c4eb41bcaaba5a7a756befb9239d9120` 使用其原Dockerfile和既有build-network
+库完成TLS验证构建。实际本地Docker image ID为
+`sha256:65b300d1a8b80c06b9f7b37ccc21e45973d875492f2ae60f0128937cc934dea1`，
+平台`linux/arm64`。BuildKit image manifest为
+`sha256:40ef0227106e6ad85e2c0d286bdeb4dddb472b6e3ff66c6e746a6dc28db93c9c`，
+config digest为
+`sha256:2a0d17d6a8c2c7815d1ffe35ff94a4be03fcb2d8e4432c7bd3774f2d9a0fa12b`。
+lockfile SHA256为
+`43adbfe23117426588694bbd209eb96997d3a73287da475a2a2d4dfab29050ea`。
+构建exit 0；日志SHA256为
+`220821b090936a637118d9dbddf576c774827d74157c77ec8f3870fda5eca25e`。
+已保留本地重建镜像；它不是用户历史image ID、registry发布、最终候选镜像，
+也不是企业网络／CA验证。
+
+### 执行安全偏差
+
+三次本地调用违反了显式隔离路由要求。两名子任务漏传专用URL而调用server globalSetup，
+到达默认／共享开发数据库，在历史ledger缺失拒绝前执行了migration ledger bootstrap DDL；
+对应目标的逐文件migration循环未执行。更早的template setup已返回，复用／新建效果
+未完整观察，不能声称零写入。完整原始日志未保留，不编造checksum。另一次裸docs检查
+查询默认数据库扩展能力，因vector不可用跳过schema生成；该调用未执行迁移。
+未连接生产机。父已撤销子任务执行权限；后续DB／Docker／测试集中由父核验专属目标后执行。
+未对未经核验的默认目标再次连接、修复或清理。这些偏差不是通过证据，保留在记录中。
+
+M2根入口完整成功、完整业务恢复、真实备份副本、企业网络候选构建、Hosted checkout／jobs
+以及生产操作均仍为**未运行／未完成**。以上组件结果不授权生产命令或维护窗口。
 
 ## 上轮身份与状态（历史）
 

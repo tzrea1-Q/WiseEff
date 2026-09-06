@@ -52,8 +52,169 @@ The dedicated local PostgreSQL fixture used a newly owned Docker Desktop cluster
 `pgvector/pgvector:pg16`, database `wiseeff_lane_734`, private random credentials
 and explicit container identity. It was not the shared Compose application DB.
 The original-schema regression separately owns `postgres:16-alpine` containers.
-No production host was contacted. Logs remain local pending an explicitly
-published, verified delivery channel; a local archive path is not an attachment.
+No production host was contacted. The M1 full-file package is now available on
+the [delivery backup branch](https://github.com/tzrea1-Q/WiseEff/blob/codex/populated-upgrade-delivery-20260906/m1-full-files.zip).
+It contains all 33 changed files at report head
+`a9a8858ab713cfca5bc605d35e04fbfd602acaa6`, a diff, manifest and selected logs.
+The uploaded package was downloaded again and verified: SHA256
+`43d254419c11d1aa0cec79fadbd06ec4ac8cd549aaa4cbba53721515b78d010c`.
+This is a source/evidence backup, not a release artifact or PR approval.
+
+## M2 continuation, 2026-09-06
+
+Final code candidate: `21f5aa4a8bdbb7208504396bce62796cf55875da`, tree
+`abcaeb43726145608d0a80edd5b5cdc52724fbee`. The later report commit changes only
+the six existing bilingual plan/operator/evidence files. Current integration base
+is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. GitHub PR and Actions queries at
+this checkpoint returned no candidate PR and no branch run; there is no CI
+checkout, merge-ref or merge SHA. Full M2 scripts/server, API/browser and capacity
+acceptance remain not run. The M1 full-scripts failure is recorded separately above.
+
+Parent integration uses the same development base. The following executions keep
+their original code identities; cherry-picking or a later documentation commit
+does not turn them into tests run at the integration head.
+
+Later origin/main `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74` contains only
+documentation PR #823. Parent appended merge `7218a43dcd5402d52b5e57166b746d0c6409642f`;
+the original base and all earlier test identities remain unchanged.
+
+| Exact code / boundary | Actual result |
+| --- | --- |
+| `fa7ee0bc6c7e94e26c9d34663b1f4cc9e8c277d2`, build | exit 0, existing externalization/chunk warnings retained |
+| Same head, boundary CLI with unchanged trusted base | exit 0, 3509 matched; 0 unallowlisted/stale/growth/mismatch |
+| `6b817a48e41a2ae14355575f7a832e840531a018`, S6 receipt consumer + Archive | parent execution 19:06:43, 2 files, 12 passed, 0 failed/skipped, 2.93s; 5 real isolated PostgreSQL cases |
+| `06ef19e2cab84cdfb375b00fe7fe28d286027db3`, handoff | parent execution 19:07:42, 4 passed, 0 failed/skipped, 30.99s; earlier 3 passed/1 timeout batch is retained separately |
+| `1173071bd` plus NODE_ENV regression before fix | 1 passed/1 failed: private API env changed effective NODE_ENV to development |
+| Same working change after Compose fix, included in `90f555b96` | actual Compose config, 2 passed, 0 failed/skipped; no application startup asserted |
+| `90f555b96`, handoff rejects conflicting runtime mode | parent execution 19:13:02, 4 passed, 0 failed/skipped, 37.62s |
+| Separate unapproved runtime proposal `cac99fba82ec4f6349afed4d27c7d642fd0064ff` | technical evaluation 8 files, 67 passed, 0 failed/skipped, including 11 real PG cases; later config-only `56a838eaa` was not re-tested as a full batch |
+| `cd2598d13`, recovery package v2 + actual three-store recovery | 2 files, 28 passed, 0 failed/skipped, 71.70s; source MinIO version, AOF, separate restore process, explicit role inheritance and three restore faults |
+| `7695ace6f`, management CLI regressions | 14 passed, 0 failed/skipped, 749ms; includes real CLI input refusal |
+| `9ce8db341`, actual management CLI on fresh owned PG | exit 0; 137 migrations, four checkpoint tables, production mode without runtime secrets |
+| `7695ace6f` plus guarded configuration, before `1fda481ea` commit | S6 + Archive 12 passed, 0 failed/skipped; missing-receipt CLI exits 1 before collection |
+| `9ce8db341`, test target URI counterexamples | 2 passed, 0 failed/skipped; query host/port/sslkey and hash refused before Docker calls |
+| `9ce8db341`, boundary | exit 0, 3509 matched, 0 unallowlisted/stale/growth/mismatch |
+| `7218a43dc`, build after narrowed parser type and latest-main integration | exit 0, existing chunk/externalization warnings; resolves the earlier typecheck error |
+| `23e7540a7`, recovery non-dump capability regressions | 2 files, 34 passed, 0 failed/skipped, 99.69s; five capability faults preserve source before owned-fixture cleanup |
+| `b5c67723c`, database settings recovery refusal | 2 files, 35 passed, 0 failed/skipped, 117.42s; the refused source setting still applies on a new connection |
+| `42b906033` plus runner changes committed as `b5c67723c` | 3 files, 25 passed, 0 failed/skipped, 828ms; CLI/receipt/migration and real child termination; no Docker in this batch |
+| `e73d48419` plus component runner | 6 files, 42 passed, 4 failed, 0 skipped, 8.78s; four producer cases fail on real restricted source-table permissions |
+| `4c60f1bcc`, original build | exit 134, TypeScript 1 GiB heap exhausted |
+| Fixed `7218a43dc` and `42b906033` plus runner, serial cold `tsc -b --force` | same 1 GiB limit: base exit 0, candidate exit 134; separate Node checks both exit 0, reported memory 938938K / 941585K |
+| `ce9915f23`, build with separate project processes | exit 0; both original TypeScript projects and Vite retained, same per-process heap limits and existing Vite warnings |
+| `17647b243`, actual component terminal entry | 6 files, 48 passed, 0 failed/skipped, 8.99s; real producer and restricted import after source-pool separation |
+| `198054e1b`, same entry with unknown source rollback | 6 files, 49 passed, 0 failed/skipped, 8.70s; destroys the real connection after response-loss injection |
+| `1635060c3`, journal admission counterexample | 49 passed, 1 test timeout, 0 skipped; the test held its sole pool connection while requesting another |
+| `21f5aa4a8`, journal admission with separate limited login session | 6 files, 50 passed, 0 failed/skipped, 8.53s; missing journal, pending and unknown stop before phase actions; timeout unchanged |
+| `21f5aa4a8`, final code build | exit 0, existing Vite warnings retained |
+| `21f5aa4a8`, final CLI/gate/Compose set | 6 files, 63 passed, 0 failed/skipped, 3.05s; includes the exact old gate/new CLI subprocess |
+| `21f5aa4a8`, boundary / contract / selfhost | all exit 0; 3509 matched, no unallowlisted/stale/growth/mismatch |
+
+The component runner's first three attempts stopped before collection because
+Docker Desktop did not publish its internal-network port. These remain failures.
+Its owned bridge now publishes loopback only and disables IP masquerading. Only
+PostgreSQL runs there; application egress isolation is unproven. Unknown suites,
+including inherited object properties, are refused before Docker use. Execution
+has a 15-minute bound, TERM/KILL escalation and an 8 MiB raw output limit. Exact
+resource ownership is checked before cleanup.
+
+Independent review found database-level settings outside both the dump and the
+role inventory. `42b906033` rejects them, and missing inventory fields, before
+export; it does not reset or guess restoration. Recovery remains a declared
+PostgreSQL 16/bootstrap `postgres` synthetic profile, not whole-business or
+production `wiseeff` role restoration. The separate terminal run at `23e7540a7`
+returned source-stopped, AOF, package-only restore and cleanup proof with
+`fullBusinessVerification=false` and `releaseReady=false`.
+
+Node typecheck at `9ce8db341` caught one widened checkpoint-mode return type in
+the new management parser. `842010159` adds an explicit narrowed return type;
+the earlier real CLI execution is retained at its actual SHA, and typecheck
+failure is not omitted or called a base failure. Two exploratory invocations used
+nonexistent/wrong configuration flags and stopped with usage/configuration errors;
+they did not collect tests or access a database.
+
+The S6 test constructs the exact old schema, imports two projects sharing one
+Definition, preserves four value IDs/timestamps and independent explicit tips,
+and reads revision history through the existing domain reader. JSON null and SQL
+null remain distinct in encrypted source Archive evidence. SQL-null project values
+are currently refused instead of being guessed. This is canonical conversion at
+the management receipt consumer, beyond old-table preservation. Its P0/P8 receipts
+were synthetic management fixtures, not a full producer or report approval chain.
+The real producer must fix P0 intent before random P7 mapping/Archive IDs exist;
+the later receipt must bind those produced IDs without rewriting P0.
+
+The later producer now implements that bounded chain: deterministic full Binding
+intent, exact live P7 heads, encrypted Definition evidence, real automatic
+registration, generated v2 receipt, then same-transaction S6 import/checkpoint.
+Three synthetic Bindings across projects share two Definitions and preserve six
+values with independently asserted tips/history. Source reads use a separate
+controlled management connection and 21 real SHARE locks; canonical writes retain
+the limited management login and unchanged frozen grants. This is beyond merely
+preserving public rows. Early P0/P7 setup is still fixture preparation, not a full
+root execution or verifier-produced report chain. Other consumer families,
+SQL-null value conversion, HTTP/browser and runtime business coverage remain open.
+
+Independent review found and the follow-up code fixed stale phase rollback and
+unknown-commit admission at the consumer seam. Pending/unknown controller-journal
+attempts now block ordinary execute; a missing journal/boundary adapter blocks
+before writes. The concrete root adapter and explicit reconciliation are still
+missing. The source rollback-response loss fix destroys the session rather than
+returning it to a pool. Reviews and these negatives do not establish a successful
+P0–P16 run.
+
+Handoff tests query real PostgreSQL/MinIO/Redis identities and exercise the existing
+controller's inspect dispatch, host lock, private file descriptors and drift
+refusals. Their application containers are explicitly identity stubs. They do not
+prove full old-application controller execution, successful candidate startup or
+phase-aware resume after services have stopped.
+
+The runtime proposal is available on
+[its separate backup branch](https://github.com/tzrea1-Q/WiseEff/tree/codex/populated-upgrade-runtime-proposal).
+It does not grant broad Catalog/audit SELECT to the governance writer. Nevertheless,
+its two new writer EXECUTE grants extend the frozen 0138 manifest and remain
+unapproved. Migration 0140 is absent from the executable integration candidate.
+The production startup callback still lacks a live runtime-pin state producer;
+normal business role coverage, isolated API/browser acceptance and capacity remain
+unfinished. Parent retains implementation responsibility for these gaps.
+
+### Reconstructed source image
+
+The parent built the exact source SHA `82344044b436a8dafecefbb85dfd724cecb05e3f`
+from clean tree `6dd92c36c4eb41bcaaba5a7a756befb9239d9120`, using its original
+Dockerfile and existing build-network library with TLS verification. The actual
+local Docker image ID is
+`sha256:65b300d1a8b80c06b9f7b37ccc21e45973d875492f2ae60f0128937cc934dea1`,
+platform `linux/arm64`. BuildKit's image manifest is
+`sha256:40ef0227106e6ad85e2c0d286bdeb4dddb472b6e3ff66c6e746a6dc28db93c9c`;
+its config digest is
+`sha256:2a0d17d6a8c2c7815d1ffe35ff94a4be03fcb2d8e4432c7bd3774f2d9a0fa12b`.
+The lockfile SHA256 is
+`43adbfe23117426588694bbd209eb96997d3a73287da475a2a2d4dfab29050ea`.
+The build exited 0; log SHA256
+`220821b090936a637118d9dbddf576c774827d74157c77ec8f3870fda5eca25e`.
+This is a retained local reconstruction, not the user's historical image ID,
+registry publication, final candidate build or corporate-network trust evidence.
+
+### Execution safety deviations
+
+Three local test invocations violated the explicit target-routing discipline.
+Two agents invoked server global setup without the dedicated URL; the setup
+reached the default/shared development database and migration-ledger bootstrap
+DDL before refusing missing historical ledger entries. No numbered migration loop
+ran in those failed calls. Earlier template setup returned; its reuse/create
+effects were not fully observed, so zero writes cannot be claimed. The original
+complete logs were not preserved and no checksum is invented. A separate bare
+docs check queried extension availability on the default database, then skipped
+schema generation because vector was unavailable; this call did not run migrations.
+No production host was connected. The parent stopped all agent execution authority;
+subsequent DB/Docker/tests run centrally with explicit owned target identities.
+No repair or cleanup was attempted on the unverified ambient targets. These
+deviations are not passing regression evidence and remain in this record.
+
+M2 full root success, complete business restoration, real backup rehearsal,
+enterprise-network candidate build, Hosted checkout/jobs and production actions
+remain **not run / incomplete**. No production upgrade command or maintenance
+readiness is authorized by these component results.
 
 ## Prior-round identity and status (historical)
 

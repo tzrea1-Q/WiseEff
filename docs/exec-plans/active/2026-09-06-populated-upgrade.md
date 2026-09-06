@@ -8,15 +8,65 @@
 
 Fresh preflight confirms base `67d4a77325b6009b77c2373bd788298a6d022bcf`, inherited report head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`, clean candidate worktree. Source deployment is unchanged. M1 is independently reviewable interception; M2 requires a successful actual isolated upgrade and remains separate.
 
+The later remote refresh found documentation-only PR #823 at
+`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. Parent read its current security/test
+guidance and appended merge `7218a43dcd5402d52b5e57166b746d0c6409642f`.
+Existing implementation/report/test identities are retained; M1's independent
+backup is still based on `67d4a7732`. The source deployment is still `82344044…`.
+
 Parent owns M1 CLI/debt shrink, fixed-entry handoff, shared upgrade/Compose/migrations, integration and delivery. `m2_release` owns the existing release-gate script and tests; `m2_runtime` owns runtime connection/startup files and tests; `m2_recovery` owns package restore adapters and synthetic recovery tests. Each works in isolated Scratch; parent integrates serially. No agent owns production actions or permission changes.
 
 Incremental threat review: preserve absent-diagnostic versus release refusal; remove only proven unused imports and four exact debt IDs, reject reintroduction, retain immutable fixture/relocation/base; bind handoff to artifact/daemon/project/storage identities before effects; produce reports from real state; runtime initialization precedes all queue effects and never repairs; restore consumes only a verified package with external secret inputs, binds the target and stops on partial/unknown outcomes. Package verification must resist file replacement, path traversal and stale Redis AOF. These augment the matrix below. First Red is the inherited boundary failure, then retired-module load rejection at the CLI diagnostic seam.
 
 Documentation impact: update this existing bilingual plan, existing bilingual operator/evidence documents, and module-owned runtime/recovery guidance together with executable paths. No duplicate status report. Focused checks own inner loops; final build/contracts/docs and independent reviews precede a milestone PR. Synthetic schema preservation is not canonical conversion; sentinel RDB restore is not AOF production-shape recovery.
 
+M1 now has exact four-ID debt removal, permanent reintroduction negatives and
+independent Standards/Spec review. Its final scripts batch at `ffc240498` has
+1301 passed / 1 source-lock timeout / 5 skipped. Boundary passes. It remains
+Scratch pending the frozen source-lock performance decision; no PR or Hosted run.
+The remote M1 branch is a backup, not release authorization.
+
+M2 ownership refinement: `m2_runtime` is the sole writer of additive migration
+0140 and governance read-port separation; parent has not edited that migration.
+`m2_release` owns S7 exact conversion manifests plus S6 management import and
+evidence Archive capability, preserving classification and immutable history.
+`m2_recovery` owns fixed-entry identity/private-input hardening and controlled
+package restoration. Parent owns Compose/Dockerfile/ignore rules, root dispatch,
+generated documentation and final integration. Parent's independent review
+requires the new reader role to reject pre-existing unverified capability;
+the runtime command role must not receive broad Catalog/audit SELECT.
+
+Current integrated M2 pieces are report-action binding, restricted-login startup,
+separate governance pool, exact formal-definition mapping/source fingerprints,
+package-only restore with source stopped, initial handoff, and explicit Catalog
+Compose credential/profile/external-volume separation. These are not the M2
+success chain. P2 live writer isolation, phase-aware handoff resume, P12/P13
+producer ownership, full post-retirement report/runtime loader, complete consumer
+and business permissions, browser/capacity, and root upgrade success remain open.
+Secrets must remain outside the candidate build context; `.dockerignore` defense
+does not replace descriptor-bound private input verification. Recovery package
+limits and actual enterprise/real-data evidence remain separately tracked.
+
 Current state: SCRATCH, incomplete. See the [execution evidence](../../../ops/self-hosted/populated-upgrade-evidence.md) for refreshed base/candidate, passing checks and unresolved boundary/release blockers. The following paragraph records the initial preflight.
 
 PREFLIGHT, R3. Source deployment stays `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is freshly fetched `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d` (no difference from the supplied main). Source counts and image identity are supplied historical observations, not rerun evidence. The local clean isolated worktree uses `codex/populated-upgrade-scratch`. No production access is authorized. Stop at a reviewed candidate/PR; do not merge, close historical issues, approve release, or operate production.
+
+Latest code candidate `21f5aa4a8bdbb7208504396bce62796cf55875da` has real
+Binding producer/import component evidence (50/50), final compatibility/gate
+regressions (63/63), and a passing build. Recovery remains at its own commits
+(35/35 with database settings refusal); totals are not combined. Parent still
+owns the concrete writer/recovery boundary, journal adapter/reconciliation,
+phase-aware handoff, runtime/public state producers, and complete
+business/browser/capacity acceptance. These independent code tasks do not require
+a production backup. The full root milestone remains incomplete.
+
+Four decisions remain separate: a frozen source-lock performance amendment for
+M1; the separate 0140 proposal's two new governance EXECUTE grants; ownership of
+previously unavailable P12/P13 implementation; and #815 authoritative Policy
+counting versus an explicitly approved unavailable contract. None is assumed.
+The runtime proposal is backed up separately, not installed by this candidate.
+No PR, Hosted or production action is claimed. The terminal guide supplies tested
+component/inspection commands, not an invented full-upgrade command.
 
 ## Ownership and dependencies
 

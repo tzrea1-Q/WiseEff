@@ -4,6 +4,30 @@
 
 ## 范围与状态
 
+初始开发base为`67d4a7732`，继承报告head为`1a9ba7745`；后续刷新发现纯文档
+PR #823，origin/main为`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
+父阅读新增安全／测试规范，以`7218a43dcd5402d52b5e57166b746d0c6409642f`
+追加合并，未改写已有提交或重标测试。独立M1备份仍基于`67d4a7732`，
+源部署始终为`82344044…`。
+
+M1 已完成精确四项旧依赖删除、永久重引入反例及独立 Standards／Spec 审查。
+`ffc240498` 最终全量 scripts 为1301通过、1项source-lock超时、5跳过；boundary
+通过。冻结源锁性能决策解决前仍为Scratch，未创建PR或执行Hosted。远端M1分支仅是备份，
+不是发布批准。
+
+M2所有权细化：`m2_runtime` 单独写追加0140迁移与治理读端口，父未修改该迁移；
+`m2_release` 写S7精确转换manifest、S6管理导入和证据Archive能力，保留分类与不可变历史；
+`m2_recovery` 写固定入口身份／私有输入保护及受控包恢复。父单独写Compose／Dockerfile／
+ignore规则、根入口、生成文档和最终集成。父独立审查要求新reader角色拒绝既有未核验能力，
+不能向治理writer授予宽泛Catalog／audit SELECT。
+
+当前已集成报告动作绑定、受限登录启动、治理分池、正式定义精确映射／源指纹、源停止后仅
+消费包恢复、首次handoff及Catalog Compose凭据／profile／外部卷配置。这些不等于M2闭环。
+P2真实停写、阶段化resume、P12/P13 producer归属、退休后完整报告／runtime loader、
+完整消费方与业务权限、浏览器／容量及根入口成功仍待完成。秘密必须置于候选构建上下文外；
+`.dockerignore`防御不替代固定descriptor的私有输入校验。恢复包限制、企业网络与真实数据
+证据独立记录。
+
 ## 续工：M1与M2
 
 新preflight确认base `67d4a77325b6009b77c2373bd788298a6d022bcf`、继承报告head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`，候选工作树干净。源部署不变。M1仅为可独立审阅的安全拦截；M2必须完成真实隔离升级成功链，二者分开。
@@ -17,6 +41,17 @@
 当前状态：SCRATCH，未完成。刷新后的base／候选、执行结果及boundary／发布阻塞见[执行证据](../../../../ops/self-hosted/populated-upgrade-evidence.zh-CN.md)。下段保留开工preflight记录。
 
 PREFLIGHT，风险 R3。源部署始终为 `82344044b436a8dafecefbb85dfd724cecb05e3f`；重新 fetch 的开发基线为 `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d`，与用户提供的 main 无差异。源计数和镜像身份仅为用户提供的历史观察。本地独立干净工作树使用 `codex/populated-upgrade-scratch`。本轮止于审阅候选／PR，不合并、不关闭历史单、不批准发布、不访问生产。
+
+最新代码候选 `21f5aa4a8bdbb7208504396bce62796cf55875da` 已有真实Binding
+producer／import组件50/50、最终兼容／门禁63/63及build通过证据；恢复35/35
+保留其自己的执行提交，不合并计数。根升级里程碑仍未完成。具体停写／恢复boundary、
+journal adapter／reconciliation、分阶段handoff、runtime／public状态生成链、
+完整业务／浏览器／容量仍由父协调者承担，缺真实备份不阻止这些独立开发。
+
+四个决策独立保留：M1冻结source-lock测试的性能修订；独立0140提案新增的两项
+governance EXECUTE；此前unavailable的P12/P13实现归属；#815权威Policy引用计数
+或明确批准的unavailable契约。没有默认批准。运行权限提案单独备份，未安装到本候选。
+没有PR、Hosted或生产执行；手册提供已测试组件／检查命令，不编造根升级／生产命令。
 
 ## 文件所有权与依赖
 
