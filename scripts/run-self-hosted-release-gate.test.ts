@@ -80,6 +80,15 @@ describe("Catalog release invocation adapter (not complete gate execution eviden
     expect(options.target.startCandidate).not.toHaveBeenCalled();
     expect(options.target.releasePublic).not.toHaveBeenCalled();
   });
+  it("uses the existing completed P12 lineage vocabulary for runtime startup", async () => {
+    const options = fixture();
+    const current: CatalogReleaseBoundary = { ...options.current, p12State: "completed", p13State: "retired", writerRetirementFingerprint: "retirement", runtimePinGeneration: "generation" };
+    vi.mocked(options.target.observeBoundary).mockResolvedValue(current);
+    reportStub(options, { purpose: "post-retirement-runtime" });
+    expect(await runCatalogReleaseAction({ ...options, action: "start-candidate" })).toEqual({ ok: true, action: "start-candidate", reportDigest: options.reportDigest });
+    expect(options.target.startCandidate).toHaveBeenCalledOnce();
+    expect(options.target.releasePublic).not.toHaveBeenCalled();
+  });
   it.each([
     ["purpose", { purpose: "public-release" }, "wrong-purpose"],
     ["decision", { decision: "blocked" }, "wrong-purpose"],

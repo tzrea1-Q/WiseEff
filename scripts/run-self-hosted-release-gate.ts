@@ -15,7 +15,7 @@ export type CatalogReleaseAction = "activate-p12" | "start-candidate" | "release
  */
 export type CatalogReleaseBoundary = RuntimePinQuery & {
   readonly phaseSnapshot: string;
-  readonly p12State: "not-started" | "canonical";
+  readonly p12State: "not-started" | "completed";
   readonly trafficIsolationState: "isolated" | "public";
   readonly predecessorReportDigests: readonly string[];
   readonly pointerRollbackStatus: "open" | "closed";
@@ -75,7 +75,7 @@ export async function runCatalogReleaseAction(options: {
         return { ok: false, reason: "boundary-mismatch" };
       }
       if (action === "activate-p12" ? current.p12State !== "not-started" || current.p13State !== "not-started"
-          : current.p12State !== "canonical" || current.p13State !== "retired" || !current.writerRetirementFingerprint || !current.runtimePinGeneration) {
+          : current.p12State !== "completed" || current.p13State !== "retired" || !current.writerRetirementFingerprint || !current.runtimePinGeneration) {
         return { ok: false, reason: "pre-pin" };
       }
       // A report read can take time; reject drift before handing the approved effect to its owner.
