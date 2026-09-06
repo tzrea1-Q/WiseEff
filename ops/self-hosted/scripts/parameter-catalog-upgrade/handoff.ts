@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { open, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CatalogUpgradeController, ControllerCommand } from "./controller";
@@ -18,6 +18,7 @@ export type HandoffInputs = {
   candidate: Artifact & { imageId: string };
   privateConfigPath: string;
   lockRoot: string;
+  journalPath: string;
 };
 export type DataIdentity = { postgres: string; objectStore: string; redis: string };
 export type HandoffObserver = {
@@ -58,6 +59,13 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   if (sourceRoot === entryRoot || git(sourceRoot, "rev-parse", "HEAD") !== input.source.sha || git(sourceRoot, "status", "--porcelain", "--untracked-files=no")) fail("source-checkout-artifact-mismatch");
   const composeFile = await realpath(input.source.composeFile);
   if (!composeFile.startsWith(`${sourceRoot}${path.sep}`)) fail("compose-outside-source-checkout");
+  const privateConfigDigest = await digestFile(input.privateConfigPath, 1024 * 1024, true);
+  const config = await readFile(input.privateConfigPath, "utf8");
+  if (await digestFile(input.privateConfigPath, 1024 * 1024, true) !== privateConfigDigest) fail("private-config-changed");
+  const declaredLock = config.split(/\r?\n/).filter(line => line.startsWith("WISEEFF_OPERATION_LOCK_DIR="));
+  if (declaredLock.length > 1) fail("duplicate-lock-configuration");
+  const expectedLock = declaredLock.length ? declaredLock[0]!.slice("WISEEFF_OPERATION_LOCK_DIR=".length) : path.join(sourceRoot, "ops/self-hosted/.state");
+  if (!path.isAbsolute(expectedLock) || path.resolve(input.lockRoot) !== expectedLock || !path.isAbsolute(input.journalPath) || !path.resolve(input.journalPath).startsWith(`${expectedLock}${path.sep}`)) fail("lock-or-journal-binding-mismatch");
   if (git(entryRoot, "rev-parse", `${input.candidate.sha}^{tree}`) !== input.candidate.tree) fail("candidate-tree-mismatch");
   const imageInfo = JSON.parse(deps.docker.command(["image", "inspect", input.candidate.imageId]).toString())[0];
   if (imageInfo.Id !== input.candidate.imageId || !/^sha256:[a-f0-9]{64}$/.test(input.candidate.imageId)) fail("candidate-image-mismatch");
@@ -86,7 +94,7 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   const identities = await deps.observeDataIdentity(input);
   if (Object.keys(identities).sort().join(",") !== "objectStore,postgres,redis" || Object.values(identities).some(value => typeof value !== "string" || !value)) fail("data-identity-unavailable");
   return { daemonId: deps.docker.daemonId, sourceRoot, composeFile, applications, stores, identities,
-    privateConfigDigest: await digestFile(input.privateConfigPath, 1024 * 1024, true), composeDigest: await digestFile(composeFile, 1024 * 1024),
+    privateConfigDigest, composeDigest: await digestFile(composeFile, 1024 * 1024),
     candidateImage: { id: imageInfo.Id as string, platform: `${imageInfo.Os}/${imageInfo.Architecture}` } };
 };
 
@@ -128,12 +136,12 @@ export async function withHostOperationLock<T>(lockRoot: string, action: () => P
 /** No second controller or journal: dispatches the actual existing controller only
  * after immutable source/config/store pins are re-observed under the host lock. */
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,
-  deps: HandoffObserver & { controller: CatalogUpgradeController; withOperationLock<T>(root: string, action: () => Promise<T>): Promise<T> }) {
+  deps: HandoffObserver & { openController(binding: { runId: string; journalPath: string }): CatalogUpgradeController; withOperationLock<T>(root: string, action: () => Promise<T>): Promise<T> }) {
   const { digest, ...body } = plan;
   if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
   return deps.withOperationLock(plan.inputs.lockRoot, async () => {
     const observed = await inspectHandoff(plan.inputs, deps);
     if (canonicalJson(observed) !== canonicalJson(plan.observation)) fail("target-changed-after-plan");
-    return deps.controller.dispatch(command);
+    return deps.openController({ runId: plan.inputs.runId, journalPath: plan.inputs.journalPath }).dispatch(command);
   });
 }

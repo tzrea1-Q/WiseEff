@@ -75,18 +75,19 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await wait(() => exec("postgres", ["pg_isready", "-U", "postgres"]));
       await wait(() => exec("mc", ["mc", "mb", "fixture/isolated"]));
       const configFile = path.join(source, "ops/self-hosted/.handoff-private.env");
-      await writeFile(configFile, "SYNTHETIC_CONFIGURATION=first\n", { mode: 0o600 });
+      const lockRoot = path.join(directory, "state");
+      await writeFile(configFile, `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\nSYNTHETIC_CONFIGURATION=first\n`, { mode: 0o600 });
       const input: HandoffInputs = {
         runId: run, expectedDaemonId: docker.daemonId, entrypoint: { checkout: root, sha: revision, tree },
         source: { checkout: source, sha: sourceSha, composeFile, project: run,
           applications: (["api", "worker", "web"] as const).map(service => ({ service, containerId: ids[service]!, imageId: owned(service).Image, imageReference: sourceImage })),
           stores: (["postgres", "minio", "redis"] as const).map(service => ({ service, containerId: ids[service]!, volumeName: owned(service).Mounts[0].Name, destination: service === "postgres" ? "/var/lib/postgresql/data" : "/data" })),
-        }, candidate: { sha: revision, tree, imageId: candidateImage }, privateConfigPath: configFile, lockRoot: path.join(directory, "state"),
+        }, candidate: { sha: revision, tree, imageId: candidateImage }, privateConfigPath: configFile, lockRoot, journalPath: path.join(lockRoot, "journal.json"),
       };
       const observer = { docker, async observeDataIdentity() {
         return {
           postgres: exec("postgres", ["psql", "-U", "postgres", "-Atc", "select system_identifier::text || ':' || (select oid::text from pg_database where datname=current_database()) from pg_control_system()"]),
-          objectStore: `${JSON.parse(exec("minio", ["cat", "/data/.minio.sys/format.json"])).id}:${exec("mc", ["mc", "stat", "--json", "fixture/isolated"])}`,
+          objectStore: `${JSON.parse(exec("minio", ["cat", "/data/.minio.sys/format.json"])).id}:${exec("mc", ["mc", "ls", "--json", "fixture"])}:${exec("mc", ["mc", "version", "info", "fixture/isolated"])}`,
           redis: `${exec("redis", ["redis-cli", "INFO", "server"]).split("\n").find(line => line.startsWith("run_id:"))}:${exec("redis", ["redis-cli", "CONFIG", "GET", "appendonly"])}:db0:synthetic`,
         };
       } };
@@ -94,14 +95,17 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       expect(plan.observation.applications[0]?.imageReference).toBe(sourceImage);
       expect(git("-C", source, "rev-parse", "HEAD")).toBe(sourceSha);
       await expect(prepareHandoff(input, path.join(directory, "plan.json"), observer)).rejects.toThrow("plan-exists-or-unavailable");
-      const opened = openCatalogUpgradeController({ runId: run, journalPath: path.join(directory, "journal.json"), cutover: {} as never, verification: {} as never });
-      if (!opened.ok) throw new Error("fixture-controller-open-failed");
-      expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, controller: opened.value, withOperationLock: withHostOperationLock })).ok).toBe(true);
+      const openController = (binding: { runId: string; journalPath: string }) => {
+        const opened = openCatalogUpgradeController({ ...binding, cutover: {} as never, verification: {} as never });
+        if (!opened.ok) throw new Error("fixture-controller-open-failed");
+        return opened.value;
+      };
+      expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
       await expect(inspectHandoff({ ...input, source: { ...input.source, project: "wrong-project" } }, observer)).rejects.toThrow("compose-container-mismatch");
       await expect(inspectHandoff({ ...input, source: { ...input.source, stores: input.source.stores.map(store => ({ ...store, volumeName: "wrong-volume" })) } }, observer)).rejects.toThrow("source-volume-mismatch");
-      await writeFile(configFile, "SYNTHETIC_CONFIGURATION=changed\n", { mode: 0o600 });
-      await expect(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, controller: opened.value, withOperationLock: withHostOperationLock })).rejects.toThrow("target-changed-after-plan");
-      expect(JSON.parse(await readFile(path.join(directory, "journal.json"), "utf8")).entries).toEqual([]);
+      await writeFile(configFile, `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\nSYNTHETIC_CONFIGURATION=changed\n`, { mode: 0o600 });
+      await expect(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).rejects.toThrow("target-changed-after-plan");
+      expect(JSON.parse(await readFile(input.journalPath, "utf8")).entries).toEqual([]);
     } finally {
       if (composeAttempted) {
         const remaining = docker.command(["ps", "-aq", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
