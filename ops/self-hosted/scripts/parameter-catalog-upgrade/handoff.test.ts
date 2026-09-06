@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -34,6 +34,8 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
     const docker = createIsolatedUpgradeDocker();
     const sourceImage = `${run}-source:${sourceSha}`;
     const candidateTag = `${run}-candidate:fixture`;
+    const privateRoot = await realpath(directory);
+    const repositorySecretRoot = path.join(root, "work", run);
     let composeFile = "";
     let worktree = false;
     let composeAttempted = false;
@@ -76,13 +78,16 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await wait(() => exec("mc", ["mc", "mb", "fixture/isolated"]));
       const configFile = path.join(source, "ops/self-hosted/.handoff-private.env");
       const lockRoot = path.join(directory, "state");
-      await writeFile(configFile, `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\nSYNTHETIC_CONFIGURATION=first\n`, { mode: 0o600 });
+      const roleFiles = { WISEEFF_API_ENV_FILE: path.join(privateRoot, "api.env"), WISEEFF_WORKER_ENV_FILE: path.join(privateRoot, "worker.env"), WISEEFF_MANAGEMENT_ENV_FILE: path.join(privateRoot, "management.env") };
+      for (const [key, file] of Object.entries(roleFiles)) await writeFile(file, `ROLE_PURPOSE=${key}\n`, { mode: 0o600 });
+      const mainConfig = (roles = roleFiles) => `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\n${Object.entries(roles).map(([key, file]) => `${key}=${file}`).join("\n")}\nSYNTHETIC_CONFIGURATION=first\n`;
+      await writeFile(configFile, mainConfig(), { mode: 0o600 });
       const input: HandoffInputs = {
         runId: run, expectedDaemonId: docker.daemonId, entrypoint: { checkout: root, sha: revision, tree },
         source: { checkout: source, sha: sourceSha, composeFile, project: run,
           applications: (["api", "worker", "web"] as const).map(service => ({ service, containerId: ids[service]!, imageId: owned(service).Image, imageReference: sourceImage })),
           stores: (["postgres", "minio", "redis"] as const).map(service => ({ service, containerId: ids[service]!, volumeName: owned(service).Mounts[0].Name, destination: service === "postgres" ? "/var/lib/postgresql/data" : "/data" })),
-        }, candidate: { sha: revision, tree, imageId: candidateImage }, privateConfigPath: configFile, lockRoot, journalPath: path.join(lockRoot, "journal.json"),
+        }, candidate: { checkout: root, sha: revision, tree, imageId: candidateImage }, privateConfigPath: await realpath(configFile), lockRoot, journalPath: path.join(lockRoot, "journal.json"),
       };
       const observer = { docker, async observeDataIdentity() {
         return {
@@ -92,6 +97,12 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         };
       } };
       const plan = await prepareHandoff(input, path.join(directory, "plan.json"), observer);
+      await mkdir(repositorySecretRoot, { recursive: true, mode: 0o700 });
+      const repositoryManagement = path.join(repositorySecretRoot, "management.env");
+      await writeFile(repositoryManagement, "DATABASE_URL=must-not-enter-image\n", { mode: 0o600 });
+      await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: repositoryManagement }), { mode: 0o600 });
+      await expect(inspectHandoff(input, observer)).rejects.toThrow("private-file-inside-build-checkout");
+      await writeFile(configFile, mainConfig(), { mode: 0o600 });
       expect(plan.observation.applications[0]?.imageReference).toBe(sourceImage);
       expect(git("-C", source, "rev-parse", "HEAD")).toBe(sourceSha);
       await expect(prepareHandoff(input, path.join(directory, "plan.json"), observer)).rejects.toThrow("plan-exists-or-unavailable");
@@ -103,7 +114,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
       await expect(inspectHandoff({ ...input, source: { ...input.source, project: "wrong-project" } }, observer)).rejects.toThrow("compose-container-mismatch");
       await expect(inspectHandoff({ ...input, source: { ...input.source, stores: input.source.stores.map(store => ({ ...store, volumeName: "wrong-volume" })) } }, observer)).rejects.toThrow("source-volume-mismatch");
-      await writeFile(configFile, `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\nSYNTHETIC_CONFIGURATION=changed\n`, { mode: 0o600 });
+      await writeFile(configFile, `${mainConfig()}CHANGED_CONFIGURATION=true\n`, { mode: 0o600 });
       await expect(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).rejects.toThrow("target-changed-after-plan");
       expect(JSON.parse(await readFile(input.journalPath, "utf8")).entries).toEqual([]);
     } finally {
@@ -129,6 +140,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         git("worktree", "remove", source);
       }
       await rm(directory, { recursive: true, force: true });
+      await rm(repositorySecretRoot, { recursive: true, force: true });
     }
   }, 120000);
 });
