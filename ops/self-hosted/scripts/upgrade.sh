@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # WiseEff self-hosted upgrade entry. The implementation lives in upgrade-lib.sh
-# so the launcher can be replaced safely when a target checkout changes.
+# Loaded functions remain at the entry version even when checkout changes.
+# Target commands must reject incompatible legacy controller invocations.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

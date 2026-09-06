@@ -892,6 +892,8 @@ describe("upgrade.sh public interface", () => {
       upgrade_json=false
       wiseeff_upgrade_acquire_lock() { return 0; }
       wiseeff_upgrade_release_lock() { return 0; }
+      # This legacy stack fixture predates the canonical Catalog target tree.
+      wiseeff_upgrade_git() { [ "$1" = "ls-tree" ]; }
       wiseeff_upgrade_preflight() {
         upgrade_previous_sha=target-sha
         upgrade_target_sha=target-sha
@@ -918,6 +920,8 @@ describe("upgrade.sh public interface", () => {
       upgrade_json=false
       wiseeff_upgrade_acquire_lock() { return 0; }
       wiseeff_upgrade_release_lock() { return 0; }
+      # Canonical same-SHA refusal is covered separately; this target is legacy.
+      wiseeff_upgrade_git() { [ "$1" = "ls-tree" ]; }
       wiseeff_upgrade_preflight() {
         upgrade_previous_sha=target-sha
         upgrade_target_sha=target-sha

@@ -2,6 +2,22 @@
 
 > Chinese: [Chinese](upgrade.zh-CN.md)
 
+## Canonical Catalog compatibility stop
+
+For a pre-canonical populated deployment, follow [Populated upgrade preparation](populated-upgrade.md). The ordinary stack controller cannot execute Catalog P12/P13, approved runtime startup and public release. It now refuses a canonical target before build/downtime, including same-SHA no-op, and refuses candidate resume/recovery. This is a compatibility stop, not a completed migration path. Catalog apply still ends at P11a; `applyCompleted=true` does not authorize startup or traffic.
+
+The source controller at `82344044b436a8dafecefbb85dfd724cecb05e3f` calls `npm run parameter-definitions:check -- --catalog-only`. New candidate commands refuse this unbound release check with exit 2 and `PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`. Checking out a target does not reload functions in the already-running old shell. Do not test this compatibility rejection on production: an old controller may reach it after downtime/migrations.
+
+Report diagnosis is explicitly separate:
+
+```bash
+npm run parameter-definitions:reconcile -- --verify --diagnostic --report-id missing
+```
+
+With a private configured database, absent returns typed `absent/missing` and exit 0 because the diagnostic query succeeded. Never substitute it for a release gate. Query failure exits nonzero with sanitized output. The check command does not accept report existence as authorization.
+
+`./scripts/build-network.sh require-verified --json` checks existing private build-network configuration and rejects insecure transport, HTTP registry and malformed/key-bearing trust material. It makes no network request and does not attest Docker pulls, dependency downloads, image provenance or enterprise CA compatibility. The emergency insecure channel remains available to existing callers; it cannot establish readiness for this upgrade.
+
 `scripts/upgrade.sh` is the normal upgrade entry for an already running self-hosted checkout. It upgrades to one immutable Git commit, builds the candidate before downtime, pauses and drains application work, creates a verified recovery point, recreates every service against the existing volumes, waits for migrations and health gates, and records a durable journal.
 
 The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
@@ -97,6 +113,8 @@ Run `plan`, `apply`, `resume`, `recover-candidate`, and `rollback` as the deploy
 The compatibility path accepts legacy deployments whose API, worker, and web containers have different image IDs. It records and tags each previous service image independently, then uses those exact service-specific images if pre-migration recovery or rollback is required. Operators no longer need to rebuild/recreate the three services merely to satisfy preflight.
 
 ## First adoption
+
+The historical checkout procedure below applies only to legacy stack upgrades. It is not populated canonical migration preparation. For canonical migration preserve the source checkout, service images, Compose identity and volumes; the separate preparation procedure above remains blocked before execution until its missing integrations are reviewed.
 
 Install the release containing this entry through the existing controlled procedure. Before the first real run, check the checkout and live stack:
 
