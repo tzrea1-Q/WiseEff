@@ -125,5 +125,7 @@ export type ArchiveAdapterOptions = {
 
 export type ArchiveAdapter = {
   persistArchive(command: PersistArchiveCommand): Promise<ArchivePersistResult>;
+  /** Evidence for an existing operational mapping; never changes its primary disposition. */
+  persistEvidenceArchive(command: PersistArchiveCommand): Promise<ArchivePersistResult>;
   restoreArchive(command: RestoreArchiveCommand): Promise<ArchiveRestoreResult>;
 };

@@ -193,15 +193,16 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
   const client: ArchiveQueryable = options.client;
   const objectStore = options.objectStore;
 
-  const persistArchive = async (
+  const persist = async (
     command: PersistArchiveCommand,
+    evidence: boolean,
   ): Promise<ArchivePersistResult> => {
     const auth = authorizeOperator(command.actor, command.successAuditRef, "persist");
     if (auth) return persistFail(auth.code, auth.detail);
-    if (DISPOSITION_BY_R_CLASS[command.rClass] !== "archived") {
+    if (DISPOSITION_BY_R_CLASS[command.rClass] !== (evidence ? "mapped" : "archived")) {
       return persistFail(
         "PCAT-ARC-DISPOSITION-NOT-ARCHIVED",
-        `R class ${command.rClass} is not an archived classifier disposition`,
+        `R class ${command.rClass} is not an ${evidence ? "operational evidence" : "archived"} classifier disposition`,
       );
     }
     if (!isNonEmptyTrimmed(command.legacyIdentityId) || !isNonEmptyTrimmed(command.cutoverRunId)) {
@@ -300,6 +301,22 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
       if (!run.rows[0]) {
         await client.query("rollback");
         return persistFail("PCAT-ARC-INVALID-INPUT", "cutover run does not exist");
+      }
+
+      if (evidence) {
+        const mapped = await client.query(
+          `select 1 from parameter_catalog.legacy_mapping_heads h
+             join parameter_catalog.legacy_mapping_versions v on v.id=h.current_version_id
+              and v.legacy_identity_id=h.legacy_identity_id
+            where h.legacy_identity_id=$1 and v.cutover_run_id=$2 and v.r_class=$3
+              and v.target_kind is not null and v.target_id is not null and v.archive_id is null
+            for share of h, v`,
+          [command.legacyIdentityId, command.cutoverRunId, command.rClass],
+        );
+        if (mapped.rowCount !== 1) {
+          await client.query("rollback");
+          return persistFail("PCAT-ARC-INVALID-INPUT", "operational evidence requires the current mapped identity in this run");
+        }
       }
 
       const current = await client.query<{ current_catalog_release_id: string }>(
@@ -532,5 +549,9 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
     };
   };
 
-  return { persistArchive, restoreArchive };
+  return {
+    persistArchive: command => persist(command, false),
+    persistEvidenceArchive: command => persist(command, true),
+    restoreArchive,
+  };
 };

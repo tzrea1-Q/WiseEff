@@ -131,13 +131,16 @@ export const insertBinding = async (
     readonly definitionId: string;
     readonly effectiveRevisionId: string;
     readonly currentValueId: string;
+    /** Only the internal management importer supplies source timestamps. */
+    readonly createdAt?: string;
   },
 ): Promise<BindingRow | null> => {
   const result = await client.query<BindingRow>(
     `insert into parameter_catalog.project_parameter_bindings (
        id, organization_id, catalog_release_id, project_id, logical_node_id,
-       registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       registration_id, subject_id, definition_id, effective_revision_id, current_value_id,
+       created_at, updated_at
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,coalesce($11::timestamptz,now()),coalesce($11::timestamptz,now()))
      on conflict (project_id, logical_node_id, definition_id) do nothing
      returning id, organization_id, catalog_release_id, project_id, logical_node_id,
                registration_id, subject_id, definition_id, effective_revision_id, current_value_id`,
@@ -152,6 +155,7 @@ export const insertBinding = async (
       input.definitionId,
       input.effectiveRevisionId,
       input.currentValueId,
+      input.createdAt ?? null,
     ],
   );
   return result.rows[0] ?? null;

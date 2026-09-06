@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { DISPOSITION_BY_R_CLASS, R_CLASSES } from "../classifier/index";
 import { decryptArchiveObject, encryptArchiveObject } from "./crypto";
 import { THREAT_MATRIX } from "./threatMatrix";
+import { createArchiveAdapter } from "./adapter";
+import type { ArchiveAdapterOptions, PersistArchiveCommand } from "./types";
 
 const archiveDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -77,6 +79,30 @@ describe("encrypted archive object", () => {
         envelope: envelope.subarray(0, 8),
       }),
     ).toThrow(/truncated|integrity/i);
+  });
+});
+
+describe("operational evidence keeps the primary disposition", () => {
+  const forbiddenIo = async (): Promise<never> => { throw new Error("unexpected I/O"); };
+  const adapter = () => createArchiveAdapter({
+    client: { query: forbiddenIo }, encryptionKey: randomBytes(32),
+    objectStore: { putExclusive: forbiddenIo, get: forbiddenIo, remove: forbiddenIo, exists: forbiddenIo, listRefs: forbiddenIo },
+  } satisfies ArchiveAdapterOptions);
+  const command = (rClass: PersistArchiveCommand["rClass"]): PersistArchiveCommand => ({
+    actor: { role: "cutover-operator", auditRef: "synthetic-audit" },
+    legacyIdentityId: "legacy-source", ownerScopeKind: "platform", ownerScopeId: "platform",
+    rClass, reason: "source-evidence", sourceGraph: { sourcePayload: {}, relationGraph: {} },
+    protectedReferences: [], cutoverRunId: "synthetic-run", catalogReleaseId: "synthetic-release",
+    successAuditRef: "synthetic-audit", retainUntil: new Date("2030-01-01"),
+  });
+  it("ordinary Archive still rejects mapped R9 before any I/O", async () => {
+    expect(await adapter().persistArchive(command("R9"))).toMatchObject({ ok:false,error:{code:"PCAT-ARC-DISPOSITION-NOT-ARCHIVED"} });
+  });
+  it("evidence refuses archived, review and blocked dispositions without I/O", async () => {
+    for (const rClass of ["R0","R1","R3","R6","R7","R8","R10"] as const) {
+      expect(await adapter().persistEvidenceArchive(command(rClass))).toMatchObject({ ok:false,error:{code:"PCAT-ARC-DISPOSITION-NOT-ARCHIVED"} });
+    }
+    expect(await adapter().persistEvidenceArchive({ ...command("R9"), actor:{role:"public"} })).toMatchObject({ok:false,error:{code:"PCAT-ARC-PERMISSION-DENIED"}});
   });
 });
 
