@@ -5,6 +5,14 @@
 
 ## Latest review-return evidence — 2026-09-06
 
+### Follow-up finding: asynchronous read rejection — in progress
+
+Review base `e4127eb99e51754cd80f866244033ffee6bd9f4c`; freshly fetched main remains `27bc39d53235879afb579a86f6ee777a462e4204`. The dispatcher returns asynchronous subhandlers without awaiting inside its projection-error catch. Real projection rejection can therefore escape as generic HTTP 500. This is inherited from `b5ca4614`, not a new batching regression. Delivery risk is R2: a bounded HTTP error-contract repair; no authority or schema change.
+
+Parent owns exactly `read/handlers.ts`, `read/handlers.test.ts` and `rootBatchQueries.integration.test.ts` under `server/modules/parameter-catalog-api/`, these bilingual plans, and `docs/exec-plans/evidence/2026-09-06-catalog-r2-async-read.json`. Other implementation paths are read-only. The confirmed seams are dispatcher → actual projection adapters and registered root HTTP → real PostgreSQL with a controlled query rejection in its disposable database harness. Independently declared oracles cover full Catalog 503 body/request ID/Retry-After for Definition list, Subject Definition list and details; missing successful Maps remain distinct; ordinary Error/TypeError must not be disguised as readiness failures. Existing 1/25/100 budgets and empty-page no-projection assertions must stay intact. No passing execution is claimed yet.
+
+Documentation Impact Matrix: update both active plans and the new raw execution/review index; DTO/OpenAPI, product, security and generated coverage contracts do not change. Keep existing requirement IDs. Standards and Spec independently review the fixed base/head; parent alone updates Draft PR #821. Policy approval, boundary relocation approval, failed broad Gate 0/artifact safety and growth capacity remain separate blockers. No merge, Issue closure or OP-09/target/production operation is authorized by this repair.
+
 This section supersedes earlier checkpoint status without rewriting historical runs. PR #813 is now merged; the freshly fetched `origin/main` is `27bc39d53235879afb579a86f6ee777a462e4204`. It adds historical status documentation and does not resolve these counterexamples. Accepted implementation/boundary base remains `35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`. The reviewed code candidate is `be610b7addcbe144fdfc0b07018d9be4e5db8f75`, tree `5aa6f82e18070378f786e83d28af482fb388ec01`. Subsequent documentation/evidence commits do not relabel execution SHAs. PR #821 is actually Draft and open, with no merge request, seal, merge, attestation or Issue closure.
 
 | Issue | Implemented | Verified on the code candidate | Merged | Attested | Blocked / remaining |

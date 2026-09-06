@@ -71,6 +71,8 @@ describe("R2-BATCH root HTTP SQL budget", () => {
   let releaseId: string;
   let pinnedReleaseId: string;
   let measuring = false;
+  let projectionFailure: "usage" | "registration" | undefined;
+  let injectedFailures = 0;
   let statements: { category: SqlClass; sql: string; batchIds?: readonly string[] }[] = [];
   const principal: AuthContext = {
     user: { id: "batch-admin", organizationId: "batch-org", name: "Batch admin", email: "batch@example.test", emailVerified: true, title: "Admin", isActive: true },
@@ -87,6 +89,15 @@ describe("R2-BATCH root HTTP SQL budget", () => {
       client.query = function (...args: Parameters<typeof query>) {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && "text" in input ? String(input.text) : "<non-text query>";
+        const rejectProjection = projectionFailure === "usage"
+          ? /from parameter_catalog\.project_parameter_bindings binding/.test(sql)
+          : projectionFailure === "registration" && /from parameter_catalog\.organization_subject_registrations registration/.test(sql);
+        if (rejectProjection) {
+          injectedFailures += 1;
+          // Controlled read-only PostgreSQL failure on this disposable harness's client.
+          // Domain queries and the actual production projection adapters still execute.
+          return Reflect.apply(query, this, ["select 1 / 0"]);
+        }
         if (measuring) {
           const values = args[1] as unknown;
           const batchIds = classify(sql) === "business" && Array.isArray(values) && Array.isArray(values[1])
@@ -177,6 +188,37 @@ describe("R2-BATCH root HTTP SQL budget", () => {
 
   // Frozen before execution: 3 registration/review SELECTs plus 1 prefilter;
   // definitions add one usage aggregate. Policy remains a separately blocked contract.
+  it.each([
+    ["usage", "/definitions"],
+    ["usage", "/subjects/csub_batch_000/definitions"],
+    ["usage", "/definitions/pdef_batch_0_0"],
+    ["registration", "/definitions"],
+    ["registration", "/subjects/csub_batch_000/definitions"],
+    ["registration", "/definitions/pdef_batch_0_0"],
+    ["registration", "/subjects"],
+    ["registration", "/subjects/csub_batch_000"],
+  ] as const)("R2-ASYNC root %s adapter rejection retains the complete contract for %s", async (projection, route) => {
+    projectionFailure = projection;
+    injectedFailures = 0;
+    try {
+      const response = await fetch(`${baseUrl}/api/v2/catalog${route}`, { headers: { authorization: "Bearer batch-fixture-token", "x-request-id": "r2-async-rejection" } });
+      const body = await response.json();
+      expect(injectedFailures).toBe(1);
+      expect(response.status, JSON.stringify(body)).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("5");
+      const requestId = response.headers.get("x-request-id");
+      expect(requestId).toBe("r2-async-rejection");
+      expect(body).toEqual({ error: { code: "SERVICE_UNAVAILABLE", message: "Catalog is not ready.", details: { reason: "catalog-not-ready", retryable: true }, requestId } });
+    } finally {
+      projectionFailure = undefined;
+    }
+    const recovered = await fetch(`${baseUrl}/api/v2/catalog${route}`, { headers: { authorization: "Bearer batch-fixture-token" } });
+    expect(recovered.status).toBe(200);
+    await recovered.json();
+    expect(injectedFailures).toBe(1);
+    expect(getRootPostgresPool(root)?.waitingCount).toBe(0);
+    expect(resources().pool.used).toBe(0);
+  });
   it.each([1, 25, 100])("R2-BATCH-01/02 projects subjects with a fixed budget at limit %i", async (limit) => {
     statements = [];
     measuring = true;

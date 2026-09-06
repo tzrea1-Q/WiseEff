@@ -647,34 +647,32 @@ export async function handleCatalogRead(
   const scopedRequest = { ...request, params: { ...request.params, ...matched.params } };
 
   try {
+    // Await inside this boundary so asynchronous projection failures use the Catalog contract.
     switch (matched.id) {
       case "catalog.get":
-        return handleGetCatalog(snapshot, facts.facts, request.requestId);
+        return await handleGetCatalog(snapshot, facts.facts, request.requestId);
       case "catalog.listSubjects":
-        return handleListSubjects(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListSubjects(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.getSubject":
-        return handleGetSubject(snapshot, ports, auth.scope, scopedRequest);
+        return await handleGetSubject(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.listSubjectDefinitions":
-        return handleListDefinitions(snapshot, ports, auth.scope, scopedRequest, scopedRequest.params.subjectId);
+        return await handleListDefinitions(snapshot, ports, auth.scope, scopedRequest, scopedRequest.params.subjectId);
       case "catalog.listDefinitions":
-        return handleListDefinitions(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListDefinitions(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.getDefinition":
-        return handleGetDefinition(snapshot, ports, auth.scope, scopedRequest);
+        return await handleGetDefinition(snapshot, ports, auth.scope, scopedRequest);
       case "catalog.listDefinitionRevisions":
-        return handleListRevisions(snapshot, scopedRequest, auth.scope);
+        return await handleListRevisions(snapshot, scopedRequest, auth.scope);
       case "catalog.getDefinitionRevision":
-        return handleGetRevision(snapshot, scopedRequest, auth.scope);
+        return await handleGetRevision(snapshot, scopedRequest, auth.scope);
       case "catalog.listDefinitionTimeline":
-        return handleListTimeline(snapshot, ports, auth.scope, scopedRequest);
+        return await handleListTimeline(snapshot, ports, auth.scope, scopedRequest);
       default:
         return notFound(request.requestId, "definition-not-found");
     }
   } catch (error) {
     if (error instanceof CatalogProjectionError) {
       return mapProjectionError(error, request.requestId);
-    }
-    if (error instanceof TypeError) {
-      return catalogNotReady(request.requestId);
     }
     throw error;
   }

@@ -5,6 +5,14 @@
 
 ## 最新审查返修证据 — 2026-09-06
 
+### 后续发现：读取异步拒绝映射——进行中
+
+本次审查基线为 `e4127eb99e51754cd80f866244033ffee6bd9f4c`；重新 fetch 后 main 仍为 `27bc39d53235879afb579a86f6ee777a462e4204`。分发器在投影错误 catch 内直接返回异步子处理器，实际投影拒绝会逃出并成为通用 HTTP 500；该写法已存在于 b5ca4614，不归为新引入的批量回归。协议风险为 R2：有界 HTTP 错误契约修复，不改变权限或 schema。
+
+父协调者唯一写入范围为 `server/modules/parameter-catalog-api/` 下的 `read/handlers.ts`、`read/handlers.test.ts`、`rootBatchQueries.integration.test.ts`，本中英计划及 `docs/exec-plans/evidence/2026-09-06-catalog-r2-async-read.json`。其他实现路径只读。已确认测试接口为分发器→实际投影适配器，以及正式根 HTTP→真实 PostgreSQL，在一次性测试库的既有 harness 中受控拒绝查询。独立声明 Definition 列表、Subject 下 Definition 列表、详情的完整 503 body/request ID/Retry-After；成功但缺项 Map 与 Promise 拒绝分开；普通 Error/TypeError 不得伪装为 readiness 失败。保留 1/25/100 预算及空页不投影断言。此时不记录未执行的通过结论。
+
+Documentation Impact Matrix：更新两份 active 计划与新增原始执行/审查索引；DTO/OpenAPI、产品、安全和生成覆盖契约不变，保留原 requirement ID。Standards/Spec 按固定 base/head 独立审查，由父协调者更新 Draft PR #821。Policy 决策、boundary 重定位审批、广域 Gate 0/产物安全失败和增长容量仍独立阻塞；不合并、不关单、不执行 OP-09、目标或生产操作。
+
 正式 Gate 0 在同一代码候选上自然结束：02:47:29.485Z–03:40:47.180Z，退出码 1；没有父协调者中断或 owner 超时。视觉 16 passed / 4 failed / 0 skipped；广域浏览器收集 193，104 passed / 59 failed / 30 skipped，失败清单共 63。产物收尾另触发既有 ZIP 条目数安全上限；未提升上限，这些广域产物未获准上传。所属 API/前端进程已停止；数据库、对象存储及取证 descriptor 按失败策略保留，状态为 cleanup-failed-retained。生成文件已恢复、git 保持干净。原始索引包含阶段结果、失败清单、收尾事实和 823 个产物哈希，不包含私有认证或 ownership 内容。有界只读排查通过源码对照确认旧调试弹窗选择器不匹配；Catalog 503 与知识库夹具 500 仍未归因，没有据此宣称主分支广域通过或 Gate 0 验收通过。
 
 父协调者另登记唯一新增产物路径 `docs/exec-plans/evidence/2026-09-06-catalog-r2-browser.zip`，用于随 PR 提供实际 focused Catalog 浏览器报告、截图、操作附件以及 CLI snapshot/screenshot、网络和 console 记录。包内有中英分离说明与逐文件哈希清单，排除私有认证及归属文件。下文“本地归档不等于 GitHub 上传”的限制仍适用于更大的开发与广域 Gate 0 证据包；此 focused 浏览器包作为仓库产物单独提供。
