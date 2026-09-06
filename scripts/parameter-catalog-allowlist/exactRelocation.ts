@@ -10,8 +10,9 @@ import { boundaryViolationSchema, type AllowlistEntry, type BoundaryViolation, t
 const file = "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts";
 const originalBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
 export const exactRelocationRecordPath = "scripts/fixtures/parameter-catalog-allowlist/property-key-cutover-relocation.json";
-// Materialized once after independent review; the JSON cannot authorize itself.
-const reviewedRecordSha256 = "pending-independent-preseal-review";
+// Materialized after independent Standards/Spec review of 164b832f543433564b3f5cd75d6b9445a7b9bb8d.
+// Both reviewers independently verified this digest; the JSON cannot authorize itself.
+const reviewedRecordSha256 = "fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074";
 
 const relocationSchema = z.object({
   schemaVersion: z.literal(1),
