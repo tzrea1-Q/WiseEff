@@ -69,7 +69,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const writers = (["api", "worker", "web"] as const).map(service => ({ ...create(imageIds.mc, ["--entrypoint", "/bin/sh"], ["-c", "exit 0"]), service }));
       for (const c of [postgres, objects, objectClient, ...writers]) start(c.id);
       for (const writer of writers) docker.command(["wait", writer.id]);
-      await wait(async () => exec(postgres.id, ["pg_isready", "-U", bootstrapName]));
+      await wait(async () => exec(postgres.id, ["pg_isready", "-U", bootstrapName, "-d", "postgres"]));
       const mc = (args: string[]) => {
         const ip = (Object.values(inspect(objects.id).NetworkSettings.Networks) as { IPAddress: string }[])[0].IPAddress;
         const config = { version: "10", aliases: { fixture: { url: `http://${ip}:9000`, accessKey: secrets.objectAccessKey, secretKey: secrets.objectSecretKey, api: "S3v4", path: "auto" } } };
@@ -88,7 +88,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const source = await timed("setup-source", () => setup("source"));
       start(source.resources.redis.id);
       await wait(async () => exec(source.resources.redis.id, ["redis-cli", "PING"]));
-      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1"], Buffer.from(`
+      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1"], Buffer.from(`
         create role data_owner nologin noinherit;
         create role read_capability nologin noinherit;
         create role reader login inherit;
@@ -145,13 +145,13 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("database-writer-boundary-unavailable");
         });
       } finally { await writer.query("rollback").catch(() => {}); await writer.end(); }
-      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-c", "grant create on database postgres to reader"]);
+      exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "grant create on database postgres to reader"]);
       try {
         await timed("capture-extra-acl-refusal", async () => {
           await expect(captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort)).rejects.toThrow("non-dump-capability-unsupported");
         });
       } finally {
-        exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
+        exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "revoke create on database postgres from reader"]);
       }
       // Synthetic principal is limited to this test's resource identities. Real
       // controller approvals are neither generated nor mocked as passed reports.
@@ -166,7 +166,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const destinationIo = createDockerRecoveryDestination(destination.resources, destination.secrets);
       const destinationIdentity = await destinationIo.observe();
       const targetSql = (sql: string) => exec(destination.resources.postgres.id,
-        ["psql", "-U", bootstrapName, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
+        ["psql", "-U", bootstrapName, "-d", destination.resources.database, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
       if (bootstrapName === "wiseeff") {
         await expect(destinationIo.assertBootstrap!({ roleName: "postgres", roleOid: "10", postgresMajor: 16 })).rejects.toThrow("restore-bootstrap-mismatch");
         await expect(destinationIo.assertBootstrap!()).rejects.toThrow("restore-bootstrap-mismatch");
