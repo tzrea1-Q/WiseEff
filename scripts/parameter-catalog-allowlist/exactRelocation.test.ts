@@ -40,7 +40,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result).toHaveLength(23);
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3513);
+    expect(allowlist.entries).toHaveLength(3509);
   });
 
   it.each([
@@ -98,10 +98,19 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(() => validateExactRelocation(record, altered)).toThrow();
   });
 
-  it("does not absorb unmapped new debt or restore any of the six removed allowances", () => {
+  it("does not absorb unmapped new debt or restore historical and retired CLI allowances", () => {
     const ids = new Set(allowlist.entries.map((entry) => entry.id));
     const removed = fixture.violations.filter((entry) => !ids.has(entry.id));
-    expect(removed).toHaveLength(6);
+    const retiredCliIds = [
+      "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:a43f4f7a42918672",
+      "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:332be66199b7f0bb",
+      "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:866526a44b8818f5",
+      "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:435e4c1c7a8cc55e",
+    ];
+    expect(removed).toHaveLength(10);
+    expect(removed.filter((entry) => retiredCliIds.includes(entry.id)).map((entry) => entry.id).sort())
+      .toEqual([...retiredCliIds].sort());
+    expect(removed.filter((entry) => !retiredCliIds.includes(entry.id))).toHaveLength(6);
     const unrelated = { ...record.pairs[0].new, id: `${record.pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const pairs = validateExactRelocation(record, { ...input(), discovered: [...discovered, unrelated] });
     const mapped = pairs.map((pair) => pair.old);
