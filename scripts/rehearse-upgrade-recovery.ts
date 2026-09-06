@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -7,27 +8,93 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
+import { captureRecoveryPackage, restoreRecoveryPackage, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
 
-const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2025-04-22T22-12-26Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
+const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const label = "wiseeff.synthetic-recovery-run";
+
+type RestoreChild = {
+  run: string; daemonId: string; directory: string; digest: string; password: string;
+  pg: string; redis: string; objects: string; objectClient: string; network: string;
+};
+
+/** Private subprocess adapter: stdin carries ephemeral target credentials. No source
+ * connection, source container, fixture role SQL or object metadata is accepted. */
+async function restoreSyntheticPackage(config: RestoreChild) {
+  const transport = createIsolatedUpgradeDocker();
+  if (transport.daemonId !== config.daemonId || !/^[a-f0-9]{24}$/.test(config.run)) throw new Error("synthetic-target-binding-invalid");
+  const owned = (id: string) => transport.assertOwned(id, label, config.run);
+  const exec = (id: string, args: string[], input?: Buffer) => { owned(id); return transport.command(["exec", "-i", id, ...args], input); };
+  const target = { deploymentId: `restore-${config.run}`, hostFingerprint: config.daemonId, postgresIdentity: config.pg, objectStoreIdentity: config.objects, redisIdentity: config.redis };
+  const endpoint = (id: string, port: string) => `127.0.0.1:${owned(id).NetworkSettings.Ports[`${port}/tcp`][0].HostPort}`;
+  await restoreRecoveryPackage(config.directory, config.digest, {
+    target, journalPath: path.join(config.directory, "restore-journal.json"),
+    async authorize(binding) {
+      // Synthetic scope only. Production must supply the real controller approval adapter.
+      if (binding.runId !== config.run || binding.packageDigest !== config.digest || binding.source.hostFingerprint !== config.daemonId) throw new Error("synthetic-package-binding-invalid");
+    },
+    async assertEmptyAndIsolated() {
+      const networkInfo = JSON.parse(transport.command(["network", "inspect", config.network]).toString())[0];
+      if (networkInfo.Labels?.[label] !== config.run) throw new Error("synthetic-network-ownership-mismatch");
+      for (const id of [config.pg, config.redis, config.objects, config.objectClient]) {
+        const info = owned(id);
+        if (!info.NetworkSettings.Networks[config.network]) throw new Error("synthetic-network-mismatch");
+      }
+      if (owned(config.redis).State.Running) throw new Error("redis-restore-requires-stopped-empty-target");
+      if (exec(config.pg, ["psql", "-U", "postgres", "-Atc", "select count(*) from pg_tables where schemaname='public'"]).toString().trim() !== "0") throw new Error("database-target-not-empty");
+      const inspection = await mkdtemp(path.join(os.tmpdir(), "upg-empty-redis-"));
+      try {
+        transport.command(["cp", `${config.redis}:/data/.`, inspection]);
+        if ((await readdir(inspection)).length) throw new Error("redis-target-has-existing-persistence");
+      } finally { await rm(inspection, { recursive: true, force: true }); }
+      const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
+      const buckets = transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "ls", "--json", "synthetic"]).toString().trim();
+      if (buckets) throw new Error("object-target-not-empty");
+    },
+    async restore(backup) {
+      // Structured nonprivileged role restore; secrets come only from this process stdin.
+      const roles = backup.roles.map(role => `create role "${role.name}" ${role.login ? `login password '${config.password}'` : "nologin"} nosuperuser nobypassrls nocreatedb nocreaterole noreplication;`).join("\n");
+      const members = backup.roles.flatMap(role => role.members.map(member => `grant "${role.name}" to "${member}";`)).join("\n");
+      exec(config.pg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles + "\n" + members));
+      exec(config.pg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], backup.postgres);
+      const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.password });
+      const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
+      owned(config.objectClient);
+      transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "mb", "synthetic/synthetic-recovery"]);
+      for (const object of backup.objects) await targetStore.put({ bucket: "synthetic-recovery", ...object });
+      const redisDirectory = path.join(config.directory, "verified-redis-import");
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(redisDirectory, { mode: 0o700 });
+      for (const file of backup.redis.files) await writeFile(path.join(redisDirectory, file.name), file.bytes, { flag: "wx", mode: 0o600 });
+      owned(config.redis);
+      transport.command(["cp", redisDirectory, `${config.redis}:/data/appendonlydir`]);
+      transport.command(["start", config.redis]);
+    },
+  });
+}
 
 export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?: Record<string, string> } }, id: string, run: string) {
   return inspect.Id === id && inspect.Config?.Labels?.[label] === run;
 }
 
 /** No external targets, backups, image overrides, production configuration, or SQL inputs. */
-export async function rehearseSyntheticRecovery() {
+export async function rehearseSyntheticRecovery(options: { fault?: "stale-target-aof" | "missing-object" | "wrong-target" } = {}) {
+  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target"].includes(options.fault))) throw new Error("unknown-synthetic-fault");
   const run = randomBytes(12).toString("hex");
   const password = randomBytes(24).toString("hex");
+  const targetPassword = randomBytes(24).toString("hex");
   const ids: string[] = [];
+  let networkId = "";
+  const network = `upg-recovery-${run}`;
   const pinnedImages = new Map<string, string>();
   const result = {
-    schemaVersion: "synthetic-three-store-recovery-v1", evidence: "synthetic sentinel only",
+    schemaVersion: "synthetic-three-store-recovery-v2", evidence: "synthetic package only",
     releaseReady: false, fullBusinessVerification: false, status: "blocked",
     backupExists: false, backupRetained: false, checksumVerified: false, restoreExecuted: false, businessVerified: false,
     ownerAclVerified: false, cleanupVerified: false, objectCount: 0,
     reason: "not-started", imageIdentities: {} as Record<string, string>, manifestDigest: "",
+    sourceStoppedBeforeRestore: false, separateRestoreProcess: false, redisPersistence: "AOF", daemonIdentity: "",
   };
   let directory: string | undefined;
   let interrupted = false;
@@ -51,7 +118,7 @@ export async function rehearseSyntheticRecovery() {
   };
   const create = (image: string, port: string, extra: string[], command: string[]) => {
     const id = docker(["create", "--label", `${label}=${run}`, "--name", `upg-recovery-${run}-${ids.length}`,
-      "-p", `127.0.0.1::${port}`, ...extra, pinnedImages.get(image)!, ...command]).toString().trim();
+      "--network", network, "-p", `127.0.0.1::${port}`, ...extra, pinnedImages.get(image)!, ...command]).toString().trim();
     ids.push(id); owned(id); return id;
   };
   const start = (id: string) => { owned(id); docker(["start", id]); };
@@ -65,6 +132,7 @@ export async function rehearseSyntheticRecovery() {
   try {
     result.reason = "isolated-local-docker-required";
     transport = createIsolatedUpgradeDocker();
+    result.daemonIdentity = transport.daemonId;
     result.reason = "required-local-image-unavailable";
     for (const [kind, image] of Object.entries(images)) {
       result.imageIdentities[kind] = docker(["image", "inspect", image, "--format", "{{.Id}} {{.Os}}/{{.Architecture}}"])
@@ -72,24 +140,30 @@ export async function rehearseSyntheticRecovery() {
       pinnedImages.set(image, result.imageIdentities[kind].split(" ")[0]!);
     }
     directory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-synthetic-recovery-"));
+    networkId = docker(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, network]).toString().trim();
     result.reason = "source-preparation-failed";
     const sourcePg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${password}`], []);
-    const sourceRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "no", "--save", ""]);
+    result.reason = "source-redis-create-failed";
+    const sourceRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]);
+    result.reason = "source-objects-create-failed";
     const sourceObjects = create(images.objects, "9000", ["-e", "MINIO_ROOT_USER=synthetic", "-e", `MINIO_ROOT_PASSWORD=${password}`], ["server", "/data"]);
+    result.reason = "source-start-failed";
     for (const id of ids) start(id);
+    result.reason = "source-postgres-ready-failed";
     await wait(async () => execute(sourcePg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
+    result.reason = "source-redis-ready-failed";
     await wait(async () => execute(sourceRedis, ["redis-cli", "PING"]));
-    const storage = (id: string) => createHttpObjectStorageTransport({ endpoint: `http://${endpoint(id, "9000")}`,
-      accessKeyId: "synthetic", secretAccessKey: password });
+    const storage = (id: string, secret = password) => createHttpObjectStorageTransport({ endpoint: `http://${endpoint(id, "9000")}`,
+      accessKeyId: "synthetic", secretAccessKey: secret });
     const sourceStore = storage(sourceObjects);
     const bucket = "synthetic-recovery";
     const objectClient = create(images.objectClient, "9001", ["--entrypoint", "/bin/sh"], ["-c", "sleep 300"]);
     start(objectClient);
-    const mc = (id: string, args: string[]) => {
-      const ip = owned(id).NetworkSettings.Networks.bridge?.IPAddress;
+    const mc = (id: string, args: string[], secret = password) => {
+      const ip = owned(id).NetworkSettings.Networks[network]?.IPAddress;
       if (!ip) throw new Error("object-store-container-network-unavailable");
       owned(objectClient);
-      return docker(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${password}@${ip}:9000`, objectClient, "mc", ...args]);
+      return docker(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${secret}@${ip}:9000`, objectClient, "mc", ...args]);
     };
     result.reason = "source-object-store-preparation-failed";
     await wait(async () => mc(sourceObjects, ["mb", `synthetic/${bucket}`]));
@@ -101,41 +175,67 @@ export async function rehearseSyntheticRecovery() {
       insert into public.sentinel values (1,'synthetic-value');
       grant select on public.sentinel to sentinel_reader;
     `));
-    const objectData = Buffer.from("synthetic object payload\n");
-    await sourceStore.put({ bucket, key: "sentinel", bytes: objectData, contentType: "text/plain", metadata: { synthetic: "true" } });
-    execute(sourceRedis, ["redis-cli", "SET", "synthetic:sentinel", "synthetic-redis-value"]);
-    // No application processes or external writers exist in this synthetic boundary.
+    const objectOracle = [
+      { key: "evidence/alpha.json", bytes: Buffer.from('{"value":null}'), contentType: "application/json", metadata: { source: "alpha", revision: "2" } },
+      { key: "reports/beta.txt", bytes: Buffer.from("different payload\n"), contentType: "text/plain", metadata: { source: "beta", revision: "9" } },
+    ];
+    for (const object of objectOracle) await sourceStore.put({ bucket, ...object });
+    execute(sourceRedis, ["redis-cli", "LPUSH", "bull:synthetic:wait", "job-2", "job-1"]);
+    execute(sourceRedis, ["redis-cli", "HSET", "bull:synthetic:meta", "paused", "1"]);
+    // Only these seeded stores exist; no API, worker, proxy or external writer has this private network/credentials.
     result.reason = "backup-failed";
     const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
-    await writeFile(path.join(directory, "postgres.dump"), dump, { mode: 0o600 });
-    execute(sourceRedis, ["redis-cli", "SAVE"]);
-    owned(sourceRedis); docker(["cp", `${sourceRedis}:/data/dump.rdb`, path.join(directory, "dump.rdb")]);
-    const objectBackup = await sourceStore.get({ bucket, key: "sentinel" });
-    if (mc(sourceObjects, ["ls", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").length !== 1) throw new Error("source-object-count-mismatch");
-    await writeFile(path.join(directory, "object.bin"), objectBackup, { mode: 0o600 });
-    const redisBackup = await readFile(path.join(directory, "dump.rdb"));
-    result.backupExists = true;
-    if (hash(objectBackup) !== hash(objectData)) throw new Error("object-checksum-mismatch");
-    for (const [name, bytes] of [["postgres.dump", dump], ["object.bin", objectBackup], ["dump.rdb", redisBackup]] as const) {
-      if (hash(await readFile(path.join(directory, name))) !== hash(bytes)) throw new Error("backup-checksum-mismatch");
+    const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname not like 'pg_%' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or not rolinherit or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
+    const unsupportedMembership = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_auth_members a join pg_roles r on r.oid=a.member where r.rolname not like 'pg_%' and r.rolname <> 'postgres' and (a.admin_option or not a.inherit_option or not a.set_option)`]).toString().trim();
+    const unsupportedRoleSettings = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_db_role_setting s join pg_roles r on r.oid=s.setrole where r.rolname not like 'pg_%' and r.rolname <> 'postgres'`]).toString().trim();
+    if (unsupportedRoles !== "0" || unsupportedMembership !== "0" || unsupportedRoleSettings !== "0") throw new Error("role-manifest-capability-unsupported");
+    const roleManifest = JSON.parse(execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select json_agg(json_build_object('name',rolname,'login',rolcanlogin,'members',(select coalesce(json_agg(member.rolname),'[]') from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid))) from pg_roles r where rolname not like 'pg_%' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
+    const listing = mc(sourceObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").map(line => JSON.parse(line));
+    const objects = [];
+    for (const entry of listing) {
+      const key = entry.key as string;
+      const head = await sourceStore.head({ bucket, key });
+      const stat = JSON.parse(mc(sourceObjects, ["stat", "--json", `synthetic/${bucket}/${key}`]).toString());
+      const contentType = stat.metadata?.["Content-Type"];
+      if (typeof contentType !== "string") throw new Error("object-content-type-not-exported");
+      objects.push({ key, bytes: await sourceStore.get({ bucket, key }), contentType, metadata: head?.metadata ?? {} });
     }
-    result.manifestDigest = hash(Buffer.from(JSON.stringify([hash(dump), hash(objectBackup), hash(redisBackup)])));
+    for (const id of [sourcePg, sourceRedis, sourceObjects]) { owned(id); docker(["stop", id]); }
+    result.sourceStoppedBeforeRestore = true;
+    const redisExport = path.join(directory, "redis-export");
+    owned(sourceRedis); docker(["cp", `${sourceRedis}:/data/appendonlydir`, redisExport]);
+    const redisFiles = await Promise.all((await readdir(redisExport)).sort().map(async name => ({ name, bytes: await readFile(path.join(redisExport, name)) })));
+    result.manifestDigest = await captureRecoveryPackage(directory, {
+      runId: run, target: { deploymentId: `source-${run}`, hostFingerprint: transport.daemonId, postgresIdentity: sourcePg, objectStoreIdentity: sourceObjects, redisIdentity: sourceRedis },
+      quiescence: { status: "quiesced", writersFenced: true, queueDrained: true, proxyStopped: true, observedAt: new Date().toISOString() },
+      postgres: dump, roles: roleManifest, objects, redis: { appendonly: true, files: redisFiles },
+    });
+    result.backupExists = true;
     result.checksumVerified = true;
     result.reason = "restore-failed";
-    const targetPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${password}`], []);
-    const targetRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "no", "--save", ""]);
-    const targetObjects = create(images.objects, "9000", ["-e", "MINIO_ROOT_USER=synthetic", "-e", `MINIO_ROOT_PASSWORD=${password}`], ["server", "/data"]);
-    owned(targetRedis); docker(["cp", path.join(directory, "dump.rdb"), `${targetRedis}:/data/dump.rdb`]);
-    start(targetPg); start(targetRedis); start(targetObjects);
+    const targetPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${targetPassword}`], []);
+    const targetRedis = create(images.redis, "6379", [], ["redis-server", "--appendonly", "yes", "--appendfsync", "always"]);
+    const targetObjects = create(images.objects, "9000", ["-e", "MINIO_ROOT_USER=synthetic", "-e", `MINIO_ROOT_PASSWORD=${targetPassword}`], ["server", "/data"]);
+    start(targetPg); start(targetObjects);
+    if (options.fault === "stale-target-aof") {
+      start(targetRedis);
+      await wait(async () => execute(targetRedis, ["redis-cli", "PING"]));
+      execute(targetRedis, ["redis-cli", "SET", "old-target-only", "must-not-replay"]);
+      owned(targetRedis); docker(["stop", targetRedis]);
+    }
     await wait(async () => execute(targetPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
-    execute(targetPg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(roles));
-    execute(targetPg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], dump);
-    const targetStore = storage(targetObjects);
-    await wait(async () => mc(targetObjects, ["mb", `synthetic/${bucket}`]));
-    await targetStore.put({ bucket, key: "sentinel", bytes: objectBackup, contentType: "text/plain", metadata: { synthetic: "true" } });
+    const targetStore = storage(targetObjects, targetPassword);
+    await wait(async () => mc(targetObjects, ["ready", "synthetic"], targetPassword));
+    if (options.fault === "missing-object") await rm(path.join(directory, "payload-1.bin"));
+    const child = spawnSync(process.execPath, ["--import", "tsx", new URL(import.meta.url).pathname, "--synthetic-package-child"], {
+      input: JSON.stringify({ run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
+      encoding: "utf8", timeout: 60000, env: { PATH: process.env.PATH, HOME: os.homedir() },
+    });
+    if (child.status !== 0) throw new Error("separate-package-restore-failed");
+    result.separateRestoreProcess = true;
     result.restoreExecuted = true;
     result.reason = "restored-verification-failed";
-    const login = new pg.Client({ connectionString: `postgres://sentinel_reader:${password}@${endpoint(targetPg, "5432")}/postgres` });
+    const login = new pg.Client({ connectionString: `postgres://sentinel_reader:${targetPassword}@${endpoint(targetPg, "5432")}/postgres` });
     await login.connect();
     try {
       const rows = await login.query("select * from public.sentinel order by id");
@@ -146,14 +246,17 @@ export async function rehearseSyntheticRecovery() {
       if (JSON.stringify(acl.rows[0]) !== JSON.stringify({ owner_ok: true, can_read: true, can_write: false })) throw new Error("owner-acl-mismatch");
       result.ownerAclVerified = true;
     } finally { await login.end(); }
-    if (hash(await targetStore.get({ bucket, key: "sentinel" })) !== hash(objectData)) throw new Error("restored-object-mismatch");
-    const metadata = await targetStore.head({ bucket, key: "sentinel" });
-    if (!metadata || metadata.metadata?.synthetic !== "true") throw new Error("restored-object-metadata-mismatch");
-    const listing = mc(targetObjects, ["ls", "--json", `synthetic/${bucket}`]).toString();
-    result.objectCount = listing.trim().split("\n").filter(Boolean).length;
-    if (result.objectCount !== 1) throw new Error("object-count-mismatch");
+    for (const object of objectOracle) {
+      if (hash(await targetStore.get({ bucket, key: object.key })) !== hash(object.bytes)) throw new Error("restored-object-mismatch");
+      const metadata = await targetStore.head({ bucket, key: object.key });
+      if (!metadata || Object.entries(object.metadata).some(([key, value]) => metadata.metadata?.[key] !== value)) throw new Error("restored-object-metadata-mismatch");
+      const stat = JSON.parse(mc(targetObjects, ["stat", "--json", `synthetic/${bucket}/${object.key}`], targetPassword).toString());
+      if (stat.metadata?.["Content-Type"] !== object.contentType) throw new Error("restored-object-content-type-mismatch");
+    }
+    result.objectCount = mc(targetObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`], targetPassword).toString().trim().split("\n").filter(Boolean).length;
+    if (result.objectCount !== 2) throw new Error("object-count-mismatch");
     await wait(async () => {
-      if (execute(targetRedis, ["redis-cli", "GET", "synthetic:sentinel"]).toString().trim() !== "synthetic-redis-value") throw new Error("redis-value-mismatch");
+      if (execute(targetRedis, ["redis-cli", "LRANGE", "bull:synthetic:wait", "0", "-1"]).toString().trim() !== "job-1\njob-2" || execute(targetRedis, ["redis-cli", "HGET", "bull:synthetic:meta", "paused"]).toString().trim() !== "1") throw new Error("redis-value-mismatch");
     });
     result.businessVerified = true; // Only the explicitly labeled synthetic sentinel behavior.
     result.status = "passed"; result.reason = "synthetic-sentinels-restored";
@@ -164,6 +267,13 @@ export async function rehearseSyntheticRecovery() {
     let cleaned = true;
     for (const id of [...ids].reverse()) {
       try { owned(id); docker(["rm", "-f", "-v", id]); } catch { cleaned = false; }
+    }
+    if (networkId) {
+      try {
+        const info = JSON.parse(docker(["network", "inspect", networkId]).toString())[0];
+        if (info.Id !== networkId || info.Labels?.[label] !== run) throw new Error("network-ownership-mismatch");
+        docker(["network", "rm", networkId]);
+      } catch { cleaned = false; }
     }
     if (directory) await rm(directory, { recursive: true, force: true });
     result.cleanupVerified = cleaned;
@@ -176,7 +286,16 @@ export async function rehearseSyntheticRecovery() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (process.argv.slice(2).join(" ") !== "--synthetic-only") {
+  if (process.argv.slice(2).join(" ") === "--synthetic-package-child") {
+    try {
+      const chunks = [];
+      for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+      const config = JSON.parse(Buffer.concat(chunks).toString()) as RestoreChild;
+      if (!/^[a-f0-9]{48}$/.test(config.password)) throw new Error("invalid-private-input");
+      await restoreSyntheticPackage(config);
+      console.log(JSON.stringify({ status: "synthetic-package-restored" }));
+    } catch { console.log(JSON.stringify({ status: "blocked", reason: "synthetic-package-restore-failed" })); process.exitCode = 1; }
+  } else if (process.argv.slice(2).join(" ") !== "--synthetic-only") {
     console.log(JSON.stringify({ status: "blocked", reason: "explicit-synthetic-only-required-no-other-arguments" }));
     process.exitCode = 2;
   } else {
