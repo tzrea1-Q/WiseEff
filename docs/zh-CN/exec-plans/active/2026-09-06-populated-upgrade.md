@@ -4,6 +4,16 @@
 
 ## 范围与状态
 
+## 续工：M1与M2
+
+新preflight确认base `67d4a77325b6009b77c2373bd788298a6d022bcf`、继承报告head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`，候选工作树干净。源部署不变。M1仅为可独立审阅的安全拦截；M2必须完成真实隔离升级成功链，二者分开。
+
+父智能体负责M1 CLI／债务删除、固定入口交接、共享upgrade／Compose／migration、集成及交付。`m2_release`负责既有release-gate脚本及测试；`m2_runtime`负责运行连接／启动文件及测试；`m2_recovery`负责备份包恢复adapter及合成恢复测试。各自独立Scratch，父智能体串行集成；无人获准生产操作或扩大权限。
+
+增量威胁审查：保留诊断absence与发布拒绝的区别；仅移除已证明无用的导入及四个精确债务ID，拒绝回引，保留冻结fixture／relocation／base；交接先绑定artifact／daemon／project／storage身份再产生效果；报告取真实状态；运行初始化先于所有队列效果且不修表；恢复只消费验证过的包及外部秘密输入，绑定目标，部分／未知结果停止。包验证须防文件替换、路径穿越及陈旧Redis AOF。此处补充下方矩阵。首个Red为继承boundary失败，随后在CLI诊断入口验证禁止加载退役模块。
+
+文档影响：继续更新本双语计划、既有双语操作／证据文档及模块所属运行／恢复说明，不新增重复状态报告。内循环只跑focused；里程碑PR前完成build／contract／docs及独立审查。schema追加后旧值保留不等于canonical转换，sentinel RDB恢复不等于AOF部署形态恢复。
+
 当前状态：SCRATCH，未完成。刷新后的base／候选、执行结果及boundary／发布阻塞见[执行证据](../../../../ops/self-hosted/populated-upgrade-evidence.zh-CN.md)。下段保留开工preflight记录。
 
 PREFLIGHT，风险 R3。源部署始终为 `82344044b436a8dafecefbb85dfd724cecb05e3f`；重新 fetch 的开发基线为 `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d`，与用户提供的 main 无差异。源计数和镜像身份仅为用户提供的历史观察。本地独立干净工作树使用 `codex/populated-upgrade-scratch`。本轮止于审阅候选／PR，不合并、不关闭历史单、不批准发布、不访问生产。

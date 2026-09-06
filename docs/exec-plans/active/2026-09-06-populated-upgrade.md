@@ -4,6 +4,16 @@
 
 ## Scope and state
 
+## Continuation: M1 and M2
+
+Fresh preflight confirms base `67d4a77325b6009b77c2373bd788298a6d022bcf`, inherited report head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`, clean candidate worktree. Source deployment is unchanged. M1 is independently reviewable interception; M2 requires a successful actual isolated upgrade and remains separate.
+
+Parent owns M1 CLI/debt shrink, fixed-entry handoff, shared upgrade/Compose/migrations, integration and delivery. `m2_release` owns the existing release-gate script and tests; `m2_runtime` owns runtime connection/startup files and tests; `m2_recovery` owns package restore adapters and synthetic recovery tests. Each works in isolated Scratch; parent integrates serially. No agent owns production actions or permission changes.
+
+Incremental threat review: preserve absent-diagnostic versus release refusal; remove only proven unused imports and four exact debt IDs, reject reintroduction, retain immutable fixture/relocation/base; bind handoff to artifact/daemon/project/storage identities before effects; produce reports from real state; runtime initialization precedes all queue effects and never repairs; restore consumes only a verified package with external secret inputs, binds the target and stops on partial/unknown outcomes. Package verification must resist file replacement, path traversal and stale Redis AOF. These augment the matrix below. First Red is the inherited boundary failure, then retired-module load rejection at the CLI diagnostic seam.
+
+Documentation impact: update this existing bilingual plan, existing bilingual operator/evidence documents, and module-owned runtime/recovery guidance together with executable paths. No duplicate status report. Focused checks own inner loops; final build/contracts/docs and independent reviews precede a milestone PR. Synthetic schema preservation is not canonical conversion; sentinel RDB restore is not AOF production-shape recovery.
+
 Current state: SCRATCH, incomplete. See the [execution evidence](../../../ops/self-hosted/populated-upgrade-evidence.md) for refreshed base/candidate, passing checks and unresolved boundary/release blockers. The following paragraph records the initial preflight.
 
 PREFLIGHT, R3. Source deployment stays `82344044b436a8dafecefbb85dfd724cecb05e3f`; development base is freshly fetched `origin/main@1c9fa56e3eaca6e7984f35a097876772a6e4025d` (no difference from the supplied main). Source counts and image identity are supplied historical observations, not rerun evidence. The local clean isolated worktree uses `codex/populated-upgrade-scratch`. No production access is authorized. Stop at a reviewed candidate/PR; do not merge, close historical issues, approve release, or operate production.

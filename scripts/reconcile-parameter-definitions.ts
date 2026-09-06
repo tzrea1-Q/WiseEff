@@ -1,11 +1,6 @@
 import "dotenv/config";
 
 import { loadServerEnv } from "../server/config/env";
-import {
-  reconcileDriverParameterDefinitions,
-  type DefinitionReconciliationMode,
-} from "../server/modules/parameter-specs/definitionReconciliation";
-import { verifyEffectiveDriverParameterDefinitions } from "../server/modules/parameter-specs/definitionVerification";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import {
   catalogLegacyGoneResult,
@@ -47,7 +42,7 @@ export async function runReconcileParameterDefinitions(
   const db = createPostgresDatabase(loaded.DATABASE_URL);
   try {
     if (command.kind === "verify") {
-    const report = await verifyEffectiveDriverParameterDefinitions && await readTypedVerificationReport({
+    const report = await readTypedVerificationReport({
       database: db,
       reportIdOrDigest: command.reportIdOrDigest,
     });
