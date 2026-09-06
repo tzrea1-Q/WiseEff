@@ -31,8 +31,8 @@ describe("actual Compose Catalog credential separation", () => {
         WISEEFF_CATALOG_REDIS_VOLUME: "configuration-fixture-redis",
         WISEEFF_CATALOG_NETWORK: "configuration-fixture-network",
         WISEEFF_ENV_FILE: save("host.env", `POSTGRES_PASSWORD=${secret}\nDATABASE_URL=postgres://manager:${secret}@postgres/wiseeff\n`),
-        WISEEFF_API_ENV_FILE: save("api.env", "DATABASE_URL=postgres://reader@postgres/wiseeff\nCATALOG_GOVERNANCE_DATABASE_URL=postgres://governance@postgres/wiseeff\n"),
-        WISEEFF_WORKER_ENV_FILE: save("worker.env", "DATABASE_URL=postgres://worker@postgres/wiseeff\n"),
+        WISEEFF_API_ENV_FILE: save("api.env", "DATABASE_URL=postgres://reader@postgres/wiseeff\nCATALOG_GOVERNANCE_DATABASE_URL=postgres://governance@postgres/wiseeff\nNODE_ENV=development\n"),
+        WISEEFF_WORKER_ENV_FILE: save("worker.env", "DATABASE_URL=postgres://worker@postgres/wiseeff\nNODE_ENV=test\n"),
         WISEEFF_MANAGEMENT_ENV_FILE: save("management.env", `DATABASE_URL=postgres://manager:${secret}@postgres/wiseeff\n`),
       };
       const run = (input = env, profile = "*") => spawnSync("docker", ["compose", "--profile", profile, "-f", "ops/self-hosted/compose.yaml", "-f", "ops/self-hosted/compose.catalog.yaml", "config", "--format", "json"], { env: input, encoding: "utf8" });
@@ -47,6 +47,8 @@ describe("actual Compose Catalog credential separation", () => {
       }
       expect(config.services.api.environment.CATALOG_GOVERNANCE_DATABASE_URL).toBeDefined();
       expect(config.services.worker.environment.CATALOG_GOVERNANCE_DATABASE_URL).toBeUndefined();
+      expect(config.services.api.environment.NODE_ENV).toBe("production");
+      expect(config.services.worker.environment.NODE_ENV).toBe("production");
       expect(config.services.api.command).toEqual(["npx", "tsx", "server/index.ts"]);
       expect(config.services["catalog-management"].command).toEqual(["npm", "run", "db:migrate"]);
       expect(config.services["catalog-management"].profiles).toEqual(["catalog-management"]);

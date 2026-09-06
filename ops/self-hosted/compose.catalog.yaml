@@ -19,6 +19,8 @@ services:
     depends_on: !reset {}
     env_file: !override
       - ${WISEEFF_API_ENV_FILE:?set a private API-only environment file}
+    environment:
+      NODE_ENV: production
     command: ["npx", "tsx", "server/index.ts"]
   worker:
     image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
@@ -28,6 +30,8 @@ services:
     depends_on: !reset {}
     env_file: !override
       - ${WISEEFF_WORKER_ENV_FILE:?set a private worker-only environment file}
+    environment:
+      NODE_ENV: production
   web:
     image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
     build: !reset null

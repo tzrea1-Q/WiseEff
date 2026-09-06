@@ -133,6 +133,15 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await writeFile(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, Buffer.alloc(1024 * 1024 + 1, 65));
       expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-file-not-secure");
       await writeFile(roleFiles.WISEEFF_MANAGEMENT_ENV_FILE, "ROLE_PURPOSE=WISEEFF_MANAGEMENT_ENV_FILE\n");
+      for (const key of ["WISEEFF_API_ENV_FILE", "WISEEFF_WORKER_ENV_FILE"] as const) {
+        for (const mode of ["development", "test", ""]) {
+          await writeFile(roleFiles[key], `ROLE_PURPOSE=${key}\nNODE_ENV=${mode}\n`);
+          expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-runtime-production-mode-required");
+        }
+        await writeFile(roleFiles[key], `ROLE_PURPOSE=${key}\nNODE_ENV=production\n`);
+        await expect(inspectHandoff(input, observer)).resolves.toBeDefined();
+        await writeFile(roleFiles[key], `ROLE_PURPOSE=${key}\n`);
+      }
       await writeFile(configFile, mainConfig({ ...roleFiles, WISEEFF_MANAGEMENT_ENV_FILE: "" }), { mode: 0o600 });
       expect(await refusal(inspectHandoff(input, observer))).toBe("handoff-runtime-config-path-required");
       for (const script of ["#!/bin/sh\n", "DANGER=$(touch must-not-exist)\n", "source /private/config\n"]) {

@@ -93,7 +93,9 @@ const observePrivateConfigurations = async (mainPath: string, buildRoots: readon
   for (const key of runtimeConfigKeys) {
     const filename = main.env[key];
     if (!filename || filename !== filename.trim() || /["'$]/.test(filename)) fail("runtime-config-path-required");
-    runtime[key] = (await readPrivate(filename)).binding;
+    const roleConfig = await readPrivate(filename);
+    if (key !== "WISEEFF_MANAGEMENT_ENV_FILE" && roleConfig.env.NODE_ENV !== undefined && roleConfig.env.NODE_ENV !== "production") fail("runtime-production-mode-required");
+    runtime[key] = roleConfig.binding;
   }
   return { env: main.env, binding: { main: main.binding, runtime } };
 };
