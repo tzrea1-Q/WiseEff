@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
+import { CatalogSubjectId, ParameterDefinitionId } from "../../parameter-catalog-contract/index";
 import { createGovernanceCatalogQueries, GOVERNANCE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-governance/queries";
-import { createRegistrationProjectionFromQueries } from "./ports";
+import { createUsageQueries, USAGE_CURRENT_PROJECTION_SEMANTICS } from "../../parameter-bindings/usage";
+import { createRegistrationProjectionFromQueries, createUsageProjectionFromQueries } from "./ports";
 
 const a = CatalogSubjectId("csub_batch_a");
 const b = CatalogSubjectId("csub_batch_b");
@@ -41,5 +42,44 @@ describe("R2-BATCH page registration port", () => {
     const { port, project } = fixture();
     project.mockRejectedValue(new Error("controlled dependency failure"));
     await expect(port.projectSubjects({ ...input, subjectIds: [a] })).rejects.toThrow("controlled dependency failure");
+  });
+});
+
+describe("R2-BATCH page usage port", () => {
+  const first = ParameterDefinitionId("pdef_batch_a");
+  const second = ParameterDefinitionId("pdef_batch_b");
+  function usageFixture() {
+    const sql = vi.fn(async () => { throw new Error("unexpected SQL"); });
+    const queries = createUsageQueries({ query: sql });
+    return { port: createUsageProjectionFromQueries(queries), summarize: vi.spyOn(queries, "summarize"), sql };
+  }
+  it("deduplicates a page and associates usage by stable ID, retaining the existing projection scope", async () => {
+    const { port, summarize } = usageFixture();
+    summarize.mockResolvedValue({ ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [
+      { definitionId: second, policyCount: 0, projectCount: 3, currentValueCount: 5 },
+      { definitionId: first, policyCount: 0, projectCount: 1, currentValueCount: 2 },
+    ] } });
+    const result = await port.summarizeMany({ ...input, definitionIds: [first, second, first] });
+    expect(summarize).toHaveBeenCalledExactlyOnceWith({ organizationId: input.organizationId, definitionIds: [first, second], projectScope: { kind: "all" }, authScope: { organizationId: input.organizationId, principalId: input.principalId } });
+    expect(result.get(first)).toEqual({ policyCount: 0, projectCount: 1, currentValueCount: 2 });
+    expect(result.get(second)).toEqual({ policyCount: 0, projectCount: 3, currentValueCount: 5 });
+    // Policy and project restriction are not fixed by this batch seam.
+  });
+  it("empty input issues no usage query", async () => {
+    const { port, summarize, sql } = usageFixture();
+    expect(await port.summarizeMany({ ...input, definitionIds: [] })).toEqual(new Map());
+    expect(summarize).not.toHaveBeenCalled();
+    expect(sql).not.toHaveBeenCalled();
+  });
+  it("missing required summary fails closed for both batch and single detail", async () => {
+    const { port, summarize } = usageFixture();
+    summarize.mockResolvedValue({ ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [] } });
+    await expect(port.summarizeMany({ ...input, definitionIds: [first] })).rejects.toMatchObject({ failure: { kind: "query-unavailable" } });
+    await expect(port.summarize({ ...input, definitionId: first })).rejects.toMatchObject({ failure: { kind: "query-unavailable" } });
+  });
+  it.each(["timeout", "dependency-failure", "query-unavailable"] as const)("retains %s rather than returning zero", async (kind) => {
+    const { port, summarize } = usageFixture();
+    summarize.mockResolvedValue({ ok: false, error: { kind, operation: "summarizeUsage" } });
+    await expect(port.summarizeMany({ ...input, definitionIds: [first] })).rejects.toMatchObject({ failure: { kind, operation: "summarizeUsage" } });
   });
 });

@@ -60,6 +60,9 @@ export const unregisteredProjection = unregisteredProjectionForTests;
 
 /** Test-only zero usage projection. Must not be the production pool default. */
 export const zeroUsageProjectionForTests: UsageProjectionPort = {
+  async summarizeMany({ definitionIds }) {
+    return new Map(definitionIds.map((id) => [id, { policyCount: 0, projectCount: 0, currentValueCount: 0 }]));
+  },
   async summarize() {
     return { policyCount: 0, projectCount: 0, currentValueCount: 0 };
   },
@@ -96,6 +99,9 @@ export const unavailableRegistrationProjection: RegistrationProjectionPort = {
 };
 
 export const unavailableUsageProjection: UsageProjectionPort = {
+  async summarizeMany() {
+    throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+  },
   async summarize() {
     throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
   },
@@ -200,24 +206,34 @@ export function createRegistrationProjectionFromQueries(
 }
 
 export function createUsageProjectionFromQueries(queries: UsageQueries): UsageProjectionPort {
+  const summarizeMany: UsageProjectionPort["summarizeMany"] = async (input) => {
+    const principalId = requirePrincipal(input.principalId, "summarizeUsage");
+    const definitionIds = [...new Set(input.definitionIds)];
+    if (definitionIds.length === 0) return new Map();
+    const result = await queries.summarize({
+      organizationId: input.organizationId,
+      definitionIds,
+      projectScope: { kind: "all" },
+      authScope: { organizationId: input.organizationId, principalId },
+    });
+    if (!result.ok) throw new CatalogProjectionError(result.error);
+    const summaries = new Map(result.value.summaries.map((summary) => [summary.definitionId, {
+      policyCount: summary.policyCount,
+      projectCount: summary.projectCount,
+      currentValueCount: summary.currentValueCount,
+    }]));
+    if (definitionIds.some((id) => !summaries.has(id))) {
+      throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+    }
+    return summaries;
+  };
   return {
+    summarizeMany,
     async summarize(input) {
-      const principalId = requirePrincipal(input.principalId, "summarizeUsage");
-      const result = await queries.summarize({
-        organizationId: input.organizationId,
-        definitionIds: [input.definitionId],
-        projectScope: { kind: "all" },
-        authScope: { organizationId: input.organizationId, principalId },
-      });
-      if (!result.ok) {
-        throw new CatalogProjectionError(result.error);
-      }
-      const summary = result.value.summaries[0];
-      return {
-        policyCount: summary?.policyCount ?? 0,
-        projectCount: summary?.projectCount ?? 0,
-        currentValueCount: summary?.currentValueCount ?? 0,
-      };
+      const summaries = await summarizeMany({ ...input, definitionIds: [input.definitionId] });
+      const summary = summaries.get(input.definitionId);
+      if (!summary) throw new CatalogProjectionError({ kind: "query-unavailable", operation: "summarizeUsage" });
+      return summary;
     },
   };
 }

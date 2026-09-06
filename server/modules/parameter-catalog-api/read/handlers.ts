@@ -416,20 +416,24 @@ async function handleListDefinitions(
   if (!page) {
     return notFound(request.requestId, "definition-not-found");
   }
+  const registrations = page.items.length === 0 ? new Map() : await ports.registration.projectSubjects({
+    organizationId: scope.organizationId,
+    principalId: scope.principalId,
+    subjectIds: [...new Set(page.items.map((definition) => definition.subjectId))],
+    canRegister: scope.canRegister,
+    observedRelease: observedPin(snapshot),
+  });
+  const summaries = page.items.length === 0 ? new Map() : await ports.usage.summarizeMany({
+    organizationId: scope.organizationId,
+    principalId: scope.principalId,
+    definitionIds: [...new Set(page.items.map((definition) => definition.id))],
+  });
   const items = [];
   for (const definition of page.items) {
-    const registration = await ports.registration.projectDefinition({
-      organizationId: scope.organizationId,
-      principalId: scope.principalId,
-      subjectId: definition.subjectId,
-      observedRelease: observedPin(snapshot),
-    });
-    const usage = await ports.usage.summarize({
-      organizationId: scope.organizationId,
-      principalId: scope.principalId,
-      definitionId: definition.id,
-    });
-    const mapped = mapCatalogDefinition(snapshot, definition, registration, usage);
+    const projection = registrations.get(definition.subjectId);
+    const usage = summaries.get(definition.id);
+    if (!projection || !usage) return catalogNotReady(request.requestId);
+    const mapped = mapCatalogDefinition(snapshot, definition, projection.registration, usage);
     if (!mapped) {
       return catalogNotReady(request.requestId);
     }

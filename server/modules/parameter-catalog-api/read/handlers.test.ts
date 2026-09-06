@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { CurrentCatalogSnapshot } from "../../catalog-kernel/interface";
 import {
@@ -124,6 +124,7 @@ function createHarness(options: {
   readonly snapshotCalls?: string[];
   readonly runtimeCalls?: string[];
   readonly listSubjectsItems?: Array<typeof subject>;
+  readonly listDefinitionsItems?: Array<typeof definition>;
   readonly getRevisionStatus?: "found" | "revision-unavailable";
   readonly loadError?: boolean;
   readonly fingerprint?: string;
@@ -167,7 +168,7 @@ function createHarness(options: {
     },
     listDefinitions: () => {
       snapshotCalls.push("listDefinitions");
-      return { status: "found" as const, scope: { kind: "all" as const }, page: page([definition]) };
+      return { status: "found" as const, scope: { kind: "all" as const }, page: page(options.listDefinitionsItems ?? [definition]) };
     },
     getDefinitionRevision: () => {
       snapshotCalls.push("getDefinitionRevision");
@@ -271,6 +272,41 @@ function get(path: string, init: Partial<CatalogReadRequest> = {}): CatalogReadR
 }
 
 describe("S8-READ nine canonical catalog read routes", () => {
+  it("R2-BATCH deduplicates each projection kind after the Kernel page", async () => {
+    const other = { ...definition, id: ParameterDefinitionId("pdef_second") };
+    const { ports } = createHarness({ listDefinitionsItems: [definition, other, definition] });
+    const project = vi.fn(ports.registration.projectSubjects);
+    const summarize = vi.fn(ports.usage.summarizeMany);
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: project, projectDefinition: vi.fn(() => { throw new Error("single-row projection forbidden"); }) },
+      usage: { ...ports.usage, summarizeMany: summarize, summarize: vi.fn(() => { throw new Error("single-row usage forbidden"); }) },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response.status).toBe(200);
+    expect(project).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ subjectIds: [definition.subjectId], organizationId: scope.organizationId }));
+    expect(summarize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ definitionIds: [definition.id, other.id], organizationId: scope.organizationId }));
+  });
+
+  it.each(["registration", "usage"] as const)("R2-BATCH missing %s result rejects the entire page", async (missing) => {
+    const { ports } = createHarness();
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: missing === "registration" ? async () => new Map() : ports.registration.projectSubjects },
+      usage: { ...ports.usage, summarizeMany: missing === "usage" ? async () => new Map() : ports.usage.summarizeMany },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response.status).toBe(503);
+  });
+
+  it("R2-BATCH an empty Definition page does not invoke either projection", async () => {
+    const { ports } = createHarness({ listDefinitionsItems: [] });
+    const project = vi.fn(ports.registration.projectSubjects);
+    const summarize = vi.fn(ports.usage.summarizeMany);
+    const response = await handleCatalogRead({ ...ports,
+      registration: { ...ports.registration, projectSubjects: project },
+      usage: { ...ports.usage, summarizeMany: summarize },
+    }, get("/api/v2/catalog/definitions"));
+    expect(response.status).toBe(200);
+    expect(project).not.toHaveBeenCalled();
+    expect(summarize).not.toHaveBeenCalled();
+  });
   it("matches the frozen S8-CON paths onto Kernel operations", () => {
     expect(matchCatalogReadRoute("/api/v2/catalog")?.id).toBe("catalog.get");
     expect(matchCatalogReadRoute("/api/v2/catalog/subjects")?.id).toBe("catalog.listSubjects");

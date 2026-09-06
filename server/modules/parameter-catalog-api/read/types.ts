@@ -134,6 +134,11 @@ export type CatalogUsageSummary = {
 };
 
 export type UsageProjectionPort = {
+  summarizeMany(input: {
+    readonly organizationId: string;
+    readonly definitionIds: readonly ParameterDefinitionId[];
+    readonly principalId?: string;
+  }): Promise<ReadonlyMap<ParameterDefinitionId, CatalogUsageSummary>>;
   summarize(input: {
     readonly organizationId: string;
     readonly definitionId: ParameterDefinitionId;
