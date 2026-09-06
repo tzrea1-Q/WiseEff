@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CatalogUpgradeController, ControllerCommand } from "./controller";
 import { canonicalJson, sha256Prefixed } from "./journal";
+import { parseEnvText } from "../ip-lab-profile";
 
 type Docker = { daemonId: string; command(args: string[]): Buffer };
 type Artifact = { sha: string; tree: string };
@@ -17,7 +18,7 @@ export type HandoffInputs = {
     applications: { service: "api" | "worker" | "web"; containerId: string; imageId: string; imageReference: string }[];
     stores: { service: "postgres" | "minio" | "redis"; containerId: string; volumeName: string; destination: string }[];
   };
-  candidate: Artifact & { imageId: string };
+  candidate: Artifact & { checkout: string; imageId: string };
   privateConfigPath: string;
   lockRoot: string;
   journalPath: string;
@@ -43,7 +44,7 @@ const readBoundedFile = async (filename: string, maximum: number, privateFile = 
   const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => fail("file-unavailable"));
   try {
     const stat = await file.stat();
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > maximum || (privateFile && (stat.mode & 0o077) !== 0)) fail("file-not-secure");
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > maximum || (privateFile && (stat.mode & 0o777) !== 0o600)) fail("file-not-secure");
     const data = Buffer.alloc(stat.size + 1);
     let length = 0;
     while (length < data.length) {
@@ -52,8 +53,49 @@ const readBoundedFile = async (filename: string, maximum: number, privateFile = 
       length += next.bytesRead;
     }
     if (length !== stat.size) fail("file-changed");
-    return data.subarray(0, length);
+    const after = await lstat(filename);
+    if (after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size || after.nlink !== 1) fail("file-changed");
+    return { bytes: data.subarray(0, length), device: String(stat.dev), inode: String(stat.ino) };
   } finally { await file.close(); }
+};
+const runtimeConfigKeys = ["WISEEFF_API_ENV_FILE", "WISEEFF_WORKER_ENV_FILE", "WISEEFF_MANAGEMENT_ENV_FILE"] as const;
+const dataOnlyEnv = (bytes: Buffer) => {
+  const text = bytes.toString("utf8");
+  const keys = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("#!") || /\u0000|\$\(|`|;|&&|\|\|/.test(line)) fail("private-config-not-data-only");
+    if (!line || line.startsWith("#")) continue;
+    const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+    if (!assignment || keys.has(assignment[1]!)) fail("private-config-not-data-only");
+    keys.add(assignment[1]!);
+  }
+  // Reuse the self-hosted data parser; never source/eval or expand shell variables.
+  return parseEnvText(text);
+};
+const observePrivateConfigurations = async (mainPath: string, buildRoots: readonly string[]) => {
+  const identities = new Set<string>();
+  const paths = new Set<string>();
+  const readPrivate = async (filename: string) => {
+    if (!path.isAbsolute(filename)) fail("private-file-path-not-absolute");
+    const canonical = await realpath(filename).catch(() => fail("private-file-unavailable"));
+    if (buildRoots.some(root => canonical === root || canonical.startsWith(`${root}${path.sep}`))) fail("private-file-inside-build-checkout");
+    if (canonical !== filename || (await lstat(filename)).isSymbolicLink()) fail("private-file-path-alias");
+    const file = await readBoundedFile(canonical, 1024 * 1024, true);
+    if (await realpath(filename) !== canonical) fail("private-file-path-alias");
+    const identity = `${file.device}:${file.inode}`;
+    if (paths.has(canonical) || identities.has(identity)) fail("private-file-alias");
+    paths.add(canonical); identities.add(identity);
+    return { env: dataOnlyEnv(file.bytes), binding: { path: canonical, device: file.device, inode: file.inode, digest: bytesDigest(file.bytes) } };
+  };
+  const main = await readPrivate(mainPath);
+  const runtime: Record<string, { path: string; device: string; inode: string; digest: string }> = {};
+  for (const key of runtimeConfigKeys) {
+    const filename = main.env[key];
+    if (!filename || filename !== filename.trim() || /["'$]/.test(filename)) fail("runtime-config-path-required");
+    runtime[key] = (await readPrivate(filename)).binding;
+  }
+  return { env: main.env, binding: { main: main.binding, runtime } };
 };
 const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   if (deps.docker.daemonId !== input.expectedDaemonId) fail("daemon-mismatch");
@@ -65,14 +107,12 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   if (git(entryRoot, "rev-parse", "HEAD") !== input.entrypoint.sha || git(entryRoot, "rev-parse", "HEAD^{tree}") !== input.entrypoint.tree || git(entryRoot, "status", "--porcelain", "--untracked-files=no")) fail("entry-artifact-changed");
   const sourceRoot = await realpath(input.source.checkout);
   if (sourceRoot === entryRoot || git(sourceRoot, "rev-parse", "HEAD") !== input.source.sha || git(sourceRoot, "status", "--porcelain", "--untracked-files=no")) fail("source-checkout-artifact-mismatch");
+  const candidateRoot = await realpath(input.candidate.checkout);
+  if (candidateRoot === sourceRoot || await realpath(git(candidateRoot, "rev-parse", "--show-toplevel")) !== candidateRoot || git(candidateRoot, "rev-parse", "HEAD") !== input.candidate.sha || git(candidateRoot, "rev-parse", "HEAD^{tree}") !== input.candidate.tree || git(candidateRoot, "status", "--porcelain", "--untracked-files=no")) fail("candidate-checkout-artifact-mismatch");
   const composeFile = await realpath(input.source.composeFile);
   if (!composeFile.startsWith(`${sourceRoot}${path.sep}`)) fail("compose-outside-source-checkout");
-  const privateBytes = await readBoundedFile(input.privateConfigPath, 1024 * 1024, true);
-  const privateConfigDigest = bytesDigest(privateBytes);
-  const config = privateBytes.toString("utf8");
-  const declaredLock = config.split(/\r?\n/).filter(line => line.startsWith("WISEEFF_OPERATION_LOCK_DIR="));
-  if (declaredLock.length > 1) fail("duplicate-lock-configuration");
-  const expectedLock = declaredLock.length ? declaredLock[0]!.slice("WISEEFF_OPERATION_LOCK_DIR=".length) : path.join(sourceRoot, "ops/self-hosted/.state");
+  const privateConfigurations = await observePrivateConfigurations(input.privateConfigPath, [entryRoot, candidateRoot]);
+  const expectedLock = privateConfigurations.env.WISEEFF_OPERATION_LOCK_DIR || path.join(sourceRoot, "ops/self-hosted/.state");
   if (!path.isAbsolute(expectedLock) || path.resolve(input.lockRoot) !== expectedLock || !path.isAbsolute(input.journalPath) || !path.resolve(input.journalPath).startsWith(`${expectedLock}${path.sep}`)) fail("lock-or-journal-binding-mismatch");
   for (let current = path.resolve(input.journalPath); current !== path.dirname(expectedLock); current = path.dirname(current)) {
     const stat = await lstat(current).catch(error => { if (error.code === "ENOENT") return null; throw error; });
@@ -105,8 +145,9 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver) => {
   });
   const identities = await deps.observeDataIdentity(input);
   if (Object.keys(identities).sort().join(",") !== "objectStore,postgres,redis" || Object.values(identities).some(value => typeof value !== "string" || !value)) fail("data-identity-unavailable");
-  return { daemonId: deps.docker.daemonId, hostFingerprint: bytesDigest(Buffer.from(`${os.hostname()}\0${os.platform()}\0${os.arch()}`)), sourceRoot, composeFile, applications, stores, identities,
-    privateConfigDigest, composeDigest: bytesDigest(await readBoundedFile(composeFile, 1024 * 1024)),
+  return { daemonId: deps.docker.daemonId, hostFingerprint: bytesDigest(Buffer.from(`${os.hostname()}\0${os.platform()}\0${os.arch()}`)), sourceRoot, candidateRoot, composeFile, applications, stores, identities,
+    privateConfigDigest: privateConfigurations.binding.main.digest, privateConfigurations: privateConfigurations.binding,
+    composeDigest: bytesDigest((await readBoundedFile(composeFile, 1024 * 1024)).bytes),
     candidateImage: { id: imageInfo.Id as string, platform: `${imageInfo.Os}/${imageInfo.Architecture}` } };
 };
 
