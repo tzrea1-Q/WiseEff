@@ -152,7 +152,10 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
   });
   it("refuses missing journal and unresolved attempts before any new phase or boundary action", async () => {
     const unused = async (): Promise<never> => { throw new Error("unexpected phase or boundary action"); };
-    const input = { pool: admin, bindingManagementPool: management, bindingImportIntent: producer.intent,
+    // The suite holds its one-slot management pool client across cases. The real
+    // execute boundary must obtain a different login session, not wait for itself.
+    const probeManagement = new pg.Pool({ ...management.options, max: 1 });
+    const input = { pool: admin, bindingManagementPool: probeManagement, bindingImportIntent: producer.intent,
       bindingBoundary: { establish: unused, verify: unused, snapshot: unused },
       plan: { planDigest: producer.planDigest }, graph: producer.graph,
     } as unknown as ExecuteCutoverInput;
@@ -167,7 +170,7 @@ describe("S7 generated Binding receipt and same-transaction S6 import", () => {
         } })).toMatchObject({ ok: false, error: { detail: "binding-unresolved-phase-attempt" } });
       }
       expect((await client.query("select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints")).rows).toEqual(before.rows);
-    } finally { await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))"); }
+    } finally { await probeManagement.end(); await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))"); }
   });
   it("rejects missing, ambiguous and empty tip membership rather than choosing latest",async () => {
     expect((await readBindingTipProof(admin,"binding-1")).sourceRevisionId).toBe("value-1-1");
