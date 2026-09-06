@@ -6,11 +6,11 @@
 
 ## 1. API 原则
 
-正式 API 采用 REST + JSON。前端当前已有 `application/ports` 和 `infrastructure/http/dto.ts`，后续应让真实 API client 实现这些端口。
+正式 API 采用 REST + JSON。前端通过 `application/ports` 和 `infrastructure/http` 中的 API client、DTO 映射访问后端。
 
 原则：
 
-- 所有 API 使用 `/api/v1` 前缀；规范参数目录使用 `/api/v2/catalog/*` 与组织治理路径。S8-CON 冻结 PCAT-API-01 到 PCAT-API-12 的 OpenAPI、DTO、路由、错误与客户端合同；HTTP handler 仍由后续 S8-READ/S8-GOV/S8-LEG 实现。详见 [parameter-catalog-api-transition.md](parameter-catalog-api-transition.md)。
+- API 使用 `/api/v1` 及文档定义的 `/api/v2` 路由族；规范参数目录使用 `/api/v2/catalog/*` 与组织治理路径。S8-CON 冻结 PCAT-API-01 到 PCAT-API-12 的 OpenAPI、DTO、路由、错误与客户端合同；在源码基线 `67d4a77325b6009b77c2373bd788298a6d022bcf`，`server/app.ts` 已通过 `server/modules/parameter-catalog-api/productionWire.ts` 注册读取、治理及 legacy handler。运行时就绪仍依赖已安装版本和必需的数据库及内部能力。详见 [parameter-catalog-api-transition.md](parameter-catalog-api-transition.md)。
 - 所有写操作要求认证、权限、审计和幂等键。
 - 列表接口支持分页、排序和过滤。
 - 错误返回统一结构。

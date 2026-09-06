@@ -6,7 +6,7 @@ Date: 2026-05-25
 
 ## Principles
 
-WiseEff uses REST + JSON under the `/api/v1` prefix. The frontend talks to the backend through application ports and HTTP DTO mapping rather than page-owned fetch logic.
+WiseEff uses REST + JSON under `/api/v1` and the documented `/api/v2` endpoint families. The frontend talks to the backend through application ports and HTTP DTO mapping rather than page-owned fetch logic.
 
 Rules:
 
@@ -22,7 +22,7 @@ Rules:
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync, conflict resolution, and staged candidates (`/projects/:projectId/parameter-files*`, `/projects/:projectId/parameter-file-candidates*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
-- Canonical parameter catalog (v2): `/api/v2/catalog/*` plus organization registration/review routes. S8-CON freezes the OpenAPI, DTO, route, error, and typed client contract for PCAT-API-01 through PCAT-API-12. HTTP handlers remain later (S8-READ/S8-GOV/S8-LEG). See [parameter-catalog-api-transition.md](parameter-catalog-api-transition.md).
+- Canonical parameter catalog (v2): `/api/v2/catalog/*` plus organization registration/review routes. S8-CON freezes the OpenAPI, DTO, route, error, and typed client contract for PCAT-API-01 through PCAT-API-12. At source baseline `67d4a77325b6009b77c2373bd788298a6d022bcf`, `server/app.ts` registers the read, governance and legacy handlers through `server/modules/parameter-catalog-api/productionWire.ts`. Runtime readiness still depends on the installed release and required database/internal capabilities. See [parameter-catalog-api-transition.md](parameter-catalog-api-transition.md).
 - Logs: upload/file records (plain text plus `.gz` / single-entry `.zip` archives unpacked at intake), analysis records, runs, rerun, archive, feedback, feedback-quality insights (`/logs/feedback-insights`), and org-scoped log-domain governance (`/log-domains`).
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Knowledge: organization-scoped knowledge entries, revisions, published-only search, and file content under `/api/v1/knowledge/*`.

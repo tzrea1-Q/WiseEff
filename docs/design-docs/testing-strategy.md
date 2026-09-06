@@ -1,146 +1,249 @@
-# WiseEff Testing Strategy
+# WiseEff Testing Strategy and Design
 
 > Chinese: [Chinese](../zh-CN/design-docs/testing-strategy.md)
 
-Date: 2026-05-25
+Reviewed: 2026-09-06. Source baseline: `67d4a77325b6009b77c2373bd788298a6d022bcf`.
+This is the test-design entry for the implemented product. It complements the [technical document](full-stack-architecture.md). All design cases below are **not executed in this documentation task**. A linked test file means source-inspected related automation, not complete coverage or a passing run.
 
-## Goals
+## Ownership and Traceability
 
-WiseEff's test strategy upgrades the prototype into a product-quality gate. The test suite must cover domain rules, API contracts, key UI workflows, permission boundaries, async jobs, Agent tool governance, device gateway behavior, and operations evidence.
+| Question | Single owner |
+| --- | --- |
+| What behavior is required? | [Product specifications](../product-specs/index.md), [domain model](domain-model.md), [API contract](api-contract.md), [security rules](../SECURITY.md) |
+| What risks, scenarios and assertions should be tested? | This page |
+| Which command, dependency and gate applies? | [Verification matrix](../developer/verification-matrix.md) |
+| Which requirement and operation IDs already exist? | [Requirement coverage map](../developer/browser-acceptance-coverage-map.md), [operation coverage matrix](../developer/user-operation-coverage-matrix.md) |
+| How is coverage generated? | [operationMatrix.ts](../../e2e/acceptance/operationMatrix.ts), referenced acceptance specs and coverage scripts |
+| How does a human execute the ordinary acceptance journey? | [Manual acceptance](../runbooks/manual-acceptance.md) |
+| Where is proof recorded? | The run-specific artifacts and evidence rules in the verification matrix; historical dashboards are not fresh proof |
 
-## Layers
+`TDES-*` identifiers below identify documentation scenarios only. They do not introduce acceptance operation IDs or change `automated/manual/conditional/future` coverage. When automating a missing scenario, map it to the existing requirement/operation first; add an operation only through the owning source and generator. Never hand-edit the generated operation matrix.
 
-| Layer | Goal | Tooling |
+## Scope, Risks and Layers
+
+Scope includes parameter workbench/review/catalog/files, log upload/analysis/admin, node debugging/DTS reload/Bridge, identity and organization governance, Xiaoze, knowledge, feedback, notifications, audit, shell and operations. Future retirement/cutover milestones and target release signoff remain conditional procedures, not implied by current source.
+
+| Priority | Risk and representative designs | Minimum useful proof |
 | --- | --- | --- |
-| Domain unit tests | Pure rules, state machines, permissions, derived data | Vitest |
-| Component tests | Page/component interaction, accessibility, edge states | Testing Library |
-| API integration tests | Routes, database writes, transactions, error model | Vitest server tests |
-| Contract tests | OpenAPI and DTO drift | Contract scripts |
-| State-model tests | Workflow transitions and invariants | fast-check + Vitest |
-| E2E tests | Login, parameter workflow, log upload, debugging | Playwright |
-| Job tests | Worker retry, failure, idempotency | Queue/database tests |
-| Agent tests | Tool permissions, approvals, structured output | Model mocks and golden cases |
-| Device tests | Gateway reads/writes and failures | Simulator and HDC lab |
-| Security tests | RBAC, authz, audit, validation | Automated negative cases |
+| P0 | Tenant/role escape, unsafe or duplicate mutation, stale merge, unauthorized Agent/device action, data loss: AUTH, PARAM, CAT, DBG, AGENT, OPS | Negative plus positive control; API/domain state and real PostgreSQL assertions where transactions matter; audit and external-effect assertions |
+| P1 | Broken core journey, misleading analysis, missing content or notification: FILE, LOG, KB, FEEDBACK, NOTIF | Successful and failed/recovery flows; persisted result and user-visible state |
+| P2 | Lower-risk presentation and discoverability | Component plus browser quality checks; promote to P0/P1 when a defect hides authorization or blocks a core action |
 
-## Style Contract Tests
+Existing operation priorities remain authoritative for those operations. These design priorities select depth, not release waivers.
 
-Stylesheet contract tests query selectors, at-rules, and declarations through
-`src/test/cssAssertions.ts`; they do not match the formatting of raw CSS text.
-The error-level ESLint rule `wiseeff/no-raw-css-text-assertions` prevents direct
-`toMatch`/`toContain` assertions over CSS file reads while leaving unrelated
-source-contract tests outside its scope. Rendered behavior and computed visual
-outcomes remain owned by Testing Library and the Playwright quality gates.
+| Layer | Purpose | Existing tooling |
+| --- | --- | --- |
+| Domain and policy | Types, normalization, state transitions, permissions | Vitest |
+| Component and runtime | Loading/error/empty states, project switching, port parity | Testing Library / Vitest |
+| API and database | HTTP contracts, role scope, locking, idempotence, retention | Server Vitest plus real PostgreSQL |
+| Contract and model | DTO/OpenAPI drift and state invariants | Contract scripts, fast-check |
+| Worker and provider behavior | Leases, retry/degradation, budgets and grounding | Worker tests, deterministic log eval |
+| Browser | Actual role journeys, API/UI integration, durable result | Playwright acceptance |
+| Quality | Accessibility, visual consistency and responsive usability | Existing a11y/visual/responsive gates |
+| Device and target operations | Physical effects, restore, upgrade, capacity, OIDC/provider quality | Simulator for local shape; separately identified target/lab evidence |
 
-## Backend/API Contract Checks
+## Environment and Test Data
 
-Parameter catalog changes must cover effective selection and the data cutover on
-real PostgreSQL. `server/modules/parameter-specs/effectiveDefinition.test.ts`
-tests precedence and governance outcomes; `effectiveDefinition.integration.test.ts`
-tests organization override/platform fallback and the explicit raw governance view;
-`definitionReconciliation.integration.test.ts` tests dry-run, audited apply,
-idempotence, and the independent verification gate.
-`populatedUpgrade.integration.test.ts` starts from a real pre-`0127` populated
-PostgreSQL graph, proves the old effective view is empty/blocked, applies the public
-migration runner through `0128`, and verifies canonical placement, retained draft
-evidence, same-key auto-module subject cutover, binding rehome, and curated fail-closed. Run
-`npm run parameter-definitions:reconcile -- --dry-run` before `--apply`, then
-`npm run parameter-definitions:check`. Unknown or ambiguous evidence must remain
-review evidence without a recognized binding, and release validation fails closed
-while any effective-definition check is blocked.
+Use [local development](../developer/local-development.md) and the verification matrix for exact setup; do not copy a second environment-variable inventory here.
 
-Trusted parameter-execution identity also has a PostgreSQL deletion-retention gate. The
-`0136_parameter_execution_principal_deleted_marker.sql` migration adds only the
-identity-free, server-owned `initiator_principal_deleted` marker to the eight retained
-governance row types (and fixes the same marker to false on binding revisions). The
-transient `parameter_drafts` table remains account-owned `ON DELETE CASCADE` state and
-does not receive this marker. A real
-`deleteUser` operation must leave every retained accountable-user FK and derived `userId`
-NULL while preserving `initiator_type = 'agent'` and non-empty session/tool-call/approval
-correlation, while deleting the user's unsubmitted drafts; no tombstone, snapshot, hash, or
-replacement user id may exist. The marker may
-be set only by the nested foreign-key `SET NULL` transition and direct insert/update/retype
-attempts must fail with PostgreSQL `23514`. The migration tests run the complete
-User/Agent/System/legacy truth table, reject blank Agent correlation and mixed metadata,
-and prove fresh-database upgrade rollback. Domain readers use
-`trustedDomainAttributionFromRow`, which never restores a deleted principal id; public DTOs
-and notifications remain coarse display projections and do not expose the marker or
-internal correlation. The account-deletion contract in `docs/exec-plans/active/2026-08-28-user-account-deletion.md`
-remains authoritative.
+1. Record source SHA, clean/dirty state, command/filter, runtime mode, database identity, migration state, browser viewport and deterministic/live flags before execution.
+2. Use an isolated API-mode test runtime and owned PostgreSQL database/object prefix. Catalog database evidence needs pgvector and the role-faithful setup from [Catalog lane rules](../agents/catalog-launch-operating-rules.md); do not use a shared application database. Missing prerequisites produce **blocked** or explicit **skipped**, never a pass.
+3. Prepare two organizations, two projects in one organization and one in the other. Use separate editor, hardware reviewer, software reviewer, merger, organization Admin, platform reviewer, read-only and inactive identities as required. Actual permissions come from database bindings; do not substitute one Admin session for the role sequence.
+4. Give data a run-specific prefix. Capture project/candidate/definition/release/approval IDs, base versions and expected counts before mutation. Reuse fixture builders in the linked specs; verify unique identity rather than selecting the first row.
+5. Use the existing log fixtures `test-fixtures/logs/charging-foldback.log` and `unsupported.bin`; use the linked specs' DTS, Catalog, knowledge and Bridge fixtures. Numeric boundaries come from the chosen fixture's declared range/shape, not arbitrary device-safe assumptions.
+6. Deterministic model and simulator runs need no live model/hardware claim. Real-device writes, target restore and upgrade drills require their runbook prerequisites and an authorized isolated lab/non-customer target.
+7. After each case, undo only owned mutations using the spec's cleanup or documented domain operations. After a suite, the runtime owner removes its own disposable resources. Retain failed-run evidence and resource identity before cleanup; never drop a database merely because its name looks disposable.
 
-## Browser Acceptance
+## Coverage Map for This Design
 
-Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.
+The IDs in the middle column are existing examples, not exhaustive equivalence. Open the linked source and generated matrix for exact assertions and runtime conditions.
 
-Permanent user deletion adds a PostgreSQL-backed contract gate: every foreign key to `users(id)` must be classified as account-owned `ON DELETE CASCADE` or retained-history nullable `ON DELETE SET NULL`. The focused browser operation `PERM-USER-MGMT-001` must execute in API mode and prove confirmation, HTTP `204`, row removal only after success, retained-history null adaptation, non-PII deletion audit, and non-Admin refusal. Mock-runtime viewport checks remain UI evidence only and do not replace this API/database gate.
+| Capability / designs | Existing operation or source | Related automated entry |
+| --- | --- | --- |
+| Parameter edit/review; TDES-PARAM-01/02 | `PARAM-HAPPY-001`, `PARAM-ASSIGNEE-001`; semantic workflow integration | [parameters](../../e2e/acceptance/parameters.acceptance.spec.ts), [negative](../../e2e/acceptance/parameters-negative.acceptance.spec.ts), [topology](../../e2e/acceptance/parameter-topology.acceptance.spec.ts), [PostgreSQL workflow](../../server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts) |
+| File/import/configuration; TDES-FILE-01 | `PARAM-ADMIN-002`, `PROJ-CONFIG-REVISION-GATE-001` | [import wizard](../../e2e/acceptance/parameter-import-wizard.acceptance.spec.ts), [parameter files](../../e2e/acceptance/parameter-files.acceptance.spec.ts), [revision gate](../../e2e/acceptance/config-set-revision-gate.acceptance.spec.ts) |
+| Catalog; TDES-CAT-01/02/03 | Production composition, root usage scope and SQL budget contracts | [composition](../../server/modules/parameter-catalog-api/productionComposition.integration.test.ts), [scope](../../server/modules/parameter-catalog-api/rootUsageScope.integration.test.ts), [batch queries](../../server/modules/parameter-catalog-api/rootBatchQueries.integration.test.ts), [Catalog browser](../../e2e/acceptance/parameter-catalog.acceptance.spec.ts), [negative browser](../../e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts) |
+| Logs; TDES-LOG-01/02/03 | Manual flow D, worker/eval contracts | [log acceptance](../../e2e/acceptance/log-analysis.acceptance.spec.ts), [worker](../../server/modules/logs/worker.test.ts), [eval](../../server/modules/logs/eval/), [golden corpus](../../eval-cases/logs/README.md) |
+| Debugging/reload; TDES-DBG-01/02 | `DEBUG-SIM-001`, `DTS-RELOAD-DEPLOY-001`, `DTS-RELOAD-DEPLOY-HW-001` | [simulator](../../e2e/acceptance/debugging-simulator.acceptance.spec.ts), [reload](../../e2e/acceptance/dts-reload-deploy.acceptance.spec.ts), [ADB design](2026-06-21-adb-real-device-full-chain-test-design.md) |
+| Identity/retention; TDES-AUTH-01/02 | `AUTH-RUNTIME-001`, `PERM-USER-MGMT-001` | [auth](../../e2e/acceptance/auth-runtime.acceptance.spec.ts), [permission matrix](../../e2e/acceptance/permissions-matrix.acceptance.spec.ts), [deletion](../../server/modules/users/deletion.integration.test.ts) |
+| Xiaoze; TDES-AGENT-01/02 | Tool approval and checkpoint contracts | [action](../../e2e/acceptance/xiaoze-action.acceptance.spec.ts), [orchestrator](../../server/modules/agent/orchestrator.test.ts), [checkpoint](../../server/modules/agent/xiaoze/durableCheckpointer.integration.test.ts) |
+| Knowledge; TDES-KB-01 | `KB-READ-001`, `KB-EDIT-001`, `KB-INDEX-001` | [knowledge browser](../../e2e/acceptance/knowledge.acceptance.spec.ts), [knowledge service](../../server/modules/knowledge/service.test.ts) |
+| Feedback/notifications; TDES-FEEDBACK-01, TDES-NOTIF-01 | `PFB-SUBMIT-001`, `PFB-ADMIN-001`, `PFB-AUTHZ-001`, `NOTIF-INBOX-001`, `NOTIF-READ-001` | [feedback](../../e2e/acceptance/product-feedback.acceptance.spec.ts), [notifications](../../e2e/acceptance/notifications.acceptance.spec.ts) |
+| Shell/quality; TDES-UI-01 | `SHELL-DIAG-001`; quality gates | [shell](../../e2e/acceptance/shell-navigation.acceptance.spec.ts), [UI checklist](../developer/ui-quality-checklist.md) |
+| Operations; TDES-OPS-01 | Recovery/readiness contracts, conditional target procedures | [upgrade regression](../../ops/self-hosted/scripts/upgrade.sh.test.ts), [manual acceptance](../runbooks/manual-acceptance.md), [verification matrix](../developer/verification-matrix.md) |
 
-Evidence-grade artifacts do not live in Playwright's disposable `outputDir`. The full browser runner creates `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>/{records,artifacts}` and atomically publishes `latest-full.json` only after a clean-source full Playwright run and its operation evidence both pass. Records carry the same `runId` and `sourceCommit`; `npm run acceptance:evidence` rejects mixed identities and missing artifacts. Direct focused `acceptance:e2e` runs use an unpublished focused namespace and cannot replace or delete the latest full-run evidence.
+## Executable Core and Risk Cases
 
-Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/acceptance/debugging-admin.acceptance.spec.ts`. The acceptance flow exercises Admin UI, API, DB persistence, and audit evidence for parameter create/edit/archive/restore plus HDC/ADB binding management and complex value metadata editing.
+For every case, record actual results against each expected result, API status/error code, relevant DB predicates/counts, audit correlation, and artifacts where applicable. The common environment, cleanup and evidence rules above apply to every case. Browser steps use the route/labels in the current fixture and spec; service fault injection is performed in the isolated harness, not against a shared server.
 
-Hierarchical module trees are covered by `MOD-TREE-PARAM-001/002`, `MOD-TREE-DEBUG-001`, and `MOD-TREE-AUTHZ-001` in `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` (nested create, subtree filter, move/cycle guard, authz, and non-empty delete guards).
+### TDES-PARAM-01 — Typed change through real review roles (P0)
 
-Module attribution (compatible queue, classify preview/apply, kind-scoped tree, importance inheritance) is covered by `MOD-ATTR-QUEUE-001`, `MOD-ATTR-CLASSIFY-001`, `MOD-ATTR-BULK-001`, `MOD-ATTR-TREE-001`, and `MOD-ATTR-IMPORTANCE-001` in `e2e/acceptance/parameter-topology.acceptance.spec.ts` (see `docs/exec-plans/completed/2026-07-27-module-attribution-redesign.md`).
+- **Prepare:** Owned project, editable binding, known base/candidate revision and distinct assigned reviewers.
+- **Steps:** Follow manual flow B using the current workbench; save value/reason, select eligible assignees, submit; perform hardware review, software review and merge in their respective sessions; reload the project and inspect history.
+- **Expect:** Each transition requires its actual role; submission retains exact draft/binding/candidate/action identity; the merged candidate value and audit persist; immutable base stays unchanged. Where file writeback applies, inspect the resulting file and re-ingested value.
+- **Cleanup:** Use the acceptance fixture cleanup for the owned request, candidate and project. Do not rewrite shared history.
 
-Simulator debugging is covered by `DEBUG-SIM-001` in `e2e/acceptance/debugging-simulator.acceptance.spec.ts`, including a complex JSON write path that records `valueKind`, digest, and preview metadata in `node_operations` without leaking full payloads into operation evidence.
+### TDES-PARAM-02 — Stale candidate and project isolation (P0)
 
-Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, gateway preservation tests, admin/runtime UI tests, and DTO mapper tests for legacy scalar defaults.
+- **Prepare:** Two projects and a candidate editable in session A; snapshot its state and revision.
+- **Steps:** Load A, delay its response, switch to B and then release A's response. Separately change the candidate in another session before submitting/merging the stale view; attempt a forced request with changed candidate identity.
+- **Expect:** B never receives A's drafts, values or assignees. Stale/changed identity is rejected using the endpoint's conflict contract; no replacement candidate is silently selected and no partial merge/writeback occurs.
+- **Cleanup:** Release delayed requests; remove only owned drafts/candidates through fixture cleanup.
 
-Quality and acceptance Playwright configs (`playwright.quality.config.ts`, `playwright.acceptance.config.ts`) run a `runtime-warmup` dependency project before product specs. After the webServer reports ready, warmup loads the SPA entry via `page.goto` so Vite's first transform is not billed to the first a11y/visual/responsive or acceptance case; product spec timeouts are unchanged.
+### TDES-FILE-01 — Import validation and revision conflict (P1)
 
-The populated `/parameter-review` visual case is evidence-owned test data, not a general seed. An isolated runner opts in with both `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` and `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`; the seed/cleanup scripts verify the live database name and exact ownership of their fixed IDs before any mutation. Target synthetic runs omit both variables and planned-skip only this one write-dependent visual case, so they remain read-only while the other visual routes and all a11y/responsive cases still run. Volatile values that must remain visible, such as the organization creation clock, are normalized at the test read seam instead of being hidden by a screenshot mask.
+- **Prepare:** Owned config set, known source revision, valid DTS/JSON fixture and a malformed or invalid-value variant.
+- **Steps:** Preview both imports; inspect error and mapping details. Cancel and confirm no business apply occurred. Apply the valid path in the owning fixture; change its source revision, then try to activate/write back the stale candidate.
+- **Expect:** Preview does not alter current project values/files, though preview records may persist. Invalid data cannot be applied; valid application retains intended syntax/value shape; stale activation/writeback is blocked and retains input for review.
+- **Cleanup:** Clean owned preview/import records, file versions and config set through the file fixture. The wizard browser test covers preview; it alone does not prove all apply/conflict assertions.
 
-The committed Linux visual snapshots are merge-authoritative only when adopted from the GitHub Actions `Acceptance quality` runner artifact. That runner is the environment that enforces them on pull requests, including its production/HMAC seed identity and installed CJK font stack. The repository-compatible local MCR Playwright arm64 container remains a useful Linux preflight, but its rendered screenshots must not replace committed Linux baselines when they differ from a reviewed GitHub runner artifact. Adopt only the exact failed images after inspecting each actual at original resolution; never run a wholesale snapshot update.
+### TDES-CAT-01 — Release pin, scope and truthful empty states (P0)
 
-## M5.12 CI And Synthetic Evidence
+- **Prepare:** Catalog integration fixture with installed releases, same-organization project-limited user, organization-wide reader and second organization; record release IDs/digests.
+- **Steps:** Read list/detail/history at current and pinned releases. Reload a deep link and use Back/Forward. Request another project's usage, refresh database role bindings, and repeat. Exercise no registrations, no definitions, no filter matches and unavailable projection.
+- **Expect:** Identity and release digest stay paired; scope derives from current database grants. Explicit empty scope is true zero; unavailable data is an error/not-ready outcome, not zero usage. No cross-organization fact leaks.
+- **Cleanup:** Use the Catalog fixture's owned runtime and database teardown.
 
-M5.12 archives CI and target synthetic evidence on top of the deterministic browser gates. The merge bar is **L1**, not the full local-non-HDC suite:
+### TDES-CAT-02 — Proposal conflict, retry and independent review (P0)
 
-- Every PR starts `ci.yml` (job-level `if:` skip only). `detect` classifies the diff and always runs `docs:check`.
-- Product and workflow PRs run `build-and-test` plus `@ci-smoke` (`npm run acceptance:smoke`). UI or product paths also run one `acceptance:quality-run`.
-- Docs-only PRs run `detect` + `docs:check` + sentinel `Merge bar`.
-- L2 events run `acceptance-quality` as a sibling (one `acceptance:quality-run`) plus `acceptance-local-non-hdc` on `push` to `main`, the nightly schedule, label `full-acceptance`, and `workflow_dispatch` `local-non-hdc`. The local browser job runs `npm run acceptance:models` and then the authoritative `npm run acceptance:gate0`. Gate0 verifies pinned DTS tooling before provisioning, owns one fresh PostgreSQL database, one run-scoped object store, exact loopback API/frontend processes, and a shared secret-free descriptor for visual plus full browser acceptance. Every Gate0 phase and nested runtime receives only an OS launch allowlist plus the exact owned runtime variables; arbitrary host settings, credential helpers, CI identity tokens, and generic secret keys are not inherited. Playwright configs and the 27 formerly dotenv-backed acceptance specs share one loader: a descriptor must validate before use, an explicit owned flag covers descriptor-free nested workers, and neither owned path reads a worktree `.env`; direct/manual runners retain explicit env-file loading. Its 60-minute hard owner deadline includes provisioning and finalization; an operation deadline starts the five-minute finalization reserve across prerequisites, provision, and phases. The CI job gives each pre-Gate0 step and every post-Gate0 step, including conditional/always-run finalizers, an explicit timeout and includes every post-Gate0 timeout in its floor; its 150-minute platform timeout must remain strictly above the current proven 146-minute floor (5 platform + 71 prelude + 60 owner + 5 scan + 5 upload). Playwright outputs, reports, snapshots, preflight, and generated evidence stay under the run root, while operation evidence names the actual owned report/output paths and hashes an immutable runtime snapshot rather than the descriptor that continues to record phase and cleanup state. An unexpected Playwright outcome stops nested child processes but retains their database/object evidence in the atomic manifest; retryable stop failures remain parent-owned. Failure retains exact forensic resources, while success alone removes the owned database/object store. Root and nested generated credentials are registered through a token-authenticated loopback registry that atomically publishes encrypted exact values before acknowledging them; no secret enters the nested manifest. Before CI upload, Gate0 seals that registry and recursively redacts and scans persisted values (including ZIP trace entries), so a fresh CI process after owner death retains the same fail-closed context without returning secret-bearing names or values. The legacy `npm run acceptance:browser -- --mode local-non-hdc` remains a direct/manual runner and is not the authoritative owned-runtime L2 gate.
+- **Prepare:** Organization proposer, distinct authorized platform reviewer, captured base and ETag, run-specific idempotency key; use the proposal integration/browser fixtures.
+- **Steps:** Create draft, submit and review. Repeat an identical request; repeat the key with changed content. Attempt self-review, stale ETag/base and cross-organization access. Inject the fixture's response-phase failure after commit and retry. Refresh conflicted input and explicitly reconfirm.
+- **Expect:** Exact retries resolve to the original committed result without duplicate mutation; changed fingerprints conflict. Stale state and unauthorized/self review are refused. Acceptance records publication intent without directly changing Catalog definitions; UI preserves conflicted input and requires reconfirmation.
+- **Cleanup:** Remove only owned proposal/governance fixture state. See [proposal workflow](../../server/modules/parameter-governance/proposals/workflow.integration.test.ts) and [governance browser](../../e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts).
 
-Gate0 starts the root exact-secret registry before provisioning and atomically persists each generated database URL, HMAC value, bearer credential, and nested registration as AES-256-GCM ciphertext before returning or sending HTTP 204. The mode-0600 key remains outside the upload root; a fresh CI sanitizer/scanner therefore retains exact opaque-secret context after `SIGKILL`, and a zero-violation scan removes both records before upload. Root and nested API/frontend cleanup use one manifest-persisted OS process-start identity, and TERM/KILL each re-read that same identity immediately before signaling. Nested object-store setup records the exact provisioning intent before its first mkdir, so parent failure finalization can enumerate a crash in the creation window. Nested lock recovery also owns a PID/token/process-identity/age claim: a live recovery owner is never stolen, while dead/expired recovery and reclaimer crash links are exactly reclaimed. A nested disposable startup failure is always `failed-retained`; an unverified same-name database is never dropped. CI budget parsing enumerates every YAML step regardless of which legal key appears first, so all post-Gate0 conditional/finalizer timeouts remain in the floor.
+### TDES-CAT-03 — Page-size and projection-failure budget (P1)
 
-Manual `workflow_dispatch` can select `target-non-hdc` or `full-pilot`. Those runs use `--no-start-runtime`, target frontend/API URLs, GitHub Secrets, and uploaded Playwright/evidence artifacts. `full-pilot` is never a default PR gate and remains valid only with external HDC, backup/restore, rollback, object-store, worker, and live Agent evidence. Smoke uses the focused evidence namespace and must not publish `latest-full.json`.
+- **Prepare:** The root batch-query fixture and its declared inventory sizes/SQL counter; pin the release.
+- **Steps:** Run nonempty and empty pages, registration filtering before pagination, invalid limits, and injected usage/registration projection failures.
+- **Expect:** Enforce the exact statement budgets asserted by the fixture; no per-row business-query growth, no cross-tenant projected state, no silent fallback after projection failure. Capture query counts separately from latency.
+- **Cleanup:** Stop the fixture server and close/remove its owned database. This local query-budget check is not a target-capacity pass.
 
-## Key Commands
+### TDES-LOG-01 — Upload, evidence and archive (P1)
 
-```bash
-npm test
-npm run test:server
-npm run test:scripts
-npm run bridge:test
-npm run test:all
-npm run build
-npm run contract:check
-npm run acceptance:models
-npm run acceptance:coverage
-npm run acceptance:operations
-npm run acceptance:evidence
-npm run acceptance:quality
-```
+- **Prepare:** Owned log domain and the supported/unsupported fixtures; API worker active.
+- **Steps:** Execute manual flow D: upload, ask about charging foldback, observe stages, open a cited line, submit feedback, archive and reload; upload the unsupported file.
+- **Expect:** Supported input reaches a report with traceable real lines and honest source/degradation labels; unsupported input produces a readable failure. Archive affects the default list and retains authorized history.
+- **Cleanup:** Use log-fixture cleanup for owned records, jobs, feedback and object keys.
 
-Xiaoze work should also run:
+### TDES-LOG-02 — Grounding, tool legality and degradation (P1)
 
-```bash
-npm run test:server -- server/modules/agent/xiaoze/
-npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
-npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
-npm run build
-```
+- **Prepare:** Scripted models from the behavior eval; both `loop` and `single-shot` kernels.
+- **Steps:** Exercise unavailable provider, malformed output, nonexistent cited lines, illegal tools/arguments, insufficient evidence, and exhausted step/token budget.
+- **Expect:** No invented line references or write-capable tool action; configured retries remain bounded; fallback exposes its reason/source; early convergence caps confidence where specified. Harness negative controls must detect known-bad outputs.
+- **Cleanup:** Reset injected models/config and owned eval artifacts. `logs:eval` is behavioral proof; quality evaluation uses the annotated corpus and its own baseline rules.
 
-These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` values.
+### TDES-LOG-03 — Worker redelivery and stale lease (P0)
 
-## Log Analysis Eval (two layers)
+- **Prepare:** Isolated job/worker fixture with known lease and terminal-state predicates.
+- **Steps:** Deliver the same job again, force processing failure/retry, expire/reclaim a lease, then let the old worker attempt progress or completion.
+- **Expect:** PostgreSQL claim/lease rules govern mutation; an obsolete worker cannot overwrite the current result; terminal/retry/dead-letter evidence follows the worker contract and does not claim success from dispatch alone.
+- **Cleanup:** Stop fixture workers before cleaning their jobs and object keys; durable Redis behavior needs its separate queue gate.
 
-Log analysis carries a two-layer AI evaluation system alongside the ordinary suites:
+### TDES-DBG-01 — Safe write, alternate observation and rollback (P0)
 
-- **Behavior-layer eval** (`npm run logs:eval`, CI-gated, zero API cost): deterministic scripted models drive the real kernels — the P1 single-shot analyzer plus the P2 bounded agent loop (scripted tool-call sequences + final conclusions through `server/modules/logs/analyzer/scriptedModel.ts`). Scenarios pin grounding, honest degradation marking, tool-call legality (illegal names/arguments rejected and corrected), step/token-budget convergence with capped confidence, and honest refusal on insufficient evidence. Meta self-checks prove the harness flags known-bad behaviors (hallucinated citations, silent degradation, overconfident early convergence, silently accepted illegal tools). Report: `docs/generated/log-analysis-eval.{json,md}`.
-- **Quality-layer eval** (`npm run logs:eval:quality`, on prompt/model change and pre-release): runs the current kernel over the golden case set (`eval-cases/logs/`, loader-validated `log.txt` + `case.yaml` pairs). Deterministic metrics (evidence-line overlap hit/missed/extra, hallucination rate, refusal appropriateness) are computed in-process; root-cause correctness goes through a rubric judge seam — `LOG_ANALYSIS_JUDGE_*` LLM-as-judge in real mode, a deterministic scriptable stub offline. Only `realLog: true` cases count toward the baseline gate (`eval-cases/logs/baseline.json`, tolerances stated in the report); synthetic cases document format coverage. Report: `docs/generated/log-analysis-quality.{json,md}`.
+- **Prepare:** Simulator fixture; record initial writable value, read-only node and the alternate-readback probe.
+- **Steps:** Execute manual flow E; read `3000`, write `3100`, inspect snapshot and observation. Write probe `2` and observe `1`. Try read-only/unauthorized writes via UI and forced API. Restore the owned initial snapshot using the supported surface.
+- **Expect:** Successful command remains successful despite a different observation; forbidden writes cause no device effect; snapshot, operation and audit are traceable; restored value returns to baseline. If rollback is API-only, record that boundary rather than claiming UI coverage.
+- **Cleanup:** Restore owned simulator state and remove fixture records. These sample values belong to the simulator, not arbitrary hardware.
 
-Prompt changes bump `LOG_ANALYSIS_PROMPT_VERSION` / `LOG_ANALYSIS_LOOP_PROMPT_VERSION` and must keep `logs:eval` green; golden-set annotation and de-identification rules live in `eval-cases/logs/README.md`.
+### TDES-DBG-02 — Reload preflight and honest device evidence (P0)
+
+- **Prepare:** Owned reload fixture, pinned DTS toolchain, fake Bridge and baseline digest; real-device variant requires lab readiness.
+- **Steps:** Fail compile/capability/confirmation/permission preconditions and verify no deploy. Then deploy the valid fixture, inspect snapshot, kernel evidence and observation state; exercise residue and restore-baseline.
+- **Expect:** Failed preflight cannot write the device; missing behavioral proof remains unverifiable; library values stay unchanged by deploy; failed restore preserves truthful residue/outcome. Sensitive and Agent paths follow the current trusted policy.
+- **Cleanup:** Finish fixture restore before teardown; retain failed device/run evidence. Fake-Bridge and real HDC/ADB results are separate records.
+
+### TDES-AUTH-01 — Tenant, activation and role enforcement (P0)
+
+- **Prepare:** Two organizations, project-scoped roles and inactive account; local auth fixture or explicit OIDC target variant.
+- **Steps:** Open allowed and denied routes, issue the denied API directly, substitute another organization's resource ID, deactivate the user/change its database role and repeat. For OIDC, run wrong issuer/audience/expiry/signature checks using the identity gate.
+- **Expect:** Denial is server-enforced without exposing scoped data; database role/active changes affect subsequent requests; token claims alone do not grant administration. Record each endpoint's specified 401/403/hidden-resource behavior.
+- **Cleanup:** Restore only fixture roles and activation. Local HMAC/dev sessions do not prove deployed OIDC.
+
+### TDES-AUTH-02 — Account deletion and retained history (P0)
+
+- **Prepare:** Real PostgreSQL deletion fixture with account-owned state, retained history and a non-self target; snapshot relevant row counts and nullable references.
+- **Steps:** Reject non-Admin, self-deletion and unauthorized platform-admin deletion; delete the allowed target as Admin, inspect response/UI and query all foreign-key categories.
+- **Expect:** Successful API deletion is `204`; account-owned rows cascade, retained history survives with nullable identity, Agent correlation is retained under the trusted-attribution contract, and deletion audit contains no unnecessary PII. Failed attempts leave state unchanged.
+- **Cleanup:** Teardown the owned database; never recreate a deleted real account as test cleanup.
+
+### TDES-AGENT-01 — Approval is necessary and revalidated (P0)
+
+- **Prepare:** Deterministic Xiaoze fixture with read tool, approval-required mutation and persisted before-state.
+- **Steps:** Execute a scoped read; request mutation, reject it and inspect unchanged business state. Create a new approval, change its scope/arguments or user's permissions before approval, then approve/replay through the real endpoint.
+- **Expect:** No mutation before approval; rejected/stale/unauthorized approval cannot write. Accepted edits are revalidated; replay cannot duplicate effects. Audit retains Agent provenance and correlation rather than relabeling it as human.
+- **Cleanup:** Finish/cancel owned pending approvals and clean fixture conversations/business records; no live-provider claim.
+
+### TDES-AGENT-02 — Durable interrupt and isolated resume (P0)
+
+- **Prepare:** Dedicated PostgreSQL checkpoint database, unique organization/user/thread identity.
+- **Steps:** Run the linked durable-checkpoint integration case: interrupt a planning agent, create a fresh saver/agent instance and resume the same namespace. Separately exercise endpoint authorization using another user/organization or revoked permission.
+- **Expect:** Committed interruption is readable across instances; current endpoint authorization still applies on resume. The checkpoint test uses a fake approval resolver, so it proves persistence/resume mechanics, not the complete production approval chain; pair it with TDES-AGENT-01.
+- **Cleanup:** Close saver pools and remove only the owned checkpoint database. Missing database configuration means skipped/blocked.
+
+### TDES-KB-01 — Publication, scope and search degradation (P1)
+
+- **Prepare:** Owned draft, published and archived entries plus a second organization; index fixture and embedding-unavailable variant.
+- **Steps:** Create/revise/publish, search and open citations, archive and repeat; attempt cross-organization access. Exercise text-only fallback and index retry through the existing harness.
+- **Expect:** Retrieval exposes only authorized published revisions with valid citations; drafts/archived entries do not leak through search; fallback remains explicit and does not fabricate semantic results.
+- **Cleanup:** Clean owned revisions, chunks, links and object keys with the knowledge fixture.
+
+### TDES-FEEDBACK-01 — Submission and Admin triage (P1)
+
+- **Prepare:** Member and Admin sessions, owned feedback marker and permitted image fixture.
+- **Steps:** Submit sidebar feedback with attachment, reload, triage/close as Admin; force the Admin API as a member.
+- **Expect:** Content and attachment association persist; status changes remain traceable; non-Admin triage is refused in UI/API.
+- **Cleanup:** Remove only the fixture's feedback, notes and attachment objects.
+
+### TDES-NOTIF-01 — Scoped inbox and read persistence (P1)
+
+- **Prepare:** Owned notifications for two users and a recorded unread count.
+- **Steps:** Open the panel, follow a permitted deep link, mark read/all read, reload; attempt another user's notification through API.
+- **Expect:** Only authorized inbox data is exposed; unread counts and read state persist; linked destinations reapply their own authorization. The linked browser spec is a starting point; validate any missing cross-user assertion at service/API level.
+- **Cleanup:** Delete owned notification fixtures and restore no unrelated user's read state.
+
+### TDES-UI-01 — Core navigation and state usability (P1)
+
+- **Prepare:** API-mode roles and loading/error/empty/populated fixtures for affected routes.
+- **Steps:** Navigate, reload/deep-link, search/filter, open/close dialogs, use keyboard focus, submit and recover from errors at `1440x900`, `768x1024`, `390x844`; collect snapshots/screenshots and inspect console/network.
+- **Expect:** No unintended horizontal overflow, obstructed action, unreadable text or lost input; loading, forbidden, error and empty states remain distinguishable. Only expected negative API responses are allowed.
+- **Cleanup:** Reset fixture interceptions and browser sessions. Use the existing UI checklist and quality gates for detailed criteria.
+
+### TDES-OPS-01 — Readiness, recovery and release evidence (P0)
+
+- **Prepare:** Choose a local fault-injection harness or authorized isolated target drill; record source/deployed version, recovery point and resource ownership.
+- **Steps:** Inject a required dependency failure, compare live/ready results, restore the dependency. For upgrade/backup/restore/rollback, execute the existing runbook against the explicitly selected environment and verify database plus object consistency.
+- **Expect:** Liveness does not hide dependency/readiness failure; failed upgrade/restore is not marked successful; candidate or recovered state satisfies the runbook's invariants. Target capacity uses declared workload/metrics and existing thresholds.
+- **Cleanup:** Follow runbook phase-specific recovery and resource ownership. Local script assertions cannot close target OIDC, Redis, storage, hardware, provider or release gates.
+
+## Boundary and Nonfunctional Coverage
+
+For value/file/API changes, partition valid, empty, malformed, absent, duplicate and oversized inputs; test range/shape boundaries from the owning schema. For lists, test zero/one/multiple pages, filters before pagination, opaque identifiers, stale cursors/release pins, and cross-scope rows. For writes, cover duplicate request, changed idempotency fingerprint, concurrent state change and failure before/after commit.
+
+Capacity criteria come from [reliability targets](../RELIABILITY.md) and the target capacity gate, with dataset size, concurrency, duration, percentile latency and errors recorded. Do not invent a measured SLA from a local timing. Accessibility, visual and responsive checks complement business assertions; device timeout/offline/unsupported observations and provider budget failures must retain actionable outcomes.
+
+## Execution Selection and Outcome
+
+Use the verification matrix for exact commands. During implementation, select focused suites from the map above; broaden only at the owning integration stage. Documentation-only changes run `npm run docs:check` and `git diff --check`. This documentation delivery does not run product suites, mutate fixtures or generate acceptance evidence.
+
+Before accepting a test run:
+
+- Required cases are collected and executed; required skipped tests or zero collected tests block that claim.
+- Report passed, failed, skipped, blocked and not-run separately. State which design assertions the selected tests actually covered.
+- Persist source SHA/run identity, command, role, route, environment, assertions, expected/actual outcomes, redacted API/DB/audit summaries and artifact paths.
+- Keep focused runs separate from full runs; do not overwrite `latest-full.json` with partial evidence. Gate0 owns full local acceptance and its resource/artifact safety protocol.
+- Defects include reproduction, expected/actual result, affected design/operation, severity, environment and evidence. Rerun the fix's affected checks; do not relabel historical passes as new proof.
+- Existing automated coverage without a fresh result remains **not run** for this delivery. Hardware, live-model quality, expert log annotation, target OIDC/recovery/capacity and unautomated assertions remain explicit verification dependencies, not claims that implementation is missing.
+
+## Specialist and Historical References
+
+Style contract tests use [cssAssertions.ts](../../src/test/cssAssertions.ts), not raw CSS text formatting; rendered behavior belongs to component/browser gates.
+
+Log evaluation has a deterministic behavior layer (`npm run logs:eval`) and a quality layer (`npm run logs:eval:quality`). The latter's baseline counts only eligible `realLog: true` annotated cases; synthetic cases demonstrate format and harness behavior. Prompt/model changes must follow the [corpus rules](../../eval-cases/logs/README.md).
+
+User deletion must preserve the trusted attribution rules in the [account-deletion plan](../exec-plans/active/2026-08-28-user-account-deletion.md); PostgreSQL tests, including migration constraints and prohibited identity reconstruction, own detailed predicates.
+
+Topology rounds below are retained historical test rationale and fixture counts, not a current release status or instruction to cut over a shared database. Their implementation context is in the completed [round 4](../exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md), [round 5](../exec-plans/completed/2026-07-16-parameter-topology-round5-review-blockers.md) and [round 6](../exec-plans/completed/2026-07-16-parameter-topology-round6-review-blockers.md) plans. Current execution selection is owned by the verification matrix above.
 
 ## Parameter Topology (round 4)
 

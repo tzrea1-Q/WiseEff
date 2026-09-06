@@ -28,14 +28,14 @@
 | `User` | 用户账号，绑定身份源和唯一的 home organization |
 | `Role` | 平台角色；硬件/软件是 Role discipline，不是 Organization |
 | `Permission` | 细粒度动作权限 |
-| `UserRoleBinding` | 用户在 Organization 内的平台角色绑定。`project_id` 预留，产品未交付 |
+| `UserRoleBinding` | 用户在 Organization 内的角色绑定；目录使用查询会消费明确项目 ID 或组织级授权，组织管理未提供项目成员管理产品 |
 
 关键规则：
 
 - 后端必须进行权限判断，前端权限只用于界面裁剪。
 - 组织管理运营调用者的 home organization：成员、入职、显示名。一人只属于一个 Organization。
 - 停用用户不能执行任何写操作，但历史审计仍保留用户信息。
-- `ProjectMember` 与项目级角色是预留概念，不是已交付产品；进了组织即看见该组织下全部项目。
+- 组织管理未提供 `ProjectMember` 管理产品，但不能据此推断目录使用查询无项目限制。在源码基线 `67d4a77325b6009b77c2373bd788298a6d022bcf`，`parameter-catalog-api/productionWire.ts` 消费数据库实际角色绑定中的明确项目 ID 或组织级授权，`rootUsageScope.integration.test.ts` 验证该限制。项目列表可见性和目录使用投影授权是不同决策。
 
 ### 2.2 项目
 
@@ -166,7 +166,7 @@ stateDiagram-v2
 
 **敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
 
-**认证主体与调用溯源（ADR-0038 / TD-068）：** 认证主体拥有身份、Organization、角色、权限与问责；一次操作的 initiator 是独立、由服务端信任构造的 `user` / `agent` / `system` 事实。#610 已实现共享上下文、严格构造器及策略/审计投影；生产入口构造和完整路径传递仍由 #611–#615 负责。user 与 Agent 调用保留认证主体；Agent 还携带 session/tool-call 及适用的审批关联。system 点名 service/job，不伪造用户。审批不会改变 Agent 溯源。DTS 重载与关键参数的 human-required 策略只接受 `user`；缺失溯源不得默认 user。该边界只诚实分类服务端已知路径，不声称普通 bearer credential 能证明物理人类在场。
+**认证主体与调用溯源（ADR-0038 / TD-068）：** 认证主体拥有身份、Organization、角色、权限与问责；一次操作的 initiator 是独立、由服务端信任构造的 `user` / `agent` / `system` 事实。#610 引入共享上下文、严格构造器及策略/审计投影。当前源码在 `agent/orchestrator.ts` 构造 Agent 调用，在 `dts-reload/routes.ts` 的变更路由构造用户调用；源码核查边界见[安全文档](../SECURITY.md)。这不代表整个计划关闭或全部生产路径验证完成。user 与 Agent 调用保留认证主体；Agent 还携带 session/tool-call 及适用的审批关联。system 点名 service/job，不伪造用户。审批不会改变 Agent 溯源。DTS 重载与关键参数的 human-required 策略只接受 `user`；缺失溯源不得默认 user。该边界只诚实分类服务端已知路径，不声称普通 bearer credential 能证明物理人类在场。
 
 #### 语义拓扑身份（增量模型 → 原子切换）
 

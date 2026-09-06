@@ -6,6 +6,8 @@ WiseEff is organized as a React frontend plus a TypeScript backend foundation. T
 
 Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, Xiaoze as the sole Agent seam (CopilotKit/AG-UI + LangGraph + shared ToolRegistry), and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
 
+The [technical compendium](docs/design-docs/full-stack-architecture.md) and [test design](docs/design-docs/testing-strategy.md) provide the current detailed reading paths. At source baseline `67d4a77325b6009b77c2373bd788298a6d022bcf`, `server/app.ts` registers `parameter-catalog-api/productionWire.ts`, connecting Catalog Kernel, governance and project usage. This is implementation presence, not target cutover or release evidence.
+
 ## Runtime Shape
 
 ```mermaid
@@ -53,6 +55,7 @@ Rules:
 - `server/modules/projects/`: routes-less project entity module — project / project-module reads and CRUD plus the project DTO vocabulary consumed by parameters, parameter-topology, and project admin (ADR-0029).
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/parameter-kernel/`: routes-less cross-cutting parameter primitives — the identity-mode seam, the parameter authorization predicates and change-request status vocabulary, the sensitive-node write gate, and the transitional legacy-identity compatibility layer (deleted at the TD-042 cutover); imported by parameters, parameter-topology, parameter-files, parameter-drafts, parameter-specs, parameter-modules, projects, dts-reload, debugging, logs, and agent; never imports the parameter workflow modules (ADR-0029).
+- `server/modules/parameter-catalog-api/`, `catalog-kernel/`, `parameter-governance/`, and `parameter-bindings/`: canonical Catalog read/governance composition, immutable releases, organization registration/placement/proposals, and scoped project usage; see the technical handover for the distinction from the existing parameter workflow.
 - `server/modules/parameter-drafts/`: standalone draft staging shared by both parameter workflows — editing writes drafts, submission/review reads them; owns `parameter_drafts` access and the draft/write-lock field vocabulary (ADR-0028).
 - `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback; P2 adds board-level config sets grouping files into a buildable unit (`project → dts_config_set → files`), immutable release baselines for compare/rollback/release, a `dtc`-backed validation gate, and lossless export; P3 adds structured read/search HTTP, sensitive-node RBAC (`0045`), and Admin UI panels wired through `DtsStructuredRepository`.
 - `server/modules/parameter-topology/`: semantic config revisions, source occurrences, effective logical nodes, project bindings, identity mapping tasks, ingest/edit services, and maintenance-only identity migration/cutover.

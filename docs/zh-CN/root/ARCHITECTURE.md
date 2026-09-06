@@ -4,6 +4,10 @@
 
 这是核心入口文档，帮助开发者理解仓库地图、运行模式、治理规则和下一步阅读路径。
 
+## 当前详细入口
+
+[技术文档合集](../design-docs/full-stack-architecture.md)提供完整研发接手内容，[测试策略与设计](../design-docs/testing-strategy.md)提供风险与用例路径。在源码基线 `67d4a77325b6009b77c2373bd788298a6d022bcf`，`server/app.ts` 已注册 `parameter-catalog-api/productionWire.ts`，连接 Catalog Kernel、治理及项目使用查询。相关模块为 `parameter-catalog-api/`、`catalog-kernel/`、`parameter-governance/`、`parameter-bindings/`，负责目录读写组合、不可变发布、组织注册/放置/提案及范围受限的项目使用关系，与既有参数变更流程区分。代码存在不等于目标切换或发布证据。
+
 ## 使用方式
 
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
