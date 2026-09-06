@@ -133,6 +133,12 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const ingest = createEvidenceIngest(pool);
     expect((await ingest.ingest(reviewInput)).ok).toBe(true);
     expect((await ingest.ingest(reviewInput)).ok).toBe(true);
+    const reviewFixture = await pool.query<{ evidence_rows: number; persisted_items: number }>(
+      `select (select count(*)::int from parameter_catalog.parameter_review_evidence where organization_id = $1) as evidence_rows,
+              (select count(*)::int from parameter_catalog.parameter_review_items where organization_id = $1) as persisted_items`,
+      ["batch-org"],
+    );
+    expect(reviewFixture.rows).toEqual([{ evidence_rows: 1, persisted_items: 0 }]);
     if (capacityProfile) {
       const predecessor = bundle.releases[0]!;
       const next = structuredClone(predecessor);
@@ -400,8 +406,8 @@ describe("R2-BATCH root HTTP SQL budget", () => {
             const samples = rounds.filter((round) => round.phase === "measured-warm").flatMap((round) => round.elapsedMs).sort((a, b) => a - b);
             const percentile = (fraction: number) => samples[Math.ceil(samples.length * fraction) - 1];
             const report = { status: "passed", requirement: "R2-CAP", snapshot, route, scenario: scenario.name, endpoint, expectedRelease,
-              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1, duplicateReviewIngestions: 2, reviewItems: 1,
-                reviewEvidenceReleaseId: pinnedReleaseId, currentReviewCount: 0, pinnedReviewCount: 1 },
+              fixture: { subjects: subjectCount, definitions: subjectCount * 2, organizations: 2, projectsWithBindings: 2, registrations: 1, bindings: 3, nonPlaceholderHistory: 4, currentNonPlaceholder: 2, placeholderBindings: 1, duplicateReviewIngestions: 2,
+                reviewEvidenceRows: 1, persistedReviewItems: 0, reviewEvidenceReleaseId: pinnedReleaseId, projectedReviewCountCurrent: 0, projectedReviewCountPinned: 1 },
               concurrency, sampleCount: samples.length, warmupRequests: concurrency, businessQueriesPerRequest: businessBudget,
               p50Ms: percentile(0.5), p95Ms: percentile(0.95), latencySlo: "unavailable; observational baseline only",
               coldCache: "unavailable; no OS/PostgreSQL cache reset; first-observed is not a cold-cache claim",
