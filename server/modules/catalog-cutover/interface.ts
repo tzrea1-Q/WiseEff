@@ -71,6 +71,7 @@ export type CutoverResult<T> =
   | { readonly ok: false; readonly error: CutoverFailure };
 
 export type CutoverPlan = {
+  readonly managementMigrationReceiptDigest?: string;
   readonly bindingImportIntentDigest?: string;
   readonly bindingArchiveRetainUntil?: string;
   readonly conversionManifestDigest?: string;
@@ -102,6 +103,8 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  /** Receipt from the fixed preparation plan, generated before this S7 plan. */
+  readonly managementMigrationReceiptDigest?: string;
   readonly bindingImportIntent?: BindingImportIntent;
   /** Explicit retention-owner input. No production retention period is invented by the controller. */
   readonly bindingArchiveRetainUntil?: string;
@@ -113,6 +116,13 @@ export type PlanCutoverInput = {
 };
 
 export type ExecuteCutoverInput = {
+  readonly managementMigrations?: {
+    /** Root-owned: recompute the source/ledger/checkpoint receipt on the actual
+     * target, and compare it with the committed existing controller journal. */
+    verify(input: { receiptDigest: string; target: DatabaseIdentity }): Promise<{
+      receiptDigest: string; sourceSnapshotDigest: string; candidateInventoryDigest: string;
+    }>;
+  };
   readonly bindingImportIntent?: BindingImportIntent;
   /** Controlled management login only; never the API/worker runtime pool. */
   readonly bindingManagementPool?: pg.Pool;

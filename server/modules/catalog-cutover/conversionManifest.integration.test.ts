@@ -5,7 +5,7 @@ import path from "node:path";
 import pg from "pg";
 import { stringify } from "yaml";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog";
+import { createDisposableParameterCatalogDatabase, type ParameterCatalogDatabase } from "../../testing/upgradeComponents";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract/index";
 import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { validCatalogReleaseBundle, refreshReleaseAggregateDigest } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";

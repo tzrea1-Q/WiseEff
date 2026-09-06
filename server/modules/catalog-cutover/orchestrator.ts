@@ -148,6 +148,8 @@ export const planCutover = async (
   } else if (input.conversionManifest) {
     return fail("PCAT-ORC-INVALID-PLAN", "conversion-manifest-requires-release-source");
   }
+  if (input.managementMigrationReceiptDigest !== undefined && !/^sha256:[a-f0-9]{64}$/.test(input.managementMigrationReceiptDigest)) return fail("PCAT-ORC-INVALID-PLAN", "management-migration-receipt-pin-invalid");
+  const managementPin = input.managementMigrationReceiptDigest ? { managementMigrationReceiptDigest: input.managementMigrationReceiptDigest } : {};
   const sourceSnapshotFingerprint = fingerprintP0Graph(input.graph);
   const planDigest = sha256Prefixed(
     JSON.stringify({
@@ -156,6 +158,7 @@ export const planCutover = async (
       targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
+      ...managementPin,
       ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
       ...(input.bindingImportIntent ? {bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
       ...(input.bindingImportIntent ? {bindingArchiveRetainUntil:input.bindingArchiveRetainUntil} : {}),
@@ -168,6 +171,7 @@ export const planCutover = async (
     targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
     migrationContractVersion: MIGRATION_CONTRACT_VERSION,
     phases: PRE_ACTIVATION_PHASES,
+    ...managementPin,
     ...(input.conversionManifest ? { conversionManifestDigest: conversionManifestDigest(input.conversionManifest) } : {}),
     ...(input.bindingImportIntent ? {bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent)} : {}),
     ...(input.bindingImportIntent ? {bindingArchiveRetainUntil:input.bindingArchiveRetainUntil} : {}),
@@ -270,6 +274,15 @@ const runPhase = async (
       });
     }
     case "P4": {
+      if (input.bindingImportIntent || input.plan.managementMigrationReceiptDigest) {
+        const receiptDigest = input.plan.managementMigrationReceiptDigest;
+        if (!receiptDigest || !input.managementMigrations) return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-unavailable");
+        try {
+          const proof = await input.managementMigrations.verify({ receiptDigest, target: await readBindingDatabaseIdentity(client) });
+          if (proof.receiptDigest !== receiptDigest || ![proof.sourceSnapshotDigest, proof.candidateInventoryDigest].every(pin => /^sha256:[a-f0-9]{64}$/.test(pin))) return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-mismatch");
+          return ok({ schemaExpanded: true, mode: "controlled-receipt-verified", ...proof });
+        } catch { return fail("PCAT-ORC-PHASE-FAILED", "management-migration-receipt-verification-failed"); }
+      }
       const result = await client.query<{ n: string }>(
         `
         select count(*)::text as n
@@ -563,7 +576,7 @@ export const executeCutover = async (
         if (sourceBindings.rows.length !== input.graph.bindings.length || !sourceBindings.rows.every(b => input.graph.bindings.some(g => g.id === b.id && g.organizationId === b.organization_id && g.parameterSpecId === b.parameter_spec_id && g.moduleId === b.module_id)) || sourceRevisions.rows.length !== input.graph.bindingRevisions.length || !sourceRevisions.rows.every(r => input.graph.bindingRevisions.some(g => g.id === r.id && g.bindingId === r.binding_id && g.parameterSpecVersionId === r.parameter_spec_version_id))) return fail("PCAT-ORC-INVALID-PLAN","binding-source-graph-conservation");
       } catch (error) { return fail("PCAT-ORC-INVALID-PLAN",error instanceof BindingProducerRefusal || error instanceof BindingSourceRefusal ? error.message : "binding-management-preflight-query-failure"); }
     }
-    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil });
+    const replanned = await planCutover({ graph: input.graph, targetArtifactSha: input.plan.targetArtifactSha, targetCatalogReleaseDigest: input.plan.targetCatalogReleaseDigest, catalogReleaseSource: input.catalogReleaseSource, conversionManifest: input.conversionManifest, bindingImportIntent:input.bindingImportIntent,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil,managementMigrationReceiptDigest:input.plan.managementMigrationReceiptDigest });
     if (!replanned.ok) return replanned;
     if (replanned.value.planDigest !== input.plan.planDigest) return fail("PCAT-ORC-INVALID-PLAN", "conversion-plan-mismatch");
     if (input.plan.conversionManifestDigest || input.conversionManifest) {

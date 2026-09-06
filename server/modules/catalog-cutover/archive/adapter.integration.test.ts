@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createDisposableParameterCatalogDatabase,
   type ParameterCatalogDatabase,
-} from "../../../testing/parameterCatalog";
+} from "../../../testing/upgradeComponents";
 import { DISPOSITION_BY_R_CLASS } from "../classifier/index";
 import type { OwnerScopeKind, RClass } from "../classifier/types";
 import { archiveGraphChecksum, checksumContract } from "./checksum";

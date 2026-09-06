@@ -11,6 +11,7 @@ import type { PrepareVerificationInput } from "../../../../server/modules/releas
 
 import { inspectActionGuards, type CutoverPorts, type VerificationPorts } from "./actions";
 import { createBindingCutoverJournal } from "./bindingJournal";
+import { readManagementMigrationAttempt } from "./managementJournal";
 import type { HostOperationLock } from "./handoff";
 import {
   canonicalJson,
@@ -84,6 +85,7 @@ const inputDigestFor = (
       conversionManifest: record?.conversionManifest ?? null,
       bindingImportIntent: record?.bindingImportIntent ?? null,
       bindingArchiveRetainUntil: record?.bindingArchiveRetainUntil ?? null,
+      managementMigrationReceiptDigest: record?.managementMigrationReceiptDigest ?? null,
     });
   }
   if (action === "execute") {
@@ -176,6 +178,13 @@ export const openCatalogUpgradeController = (
     async dispatch(command) {
       const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId, requireSettled: true });
       if (!current.ok) return current;
+      try {
+        const management = readManagementMigrationAttempt(current.value.record);
+        if (management.status === "pending" || management.status === "unknown") return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "management migration requires explicit reconciliation");
+        // The Binding adapter reads every run under the same target admission
+        // lock, including management outcomes, before any owner or replay.
+        if (deps.bindingJournalScope && bindingJournal) await bindingJournal.unresolved(deps.bindingJournalScope.target);
+      } catch { return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "target phase admission is unavailable"); }
       if (current.value.record.journalDigest !== journal.record.journalDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
       try { await deps.operationLock?.assertHeld(); }
       catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "handoff-lock-lost"); }

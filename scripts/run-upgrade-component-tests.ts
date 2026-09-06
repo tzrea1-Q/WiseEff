@@ -8,8 +8,10 @@ import { setTimeout } from "node:timers/promises";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts"];
 const suites = {
-  bindings: ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts"],
+  bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles },
+  "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles },
 } as const;
 
 /** The child owns its process group. Deadline/output limits cannot authorize a pass. */
@@ -51,18 +53,19 @@ export function superviseComponentProcess(child: ReturnType<typeof spawn>, limit
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
 export async function runUpgradeComponentTests(args: string[]) {
   if (args.length !== 4 || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
-    return { exitCode: 2, reason: "usage-expected-daemon-id-and-suite-bindings-required" };
+    return { exitCode: 2, reason: "usage-expected-daemon-id-and-known-suite-required" };
   }
   const docker = createIsolatedUpgradeDocker();
   if (docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`) {
     return { exitCode: 2, reason: "explicit-development-daemon-required" };
   }
-  const image = JSON.parse(docker.command(["image", "inspect", "pgvector/pgvector:pg16"]).toString())[0];
+  const suite = suites[args[3] as keyof typeof suites];
+  const image = JSON.parse(docker.command(["image", "inspect", suite.image]).toString())[0];
   const run = `conversion-${randomBytes(8).toString("hex")}`;
   const label = "wiseeff.upgrade.conversion";
   const password = randomBytes(24).toString("hex");
   const directory = await mkdtemp(path.join(os.tmpdir(), "upgrade-components-"));
-  let id = ""; let net = ""; let child: ReturnType<typeof spawn> | undefined;
+  let id = ""; let net = ""; let volume = ""; let child: ReturnType<typeof spawn> | undefined;
   let supervisor: ReturnType<typeof superviseComponentProcess> | undefined;
   let interrupted = false;
   const interrupt = () => { interrupted = true; supervisor?.stop(); };
@@ -74,8 +77,10 @@ export async function runUpgradeComponentTests(args: string[]) {
     // its port on Docker Desktop; this owned bridge publishes loopback only.
     // This is not an application egress-isolation environment.
     net = docker.command(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, run]).toString().trim();
+    stage = "volume-create";
+    volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `${run}-data`]).toString().trim();
     stage = "container-create";
-    id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image.Id]).toString().trim();
+    id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image.Id]).toString().trim();
     stage = "container-port-observation";
     let port: string | undefined;
     for (let n = 0; n < 40 && !interrupted; n++) {
@@ -96,11 +101,17 @@ export async function runUpgradeComponentTests(args: string[]) {
     if (!ready || interrupted) throw new Error("owned-postgres-not-ready");
     stage = "receipt-and-tests";
     const receipt = path.join(directory, "target.json");
-    await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url }), { mode: 0o600, flag: "wx" });
-    const selectors = suites[args[3] as keyof typeof suites];
+    const physical = JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", "postgres", "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
+    console.log(JSON.stringify({ evidence: "owned-database-profile", imageId: image.Id, databaseProperties: physical.databaseProperties }));
+    const dataVolume = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
+    await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url, ...physical,
+      profile: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1",
+      imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt } }), { mode: 0o600, flag: "wx" });
+    const selectors = suite.files;
     child = spawn(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", "vitest.upgrade-cutover.config.ts", ...selectors], {
       cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
-        UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url },
+        UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url,
+        UPG_COMPONENT_PROFILE: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1" },
       stdio: ["ignore", "pipe", "pipe"], detached: true,
     });
     supervisor = superviseComponentProcess(child);
@@ -113,6 +124,11 @@ export async function runUpgradeComponentTests(args: string[]) {
   } finally {
     // Each destructive cleanup is constrained to the exact newly created object.
     if (id) { docker.assertOwned(id, label, run); docker.command(["rm", "-f", "-v", id]); }
+    if (volume) {
+      const found = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
+      if (found.Name !== volume || found.Labels?.[label] !== run) throw new Error("owned-volume-mismatch");
+      docker.command(["volume", "rm", volume]);
+    }
     if (net) {
       const found = JSON.parse(docker.command(["network", "inspect", net]).toString())[0];
       if (found.Id !== net || found.Labels?.[label] !== run) throw new Error("owned-network-mismatch");
@@ -121,7 +137,7 @@ export async function runUpgradeComponentTests(args: string[]) {
     await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
-  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: true, releaseApproved: false }));
+  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: true, releaseApproved: false }));
   return { exitCode, reason: "isolated-components-only" };
 }
 

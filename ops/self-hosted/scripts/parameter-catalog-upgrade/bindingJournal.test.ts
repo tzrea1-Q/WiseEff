@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBindingCutoverJournal, bindingJournalPath } from "./bindingJournal";
 import { loadUpgradeJournal, openUpgradeJournal } from "./journal";
+import { createManagementMigrationJournal } from "./managementJournal";
 
 const target = { systemIdentifier: "123456789", databaseOid: "16384" };
 const digest = `sha256:${"a".repeat(64)}`;
@@ -21,6 +22,14 @@ function fixture() {
 const intent = { target, runId: "cutover_1", planDigest: digest, phase: "P9" as const, inputDigest: digest };
 
 describe("durable controller Binding phase journal", () => {
+  it("does not enter a Binding phase while another run has an unresolved management migration", async () => {
+    const { operationRoot, open } = fixture();
+    const source = open("management");
+    const management = createManagementMigrationJournal({ operationRoot, target, journal: source.journal, assertHeld: async () => undefined });
+    await management.begin({ version: "pcat-management-migration-intent-v1", runId: "management", preparationPlanDigest: digest, target,
+      sourceSnapshotDigest: digest, candidateInventoryDigest: digest, writeFenceReceiptDigest: digest, recoveryManifestDigest: digest, checkpointMode: "memory" });
+    await expect(open("binding").adapter.begin(intent)).rejects.toThrow("management-journal-unresolved");
+  });
   it("retains pending intent after restart and blocks a different run on the same database", async () => {
     const { open } = fixture();
     const first = open("upgrade-a");

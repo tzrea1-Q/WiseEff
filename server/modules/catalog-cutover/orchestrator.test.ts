@@ -14,7 +14,7 @@ import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import {
   createDisposableParameterCatalogDatabase,
   type ParameterCatalogDatabase,
-} from "../../testing/parameterCatalog";
+} from "../../testing/upgradeComponents";
 import { createLocalArchiveObjectStore } from "./archive";
 import { classifyFrozenP0Graph, type FrozenP0Graph } from "./classifier";
 import {

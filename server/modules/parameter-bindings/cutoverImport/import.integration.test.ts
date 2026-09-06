@@ -6,7 +6,7 @@ import os from "node:os";
 import pg from "pg";
 import { stringify } from "yaml";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
-import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../../testing/parameterCatalog/database";
+import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../../testing/upgradeComponents";
 import { createPostgresDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler";

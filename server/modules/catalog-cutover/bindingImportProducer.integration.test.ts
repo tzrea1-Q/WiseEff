@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../testing/parameterCatalog/database";
+import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../testing/upgradeComponents";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";

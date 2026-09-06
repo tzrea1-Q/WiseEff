@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { assertNoUnresolvedManagementMigration } from "./managementJournal";
 import type { BindingCutoverJournal, BindingPhaseAttempt } from "../../../../server/modules/catalog-cutover/interface";
 import {
   canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
@@ -47,6 +48,7 @@ export function createBindingCutoverJournal(input: Scope & { journal: UpgradeJou
   const assertTarget = (target: Target) => { if (!same(target, input.target)) fail("binding-journal-target-mismatch"); };
   const latest = (): Map<string, BindingPhaseEvent> => {
     assertDirectory();
+    assertNoUnresolvedManagementMigration(input);
     const events = new Map<string, BindingPhaseEvent>();
     for (const name of readdirSync(directory).sort()) {
       if (name.endsWith(".json.write-lock")) fail("binding-journal-write-outcome-unavailable");
