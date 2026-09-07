@@ -2,6 +2,8 @@ import { randomUUID, randomInt } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { constants } from "node:fs";
+import { Socket } from "node:net";
+import { TLSSocket } from "node:tls";
 import { open, lstat, realpath } from "node:fs/promises";
 import pg from "pg";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
@@ -269,15 +271,29 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         activationBindingDigest: binding.bindingDigest, handoffDigest: fixed.expectedHandoffDigest,
         recoveryPackageDigest: backup.digest, recoveryPointDigest: capture.recoveryPointDigest,
         target: input.activation.target, roleName, custodyDirectory };
+      const managementPorts = [...sourceEndpoints.values()].map(endpoint => endpoint.managementPort);
+      let inspectionStream: unknown;
+      const verifyInspectionEndpoint = () => {
+        if (inspectionReaderReleased) return;
+        const stream = inspectionReader instanceof pg.Client ? inspectionReader.connection.stream : undefined;
+        need(stream === inspectionStream && stream instanceof Socket && !(stream instanceof TLSSocket) &&
+          !stream.destroyed && stream.remoteAddress === "127.0.0.1" && managementPorts.length === 2 &&
+          managementPorts.every(port => port === String(stream.remotePort)), "SOURCE-ENDPOINT-UNPROVEN");
+      };
       const verifyInspectionBoundary = async () => {
+        verifyInspectionEndpoint();
         need(isDeepStrictEqual(await check(), sourceUrls), "SOURCE-CONFIGURATION-DRIFT");
         await verifyBoundReport();
+        verifyInspectionEndpoint();
       };
       // Attach both observers synchronously at checkout. The root releases
       // this borrowed lease; the facade owns only its private OID10 pool/FDs.
       inspectionReader = await new Promise<pg.PoolClient>((resolve, reject) => {
         input.activation.managementPool.connect((error, client) => {
-          if (client) { inspectionReader = client; client.on("error", onInspectionConnectionError); client.on("end", onInspectionConnectionError); }
+          if (client) {
+            inspectionReader = client; client.on("error", onInspectionConnectionError); client.on("end", onInspectionConnectionError);
+            inspectionStream = client instanceof pg.Client ? client.connection.stream : undefined;
+          }
           if (error || !client) reject(new LegacyLoginRetirementError("CONNECTION-FAILED"));
           else resolve(client);
         });

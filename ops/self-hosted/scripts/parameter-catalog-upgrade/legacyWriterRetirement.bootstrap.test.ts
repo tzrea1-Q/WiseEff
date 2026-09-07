@@ -22,7 +22,7 @@ vi.mock("node:fs/promises", async original => {
   } };
 });
 vi.mock("../../../../scripts/isolated-upgrade-docker", () => ({ createIsolatedUpgradeDocker: () => ({ daemonId: "daemon", command: io.docker }) }));
-vi.mock("./legacyWriterSource", () => ({ observeLegacySourceEndpoint: () => ({ endpoint: "fixed" }) }));
+vi.mock("./legacyWriterSource", () => ({ observeLegacySourceEndpoint: () => ({ endpoint: "fixed", managementPort: "15432" }) }));
 vi.mock("./handoff", () => ({ assertHostOperationLockForJournal: async () => {
   if (io.fault === "host-lock") { io.hostRefused = true; throw new Error("private-lock-diagnostic"); }
 } }));
@@ -41,8 +41,12 @@ vi.mock("../../../../server/modules/catalog-cutover/retirement/bootstrapCredenti
 }));
 vi.mock("pg", async () => {
   const { EventEmitter } = await import("node:events");
+  const { Socket } = await import("node:net");
   class Client extends EventEmitter {
     kind: string;
+    // Synthetic pg transport: these socket observations are controlled by the
+    // fixture, not evidence of an actual PostgreSQL/Docker connection.
+    connection = { stream: new Socket() };
     query = vi.fn(async (sql: string, values?: unknown[]) => {
       if (sql.includes("event_kind=$2 order by sequence_number")) return { rows: [...io.rootEvents], rowCount: io.rootEvents.length };
       if (sql.includes("insert into parameter_catalog.parameter_catalog_cutover_events")) {
@@ -59,7 +63,14 @@ vi.mock("pg", async () => {
       return { rows: [], rowCount: 0 };
     });
     release = vi.fn(() => { this.emit("end"); if (this.kind === "guard" && io.fault === "reader-release") throw new Error("private-release-diagnostic"); });
-    constructor(options: { connectionString?: string } = {}) { super(); this.kind = options.connectionString?.includes("guard") ? "guard" : "bootstrap"; io.clients.push(this); }
+    constructor(options: { connectionString?: string } = {}) {
+      super(); this.kind = options.connectionString?.includes("guard") ? "guard" : "bootstrap";
+      Object.defineProperties(this.connection.stream, {
+        remoteAddress: { get: () => io.fault === "inspection-peer-host" ? "127.0.0.2" : "127.0.0.1" },
+        remotePort: { get: () => io.fault === "inspection-peer-port" ? 25432 : 15432 },
+      });
+      io.clients.push(this);
+    }
     async connect() { io.sourceConnects++; if (io.fault === "old-secret-rejected") throw new Error("private-authentication-refused"); }
     async end() { this.emit("end"); }
   }
@@ -123,7 +134,7 @@ async function fixture() {
   const input = { handoff: { ...body, digest }, expectedHandoffDigest: digest, lock: {},
     activation: { target, reports: {}, managementPool: new pg.Pool({ connectionString: "postgres://guard@127.0.0.1/db" }),
       boundary: { verify: async () => {} } }, activationIntent, attemptId: "auth-attempt",
-    administrativeConnectionString: "postgres://postgres:old-secret@127.0.0.1/db", recoveryDirectory: root,
+    administrativeConnectionString: "postgres://postgres:old-secret@127.0.0.1:15432/db", recoveryDirectory: root,
     bootstrapCredentialDirectory: custodyDirectory } as unknown as LegacyLoginRetirementInput;
   return { input, custodyDirectory };
 }
@@ -267,6 +278,34 @@ it("dispatches bootstrap inspection through the borrowed management transport be
   expect(f.input.administrativeConnectionString === originalManagementInput).toBe(true);
   expect(io.apply).toHaveBeenCalledOnce();
   expect(io.inspect).toHaveBeenCalledOnce();
+});
+
+it.each(["inspection-peer-port", "inspection-peer-host"])("rejects %s despite matching database identity before dispatching private custody", async fault => {
+  const f = await fixture(); io.fault = fault;
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("SOURCE-ENDPOINT-UNPROVEN");
+  expect(io.transportInspect).not.toHaveBeenCalled();
+  expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.apply).not.toHaveBeenCalled(); expect(io.pools).toHaveLength(1);
+});
+
+it.each(["port", "replacement"])("rejects borrowed socket %s drift during the facade's held boundary", async fault => {
+  const f = await fixture();
+  let continued = false;
+  io.transportInspect.mockImplementationOnce(async selected => {
+    if (fault === "port") io.fault = "inspection-peer-port";
+    else {
+      const { Socket } = await import("node:net");
+      const stream = new Socket();
+      Object.defineProperties(stream, { remoteAddress: { value: "127.0.0.1" }, remotePort: { value: 15432 } });
+      selected.managementClient.connection.stream = stream;
+    }
+    await selected.activation.boundary.verify();
+    continued = true;
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("SOURCE-ENDPOINT-UNPROVEN");
+  expect(continued).toBe(false); expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.apply).not.toHaveBeenCalled(); expect(io.pools).toHaveLength(1);
 });
 
 it.each(["report", "package", "host-lock", "source-role", "bootstrap-package"])("rejects inspection %s before dispatch or any new secret transport", async fault => {
