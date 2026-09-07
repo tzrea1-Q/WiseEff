@@ -54,6 +54,19 @@ independent assertions measured 336–1110ms. Log
 The original failed Hosted run remains failed; a new Hosted result is pending.
 This test-only repair does not alter the fence or claim approved P12/P13/startup.
 
+Independent review also found an inherited preparation failure path that lost
+its first error if cleanup failed too. The fixture now reports both failures:
+the primary diagnostic retains its internally selected preparation stage and a
+closed set of PostgreSQL codes, while cleanup has a static error. Neither raw
+SQL/errors nor private causes enter the aggregate. Successful cleanup preserves
+the original preparation error. The actual catch uses the same helper covered
+by two permanent tests. Exact AST extraction of that helper and those tests,
+with no integration imports/setup, produced 1 pass/1 failure before the repair
+and 2/2 after it (`/tmp/pr824-bootstrap-cleanup-{red,green}.log`). This is pure
+failure-path evidence, not a simulated database lifecycle or a rerun of the
+fixed 38-case execution. The full file now collects 40 tests; its next actual
+owned execution remains pending.
+
 ## Authentication inspection after the SQL successor
 
 This separate Scratch starts at main and fast-forwards `5f7a3d5b4`.

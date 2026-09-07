@@ -447,8 +447,20 @@ if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '
 type AuthenticationMode = "exact" | "cross-run" | "package-drift" | "guard-ended";
 type SuccessorMode = "baseline" | "missing-host" | "wrong-host-run" | "extra-acl" | "new-relation" | "host-association" | "final-boundary";
 
-async function failCustodyPreparation(error: unknown, stage: string, cleanup: () => Promise<void>): Promise<never> {
-  await cleanup();
+type CustodyPreparationStage = "storage-binding" | "management-checkout" | "role-preparation" | "custody-preparation" |
+  "root-intent" | "authentication-fence" | "credential-readback" | "original-manager-close" | "old-password-oracle";
+async function failCustodyPreparation(error: unknown, stage: CustodyPreparationStage, cleanup: () => Promise<void>): Promise<never> {
+  try { await cleanup(); }
+  catch {
+    // Keep the primary phase and a closed set of PG failure codes, never the
+    // raw query/error/cause that may contain a password literal.
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    const safeCode = typeof code === "string" && ["42501", "28P01", "55P03", "40001", "40P01", "57014"].includes(code) ? code : "unclassified";
+    throw new AggregateError([
+      new Error(`bootstrap-transport-setup-failed:${stage}:${safeCode}`),
+      new Error("bootstrap-transport-cleanup-failed"),
+    ], "bootstrap-transport-operation-and-cleanup-failed");
+  }
   throw error;
 }
 
@@ -465,6 +477,13 @@ it("preserves safe preparation and cleanup reasons when both fail", async () => 
     "bootstrap-transport-setup-failed:storage-binding:42501", "bootstrap-transport-cleanup-failed",
   ]);
   expect(JSON.stringify(failure, Object.getOwnPropertyNames(failure))).not.toContain("private-");
+  const unknown = await failCustodyPreparation(Object.assign(primary, { code: "private-code" }), "root-intent", async () => {
+    throw new Error("private-cleanup-material");
+  }).catch(error => error);
+  expect(unknown.errors.map((error: Error) => error.message)).toEqual([
+    "bootstrap-transport-setup-failed:root-intent:unclassified", "bootstrap-transport-cleanup-failed",
+  ]);
+  expect(JSON.stringify(unknown, Object.getOwnPropertyNames(unknown))).not.toContain("private-");
 });
 
 it("keeps the original preparation failure after successful cleanup", async () => {
@@ -511,7 +530,8 @@ async function prepareCustodyTransport() {
   const managers = new pg.Pool({ connectionString: privateUrl.href, max: 3, connectionTimeoutMillis: 2000, query_timeout: 5000 });
   managers.on("error", () => {});
   let client: pg.PoolClient | undefined, custody: Awaited<ReturnType<typeof prepareBootstrapCredentialCustody>> | undefined;
-  let created = false, writerCreated = false, failed = false, ending: Promise<void> | undefined;
+  let created = false, writerCreated = false, ending: Promise<void> | undefined;
+  let stage: CustodyPreparationStage = "storage-binding";
   const endManagers = () => ending ??= managers.end();
   const cleanup = async () => {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
@@ -524,13 +544,15 @@ async function prepareCustodyTransport() {
       if (writerCreated) { await withFreshManager(cleanup => cleanup.query(`drop owned by ${writerRole}; drop role ${writerRole}`)); writerCreated = false; }
     })]);
     if ([...first, ...second, ...settings, ...third].some(r => r.status === "rejected"))
-      throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");
+      throw new Error("bootstrap-transport-cleanup-failed");
   };
   try {
     // Actual S7 P0–P10, mapping inventory and storage binding. No report or
     // approved P12 is generated; this is not whole-root retirement acceptance.
     const binding = await prepareUnapprovedBootstrapTransportBinding({ pool: managers, target, directory });
+    stage = "management-checkout";
     client = await acquireObservedManagementClient(managers, () => {});
+    stage = "role-preparation";
     const guardUrl = new URL(privateUrl.href); guardUrl.username = role; guardUrl.password = randomBytes(32).toString("hex");
     await client.query(`create role ${role} login noinherit password ${pg.escapeLiteral(decodeURIComponent(guardUrl.password))}`);
     created = true;
@@ -544,6 +566,7 @@ async function prepareCustodyTransport() {
     const legacyTables = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
     await client.query(`grant select,update on ${legacyTables.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} to ${writerRole}`);
     await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+    stage = "custody-preparation";
     custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
     const expectedRootBinding: BootstrapRootBinding = {
       contract: "pcat-bootstrap-application-authentication-v1", runId: binding.intent.runId,
@@ -553,16 +576,21 @@ async function prepareCustodyTransport() {
       roleName: decodeURIComponent(privateUrl.username), custodyDirectory: directory,
     };
     const request = { ...expectedRootBinding, credentials: custody.receipt };
+    stage = "root-intent";
     await client.query(`insert into parameter_catalog.parameter_catalog_cutover_events(id,cutover_run_id,sequence_number,phase,event_kind,payload)
       select $1,$2,coalesce(max(sequence_number),0)+1,'P13','bootstrap-application-authentication-intent',$3::jsonb
       from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$2`,
     [nonce, binding.intent.runId, JSON.stringify({ request, requestDigest: digestOf(request) })]);
+    stage = "authentication-fence";
     const fenced = await applyBootstrapCredentialFence({ client, target, runId: binding.intent.runId,
       attemptId: expectedRootBinding.attemptId, custody });
     const oldUrl = privateUrl.href;
+    stage = "credential-readback";
     privateUrl.password = await readFile(path.join(directory, `${custody.receipt.version}.new`), "utf8");
     await custody.close(); custody = undefined;
+    stage = "original-manager-close";
     client.release(true); client = undefined; await endManagers();
+    stage = "old-password-oracle";
     const old = new pg.Client({ connectionString: oldUrl, connectionTimeoutMillis: 2000 }); old.on("error", () => {});
     try { await expect(old.connect()).rejects.toMatchObject({ code: "28P01" }); } finally { await old.end(); }
     console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "authentication-setup", elapsedMs: Math.round(performance.now() - preparedAt) }));
@@ -725,7 +753,7 @@ async function prepareCustodyTransport() {
     }
     };
     return { authentication, prepareSuccessor, successor, close: cleanup };
-  } catch (error) { failed = true; return failCustodyPreparation(error, "storage-binding", cleanup); }
+  } catch (error) { return failCustodyPreparation(error, stage, cleanup); }
 }
 
 async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {

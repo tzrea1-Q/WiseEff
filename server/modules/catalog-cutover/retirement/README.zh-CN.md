@@ -2,6 +2,14 @@
 
 > English: [English](README.md)
 
+独立审查另发现继承的准备失败路径：若清理也失败，会覆盖首个错误。现同时报告两项：
+准备错误保留内部选定的阶段及闭集 PostgreSQL 错误码，清理错误使用静态信息；
+聚合错误不携带原始 SQL、私密错误或 cause。清理成功仍保留原准备错误。
+实际 catch 使用同一 helper，文件内两项永久反例以 AST 精确抽取原函数及原测试、
+无 integration 导入/setup 的方式执行，修复前1通过1失败，修复后2/2，日志为
+`/tmp/pr824-bootstrap-cleanup-{red,green}.log`。这是纯失败路径证据，不是模拟数据库
+生命周期，也不重标原固定38项执行。完整文件现收集40项，下次真实owned执行待跑。
+
 ## 独立 inspection 测试生命周期
 
 Hosted run `34167230816`、job `101880674239` 执行 merge
