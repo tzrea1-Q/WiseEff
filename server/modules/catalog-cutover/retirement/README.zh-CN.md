@@ -5,7 +5,7 @@
 ## 有界旧 SQL 权限效果
 
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
-验证尚未执行。它撤销独立可达的旧结构 SQL 授权，不产生
+组件验证已按下文记录通过。它撤销独立可达的旧结构 SQL 授权，不产生
 P13 completed checkpoint、runtime generation、启动 pin 或批准。
 
 固定库存为 `public` 下原 `LEGACY_STRUCTURAL_TABLES` 四表，加
@@ -83,13 +83,26 @@ exit0、cleanuptrue；`/tmp/pr824-sql-privilege-pg-green.log` SHA256 为
 `0da0d4c778fc5af765848dafe2219663265d9a4e33913ae2956052a1442138f6`。
 随后固定 `175a6e320` 增加第二个 owned DB：最终 host 确认时实际 GRANT SELECT
 仍成功并新增共享依赖。该 Red 为19项中18过1失败，104.66秒、exit1、cleanuptrue，
-日志 `/tmp/pr824-sql-privilege-dependency-red.log`。新共享依赖锁等待自身固定Green。
+日志 `/tmp/pr824-sql-privilege-dependency-red.log`，SHA256 为
+`c14028dcbd4dcf69ad15da61a01e124bc278c8bdf46d219e7cdf00fc83ad1e1d`。
 新夹具最初把真实 pg.Client 传给仅查询但类型要求 PoolClient 的 helper，targeted
 types 拒绝；现改为原实际 observed pool checkout，独立关闭 pool 与数据库，
 不使用 cast 或修改 helper 合同。
 复用真实 P0–P10/P12 storage 与明确未批准引用，只测试 SQL 效果。
 真实 SQL 提交后注入 host 确认失败不冒充网络
 COMMIT 故障。不声称完整根 P12/P13 批准或全部 writer 退休。
+
+固定 `2a9b22e2b28e9254f7635e56e7feb897b40bdb99`、tree
+`11018998b52e927564b64e8fbc506ee815e98759` 在 clean detached checkout 实际
+19/19，104.13秒、exit0，runner 与夹具清理均已核验。角色 GRANT 与跨DB ACL
+GRANT 在确认窗口中均以55P03拒绝，事务锁结束后同一GRANT成功。精确命令为
+`env -i PATH="$PATH" HOME="$HOME" node --import tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <独立实测owned daemon> --suite legacy-sql-privileges-pg16`。
+Node为22.22.3；PG16 linux/arm64实际镜像为
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
+最终日志 `/tmp/pr824-sql-privilege-dependency-green.log` 的SHA256为
+`fb454b14d7ea1f34ec0729978d411dde41a3bc00ef6de19231a32d508887a58b`。
+独立Spec与Standards均对该有界组件给出PASS；后继仅文档提交不承接其执行身份。
 
 唯一写入路径为本 README 双语文件、`legacySqlPrivilegeFence.ts` 及其
 `.test.ts`/`.integration.test.ts`、同目录

@@ -5,7 +5,8 @@
 ## Bounded legacy SQL privilege effect
 
 This Scratch implementation uses the existing retirement root and
-`legacySqlPrivilegeFence.ts`. Actual owned PostgreSQL validation is pending. It removes
+`legacySqlPrivilegeFence.ts`. Its actual owned PostgreSQL component validation
+passed as recorded below. It removes
 independently reachable legacy SQL grants; it produces no P13 completed
 checkpoint, runtime generation, startup pin or approval.
 
@@ -109,8 +110,9 @@ The management-resolution and role-metadata-lock fixes at `f1064b650` passed
 The subsequent fixed `175a6e320` adds a separate owned database: its actual
 GRANT SELECT at final host acknowledgment succeeded and created a new shared
 dependency, despite the existing role locks. That Red was 18/19, 104.66 seconds,
-exit 1 and cleanup true, in `/tmp/pr824-sql-privilege-dependency-red.log`.
-The added shared-dependency lock awaits its own fixed Green. The new fixture
+exit 1 and cleanup true, in `/tmp/pr824-sql-privilege-dependency-red.log` (SHA256
+`c14028dcbd4dcf69ad15da61a01e124bc278c8bdf46d219e7cdf00fc83ad1e1d`).
+The new fixture
 initially passed a real `pg.Client` to a query-only helper typed as `PoolClient`;
 targeted types rejected it. It now uses the existing actual observed pool
 checkout and independently closes that pool and database; no cast or helper
@@ -119,6 +121,21 @@ uses actual P0–P10/P12 storage with explicitly unapproved references and
 tests authentication-independent SQL effects. Host-ack failure after real SQL
 commits is an injected host failure, not a network COMMIT fault. No full root
 P12/P13 approval or full writer retirement is claimed.
+
+Fixed `2a9b22e2b28e9254f7635e56e7feb897b40bdb99`, tree
+`11018998b52e927564b64e8fbc506ee815e98759`, passed all 19 actual cases in a clean
+detached checkout: 104.13 seconds, exit 0, runner and fixture cleanup verified.
+The concurrent role grant and cross-database ACL grant both received `55P03`
+inside the acknowledgment window, then succeeded after the transaction locks
+ended. The exact command was `env -i PATH="$PATH" HOME="$HOME" node --import tsx
+scripts/run-upgrade-component-tests.ts --expected-daemon-id <independently
+observed owned daemon> --suite legacy-sql-privileges-pg16`. Node was 22.22.3;
+the actual PG16 linux/arm64 image was
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`.
+The final log `/tmp/pr824-sql-privilege-dependency-green.log` has SHA256
+`fb454b14d7ea1f34ec0729978d411dde41a3bc00ef6de19231a32d508887a58b`.
+Independent Spec and Standards reviews passed this bounded component. Later
+documentation-only commits do not acquire that execution identity.
 
 Exclusive paths: this README pair; `legacySqlPrivilegeFence.ts`, its `.test.ts`
 and `.integration.test.ts`; adjacent
