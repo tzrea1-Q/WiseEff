@@ -25,6 +25,22 @@ Those inputs remain authoritative. This contract aggregates their proof; it does
 
 ## Decision summary
 
+### Bounded reader amendment, 2026-09-07
+
+The PR #824 owner explicitly approved an additive NOLOGIN Catalog reader.
+Historical migration 0138 and its SELECT-negative acceptance remain unchanged.
+After 0140, only explicitly assigned restricted logins inherit the ten Kernel
+relations in the [versioned query/grant manifest](../../server/modules/catalog-kernel/security/catalog-reader.md).
+PG16 membership is `INHERIT TRUE, SET FALSE, ADMIN FALSE`. No future/default
+table grant, ownership, Catalog mutation, synchronizer, migration, Binding,
+Governance or Verification write capability follows from this role. Unassigned
+logins remain SELECT-negative. Report reading keeps the separate existing 0139
+verifier capability and formal runtime/report projections. This amendment changes
+neither runtime approval nor the independent verifier's complete gate privileges.
+The exact old/new contract and implementation fingerprints belong to the
+[PR evidence](../../ops/self-hosted/populated-upgrade-evidence.md); no unrelated
+trusted baseline or gate threshold is reset.
+
 1. One routes-less **Release Verification** deep module owns purpose-scoped verification plans, typed gate execution, immutable Release Verification Reports, report lineage, applicability, and approval binding. `upgrade.sh`, startup, API readiness, browser runners, background work, and runbooks are adapters or evidence producers; none may re-orchestrate or waive gates.
 2. Verification is an ordered report chain, not one self-authorizing report: `pre-activation` authorizes P12; a new `post-retirement-runtime` attempt after P13 authorizes API verify-only startup; `isolated-candidate-acceptance` proves the real candidate API/browser while traffic stays isolated; `public-release` aggregates those exact report digests and alone authorizes queue/proxy/public traffic.
 3. The pre-activation report fixes the exact artifact, target, Catalog Release, migration, cutover plan, mapping, Recovery Point, Catalog/materialization proof, migration proof, initial V01-V17, mandatory D01-D09, recovery proof, and pre-switch writer fence. API/browser gates are explicitly `not-yet-executable` for that purpose, never `passed`.

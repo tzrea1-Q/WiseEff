@@ -25,6 +25,19 @@
 
 ## 决策摘要
 
+### 限定 reader 修订，2026-09-07
+
+PR #824 的用户明确批准追加独立 NOLOGIN Catalog reader。历史迁移 0138 及其
+SELECT-negative 验收保持不变。0140 之后，仅被明确指派的受限登录继承
+[版本化查询／grant 清单](../../../server/modules/catalog-kernel/security/catalog-reader.zh-CN.md)
+中的十张 Kernel 关系。PG16 成员选项为 `INHERIT TRUE, SET FALSE, ADMIN FALSE`。
+不开放未来表／默认授权、所有权、Catalog 写入、同步、迁移、Binding、Governance
+或 Verification 写能力；未获能力的登录仍拒绝 SELECT。报告读取继续使用独立的
+既有 0139 verifier 能力和正式 runtime/report 投影。这不改变运行批准，也不缩小
+独立 verifier 执行完整门禁所需的权限合同。精确旧／新合同及实现指纹记录在
+[PR 证据](../../../ops/self-hosted/populated-upgrade-evidence.zh-CN.md)，不重置无关
+trusted baseline 或门禁阈值。
+
 1. 一个 routes-less 的 **Release Verification** 深模块拥有 purpose-scoped verification plan、typed gate 执行、不可变 Release Verification Report、report lineage、applicability 与 approval binding。`upgrade.sh`、startup、API readiness、browser runner、后台任务和 runbook 只是 adapter 或 evidence producer；它们都不能重新编排或豁免门禁。
 2. Verification 是有顺序的 report chain，而不是一份自我授权报告：`pre-activation` 授权 P12；P13 后的新 `post-retirement-runtime` attempt 授权 API verify-only startup；`isolated-candidate-acceptance` 在流量隔离时证明真实 candidate API/browser；`public-release` 聚合这些精确 report digests，且只有它能授权 queue/proxy/public traffic。
 3. Pre-activation report 固定精确 artifact、target、Catalog Release、migration、cutover plan、mapping、Recovery Point、Catalog/materialization proof、migration proof、初始 V01-V17、强制 D01-D09、recovery proof 与 pre-switch writer fence。API/browser gates 对该 purpose 明确为 `not-yet-executable`，绝不标为 `passed`。
