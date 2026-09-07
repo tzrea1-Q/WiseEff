@@ -2,6 +2,58 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+## Independent inspection test lifecycle
+
+Hosted run `34167230816`, job `101880674239`, executed merge
+`4817c844a0e4e0d63d117fa9d6e5eea0e49017aa` (code `73f12a24e`, report
+`d79b9b23b`). Bootstrap collected 30: 27 passed and three failed. The first
+custody transport test exceeded its unchanged 5000ms budget; its two dependent
+successor tests then failed with lock acquisition/child errors. This is distinct
+from the old source-lock failure. The added successor work had extended one
+existing test to authentication preparation, four child processes, SQL effects,
+and three more child processes. That callback published `successorCheck` before
+it finished. A Vitest timeout does not cancel the callback, so subsequent tests
+could use the same still-active fixture. The logs and source support this
+candidate fixture regression; they do not establish an independent production
+lock leak or a different database input.
+
+Serial local controls used the same owned PG16 image, daemon and Node 22.22.3,
+with an empty ambient environment and the original official suite command:
+
+| Fixed tree | Actual outcome | Original aggregate test |
+| --- | --- | --- |
+| `cf494324c`, tree `47f379156a8f205f0ec43bf813de7e8287ed225e` | 28/28, exit 0, cleanup true | 2046ms |
+| `b7bd0e645`, tree `964de0bb44a4292c8160f7ed5350347448fa7772` | 30/30, exit 0, cleanup true | 4709ms |
+| Diagnostic `2750c294a` | 30/30, exit 0, cleanup true | 4533ms |
+
+The diagnostic measured 299ms authentication preparation and 517ms SQL
+preparation. Each native child needed about 227ms to import and 237ms to acquire
+its restricted manager; the longest measured final-boundary child was 1089ms.
+Local controls did not reproduce the Hosted timeout and are not a substitute
+for it. They identify the new aggregate work, rather than inheriting blame from
+the previously successful 28-case implementation.
+
+The test now owns authentication preparation in `beforeAll`, runs each original
+selection independently, and prepares SQL in a nested `beforeAll`. Original
+missing/wrong-host checks, extra ACL, new relation, copied host chains and the
+last-boundary adversary remain separate actual assertions. All 30 prior cases'
+coverage is retained across 38 cases. There is no callback assigned by one test
+for another test to consume. Each case registers its in-flight work; `afterEach`
+waits for the actual child/DB cleanup, and `afterAll` drains before closing the
+fixture. A still-pending operation prevents another operation from starting.
+The original test 5000ms, hook 10000ms, child 1500ms, connection 2000ms and query
+5000ms limits are unchanged. Static phase/elapsed timings contain no input,
+identity, credential, raw database error or SQL.
+
+Fixed `4b39351a1ddacec102e0394f936710157f6481cd`, tree
+`94be9bd33a4b62e252c47fd3d9e64f1ed2a320ca`, passed the real owned 38/38 in
+14.29s, exit 0 and cleanup true. Preparation measured 300/509ms; the new
+independent assertions measured 336–1110ms. Log
+`/tmp/pr824-bootstrap-lifecycle-split-green.log` SHA-256:
+`f6eba692cce5f8da255aa778b78d8bd186d6c5528e2f0eb62f9eb59b1f2426cb`.
+The original failed Hosted run remains failed; a new Hosted result is pending.
+This test-only repair does not alter the fence or claim approved P12/P13/startup.
+
 ## Authentication inspection after the SQL successor
 
 This separate Scratch starts at main and fast-forwards `5f7a3d5b4`.

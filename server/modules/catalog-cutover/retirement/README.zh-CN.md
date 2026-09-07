@@ -2,6 +2,46 @@
 
 > English: [English](README.md)
 
+## 独立 inspection 测试生命周期
+
+Hosted run `34167230816`、job `101880674239` 执行 merge
+`4817c844a0e4e0d63d117fa9d6e5eea0e49017aa`（代码 `73f12a24e`，报告
+`d79b9b23b`）。Bootstrap 收集30项，27通过、3失败。首 custody transport 用例
+超过原5000ms预算，随后两个依赖 successor 用例发生取锁及子进程错误。这不是旧
+source-lock问题。新增后继把认证准备、4个子进程、SQL效果和另外3个子进程放进
+同一旧用例，并在结束前发布共享 `successorCheck`。Vitest超时不会取消原回调，
+后续用例因此可使用仍在执行的夹具。日志与源码支持候选测试组合回归；它们没有证明
+独立的生产锁泄漏或数据库输入变化。
+
+本地采用同一owned PG16镜像、daemon、Node22.22.3、空ambient环境和原正式suite命令，
+串行对照：
+
+| 固定树 | 实际结果 | 原聚合用例 |
+| --- | --- | --- |
+| `cf494324c`，tree `47f379156a8f205f0ec43bf813de7e8287ed225e` | 28/28，exit0，cleanuptrue | 2046ms |
+| `b7bd0e645`，tree `964de0bb44a4292c8160f7ed5350347448fa7772` | 30/30，exit0，cleanuptrue | 4709ms |
+| 诊断 `2750c294a` | 30/30，exit0，cleanuptrue | 4533ms |
+
+诊断实测认证准备299ms、SQL准备517ms；原生子进程约227ms完成导入，237ms取得
+受限管理连接，最长的末尾边界子进程1089ms。本地对照没有复现Hosted超时，不能代替
+该失败证据；它说明候选新增聚合工作，不能归咎于此前成功的28项实现。
+
+测试现由 `beforeAll` 拥有认证准备，各原selection分别执行；嵌套 `beforeAll`
+准备真实SQL。原缺host、错host、额外ACL、新关系、复制host链及末尾边界对抗断言
+分别保留。原30项覆盖拆为38项；不再由一个用例赋回调给另一个用例使用。每个用例
+登记自己的在途工作，`afterEach` 等真实子进程及数据库清理完成，`afterAll` 先drain
+再关闭夹具；仍有在途工作时禁止新工作开始。原用例5000ms、hook10000ms、子进程
+1500ms、连接2000ms、查询5000ms均不变。静态阶段/耗时不记录输入、身份、凭据、
+原始数据库错误或SQL。
+
+固定 `4b39351a1ddacec102e0394f936710157f6481cd`，tree
+`94be9bd33a4b62e252c47fd3d9e64f1ed2a320ca`，真实owned38/38，14.29s，exit0，
+cleanuptrue。准备300/509ms，各独立断言336–1110ms。日志
+`/tmp/pr824-bootstrap-lifecycle-split-green.log` SHA-256：
+`f6eba692cce5f8da255aa778b78d8bd186d6c5528e2f0eb62f9eb59b1f2426cb`。
+原Hosted失败保留，新Hosted结果尚待执行。本次仅修测试，不改变fence，不声称已批准
+P12/P13或启动成功。
+
 ## SQL 后继效果之后的认证 inspection
 
 本独立 Scratch 从 main 建立后快进到 `5f7a3d5b4`。原认证 baseline 包含关系
