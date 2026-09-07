@@ -164,3 +164,113 @@ server/modules/catalog-cutover/retirement/vitest.config.ts`. Real SQL uses
 `retirement/vitest.integration.config.ts` through the parent-owned runner; it is
 not a standalone command against an arbitrary database. No production command
 or production readiness is delivered by this slice.
+
+## Bootstrap credential work in progress
+
+Bootstrap authentication retirement is a separate, unfinished component. Its
+private custody preparation writes and fsyncs two raw credential files and their
+0700 directory. The public receipt contains a random version and exact file
+identities, never passwords or password hashes. Reopening requires the original
+version and identities; a changed file is refused. This filesystem evidence is
+not a PostgreSQL rotation, P13 evidence, or production approval.
+
+The low-level SQL action requires an actual standard OID 10 management lease,
+the existing exclusive S7 session lock, the exact database target, zero other
+bootstrap sessions, no bootstrap memberships, and the supported SCRAM TCP
+profile. It retains role attributes, names, OIDs, owners and ACLs. It records
+its own authentication intent and applied events in existing 0137 storage;
+neither event advances the cutover phase or creates a P13 checkpoint. A prepared
+run is sufficient for the isolated management-action test. The eventual root
+entry must additionally prove the real P12 binding, approved report, recovery
+package, stopped writers and issued host lock before calling it. This component
+has no maintenance CLI and supplies none of those missing approvals.
+
+The initial single-database prototype did not support the usual business
+database plus default maintenance database. The bounded extension permits only
+the actual `postgres` database with OID 5, bootstrap owner OID 10 and default
+database ACL. A separate read-only connection derives its endpoint from the
+already verified manager, checks the same cluster and observed database OID,
+and rejects non-bootstrap objects (PostgreSQL 16 `FirstNormalObjectId` 16384),
+custom namespaces, non-default public schema ACL, grants to additional user
+roles, default ACL, foreign/large objects, publications, and active sessions.
+It closes before rechecking database inventory and bootstrap sessions. A name
+match alone is insufficient; another business database remains unsupported.
+The password transaction also holds a SHARE lock on `pg_database` to prevent
+database inventory changes during its mutation. These checks do not constitute
+the root controller's stopped-writer proof or expand the supported restore
+package. The first owned business-plus-maintenance runs collected 10 cases,
+with nine passing and the positive action refused. Subsequent precise session
+classification found one PostgreSQL logical replication launcher, not a leaked
+client; the initial failure cannot be attributed uniquely to the single-DB
+restriction. The supported profile now permits at most one database-less,
+transaction-less built-in launcher, but refuses all clients, replication
+workers and unknown backends, and requires no replication slots or subscriptions.
+Transaction sampling, parse/rewrite/plan debugging and statement statistics are
+refused before any intent or BEGIN; disabling sampling inside an already sampled
+transaction cannot protect its password statement. The later owned execution
+below does not change those earlier failed results.
+
+The password transaction separately disables `track_activities` and checks that
+setting on the same lease before sending the password statement. This prevents
+statistics readers from observing the statement through `pg_stat_activity`;
+logging settings alone do not provide that protection. Inspection snapshots its
+target, run, attempt, custody and client before its first await, so caller mutation
+cannot replace the selected recovery attempt. The new statistics-reader and
+asynchronous-selection regressions require a fresh owned PostgreSQL execution;
+the earlier 17-case result does not cover these fixes.
+
+Template flags are not an escape from the database inventory. Only the actual
+default template OIDs 1 and 4, bootstrap owner and default template ACL are
+accepted. Connectable `template1` receives the same independent read-only
+catalog inspection as the maintenance database. `template0` must remain
+non-connectable with no active sessions; it is preserved under this default
+template profile, not opened or claimed to have had its business contents
+queried. Additional template databases and user state in `template1` refuse
+the action. No template flag, ACL or connection policy is changed by the effect.
+
+The private version is persisted before the first SQL intent. The password
+transaction changes only the authentication secret and records its applied
+event atomically. A lost acknowledgment is not retried: inspection requires the
+same run, attempt and original custody identities, unchanged metadata, new
+password authentication to the same OID/database, and old-password rejection.
+Only SQLSTATE `28P01` counts as a password rejection. Network failures, missing
+private files and inconsistent event/authentication results remain unknown.
+Its success label is `authentication-fenced-not-P13`.
+
+The source through `4ba8a753020b178967e271abc3e5034309a3150e` was executed with
+the dedicated parent-owned runner at actual checkout
+`f122a62854c46cdbcb96668d17b549b215a28af3`, tree
+`f44599a6af253d187bc771c6a72a79970ecba986`: **17 collected, 17 passed, zero failed
+or skipped**, 2.43 seconds, exit 0 and verified resource cleanup. The positive
+case took 314 ms. This used `postgres:16-alpine`, Linux arm64 image
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`.
+The actual log is `/tmp/upg824-bootstrap-seventeen-fixed.log`, SHA-256
+`e67b4d5c9aca7e50a971607056378189ea3a834127397954666988a5008a7809`.
+This is local coordinator evidence, not an uploaded attachment or a run on this
+documentation commit. It proves the actual old/new password lifecycle and the
+listed refusal cases, preserving bootstrap OID, attributes and representative
+owner/ACL/data. It does not yet cover unknown commit acknowledgment or process
+interruption, a complete role-restoration cycle, real API/worker startup,
+production authorization or the complete controller/P13 chain. Independent
+whole-slice review is still pending.
+
+Two invalid test invocations during this work used `vitest.server.config.ts`
+instead of this directory's pure config. Both collected zero tests and failed in
+`server/testing/testDatabase.ts` while checking the shared migration ledger.
+Before that failure, the setup can create a migrations template, remove stale
+test databases, and execute ledger bootstrap DDL. The logs do not establish
+which of these writes occurred; no rollback or absence of writes is claimed.
+The executions used head `d3e2af891c198859a25753cc98bf5d21d379e5c3`
+plus two untracked bootstrap files. Their logs remain
+`/tmp/pr824-bootstrap-custody-red.log` and
+`/tmp/pr824-bootstrap-custody-green.log`; neither is valid Red/Green evidence.
+A later environment-only observation found no explicit database URL, but it
+cannot establish the earlier processes' environment. The configuration's
+fallback is the loopback default database, without an independently issued
+target receipt. No follow-up connection or cleanup was performed against it.
+
+Use the existing pure `retirement/vitest.config.ts` with an empty environment
+except PATH/HOME and the exact `bootstrapCredentialFence.test.ts` selector.
+It has no database setup. Future real PostgreSQL cases belong in a separate
+`bootstrapCredentialFence.integration.test.ts` and require a new parent-owned,
+exclusive cluster/receipt; the general server suite is not its execution path.

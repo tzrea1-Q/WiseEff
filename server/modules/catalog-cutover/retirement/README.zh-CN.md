@@ -126,3 +126,81 @@ suite 排除；缺少 receipt 时明确失败，不静默跳过。
 server/modules/catalog-cutover/retirement/vitest.config.ts`。真实 SQL 由父 runner 使用
 `retirement/vitest.integration.config.ts` 执行，不能直接对任意数据库运行。本分片
 不交付生产命令或生产就绪结论。
+
+## Bootstrap 凭据分片尚在实现
+
+Bootstrap 认证退出是独立、尚未完成的组件。私有凭据准备实际写入并同步两个
+原始凭据文件和其 0700 目录；公开 receipt 只含随机版本与精确文件身份，不含
+密码或密码 hash。重新打开必须匹配原版本及文件身份，文件变化即拒绝。
+这些文件系统证据不代表 PostgreSQL 密码已经轮换，也不是 P13 或生产批准。
+
+低级 SQL 动作要求真实的标准 OID 10 管理连接、现有 S7 排他会话锁、精确数据库
+目标、没有其他 bootstrap 会话或成员关系，并满足受支持的 SCRAM TCP 认证配置。
+角色属性、名称、OID、owner 和 ACL 均保留。它仅在已有 0137 存储中追加独立的
+认证 intent/applied 事件，不推进 cutover phase，也不创建 P13 checkpoint。
+隔离管理动作测试可以使用真实登记的 prepared run；后续根入口仍须在调用前
+证明实际 P12 binding、获批报告、恢复包、停写边界及真正签发的宿主锁。
+本组件没有维护 CLI，也不提供这些尚未接合的批准。
+
+初版单数据库限制不能支持常见的业务库与默认维护库并存。当前有界扩展只允许
+实测 OID 5、bootstrap owner OID 10、默认数据库 ACL 的 `postgres` 维护库。
+独立只读连接从已经验证的管理会话派生同一地址，核对集群与实测数据库 OID，
+拒绝非初始化对象（PostgreSQL 16 的 `FirstNormalObjectId` 为 16384）、自定义
+schema、非默认 public schema ACL、额外用户角色授权、默认 ACL、外部／大对象、
+publication 及活动连接。该连接关闭后再核对数据库清单和 bootstrap 会话。
+同名不构成身份或空库证明；其他业务库仍不受支持。密码写事务持有
+`pg_database` 的 SHARE 锁，避免写入期间清单变化。这不是根 controller 的
+完整停写证明，也不扩展恢复包范围。首次隔离业务库加维护库执行收集 10 项，
+9 项通过、正向动作拒绝。之后的精确会话分类发现一个 PostgreSQL logical
+replication launcher，而非泄漏的客户端；首次失败不能唯一归因于单库限制。
+当前支持范围仅允许至多一个没有数据库和事务的内建 launcher，继续拒绝所有
+客户端、复制 worker 及未知后台，并要求不存在复制 slot 或 subscription。
+事务采样、parse/rewrite/plan 调试及语句统计在任何 intent 和 BEGIN 之前即拒绝，
+不以已被采样的事务中再关闭采样保护密码语句。下述后续隔离成功不重标旧失败。
+密码事务另外关闭 `track_activities`，在同一 lease 核验设置生效后才发送密码语句，
+防止统计读取身份通过 `pg_stat_activity` 看到该语句；日志设置不能代替这项保护。
+检查入口在第一次 await 前固定目标、run、attempt、custody 和 client，调用者之后
+修改输入不能替换本次选择的恢复 attempt。新增统计读取身份和异步输入漂移反例
+仍须在新建自有 PostgreSQL 上执行；此前 17 项结果不覆盖这两项修复。
+
+template 标记不能绕过数据库清点。只接受实测默认模板 OID 1／4、bootstrap
+owner 和默认模板 ACL；可连接的 `template1` 与维护库一样执行独立只读目录检查。
+`template0` 必须保持不可连接且没有活动会话，只在这个默认模板范围内保留，
+不临时开放连接，也不声称已经查询其中业务内容。额外模板数据库或 `template1`
+内的用户状态会拒绝动作；执行器不改变模板标记、ACL 或连接策略。
+
+私有版本先持久化，再写 SQL intent。密码事务只改变认证秘密，并原子追加
+applied 事件。提交确认丢失时不重试轮换；检查必须匹配原 run、attempt、私有
+文件身份及不变的权限元数据，真实新密码会话须连到同一 OID/数据库，旧密码
+须被拒绝。只有 SQLSTATE `28P01` 算密码拒绝，网络故障、私有文件缺失或事件
+与认证不一致均保持 unknown。成功标签仅为 `authentication-fenced-not-P13`。
+
+截至源码 `4ba8a753020b178967e271abc3e5034309a3150e`，已通过父创建资源的专用
+入口执行；真实 checkout 为 `f122a62854c46cdbcb96668d17b549b215a28af3`，tree 为
+`f44599a6af253d187bc771c6a72a79970ecba986`。**收集 17 项、通过 17、失败及跳过
+均为 0**，耗时 2.43 秒，退出码 0，资源清理核验通过；正向用例耗时 314 ms。
+镜像为 Linux arm64 的 `postgres:16-alpine`，实际 image ID：
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
+原日志 `/tmp/upg824-bootstrap-seventeen-fixed.log`，SHA-256：
+`e67b4d5c9aca7e50a971607056378189ea3a834127397954666988a5008a7809`。
+这是本地协调交接证据，不是已上传附件，也不是在本报告提交上重跑。它证明真实
+新旧密码认证生命周期及列出的拒绝场景，保留 bootstrap OID、属性和代表性
+owner／ACL／数据；尚未覆盖未知提交确认、进程中断、完整角色恢复、真实 API／worker
+启动、生产授权或完整 controller／P13。整个分片的独立审查仍待完成。
+
+本分片曾两次误用 `vitest.server.config.ts`，而非本目录的纯测试配置。
+两次均收集 0 项用例，在 `server/testing/testDatabase.ts` 的共享 migration
+ledger 检查中失败。失败前的 setup 可能创建迁移模板、删除陈旧测试数据库，
+并执行 ledger 初始化 DDL；日志不足以确认哪些写入实际发生，不能声称没有
+写入或已经回滚。执行身份为 `d3e2af891c198859a25753cc98bf5d21d379e5c3`
+加两个未跟踪 bootstrap 文件。原日志保留于
+`/tmp/pr824-bootstrap-custody-red.log` 和
+`/tmp/pr824-bootstrap-custody-green.log`，均不算有效 Red/Green 证据。
+之后的只读环境检查未发现显式数据库 URL，但不能倒推此前进程环境。
+该配置会回落到 loopback 默认数据库，没有独立签发的目标 receipt；没有再
+连接该目标调查，也没有对其执行清理。
+
+纯测试仅使用现有 `retirement/vitest.config.ts`，以 `env -i` 保留 PATH/HOME，
+精确选择 `bootstrapCredentialFence.test.ts`；该配置没有数据库 setup。
+后续真实 PostgreSQL 用例使用单独的 `bootstrapCredentialFence.integration.test.ts`，
+必须有父监督器新建的独占集群和 receipt，不能通过通用 server suite 执行。
