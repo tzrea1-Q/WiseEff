@@ -4,6 +4,29 @@
 
 ## Integrated candidate, 2026-09-08
 
+Bootstrap integration `864bd95f180a297fb0fd3ec04aeeaf930b36718c`, tree
+`3174a0505facdf5d4b298c208057024152a490ca`, passed the actual owned
+`bootstrap-credential-pg16` selector: 40 collected/passed, zero failed/skipped/
+filtered, 13.86s, exit 0, cleanup verified. Original log
+`/tmp/upg824-bootstrap-864-owned.log` SHA256:
+`0988bfa8f857ba0d42f42e11a71c611c291320b0df2f496cb9dcfd9611b87535`.
+The reviewed source was `c4b99f4ba5f2bb6faf3f517ec58a6f4dbfea95cc`;
+its separate 40/40 execution took 14.35s (log SHA256
+`bb6a58244aa9590a54f5d3581c14c49bed4d1bba0c8ead510e24133d0ada597c`).
+Independent Lagrange Standards and Fermat Spec accepted that source increment.
+Original child/it/hook budgets remain unchanged. The real same-environment
+control measured the original aggregate at 2046ms on `cf494324c` and 4709ms
+on `b7bd0e645`; preparation and additional subprocesses now have separate
+lifecycles, and outstanding work drains before cleanup. Double preparation/
+cleanup failure retains a safe primary phase/code and a separate cleanup cause.
+These are fixture/transport results, not approved API startup or full P13.
+
+The separate audit-order failure was reproduced with actual equal timestamps
+on both base and CI checkout. A proposed test-only repair is not integrated:
+the natural edit changes three frozen occurrence locations. A layout-preserving
+alternative is not accepted as boundary authorization. Neither changes production
+audit behavior, and neither is recorded as current candidate CI success.
+
 The later integration `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`, tree
 `964de0bb44a4292c8160f7ed5350347448fa7772`, adds independently reviewed
 HTTP owner controls and native referential-action detection. Parent real PG

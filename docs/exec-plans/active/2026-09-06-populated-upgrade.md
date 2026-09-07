@@ -6,6 +6,21 @@
 
 ### Current continuation: real dependencies and activation
 
+Integrated `864bd95f180a297fb0fd3ec04aeeaf930b36718c` closes the bootstrap
+fixture lifecycle failure without increasing any budget. Source `c4b99f4ba`
+received independent Standards/Spec PASS and passed 40/40 real PG cases;
+parent integration independently passed 40/40 with verified cleanup. The audit
+timestamp-tie repair remains Scratch: a layout-preserving alternative is not
+accepted merely because boundary scanning passes. The natural repair and its
+three exact occurrence relocations require separate boundary review. Current
+Hosted remains the failed `d79b9b23b` execution; no new CI success is claimed.
+
+| Increment / sole writer | Risk and dependency | Documentation impact |
+| --- | --- | --- |
+| Bootstrap fixture / Raman, parent integration | Timed-out work must settle before shared credentials/locks change; cleanup must preserve the primary failure | Existing retirement pair and evidence |
+| Audit timestamp tie / Lagrange, parent review | Equal timestamps do not order events; retain causal and complete audit assertions, preserve frozen identity rules | Existing evidence; exact decision if relocation is necessary |
+| P13 finalizer / parent with Raman analysis | No generation until complete current writer controls and formal effects exist | Existing retirement/startup contracts; no new schema or grants |
+
 Current integrated continuation `b7bd0e645` adds the independently reviewed HTTP
 owner controls and native RI detection; parent HTTP 51/51, real PG 34/34,
 build and unchanged-base boundary passed. The permanent actual terminal test at

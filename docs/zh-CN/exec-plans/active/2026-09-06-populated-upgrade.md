@@ -4,6 +4,18 @@
 
 ## 范围与状态
 
+集成 `864bd95f180a297fb0fd3ec04aeeaf930b36718c` 修复bootstrap夹具生命周期失败，
+没有增加任何预算。源 `c4b99f4ba` 经独立Standards／Spec审查通过、真实PG40/40；
+父集成另行执行40/40，清理验证通过。审计时间戳相同的修复仍为Scratch：保持字节布局
+的替代方案不能仅凭boundary通过获准。自然修复及其三处精确位置变化需单独边界审查。
+当前Hosted仍是 `d79b9b23b` 的失败执行，不声称新CI通过。
+
+| 增量／唯一写入者 | 风险与依赖 | 文档影响 |
+| --- | --- | --- |
+| Bootstrap夹具／Raman，父集成 | 超时工作必须在共享凭据／锁变化前结束；清理保留首错 | 现有retirement双语文件及证据 |
+| 审计时间戳／Lagrange，父审查 | 相同时间不保证事件顺序；保留因果与完整审计断言，遵守冻结身份规则 | 现有证据；必要时精确relocation决策 |
+| P13 finalizer／父实现、Raman分析 | 完整当前writer控制与正式效果成立前不生成generation | 现有retirement／startup合同；不新增schema或grant |
+
 当前集成续工 `b7bd0e645` 加入独立双审的HTTP owner控制与原生RI检测，父HTTP51/51、
 真实PG34/34、build及原base boundary通过。`3cee9f235` 的永久真实终端验收也已通过，
 与此前保留的 `73f12a24e` 成功包分开。报告 `d79b9b23b` 的Hosted `34167230816`

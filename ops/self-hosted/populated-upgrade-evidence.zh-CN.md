@@ -4,6 +4,23 @@
 
 ## 集成候选，2026-09-08
 
+Bootstrap集成 `864bd95f180a297fb0fd3ec04aeeaf930b36718c`，tree
+`3174a0505facdf5d4b298c208057024152a490ca`，实际owned
+`bootstrap-credential-pg16` 收集／通过40，失败／跳过／过滤均0，13.86s，exit 0，
+清理验证通过。原日志 `/tmp/upg824-bootstrap-864-owned.log` SHA256：
+`0988bfa8f857ba0d42f42e11a71c611c291320b0df2f496cb9dcfd9611b87535`。
+独立审查源为 `c4b99f4ba5f2bb6faf3f517ec58a6f4dbfea95cc`；其另一次真实40/40耗时
+14.35s，日志SHA256
+`bb6a58244aa9590a54f5d3581c14c49bed4d1bba0c8ead510e24133d0ada597c`。
+Lagrange Standards及Fermat Spec独立通过该增量。原子进程／用例／hook预算均不变。
+同环境对照中，原聚合用例在 `cf494324c` 为2046ms，在 `b7bd0e645` 为4709ms；
+现在准备与新增子进程分别有生命周期，清理前等待未完成工作。准备／清理双失败保留
+安全的首错阶段／代码及独立清理原因。这些是夹具／传输结果，不是获准API启动或完整P13。
+
+独立审计排序失败已在base和CI checkout以真实相同时间戳复现。测试修复尚未集成：
+自然修改造成三处冻结occurrence位置变化，保持字节布局的替代方案不能作为边界授权。
+两者均不修改生产审计行为，也不记作当前候选CI成功。
+
 后续集成 `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`，tree
 `964de0bb44a4292c8160f7ed5350347448fa7772`，加入分别双审通过的HTTP owner控制与原生
 外键动作检测。父真实PG34/34、6.21s、exit 0、清理验证；HTTP51/51、1.73s、零失败／
