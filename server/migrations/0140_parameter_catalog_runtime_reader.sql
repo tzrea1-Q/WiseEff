@@ -93,7 +93,6 @@ begin
       join pg_roles owner on owner.oid=p.proowner
     where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
       and n.nspname !~ '^pg_(toast|temp)_'
-      and has_schema_privilege(reader,n.oid,'USAGE')
       and has_function_privilege(reader,p.oid,'EXECUTE')
       and (owner.rolsuper or owner.rolbypassrls or owner.rolcreatedb or owner.rolcreaterole
         or owner.rolreplication
@@ -101,9 +100,13 @@ begin
           (elevated.rolsuper or elevated.rolbypassrls or elevated.rolcreatedb
             or elevated.rolcreaterole or elevated.rolreplication)
           and pg_has_role(owner.oid,elevated.oid,'MEMBER'))
+        or has_schema_privilege(owner.oid,'parameter_catalog','CREATE')
+        or exists (select 1 from pg_proc target join pg_namespace tn on tn.oid=target.pronamespace
+          where tn.nspname='parameter_catalog' and has_function_privilege(owner.oid,target.oid,'EXECUTE'))
         or exists (select 1 from pg_class c join pg_namespace cn on cn.oid=c.relnamespace
           where cn.nspname='parameter_catalog' and c.relkind in ('r','p','v','m','f')
-            and has_table_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')))
+            and (has_table_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+              or has_any_column_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))))
   ) then raise exception using errcode='42501', message='PCAT-READER-DEFINER-DRIFT'; end if;
 
   -- Follow actual view rewrite dependencies, including hidden nested views.

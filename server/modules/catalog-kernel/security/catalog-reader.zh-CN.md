@@ -24,7 +24,7 @@ reader 属性为 NOLOGIN、NOINHERIT、NOSUPERUSER、NOBYPASSRLS、NOCREATEDB、
 
 角色是集群级对象。复用既有 reader 前检查全局属性、出向成员关系、入向成员选项、所有权、角色设置，以及关系、列、函数、schema、database、默认、系统参数、大对象、类型、语言、表空间、外部数据包装器与外部服务器的直接 ACL。Catalog PUBLIC 权限、相关未来 PUBLIC 默认授权及 PUBLIC 高权参数授权必须保持撤销。污染状态返回 SQLSTATE 42501，迁移不会通过撤权、降权或覆盖来规范化它。
 
-reader 不能调用清单外的高权用户自定义 SECURITY DEFINER。审计检查实际 schema／EXECUTE 可达性与 owner 能力，包括可达高权角色及有效 Catalog 表权限；不声称 SQL 文本分析可以证明动态函数安全。视图通过真实 rewrite 依赖递归追踪，包括物化副本；reader 可达视图链若存在借用 owner 权限读取 Catalog 的跳转，则拒绝未登记接口。完全使用 invoker 的视图链仍按调用者权限检查。普通 PostgreSQL 内建函数，以及 owner 不具有上述高权／Catalog 能力的业务 definer，不会被一概禁止。应用 LOGIN 独立持有的合法业务权限不等于授予此 NOLOGIN 能力的权限。迁移事务显式设置 `pg_catalog, public, pg_temp` 顺序，避免临时关系／类型遮蔽审计使用的系统目录。
+reader 不能执行清单外的高权用户自定义 SECURITY DEFINER。审计检查实际 EXECUTE 与 owner 能力，包括可达高权角色、有效 Catalog 表／列权限、Catalog schema CREATE、受保护函数 EXECUTE。缺少 schema USAGE 不能证明函数不可达，已经解析的视图表达式仍可能调用该 schema 中的函数；SQL 文本分析也不能证明动态函数安全。视图通过真实 rewrite 依赖递归追踪，包括物化副本；reader 可达视图链若存在借用 owner 权限读取 Catalog 的跳转，则拒绝未登记接口。完全使用 invoker 的视图链仍按调用者权限检查。普通 PostgreSQL 内建函数，以及 owner 不具有上述高权／Catalog 能力的业务 definer，不会被一概禁止。应用 LOGIN 独立持有的合法业务权限不等于授予此 NOLOGIN 能力的权限。迁移事务显式设置 `pg_catalog, public, pg_temp` 顺序，避免临时关系／类型遮蔽审计使用的系统目录。
 
 reader 可能已在其他数据库拥有合法 SELECT。当前连接不能读取其他数据库的关系目录，因此本迁移不声称核验那些 ACL，也不修改它们；每个实际运行数据库仍需有效能力核验。集群可见的所有权和成员关系会被检查。角色名和 NOLOGIN 都不能替代安全证明，迁移检查也不替代运行身份门禁。
 
