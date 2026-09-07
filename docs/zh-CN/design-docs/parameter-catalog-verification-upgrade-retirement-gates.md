@@ -38,6 +38,16 @@ SELECT-negative 验收保持不变。0140 之后，仅被明确指派的受限�
 [PR 证据](../../../ops/self-hosted/populated-upgrade-evidence.zh-CN.md)，不重置无关
 trusted baseline 或门禁阈值。
 
+### 限定恢复分层修订，2026-09-07
+
+用户另行批准[已登记的恢复执行层](../../../ops/self-hosted/storage/execution/README.zh-CN.md)。
+S11-RP 的 capture、verify、restore-check 保留 manifest、停写证明、身份、checksum
+及 run token 职责，不得调用执行器、恢复数据、恢复队列或打开代理。只有父 controller
+显式执行，且具备可信采集包、当前已认证批准、持久 run/attempt 和真实精确目标边界，
+才能使用恢复执行机制。完整 ownership/dependency 清单检测新增／漏登记模块及间接
+调用，其他 S10-PER 禁令不变。恢复成功不授予 startup 或 public-release 权限，
+下文的恢复资格、批准和恢复后证据要求不变。
+
 1. 一个 routes-less 的 **Release Verification** 深模块拥有 purpose-scoped verification plan、typed gate 执行、不可变 Release Verification Report、report lineage、applicability 与 approval binding。`upgrade.sh`、startup、API readiness、browser runner、后台任务和 runbook 只是 adapter 或 evidence producer；它们都不能重新编排或豁免门禁。
 2. Verification 是有顺序的 report chain，而不是一份自我授权报告：`pre-activation` 授权 P12；P13 后的新 `post-retirement-runtime` attempt 授权 API verify-only startup；`isolated-candidate-acceptance` 在流量隔离时证明真实 candidate API/browser；`public-release` 聚合这些精确 report digests，且只有它能授权 queue/proxy/public traffic。
 3. Pre-activation report 固定精确 artifact、target、Catalog Release、migration、cutover plan、mapping、Recovery Point、Catalog/materialization proof、migration proof、初始 V01-V17、强制 D01-D09、recovery proof 与 pre-switch writer fence。API/browser gates 对该 purpose 明确为 `not-yet-executable`，绝不标为 `passed`。

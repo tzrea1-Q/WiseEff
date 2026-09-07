@@ -41,6 +41,19 @@ The exact old/new contract and implementation fingerprints belong to the
 [PR evidence](../../ops/self-hosted/populated-upgrade-evidence.md); no unrelated
 trusted baseline or gate threshold is reset.
 
+### Bounded recovery-layer amendment, 2026-09-07
+
+The same owner separately approved the [registered recovery execution layer](../../ops/self-hosted/storage/execution/README.md).
+S11-RP capture, verify and restore-check retain their manifest, quiescence,
+identity, checksum and run-token responsibilities. They cannot call the executor,
+restore data, resume queues or open a proxy. Only explicit parent-controller
+execution with a trusted captured package, authenticated current authorization,
+persistent run/attempt and a live exact-target boundary may use the execution
+mechanisms. The exhaustive ownership/dependency registry checks new/unregistered
+modules and indirect calls; unrelated S10-PER prohibitions remain. Restore success
+grants no startup or public-release permission. This separation does not change
+the recovery eligibility, approval or post-restore evidence requirements below.
+
 1. One routes-less **Release Verification** deep module owns purpose-scoped verification plans, typed gate execution, immutable Release Verification Reports, report lineage, applicability, and approval binding. `upgrade.sh`, startup, API readiness, browser runners, background work, and runbooks are adapters or evidence producers; none may re-orchestrate or waive gates.
 2. Verification is an ordered report chain, not one self-authorizing report: `pre-activation` authorizes P12; a new `post-retirement-runtime` attempt after P13 authorizes API verify-only startup; `isolated-candidate-acceptance` proves the real candidate API/browser while traffic stays isolated; `public-release` aggregates those exact report digests and alone authorizes queue/proxy/public traffic.
 3. The pre-activation report fixes the exact artifact, target, Catalog Release, migration, cutover plan, mapping, Recovery Point, Catalog/materialization proof, migration proof, initial V01-V17, mandatory D01-D09, recovery proof, and pre-switch writer fence. API/browser gates are explicitly `not-yet-executable` for that purpose, never `passed`.

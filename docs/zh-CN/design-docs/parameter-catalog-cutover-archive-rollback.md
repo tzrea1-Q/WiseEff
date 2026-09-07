@@ -404,6 +404,14 @@ exact SQL/failure code 属于 implementation specification，但每个 V01-V17 �
 
 Whole-state restore 指从同一 recovery-point manifest 恢复 PostgreSQL、配置的 S3-compatible object store 与 durable Redis；不支持 partial cross-store restore。restore 后必须在公网流量前对 restored legacy boundary 重跑 independent verifier。成功 restore 会使 candidate run 失效，禁止 resume 其 checkpoint。
 
+2026-09-07 PR #824 用户修订将恢复点检查与显式执行分层。
+[已登记执行合同](../../../ops/self-hosted/storage/execution/README.zh-CN.md) 消费既有
+S11-RP manifest/token 和 controller journal，不另建恢复点或 Release Verification
+模型。采集、验证及 restore-check 不执行恢复／队列／代理副作用，不能导入执行层。
+只有明确批准且绑定 run/attempt、持有实测目标锁的动作，才能恢复到独立核验的隔离
+空目标。部分／未知结果保留 journal 和私有证据，不授权重试、清理或流量。本修订
+授权隔离合成实现与验证，不授权生产执行或原卷覆盖。上表所有资格与批准要求不变。
+
 ## Self-hosted `upgrade.sh` integration sequence
 
 当前 controller 通过启动 API 执行 migration，随后才在 container 内发现 catalog readiness。replacement 必须改变顺序；本文不实现该改动。
