@@ -20,7 +20,12 @@ import { verifyRecoveryPackage } from "./recoveryPackage";
 
 // Explicit opt-in uses only the owned Docker guard; no globalSetup or ambient DB URL.
 describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("controlled three-store Docker adapter", () => {
-  it.for(["postgres", "wiseeff"])("captures live owned stores with %s bootstrap and restores package-only after source shutdown", async (bootstrapName, { signal, onTestFinished }) => {
+  // Each acceptance responsibility owns a fresh source, package, target and run.
+  // The six rejected-target attempts must not consume the successful lifecycle's
+  // deadline. Both responsibilities retain the same 180s limit and all assertions.
+  const scenarios = ["postgres", "wiseeff"].flatMap(bootstrapName =>
+    ["package-only-restore", "nonempty-target-refusals"].map(scenario => ({ bootstrapName, scenario })));
+  it.for(scenarios)("$bootstrapName bootstrap: $scenario after source shutdown", async ({ bootstrapName, scenario }, { signal, onTestFinished }) => {
     const transport = createIsolatedUpgradeDocker();
     let cleaning = false;
     const docker = { ...transport, command(args: string[], input?: Buffer) {
@@ -228,7 +233,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           read: "select evtname from pg_event_trigger where evtname='preexisting_event'", expected: "preexisting_event",
           remove: "drop event trigger preexisting_event; drop function public.preexisting_event()" },
       ];
-      for (const fault of targetFaults) {
+      for (const fault of scenario === "nonempty-target-refusals" ? targetFaults : []) {
         targetSql(fault.create);
         try {
           await timed(`restore-nonempty-${fault.name}-refusal`, async () => {
@@ -249,6 +254,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           targetSql(fault.remove);
         }
       }
+      if (scenario === "nonempty-target-refusals") return;
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
       const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);

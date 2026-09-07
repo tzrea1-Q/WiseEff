@@ -95,6 +95,17 @@ consumer contract only; they are explicitly not a real domain approval producer
 or a complete controller upgrade. Queue-shaped keys are persistence evidence,
 not full business-consumer acceptance.
 
+The Docker matrix uses four independent runs: `postgres` and `wiseeff` bootstrap,
+each with `package-only-restore` and `nonempty-target-refusals`. The positive run
+performs source shutdown, child restore and owner/ACL/object/AOF acceptance. The
+negative run captures its own real package and exercises all six preexisting
+function/view/sequence/type/extension/event-trigger refusals. No live source,
+package, destination or deadline is shared between these responsibilities.
+Earlier combined cases at `be7f73f78` and `21f9e89ff` each passed `postgres` but
+timed out for `wiseeff`; those remain failed executions. Phase timings showed
+the six sequential refusals consumed 33–39 seconds in the successful lifecycle's
+180-second budget. The split preserves every assertion and that per-case limit.
+
 Run only in a independently verified development workspace, with the installed
 dependencies and the four pinned image references already present:
 

@@ -63,6 +63,14 @@ run／完整性绑定，不是认证秘密，不能代替来源和执行批准�
 Redis AOF；拒绝非空和共享资源，复制后 Redis 仍停止。恢复返回
 `restore-executed-not-business-verified`，不代表候选启动、业务消费者或公开流量获准。
 
+Docker 矩阵采用四个独立 run：`postgres` 与 `wiseeff` bootstrap 各执行
+`package-only-restore` 和 `nonempty-target-refusals`。正向 run 完成源停止、子进程
+恢复及 owner／ACL／对象／AOF 验收；负向 run 采集自己的真实包，保留六种既有
+function／view／sequence／type／extension／event-trigger 拒绝断言。两种验收不共享
+运行中的源、包、目标或时限。此前 `be7f73f78` 和 `21f9e89ff` 的组合用例均为
+`postgres` 通过、`wiseeff` 超时，仍保留失败记录。阶段计时显示六组顺序拒绝占用
+正向生命周期 180 秒预算中的 33–39 秒；本次拆分保留所有断言及每例原有时限。
+
 ## 验收与操作边界
 
 永久反例覆盖批准缺失、错误 token／run／目标、过期／撤销、跨存储期间包变化、锁丢失、
