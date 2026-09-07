@@ -23,7 +23,10 @@ it("routes the cluster-wide reader mutation test to the mandatory independently 
   expect(job).toContain("needs.detect.outputs.run_l1 == 'true'");
   expect(job).toContain("id-token: write");
   expect(job).toContain("--suite reader-pg16 --github-hosted");
+  expect(job).toContain("--suite report-pg16 --github-hosted");
+  expect(job).toContain("--suite activation-pg16 --github-hosted");
   expect(workflow.split("  required:\n")[1]).toContain("- upgrade-components");
   const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
   expect(server).toContain('"server/modules/catalog-kernel/security/catalogReader.integration.test.ts"');
+  expect(server).toContain('"server/modules/catalog-cutover/activation/activation.integration.test.ts"');
 });

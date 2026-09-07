@@ -260,6 +260,8 @@ jobs:
             --expected-daemon-id "$daemon_id" --suite reader-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite report-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite activation-pg16 --github-hosted
 
   acceptance-quality:
     name: Acceptance quality
