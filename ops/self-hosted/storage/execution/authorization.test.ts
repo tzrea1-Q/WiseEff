@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -41,6 +41,31 @@ it.each(["accepted", "failed"] as const)("settles only its owned synthetic evide
     // This unit has now accepted the retention behavior; it owns this fixture,
     // contains no real backup, and deliberately disposes only its own directory.
     await rm(evidence.directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["foreign-directory", "symlink", "permissions"])("refuses changed evidence directory identity before cleanup: %s", async fault => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const foreign = await createSyntheticRecoveryEvidence();
+  const moved = `${evidence.directory}-moved`;
+  try {
+    await writeFile(path.join(evidence.directory, "original.fixture"), "original-evidence");
+    await writeFile(path.join(foreign.directory, "foreign.fixture"), "foreign-evidence");
+    if (fault === "permissions") await chmod(evidence.directory, 0o755);
+    else {
+      await rename(evidence.directory, moved);
+      if (fault === "foreign-directory") await rename(foreign.directory, evidence.directory);
+      else await symlink(foreign.directory, evidence.directory, "dir");
+    }
+    await expect(evidence.finish("accepted")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(await readFile(path.join(fault === "permissions" ? evidence.directory : moved, "original.fixture"), "utf8"))
+      .toBe("original-evidence");
+    expect(await readFile(path.join(fault === "foreign-directory" ? evidence.directory : foreign.directory, "foreign.fixture"), "utf8"))
+      .toBe("foreign-evidence");
+  } finally {
+    // Both directory identities and this rename/symlink were created by this
+    // unit. Disposing them after the accepted refusal is explicit fixture cleanup.
+    for (const directory of [evidence.directory, foreign.directory, moved]) await rm(directory, { recursive: true, force: true });
   }
 });
 

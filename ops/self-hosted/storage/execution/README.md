@@ -112,6 +112,9 @@ The diagnostic locator is relative to the development host's temporary directory
 it omits the host path. Do not include retained packages in ordinary artifacts.
 The test-only evidence fixture creates its own 0700 directory, accepts no arbitrary
 cleanup path and refuses a second settlement that could erase retained evidence.
+Before settlement it rechecks the directory's device, inode, owner and 0700 mode
+using `lstat`; a symlink, replacement or permission drift refuses cleanup and
+marker writes. It does not follow a substituted path to find or remove evidence.
 
 Run only in a independently verified development workspace, with the installed
 dependencies and the four pinned image references already present:

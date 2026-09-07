@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { createControlledRecoveryTarget, type RecoveryPackageTarget } from "./packageRestore";
@@ -14,12 +14,18 @@ import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RE
 /** Only manages the private temporary directory created by this fixture. */
 export async function createSyntheticRecoveryEvidence() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-live-"));
+  const identity = await lstat(directory);
   let settled = false;
   return {
     directory,
     async finish(outcome: "accepted" | "failed") {
       if (settled || !["accepted", "failed"].includes(outcome)) throw new Error("synthetic-evidence-already-settled-or-invalid");
       settled = true;
+      const current = await lstat(directory).catch(() => undefined);
+      if (!current?.isDirectory() || current.isSymbolicLink() || current.dev !== identity.dev
+        || current.ino !== identity.ino || current.uid !== identity.uid || (current.mode & 0o777) !== 0o700) {
+        throw new Error("synthetic-evidence-identity-drift");
+      }
       if (outcome === "accepted") await rm(directory, { recursive: true, force: true });
       else await writeFile(path.join(directory, "retained-evidence.json"),
         JSON.stringify({ status: "private-synthetic-evidence-retained", reason: "acceptance-or-cleanup-incomplete" }) + "\n",
