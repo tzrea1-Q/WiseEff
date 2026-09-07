@@ -9,7 +9,7 @@ import { createPostgresDatabase, type RootDatabase } from "../../../../server/sh
 import { applyMigrations } from "../../../../server/shared/database/migrations";
 import { createLocalAuthService } from "../../../../server/modules/auth/localAuth";
 import { hashLocalAccountPassword } from "../../../../server/modules/auth/localAccountCredentials";
-import { openDeploymentAuthority, isIncidentRestoreConfirmation, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
+import { openDeploymentAuthority, isIncidentRestoreConfirmation, isDeploymentReportApproval, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
 import { canonicalJson, sha256Prefixed } from "./journal";
 
 // Receipt validation precedes every connection. No ambient database, auth mock,
@@ -98,9 +98,13 @@ it.each(["ordinary-admin", "operator", "owner", "verifier"])("does not turn %s i
   await expect(authority.confirmRestore(request(user))).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-PRINCIPAL-REJECTED" });
 });
 
-it.each(["operator", "owner"])("authenticates %s and consumes formal report refusal without manufacturing passed evidence", async user => {
-  expect(await authority.approveReport({ authorization: `Bearer ${tokens.get(user)}`, kind: user === "operator" ? "operator" : "platform-owner", purpose: "pre-activation", reportDigest: missingReport }, writer))
-    .toMatchObject({ ok: false, error: { kind: "plan-not-found" } });
+it.each(["operator", "owner"])("authenticates %s into a formal command without manufacturing report or target approval", async user => {
+  const reportRequest = { authorization: `Bearer ${tokens.get(user)}`, kind: user === "operator" ? "operator" as const : "platform-owner" as const, purpose: "pre-activation" as const, reportDigest: missingReport };
+  const approval = await authority.prepareReportApproval(reportRequest);
+  expect(isDeploymentReportApproval(approval)).toBe(true);
+  expect(isDeploymentReportApproval({ ...approval })).toBe(false);
+  expect(approval.command).toEqual({ principalId: user, principalKind: reportRequest.kind, purpose: "pre-activation" });
+  await expect(authority.approveReport(reportRequest, writer)).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-REPORT-TARGET-ADAPTER-UNAVAILABLE" });
   expect((await admin.query("select count(*)::int as count from parameter_catalog.verification_approvals")).rows).toEqual([{ count: 0 }]);
 });
 
@@ -127,6 +131,45 @@ it("refuses missing and revoked real sessions with redacted errors", async () =>
 
 it("refuses the exact source database before source authentication writes", async () => {
   await expect(openDeploymentAuthority({ ...options, sourceDatabase: assignment.authentication })).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" });
+});
+
+it("does not accept another network address for the same source database", async () => {
+  await expect(openDeploymentAuthority({ ...options, sourceDatabase: { ...assignment.authentication, serverAddress: "192.0.2.89" } }))
+    .rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" });
+});
+
+it("snapshots the incident request before asynchronous authentication", async () => {
+  const input = request();
+  const pending = authority.confirmRestore(input);
+  input.attemptId = "changed-after-dispatch";
+  expect((await pending).attemptId).toBe("restore-attempt");
+});
+
+it("snapshots the report actor and digest before asynchronous authentication", async () => {
+  const input = { authorization: `Bearer ${tokens.get("operator")}`, kind: "operator" as "operator" | "platform-owner", purpose: "pre-activation" as const, reportDigest: missingReport };
+  const pending = authority.prepareReportApproval(input);
+  input.kind = "platform-owner"; input.reportDigest = `sha256:${"0".repeat(64)}`;
+  const approval = await pending;
+  expect(approval.command.principalKind).toBe("operator"); expect(approval.reportDigest).toBe(missingReport);
+});
+
+it.each(["session-insert", "session-column-insert", "password-column-update", "public-password-update", "public-select", "definer", "function-grant", "grant-option", "sequence", "default-grant"])("refuses effective authority forgery through %s", async fault => {
+  const grants: Record<string, [string, string]> = {
+    "session-insert": [`grant insert on public.auth_sessions to ${loginRole}`, `revoke insert on public.auth_sessions from ${loginRole}`],
+    "session-column-insert": [`grant insert(user_id) on public.auth_sessions to ${loginRole}`, `revoke insert(user_id) on public.auth_sessions from ${loginRole}`],
+    "password-column-update": [`grant update(password_hash) on public.user_password_credentials to ${loginRole}`, `revoke update(password_hash) on public.user_password_credentials from ${loginRole}`],
+    "public-password-update": ["grant update(password_hash) on public.user_password_credentials to public", "revoke update(password_hash) on public.user_password_credentials from public"],
+    "public-select": ["create table public.authority_extra_secret(value text); grant select on public.authority_extra_secret to public", "drop table public.authority_extra_secret"],
+    "definer": ["create function public.authority_forge() returns void language sql security definer set search_path=pg_catalog as 'update public.auth_sessions set revoked_at=null'; grant execute on function public.authority_forge() to public", "drop function public.authority_forge()"],
+    "function-grant": [`create function public.authority_extra() returns int language sql as 'select 1'; grant execute on function public.authority_extra() to ${loginRole}`, "drop function public.authority_extra()"],
+    "grant-option": [`grant select on public.auth_sessions to ${loginRole} with grant option`, `revoke grant option for select on public.auth_sessions from ${loginRole}`],
+    "sequence": [`create sequence public.authority_extra_sequence; grant usage on sequence public.authority_extra_sequence to ${loginRole}`, "drop sequence public.authority_extra_sequence"],
+    "default-grant": [`alter default privileges in schema public grant select on tables to ${loginRole}`, `alter default privileges in schema public revoke select on tables from ${loginRole}`],
+  };
+  const [grant, revoke] = grants[fault];
+  await admin.query(grant);
+  try { await expect(authority.confirmRestore(request())).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" }); }
+  finally { await admin.query(revoke); }
 });
 
 it.each(["superuser", "bypassrls", "createdb", "createrole", "replication"])("refuses actual %s drift on the next lease", async flag => {

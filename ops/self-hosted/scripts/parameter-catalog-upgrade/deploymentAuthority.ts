@@ -5,7 +5,6 @@ import { createAuthContextResolver } from "../../../../server/modules/auth/conte
 import { createLocalAuthService } from "../../../../server/modules/auth/localAuth";
 import { createUserInvocation } from "../../../../server/modules/auth/trustedInvocation";
 import { createPostgresDatabase, isRootDatabase, type RootDatabase } from "../../../../server/shared/database/client";
-import { createVerificationReportService } from "../../../../server/modules/release-verification/report/index";
 import type { ApprovalCommand } from "../../../../server/modules/release-verification/core";
 import type { RecoveryTargetIdentity } from "../../storage/recoveryPoint";
 import { canonicalJson, sha256Prefixed } from "./journal";
@@ -27,6 +26,7 @@ export class DeploymentAuthorityError extends Error {
   constructor(readonly code: string) { super(code); this.name = "DeploymentAuthorityError"; }
 }
 const refuse = (suffix: string): never => { throw new DeploymentAuthorityError(`PCAT-DEPLOYMENT-AUTHORITY-${suffix}`); };
+const snapshot = <T>(value: T): T => { try { return structuredClone(value); } catch { return refuse("COMMAND-REJECTED"); } };
 const digest = (value: unknown) => sha256Prefixed(canonicalJson(value));
 const validDigest = (value: unknown): value is string => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 const id = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_.:@-]{1,180}$/.test(value);
@@ -78,21 +78,49 @@ async function readAssignment(options: DeploymentAuthorityOptions) {
       || (value.restore !== null && (!id(value.restore.attemptId) || !validDigest(value.restore.captureDigest)))) refuse("ASSIGNMENT-REJECTED");
     return { assignment: value, binding: `${statIdentity(directory)}:${statIdentity(before)}` };
   } catch { return refuse("ASSIGNMENT-REJECTED"); }
-  finally { await handle?.close(); }
+  finally { await handle?.close().catch(() => refuse("ASSIGNMENT-REJECTED")); }
 }
 
 const authIdentitySql = `with recursive reachable(oid) as (
   select oid from pg_catalog.pg_roles where rolname=session_user
   union select m.roleid from pg_catalog.pg_auth_members m join reachable r on r.oid=m.member
+), app_schemas as (
+ select oid,nspname from pg_catalog.pg_namespace where nspname not in ('pg_catalog','information_schema')
+ and nspname not like 'pg_toast%' and nspname not like 'pg_temp%'
+), app_relations as (
+ select c.*,n.nspname from pg_catalog.pg_class c join app_schemas n on n.oid=c.relnamespace where c.relkind in ('r','p','v','m','f','S')
+), required as (
+ select oid,relname from app_relations where nspname='public' and relkind='r'
+ and relname in ('auth_sessions','users','organizations','user_role_bindings','user_password_credentials')
 )
-select current_database() as "databaseName", (select oid::text from pg_catalog.pg_database where datname=current_database()) as "databaseOid",
- inet_server_addr()::text as "serverAddress", inet_server_port() as "serverPort",
+select pg_catalog.current_database() as "databaseName", (select oid::text from pg_catalog.pg_database where datname=pg_catalog.current_database()) as "databaseOid",
+ pg_catalog.inet_server_addr()::text as "serverAddress", pg_catalog.inet_server_port() as "serverPort",
  session_user=current_user as same_identity,
  (select count(*)::int from pg_catalog.pg_roles r join reachable x on x.oid=r.oid
    where r.rolsuper or r.rolbypassrls or r.rolcreatedb or r.rolcreaterole or r.rolreplication) as elevated,
  (select count(*)::int from pg_catalog.pg_shdepend d join reachable x on x.oid=d.refobjid
    where d.refclassid='pg_catalog.pg_authid'::pg_catalog.regclass and d.deptype='o') as owners,
- (select count(*)::int from pg_catalog.pg_auth_members m join reachable x on x.oid=m.member) as memberships`;
+ (select count(*)::int from pg_catalog.pg_auth_members m join reachable x on x.oid=m.member) as memberships,
+ (5-(select count(*)::int from required where pg_catalog.has_table_privilege(session_user,oid,'SELECT'))) as missing_reads,
+ (select count(*)::int from app_relations c where case when c.relkind='S'
+ then pg_catalog.has_sequence_privilege(session_user,c.oid,'USAGE,SELECT,UPDATE') else
+  (c.oid not in (select oid from required) and (pg_catalog.has_table_privilege(session_user,c.oid,'SELECT') or pg_catalog.has_any_column_privilege(session_user,c.oid,'SELECT')))
+  or pg_catalog.has_table_privilege(session_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  or exists(select 1 from pg_catalog.pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped and
+    (pg_catalog.has_column_privilege(session_user,c.oid,a.attnum,'INSERT,REFERENCES')
+    or (pg_catalog.has_column_privilege(session_user,c.oid,a.attnum,'UPDATE') and not(c.nspname='public' and c.relname='auth_sessions' and a.attname='last_used_at')))) end) as extra_relations,
+ (select count(*)::int from app_schemas n where pg_catalog.has_schema_privilege(session_user,n.oid,'CREATE'))
+  + case when pg_catalog.has_database_privilege(session_user,pg_catalog.current_database(),'CREATE') then 1 else 0 end as ddl,
+ (select count(*)::int from pg_catalog.pg_proc p join app_schemas n on n.oid=p.pronamespace
+   where p.prosecdef and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE')) as definers,
+ (select count(*)::int from pg_catalog.pg_proc p cross join lateral pg_catalog.aclexplode(p.proacl) a
+   where a.grantee in(select oid from reachable)) as explicit_functions,
+ ((select count(*)::int from app_relations c cross join lateral pg_catalog.aclexplode(c.relacl) a
+   where a.is_grantable and (a.grantee=0 or a.grantee in(select oid from reachable))) +
+  (select count(*)::int from pg_catalog.pg_attribute c cross join lateral pg_catalog.aclexplode(c.attacl) a
+   where a.is_grantable and (a.grantee=0 or a.grantee in(select oid from reachable)))) as grant_options,
+ (select count(*)::int from pg_catalog.pg_default_acl d cross join lateral pg_catalog.aclexplode(d.defaclacl) a
+   where d.defaclobjtype in ('r','S') and (a.grantee=0 or a.grantee in(select oid from reachable))) as future_grants`;
 
 /** This confirmation is not a restore token or an execution capability. The
  * parent must persist it through its journal admission before any restore. */
@@ -105,9 +133,18 @@ export type IncidentRestoreConfirmation = Readonly<{
 const confirmations = new WeakSet<object>();
 export const isIncidentRestoreConfirmation = (value: unknown): value is IncidentRestoreConfirmation =>
   typeof value === "object" && value !== null && confirmations.has(value);
+export type DeploymentReportApproval = Readonly<{
+  status: "authenticated-report-command-not-persisted"; assignmentDigest: string;
+  runId: string; target: RecoveryTargetIdentity; reportDigest: string;
+  command: Readonly<ApprovalCommand>;
+}>;
+const reportCommands = new WeakSet<object>();
+export const isDeploymentReportApproval = (value: unknown): value is DeploymentReportApproval =>
+  typeof value === "object" && value !== null && reportCommands.has(value);
+type ReportRequest = { authorization: string; kind: "operator" | "platform-owner"; purpose: ApprovalCommand["purpose"]; reportDigest: string };
 
 export async function openDeploymentAuthority(input: DeploymentAuthorityOptions) {
-  const options = structuredClone(input);
+  const options = snapshot(input);
   const pinned = await readAssignment(options);
   let db: RootDatabase | undefined;
   let closed = false;
@@ -119,18 +156,21 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
       const observed = await readAssignment(options);
       if (observed.binding !== pinned.binding) refuse("ASSIGNMENT-REJECTED");
       const assignment = observed.assignment;
-      const result = await session.query<AuthDatabaseIdentity & { same_identity: boolean; elevated: number; owners: number; memberships: number }>(authIdentitySql);
+      const result = await session.query<AuthDatabaseIdentity & { same_identity: boolean; elevated: number; owners: number; memberships: number;
+        missing_reads: number; extra_relations: number; ddl: number; definers: number; explicit_functions: number; grant_options: number; future_grants: number }>(authIdentitySql);
       const row = result.rows[0];
       const identity = row && { databaseName: row.databaseName, databaseOid: row.databaseOid, serverAddress: row.serverAddress, serverPort: row.serverPort };
       if (result.rowCount !== 1 || !row || row.same_identity !== true || row.elevated !== 0 || row.owners !== 0 || row.memberships !== 0
-        || !same(identity, assignment.authentication) || same(identity, options.sourceDatabase)) refuse("AUTHENTICATION-DATABASE-REJECTED");
+        || [row.missing_reads,row.extra_relations,row.ddl,row.definers,row.explicit_functions,row.grant_options,row.future_grants].some(count => count !== 0)
+        || !same(identity, assignment.authentication)
+        || (row.databaseName === options.sourceDatabase.databaseName && row.databaseOid === options.sourceDatabase.databaseOid)) refuse("AUTHENTICATION-DATABASE-REJECTED");
       return assignment;
     };
     db = createPostgresDatabase(options.authConnectionString, { verifyCheckout: async session => {
-      await observe(session);
       // The existing authentication repository uses unqualified public names.
       // Pin every actual lease before those queries, including reconnects.
       await session.query("select pg_catalog.set_config('search_path','pg_catalog,public,pg_temp',false)");
+      await observe(session);
     } });
     const authDb = db;
     const verify = () => observe(authDb);
@@ -149,20 +189,29 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
       try { return await action(); }
       catch (error) { if (error instanceof DeploymentAuthorityError) throw error; return refuse("OPERATION-FAILED"); }
     };
-    return Object.freeze({
-      async approveReport(request: { authorization: string; kind: "operator" | "platform-owner"; purpose: ApprovalCommand["purpose"]; reportDigest: string }, reportDb: RootDatabase) {
+    const prepareReportApproval = (input: ReportRequest): Promise<DeploymentReportApproval> => {
+      const request = snapshot(input);
         return safe(async () => {
-          if (!isRootDatabase(reportDb) || reportDb === authDb || !["operator", "platform-owner"].includes(request.kind)) refuse("REPORT-COMMAND-REJECTED");
+          if (!["operator", "platform-owner"].includes(request.kind)) refuse("REPORT-COMMAND-REJECTED");
           const { assignment, principal } = await authenticate(request.authorization, request.kind);
           if (!assignment.reports.some(report => report.purpose === request.purpose && report.reportDigest === request.reportDigest)) refuse("REPORT-SCOPE-REJECTED");
-          // Report integrity, gates, purpose, distinct approvals and append-only
-          // persistence remain owned by the existing domain service.
-          return createVerificationReportService({ db: reportDb }).approveReport(request.reportDigest, {
-            principalKind: request.kind, principalId: principal.userId, purpose: request.purpose,
-          });
+          const result = Object.freeze({ status: "authenticated-report-command-not-persisted" as const,
+            assignmentDigest: options.expectedAssignmentDigest, runId: options.runId, target: Object.freeze({ ...options.target }), reportDigest: request.reportDigest,
+            command: Object.freeze({ principalKind: request.kind, principalId: principal.userId, purpose: request.purpose }) });
+          reportCommands.add(result); return result;
         });
+    };
+    return Object.freeze({
+      prepareReportApproval,
+      async approveReport(request: ReportRequest, reportDb: RootDatabase) {
+        if (!isRootDatabase(reportDb) || reportDb === authDb) refuse("REPORT-COMMAND-REJECTED");
+        await prepareReportApproval(request);
+        // A real pool is not an observed physical target. The parent must bind
+        // its actual target capability before calling the existing report service.
+        return refuse("REPORT-TARGET-ADAPTER-UNAVAILABLE");
       },
       async confirmRestore(request: { authorization: string; attemptId: string; captureDigest: string; target: RecoveryTargetIdentity; traceId: string }) {
+        request = snapshot(request);
         return safe(async () => {
           const { assignment, principal } = await authenticate(request.authorization, "incident-owner");
           if (!id(request.traceId) || !assignment.restore || !same(assignment.restore, { attemptId: request.attemptId, captureDigest: request.captureDigest, target: request.target })) refuse("RESTORE-SCOPE-REJECTED");

@@ -42,12 +42,18 @@ an ordinary bearer credential does not prove physical human presence.
 The pool opens only the explicit management authentication URL and validates
 every actual lease, including reconnects. Elevated/reachable roles, memberships
 and object ownership refuse. The observed authentication database must match its
-private pin and differ from the actual source database. Authentication queries
+private pin. Matching the source database name and OID refuses regardless of
+network address; same-name/OID collisions across independent clusters also refuse
+conservatively. Authentication queries
 retain their existing public-table contract, with an explicit per-lease
 `pg_catalog,public,pg_temp` search path. The controlled login needs SELECT on
 `auth_sessions`, `users`, `organizations`, `user_role_bindings` and
 `user_password_credentials`, plus UPDATE only on `auth_sessions.last_used_at`.
-This document does not provision those grants or expand any runtime pool.
+Effective relation and column privileges include PUBLIC grants. Out-of-manifest
+reads/writes, sequence capabilities, DDL, grant options, future relation grants,
+explicit function grants and executable user-schema SECURITY DEFINER functions
+refuse. Authentication requires no such user definer. This document does not
+provision those grants or expand any runtime pool.
 
 Local-session resolution updates `last_used_at`; this write belongs to the
 independent management authentication database, never the frozen source. The
@@ -59,12 +65,19 @@ not provision or claim that infrastructure.
 
 ## Commands and ownership
 
-`approveReport` authenticates the requested Operator/Platform-owner role and
-exact assigned purpose/report digest, then calls the existing
-`VerificationReportService.approveReport` with that actual user. The report pool
-is a separate real root owned by the caller. Report integrity, passed decision,
-distinct approvals, immutable persistence and typed refusal remain domain-owned.
-Missing/blocked reports still fail; a configured digest cannot fabricate one.
+`prepareReportApproval` authenticates the requested Operator/Platform-owner role
+and exact assigned purpose/report digest, producing an opaque command carrying
+the actual user. Request values are snapshotted before asynchronous authentication.
+It is not a stored approval. The existing `VerificationReportService.approveReport`
+remains the sole writer of report approvals. In this component `approveReport`
+explicitly refuses with `REPORT-TARGET-ADAPTER-UNAVAILABLE`: a real RootDatabase,
+database name/OID or network address does not prove the report store's physical
+target. The existing restricted report login cannot query privileged cluster
+identity, and this component adds no such grant. The parent must supply its
+trusted actual-target composition before calling the formal domain command;
+it must not take an arbitrary root or caller JSON as that proof. Report integrity,
+gates, passed decision, independent approvals and immutable persistence remain
+domain-owned. A configured digest cannot fabricate a report.
 
 `confirmRestore` authenticates only the incident owner and exact assigned
 attempt/capture/destination. Its opaque, immutable result is explicitly
@@ -95,9 +108,12 @@ connection, uses actual migrations, issues sessions through real local login,
 and uses a restricted authentication LOGIN. It checks incident confirmation,
 unassigned product admin/verifier refusal, actor spoofing, source exclusion,
 credential revocation, pool privilege drift, assignment drift and lifecycle.
-Operator/Platform owner calls consume the real domain's missing-report refusal;
-there is no synthetic `passed` report or mock gate. A real approved-report
-positive chain remains an integration obligation, not a claimed component pass.
+Operator/Platform owner confirmation is positive but report writing remains
+unavailable pending actual-target integration. There is no synthetic `passed`
+report or mock gate. The earlier `a86b6095d` component run called the domain's
+missing-report path; the subsequent review found its target-binding gap and
+the narrowed interface supersedes that behavior. Neither run proves a real
+approved-report positive chain.
 
 The parent owns the fixed handoff configuration/credential reader, formal
 controller actions, typed capture/approval journal records, current phase/pin
