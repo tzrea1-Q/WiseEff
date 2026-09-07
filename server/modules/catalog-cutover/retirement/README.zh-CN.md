@@ -8,7 +8,13 @@
 实际 catch 使用同一 helper，文件内两项永久反例以 AST 精确抽取原函数及原测试、
 无 integration 导入/setup 的方式执行，修复前1通过1失败，修复后2/2，日志为
 `/tmp/pr824-bootstrap-cleanup-{red,green}.log`。这是纯失败路径证据，不是模拟数据库
-生命周期，也不重标原固定38项执行。完整文件现收集40项，下次真实owned执行待跑。
+生命周期，也不重标原固定38项执行。随后 clean
+`c4b99f4ba5f2bb6faf3f517ec58a6f4dbfea95cc`、tree
+`d1191e1f434271117b39594ac8d67cbf4f61d48c` 完整真实owned40/40通过，14.35s、
+exit0，runner及目标cleanup均true。认证准备303ms，独立断言343–1081ms。
+日志 `/tmp/pr824-bootstrap-lifecycle-c4b99-green.log`，SHA-256：
+`bb6a58244aa9590a54f5d3581c14c49bed4d1bba0c8ead510e24133d0ada597c`。
+该执行归c4b99，不重标后继文档提交；Hosted仍待跑。
 
 ## 独立 inspection 测试生命周期
 

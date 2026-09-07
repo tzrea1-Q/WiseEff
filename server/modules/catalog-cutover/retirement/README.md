@@ -64,8 +64,14 @@ by two permanent tests. Exact AST extraction of that helper and those tests,
 with no integration imports/setup, produced 1 pass/1 failure before the repair
 and 2/2 after it (`/tmp/pr824-bootstrap-cleanup-{red,green}.log`). This is pure
 failure-path evidence, not a simulated database lifecycle or a rerun of the
-fixed 38-case execution. The full file now collects 40 tests; its next actual
-owned execution remains pending.
+fixed 38-case execution. The full file then passed the actual owned 40/40 on
+clean `c4b99f4ba5f2bb6faf3f517ec58a6f4dbfea95cc`, tree
+`d1191e1f434271117b39594ac8d67cbf4f61d48c`: 14.35s, exit 0, runner and target
+cleanup true. Authentication preparation was 303ms and independent assertions
+343–1081ms. Log `/tmp/pr824-bootstrap-lifecycle-c4b99-green.log` SHA-256:
+`bb6a58244aa9590a54f5d3581c14c49bed4d1bba0c8ead510e24133d0ada597c`.
+This execution belongs to `c4b99f4ba`, not its later documentation commit;
+Hosted remains pending.
 
 ## Authentication inspection after the SQL successor
 
