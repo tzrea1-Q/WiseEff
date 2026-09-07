@@ -172,6 +172,21 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
     nodeEnv: env.NODE_ENV,
     databaseOptions: { tracing: defaultTracingBoundary },
   });
+  try {
+    return await initializeLogWorkerRuntime(env, raw, db);
+  } catch {
+    // Initialization has not exposed a runtime or started a consumer. Closing
+    // must not replace the static refusal with a credential-bearing DB error.
+    await db.close().catch(() => undefined);
+    throw new Error("PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED");
+  }
+}
+
+async function initializeLogWorkerRuntime(
+  env: ReturnType<typeof loadServerEnv>,
+  raw: NodeJS.ProcessEnv,
+  db: Awaited<ReturnType<typeof openRuntimeDatabase>>,
+) {
   await resolveParameterIdentityMode(db);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
