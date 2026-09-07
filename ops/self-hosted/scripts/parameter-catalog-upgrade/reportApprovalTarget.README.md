@@ -33,7 +33,9 @@ Every actual writer pool checkout audits effective privileges and obtains a
 random session advisory lock. An independently connected management session must
 observe that exact PID/database/namespace/key at the pinned physical database;
 management rechecks the physical identity before and after the challenge. The
-lock is released before caller SQL. Unavailable, wrong-target or unknown unlock
+management lease retains a synchronous error observer across writer awaits and
+through destruction on failure; lost connections reject with redacted diagnostics.
+The lock is released before caller SQL. Unavailable, wrong-target or unknown unlock
 results reject the checkout and destroy it. This challenge is not a maintenance
 lock, source freeze or approval.
 
@@ -52,6 +54,9 @@ authority-issued opaque command. The command is revalidated against its current
 private assignment, expiry, run, complete target, principal, purpose/report digest
 and physical mapping before dispatch and again inside the existing service's
 transaction after checkout. JSON copies cannot create either capability.
+The original session is authenticated again on each consumption, including
+revocation, expiry and inactive-account checks. Tokens remain only in private
+closures, never in commands, returned results or durable approval material.
 `openDeploymentAuthority(...).approveReport(request, target)` is the authenticated
 entry to this path; passing a raw database root continues to refuse.
 

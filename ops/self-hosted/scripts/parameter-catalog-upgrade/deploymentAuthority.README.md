@@ -92,6 +92,9 @@ the pinned assignment, expiry and control database admission; a copied object
 cannot become a confirmation. Neither method writes the upgrade journal, reads
 a recovery package, restores data or resumes traffic. Source provenance, current
 lock/quiescence and package validity still require the parent's recovery checks.
+Both report commands and incident confirmations reauthenticate their original
+session when consumed, rejecting logout, expiry and inactive accounts. Tokens
+stay solely in private closures and never enter returned or persistent material.
 
 The parent must persist the confirmation with the existing journal and current
 capture/handoff bindings before deriving an execution authorization. After

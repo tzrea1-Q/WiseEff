@@ -3,13 +3,15 @@ import { mkdtemp, realpath, writeFile, rm, rename } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import pg from "pg";
+import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createSelfHostedPg16Database } from "../../../../server/testing/selfHostedUpgrade/database";
 import { createPostgresDatabase, type RootDatabase } from "../../../../server/shared/database/client";
 import { applyMigrations } from "../../../../server/shared/database/migrations";
 import { createLocalAuthService } from "../../../../server/modules/auth/localAuth";
 import { hashLocalAccountPassword } from "../../../../server/modules/auth/localAccountCredentials";
-import { openDeploymentAuthority, isIncidentRestoreConfirmation, isDeploymentReportApproval, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
+import { openDeploymentAuthority, isIncidentRestoreConfirmation, isDeploymentReportApproval, assertDeploymentReportCommandCurrent, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import { approveDeploymentReport, openReportApprovalTarget, type ReportApprovalTarget } from "./reportApprovalTarget";
 
@@ -197,6 +199,58 @@ it("rechecks the assignment after a report command has been issued", async () =>
   try { await expect(approveDeploymentReport(reportTarget, command)).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-ASSIGNMENT-REJECTED" }); }
   finally { await writeFile(options.assignmentPath, JSON.stringify(assignment), { mode: 0o600 }); }
 });
+
+it.each(["report-revoked", "report-expired", "report-inactive", "restore-revoked", "restore-expired", "restore-inactive"])("revalidates the original authenticated session for %s", async fault => {
+  const isReport = fault.startsWith("report"), user = isReport ? "operator" : "incident";
+  const command = isReport ? await authority.prepareReportApproval({ authorization: `Bearer ${tokens.get(user)}`, kind: "operator", purpose: "pre-activation", reportDigest: missingReport }) : undefined;
+  const confirmation = isReport ? undefined : await authority.confirmRestore(request(user));
+  const original = (await admin.query<{ expires_at: string }>("select expires_at from auth_sessions where user_id=$1", [user])).rows[0];
+  if (fault.endsWith("revoked")) await admin.query("update auth_sessions set revoked_at=now() where user_id=$1", [user]);
+  if (fault.endsWith("expired")) await admin.query("update auth_sessions set expires_at=now()-interval '1 second' where user_id=$1", [user]);
+  if (fault.endsWith("inactive")) await admin.query("update users set is_active=false where id=$1", [user]);
+  try {
+    const checked = command ? assertDeploymentReportCommandCurrent(command, reportTarget.physicalTarget) : authority.assertConfirmationCurrent(confirmation!);
+    await expect(checked).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-OPERATION-FAILED" });
+  } finally {
+    await admin.query("update auth_sessions set revoked_at=null,expires_at=$2 where user_id=$1", [user,original.expires_at]);
+    await admin.query("update users set is_active=true where id=$1", [user]);
+  }
+});
+
+it("redacts and rejects loss of the actual management lease during writer admission", async () => {
+  const managerUrl = new URL(reportTargetOptions.managementConnectionString), writerUrl = new URL(reportTargetOptions.writerConnectionString);
+  managerUrl.searchParams.set("application_name", "authority-challenge-manager"); writerUrl.searchParams.set("application_name", "authority-challenge-writer");
+  const locker = new pg.Client({ connectionString: control.url }); await locker.connect();
+  await locker.query("begin; lock table pg_catalog.pg_parameter_acl in access exclusive mode");
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import { readFileSync } from 'node:fs';
+    import { openReportApprovalTarget, ReportApprovalTargetError } from './ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.ts';
+    process.on('uncaughtException',()=>{process.stdout.write('UNHANDLED');process.exit(2)});
+    process.on('unhandledRejection',()=>{process.stdout.write('UNHANDLED');process.exit(2)});
+    try { const target=await openReportApprovalTarget(JSON.parse(readFileSync(0,'utf8')));await target.close();process.exitCode=0; }
+    catch(error) { process.stdout.write(error instanceof ReportApprovalTargetError ? error.code : 'UNREDACTED');process.exitCode=1; }
+  `], { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["pipe", "pipe", "pipe"] });
+  let output = "", errors = "";
+  child.stdout.setEncoding("utf8").on("data", data => { output += data; });
+  child.stderr.setEncoding("utf8").on("data", data => { errors += data; });
+  const ended = new Promise<number | null>((resolve,reject) => { child.once("error",reject); child.once("exit",resolve); });
+  child.stdin.end(JSON.stringify({ ...reportTargetOptions, managementConnectionString: managerUrl.href, writerConnectionString: writerUrl.href }));
+  try {
+    let pid: number | undefined;
+    for (let i = 0; i < 200 && !pid; i++) {
+      pid = (await admin.query<{ pid: number }>(`select pid from pg_stat_activity where application_name='authority-challenge-manager' and state='idle'
+        and exists(select 1 from pg_stat_activity where application_name='authority-challenge-writer' and wait_event_type='Lock')`)).rows[0]?.pid;
+      if (!pid) await delay(10);
+    }
+    expect(pid).toBeTypeOf("number");
+    expect((await admin.query("select pg_terminate_backend($1) as terminated", [pid])).rows).toEqual([{ terminated: true }]);
+    await delay(20); await locker.query("rollback");
+    expect(await ended).toBe(1); expect(output).toBe("PCAT-REPORT-APPROVAL-MANAGEMENT-CONNECTION-FAILED"); expect(errors).toBe("");
+  } finally {
+    await locker.query("rollback"); await locker.end();
+    if (child.exitCode === null) child.kill("SIGKILL"); await ended;
+  }
+}, 15_000);
 
 it.each(["missing", "other-physical-target"])("refuses a report command whose private physical mapping is %s", async fault => {
   const current = { ...assignment, reportDatabase: fault === "missing" ? undefined : { ...assignment.reportDatabase!, systemIdentifier: "999" } };

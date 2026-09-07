@@ -64,6 +64,8 @@ namespace 就认定函数是可信内建。
 `assertConfirmationCurrent` 重新检查指派、有效期和认证库准入。复制对象不能变成
 有效确认。两者均不写升级 journal、不读恢复包、不恢复数据、不恢复流量；真实来源、
 当前锁／停写边界和包有效性仍由父控制器检查。
+报告 command 与 incident confirmation 在消费时都重新认证原会话，注销、过期或
+账户禁用均拒绝。token 只在私有闭包，不进入返回或持久材料。
 
 父控制器须把确认与当前 capture／handoff 绑定后持久写入既有 journal，之后才构造
 执行授权。进程重启后应读取并验证持久授权记录，不能把 JSON 反序列化成有效的

@@ -150,6 +150,7 @@ export type IncidentRestoreConfirmation = Readonly<{
   approvalReference: string; expiresAt: string;
 }>;
 const confirmations = new WeakSet<object>();
+const confirmationSessions = new WeakMap<object, () => Promise<void>>();
 export const isIncidentRestoreConfirmation = (value: unknown): value is IncidentRestoreConfirmation =>
   typeof value === "object" && value !== null && confirmations.has(value);
 export type DeploymentReportApproval = Readonly<{
@@ -226,8 +227,10 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
             command: Object.freeze({ principalKind: request.kind, principalId: principal.userId, purpose: request.purpose }) });
           reportCommands.add(result);
           reportCommandChecks.set(result, physical => safe(async () => {
-            const current = await verify();
+            const live = await authenticate(request.authorization, request.kind);
+            const current = live.assignment;
             if (Date.parse(result.expiresAt) <= Date.now() || !current.reportDatabase || !same(current.reportDatabase, physical)
+              || identityKey(live.principal) !== identityKey(principal)
               || !same(current.target, result.target) || current.runId !== result.runId
               || !current.principals.some(grant => grant.kind === result.command.principalKind && identityKey(grant) === identityKey(principal))
               || !current.reports.some(report => report.purpose === result.command.purpose && report.reportDigest === result.reportDigest)) refuse("REPORT-SCOPE-REJECTED");
@@ -251,7 +254,12 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
             ...structuredClone(assignment.restore), target: Object.freeze({ ...assignment.restore.target }),
             principal: Object.freeze(principal), traceId: request.traceId, expiresAt: assignment.expiresAt };
           const confirmation = Object.freeze({ status: "authenticated-confirmation-not-persisted" as const, ...body, approvalReference: digest(body) });
-          confirmations.add(confirmation); return confirmation;
+          confirmations.add(confirmation);
+          confirmationSessions.set(confirmation, async () => {
+            const live = await authenticate(request.authorization, "incident-owner");
+            if (identityKey(live.principal) !== identityKey(principal)) refuse("PRINCIPAL-REJECTED");
+          });
+          return confirmation;
         });
       },
       async assertConfirmationCurrent(confirmation: IncidentRestoreConfirmation) {
@@ -261,6 +269,9 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
             || confirmation.runId !== options.runId || Date.parse(confirmation.expiresAt) <= Date.now()
             || !assignment.principals.some(principal => principal.kind === "incident-owner" && identityKey(principal) === identityKey(confirmation.principal))
             || !same(assignment.restore, { attemptId: confirmation.attemptId, captureDigest: confirmation.captureDigest, target: confirmation.target })) refuse("RESTORE-SCOPE-REJECTED");
+          const session = confirmationSessions.get(confirmation);
+          if (!session) refuse("RESTORE-SCOPE-REJECTED");
+          await session();
         });
       },
       async close() { if (!closed) { closed = true; await authDb.close(); } },

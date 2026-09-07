@@ -57,7 +57,7 @@ async function physicalIdentity(management: Queryable): Promise<ReportDatabaseId
   return result.rows[0];
 }
 const samePhysical = (left: ReportDatabaseIdentity, right: ReportDatabaseIdentity) => left.systemIdentifier === right.systemIdentifier && left.databaseOid === right.databaseOid;
-async function verifyWriter(management: pg.PoolClient, writer: Queryable, expected: ReportDatabaseIdentity) {
+async function verifyWriter(management: Queryable, writer: Queryable, expected: ReportDatabaseIdentity) {
   if (!samePhysical(await physicalIdentity(management), expected)) refuse("PHYSICAL-TARGET-MISMATCH");
   const result = await writer.query<Record<string, number | boolean>>(identitySql, [relations]);
   const facts = result.rows[0];
@@ -81,6 +81,35 @@ async function verifyWriter(management: pg.PoolClient, writer: Queryable, expect
   }
 }
 
+/** Register in pg's acquisition callback, before any cross-pool await. A lost
+ * lease stays observed through destruction; no raw server error is surfaced. */
+function withManagement<T>(pool: pg.Pool, body: (client: Queryable) => Promise<T>): Promise<T> {
+  return new Promise((resolve,reject) => {
+    pool.connect((error,client) => {
+      if (error || !client) { reject(new ReportApprovalTargetError("PCAT-REPORT-APPROVAL-MANAGEMENT-CONNECTION-FAILED")); return; }
+      let lost = false;
+      const onError = () => { lost = true; };
+      client.on("error",onError);
+      const assertConnected = () => { if (lost) refuse("MANAGEMENT-CONNECTION-FAILED"); };
+      const guarded: Queryable = { async query<Row>(sql: string, values?: unknown[]) {
+        assertConnected();
+        try { const result = await client.query(sql,values); assertConnected(); return { rows: result.rows as Row[], rowCount: result.rowCount }; }
+        catch (error) { assertConnected(); throw error; }
+      } };
+      const settle = (failure: unknown, value?: T) => {
+        const destroy = lost || failure !== undefined;
+        if (destroy) client.once("end", () => client.removeListener("error",onError));
+        try { client.release(destroy); }
+        catch { failure ??= new ReportApprovalTargetError("PCAT-REPORT-APPROVAL-MANAGEMENT-CONNECTION-FAILED"); }
+        finally { if (!destroy) client.removeListener("error",onError); }
+        if (failure !== undefined) reject(failure); else resolve(value!);
+      };
+      void Promise.resolve().then(() => body(guarded)).then(value => { assertConnected(); return value; })
+        .then(value => settle(undefined,value), error => settle(error instanceof Error ? error : new ReportApprovalTargetError("PCAT-REPORT-APPROVAL-TARGET-OBSERVATION-FAILED")));
+    });
+  });
+}
+
 export type ReportApprovalTarget = Readonly<{ physicalTarget: ReportDatabaseIdentity; close(): Promise<void> }>;
 const targets = new WeakMap<object, { db: RootDatabase; assertCurrent(): void }>();
 export async function openReportApprovalTarget(input: { physicalTarget: ReportDatabaseIdentity; managementConnectionString: string; writerConnectionString: string }): Promise<ReportApprovalTarget> {
@@ -94,17 +123,17 @@ export async function openReportApprovalTarget(input: { physicalTarget: ReportDa
     }
     management = new pg.Pool({ connectionString: options.managementConnectionString });
     const manager = management;
-    let closed = false;
-    const assertCurrent = () => { if (closed) refuse("TARGET-CLOSED"); };
+    let closed = false, managementLost = false;
+    manager.on("error", () => { managementLost = true; });
+    const assertCurrent = () => { if (closed) refuse("TARGET-CLOSED"); if (managementLost) refuse("MANAGEMENT-CONNECTION-FAILED"); };
     db = createPostgresDatabase(options.writerConnectionString, { verifyCheckout: async writer => {
       assertCurrent();
-      const session = await manager.connect();
-      let failed = false;
       try {
-        await writer.query("select pg_catalog.set_config('search_path','pg_catalog,public,pg_temp',false)");
-        await verifyWriter(session, writer, options.physicalTarget);
-      } catch (error) { failed = true; if (error instanceof ReportApprovalTargetError) throw error; refuse("TARGET-OBSERVATION-FAILED"); }
-      finally { session.release(failed); }
+        await withManagement(manager, async session => {
+          await writer.query("select pg_catalog.set_config('search_path','pg_catalog,public,pg_temp',false)");
+          await verifyWriter(session, writer, options.physicalTarget);
+        });
+      } catch (error) { if (error instanceof ReportApprovalTargetError) throw error; refuse("TARGET-OBSERVATION-FAILED"); }
     } });
     await db.query("select 1");
     const writer = db;

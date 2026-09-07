@@ -25,7 +25,9 @@ producer 的 PostgreSQL identity 仍是原 container／database／bootstrap 摘�
 
 每次实际 writer pool checkout 都审计有效权限并取得随机会话 advisory lock。独立
 管理连接必须在固定物理数据库观察到精确 PID／database／namespace／key，并在挑战
-前后重新检查物理身份。执行调用者 SQL 前释放挑战锁；不可用、错误目标和释放结果
+前后重新检查物理身份。管理 lease 取得时同步安装 error observer，跨 writer await
+保留并在失败销毁期间持续观察，连接丢失会静态脱敏拒绝。执行调用者 SQL 前释放
+挑战锁；不可用、错误目标和释放结果
 未知都会拒绝并销毁 checkout。这个挑战不是维护锁、停写证明或批准。
 
 能力仅沿用不可变迁移 0139 的 NOLOGIN `catalog_verification_writer_role`：六表
@@ -40,7 +42,9 @@ PUBLIC 新增的受限系统函数 EXECUTE 对照 PostgreSQL 16 `pg_init_privs` 
 `approveDeploymentReport` 只接收工厂签发的 opaque target 和真实 authority 签发的
 opaque command。派发前以及实际 checkout 后原 service 事务体内都重新核验当前私有
 指派、期限、run、完整目标、主体、purpose／report digest 和物理映射。JSON 副本
-无法制造 capability。`openDeploymentAuthority(...).approveReport(request, target)`
+无法制造 capability。每次消费重新认证原会话，检查撤销、过期、账户禁用。token
+仅存私有闭包，不进入 command、返回结果或持久批准材料。
+`openDeploymentAuthority(...).approveReport(request, target)`
 是该路径的认证入口，传入普通数据库 root 仍拒绝。
 
 报告缺失／未通过、purpose、独立主体和 append-only 持久化仍由既有领域服务裁定。
