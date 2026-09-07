@@ -415,7 +415,7 @@ wiseeff_upgrade_docker() {
 # Build-only application artifact owner. The TypeScript caller supplies a new
 # private directory containing only the exact tracked Git archive. This entry
 # never reads the runtime env file, starts Compose services, or creates releases.
-wiseeff_upgrade_export_application_artifact() (
+wiseeff_upgrade_prepare_application_artifact() (
   set -euo pipefail -C
   local context="$1" output="$2" endpoint="$3" daemon="$4" image="$5" sha="$6" tree="$7" network_file="$8" api_url="$9"
   umask 077
@@ -437,28 +437,21 @@ wiseeff_upgrade_export_application_artifact() (
   # Compose interpolates non-build services too. These non-secret placeholders
   # are never used by a process: this owner permits only config/build commands.
   export POSTGRES_PASSWORD=build-only-unused MINIO_ROOT_USER=build-only-unused MINIO_ROOT_PASSWORD=build-only-unused DATABASE_URL=build-only-unused
-  local compose="$context/ops/self-hosted/compose.yaml"
-  local base_ref
-  base_ref="$(awk 'NR==1 && $1=="FROM" {print $2}' "$context/ops/self-hosted/Dockerfile")"
-  [ -n "$base_ref" ] && [ "${base_ref#-}" = "$base_ref" ] || return 10
-  artifact_docker image inspect "$base_ref" > "$output/base-before.json"
-  artifact_docker compose --env-file /dev/null -f "$compose" config --format json > "$output/compose.json"
-  node --input-type=module - "$output/compose.json" "$context" "$image:candidate" <<'JS'
-import { readFileSync } from 'node:fs';
-const model=JSON.parse(readFileSync(process.argv[2],'utf8'));
-const targets=['api','worker','web'].map(service=>model.services?.[service]);
-if(targets.some(target=>!target || target.image!==process.argv[4] || target.build?.context!==process.argv[3]
-  || target.build?.dockerfile!=='ops/self-hosted/Dockerfile'
-  || target.build?.args?.WISEEFF_BUILD_TLS_POLICY!=='verify'
-  || JSON.stringify(target.build)!==JSON.stringify(targets[0].build))) process.exit(10);
-JS
-  artifact_docker compose --env-file /dev/null -f "$compose" build api 2>&1 | wiseeff_upgrade_sanitize_diagnostic_stream > "$output/build.log"
-  artifact_docker image inspect "$base_ref" > "$output/base-after.json"
   [ "$(wiseeff_build_network_file_fingerprint "$original_ca")" = "$ca_hash" ] || return 10
   printf '%s\n%s\n' "$WISEEFF_BUILD_TRANSPORT_FINGERPRINT" "$ca_hash" > "$output/build-trust.txt"
-  artifact_docker image inspect "$image:candidate" > "$output/loaded-image.json"
-  artifact_docker image save "$image:candidate" > "$output/image.tar"
-  artifact_docker image inspect "$image:candidate" > "$output/loaded-image-after.json"
+  # Read the exact tracked Compose bytes from stdin, not a mutable worktree.
+  artifact_docker compose --project-directory "$context/ops/self-hosted" --env-file /dev/null -f - config --format json
+)
+
+wiseeff_upgrade_export_application_artifact() (
+  set -euo pipefail -C
+  local endpoint="$1" daemon="$2" output="$3"
+  shift 3
+  [ "$(docker --host "$endpoint" info --format '{{.ID}}')" = "$daemon" ] || return 10
+  # The producer translates the actual Compose build model's closed option set.
+  # The stdin archive is held by that process; no mutable directory is COPY's
+  # source. This command neither pushes nor creates service containers.
+  docker --host "$endpoint" buildx build "$@" 2>&1 | wiseeff_upgrade_sanitize_diagnostic_stream > "$output/build.log"
 )
 
 wiseeff_upgrade_base_image_contract_relative_path() {

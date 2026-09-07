@@ -1,9 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
-import { inspectApplicationOciArchive } from "./applicationArtifact";
+import { inspectApplicationOciArchive, buildApplicationArtifact, applicationVerificationPins, resolveApplicationBuildContext, type ApplicationArtifact } from "./applicationArtifact";
 
 it("refuses a Docker-only archive instead of relabeling its config ID as a manifest", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "application-oci-"));
@@ -32,6 +33,28 @@ function tar(entries: [string, Buffer][]) {
   }
   return Buffer.concat([...parts, Buffer.alloc(1024)]);
 }
+it("pins the only external FROM and preserves all other recipe and tracked source bytes in the actual tar stream", () => {
+  const original = "FROM node:22.21.1-alpine AS build-transport\nRUN echo existing\nFROM build-transport AS application\nCOPY . .\n";
+  const source = tar([["ops/self-hosted/Dockerfile", Buffer.from(original)], ["ops/self-hosted/compose.yaml", Buffer.from("services: original\n")], ["server/probe.ts", Buffer.from("tracked-original")]]);
+  const immutable = `node@sha256:${"a".repeat(64)}`;
+  const fixed = resolveApplicationBuildContext(source, immutable);
+  // Change the caller's original source buffer after capture, just as an
+  // extracted directory could change. The consumer receives independent bytes.
+  source.fill(120);
+  const actual = spawnSync("tar", ["-xOf", "-", "server/probe.ts"], { input: fixed.archive });
+  expect(actual.status).toBe(0); expect(actual.stdout.toString()).toBe("tracked-original");
+  const recipe = spawnSync("tar", ["-xOf", "-", "ops/self-hosted/Dockerfile"], { input: fixed.archive });
+  expect(recipe.status).toBe(0);
+  expect(recipe.stdout.toString()).toBe(original.replace("node:22.21.1-alpine", immutable));
+  expect(fixed.recipe.originalDigest).toBe(hash(Buffer.from(original)));
+  expect(fixed.recipe.resolvedDigest).toBe(hash(recipe.stdout));
+  expect(fixed.compose.toString()).toBe("services: original\n");
+});
+it("cannot translate a mutable tag or a caller-supplied Dockerfile into an immutable build context", () => {
+  const source = tar([["ops/self-hosted/Dockerfile", Buffer.from("FROM node:22 AS base\n")], ["ops/self-hosted/compose.yaml", Buffer.from("services: {}\n")]]);
+  expect(() => resolveApplicationBuildContext(source, "node:candidate")).toThrow("BASE-REFERENCE-INVALID");
+  expect(() => resolveApplicationBuildContext(tar([["Dockerfile", Buffer.from("FROM foreign\n")]]), `node@sha256:${"a".repeat(64)}`)).toThrow("TRACKED-RECIPE-MISSING");
+});
 function imageFixture() {
   const entries: [string, Buffer][] = [];
   const blob = (mediaType: string, value: unknown) => {
@@ -85,4 +108,40 @@ it.each(["../index.json", "blobs/../index.json", "/index.json"])("refuses unsafe
 it("refuses repeated index members rather than selecting tar's first or last value", async () => {
   const f = imageFixture(); f.entries.push(["index.json", Buffer.from("{}")]);
   await withArchive(f.entries, async archive => { await expect(inspectApplicationOciArchive(archive, f.expected)).rejects.toMatchObject({ code: "ARCHIVE-DUPLICATE-OR-LIMIT" }); });
+});
+it("refuses symlink archive inputs rather than following a foreign package", async () => {
+  const f = imageFixture();
+  await withArchive(f.entries, async archive => {
+    await symlink(archive, `${archive}.link`);
+    await expect(inspectApplicationOciArchive(`${archive}.link`, f.expected)).rejects.toMatchObject({ code: "ARCHIVE-UNAVAILABLE" });
+  });
+});
+it("does not issue Verification pins from an inspection-shaped caller object", async () => {
+  await expect(applicationVerificationPins({} as ApplicationArtifact, "existing-tag")).rejects.toMatchObject({ code: "UNISSUED-ARTIFACT" });
+});
+it("statically rejects malformed private input without returning a raw URL error", async () => {
+  let caught: unknown;
+  try { await buildApplicationArtifact({ repository: "/unopened", gitSha: "b".repeat(40), expectedDaemonId: "unopened", outputParent: "/unopened", apiBaseUrl: "private-secret-invalid-url" }); }
+  catch (error) { caught = error; }
+  expect(caught).toMatchObject({ code: "BUILD-OR-PACKAGE-UNAVAILABLE" });
+  expect(String(caught).includes("private-secret-invalid-url")).toBe(false);
+});
+it.each(["insecure", "registry"] as const)("the real build owner refuses %s before any Docker call", async mode => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "application-trust-"));
+  try {
+    const context = path.join(directory, "context"), output = path.join(directory, "output"), bin = path.join(directory, "bin");
+    await mkdir(path.join(context, "ops/self-hosted/build-network"), { recursive: true }); await mkdir(output); await mkdir(bin);
+    await writeFile(path.join(context, "ops/self-hosted/build-network/empty-ca.pem"), "");
+    const network = path.join(directory, "network.env");
+    await writeFile(network, mode === "insecure" ? "WISEEFF_BUILD_TLS_POLICY=insecure\n" : "WISEEFF_NPM_REGISTRY=http://registry.invalid\n", { mode: 0o600 });
+    // This can only detect an unintended effect. It cannot return build output
+    // or make a positive build pass. Real trust preparation is unmodified.
+    await writeFile(path.join(bin, "docker"), '#!/bin/sh\nprintf "DOCKER-CALLED\\n" >&2\nexit 99\n', { mode: 0o700 });
+    const result = spawnSync("bash", ["-c", 'source "$1"; wiseeff_upgrade_prepare_application_artifact "${@:2}"', "test",
+      path.resolve("ops/self-hosted/scripts/upgrade-lib.sh"), context, output, "unix:///unused", "unused", "unused", "b".repeat(40), "c".repeat(40), network, "http://127.0.0.1"],
+    { env: { PATH: `${bin}:${process.env.PATH}`, HOME: os.homedir() }, encoding: "utf8", timeout: 5000 });
+    expect(result.status).toBe(10);
+    expect(result.stderr.includes(mode === "insecure" ? "BUILD-TRUST-INSECURE" : "BUILD-TRUST-REGISTRY")).toBe(true);
+    expect(result.stderr.includes("DOCKER-CALLED")).toBe(false);
+  } finally { await rm(directory, { recursive: true }); }
 });

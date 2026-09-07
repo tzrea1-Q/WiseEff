@@ -16,9 +16,11 @@ export type ApplicationArtifact = { readonly packageManifestDigest: string; read
 type ArtifactRecord = { repository: string; manifest: ApplicationPackage; archive: string; directory: string };
 type ApplicationPackage = {
   version: "wiseeff-application-package-v1"; gitSha: string; gitTree: string;
-  sourceArchiveDigest: string; recipeDigest: string;
+  sourceArchiveDigest: string; buildContextDigest: string;
+  recipe: { originalDockerfile: string; resolvedDockerfile: string; originalDigest: string; resolvedDigest: string; rule: "first-from-immutable-digest-v1" };
   services: { api: ApplicationImage; worker: ApplicationImage; web: ApplicationImage };
-  buildTrust: { tlsPolicy: "verify"; transportFingerprint: string; caDigest: string; baseLoadedImageId: string; composeBuildDigest: string; buildLogDigest: string };
+  buildTrust: { tlsPolicy: "verify"; transportFingerprint: string; caDigest: string; baseLoadedImageId: string;
+    baseManifestDigest: string; baseConfigDigest: string; baseArchiveDigest: string; composeBuildDigest: string; buildLogDigest: string };
 };
 const issuedArtifacts = new WeakMap<ApplicationArtifact, ArtifactRecord>();
 const toolRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -27,14 +29,15 @@ function git(repository: string, args: string[]) {
   const result = spawnSync("git", ["-C", repository, ...args], { env: safeEnvironment(), timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
   requireFact(!result.error && result.status === 0, "SOURCE-UNAVAILABLE"); return result.stdout.toString().trim();
 }
-async function runOwned(command: string, args: string[], env: NodeJS.ProcessEnv) {
+async function runOwned(command: string, args: string[], env: NodeJS.ProcessEnv, input?: Buffer, stdout?: number) {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { env, detached: true, stdio: "ignore" });
+    const child = spawn(command, args, { env, detached: true, stdio: [input ? "pipe" : "ignore", stdout ?? "ignore", "ignore"] });
     let expired = false, settled = false, escalation: ReturnType<typeof setTimeout> | undefined;
     const kill = (signal: NodeJS.Signals) => { if (child.pid) try { process.kill(-child.pid, signal); } catch {} };
     const interrupt = () => { expired = true; kill("SIGTERM"); escalation ??= setTimeout(() => kill("SIGKILL"), 2000); };
     process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
     const timer = setTimeout(interrupt, 20 * 60_000);
+    if (input) { child.stdin!.on("error", interrupt); child.stdin!.end(input); }
     // A stopped shell must not leave build/export descendants running. Check
     // group existence after close and finish the exact owned group if needed.
     const finish = (code: number | null, failed = false) => {
@@ -46,6 +49,68 @@ async function runOwned(command: string, args: string[], env: NodeJS.ProcessEnv)
     };
     child.once("error", () => finish(null, true)); child.once("close", code => finish(code));
   });
+}
+
+function trackedArchive(repository: string, commit: string) {
+  const result = spawnSync("git", ["-C", repository, "archive", "--format=tar", commit],
+    { env: safeEnvironment(), timeout: 30_000, maxBuffer: 256 * 1024 * 1024 });
+  requireFact(!result.error && result.status === 0, "SOURCE-ARCHIVE-UNAVAILABLE");
+  return result.stdout;
+}
+function archiveEntries(archive: Buffer) {
+  const entries = new Map<string, { header: number; offset: number; size: number; end: number }>();
+  let offset = 0;
+  while (offset + 512 <= archive.length) {
+    const header = archive.subarray(offset, offset + 512);
+    if (header.every(byte => byte === 0)) { requireFact(archive.subarray(offset).every(byte => byte === 0), "SOURCE-ARCHIVE-INVALID"); break; }
+    const text = (start: number, size: number) => header.subarray(start, start + size).toString().replace(/\0.*$/s, "");
+    const sizeText = text(124, 12), checksum = text(148, 8);
+    requireFact(/^[ 0-7]+$/.test(sizeText) && /^[ 0-7]+$/.test(checksum), "SOURCE-ARCHIVE-INVALID");
+    const size = Number.parseInt(sizeText.trim(), 8), end = offset + 512 + Math.ceil(size / 512) * 512;
+    requireFact(Number.isSafeInteger(size) && size >= 0 && end <= archive.length
+      && header.reduce((sum, byte, i) => sum + (i >= 148 && i < 156 ? 32 : byte), 0) === Number.parseInt(checksum.trim(), 8), "SOURCE-ARCHIVE-INVALID");
+    const name = [text(345, 155), text(0, 100)].filter(Boolean).join("/");
+    requireFact(!name.startsWith("/") && !name.split("/").some(part => part === ".." || part === ".") && !entries.has(name), "SOURCE-ARCHIVE-INVALID");
+    if (header[156] === 103) {
+      // Git emits a global PAX comment with its commit identity. Path/link
+      // overrides and local PAX headers are not admitted by this fixed stream.
+      requireFact(/^[0-9]+ comment=[a-f0-9]{40}\n$/.test(archive.subarray(offset + 512, offset + 512 + size).toString()), "SOURCE-ARCHIVE-UNSUPPORTED");
+    } else {
+      requireFact([0, 48, 53].includes(header[156]), "SOURCE-ARCHIVE-UNSUPPORTED");
+      if (header[156] !== 53) entries.set(name, { header: offset, offset: offset + 512, size, end });
+    }
+    offset = end;
+  }
+  return entries;
+}
+
+/** Deterministic source transformation only; does not issue build provenance.
+ * All source bytes come from the private Git-output buffer, never extracted
+ * files. The sole changed instruction resolves the first FROM to a digest. */
+export function resolveApplicationBuildContext(source: Buffer, immutableBase: string) {
+  requireFact(/^[A-Za-z0-9][A-Za-z0-9._/:\-]*@sha256:[a-f0-9]{64}$/.test(immutableBase), "BASE-REFERENCE-INVALID");
+  const entries = archiveEntries(source), dockerfile = entries.get("ops/self-hosted/Dockerfile"), compose = entries.get("ops/self-hosted/compose.yaml");
+  requireFact(dockerfile && compose, "TRACKED-RECIPE-MISSING");
+  const original = source.subarray(dockerfile.offset, dockerfile.offset + dockerfile.size).toString();
+  const first = /^FROM ([A-Za-z0-9][A-Za-z0-9._/:@\-]*)( AS [A-Za-z0-9_-]+)?\n/.exec(original);
+  requireFact(first, "DOCKERFILE-BASE-UNSUPPORTED");
+  const stages = new Set(first[2] ? [first[2].slice(4)] : []);
+  for (const line of original.slice(first[0].length).split("\n")) {
+    if (/^\s*FROM\b/i.test(line)) {
+      const stage = /^FROM ([A-Za-z0-9_-]+) AS ([A-Za-z0-9_-]+)$/.exec(line);
+      requireFact(stage && stages.has(stage[1]) && !stages.has(stage[2]), "DOCKERFILE-BASE-UNSUPPORTED");
+      stages.add(stage[2]);
+    }
+    const copied = /\b--from=([^\s]+)/.exec(line);
+    requireFact(!copied || stages.has(copied[1]), "DOCKERFILE-BASE-UNSUPPORTED");
+  }
+  const resolved = `FROM ${immutableBase}${first[2] ?? ""}\n${original.slice(first[0].length)}`, bytes = Buffer.from(resolved);
+  const header = Buffer.from(source.subarray(dockerfile.header, dockerfile.offset));
+  header.fill(0, 124, 136); header.write(`${bytes.length.toString(8).padStart(11, "0")}\0`, 124);
+  header.fill(32, 148, 156); header.write(`${header.reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, "0")}\0 `, 148);
+  const archive = Buffer.concat([source.subarray(0, dockerfile.header), header, bytes, Buffer.alloc((512 - bytes.length % 512) % 512), source.subarray(dockerfile.end)]);
+  return { archive, compose: Buffer.from(source.subarray(compose.offset, compose.offset + compose.size)), baseReference: first[1],
+    recipe: { originalDockerfile: original, resolvedDockerfile: resolved, originalDigest: sha(Buffer.from(original)), resolvedDigest: sha(bytes), rule: "first-from-immutable-digest-v1" as const } };
 }
 async function fileDigest(filename: string) {
   const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -62,10 +127,18 @@ async function fileDigest(filename: string) {
 /** Actual build/export owner, not a JSON receipt importer. Output is retained
  * on failure for diagnosis. No image push, tag publication or service startup.
  */
-export async function buildApplicationArtifact(input: {
+export type ApplicationBuildInput = {
   repository: string; gitSha: string; expectedDaemonId: string; outputParent: string;
   apiBaseUrl: string; buildNetworkFile?: string;
-}): Promise<ApplicationArtifact> {
+};
+export async function buildApplicationArtifact(input: ApplicationBuildInput): Promise<ApplicationArtifact> {
+  try { return await buildActual(input); }
+  catch (error) {
+    if (error instanceof ApplicationArtifactError) throw error;
+    throw new ApplicationArtifactError("BUILD-OR-PACKAGE-UNAVAILABLE");
+  }
+}
+async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArtifact> {
   const selection = structuredClone(input);
   requireFact(/^[a-f0-9]{40}$/.test(selection.gitSha), "SOURCE-IDENTITY-INVALID");
   const url = new URL(selection.apiBaseUrl);
@@ -89,9 +162,21 @@ export async function buildApplicationArtifact(input: {
   };
   try {
     const context = path.join(directory, "context"); await mkdir(context, { mode: 0o700 });
+    const source = trackedArchive(repository, selection.gitSha), sourceDigest = sha(source), entries = archiveEntries(source);
+    const sourceFile = (name: string) => {
+      const entry = entries.get(name); requireFact(entry, "TRACKED-RECIPE-MISSING");
+      return Buffer.from(source.subarray(entry.offset, entry.offset + entry.size));
+    };
     const sourceArchive = path.join(directory, "source.tar");
-    git(repository, ["archive", "--format=tar", `--output=${sourceArchive}`, selection.gitSha]);
-    await runOwned("tar", ["-xf", sourceArchive, "-C", context], safeEnvironment());
+    const persist = async (name: string, bytes: Buffer) => {
+      await checkDirectory(); const file = await open(path.join(directory, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); }
+    };
+    await persist("source.tar", source);
+    await mkdir(path.join(context, "ops/self-hosted/build-network"), { recursive: true, mode: 0o700 });
+    const emptyCa = sourceFile("ops/self-hosted/build-network/empty-ca.pem");
+    const defaultCaFile = await open(path.join(context, "ops/self-hosted/build-network/empty-ca.pem"), "wx", 0o600);
+    try { await defaultCaFile.writeFile(emptyCa); } finally { await defaultCaFile.close(); }
     const networkFile = selection.buildNetworkFile ? path.resolve(selection.buildNetworkFile) : path.join(directory, "no-build-network.env");
     if (selection.buildNetworkFile) {
       const stat = await lstat(networkFile);
@@ -100,25 +185,73 @@ export async function buildApplicationArtifact(input: {
     const networkDigest = selection.buildNetworkFile ? await fileDigest(networkFile) : null;
     await checkDirectory();
     const imageName = `wiseeff-artifact-${randomBytes(16).toString("hex")}`;
-    await runOwned("bash", ["-c", 'source "$1"; wiseeff_upgrade_export_application_artifact "${@:2}"', "application-artifact",
+    const prepared = spawnSync("bash", ["-c", 'source "$1"; wiseeff_upgrade_prepare_application_artifact "${@:2}"', "application-artifact",
       path.join(toolRoot, "ops/self-hosted/scripts/upgrade-lib.sh"), context, directory, docker.endpoint, docker.daemonId,
-      imageName, selection.gitSha, gitTree, networkFile, selection.apiBaseUrl], safeEnvironment());
-    await checkDirectory();
-    requireFact(!selection.buildNetworkFile || await fileDigest(networkFile) === networkDigest, "BUILD-NETWORK-CHANGED");
-    const before = JSON.parse(await readFile(path.join(directory, "loaded-image.json"), "utf8"))[0];
-    const after = JSON.parse(await readFile(path.join(directory, "loaded-image-after.json"), "utf8"))[0];
-    const current = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
-    requireFact(before?.Id === after?.Id && before?.Id === current?.Id && before?.Os === current?.Os && before?.Architecture === current?.Architecture, "LOADED-IMAGE-CHANGED");
-    const archive = path.join(directory, "image.tar");
-    const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: `${before.Os}/${before.Architecture}`, gitSha: selection.gitSha, gitTree });
+      imageName, selection.gitSha, gitTree, networkFile, selection.apiBaseUrl],
+    { env: safeEnvironment(), input: sourceFile("ops/self-hosted/compose.yaml"), timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+    requireFact(!prepared.error && prepared.status === 0, "BUILD-MODEL-UNAVAILABLE");
+    const compose = JSON.parse(prepared.stdout.toString());
+    const targets = ["api", "worker", "web"].map(name => compose.services?.[name]);
+    requireFact(targets.every(target => target?.image === `${imageName}:candidate` && target.build?.context === context
+      && target.build?.dockerfile === "ops/self-hosted/Dockerfile" && digestOf(target.build) === digestOf(targets[0].build)), "COMPOSE-BUILD-MISMATCH");
+    const model = targets[0].build;
+    requireFact(Object.keys(model).every(key => ["context", "dockerfile", "args", "secrets"].includes(key))
+      && model.args?.WISEEFF_BUILD_TLS_POLICY === "verify" && model.args?.WISEEFF_SOURCE_SHA === selection.gitSha
+      && model.args?.WISEEFF_SOURCE_TREE === gitTree && Array.isArray(model.secrets) && model.secrets.length === 1
+      && model.secrets[0].source === "wiseeff-corporate-ca" && (model.secrets[0].target ?? model.secrets[0].source) === "wiseeff-corporate-ca"
+      && Object.keys(model.secrets[0]).every(key => ["source", "target"].includes(key)), "COMPOSE-BUILD-OPTION-UNSUPPORTED");
+    await persist("compose.json", prepared.stdout);
     const [transport, ca, extra] = (await readFile(path.join(directory, "build-trust.txt"), "utf8")).trim().split("\n");
     requireFact(/^[a-f0-9]{64}$/.test(transport) && /^[a-f0-9]{64}$/.test(ca) && extra === undefined, "BUILD-TRUST-MISSING");
+    const caBytes = await readFile(path.join(directory, "build-ca.pem"));
+    requireFact(sha(caBytes) === `sha256:${ca}` && !caBytes.includes(0) && !caBytes.toString().includes("PRIVATE KEY"), "BUILD-TRUST-CHANGED");
+    if (!caBytes.equals(emptyCa)) {
+      const parsed = spawnSync("openssl", ["crl2pkcs7", "-nocrl", "-out", "/dev/null"], { input: caBytes, env: safeEnvironment(), timeout: 5000 });
+      requireFact(!parsed.error && parsed.status === 0 && caBytes.toString().includes("-----BEGIN CERTIFICATE-----"), "BUILD-TRUST-INVALID");
+    }
+    const baseReference = /^FROM ([^\s]+) AS [^\s]+\n/.exec(sourceFile("ops/self-hosted/Dockerfile").toString())?.[1];
+    requireFact(baseReference && /^[A-Za-z0-9][A-Za-z0-9._/:\-]+$/.test(baseReference), "DOCKERFILE-BASE-UNSUPPORTED");
+    const baseBefore = JSON.parse(docker.command(["image", "inspect", baseReference]).toString())[0];
+    const repositoryName = baseReference.replace(/:[^/:]+$/, "");
+    const immutable = (baseBefore?.RepoDigests as string[] | undefined)?.filter(value => value === `${repositoryName}@${baseBefore.Id}`);
+    requireFact(digestPattern.test(baseBefore?.Id) && immutable?.length === 1, "IMMUTABLE-BASE-UNAVAILABLE");
+    const save = async (id: string, name: string) => {
+      await checkDirectory(); requireFact(docker.command(["info", "--format", "{{.ID}}"]).toString().trim() === docker.daemonId, "DAEMON-MISMATCH");
+      const output = await open(path.join(directory, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { await runOwned("docker", ["--host", docker.endpoint, "image", "save", id], safeEnvironment(), undefined, output.fd); await output.sync(); }
+      finally { await output.close(); }
+      docker.command(["info", "--format", "{{.ID}}"]); await checkDirectory();
+    };
+    await save(baseBefore.Id, "base.tar");
+    const platform = `${baseBefore.Os}/${baseBefore.Architecture}`;
+    const base = await inspectArchive(path.join(directory, "base.tar"), { loadedImageId: baseBefore.Id, platform, gitSha: "0".repeat(40), gitTree: "0".repeat(40) }, false);
+    const resolved = resolveApplicationBuildContext(source, immutable[0]);
+    requireFact(resolved.baseReference === baseReference, "BASE-REFERENCE-MISMATCH");
+    await persist("build-context.tar", resolved.archive);
+    const buildEnvironment: NodeJS.ProcessEnv = { ...safeEnvironment(), WISEEFF_ARTIFACT_BUILD_CA_BYTES: caBytes.toString() };
+    const args = ["--builder", "default", "--platform", platform, "--load", "--tag", `${imageName}:candidate`, "--progress", "plain", "--file", model.dockerfile,
+      "--secret", "id=wiseeff-corporate-ca,env=WISEEFF_ARTIFACT_BUILD_CA_BYTES"];
+    const allowedArgs = new Set(["VITE_WISEEFF_RUNTIME_MODE", "VITE_WISEEFF_API_BASE_URL", "VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER",
+      "VITE_WISEEFF_APP_VERSION", "VITE_WISEEFF_CONTACT_HREF", "WISEEFF_SOURCE_SHA", "WISEEFF_SOURCE_TREE",
+      "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+      "WISEEFF_NPM_REGISTRY", "WISEEFF_BUILD_TLS_POLICY", "WISEEFF_BUILD_TLS_ACK", "WISEEFF_BUILD_TRANSPORT_FINGERPRINT"]);
+    for (const [key, value] of Object.entries(model.args)) {
+      requireFact(allowedArgs.has(key) && (value === null || typeof value === "string"), "COMPOSE-BUILD-OPTION-UNSUPPORTED");
+      if (value !== null) { buildEnvironment[key] = value as string; args.push("--build-arg", key); }
+    }
+    const builder = JSON.parse(docker.command(["buildx", "inspect", "default", "--format", "{{json .}}"] ).toString());
+    requireFact(builder.Driver === "docker", "BUILDER-UNSUPPORTED");
+    await runOwned("bash", ["-c", 'source "$1"; wiseeff_upgrade_export_application_artifact "${@:2}"', "application-artifact",
+      path.join(toolRoot, "ops/self-hosted/scripts/upgrade-lib.sh"), docker.endpoint, docker.daemonId, directory, ...args, "-"], buildEnvironment, resolved.archive);
+    await checkDirectory();
+    requireFact(!selection.buildNetworkFile || await fileDigest(networkFile) === networkDigest, "BUILD-NETWORK-CHANGED");
+    const before = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
+    await save(before.Id, "image.tar");
+    const current = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
+    requireFact(before?.Id === current?.Id && `${before?.Os}/${before?.Architecture}` === platform, "LOADED-IMAGE-CHANGED");
+    const archive = path.join(directory, "image.tar");
+    const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: `${before.Os}/${before.Architecture}`, gitSha: selection.gitSha, gitTree });
     requireFact(await fileDigest(path.join(directory, "build-ca.pem")) === `sha256:${ca}`, "BUILD-TRUST-CHANGED");
-    const compose = JSON.parse(await readFile(path.join(directory, "compose.json"), "utf8"));
-    const baseBefore = JSON.parse(await readFile(path.join(directory, "base-before.json"), "utf8"))[0];
-    const baseAfter = JSON.parse(await readFile(path.join(directory, "base-after.json"), "utf8"))[0];
-    requireFact(digestPattern.test(baseBefore?.Id) && baseBefore.Id === baseAfter?.Id && Array.isArray(baseBefore?.RootFS?.Layers)
-      && baseBefore.RootFS.Layers.length > 0 && baseBefore.RootFS.Layers.every((layer: string, i: number) => current.RootFS?.Layers?.[i] === layer), "BUILD-BASE-MISMATCH");
     // Do not publish an offline oracle for proxy credentials. The public build
     // model binds presence only; private resolved Compose remains in this dir.
     const publicBuild = structuredClone(compose.services.api.build);
@@ -129,14 +262,16 @@ export async function buildApplicationArtifact(input: {
     if (Array.isArray(publicBuild.secrets)) publicBuild.secrets = publicBuild.secrets.map((secret: { source: string; target?: string }) => ({ source: secret.source, target: secret.target ?? secret.source }));
     const manifest: ApplicationPackage = {
       version: "wiseeff-application-package-v1", gitSha: selection.gitSha, gitTree,
-      sourceArchiveDigest: await fileDigest(sourceArchive), recipeDigest: digestOf({ dockerfile: await fileDigest(path.join(context, "ops/self-hosted/Dockerfile")), compose: await fileDigest(path.join(context, "ops/self-hosted/compose.yaml")), lock: await fileDigest(path.join(context, "package-lock.json")) }),
+      sourceArchiveDigest: sourceDigest, buildContextDigest: sha(resolved.archive), recipe: resolved.recipe,
       services: { api: image, worker: image, web: image },
-      buildTrust: { tlsPolicy: "verify", transportFingerprint: `sha256:${transport}`, caDigest: `sha256:${ca}`, baseLoadedImageId: baseBefore.Id, composeBuildDigest: digestOf(publicBuild), buildLogDigest: await fileDigest(path.join(directory, "build.log")) },
+      buildTrust: { tlsPolicy: "verify", transportFingerprint: `sha256:${transport}`, caDigest: `sha256:${ca}`, baseLoadedImageId: baseBefore.Id,
+        baseManifestDigest: base.manifestDigest, baseConfigDigest: base.configDigest, baseArchiveDigest: base.archiveDigest, composeBuildDigest: digestOf(publicBuild), buildLogDigest: await fileDigest(path.join(directory, "build.log")) },
     };
     for (const filename of [archive, sourceArchive, path.join(directory, "build.log"), path.join(directory, "build-ca.pem")]) {
       const material = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
       try { await material.sync(); } finally { await material.close(); }
     }
+    requireFact(await fileDigest(sourceArchive) === sourceDigest && await fileDigest(path.join(directory, "build-context.tar")) === sha(resolved.archive), "SOURCE-ARCHIVE-CHANGED");
     await checkDirectory();
     const manifestPath = path.join(directory, "application-package.json");
     const output = await open(manifestPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
@@ -154,17 +289,38 @@ export async function buildApplicationArtifact(input: {
  * must obtain that selection from its authorized release owner. No tag is made.
  */
 export async function applicationVerificationPins(artifact: ApplicationArtifact, releaseTag?: string) {
+  try { return await projectPins(artifact, releaseTag); }
+  catch (error) {
+    if (error instanceof ApplicationArtifactError) throw error;
+    throw new ApplicationArtifactError("PACKAGE-UNAVAILABLE");
+  }
+}
+async function projectPins(artifact: ApplicationArtifact, releaseTag?: string) {
   const record = issuedArtifacts.get(artifact);
   requireFact(record, "UNISSUED-ARTIFACT");
   requireFact(typeof releaseTag === "string" && releaseTag.length > 0 && !releaseTag.startsWith("-") && !releaseTag.includes("..") && /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(releaseTag), "RELEASE-IDENTITY-REQUIRED");
   const tagObject = git(record.repository, ["rev-parse", `refs/tags/${releaseTag}`]);
   requireFact(git(record.repository, ["rev-parse", `refs/tags/${releaseTag}^{commit}`]) === record.manifest.gitSha, "RELEASE-SOURCE-MISMATCH");
-  requireFact(await fileDigest(artifact.manifestPath) === artifact.packageManifestDigest, "PACKAGE-CHANGED");
-  const current = await inspectApplicationOciArchive(record.archive, artifact.image);
-  requireFact(digestOf(current) === digestOf(artifact.image), "PACKAGE-CHANGED");
+  const manifest = await readApplicationArtifact(artifact);
   requireFact(git(record.repository, ["rev-parse", `refs/tags/${releaseTag}`]) === tagObject, "RELEASE-IDENTITY-CHANGED");
   return Object.freeze({ gitSha: record.manifest.gitSha, releaseTag, packageManifestDigest: artifact.packageManifestDigest,
-    apiImageDigest: current.manifestDigest, workerImageDigest: current.manifestDigest, webImageDigest: current.manifestDigest });
+    apiImageDigest: manifest.services.api.manifestDigest, workerImageDigest: manifest.services.worker.manifestDigest, webImageDigest: manifest.services.web.manifestDigest });
+}
+
+/** Reobserve this process's issued build before downstream consumption. This
+ * does not import arbitrary JSON receipts or require/issue release approval. */
+export async function readApplicationArtifact(artifact: ApplicationArtifact): Promise<ApplicationPackage> {
+  try {
+    const record = issuedArtifacts.get(artifact);
+    requireFact(record, "UNISSUED-ARTIFACT");
+    requireFact(await fileDigest(artifact.manifestPath) === artifact.packageManifestDigest, "PACKAGE-CHANGED");
+    const current = await inspectApplicationOciArchive(record.archive, artifact.image);
+    requireFact(digestOf(current) === digestOf(artifact.image), "PACKAGE-CHANGED");
+    return structuredClone(record.manifest);
+  } catch (error) {
+    if (error instanceof ApplicationArtifactError) throw error;
+    throw new ApplicationArtifactError("PACKAGE-UNAVAILABLE");
+  }
 }
 const requireFact: (value: unknown, code: string) => asserts value = (value, code) => {
   if (!value) throw new ApplicationArtifactError(code);
@@ -186,6 +342,9 @@ const layerTypes = new Set(["application/vnd.oci.image.layer.v1.tar", "applicati
  * Limits bound malformed inputs; layer bytes are streamed rather than buffered.
  */
 export async function inspectApplicationOciArchive(filename: string, input: ApplicationImageExpectation): Promise<ApplicationImage> {
+  return inspectArchive(filename, input, true);
+}
+async function inspectArchive(filename: string, input: ApplicationImageExpectation, requireApplicationLabels: boolean): Promise<ApplicationImage> {
   const expected = structuredClone(input);
   requireFact(digestPattern.test(expected.loadedImageId) && /^[a-f0-9]{40}$/.test(expected.gitSha) && /^[a-f0-9]{40}$/.test(expected.gitTree)
     && /^linux\/(amd64|arm64)(\/v[0-9]+)?$/.test(expected.platform), "EXPECTED-IDENTITY-INVALID");
@@ -248,6 +407,10 @@ export async function inspectApplicationOciArchive(filename: string, input: Appl
     const visit = async (index: any, depth: number, ancestors: string[]) => {
       requireFact(depth < 8 && index.schemaVersion === 2 && Array.isArray(index.manifests) && index.manifests.length > 0 && index.manifests.length <= 64, "OCI-INDEX-INVALID");
       for (const descriptor of index.manifests as Descriptor[]) {
+        // A platform index may reference other platforms absent from this local
+        // save. Its raw bytes are authenticated by its parent; require every
+        // referenced blob for the selected platform, not unrelated platforms.
+        if (descriptor.platform && [descriptor.platform.os, descriptor.platform.architecture].join("/") !== expected.platform.split("/").slice(0, 2).join("/")) continue;
         const body = await json(blob(descriptor));
         if (descriptor.mediaType === indexType) await visit(body, depth + 1, [...ancestors, descriptor.digest]);
         else {
@@ -260,7 +423,8 @@ export async function inspectApplicationOciArchive(filename: string, input: Appl
           if (body.artifactType || body.config?.mediaType !== configType) continue;
           const platform = [configuration.os, configuration.architecture, configuration.variant].filter(Boolean).join("/");
           if (platform !== expected.platform) continue;
-          if (descriptor.platform) requireFact([descriptor.platform.os, descriptor.platform.architecture, descriptor.platform.variant].filter(Boolean).join("/") === platform, "OCI-PLATFORM-MISMATCH");
+          if (descriptor.platform) requireFact([descriptor.platform.os, descriptor.platform.architecture].join("/") === [configuration.os, configuration.architecture].join("/")
+            && (!configuration.variant || !descriptor.platform.variant || configuration.variant === descriptor.platform.variant), "OCI-PLATFORM-MISMATCH");
           candidates.push({ descriptor, body, ancestors });
         }
       }
@@ -273,9 +437,9 @@ export async function inspectApplicationOciArchive(filename: string, input: Appl
     // never relabel either form as the platform image manifest/config digest.
     requireFact([...ancestors, descriptor.digest, body.config.digest].includes(expected.loadedImageId), "OCI-LOADED-IMAGE-MISMATCH");
     const configuration = await json(blob(body.config));
-    requireFact(configuration.config?.Labels?.["org.opencontainers.image.revision"] === expected.gitSha
+    requireFact(!requireApplicationLabels || (configuration.config?.Labels?.["org.opencontainers.image.revision"] === expected.gitSha
       && configuration.config?.Labels?.["org.wiseeff.source.tree"] === expected.gitTree
-      && configuration.config?.Labels?.["org.wiseeff.build-tls-policy"] === "verify", "OCI-SOURCE-OR-POLICY-MISMATCH");
+      && configuration.config?.Labels?.["org.wiseeff.build-tls-policy"] === "verify"), "OCI-SOURCE-OR-POLICY-MISMATCH");
     requireFact(Array.isArray(body.layers) && Array.isArray(configuration.rootfs?.diff_ids) && configuration.rootfs.diff_ids.length === body.layers.length, "OCI-LAYERS-INVALID");
     const layers = body.layers.map((layer: Descriptor) => { requireFact(layerTypes.has(layer.mediaType), "OCI-LAYER-UNSUPPORTED"); blob(layer); return layer.digest; });
     const after = await file.stat({ bigint: true }), named = await lstat(filename, { bigint: true });
