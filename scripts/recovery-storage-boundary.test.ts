@@ -9,6 +9,19 @@ describe("authorized recovery ownership and dependency contract", () => {
   it("registers every storage file and keeps check roots out of the execution dependency graph", () => {
     expect(checkRecoveryStorageBoundary(readRecoveryBoundarySources(), RECOVERY_STORAGE_OWNERSHIP)).toEqual([]);
   });
+  it.each([
+    "server/modules/release-verification/core/digest.ts",
+    ...["index", "enums", "failures", "ids", "legacyIdentifiers", "normalization", "operations", "results"]
+      .map(name => `server/modules/parameter-catalog-contract/${name}.ts`),
+  ])("still scans the registered activation digest dependency %s", file => {
+    const sources = readRecoveryBoundarySources();
+    sources[file] += "\nconst forbidden = ['pg', 'restore'].join('_');";
+    expect(checkRecoveryStorageBoundary(sources)).toContain(`restore-effect:${file}`);
+    sources[file] += "\nimport './unregistered-digest-helper';";
+    const sibling = file.slice(0, file.lastIndexOf("/") + 1) + "unregistered-digest-helper.ts";
+    sources[sibling] = "export const harmless = true;";
+    expect(checkRecoveryStorageBoundary(sources)).toContain(`unregistered-local:${sibling}`);
+  });
   it.each(["hidden.js", "nested/hidden.mjs", "hidden.test.ts", "hidden.sh"])("refuses unregistered storage module %s", name => {
     expect(check({ [`ops/self-hosted/storage/${name}`]: "export const x = 1;" })).toContain(`unregistered:ops/self-hosted/storage/${name}`);
   });

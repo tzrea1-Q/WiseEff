@@ -2,6 +2,14 @@
 
 > English: [English](README.md)
 
+共享 journal 使用既有 Release Verification 摘要校验激活记录。支持模块清单逐项登记
+`server/modules/release-verification/core/digest.ts`，以及公共
+`parameter-catalog-contract` 的 `index`、`enums`、`failures`、`ids`、
+`legacyIdentifiers`、`normalization`、`operations`、`results`。它们提供序列化、
+校验和不可变合同声明，不执行恢复。登记不免除对模块内容及依赖的扫描：每个模块
+均有注入混淆恢复命令和未登记邻接模块的反例。检查层到执行层的禁令、Catalog
+可信基线保持不变。本增量修复候选 `3c0fe1d66` 暴露的依赖登记遗漏，不扩大恢复授权。
+
 本分片落实用户在 PR #824 报告 `f00f94435d128ff8706ffadedabbee507f79781b`
 之后明确批准的独立执行合同，可单独审查。不授权生产连接、恢复、队列投递、代理开放或发布。
 

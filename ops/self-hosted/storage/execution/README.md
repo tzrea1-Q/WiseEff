@@ -33,6 +33,18 @@ S10-PER no-reimplementation and `DROP DATABASE` / `FLUSHALL` prohibitions remain
 production layers. This is a finite static boundary plus behavioral acceptance,
 not a claim that text scanning proves arbitrary JavaScript safe.
 
+The shared journal now validates activation records with the existing Release
+Verification digest. Its exact support registry includes
+`server/modules/release-verification/core/digest.ts` and the public
+`parameter-catalog-contract` modules `index`, `enums`, `failures`, `ids`,
+`legacyIdentifiers`, `normalization`, `operations`, and `results`. These modules
+provide serialization, validation and immutable contract declarations, not restore
+dispatch. Registration does not exempt their contents or dependencies from scanning:
+each has a regression injecting an obfuscated restore token and an unregistered
+sibling. Check-to-execution prohibitions and the trusted Catalog baseline remain
+unchanged. This closes the missing dependency registration exposed by candidate
+`3c0fe1d66`; it does not expand recovery authorization.
+
 ## Authorization and journal consumption
 
 Recovery approval is persisted as `recoveryApproval`: the exact approval,

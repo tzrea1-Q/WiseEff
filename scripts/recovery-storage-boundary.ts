@@ -17,6 +17,17 @@ const supportModules = new Set([
   "ops/self-hosted/scripts/parameter-catalog-upgrade/stateMachine.ts",
   "scripts/isolated-upgrade-docker.ts", "scripts/run-m5-smoke.shared.ts",
   "server/config/xiaozeLlmConfig.ts", "server/modules/logs/objectStore.ts", "server/modules/logs/s3ObjectStore.ts",
+  // The journal consumes the existing activation digest. Register its complete
+  // public-contract dependency graph; every module remains transitively scanned.
+  "server/modules/release-verification/core/digest.ts",
+  "server/modules/parameter-catalog-contract/index.ts",
+  "server/modules/parameter-catalog-contract/enums.ts",
+  "server/modules/parameter-catalog-contract/failures.ts",
+  "server/modules/parameter-catalog-contract/ids.ts",
+  "server/modules/parameter-catalog-contract/legacyIdentifiers.ts",
+  "server/modules/parameter-catalog-contract/normalization.ts",
+  "server/modules/parameter-catalog-contract/operations.ts",
+  "server/modules/parameter-catalog-contract/results.ts",
 ]);
 /** Explicit versioned ownership: adding files is a contract change, not an
  * automatic exemption. Check modules may not load test or execution modules. */
@@ -132,7 +143,7 @@ export function checkRecoveryStorageBoundary(sources: Readonly<Record<string, st
       if (ownership[file] === "test" || /\.test\.[cm]?[jt]sx?$/.test(file)) { errors.add(`test-dependency:${root}:${file}`); return; }
       if (ownership[file] === "data") { errors.add(`data-dependency:${root}:${file}`); return; }
       for (const name of dependencies(file, sources[file], reason => {
-        if (layer !== "execution" || !reason.startsWith("restore-effect:")) errors.add(reason);
+        if (layer !== "execution" || ownership[file] !== "execution" || !reason.startsWith("restore-effect:")) errors.add(reason);
       })) {
         if (!name.startsWith(".")) {
           if (!externalDependencies.has(name)) errors.add(`unapproved-external:${file}:${name}`);
