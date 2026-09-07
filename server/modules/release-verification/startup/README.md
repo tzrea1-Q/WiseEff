@@ -136,6 +136,12 @@ The same refusal applies when the definer owner has only non-report Catalog
 table/column SELECT or Catalog function EXECUTE: a read-only proxy still crosses
 the report/Catalog boundary. The six 0139 report reads are excluded from this
 extra Catalog-read test; no report query needs protected function EXECUTE.
+Definer owners also cannot delegate additional effective function EXECUTE or
+application relation/column SELECT beyond the report login's capabilities. This
+comparison includes private functions and owner-rights views across schemas;
+moving an inner function outside Catalog does not hide its extra authority.
+Ordinary built-ins executable by both identities and the six report reads do
+not differ. Function bodies are not parsed or matched as SQL text.
 Explicit function grants and user-schema definers delegating elevated/write
 capability are rejected. This is a purpose-specific login precondition, not a
 replacement for the complete migration/permission manifest or release verifier.

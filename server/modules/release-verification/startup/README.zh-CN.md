@@ -109,6 +109,10 @@ owner 没有表写权限或 schema CREATE 也拒绝。
 definer owner 仅有非报告 Catalog 表／列 SELECT 或 Catalog 函数 EXECUTE 时同样
 拒绝：只读代理也会越过报告／Catalog 边界。0139 六表读取不计入额外 Catalog
 读取检查；正式报告查询不需要受保护函数 EXECUTE。
+同时比较 definer owner 与报告登录的有效能力：额外函数 EXECUTE 或业务关系／列
+SELECT 均拒绝委托。检查覆盖跨 schema 私有函数及 owner-rights view；将内层函数
+移出 Catalog 不能隐藏额外权限。双方均可执行的普通内建函数和六张报告表读取
+不构成差异。不解析函数体或用 SQL 文本匹配判断安全性。
 拒绝显式函数授权及用户 schema 中代理高权／写能力的 definer。此处仅是专用连接
 前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
 

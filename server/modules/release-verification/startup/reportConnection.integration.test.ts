@@ -197,3 +197,49 @@ it("retains formal 0139 report reads with a definer owner limited to the same si
     await admin.query(`drop function public.report_read_proxy(); revoke catalog_verifier_role from ${owner}; drop role ${owner}`);
   }
 });
+
+it.each(["public-function", "private-function", "private-view", "split-view-columns"])("refuses owner-only delegation through %s", async route => {
+  const ownerName = `delegated_owner_${randomBytes(8).toString("hex")}`;
+  const owner = pg.escapeIdentifier(ownerName);
+  const schemaName = `report_private_${randomBytes(8).toString("hex")}`;
+  const schema = pg.escapeIdentifier(schemaName);
+  const privateSchema = route === "private-function" || route === "private-view";
+  const qualified = `${privateSchema ? schema : "public"}.report_hidden_inner`;
+  const isFunction = route.endsWith("function");
+  await admin.query(`create role ${owner} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication`);
+  if (privateSchema) await admin.query(`create schema ${schema}; grant usage on schema ${schema} to ${owner}`);
+  if (isFunction) {
+    await admin.query(`create function ${qualified}() returns bigint language sql security definer
+      set search_path=pg_catalog as 'select count(current_catalog_release_id) from parameter_catalog.catalog_state';
+      revoke all on function ${qualified}() from public; grant execute on function ${qualified}() to ${owner}`);
+  } else {
+    await admin.query(`create view ${qualified} as select
+      (select count(current_catalog_release_id) from parameter_catalog.catalog_state) as protected, 7 as visible`);
+    if (route === "split-view-columns") await admin.query(`grant select(protected) on ${qualified} to ${owner}; grant select(visible) on ${qualified} to public`);
+    else await admin.query(`grant select on ${qualified} to ${owner}`);
+  }
+  const body = isFunction ? `select ${qualified}()` : `select protected from ${qualified}`;
+  await admin.query(`create function public.report_outer_proxy() returns bigint language sql security definer
+    set search_path=pg_catalog as '${body}'; alter function public.report_outer_proxy() owner to ${owner}`);
+  const direct = createPostgresDatabase(url);
+  try {
+    await expect(direct.query("select current_catalog_release_id from parameter_catalog.catalog_state")).rejects.toMatchObject({ code: "42501" });
+    await expect(direct.query(isFunction ? `select ${qualified}()` : `select protected from ${qualified}`)).rejects.toMatchObject({ code: "42501" });
+    if (route === "split-view-columns") {
+      expect((await direct.query(`select visible from ${qualified}`)).rows).toEqual([{ visible: 7 }]);
+      expect((await admin.query(`select has_table_privilege($1,$3,'SELECT') as owner_table,
+        has_table_privilege($2,$3,'SELECT') as login_table,
+        has_any_column_privilege($1,$3,'SELECT') as owner_column,
+        has_any_column_privilege($2,$3,'SELECT') as login_column`, [ownerName, name, qualified])).rows)
+        .toEqual([{ owner_table: false, login_table: false, owner_column: true, login_column: true }]);
+    }
+    expect((await direct.query("select public.report_outer_proxy()::text as value")).rows).toEqual([{ value: "0" }]);
+    await expect(openStartupReportDatabase({ connectionString: url })).rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" });
+  } finally {
+    await direct.close();
+    await admin.query("drop function public.report_outer_proxy()");
+    await admin.query(isFunction ? `drop function ${qualified}()` : `drop view ${qualified}`);
+    if (privateSchema) await admin.query(`drop schema ${schema}`);
+    await admin.query(`drop role ${owner}`);
+  }
+});

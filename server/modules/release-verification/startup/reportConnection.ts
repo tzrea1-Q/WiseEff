@@ -72,6 +72,18 @@ select session_user=current_user as same_identity,
               or pg_catalog.has_any_column_privilege(p.proowner,c.oid,'SELECT') end)
         or exists(select 1 from pg_catalog.pg_proc protected join pg_catalog.pg_namespace s on s.oid=protected.pronamespace
           where s.nspname='parameter_catalog' and pg_catalog.has_function_privilege(p.proowner,protected.oid,'EXECUTE'))
+        or exists(select 1 from pg_catalog.pg_proc delegated
+          where pg_catalog.has_function_privilege(p.proowner,delegated.oid,'EXECUTE')
+            and not pg_catalog.has_function_privilege(session_user,delegated.oid,'EXECUTE'))
+        or exists(select 1 from app_relations c where
+          case when c.relkind='S' then pg_catalog.has_sequence_privilege(p.proowner,c.oid,'SELECT')
+            and not pg_catalog.has_sequence_privilege(session_user,c.oid,'SELECT')
+          else (pg_catalog.has_table_privilege(p.proowner,c.oid,'SELECT')
+            and not pg_catalog.has_table_privilege(session_user,c.oid,'SELECT'))
+            or exists(select 1 from pg_catalog.pg_attribute a where a.attrelid=c.oid
+              and a.attnum>0 and not a.attisdropped
+              and pg_catalog.has_column_privilege(p.proowner,c.oid,a.attnum,'SELECT')
+              and not pg_catalog.has_column_privilege(session_user,c.oid,a.attnum,'SELECT')) end)
       )))) as unsafe_definers,
   (select count(*)::int from pg_catalog.pg_parameter_acl p cross join lateral pg_catalog.aclexplode(p.paracl) a
     left join pg_catalog.pg_settings s on s.name=p.parname
