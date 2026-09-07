@@ -30,8 +30,12 @@ ACL 的实际角色、owner、grantor 权能。Catalog 管理角色名或 0137 I
 原核验过的 PostgreSQL 恢复包仍是恢复权威。另保留效果前的精确库存：对象、
 列、owner OID，原始可空 ACL 与默认值区别，grantor/grantee、grant option
 及成员边。库存绑定同一目标、源、P12 intent/binding、已批准报告、原包及
-capture、host run 和 attempt。它是证据，不是新增的 GRANT 恢复接口；
-新传入 ACL JSON 的摘要不能证明属于原恢复边界。效果后回读必须证明仅
+capture、host run 和 attempt。它描述源侧本次 CAS 的即时前像，不冒充
+capture 时 ACL，也不是新增 GRANT 恢复接口。整状态恢复回到原 capture，
+不承诺逐项恢复 capture 后的权限变化。原 snapshot dump 已保留 owner 与
+ACL；沿用原 producer、包、源及角色资格核验，不另跑 restore 或虚构
+逐 ACL 的归档证明。源 OID 只绑定实际 CAS；跨恢复用 schema/table/column
+及角色名识别对象，不能要求恢复实例 OID 不变。效果后回读必须证明仅
 选定授权发生变化。
 
 REVOKE 前须已耐久保存现有 host pending 边界与专属 0137 P13 step intent。

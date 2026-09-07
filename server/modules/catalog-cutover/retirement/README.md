@@ -36,10 +36,15 @@ The original verified PostgreSQL package remains the restoration authority. An
 exact pre-effect inventory retains object/column/owner OIDs, nullable raw ACLs
 versus defaults, grantor/grantee identities, grant options and membership edges.
 It binds the same target, source, P12 intent/binding, approved report, retained
-package/capture, host run and attempt. This inventory is evidence, not a new
-GRANT-based restore interface. A newly supplied ACL JSON digest cannot prove
-that it belongs to the original recovery boundary. Post-effect readback must
-prove that only the selected grants changed.
+package/capture, host run and attempt. This inventory describes the immediate
+source-side CAS preimage, not capture-time ACLs or a new GRANT-based restore
+interface. Whole-state recovery returns to the original captured state, not to
+each post-capture privilege change. The original snapshot dump already includes
+owners and ACLs; its existing verified producer/package/source/role boundary is
+retained without an additional restore or an invented per-ACL archive oracle.
+Source OIDs bind the live CAS only; logical schema/table/column and role names
+identify objects across restore, where OIDs can change. Post-effect readback
+must prove that only the selected grants changed.
 
 The existing host pending boundary and a dedicated 0137 P13 step intent must be
 durable before REVOKE. Every write and COMMIT retains the root's last-await lock,
