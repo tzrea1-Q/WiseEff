@@ -109,8 +109,8 @@ Logs (SHA256):
 - `/tmp/pr824-successor-role-setting-red.log`:
   `231778e3f551dc687266aea36b4a34661becc8e7fa3eda1efcb39cddfd0297ea`.
 
-Independent Spec reviewed the complete fixed source without a remaining P1/P2.
-Standards is independently owned; review outcomes do not change any run's SHA.
+Independent Spec and Standards reviewed the complete fixed source and evidence
+with no remaining P1/P2 in this scope. Review outcomes do not change any run's SHA.
 
 Exclusive paths are the existing bootstrap credential module/owned integration
 test and fixture, SQL fence module/test where needed for its own inspection,

@@ -82,7 +82,7 @@ bootstrap保留原28例，新增两例共享原真实准备状态，各自沿用
 - `/tmp/pr824-successor-role-setting-red.log`：
   `231778e3f551dc687266aea36b4a34661becc8e7fa3eda1efcb39cddfd0297ea`。
 
-独立Spec对完整固定源码复审无剩余P1/P2；Standards由另一审查者独立负责。
+独立Spec及Standards对完整固定源码和证据复审，本范围内无剩余P1/P2。
 审查结论不会改变任何执行的SHA身份。
 
 唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
