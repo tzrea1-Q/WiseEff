@@ -26,7 +26,7 @@ const issuedArtifacts = new WeakMap<ApplicationArtifact, ArtifactRecord>();
 const toolRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const safeEnvironment = () => ({ PATH: process.env.PATH, HOME: os.homedir(), LANG: "C", LC_ALL: "C" });
 function git(repository: string, args: string[]) {
-  const result = spawnSync("git", ["-C", repository, ...args], { env: safeEnvironment(), timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync("git", ["--no-replace-objects", "-C", repository, ...args], { env: safeEnvironment(), timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
   requireFact(!result.error && result.status === 0, "SOURCE-UNAVAILABLE"); return result.stdout.toString().trim();
 }
 async function runOwned(command: string, args: string[], env: NodeJS.ProcessEnv, input?: Buffer, stdout?: number) {
@@ -51,9 +51,15 @@ async function runOwned(command: string, args: string[], env: NodeJS.ProcessEnv,
   });
 }
 
-function trackedArchive(repository: string, commit: string) {
-  const result = spawnSync("git", ["-C", repository, "archive", "--format=tar", commit],
-    { env: safeEnvironment(), timeout: 30_000, maxBuffer: 256 * 1024 * 1024 });
+/** Native Git materialization, not an artifact issuer. The new bare metadata
+ * has no local attributes/template. Only tracked tree attributes apply. */
+export function captureApplicationSourceArchive(repository: string, commit: string, privateDirectory: string) {
+  const isolated = path.join(privateDirectory, "source.git");
+  const cloned = spawnSync("git", ["--no-replace-objects", "clone", "--bare", "--shared", "--no-hardlinks", "--template=", "--", repository, isolated],
+    { env: safeEnvironment(), timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+  requireFact(!cloned.error && cloned.status === 0, "SOURCE-ARCHIVE-UNAVAILABLE");
+  const result = spawnSync("git", ["--no-replace-objects", "-c", "core.attributesFile=/dev/null", "--git-dir", isolated, "archive", "--format=tar", commit],
+    { env: { ...safeEnvironment(), GIT_ATTR_NOSYSTEM: "1" }, timeout: 30_000, maxBuffer: 256 * 1024 * 1024 });
   requireFact(!result.error && result.status === 0, "SOURCE-ARCHIVE-UNAVAILABLE");
   return result.stdout;
 }
@@ -162,7 +168,7 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
   };
   try {
     const context = path.join(directory, "context"); await mkdir(context, { mode: 0o700 });
-    const source = trackedArchive(repository, selection.gitSha), sourceDigest = sha(source), entries = archiveEntries(source);
+    const source = captureApplicationSourceArchive(repository, selection.gitSha, directory), sourceDigest = sha(source), entries = archiveEntries(source);
     const sourceFile = (name: string) => {
       const entry = entries.get(name); requireFact(entry, "TRACKED-RECIPE-MISSING");
       return Buffer.from(source.subarray(entry.offset, entry.offset + entry.size));
@@ -229,7 +235,8 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
     requireFact(resolved.baseReference === baseReference, "BASE-REFERENCE-MISMATCH");
     await persist("build-context.tar", resolved.archive);
     const buildEnvironment: NodeJS.ProcessEnv = { ...safeEnvironment(), WISEEFF_ARTIFACT_BUILD_CA_BYTES: caBytes.toString() };
-    const args = ["--builder", "default", "--platform", platform, "--load", "--tag", `${imageName}:candidate`, "--progress", "plain", "--file", model.dockerfile,
+    const metadataPath = path.join(directory, "build-result.json");
+    const args = ["--builder", "default", "--platform", platform, "--load", "--tag", `${imageName}:candidate`, "--metadata-file", metadataPath, "--progress", "plain", "--file", model.dockerfile,
       "--secret", "id=wiseeff-corporate-ca,env=WISEEFF_ARTIFACT_BUILD_CA_BYTES"];
     const allowedArgs = new Set(["VITE_WISEEFF_RUNTIME_MODE", "VITE_WISEEFF_API_BASE_URL", "VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER",
       "VITE_WISEEFF_APP_VERSION", "VITE_WISEEFF_CONTACT_HREF", "WISEEFF_SOURCE_SHA", "WISEEFF_SOURCE_TREE",
@@ -245,12 +252,20 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
       path.join(toolRoot, "ops/self-hosted/scripts/upgrade-lib.sh"), docker.endpoint, docker.daemonId, directory, ...args, "-"], buildEnvironment, resolved.archive);
     await checkDirectory();
     requireFact(!selection.buildNetworkFile || await fileDigest(networkFile) === networkDigest, "BUILD-NETWORK-CHANGED");
-    const before = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
+    const metadataDigest = await fileDigest(metadataPath);
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
+    requireFact(await fileDigest(metadataPath) === metadataDigest && digestPattern.test(metadata["containerimage.digest"])
+      && digestPattern.test(metadata["containerimage.config.digest"]), "BUILD-RESULT-UNAVAILABLE");
+    // BuildKit's own result chooses the immutable object. The mutable output
+    // tag is only a later drift check, never the origin of build identity.
+    const before = JSON.parse(docker.command(["image", "inspect", metadata["containerimage.digest"]]).toString())[0];
+    requireFact(before?.Id === metadata["containerimage.digest"], "BUILD-RESULT-MISMATCH");
     await save(before.Id, "image.tar");
     const current = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
     requireFact(before?.Id === current?.Id && `${before?.Os}/${before?.Architecture}` === platform, "LOADED-IMAGE-CHANGED");
     const archive = path.join(directory, "image.tar");
     const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: `${before.Os}/${before.Architecture}`, gitSha: selection.gitSha, gitTree });
+    requireFact(image.configDigest === metadata["containerimage.config.digest"], "BUILD-RESULT-MISMATCH");
     requireFact(await fileDigest(path.join(directory, "build-ca.pem")) === `sha256:${ca}`, "BUILD-TRUST-CHANGED");
     // Do not publish an offline oracle for proxy credentials. The public build
     // model binds presence only; private resolved Compose remains in this dir.

@@ -57,6 +57,13 @@ source/context digest 与实际基础镜像图；明确解析后配方不等于 
 可变 CA 路径。既有 Dockerfile 证书安装策略不变。原生 tar 测试验证实际字节转换，
 不冒充真实镜像构建。
 
+后续真实 Git 反例证实未跟踪 `info/attributes` 能覆盖归档内容：18 收集、17 通过、
+1 失败。现使用空 template 的全新 bare 对象视图，禁外部 attributes，并在身份与
+archive 读取中禁 replacement objects；跟踪的 `.gitattributes` 仍生效。19 项 Green
+另含真实 replacement-ref 反例。构建输出由 BuildKit 实际 metadata manifest/config
+结果选定，再按不可变身份 inspect/save；nonce 输出 tag 仅作漂移检查，不作为构建
+身份来源。修订后的真实构建结果仍待执行。
+
 原 scripts suite 收集 `applicationArtifact.test.ts`。独立真实验收命令必须显式提供
 源、独立实测 daemon、新私有输出目录，不以 opt-in skip 或零用例冒成功；目前尚未
 注册 mandatory CI：

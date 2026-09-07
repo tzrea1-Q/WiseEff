@@ -68,6 +68,15 @@ environment secret; the builder never reopens a mutable CA path. The existing
 Dockerfile's certificate installation policy is unchanged. Native tar tests
 exercise the actual stream transformation, not an image build.
 
+Further native Git regression exposed local `info/attributes` overriding tracked
+archive contents: 18 collected, 17 passed, one failed. Materialization now uses
+a new empty-template bare object view, disables external attributes, and disables
+replacement objects for both identity and archive reads. Tracked `.gitattributes`
+still applies. The 19-case Green includes a real replacement-ref counterexample.
+Build output is selected from BuildKit's actual metadata manifest/config result,
+then inspected/saved by immutable identity; a nonce output tag is only a drift
+check, not build identity evidence. Revised real-build results remain pending.
+
 The normal scripts suite collects `applicationArtifact.test.ts`. The additional
 real acceptance command deliberately requires explicit source, independently
 observed daemon and new private output arguments; there is no opt-in skip or

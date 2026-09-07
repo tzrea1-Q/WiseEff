@@ -4,7 +4,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
-import { inspectApplicationOciArchive, buildApplicationArtifact, applicationVerificationPins, resolveApplicationBuildContext, type ApplicationArtifact } from "./applicationArtifact";
+import { inspectApplicationOciArchive, buildApplicationArtifact, applicationVerificationPins, resolveApplicationBuildContext, captureApplicationSourceArchive, type ApplicationArtifact } from "./applicationArtifact";
 
 it("refuses a Docker-only archive instead of relabeling its config ID as a manifest", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "application-oci-"));
@@ -21,6 +21,48 @@ it("refuses a Docker-only archive instead of relabeling its config ID as a manif
 // Independent, minimal ustar fixture: no image builder or production parser is
 // used to manufacture expected inspection output.
 const hash = (value: Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+it("ignores untracked repository export attributes while preserving tracked archive attributes", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "application-git-attributes-"));
+  const run = (args: string[]) => {
+    const result = spawnSync("git", ["-C", directory, ...args], { env: { PATH: process.env.PATH, HOME: directory } });
+    expect(result.status).toBe(0); return result.stdout.toString().trim();
+  };
+  try {
+    run(["init", "--template="]);
+    await writeFile(path.join(directory, "kept.ts"), "tracked source");
+    await writeFile(path.join(directory, "tracked-excluded.txt"), "intentional archive exclusion");
+    await writeFile(path.join(directory, ".gitattributes"), "tracked-excluded.txt export-ignore\n");
+    run(["add", "."]); run(["-c", "user.name=synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-m", "source"]);
+    const commit = run(["rev-parse", "HEAD"]);
+    await mkdir(path.join(directory, ".git/info"), { recursive: true });
+    await writeFile(path.join(directory, ".git/info/attributes"), "kept.ts export-ignore\n");
+    const output = path.join(directory, "private"); await mkdir(output, { mode: 0o700 });
+    const archive = captureApplicationSourceArchive(directory, commit, output);
+    const listing = spawnSync("tar", ["-tf", "-"], { input: archive });
+    expect(listing.status).toBe(0);
+    expect(listing.stdout.toString().split("\n")).toContain("kept.ts");
+    expect(listing.stdout.toString().split("\n")).not.toContain("tracked-excluded.txt");
+  } finally { await rm(directory, { recursive: true }); }
+});
+it("uses the physical selected Git object despite local replacement refs", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "application-git-replace-"));
+  const run = (args: string[]) => {
+    const result = spawnSync("git", ["-C", directory, ...args], { env: { PATH: process.env.PATH, HOME: directory } });
+    expect(result.status).toBe(0); return result.stdout.toString().trim();
+  };
+  try {
+    run(["init", "--template="]);
+    await writeFile(path.join(directory, "kept.ts"), "physical selected source"); run(["add", "."]);
+    const commit = () => { run(["-c", "user.name=synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-am", "source"]); return run(["rev-parse", "HEAD"]); };
+    const original = commit();
+    await writeFile(path.join(directory, "kept.ts"), "replacement source"); const replacement = commit();
+    run(["replace", original, replacement]);
+    const output = path.join(directory, "private"); await mkdir(output, { mode: 0o700 });
+    const archive = captureApplicationSourceArchive(directory, original, output);
+    const actual = spawnSync("tar", ["-xOf", "-", "kept.ts"], { input: archive });
+    expect(actual.status).toBe(0); expect(actual.stdout.toString()).toBe("physical selected source");
+  } finally { await rm(directory, { recursive: true }); }
+});
 function tar(entries: [string, Buffer][]) {
   const parts: Buffer[] = [];
   for (const [name, value] of entries) {
