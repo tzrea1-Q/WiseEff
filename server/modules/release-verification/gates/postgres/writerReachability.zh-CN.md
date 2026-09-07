@@ -34,6 +34,8 @@ REFERENCES、TRIGGER 及适用的列级权限均阻塞。
 因此阻塞。有效 EXECUTE 委托继续追踪其他 definer owner，覆盖不对 LOGIN
 直接开放的私有内层函数。递归 UNION 对 LOGIN／owner 去重，循环会终止。
 仅具备读取能力的受限 owner 正例继续通过；不以 SQL 正文缺失证明安全。
+系统 schema 内缺少 `pg_init_privs` 初始化来源的 definer 仍进入图中；
+不能仅因 schema 名称而将其作为内建函数排除。
 观察窗口内缺表或真实查询失败，返回既有 V13 类型化阻塞结果，不输出私有诊断，
 也不执行修复写入。
 
@@ -67,10 +69,10 @@ Merge bar 仍要求此 job。
 | `0733f322f` | 23 / 22 / 1 / 0 | 私有内层 EXECUTE 委托 Red，exit 1 |
 | `6dca0f385365c54c4c8a2ba63c5315309e0672ca` | 23 / 23 / 0 / 0 | 5.69 秒，exit 0 |
 
-最后执行 tree：`92482fca44d08c2d51db1c5190007fe296e4465a`。
+23 例执行 tree：`92482fca44d08c2d51db1c5190007fe296e4465a`。
 各轮独占资源清理均已核验。镜像为 `postgres:16-alpine`、`linux/arm64`，image ID：
 `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
-最后 Green 日志 SHA-256：
+23 例 Green 日志 SHA-256：
 `6545e9c3c1d4fe9f25416958cdff2651bec2025cd48a5d57d67823d0e60d2bf5`；
 此前委托 Red 日志：
 `3891cc3e8dc4bb17fb0f7eb5e9344d09127348955fe2151fd531bca95132fb18`。
@@ -79,3 +81,18 @@ Merge bar 仍要求此 job。
 3509 个既有允许命中，新增、过期、不匹配及增长均为零。
 这些是本地隔离组件执行，不是 Hosted、完整 controller、已批准运行启动或生产证据。
 后续文档提交不重标这些实际执行身份。
+
+独立审查随后指出系统 schema 来源遗漏。test-only `01da79bff` 首次执行
+在原 10 秒 setup 超时：24 收集、24 跳过、1 failed suite、exit 1，
+不属于有效功能 Red。同代码同命令的一次有界复跑实际到达全部用例：
+5.23 秒，23 通过、1 失败；真实 LOGIN 经新建 `pg_catalog` definer 写入，
+V13 却通过。两次资源清理均已核验。
+修复 `d28546fad24e106625d6d176c7d23086f147e9c7`，tree
+`c3f9ec4a789e524056bbeca0b19207c8ef3101e8`，实际 24/24、5.13 秒、
+exit 0、零跳过、清理核验通过，镜像身份与上文相同。
+日志 SHA-256：setup 失败
+`671b1bbc4d4c504eab0657eb3331b46049e443e2ba340d17cde0d75a30762ec9`；
+有效 Red `ad96d192590e8bd0c4489586746258955d40ee1092f6f5ae938dd116c93542a4`；
+Green `a9668f5e5595986d517f620ec4926336069183af4e1afa162021f6db10c21eb1`。
+固定代码限定 types 与同可信基线 boundary 均 exit 0；boundary 保持 3509
+允许命中，新增、过期、不匹配及增长均为零。没有修改 timeout 或基线换取结果。
