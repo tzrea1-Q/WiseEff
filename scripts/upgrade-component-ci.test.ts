@@ -5,6 +5,17 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("never reports nested recovery cleanup as verified after child failure or forced termination", () => {
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
+  });
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 0, true).cleanupVerified).toBe(true);
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 0, false).cleanupVerified).toBe(false);
+  expect(componentRunner.componentCleanupEvidence("reader-pg16", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: true, nestedCleanupOutcome: "not-applicable",
+  });
+});
+
 it("requires all real recovery package and queue regressions in the owned job without opt-in skips", () => {
   const file = "scripts/rehearse-upgrade-recovery.test.ts";
   expect(componentRunner.componentTestCommands("recovery-three-store")[0].slice(1)).toEqual([

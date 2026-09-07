@@ -302,6 +302,14 @@ export function componentSupervisionLimits(input = { deadlineMs: 15 * 60_000, gr
   return Object.freeze({ deadlineMs, graceMs, outputBytes });
 }
 
+export function componentCleanupEvidence(suite: string, exitCode: number, runnerResourcesCleanupVerified: boolean) {
+  // The recovery child owns additional stores. On failure/forced termination,
+  // its finally may not have run; cleaning this runner's PG is not their proof.
+  const nestedCleanupOutcome = suite === "recovery-three-store" ? exitCode === 0 ? "verified-by-complete-suite" : "unknown" : "not-applicable";
+  return { runnerResourcesCleanupVerified,
+    cleanupVerified: runnerResourcesCleanupVerified && nestedCleanupOutcome !== "unknown", nestedCleanupOutcome };
+}
+
 export async function runUpgradeComponentTests(args: string[], observation?: {
   /** Fault injection can only shorten the production supervisor's limits. */
   limits?: { deadlineMs: number; graceMs: number; outputBytes: number };
@@ -464,7 +472,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
     if (!retainPrivateDirectory && !isRecovery) await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
-  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: !retainPrivateDirectory, privateEvidenceRetained: retainPrivateDirectory || isRecovery, releaseApproved: false }));
+  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, ...componentCleanupEvidence(args[3], exitCode, !retainPrivateDirectory), privateEvidenceRetained: retainPrivateDirectory || isRecovery, releaseApproved: false }));
   return { exitCode, reason: "isolated-components-only", childProcessId: child?.pid };
 }
 
